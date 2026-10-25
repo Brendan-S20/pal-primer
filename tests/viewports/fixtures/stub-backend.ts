@@ -1599,6 +1599,8 @@ const PORTAL_STUBS: Record<string, Stub> = {
   // does, with no row.
   getPublicSignupForm: (a) =>
     a.slug === pfx.QUOTE_ONLY_SLUG ? pfx.SIGNUP_FORM_QUOTE_ONLY : pfx.SIGNUP_FORM,
+  // The route's loader, for the meta description only (#525).
+  getPublicSignupLines: { lines: [] },
   getSignupQuote: (a) =>
     a.postal_code === pfx.NO_ZONE_ZIP
       ? { available: false }

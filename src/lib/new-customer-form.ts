@@ -29,7 +29,7 @@ export type QuoteAnswer<Q = unknown> = { available: true; quote: Q } | { availab
 export type FormBranch<Q = unknown> = {
   /** "Start service" is on offer: card, client, property, subscription. */
   canStartService: boolean;
-  /** "Just send me a quote" is on offer: a lead the office follows up. */
+  /** "Get a quote by email" is on offer: a lead the office follows up. */
   canRequestQuote: boolean;
   /** The price to show, when there is one. */
   quote: Q | null;
@@ -134,6 +134,21 @@ export const FORM_DEFAULTS = {
   },
   confirmation: "Thanks, we got your request! We'll be in touch shortly to set up your service.",
 } as const;
+
+/** Whether the owner's own words read as a quote request only ("Request a
+ *  quote", "Tell us about your yard and we'll get you a quote") with nothing
+ *  about a price or starting today. On a page that prices instantly and
+ *  offers Start service, that headline says the opposite of what the page
+ *  does (#528), so Settings warns and offers the default. Text the owner has
+ *  not set ("") never warns: the default is chosen for the mode. */
+export function readsAsQuoteOnly(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  return (
+    /\bquotes?\b/i.test(t) &&
+    !/\b(instant|instantly|price|prices|pricing|start|book|sign up|signup)\b/i.test(t)
+  );
+}
 
 export type FormFields = { phone: boolean; location: boolean; dogCount: boolean; message: boolean };
 

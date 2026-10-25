@@ -10,7 +10,11 @@ import { parseFirstCleanupPricing } from "@/lib/first-cleanup";
 import { parseQuoteOptions, signupChargeFromQuote } from "@/lib/signup-charge";
 import { LEAD_SOURCE } from "@/lib/new-customer-form";
 import { publicServiceChoices, type PublicService } from "@/lib/public-services";
-import { customerCanRequestService, type ServiceLineAvailability } from "@/lib/service-lines";
+import {
+  customerCanRequestService,
+  type ServiceLine,
+  type ServiceLineAvailability,
+} from "@/lib/service-lines";
 import {
   CALM_REFUSAL,
   ELAPSED_FIELD,
@@ -156,6 +160,29 @@ export const getPublicSignupForm = createServerFn({ method: "GET" })
       services,
       serviceLines,
     };
+  });
+
+/** Which lines a business sells online, for the booking link's meta
+ *  description (#525) and nothing else. The route's loader asks it, so it is
+ *  kept to the two reads that answer it: public_services (the business's
+ *  own gate is in the RPC) and the platform switch, filtered by the same
+ *  publicServiceChoices the form reads. Never throws: a link preview built
+ *  from nothing describes the page as pet waste, the form it falls back to. */
+export const getPublicSignupLines = createServerFn({ method: "GET" })
+  .inputValidator((d) => z.object({ slug: z.string().trim().min(1).max(120) }).parse(d))
+  .handler(async ({ data }): Promise<{ lines: ServiceLine[] }> => {
+    try {
+      const { loadServiceLineAvailability } =
+        await import("@/lib/service-line-availability.server");
+      const [{ data: rows, error }, availability] = await Promise.all([
+        anon().rpc("public_services", { _slug: data.slug }),
+        loadServiceLineAvailability(),
+      ]);
+      if (error) return { lines: [] };
+      return { lines: publicServiceChoices(rows, availability).map((s) => s.service_line) };
+    } catch {
+      return { lines: [] };
+    }
   });
 
 const quoteSchema = z.object({
