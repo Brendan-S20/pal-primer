@@ -41,6 +41,7 @@ import {
 } from "@/lib/expenses";
 import { logExpenseOrQueue } from "@/lib/offline/expense-actions";
 import { useOrgToday } from "@/hooks/useOrgToday";
+import { useServiceLines } from "@/components/CommercialOnly";
 import { useTranslation } from "react-i18next";
 
 export function LogExpenseSheet({
@@ -57,6 +58,7 @@ export function LogExpenseSheet({
 }) {
   const qc = useQueryClient();
   const { t } = useTranslation();
+  const { petWaste } = useServiceLines();
   const today = useOrgToday();
   const sendFn = useServerFn(createExpense);
   const settingsFn = useServerFn(getExpenseSettings);
@@ -174,7 +176,9 @@ export function LogExpenseSheet({
                     className="h-auto min-h-11 min-w-0 whitespace-normal px-2 py-1 text-sm leading-tight"
                     onClick={() => setCategory(c)}
                   >
-                    {t(`expenseCategory.${c}`, { defaultValue: EXPENSE_CATEGORY_LABELS[c] })}
+                    {!petWaste && c === "disposal"
+                      ? t("workerNeutral.disposal")
+                      : t(`expenseCategory.${c}`, { defaultValue: EXPENSE_CATEGORY_LABELS[c] })}
                   </Button>
                 ))}
               </div>
@@ -238,7 +242,11 @@ export function LogExpenseSheet({
               <Input
                 id="expense-vendor"
                 maxLength={120}
-                placeholder={mileage ? t("expense.tripPlaceholder") : t("expense.wherePlaceholder")}
+                placeholder={
+                  mileage
+                    ? t(petWaste ? "expense.tripPlaceholder" : "workerNeutral.tripPlaceholder")
+                    : t(petWaste ? "expense.wherePlaceholder" : "workerNeutral.wherePlaceholder")
+                }
                 value={vendor}
                 onChange={(e) => setVendor(e.target.value)}
                 className="mt-1 h-11"

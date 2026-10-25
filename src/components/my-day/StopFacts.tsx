@@ -6,7 +6,7 @@
 // The one write -- recording cash or a check -- is the card's, through the
 // offline queue like Complete and Skip; CollectForm only collects the answer.
 
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import {
@@ -44,6 +44,35 @@ import type { PolygonGeoJSON } from "@/components/BoundarySketch";
 /** Temperaments the app writes, worded by `dog.<temperament>`. Anything else
  *  is shown as stored. */
 const DOG_TEMPERAMENTS = new Set(["friendly", "nervous", "aggressive", "unknown"]);
+const DOG_SIZES = new Set(["small", "medium", "large", "giant", "xlarge"]);
+const COAT_TYPES = new Set(["short", "medium", "long", "double", "curly", "wire"]);
+
+function dogFacts(t: TFunction, d: StopDog): ReactNode[] {
+  const parts: ReactNode[] = [];
+  if (d.breed?.trim()) parts.push(<bdi key="breed">{d.breed.trim()}</bdi>);
+  if (d.weight_class) {
+    const size = String(d.weight_class).toLowerCase();
+    parts.push(
+      <span key="size">
+        {DOG_SIZES.has(size) ? t(`fieldClient.dogSize.${size}`) : <bdi>{d.weight_class}</bdi>}
+      </span>,
+    );
+  }
+  if (d.coat_type && COAT_TYPES.has(d.coat_type)) {
+    parts.push(<span key="coat">{t(`fieldClient.coatType.${d.coat_type}`)}</span>);
+  } else if (d.coat_type) {
+    parts.push(<bdi key="coat">{d.coat_type}</bdi>);
+  }
+  const weight = d.weight_lb == null || d.weight_lb === "" ? null : Number(d.weight_lb);
+  if (weight != null && Number.isFinite(weight) && weight > 0) {
+    parts.push(
+      <span key="weight" dir="ltr">
+        {t("dogs.weightLb", { weight })}
+      </span>,
+    );
+  }
+  return parts;
+}
 
 /**
  * The dogs on site, always said.
@@ -87,6 +116,7 @@ export function DogsLine({
       <span className="text-sm font-medium">{t("dogs.named", { count: line.dogs.length })}</span>
       {line.dogs.map((d: StopDog, i: number) => {
         const aggressive = d?.temperament === "aggressive";
+        const facts = d ? dogFacts(t, d) : [];
         return (
           <span
             key={d?.id ?? `${d?.name ?? ""}-${i}`}
@@ -100,6 +130,21 @@ export function DogsLine({
             <span className="sr-only">{t("dog.onSite")}</span>
             <span className="min-w-0 [overflow-wrap:anywhere]">
               <bdi>{d?.name || t("dog.fallbackName")}</bdi>
+              {facts.length > 0 && (
+                <span className="block text-xs font-normal opacity-80">
+                  {facts.map((fact, factIndex) => (
+                    <span key={factIndex}>
+                      {factIndex > 0 ? " · " : ""}
+                      {fact}
+                    </span>
+                  ))}
+                </span>
+              )}
+              {d?.notes?.trim() && (
+                <span className="block text-xs font-normal">
+                  <bdi>{d.notes.trim()}</bdi>
+                </span>
+              )}
             </span>
             {d?.temperament && (
               <span className="shrink-0 font-normal opacity-80">

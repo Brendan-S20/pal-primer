@@ -1,3 +1,4 @@
+import { SERVICE_LINES } from "@/lib/service-lines";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -41,6 +42,8 @@ export const upsertAddonService = createServerFn({ method: "POST" })
         kind: z.enum(KIND).default("one_time"),
         unit_price_cents: z.number().int().min(0),
         default_frequency: z.enum(FREQ).optional().nullable(),
+        durationMin: z.number().int().min(0).max(480).optional(),
+        serviceLine: z.enum(SERVICE_LINES).nullable().optional(),
         taxable: z.boolean().optional(),
         active: z.boolean().optional(),
       })
@@ -64,6 +67,8 @@ export const upsertAddonService = createServerFn({ method: "POST" })
       active: data.active ?? true,
       updated_at: new Date().toISOString(),
     };
+    if (data.durationMin !== undefined) payload.duration_min = data.durationMin;
+    if (data.serviceLine !== undefined) payload.service_line = data.serviceLine;
     if (data.id) {
       const { error } = await context.supabase
         .from("addon_services")

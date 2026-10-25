@@ -92,6 +92,7 @@ const NO_TITLE_NEEDED: Record<string, string> = {
   "src/routes/portal.$slug.$token.requests.tsx": "a portal tab; the portal layout titles it",
   "src/routes/portal.$slug.$token.account.tsx": "a portal tab; the portal layout titles it",
   "src/routes/portal.$slug.$token.training.tsx": "a portal page under the layout, opened from the Home card; the layout titles it",
+  "src/routes/portal.$slug.$token.grooming.tsx": "a portal page under the layout, opened from the Home card; the layout titles it",
 };
 
 /** Pages a CUSTOMER of a business reads, reached from a text or an email. */

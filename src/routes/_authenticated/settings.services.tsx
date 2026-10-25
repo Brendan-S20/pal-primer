@@ -14,6 +14,7 @@
 // Nothing is deleted here. A service is deactivated, because from phase 2
 // plans and visits point at it.
 
+import { ServiceSizeRulesEditor } from "@/components/settings/ServiceSizeRulesEditor";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -69,6 +70,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { VaccineSettings } from "@/components/settings/VaccineSettings";
 import { titleHead } from "@/lib/page-title";
 import { TrainingOnly } from "@/components/training/TrainingOnly";
 import { TrainingPackagesCard } from "@/components/settings/TrainingPackagesCard";
@@ -183,6 +185,7 @@ function ServicesPage() {
   });
   const services: Service[] = data?.services ?? [];
 
+  const [sizeService, setSizeService] = useState<Service | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -274,7 +277,17 @@ function ServicesPage() {
                     </div>
                   </div>
                   {canEdit && (
-                    <div className="flex shrink-0 gap-2">
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                      {s.service_line === "mobile_grooming" && (
+                        <Button
+                          className="min-h-11"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setSizeService(s)}
+                        >
+                          Prices by size
+                        </Button>
+                      )}
                       <Button size="sm" variant="outline" onClick={() => open(s)}>
                         Edit
                       </Button>
@@ -295,8 +308,24 @@ function ServicesPage() {
         )}
       </section>
 
+      {lines.includes("mobile_grooming") && <VaccineSettings />}
       {lines.includes("pet_sitting") && <HolidayDatesCard canEdit={canEdit} />}
       {lines.includes("pet_sitting") && <StayDepositCard canEdit={canEdit} />}
+
+      <Dialog open={sizeService !== null} onOpenChange={(open) => !open && setSizeService(null)}>
+        <DialogContent className="sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Prices by size</DialogTitle>
+            <DialogDescription>{sizeService?.name}</DialogDescription>
+          </DialogHeader>
+          {sizeService && (
+            <ServiceSizeRulesEditor
+              serviceId={sizeService.id}
+              serviceLine={sizeService.service_line}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       <TrainingOnly>
         <TrainingPackagesCard services={services} canEdit={canEdit} />

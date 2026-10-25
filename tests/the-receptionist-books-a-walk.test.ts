@@ -43,6 +43,8 @@ import { twoBusinesses, type FakeReceptionistDb } from "./support/fake-reception
 vi.mock("@/lib/service-lines", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/service-lines")>()),
   BOOKABLE_SERVICE_LINES: ["pet_waste", "dog_walking", "pet_sitting"],
+  customerCanRequestService: (line: string) =>
+    line !== "training" && ["pet_waste", "dog_walking", "pet_sitting"].includes(line),
 }));
 
 const read = (p: string) => readFileSync(join(import.meta.dirname, "..", p), "utf8");

@@ -7,6 +7,10 @@ import { requirePermission, resolveCaller } from "@/lib/authz.server";
 /** Every skip reason the SCHEDULE can carry, including the one only the portal
  *  writes. See TECH_SKIP_REASON_CODES for the subset a tech may choose. */
 export const SKIP_REASON_CODES = [
+  "pet_not_ready",
+  "client_not_home",
+  "no_parking",
+  "pet_stressed",
   "customer_requested",
   "client_cancelled_late",
   "gate_locked",
@@ -24,6 +28,10 @@ export const SKIP_REASON_CODES = [
 ] as const;
 
 export const SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[number], string> = {
+  pet_not_ready: "Pet not ready",
+  client_not_home: "Client not home",
+  no_parking: "No place to park",
+  pet_stressed: "Pet too stressed",
   customer_requested: "Customer skipped via portal",
   client_cancelled_late: "Client canceled late",
   gate_locked: "Gate locked / no access",
@@ -54,6 +62,10 @@ export const SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[number], stri
  * reporting and settings where the terse internal wording is right.
  */
 export const CUSTOMER_SKIP_REASON_LABELS: Record<(typeof SKIP_REASON_CODES)[number], string> = {
+  pet_not_ready: "Pet not ready",
+  client_not_home: "Client not home",
+  no_parking: "No place to park",
+  pet_stressed: "Pet too stressed",
   customer_requested: "You asked us to skip this one",
   client_cancelled_late: "Canceled after our cut-off",
   gate_locked: "The gate was locked, so we could not get in",
@@ -88,6 +100,10 @@ export function customerSkipReason(code: string | null | undefined): string {
 }
 
 const DEFAULT_PCT: Record<(typeof SKIP_REASON_CODES)[number], number> = {
+  pet_not_ready: 0,
+  client_not_home: 0,
+  no_parking: 0,
+  pet_stressed: 0,
   // 0 to MATCH the SQL, which is the whole point of adding this row rather than
   // picking a nicer number: `portal_skip_visit` ends with
   // `IF _pct IS NULL THEN _pct := 0`, so this has always been free. Making it
@@ -131,7 +147,8 @@ export const TECH_SKIP_REASON_CODES = SKIP_REASON_CODES.filter(
     c !== "customer_requested" &&
     !WALK_ONLY_SKIP_REASON_CODES.includes(c as WalkOnlySkip) &&
     c !== "pet_hiding" &&
-    c !== "client_home",
+    c !== "client_home" &&
+    !["pet_not_ready", "client_not_home", "no_parking", "pet_stressed"].includes(c),
 ) as ReadonlyArray<(typeof SKIP_REASON_CODES)[number]>;
 
 /** What a walker picks. Yard reasons stay off this list. */
@@ -183,11 +200,21 @@ export const LESSON_SKIP_REASON_LABELS: Record<(typeof LESSON_SKIP_REASON_CODES)
     other: "Other",
   };
 
+export const GROOM_SKIP_REASON_CODES = [
+  "pet_not_ready",
+  "client_not_home",
+  "no_parking",
+  "pet_stressed",
+  "weather",
+  "other",
+] as const;
+
 /** The picker's list for a stop on this service line. */
 export function techSkipReasonCodes(line: string | null | undefined): readonly string[] {
   if (line === "pet_sitting") return Object.keys(SIT_SKIP_REASON_LABELS);
   if (line === "dog_walking") return WALK_SKIP_REASON_CODES;
   if (line === "training") return LESSON_SKIP_REASON_CODES;
+  if (line === "mobile_grooming") return GROOM_SKIP_REASON_CODES;
   return TECH_SKIP_REASON_CODES;
 }
 

@@ -150,10 +150,10 @@ export const DEFAULT_SERVICE_SEEDS: Readonly<Record<ServiceLine, readonly Defaul
   ],
   mobile_grooming: [
     {
-      name: "Bath and brush (60 min)",
+      name: "Bath and tidy (60 min)",
       service_line: "mobile_grooming",
       price_unit: "visit",
-      base_price_cents: null,
+      base_price_cents: 5000,
       extra_pet_cents: 0,
       default_duration_min: 60,
       active: true,
@@ -162,7 +162,7 @@ export const DEFAULT_SERVICE_SEEDS: Readonly<Record<ServiceLine, readonly Defaul
       name: "Full groom (90 min)",
       service_line: "mobile_grooming",
       price_unit: "visit",
-      base_price_cents: null,
+      base_price_cents: 8000,
       extra_pet_cents: 0,
       default_duration_min: 90,
       active: true,

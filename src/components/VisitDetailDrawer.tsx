@@ -202,6 +202,7 @@ export function VisitDetailDrawer({
       }
       if (r.clash) toast.warning(r.clash);
       warnLessonClashes(r);
+      if (r.clash) toast.warning(r.clash);
       setMoveTo("");
       invalidate();
     },
@@ -234,6 +235,7 @@ export function VisitDetailDrawer({
       doReassign({ data: { visitId: vid, staffId } }).then((r) => {
         if (r.clash) toast.warning(r.clash);
         warnLessonClashes(r);
+        if (r.clash) toast.warning(r.clash);
         return r;
       });
     const change = holdForUndo(send, {

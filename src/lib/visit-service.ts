@@ -27,18 +27,22 @@ function minutesOrNull(v: number | string | null | undefined): number | null {
 }
 
 /**
- * Minutes on site for a stop: the service's default_duration_min when it has
- * one, else the property's service_duration_min, else 8.
+ * Minutes on site for a stop. A visit that stored its own length (a groom
+ * priced by the pet's size) wins. Otherwise the service's
+ * default_duration_min, else the property's service_duration_min, else 8.
  *
- * The same rule as `public.stop_service_min` (20261009230100), which
- * route_day_inputs and apply_route_plan use; the tests hold the two to one
- * table. Pet-waste services leave their duration NULL on purpose -- a cleanup
- * takes as long as the YARD -- so for a pet-waste stop this is the yard's.
+ * The same rule as `public.stop_service_min` (two arguments in 20261009230100,
+ * three in 20261024100200), which route_day_inputs and apply_route_plan use.
+ * Pet-waste services leave their duration NULL on purpose: a cleanup takes as
+ * long as the yard.
  */
 export function visitServiceMinutes(
   serviceMin: number | string | null | undefined,
   propertyMin: number | string | null | undefined,
+  visitMin?: number | string | null,
 ): number {
+  const visit = minutesOrNull(visitMin);
+  if (visit != null && visit > 0) return visit;
   return minutesOrNull(serviceMin) ?? minutesOrNull(propertyMin) ?? DEFAULT_STOP_MINUTES;
 }
 

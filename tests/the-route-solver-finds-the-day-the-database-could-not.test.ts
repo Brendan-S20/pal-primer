@@ -144,7 +144,9 @@ describe("the solver's answer is a plan", () => {
     const b = solveRoutes(p, DETERMINISTIC);
     expect(a.routes).toEqual(b.routes);
     expect(a.objective).toBe(b.objective);
-  });
+    // Two fixed-round searches with a frozen clock: determinism is the
+    // assertion here, and parallel CI workers can take over the default 30s.
+  }, 120_000);
 
   it("reports the objective it actually achieved", () => {
     const p = day(30, 3, 9);

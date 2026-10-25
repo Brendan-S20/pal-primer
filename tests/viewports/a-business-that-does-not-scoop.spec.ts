@@ -37,6 +37,8 @@ import { installStubBackend, type SweepRole } from "./fixtures/stub-backend";
  *     npx playwright test a-business-that-does-not-scoop --workers=2
  */
 
+import * as groomingFx from "./fixtures/dataset";
+
 const DOG_WALKING = ["dog_walking"];
 const PET_WASTE = ["pet_waste"];
 
@@ -226,5 +228,122 @@ for (const { w, h, label } of WIDTHS.filter((s) => s.w === 360 || s.w === 1280))
         page.getByRole("link", { name: "Waste log" }).locator("visible=true").first(),
       ).toBeVisible({ timeout: 30_000 });
     });
+  });
+}
+
+for (const w of [390, 820, 1024, 1440]) {
+  test(`grooming setup keeps its travel buffer and request inbox @${w}px`, async ({ page }) => {
+    test.setTimeout(180_000);
+    await page.setViewportSize({ width: w, height: 1000 });
+    await installSignedInSession(page);
+    await installStubBackend(page, { role: "owner", serviceLines: ["mobile_grooming"] });
+    const billed: string[] = [];
+    await page.route("**/_serverFn/**", async (route) => {
+      const id = new URL(route.request().url()).pathname.split("/_serverFn/")[1] ?? "";
+      let name = "";
+      try {
+        name = String(
+          JSON.parse(Buffer.from(decodeURIComponent(id), "base64url").toString()).export ?? "",
+        ).replace(/_createServerFn_handler$/, "");
+      } catch {
+        /* Other fixture routes handle unknown calls. */
+      }
+      if (name === "listAddonServices")
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            result: {
+              services: [
+                {
+                  id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                  name: "Matting",
+                  unit_price_cents: 2500,
+                  service_line: "mobile_grooming",
+                  active: true,
+                },
+              ],
+            },
+          }),
+        });
+      if (name === "createAddonCharge") {
+        billed.push(route.request().postData() ?? "");
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ result: { ok: true } }),
+        });
+      }
+      if (name === "getMyDay") {
+        const v = groomingFx
+          .visitsBetween(groomingFx.TODAY, groomingFx.TODAY)
+          .find((row) => row.assigned_staff_id === groomingFx.STAFF[0].id)!;
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            result: {
+              staff: { ...groomingFx.STAFF[0], organization_id: groomingFx.ORG_ID },
+              previewing: false,
+              visits: [
+                {
+                  ...v,
+                  organization_id: groomingFx.ORG_ID,
+                  status: "in_progress",
+                  started_at: new Date(Date.now() - 600000).toISOString(),
+                  completed_at: null,
+                  services: { name: "Full groom", service_line: "mobile_grooming" },
+                  properties: {
+                    ...(v.properties as object),
+                    account_type: "residential",
+                    has_units: false,
+                    dogs: [{ id: "dog-groom", name: "Biscuit", temperament: "friendly" }],
+                  },
+                  groom_pets: [],
+                  visit_photos: [],
+                  visit_checklist: null,
+                  gate_reply: null,
+                },
+              ],
+            },
+          }),
+        });
+      }
+      if (name === "getVaccineSettings") {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            result: { enabled: true, rule: "warn", required: ["rabies"], bufferMin: 30 },
+          }),
+        });
+      }
+      return route.fallback();
+    });
+    await page.goto("/settings/services", { waitUntil: "domcontentloaded" });
+    await expect(page.getByLabel("Setup, cleanup and travel minutes")).toHaveValue("30", {
+      timeout: 90_000,
+    });
+    if (w >= 768)
+      await expect(page.getByRole("link", { name: "Requests", exact: true }).first()).toBeVisible();
+    await measure(page, w, `grooming setup ${w}`);
+    await page.screenshot({ path: `test-results/grooming-setup-${w}.png`, fullPage: true });
+    await page.goto("/my-day", { waitUntil: "domcontentloaded" });
+    await expect(page.getByText("Full groom").first()).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: "More options", exact: true }).first().click();
+    await page
+      .getByRole("button", { name: /\+ Add.on/ })
+      .first()
+      .click();
+    await page
+      .getByLabel("Select service…")
+      .first()
+      .selectOption("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    await page.getByRole("button", { name: "Bill", exact: true }).first().click();
+    await expect(page.getByRole("alertdialog")).toContainText("$25.00");
+    await page.screenshot({ path: `test-results/grooming-matting-${w}.png`, fullPage: true });
+    await page.getByRole("button", { name: "Bill it", exact: true }).click();
+    await expect.poll(() => billed.length).toBe(1);
+    expect(billed[0]).toContain("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
   });
 }

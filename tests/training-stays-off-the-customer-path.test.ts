@@ -15,6 +15,8 @@ import { progressText, scoreProblem } from "../src/lib/training-progress";
 vi.mock("@/lib/service-lines", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/service-lines")>()),
   BOOKABLE_SERVICE_LINES: ["pet_waste", "dog_walking", "training"],
+  customerCanRequestService: (line: string) =>
+    line !== "training" && ["pet_waste", "dog_walking", "training"].includes(line),
 }));
 
 const lesson = {

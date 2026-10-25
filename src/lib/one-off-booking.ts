@@ -58,7 +58,8 @@ export function oneOffRefusalMessage(raw: string): string {
   if (/already_scheduled/.test(raw))
     return "You already have a visit that day, so there's nothing extra to book.";
   if (/property_not_found/.test(raw)) return "We couldn't find that address on your account.";
-  if (/service_not_offered/.test(raw)) return "That service isn't offered right now. Please pick another.";
+  if (/service_not_offered/.test(raw))
+    return "That service isn't offered right now. Please pick another.";
   if (/invalid_token/.test(raw)) return "This portal link is no longer valid.";
   return raw;
 }
@@ -135,7 +136,7 @@ export function oneOffServiceOptions(
 ): OneOffServiceOption[] {
   const out: OneOffServiceOption[] = [];
   for (const s of servicePickerOptions(services)) {
-    if (!s.active || !customerCanRequestService(s.service_line)) continue;
+    if (!s.active || !customerCanRequestService(s.service_line, bookable)) continue;
     if (!bookable.includes(s.service_line)) continue;
     const fields = {
       price_unit: s.price_unit,
@@ -173,8 +174,14 @@ export function oneOffServiceOptions(
 /** The note on the client's activity timeline, so the office can see why a
  *  one-off exists. Names the service when the client asked for one that is
  *  not the business's pet-waste service. */
-export function oneOffVisitNote(dayLabel: string, auto: boolean, serviceName?: string | null): string {
-  const what = serviceName ? `${serviceName} the client asked for` : "Extra visit the client asked for";
+export function oneOffVisitNote(
+  dayLabel: string,
+  auto: boolean,
+  serviceName?: string | null,
+): string {
+  const what = serviceName
+    ? `${serviceName} the client asked for`
+    : "Extra visit the client asked for";
   return auto
     ? `${what} from the portal (booked automatically)`
     : `${what} from the portal${dayLabel ? ` for ${dayLabel}` : ""}`;

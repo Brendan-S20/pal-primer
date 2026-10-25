@@ -24,7 +24,7 @@ function money(cents: number | null | undefined) {
 }
 
 // Mirrors the client portal's "Refer a neighbor" pattern (short code + Share +
-// Copy), lifted to the tenant level: refer another pet-service business to
+// Copy), lifted to the tenant level: refer another pet service business to
 // HoundStack, earn a % of their first payment once they're a paying customer.
 function ReferBusinessPage() {
   const fn = useServerFn(getMyReferralProgram);
@@ -83,7 +83,7 @@ function ReferBusinessPage() {
       <div>
         <h2 className="text-lg font-semibold">Refer a business</h2>
         <p className="text-sm text-muted-foreground">
-          Know another pet-service business that could use {APP_NAME}? Share your link. When they
+          Know another pet service business that could use {APP_NAME}? Share your link. When they
           become a paying customer, you earn{" "}
           <strong>{data.rewardPercent}% of their first payment</strong>, paid out to you in cash
           after they've been active {data.holdingDays} days.

@@ -55,6 +55,7 @@ import {
   customerCanRequestService,
   newClientWizardSteps,
   runsPetWaste,
+  serviceLinesAdditionProblem,
   serviceLinesOrDefault,
   serviceLinesProblem,
   suggestedChecklistFor,
@@ -401,11 +402,29 @@ describe("what an owner can choose", () => {
     expect([...BOOKABLE_SERVICE_LINES]).toEqual(["pet_waste"]);
   });
 
+  it("a Coming soon line can be kept or dropped, never added", () => {
+    expect(serviceLinesAdditionProblem(["pet_waste"], ["pet_waste", "mobile_grooming"])).toMatch(
+      /coming soon/,
+    );
+    expect(serviceLinesAdditionProblem(["dog_walking"], ["dog_walking", "training"])).toMatch(
+      /coming soon/,
+    );
+    expect(serviceLinesAdditionProblem(["pet_waste"], ["pet_waste", "pet_sitting"])).toMatch(
+      /coming soon/,
+    );
+    // Set some other way before the hotfix: it stays, and it can go.
+    const kept = ["mobile_grooming"] as const;
+    expect(serviceLinesAdditionProblem(kept, [...kept, "pet_waste"])).toBeNull();
+    expect(serviceLinesAdditionProblem(["pet_waste", "training"], ["pet_waste"])).toBeNull();
+    // The setter's own gate is serviceLinesAdditionProblem, pinned by
+    // tests/only-pet-waste-can-be-turned-on.test.ts.
+  });
+
   it("training is offered as Coming soon, and neither an owner nor a customer can turn it on", () => {
     expect(OFFERED_SERVICE_LINES).toContain("training");
     expect(BOOKABLE_SERVICE_LINES).not.toContain("training");
     expect(customerCanRequestService("training")).toBe(false);
-    expect(customerCanRequestService("dog_walking")).toBe(true);
+    expect(customerCanRequestService("dog_walking")).toBe(false);
     // The row draws the badge and refuses the tick for any line that is not
     // bookable, so training reads Coming soon and its box cannot be ticked.
     const rows = codeOnly(read("src/components/ServiceLinesChoices.tsx"));

@@ -1,3 +1,4 @@
+import { useServiceLines } from "@/components/CommercialOnly";
 // Client detail page (docs/client-detail-refactor.md): a persistent header,
 // eight tabs, read-only by default, editing in right-side drawers. The heavy
 // lifting lives in src/components/client-detail/*.
@@ -150,6 +151,7 @@ export const Route = createFileRoute("/_authenticated/clients/$clientId")({
 });
 
 function ClientDetail() {
+  const { lines: serviceLines } = useServiceLines();
   const { clientId } = Route.useParams();
   const { can, loading: roleLoading } = usePermissions();
   const canViewDirectory = can("view_client_directory");
@@ -298,6 +300,7 @@ function ClientDetail() {
           client={fieldData.client}
           properties={fieldData.properties ?? []}
           dogs={fieldData.dogs ?? []}
+          grooming={serviceLines.includes("mobile_grooming")}
         />
       );
     }

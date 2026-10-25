@@ -3,6 +3,14 @@
 // boundary, auto-calculated estimated time with override indicator, zone
 // with detected/override badges, dogs per property (deactivate, don't
 // delete), commercial-only fields, and Archive / Delete-when-allowed.
+import { PetSizeFields } from "@/components/client-detail/PetSizeFields";
+import {
+  NO_HANDLING,
+  PetHandlingFields,
+  type PetHandling,
+} from "@/components/client-detail/PetHandlingFields";
+import { useServiceLines } from "@/components/CommercialOnly";
+import type { CoatType } from "@/lib/groom";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -43,6 +51,7 @@ import {
   setPropertyArchived,
   deletePropertyIfNoHistory,
 } from "@/lib/properties.functions";
+import { PetVaccines } from "@/components/client-detail/PetVaccines";
 import { listDogsForClient } from "@/lib/clients.functions";
 import { addDog, updateDog } from "@/lib/dogs.functions";
 import { deriveYardSize, YARD_SIZE_LABELS } from "@/lib/yard-size";
@@ -50,7 +59,6 @@ import { computeEstimatedMinutes, countPropertyHazards } from "@/lib/estimated-t
 import { PropertyDrawer } from "@/components/client-detail/PropertyDrawer";
 import { ACCESS_METHOD_LABEL, isAccessMethod, type AccessMethod } from "@/lib/walk-access";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
-import { useServiceLines } from "@/components/CommercialOnly";
 import { careSummary, PetCareEditor } from "@/components/client-detail/PetCareEditor";
 import { getPetCare } from "@/lib/stays.functions";
 import {
@@ -388,7 +396,9 @@ function PropertyCard({
     [p, activeDogs.length, sub],
   );
   const isOverride = !!p.est_override_at;
-  const effectiveMinutes = isOverride ? p.service_duration_min : (computed ?? p.service_duration_min);
+  const effectiveMinutes = isOverride
+    ? p.service_duration_min
+    : (computed ?? p.service_duration_min);
 
   return (
     <li className="rounded-lg border bg-card shadow-sm">
@@ -552,7 +562,10 @@ function PropertyCard({
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     {yardCat && (
                       <span>
-                        Yard size: <span className="font-medium text-foreground">{YARD_SIZE_LABELS[yardCat]}</span>{" "}
+                        Yard size:{" "}
+                        <span className="font-medium text-foreground">
+                          {YARD_SIZE_LABELS[yardCat]}
+                        </span>{" "}
                         (from boundary)
                       </span>
                     )}
@@ -594,7 +607,6 @@ function PropertyCard({
                   ) : (
                     <MetaChip>Detected automatically</MetaChip>
                   )}
-
                 </div>
               </div>
 
@@ -615,7 +627,6 @@ function PropertyCard({
                   ) : (
                     <MetaChip>Auto-calculated</MetaChip>
                   )}
-
                 </div>
               </div>
 
@@ -767,6 +778,7 @@ export function DogsSection({
   // each is looked after (#411). Everyone else sees Dogs exactly as before.
   const { lines, known } = useServiceLines();
   const sitting = known && runsPetSitting(lines);
+  const grooming = lines.includes("mobile_grooming");
   const noun = sitting ? "pet" : "dog";
   const petIds = dogs.map((d) => d.id as string);
   const { data: careData } = useQuery({
@@ -786,12 +798,18 @@ export function DogsSection({
   const [breed, setBreed] = useState("");
   const [breedChoice, setBreedChoice] = useState("");
   const [size, setSize] = useState("");
-  const [temperament, setTemperament] = useState<"friendly" | "nervous" | "aggressive" | "unknown">("unknown");
+  const [coatType, setCoatType] = useState<CoatType | "">("");
+  const [weightLb, setWeightLb] = useState("");
+  const [temperament, setTemperament] = useState<"friendly" | "nervous" | "aggressive" | "unknown">(
+    "unknown",
+  );
   const [notes, setNotes] = useState("");
+  const [handling, setHandling] = useState<PetHandling>(NO_HANDLING);
   const [vetName, setVetName] = useState("");
   const [vetPhone, setVetPhone] = useState("");
 
   const resetForm = () => {
+    setHandling(NO_HANDLING);
     setAdding(false);
     setEditingDogId(null);
     setSpecies("dog");
@@ -802,6 +820,8 @@ export function DogsSection({
     setBreed("");
     setBreedChoice("");
     setSize("");
+    setCoatType("");
+    setWeightLb("");
     setNotes("");
     setTemperament("unknown");
   };
@@ -818,8 +838,16 @@ export function DogsSection({
     setBreed(d.breed ?? "");
     setBreedChoice(d.breed ? (knownBreed ? d.breed : "__other") : "");
     setSize(d.weight_class ?? "");
+    setCoatType(d.coat_type ?? "");
+    setWeightLb(d.weight_lb == null ? "" : String(d.weight_lb));
     setTemperament((d.temperament ?? "unknown") as typeof temperament);
     setNotes(d.notes ?? "");
+    setHandling({
+      muzzleRequired: d.muzzle_required === true,
+      biteHistory: d.bite_history === true,
+      seniorOrMedical: d.senior_or_medical === true,
+      handlingNotes: d.handling_notes ?? "",
+    });
   };
 
   const addMut = useMutation({
@@ -834,6 +862,13 @@ export function DogsSection({
           : {}),
         breed: breed || null,
         weightClass: size || null,
+        ...(grooming
+          ? {
+              coatType: coatType || null,
+              weightLb: weightLb === "" ? null : Math.round(Number(weightLb) * 10) / 10,
+            }
+          : {}),
+        ...(grooming ? { ...handling, handlingNotes: handling.handlingNotes.trim() || null } : {}),
         temperament,
         notes: notes || null,
       };
@@ -894,7 +929,9 @@ export function DogsSection({
                 </span>
               )}
               {d.breed && <span className="text-xs text-muted-foreground">{d.breed}</span>}
-              {d.weight_class && <span className="text-xs text-muted-foreground">{d.weight_class}</span>}
+              {d.weight_class && (
+                <span className="text-xs text-muted-foreground">{d.weight_class}</span>
+              )}
               <span
                 className={`rounded px-1.5 py-0.5 text-xs font-medium ${TEMPERAMENT_TONE[d.temperament ?? "unknown"]}`}
               >
@@ -937,6 +974,7 @@ export function DogsSection({
               </Button>
             </span>
            </div>
+            <PetVaccines dogId={d.id} name={d.name} />
             {sitting && careFor !== d.id && careSummary(careData?.care?.[d.id]) && (
               <p className="mt-1 text-xs text-muted-foreground">
                 Care: {careSummary(careData?.care?.[d.id])}
@@ -1085,20 +1123,17 @@ export function DogsSection({
             )}
           </div>
           )}
-          <div>
-            <Label className="text-xs">Size</Label>
-            <select
-              value={size}
-              onChange={(e) => setSize(e.target.value)}
-              className="h-10 w-full rounded-md border bg-background px-2 text-sm"
-            >
-              <option value="">-</option>
-              <option value="small">Small</option>
-              <option value="medium">Medium</option>
-              <option value="large">Large</option>
-              <option value="giant">Giant</option>
-            </select>
-          </div>
+          <PetSizeFields
+            size={size}
+            coatType={coatType}
+            weightLb={weightLb}
+            grooming={grooming}
+            onChange={(patch) => {
+              if (patch.size !== undefined) setSize(patch.size);
+              if (patch.coatType !== undefined) setCoatType(patch.coatType);
+              if (patch.weightLb !== undefined) setWeightLb(patch.weightLb);
+            }}
+          />
           <div>
             <Label className="text-xs">Temperament</Label>
             <select
@@ -1116,6 +1151,7 @@ export function DogsSection({
             <Label className="text-xs">Notes</Label>
             <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
+          {grooming && <PetHandlingFields value={handling} onChange={setHandling} />}
           {sitting && (
             <>
               <div className="min-w-0">

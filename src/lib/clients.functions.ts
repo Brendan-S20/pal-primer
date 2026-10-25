@@ -1,3 +1,4 @@
+import { COAT_TYPES } from "@/lib/groom";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -263,16 +264,51 @@ export const getFieldClientInfo = createServerFn({ method: "GET" })
     const { data: dogs, error: dogErr } = propertyIds.length
       ? await supabaseAdmin
           .from("dogs")
-          .select("id, property_id, name, breed, weight_class, temperament, notes, active, species, species_note")
+          .select(
+            "id, property_id, name, breed, weight_class, coat_type, weight_lb, temperament, notes, active, species, species_note",
+          )
           .in("property_id", propertyIds)
           .order("name")
       : { data: [], error: null };
     if (dogErr) throw new Error(dogErr.message);
 
+    const { loadVaccineSettings } = await import("@/lib/vaccines.server");
+    const vaccineSettings = await loadVaccineSettings(supabase, caller.orgId);
+    const vaccineStatuses: Record<string, import("@/lib/vaccines").VaccineState> = {};
+    if (vaccineSettings.enabled && dogs?.length) {
+      // Use the caller for pet and record reads so property access still applies.
+      const { data: visibleDogs, error: visibleError } = await supabase
+        .from("dogs")
+        .select("id")
+        .in(
+          "id",
+          dogs.map((d) => d.id),
+        )
+        .eq("organization_id", caller.orgId);
+      if (visibleError) throw new Error(visibleError.message);
+      const ids = (visibleDogs ?? []).map((d) => d.id);
+      if (ids.length) {
+        const { data: records, error } = await supabase
+          .from("pet_vaccinations")
+          .select("dog_id, vaccine, expires_on, source, verified_at, rejected_at")
+          .in("dog_id", ids)
+          .eq("organization_id", caller.orgId);
+        if (error) throw new Error(error.message);
+        const { vaccineStatus } = await import("@/lib/vaccines");
+        for (const id of ids)
+          vaccineStatuses[id] = vaccineStatus(
+            (records ?? []).filter((r) => r.dog_id === id),
+            vaccineSettings.required,
+            vaccineSettings.today,
+          ).overall;
+      }
+    }
     return {
       client,
       properties: (properties ?? []).map((p) => ({ ...p, ...accessFor(access, p.id) })),
-      dogs: (dogs ?? []).filter((d: any) => d.active !== false),
+      dogs: (dogs ?? [])
+        .filter((d: any) => d.active !== false)
+        .map((d) => (vaccineStatuses[d.id] ? { ...d, vaccine_status: vaccineStatuses[d.id] } : d)),
     };
   });
 
@@ -450,7 +486,7 @@ export const listClientVisitHistory = createServerFn({ method: "GET" })
     const { supabase } = context;
     await requirePermission(supabase, context.userId, "view_client_directory");
     const select =
-      "id, subscription_id, property_id, scheduled_on, status, assigned_staff_id, started_at, completed_at, eta_start, eta_end, skip_reason_code, skip_reason, rescheduled_from, is_deepclean, client_package_id, properties(street, earliest_service_time, latest_service_time), subscriptions(earliest_time, latest_time), staff:assigned_staff_id(display_name)";
+      "id, subscription_id, property_id, scheduled_on, status, assigned_staff_id, started_at, completed_at, eta_start, eta_end, skip_reason_code, skip_reason, rescheduled_from, is_deepclean, duration_min, groom_summary, client_package_id, properties(street, earliest_service_time, latest_service_time), subscriptions(earliest_time, latest_time), staff:assigned_staff_id(display_name)";
     const limit = data.limit ?? 100;
     const today = new Date().toISOString().slice(0, 10);
     // Two windows so a heavily scheduled client (many future visits) can't
@@ -498,7 +534,7 @@ export const listDogsForClient = createServerFn({ method: "GET" })
     const { data: dogs, error } = await supabase
       .from("dogs")
       .select(
-        "id, property_id, name, breed, weight_class, temperament, notes, active, unit_id, dna_status, species, species_note, vet_clinic_name, vet_clinic_phone",
+        "id, property_id, name, breed, weight_class, coat_type, weight_lb, temperament, notes, active, unit_id, dna_status, species, species_note, vet_clinic_name, vet_clinic_phone, muzzle_required, bite_history, senior_or_medical, handling_notes",
       )
       .in("property_id", ids)
       .order("name");
@@ -775,6 +811,7 @@ const onboardSchema = z.object({
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
   gateCode: z.string().max(60).optional(),
+  parkingNotes: z.string().max(1000).optional(),
   yardSize: z.enum(["small", "medium", "large", "xlarge"]).optional(),
   hazardNotes: z.string().max(1000).optional(),
   visitContactName: z.string().max(120).optional(),
@@ -806,6 +843,8 @@ const onboardSchema = z.object({
         name: z.string().min(1).max(80),
         breed: z.string().max(120).optional(),
         weightClass: z.string().max(40).optional(),
+        coatType: z.enum(COAT_TYPES).nullable().optional(),
+        weightLb: z.number().positive().max(300).multipleOf(0.1).nullable().optional(),
         // The dog_temperament enum's own values. The wizard offered "shy" and
         // "anxious", which the enum has never had, so any dog marked either
         // failed the whole onboarding on the dogs insert.
@@ -878,9 +917,7 @@ export const onboardClient = createServerFn({ method: "POST" })
     // 0) the lead this client is converted from, if any. Checked BEFORE the
     // client exists: a lead that is already a client is refused here, not
     // discovered after a duplicate household has been written.
-    const leadConversion = data.fromLeadId
-      ? await import("@/lib/lead-conversion.server")
-      : null;
+    const leadConversion = data.fromLeadId ? await import("@/lib/lead-conversion.server") : null;
     let fromLead: { id: string } | null = null;
     if (data.fromLeadId && leadConversion) {
       const caller = await requirePermission(supabase, userId, "manage_leads");
@@ -966,6 +1003,7 @@ export const onboardClient = createServerFn({ method: "POST" })
         region: data.region || null,
         postal_code: data.postalCode,
         gate_code: data.gateCode || null,
+        parking_notes: data.parkingNotes || null,
         address_source: "manual",
         auto_zone_id: autoZoneId,
         zone_id: autoZoneId,
@@ -1003,6 +1041,8 @@ export const onboardClient = createServerFn({ method: "POST" })
         name: d.name,
         breed: d.breed || null,
         weight_class: d.weightClass || null,
+        coat_type: d.coatType ?? null,
+        weight_lb: d.weightLb ?? null,
         temperament: (d.temperament ?? "unknown") as any,
         notes: d.notes || null,
       }));
@@ -1035,22 +1075,26 @@ export const onboardClient = createServerFn({ method: "POST" })
       const { normalizeWeekdays } = await import("@/lib/weekday-set");
       const weekdays =
         s.frequency === "weekly" && s.weekdays?.length ? normalizeWeekdays(s.weekdays) : null;
-      const { data: subRow, error: sErr } = await supabase.from("subscriptions").insert({
-        organization_id: orgId,
-        client_id: clientId,
-        property_id: propertyId,
-        account_type: data.accountType,
-        frequency: s.frequency,
-        price_cents: s.priceCents,
-        dog_count: isRes ? (s.dogCount ?? data.dogs?.length ?? 1) : null,
-        unit_count: !isRes ? (s.unitCount ?? 1) : null,
-        zone_id: s.zoneId ?? null,
-        billing_cadence: s.billingCadence ?? "postpaid",
-        preferred_weekdays: !weekdays && s.preferredWeekdays?.length ? s.preferredWeekdays : null,
-        ...(s.startedOn ? { started_on: s.startedOn } : {}),
-        ...(s.serviceId ? { service_id: s.serviceId } : {}),
-        ...(weekdays ? { weekdays } : {}),
-      }).select("id").single();
+      const { data: subRow, error: sErr } = await supabase
+        .from("subscriptions")
+        .insert({
+          organization_id: orgId,
+          client_id: clientId,
+          property_id: propertyId,
+          account_type: data.accountType,
+          frequency: s.frequency,
+          price_cents: s.priceCents,
+          dog_count: isRes ? (s.dogCount ?? data.dogs?.length ?? 1) : null,
+          unit_count: !isRes ? (s.unitCount ?? 1) : null,
+          zone_id: s.zoneId ?? null,
+          billing_cadence: s.billingCadence ?? "postpaid",
+          preferred_weekdays: !weekdays && s.preferredWeekdays?.length ? s.preferredWeekdays : null,
+          ...(s.startedOn ? { started_on: s.startedOn } : {}),
+          ...(s.serviceId ? { service_id: s.serviceId } : {}),
+          ...(weekdays ? { weekdays } : {}),
+        })
+        .select("id")
+        .single();
       if (sErr) {
         await undoClient();
         throw new Error(sErr.message);
@@ -1175,7 +1219,6 @@ export const onboardClient = createServerFn({ method: "POST" })
     };
   });
 
-
 /** Header overflow action (QA follow-up 4.2): delete a client only when
  * nothing references them; anything else archives instead. */
 export const deleteClientIfNoHistory = createServerFn({ method: "POST" })
@@ -1195,13 +1238,30 @@ export const deleteClientIfNoHistory = createServerFn({ method: "POST" })
     // and would bypass the history check, cascade-deleting real visit and
     // service history (QA: visits/subscriptions are ON DELETE CASCADE).
     const guards = await Promise.all([
-      supabase.from("visits").select("id", { count: "exact", head: true }).eq("client_id", data.clientId),
-      supabase.from("invoices").select("id", { count: "exact", head: true }).eq("client_id", data.clientId),
-      supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("client_id", data.clientId),
-      supabase.from("properties").select("id", { count: "exact", head: true }).eq("client_id", data.clientId),
+      supabase
+        .from("visits")
+        .select("id", { count: "exact", head: true })
+        .eq("client_id", data.clientId),
+      supabase
+        .from("invoices")
+        .select("id", { count: "exact", head: true })
+        .eq("client_id", data.clientId),
+      supabase
+        .from("subscriptions")
+        .select("id", { count: "exact", head: true })
+        .eq("client_id", data.clientId),
+      supabase
+        .from("properties")
+        .select("id", { count: "exact", head: true })
+        .eq("client_id", data.clientId),
     ]);
     for (const g of guards) if (g.error) throw new Error(g.error.message);
-    const [{ count: visitCount }, { count: invoiceCount }, { count: subCount }, { count: propCount }] = guards;
+    const [
+      { count: visitCount },
+      { count: invoiceCount },
+      { count: subCount },
+      { count: propCount },
+    ] = guards;
     if ((visitCount ?? 0) > 0 || (invoiceCount ?? 0) > 0 || (subCount ?? 0) > 0)
       throw new Error("This client has history. Mark them inactive instead of deleting.");
 
@@ -1255,7 +1315,8 @@ export const listClientHolds = createServerFn({ method: "GET" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     await requirePermission(supabase, userId, "view_client_directory");
-    const { data: rows, error } = await ((supabase as any).from("client_holds"))
+    const { data: rows, error } = await (supabase as any)
+      .from("client_holds")
       .select("id, client_id, starts_on, ends_on, reason, created_at")
       .eq("client_id", data.clientId)
       .order("starts_on", { ascending: false });
@@ -1306,7 +1367,8 @@ export const createClientHold = createServerFn({ method: "POST" })
       .gte("scheduled_on", data.startsOn)
       .lte("scheduled_on", data.endsOn);
 
-    const { data: row, error } = await ((supabase as any).from("client_holds"))
+    const { data: row, error } = await (supabase as any)
+      .from("client_holds")
       .insert({
         organization_id: orgId,
         client_id: data.clientId,
@@ -1343,7 +1405,8 @@ export const endClientHold = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
-    const { data: hold, error: hErr } = await ((supabase as any).from("client_holds"))
+    const { data: hold, error: hErr } = await (supabase as any)
+      .from("client_holds")
       .select("id, client_id, starts_on, ends_on")
       .eq("id", data.holdId)
       .single();
@@ -1355,7 +1418,7 @@ export const endClientHold = createServerFn({ method: "POST" })
     let summary: string;
     if (hold.starts_on >= today) {
       // Not started yet (or starts today): remove it entirely.
-      const { error } = await ((supabase as any).from("client_holds")).delete().eq("id", data.holdId);
+      const { error } = await (supabase as any).from("client_holds").delete().eq("id", data.holdId);
       if (error) throw new Error(error.message);
       summary = `Removed the vacation hold ${hold.starts_on} to ${hold.ends_on}`;
     } else {
@@ -1363,7 +1426,8 @@ export const endClientHold = createServerFn({ method: "POST" })
       const y = new Date();
       y.setDate(y.getDate() - 1);
       const yesterday = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, "0")}-${String(y.getDate()).padStart(2, "0")}`;
-      const { error } = await ((supabase as any).from("client_holds"))
+      const { error } = await (supabase as any)
+        .from("client_holds")
         .update({ ends_on: yesterday })
         .eq("id", data.holdId);
       if (error) throw new Error(error.message);
@@ -1475,18 +1539,22 @@ export const bulkTagClients = createServerFn({ method: "POST" })
       if (data.action === "add" && has) return [];
       if (data.action === "remove" && !has) return [];
       const next =
-        data.action === "add" ? [...tags, want].slice(0, 30) : tags.filter((t) => t.toLowerCase() !== lc);
+        data.action === "add"
+          ? [...tags, want].slice(0, 30)
+          : tags.filter((t) => t.toLowerCase() !== lc);
       return [{ id: r.id, tags: next }];
     });
     for (let i = 0; i < work.length; i += 25) {
       const results = await Promise.all(
-        work.slice(i, i + 25).map((w) =>
-          supabase
-            .from("clients")
-            .update({ tags: w.tags, updated_at: new Date().toISOString() })
-            .eq("id", w.id)
-            .eq("organization_id", orgId),
-        ),
+        work
+          .slice(i, i + 25)
+          .map((w) =>
+            supabase
+              .from("clients")
+              .update({ tags: w.tags, updated_at: new Date().toISOString() })
+              .eq("id", w.id)
+              .eq("organization_id", orgId),
+          ),
       );
       for (const r of results) {
         if (r.error) throw new Error(r.error.message);

@@ -28,6 +28,9 @@ export const TECH_SCREENS: { file: string; only?: string[] }[] = [
   // The stop card's dogs, yard outline, stations and money lines, and the
   // form a tech records cash or a check with.
   { file: "src/components/my-day/StopFacts.tsx" },
+  // A groom's pets at the top of the card: handling flags, vaccines on the
+  // day, each pet's last grooms and this groom's notes.
+  { file: "src/components/my-day/GroomPetPanel.tsx" },
   // A dog walk's card (#410): length and group, how the walker gets in, the
   // minutes out, and the walk report (pee, poo, the note for the client).
   { file: "src/components/my-day/WalkParts.tsx" },

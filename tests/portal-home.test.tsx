@@ -201,7 +201,13 @@ describe("portalContext home", () => {
     expect(answer).toMatchObject({ verified: true, client: rawClient });
     const home = "home" in answer ? answer.home : undefined;
     expect(Object.keys(home ?? {})).toHaveLength(11);
-    expect(home?.client).toEqual({ ...rawClient, skip_billable_pct: 25, reclean_window_hours: 48 });
+    expect(home?.client).toEqual({
+      ...rawClient,
+      skip_billable_pct: 25,
+      reclean_window_hours: 48,
+      mobile_grooming: false,
+      groom_requests: false,
+    });
     expect(state.rpc.mock.calls.filter(([name]) => name === "portal_get_client")).toHaveLength(2);
     for (const [name, read] of Object.entries(parts)) {
       expect(await read({ data: { token } }), name).toEqual(home?.[name as keyof typeof home]);

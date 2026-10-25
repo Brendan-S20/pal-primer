@@ -64,7 +64,7 @@ export function publicServiceChoices(
     const o = r as Record<string, unknown>;
     if (typeof o.id !== "string" || typeof o.name !== "string") continue;
     if (!isServiceLine(o.service_line) || !isPriceUnit(o.price_unit)) continue;
-    if (!customerCanRequestService(o.service_line)) continue;
+    if (!customerCanRequestService(o.service_line, bookable)) continue;
     if (!bookable.includes(o.service_line)) continue;
     if (seen.has(o.id)) continue;
     seen.add(o.id);

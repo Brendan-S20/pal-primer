@@ -1,3 +1,4 @@
+import { PetSizeFields } from "@/components/client-detail/PetSizeFields";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -392,6 +393,7 @@ function NewClientWizard({
   const [step, setStep] = useState(0);
   const { petWaste, lines } = useServiceLines();
   const sitting = lines.includes("pet_sitting");
+  const grooming = lines.includes("mobile_grooming");
   const steps = newClientWizardSteps(petWaste);
   // Clamped: if the answer arrives while somebody is on the last step, the
   // list can be one shorter than the index they were on.
@@ -427,6 +429,7 @@ function NewClientWizard({
   const [region, setRegion] = useState(prefill.region);
   const [postalCode, setPostalCode] = useState(prefill.postalCode);
   const [gateCode, setGateCode] = useState("");
+  const [parkingNotes, setParkingNotes] = useState("");
   const [hazardNotes, setHazardNotes] = useState("");
   // P3.5 optional on-site visit contact (tenant/property manager)
   const [vcName, setVcName] = useState("");
@@ -677,6 +680,7 @@ function NewClientWizard({
           latitude: geo?.lat,
           longitude: geo?.lng,
           gateCode: gateCode || undefined,
+          parkingNotes: parkingNotes || undefined,
           hazardNotes: hazardNotes || undefined,
           visitContactName: vcName || undefined,
           visitContactPhone: vcPhone || undefined,
@@ -689,6 +693,12 @@ function NewClientWizard({
                 name: d.name.trim(),
                 breed: d.breed || undefined,
                 weightClass: d.weightClass || undefined,
+                ...(grooming
+                  ? {
+                      coatType: d.coatType || null,
+                      weightLb: d.weightLb ? Math.round(Number(d.weightLb) * 10) / 10 : null,
+                    }
+                  : {}),
                 temperament: d.temperament,
                 notes: d.notes || undefined,
               }))
@@ -1073,6 +1083,18 @@ function NewClientWizard({
                 <Label htmlFor="gc">Gate code (optional)</Label>
                 <Input id="gc" value={gateCode} onChange={(e) => setGateCode(e.target.value)} />
               </div>
+              <div className="min-w-0 space-y-2">
+                <Label htmlFor="park">Parking notes (optional)</Label>
+                <textarea
+                  id="park"
+                  rows={2}
+                  maxLength={1000}
+                  value={parkingNotes}
+                  onChange={(e) => setParkingNotes(e.target.value)}
+                  placeholder="Where to park"
+                  className="min-h-11 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                />
+              </div>
               {/* No yard-size picker. It is derived from the property
                   boundary by a database trigger, and properties.functions.ts
                   says so where it stopped writing the field: "yard_size is
@@ -1249,24 +1271,30 @@ function NewClientWizard({
                       placeholder="Lab mix"
                     />
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Weight</Label>
-                    <select
-                      value={d.weightClass}
-                      onChange={(e) => {
-                        const next = [...dogs];
-                        next[i] = { ...next[i], weightClass: e.target.value };
-                        setDogs(next);
-                      }}
-                      className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                    >
-                      <option value="">-</option>
-                      <option value="small">Small (&lt; 25 lb)</option>
-                      <option value="medium">Medium (25-60 lb)</option>
-                      <option value="large">Large (60-100 lb)</option>
-                      <option value="xlarge">XL (100+ lb)</option>
-                    </select>
-                  </div>
+                  <PetSizeFields
+                    size={d.weightClass}
+                    coatType={d.coatType ?? ""}
+                    weightLb={d.weightLb ?? ""}
+                    grooming={grooming}
+                    onChange={(patch) =>
+                      setDogs(
+                        dogs.map((dog, index) =>
+                          index === i
+                            ? {
+                                ...dog,
+                                ...(patch.size !== undefined ? { weightClass: patch.size } : {}),
+                                ...(patch.coatType !== undefined
+                                  ? { coatType: patch.coatType }
+                                  : {}),
+                                ...(patch.weightLb !== undefined
+                                  ? { weightLb: patch.weightLb }
+                                  : {}),
+                              }
+                            : dog,
+                        ),
+                      )
+                    }
+                  />
                   <div className="space-y-1">
                     <Label className="text-xs">Temperament</Label>
                     <select

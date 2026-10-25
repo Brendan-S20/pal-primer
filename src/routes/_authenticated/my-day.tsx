@@ -111,6 +111,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
 import { visitServiceLabel } from "@/lib/visit-service";
+import { GroomPetPanel } from "@/components/my-day/GroomPetPanel";
 import {
   TrainingProgressPanel,
   TrainingSessionBadge,
@@ -1369,6 +1370,7 @@ function skipReasonLabel(t: TFunction, code: string, line?: string): string {
     const english = SIT_SKIP_REASON_LABELS[code as keyof typeof SIT_SKIP_REASON_LABELS];
     if (english) return t(`sitSkipReason.${code}`, { defaultValue: english });
   }
+  if (line === "mobile_grooming") return t(`groomSkipReason.${code}`, { defaultValue: code });
   if (line === "dog_walking") {
     const english = WALK_SKIP_REASON_LABELS[code as keyof typeof WALK_SKIP_REASON_LABELS];
     if (english) return t(`walkSkipReason.${code}`, { defaultValue: english });
@@ -1445,7 +1447,7 @@ const HAZARD_SEVERITY: Record<HazardKey, "critical" | "warn"> = {
   slippery_surfaces: "warn",
 };
 
-function HazardBanner({ property }: { property: any }) {
+function HazardBanner({ property, petWaste = true }: { property: any; petWaste?: boolean }) {
   const { t } = useTranslation();
   if (!property) return null;
   const active = (Object.keys(HAZARD_SEVERITY) as HazardKey[]).filter((k) => property[k]);
@@ -1462,7 +1464,21 @@ function HazardBanner({ property }: { property: any }) {
           </div>
           <ul className="mt-1 space-y-0.5 text-sm font-semibold text-destructive">
             {critical.map((k) => (
-              <li key={k}>• {t(`hazard.${k}`)}</li>
+              <li key={k}>
+                •{" "}
+                {t(
+                  !petWaste &&
+                    [
+                      "do_not_enter_if_dog_out",
+                      "aggressive_dog",
+                      "escape_risk",
+                      "invisible_fence",
+                      "dog_in_yard_during_service",
+                    ].includes(k)
+                    ? `workerHazard.${k}`
+                    : `hazard.${k}`,
+                )}
+              </li>
             ))}
           </ul>
         </div>
@@ -1471,7 +1487,21 @@ function HazardBanner({ property }: { property: any }) {
         <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-2">
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-amber-700 dark:text-amber-400">
             {warn.map((k) => (
-              <span key={k}>⚠ {t(`hazard.${k}`)}</span>
+              <span key={k}>
+                ⚠{" "}
+                {t(
+                  !petWaste &&
+                    [
+                      "do_not_enter_if_dog_out",
+                      "aggressive_dog",
+                      "escape_risk",
+                      "invisible_fence",
+                      "dog_in_yard_during_service",
+                    ].includes(k)
+                    ? `workerHazard.${k}`
+                    : `hazard.${k}`,
+                )}
+              </span>
             ))}
           </div>
         </div>
@@ -1696,6 +1726,7 @@ function VisitCard({
   // is silently rejected server-side, which made those buttons look broken.
   // Preview mode (office role viewing another tech's day) also disables actions.
   const canPerformVisit = !preview && role !== "dispatcher";
+  const isGroom = visit.services?.service_line === "mobile_grooming";
 
   const actions = useOfflineVisitActions(visit.id, visit.organization_id as string | undefined);
   // Billing an add-on is the one action on this card that is NOT queued when
@@ -2043,7 +2074,10 @@ function VisitCard({
       haptic("tap");
       // The kind in the picker's own words ("Gate latched", "Terminado"), so
       // the toast names the photo the way the tech just chose it.
-      const kind = t(`photoKind.${photoKind_}`, { defaultValue: photoKindLabel(photoKind_) });
+      const kind =
+        !petWaste && photoKind_ === "gate"
+          ? t("workerNeutral.gate")
+          : t(`photoKind.${photoKind_}`, { defaultValue: photoKindLabel(photoKind_) });
       toast.success(
         r.queued ? t("photo.queuedToast", { kind }) : t("photo.uploadedToast", { kind }),
       );
@@ -2267,7 +2301,9 @@ function VisitCard({
       >
         {PHOTO_KIND_OPTIONS.map((o) => (
           <option key={o.value} value={o.value}>
-            {t(`photoKind.${o.value}`, { defaultValue: o.label })}
+            {!petWaste && o.value === "gate"
+              ? t("workerNeutral.gate")
+              : t(`photoKind.${o.value}`, { defaultValue: o.label })}
           </option>
         ))}
       </select>
@@ -2317,7 +2353,7 @@ function VisitCard({
       // shadow transition either: box-shadow is a repaint on every frame.
       className={`scroll-mt-40 rounded-xl border bg-card p-4 shadow-sm ${inProg ? "ring-2 ring-blue-500/40 shadow-md" : ""}`}
     >
-      {!collapsed && <HazardBanner property={p} />}
+      {!collapsed && <HazardBanner property={p} petWaste={petWaste} />}
       {!preview && <EnRouteLocationChip visit={visit} />}
 
       <div className="flex items-start gap-3">
@@ -2341,6 +2377,18 @@ function VisitCard({
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             <span className="sr-only">{t("visit.stop", { number: visit.sequence ?? index })}</span>
             {statusBadge(visit.status, visit.queuedSync, t)}
+            {isGroom && Number(visit.duration_min) > 0 && (
+              <span dir="ltr" className="font-medium text-foreground">
+                {t("visit.appointmentMinutes", { minutes: visit.duration_min })}
+              </span>
+            )}
+            {isGroom && visit.start_time && (
+              <span className="font-medium text-foreground">
+                {t("groom.startsAt", {
+                  time: formatClock(String(visit.start_time).slice(0, 5), locale),
+                })}
+              </span>
+            )}
             {service && (
               // What this stop is: the line in the tech's language, then the
               // business's own name for it, untranslated and in its own
@@ -2437,6 +2485,18 @@ function VisitCard({
 
           {!collapsed && (
             <>
+              {/* A groom leads with each pet: muzzle, bite history, vaccines on
+                  this date, and what was done last time. */}
+              {isGroom && (
+                <GroomPetPanel
+                  visitId={visit.id}
+                  dogs={p?.dogs}
+                  facts={visit.groom_pets}
+                  bookedDogIds={visit.groom_dog_ids}
+                  locale={locale}
+                  canWrite={underWay && canPerformVisit}
+                />
+              )}
               {/* The customer's answer to "on my way": ENT, the dogs are in;
                   DNE, do not enter. Above the dogs and the gate code, because
                   it is what decides whether those get used at all. */}
@@ -2475,12 +2535,34 @@ function VisitCard({
                   <SitEmergencyFacts emergency={sitEmergency(visit.clients)} locale={locale} />
                 </>
               ) : (
-                <DogsLine
-                  dogs={p?.dogs}
-                  dogCount={facts?.dogCount}
-                  pets={service?.line === "pet_sitting"}
-                />
+                <DogsLine dogs={p?.dogs} dogCount={facts?.dogCount} pets={service?.line === "pet_sitting"} />
               )}
+              {isGroom && visit.groom_summary && (
+                <p className="mt-1 min-w-0 text-sm text-muted-foreground [overflow-wrap:anywhere]">
+                  <bdi>{visit.groom_summary}</bdi>
+                </p>
+              )}
+              {/* The household's last visit note, for grooms from before
+                  per-pet notes. Each pet's own history replaces it. */}
+              {isGroom &&
+                visit.prior_groom_note &&
+                !(visit.groom_pets ?? []).some(
+                  (pet: { history: unknown[] }) => pet.history.length > 0,
+                ) && (
+                  <div className="mt-2 rounded-lg border bg-muted/30 p-2.5 text-sm">
+                    <div className="text-xs font-medium text-muted-foreground">
+                      {t("visit.priorGroom")}
+                      {visit.prior_groom_on ? (
+                        <span className="ms-1 font-normal">
+                          {formatDay(visit.prior_groom_on, locale)}
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">
+                      <bdi>{visit.prior_groom_note}</bdi>
+                    </p>
+                  </div>
+                )}
 
               {(walk || sit) && <WalkAccess property={p} />}
               {/* Getting in. One block, bordered, at a size that survives
@@ -2655,7 +2737,9 @@ function VisitCard({
                 onUrl={(u) => setPhotoUrl(ph.id, u)}
               />
               <span className="pointer-events-none absolute -bottom-1 -end-1 rounded bg-background px-1 text-3xs uppercase text-muted-foreground shadow-sm">
-                {t(`photoKind.${ph.kind}`, { defaultValue: photoKindLabel(ph.kind) })}
+                {!petWaste && ph.kind === "gate"
+                  ? t("workerNeutral.gate")
+                  : t(`photoKind.${ph.kind}`, { defaultValue: photoKindLabel(ph.kind) })}
               </span>
             </div>
           ))}
@@ -2827,7 +2911,9 @@ function VisitCard({
                     dir="auto"
                     rows={2}
                     maxLength={1000}
-                    placeholder={t("visit.notePlaceholder")}
+                    placeholder={t(
+                      petWaste ? "visit.notePlaceholder" : "workerNeutral.notePlaceholder",
+                    )}
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                   />
@@ -3058,7 +3144,8 @@ function VisitCard({
                       beside a full-width Bill. */}
                   <div className="grid grid-cols-6 gap-2">
                     <select
-                      className="col-span-6 h-9 rounded-md border bg-background px-2 text-sm sm:col-span-4"
+                      className="col-span-6 h-11 rounded-md border bg-background px-2 text-sm sm:col-span-4"
+                      aria-label={t("addon.selectService")}
                       value={addonSvcId}
                       onChange={(e) => setAddonSvcId(e.target.value)}
                     >
@@ -3072,7 +3159,8 @@ function VisitCard({
                     <input
                       type="number"
                       min="1"
-                      className="col-span-2 h-9 rounded-md border bg-background px-2 text-sm touch:min-h-11 sm:col-span-1"
+                      className="col-span-2 h-11 rounded-md border bg-background px-2 text-sm sm:col-span-1"
+                      aria-label={t("addon.quantity")}
                       value={addonQty}
                       onChange={(e) => setAddonQty(e.target.value)}
                     />
@@ -3084,7 +3172,7 @@ function VisitCard({
                       <AlertDialogTrigger asChild>
                         <Button
                           size="sm"
-                          className="col-span-4 touch:min-h-11 sm:col-span-1"
+                          className="col-span-4 min-h-11 sm:col-span-1"
                           disabled={!addonSvcId || !svc || addonMut.isPending || !cardOnline}
                         >
                           {addonMut.isPending ? "…" : t("addon.bill")}

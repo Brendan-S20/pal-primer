@@ -40,6 +40,7 @@ const createPropSchema = z.object({
   // The drawer sends it only when the user changed it (gateCodeSave), so an
   // editor who could not load the codes does not wipe it.
   gateCode: z.string().max(ACCESS_CODE_MAX).nullable().optional(),
+  parkingNotes: z.string().max(1000).optional(),
   // Provider-resolved coordinates (skip Nominatim when present) + whether
   // the address came from the search provider or manual entry.
   latitude: z.number().min(-90).max(90).optional(),
@@ -133,9 +134,10 @@ export const createProperty = createServerFn({ method: "POST" })
     // lookup with manual override kept separate).
     const autoZoneId = await detectZoneId(supabase, client.organization_id, {
       postalCode: data.postalCode,
-      point: geo?.latitude != null && geo?.longitude != null
-        ? { lat: geo.latitude, lng: geo.longitude }
-        : null,
+      point:
+        geo?.latitude != null && geo?.longitude != null
+          ? { lat: geo.latitude, lng: geo.longitude }
+          : null,
       accountType: data.accountType ?? (client.account_type as any) ?? null,
     });
 
@@ -156,6 +158,7 @@ export const createProperty = createServerFn({ method: "POST" })
         region: data.region || null,
         postal_code: data.postalCode,
         gate_code: data.gateCode || null,
+        parking_notes: data.parkingNotes || null,
         address_source: data.addressSource ?? "manual",
         auto_zone_id: autoZoneId,
         zone_id: autoZoneId,
@@ -301,6 +304,7 @@ export const updateProperty = createServerFn({ method: "POST" })
         region: data.region || null,
         postal_code: data.postalCode,
         ...(gateCodeSent ? { gate_code: nextGateCode } : {}),
+        parking_notes: data.parkingNotes || null,
         address_source: data.addressSource ?? "manual",
         ...zonePatch,
         invisible_fence: !!data.invisibleFence,
@@ -364,8 +368,12 @@ export const updateProperty = createServerFn({ method: "POST" })
             .maybeSingle(),
         ]);
         const stationCount = (stationsRes.data ?? []).length;
-        const multipliers = ((orgRes.data as any)?.frequency_multipliers ?? {}) as Record<string, number>;
-        const { computeCommercialZonePrice, zoneHasCommercialPricing } = await import("@/lib/pricing");
+        const multipliers = ((orgRes.data as any)?.frequency_multipliers ?? {}) as Record<
+          string,
+          number
+        >;
+        const { computeCommercialZonePrice, zoneHasCommercialPricing } =
+          await import("@/lib/pricing");
         const { logActivity } = await import("@/lib/activity.server");
         for (const sub of subsRes.data ?? []) {
           let pricePatch: Record<string, number> = {};
@@ -436,7 +444,11 @@ export const updateProperty = createServerFn({ method: "POST" })
         : `Updated property ${data.street}, ${data.city}`,
       meta: addressChanged
         ? {
-            before: { street: current.street, city: current.city, postal_code: current.postal_code },
+            before: {
+              street: current.street,
+              city: current.city,
+              postal_code: current.postal_code,
+            },
             after: { street: data.street, city: data.city, postal_code: data.postalCode },
           }
         : {},

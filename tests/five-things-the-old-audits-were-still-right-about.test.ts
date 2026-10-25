@@ -92,10 +92,10 @@ describe("a form that charges a card fits on the phone it is used from", () => {
   it("reflows the field billing form on My Day", () => {
     const src = codeOnly(read("src/routes/_authenticated/my-day.tsx"));
     const form = src.slice(src.indexOf("addonSvcId"), src.indexOf("Bill $"));
-    expect(form).toMatch(/col-span-6 h-9[\s\S]*?sm:col-span-4/);
-    expect(form).toMatch(/col-span-2 h-9[\s\S]*?sm:col-span-1/);
+    expect(form).toMatch(/col-span-6 h-11[\s\S]*?sm:col-span-4/);
+    expect(form).toMatch(/col-span-2 h-11[\s\S]*?sm:col-span-1/);
     // The confirm button gets the rest of the row and a 44px height on touch.
-    expect(form).toMatch(/col-span-4 touch:min-h-11 sm:col-span-1/);
+    expect(form).toMatch(/col-span-4 min-h-11 sm:col-span-1/);
   });
 
   it("keeps the form that was already right, which is where the pattern came from", () => {

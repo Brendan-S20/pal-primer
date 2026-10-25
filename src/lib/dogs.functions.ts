@@ -1,3 +1,4 @@
+import { COAT_TYPES } from "@/lib/groom";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -35,6 +36,28 @@ const speciesNote = z.string().max(SPECIES_NOTE_MAX).optional().nullable();
 const vetClinicName = z.string().max(200).optional().nullable();
 const vetClinicPhone = z.string().max(40).optional().nullable();
 
+/** How a groomer has to handle the pet. Shown at the top of its My Day card. */
+const handlingFields = {
+  muzzleRequired: z.boolean().optional(),
+  biteHistory: z.boolean().optional(),
+  seniorOrMedical: z.boolean().optional(),
+  handlingNotes: z.string().max(1000).optional().nullable(),
+};
+
+function handlingPatch(data: {
+  muzzleRequired?: boolean;
+  biteHistory?: boolean;
+  seniorOrMedical?: boolean;
+  handlingNotes?: string | null;
+}): Record<string, boolean | string | null> {
+  const patch: Record<string, boolean | string | null> = {};
+  if (data.muzzleRequired !== undefined) patch.muzzle_required = data.muzzleRequired;
+  if (data.biteHistory !== undefined) patch.bite_history = data.biteHistory;
+  if (data.seniorOrMedical !== undefined) patch.senior_or_medical = data.seniorOrMedical;
+  if (data.handlingNotes !== undefined) patch.handling_notes = data.handlingNotes?.trim() || null;
+  return patch;
+}
+
 const addDogSchema = z.object({
   propertyId: z.string().uuid(),
   name: z.string().min(1).max(80),
@@ -44,8 +67,11 @@ const addDogSchema = z.object({
   vetClinicPhone,
   breed: z.string().max(80).optional().nullable(),
   weightClass: z.string().max(40).optional().nullable(),
+  coatType: z.enum(COAT_TYPES).nullable().optional(),
+  weightLb: z.number().positive().max(300).multipleOf(0.1).nullable().optional(),
   temperament: temperament.optional(),
   notes: z.string().max(1000).optional().nullable(),
+  ...handlingFields,
   /** Commercial: scope the dog to a unit on the property. */
   unitId: z.string().uuid().optional().nullable(),
   dnaStatus: dnaStatus.optional(),
@@ -97,11 +123,14 @@ export const addDog = createServerFn({ method: "POST" })
         vet_clinic_phone: data.vetClinicPhone?.trim() || null,
         breed: data.breed || null,
         weight_class: data.weightClass || null,
+        coat_type: data.coatType ?? null,
+        weight_lb: data.weightLb ?? null,
         temperament: data.temperament ?? "unknown",
         notes: data.notes || null,
         unit_id: data.unitId ?? null,
         dna_status: data.dnaStatus ?? "not_registered",
         unit_review_needed: reviewNeeded,
+        ...handlingPatch(data),
       } as any)
       .select("id")
       .single();
@@ -138,8 +167,11 @@ const editDogSchema = z.object({
   vetClinicPhone,
   breed: z.string().max(80).optional().nullable(),
   weightClass: z.string().max(40).optional().nullable(),
+  coatType: z.enum(COAT_TYPES).nullable().optional(),
+  weightLb: z.number().positive().max(300).multipleOf(0.1).nullable().optional(),
   temperament: temperament.optional(),
   notes: z.string().max(1000).optional().nullable(),
+  ...handlingFields,
   active: z.boolean().optional(),
   unitId: z.string().uuid().optional().nullable(),
   dnaStatus: dnaStatus.optional(),
@@ -188,7 +220,7 @@ export const updateDog = createServerFn({ method: "POST" })
       }
     }
 
-    const patch: Record<string, string | boolean | null> = {};
+    const patch: Record<string, string | number | boolean | null> = {};
     if (data.name !== undefined) patch.name = data.name.trim();
     // Reassigning a unit clears/sets the management-review flag (I5): assigning
     // resolves review; unassigning on a unit-bearing property re-flags it.
@@ -209,8 +241,11 @@ export const updateDog = createServerFn({ method: "POST" })
       patch.vet_clinic_phone = data.vetClinicPhone?.trim() || null;
     if (data.breed !== undefined) patch.breed = data.breed || null;
     if (data.weightClass !== undefined) patch.weight_class = data.weightClass || null;
+    if (data.coatType !== undefined) patch.coat_type = data.coatType;
+    if (data.weightLb !== undefined) patch.weight_lb = data.weightLb;
     if (data.temperament !== undefined) patch.temperament = data.temperament;
     if (data.notes !== undefined) patch.notes = data.notes || null;
+    Object.assign(patch, handlingPatch(data));
     if (data.active !== undefined) patch.active = data.active;
     if (data.unitId !== undefined) patch.unit_id = data.unitId;
     if (data.dnaStatus !== undefined) {
@@ -287,12 +322,12 @@ export const setDogDna = createServerFn({ method: "POST" })
       .from("dogs")
       .update({
         dna_registered: data.registered,
-        dna_registry_id: data.registered ? (data.registryId || null) : null,
+        dna_registry_id: data.registered ? data.registryId || null : null,
         // Keep the DNA status enum used by the Units tab in sync so both
         // surfaces read the same record (I3).
         dna_status: data.registered ? "registered" : "not_registered",
-        dna_provider: data.registered ? (data.provider || null) : null,
-        dna_kit_reference: data.registered ? (data.kitReference || null) : null,
+        dna_provider: data.registered ? data.provider || null : null,
+        dna_kit_reference: data.registered ? data.kitReference || null : null,
       } as any)
       .eq("id", data.id)
       .eq("organization_id", orgId)

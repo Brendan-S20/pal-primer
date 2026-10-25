@@ -489,10 +489,12 @@ export type Database = {
             | Database["public"]["Enums"]["addon_frequency"]
             | null
           description: string | null
+          duration_min: number
           id: string
           kind: Database["public"]["Enums"]["addon_kind"]
           name: string
           organization_id: string
+          service_line: string | null
           taxable: boolean
           unit_price_cents: number
           updated_at: string
@@ -506,10 +508,12 @@ export type Database = {
             | Database["public"]["Enums"]["addon_frequency"]
             | null
           description?: string | null
+          duration_min?: number
           id?: string
           kind?: Database["public"]["Enums"]["addon_kind"]
           name: string
           organization_id: string
+          service_line?: string | null
           taxable?: boolean
           unit_price_cents?: number
           updated_at?: string
@@ -523,10 +527,12 @@ export type Database = {
             | Database["public"]["Enums"]["addon_frequency"]
             | null
           description?: string | null
+          duration_min?: number
           id?: string
           kind?: Database["public"]["Enums"]["addon_kind"]
           name?: string
           organization_id?: string
+          service_line?: string | null
           taxable?: boolean
           unit_price_cents?: number
           updated_at?: string
@@ -1785,18 +1791,23 @@ export type Database = {
       dogs: {
         Row: {
           active: boolean
+          bite_history: boolean
           breed: string | null
+          coat_type: string | null
           created_at: string
           dna_kit_reference: string | null
           dna_provider: string | null
           dna_registered: boolean
           dna_registry_id: string | null
           dna_status: string
+          handling_notes: string | null
           id: string
+          muzzle_required: boolean
           name: string
           notes: string | null
           organization_id: string
           property_id: string
+          senior_or_medical: boolean
           species: string
           species_note: string | null
           temperament: Database["public"]["Enums"]["dog_temperament"]
@@ -1805,21 +1816,27 @@ export type Database = {
           vet_clinic_name: string | null
           vet_clinic_phone: string | null
           weight_class: string | null
+          weight_lb: number | null
         }
         Insert: {
           active?: boolean
+          bite_history?: boolean
           breed?: string | null
+          coat_type?: string | null
           created_at?: string
           dna_kit_reference?: string | null
           dna_provider?: string | null
           dna_registered?: boolean
           dna_registry_id?: string | null
           dna_status?: string
+          handling_notes?: string | null
           id?: string
+          muzzle_required?: boolean
           name: string
           notes?: string | null
           organization_id: string
           property_id: string
+          senior_or_medical?: boolean
           species?: string
           species_note?: string | null
           temperament?: Database["public"]["Enums"]["dog_temperament"]
@@ -1828,21 +1845,27 @@ export type Database = {
           vet_clinic_name?: string | null
           vet_clinic_phone?: string | null
           weight_class?: string | null
+          weight_lb?: number | null
         }
         Update: {
           active?: boolean
+          bite_history?: boolean
           breed?: string | null
+          coat_type?: string | null
           created_at?: string
           dna_kit_reference?: string | null
           dna_provider?: string | null
           dna_registered?: boolean
           dna_registry_id?: string | null
           dna_status?: string
+          handling_notes?: string | null
           id?: string
+          muzzle_required?: boolean
           name?: string
           notes?: string | null
           organization_id?: string
           property_id?: string
+          senior_or_medical?: boolean
           species?: string
           species_note?: string | null
           temperament?: Database["public"]["Enums"]["dog_temperament"]
@@ -1851,6 +1874,7 @@ export type Database = {
           vet_clinic_name?: string | null
           vet_clinic_phone?: string | null
           weight_class?: string | null
+          weight_lb?: number | null
         }
         Relationships: [
           {
@@ -3971,6 +3995,8 @@ export type Database = {
           frequency_multipliers: Json
           google_review_url: string | null
           grace_expires_at: string | null
+          groom_setup_reviewed_at: string | null
+          groom_buffer_min: number
           id: string
           invoice_grace_days: number
           invoice_net_days: number
@@ -4041,6 +4067,7 @@ export type Database = {
           referral_reward_cents: number
           referred_by_org_id: string | null
           require_completion_photo: boolean
+          required_vaccines: string[]
           review_ask_enabled: boolean
           review_ask_template: string | null
           road_factor: number
@@ -4060,9 +4087,9 @@ export type Database = {
           sms_consent_phone: string | null
           sms_consent_text: string | null
           sms_from_number: string | null
+          stay_deposit_refund_days: number
           std_base_price_cents: number | null
           std_per_dog_addl_cents: number | null
-          stay_deposit_refund_days: number
           stripe_connect_account_id: string | null
           stripe_connect_charges_enabled: boolean
           stripe_connect_connected_at: string | null
@@ -4080,6 +4107,7 @@ export type Database = {
           training_share_progress: boolean
           trial_ends_at: string | null
           updated_at: string
+          vaccine_rule: string
           visit_checklist: Json
           work_days: number[]
           workday_end: string
@@ -4127,6 +4155,8 @@ export type Database = {
           frequency_multipliers?: Json
           google_review_url?: string | null
           grace_expires_at?: string | null
+          groom_setup_reviewed_at?: string | null
+          groom_buffer_min?: number
           id?: string
           invoice_grace_days?: number
           invoice_net_days?: number
@@ -4197,6 +4227,7 @@ export type Database = {
           referral_reward_cents?: number
           referred_by_org_id?: string | null
           require_completion_photo?: boolean
+          required_vaccines?: string[]
           review_ask_enabled?: boolean
           review_ask_template?: string | null
           road_factor?: number
@@ -4216,9 +4247,9 @@ export type Database = {
           sms_consent_phone?: string | null
           sms_consent_text?: string | null
           sms_from_number?: string | null
+          stay_deposit_refund_days?: number
           std_base_price_cents?: number | null
           std_per_dog_addl_cents?: number | null
-          stay_deposit_refund_days?: number
           stripe_connect_account_id?: string | null
           stripe_connect_charges_enabled?: boolean
           stripe_connect_connected_at?: string | null
@@ -4236,6 +4267,7 @@ export type Database = {
           training_share_progress?: boolean
           trial_ends_at?: string | null
           updated_at?: string
+          vaccine_rule?: string
           visit_checklist?: Json
           work_days?: number[]
           workday_end?: string
@@ -4283,6 +4315,8 @@ export type Database = {
           frequency_multipliers?: Json
           google_review_url?: string | null
           grace_expires_at?: string | null
+          groom_setup_reviewed_at?: string | null
+          groom_buffer_min?: number
           id?: string
           invoice_grace_days?: number
           invoice_net_days?: number
@@ -4353,6 +4387,7 @@ export type Database = {
           referral_reward_cents?: number
           referred_by_org_id?: string | null
           require_completion_photo?: boolean
+          required_vaccines?: string[]
           review_ask_enabled?: boolean
           review_ask_template?: string | null
           road_factor?: number
@@ -4372,9 +4407,9 @@ export type Database = {
           sms_consent_phone?: string | null
           sms_consent_text?: string | null
           sms_from_number?: string | null
+          stay_deposit_refund_days?: number
           std_base_price_cents?: number | null
           std_per_dog_addl_cents?: number | null
-          stay_deposit_refund_days?: number
           stripe_connect_account_id?: string | null
           stripe_connect_charges_enabled?: boolean
           stripe_connect_connected_at?: string | null
@@ -4392,6 +4427,7 @@ export type Database = {
           training_share_progress?: boolean
           trial_ends_at?: string | null
           updated_at?: string
+          vaccine_rule?: string
           visit_checklist?: Json
           work_days?: number[]
           workday_end?: string
@@ -4560,6 +4596,148 @@ export type Database = {
             columns: ["pet_id"]
             isOneToOne: true
             referencedRelation: "dogs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pet_groom_notes: {
+        Row: {
+          blade: string | null
+          created_at: string
+          created_by: string | null
+          dog_id: string
+          groomed_on: string
+          id: string
+          organization_id: string
+          problems: string | null
+          style: string | null
+          updated_at: string
+          visit_id: string
+        }
+        Insert: {
+          blade?: string | null
+          created_at?: string
+          created_by?: string | null
+          dog_id: string
+          groomed_on: string
+          id?: string
+          organization_id: string
+          problems?: string | null
+          style?: string | null
+          updated_at?: string
+          visit_id: string
+        }
+        Update: {
+          blade?: string | null
+          created_at?: string
+          created_by?: string | null
+          dog_id?: string
+          groomed_on?: string
+          id?: string
+          organization_id?: string
+          problems?: string | null
+          style?: string | null
+          updated_at?: string
+          visit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pet_groom_notes_dog_id_fkey"
+            columns: ["dog_id"]
+            isOneToOne: false
+            referencedRelation: "dogs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pet_groom_notes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pet_groom_notes_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pet_vaccinations: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          dog_id: string
+          expires_on: string
+          file_name: string | null
+          given_on: string | null
+          id: string
+          organization_id: string
+          rejected_at: string | null
+          rejected_by: string | null
+          rejection_reason: string | null
+          source: string
+          storage_path: string | null
+          updated_at: string
+          vaccine: string
+          vaccine_note: string | null
+          verified_at: string | null
+          verified_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          dog_id: string
+          expires_on: string
+          file_name?: string | null
+          given_on?: string | null
+          id?: string
+          organization_id: string
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejection_reason?: string | null
+          source: string
+          storage_path?: string | null
+          updated_at?: string
+          vaccine: string
+          vaccine_note?: string | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          dog_id?: string
+          expires_on?: string
+          file_name?: string | null
+          given_on?: string | null
+          id?: string
+          organization_id?: string
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejection_reason?: string | null
+          source?: string
+          storage_path?: string | null
+          updated_at?: string
+          vaccine?: string
+          vaccine_note?: string | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pet_vaccinations_dog_id_fkey"
+            columns: ["dog_id"]
+            isOneToOne: false
+            referencedRelation: "dogs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pet_vaccinations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -5803,17 +5981,22 @@ export type Database = {
           client_id: string
           client_package_id: string | null
           created_at: string
+          dog_id: string | null
+          groom_addons: Json
           id: string
           last_reply: string | null
           last_reply_at: string | null
           message: string | null
           organization_id: string
           property_id: string | null
+          quoted_cents: number | null
+          quoted_minutes: number | null
           reclean_visit_id: string | null
           requested_earliest_time: string | null
           requested_latest_time: string | null
           requested_on: string | null
           requested_time: string | null
+          requested_time_end: string | null
           requested_via: string | null
           resolution_note: string | null
           resolved_at: string | null
@@ -5829,17 +6012,22 @@ export type Database = {
           client_id: string
           client_package_id?: string | null
           created_at?: string
+          dog_id?: string | null
+          groom_addons?: Json
           id?: string
           last_reply?: string | null
           last_reply_at?: string | null
           message?: string | null
           organization_id: string
           property_id?: string | null
+          quoted_cents?: number | null
+          quoted_minutes?: number | null
           reclean_visit_id?: string | null
           requested_earliest_time?: string | null
           requested_latest_time?: string | null
           requested_on?: string | null
           requested_time?: string | null
+          requested_time_end?: string | null
           requested_via?: string | null
           resolution_note?: string | null
           resolved_at?: string | null
@@ -5855,17 +6043,22 @@ export type Database = {
           client_id?: string
           client_package_id?: string | null
           created_at?: string
+          dog_id?: string | null
+          groom_addons?: Json
           id?: string
           last_reply?: string | null
           last_reply_at?: string | null
           message?: string | null
           organization_id?: string
           property_id?: string | null
+          quoted_cents?: number | null
+          quoted_minutes?: number | null
           reclean_visit_id?: string | null
           requested_earliest_time?: string | null
           requested_latest_time?: string | null
           requested_on?: string | null
           requested_time?: string | null
+          requested_time_end?: string | null
           requested_via?: string | null
           resolution_note?: string | null
           resolved_at?: string | null
@@ -5895,6 +6088,13 @@ export type Database = {
             columns: ["client_package_id"]
             isOneToOne: false
             referencedRelation: "client_packages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qc_tickets_dog_id_fkey"
+            columns: ["dog_id"]
+            isOneToOne: false
+            referencedRelation: "dogs"
             referencedColumns: ["id"]
           },
           {
@@ -6288,6 +6488,88 @@ export type Database = {
         }
         Relationships: []
       }
+      routing_run_undo: {
+        Row: {
+          after_eta_start: string | null
+          after_scheduled_on: string | null
+          after_sequence: number | null
+          after_staff: string | null
+          after_status: string | null
+          before_eta_end: string | null
+          before_eta_start: string | null
+          before_sequence: number | null
+          before_staff: string | null
+          before_travel_km: number | null
+          before_travel_min: number | null
+          before_window_violated: boolean | null
+          created_at: string
+          organization_id: string
+          run_id: string
+          sealed: boolean
+          visit_id: string
+        }
+        Insert: {
+          after_eta_start?: string | null
+          after_scheduled_on?: string | null
+          after_sequence?: number | null
+          after_staff?: string | null
+          after_status?: string | null
+          before_eta_end?: string | null
+          before_eta_start?: string | null
+          before_sequence?: number | null
+          before_staff?: string | null
+          before_travel_km?: number | null
+          before_travel_min?: number | null
+          before_window_violated?: boolean | null
+          created_at?: string
+          organization_id: string
+          run_id: string
+          sealed?: boolean
+          visit_id: string
+        }
+        Update: {
+          after_eta_start?: string | null
+          after_scheduled_on?: string | null
+          after_sequence?: number | null
+          after_staff?: string | null
+          after_status?: string | null
+          before_eta_end?: string | null
+          before_eta_start?: string | null
+          before_sequence?: number | null
+          before_staff?: string | null
+          before_travel_km?: number | null
+          before_travel_min?: number | null
+          before_window_violated?: boolean | null
+          created_at?: string
+          organization_id?: string
+          run_id?: string
+          sealed?: boolean
+          visit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "routing_run_undo_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "routing_run_undo_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "routing_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "routing_run_undo_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       routing_runs: {
         Row: {
           applied_at: string | null
@@ -6409,6 +6691,57 @@ export type Database = {
           },
           {
             foreignKeyName: "service_packages_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      service_size_rules: {
+        Row: {
+          coat_type: string | null
+          created_at: string
+          duration_min: number
+          id: string
+          organization_id: string
+          price_cents: number
+          service_id: string
+          size: string
+          updated_at: string
+        }
+        Insert: {
+          coat_type?: string | null
+          created_at?: string
+          duration_min: number
+          id?: string
+          organization_id: string
+          price_cents: number
+          service_id: string
+          size: string
+          updated_at?: string
+        }
+        Update: {
+          coat_type?: string | null
+          created_at?: string
+          duration_min?: number
+          id?: string
+          organization_id?: string
+          price_cents?: number
+          service_id?: string
+          size?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_size_rules_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_size_rules_service_id_fkey"
             columns: ["service_id"]
             isOneToOne: false
             referencedRelation: "services"
@@ -7112,6 +7445,11 @@ export type Database = {
           ended_by: string | null
           ends_on: string | null
           frequency: Database["public"]["Enums"]["service_frequency"]
+          groom_addons: Json
+          groom_dog_ids: string[] | null
+          groom_duration_min: number | null
+          groom_start_time: string | null
+          groom_summary: string | null
           id: string
           interval_days: number | null
           interval_weeks: number | null
@@ -7147,6 +7485,11 @@ export type Database = {
           ended_by?: string | null
           ends_on?: string | null
           frequency: Database["public"]["Enums"]["service_frequency"]
+          groom_addons?: Json
+          groom_dog_ids?: string[] | null
+          groom_duration_min?: number | null
+          groom_start_time?: string | null
+          groom_summary?: string | null
           id?: string
           interval_days?: number | null
           interval_weeks?: number | null
@@ -7182,6 +7525,11 @@ export type Database = {
           ended_by?: string | null
           ends_on?: string | null
           frequency?: Database["public"]["Enums"]["service_frequency"]
+          groom_addons?: Json
+          groom_dog_ids?: string[] | null
+          groom_duration_min?: number | null
+          groom_start_time?: string | null
+          groom_summary?: string | null
           id?: string
           interval_days?: number | null
           interval_weeks?: number | null
@@ -7748,10 +8096,13 @@ export type Database = {
           completion_source: string | null
           created_at: string
           deepclean_charge_cents: number
+          duration_min: number | null
           eta_end: string | null
           eta_start: string | null
           gate_reply: string | null
           gate_reply_at: string | null
+          groom_dog_ids: string[] | null
+          groom_summary: string | null
           id: string
           is_deepclean: boolean
           live_tracking_stopped_at: string | null
@@ -7770,9 +8121,14 @@ export type Database = {
           skip_charge_cents: number
           skip_reason: string | null
           skip_reason_code:
+        | "pet_not_ready"
+        | "client_not_home"
+        | "no_parking"
+        | "pet_stressed"
             | Database["public"]["Enums"]["skip_reason_code"]
             | null
           skipped_at: string | null
+          start_time: string | null
           started_at: string | null
           station_count_serviced: number
           status: Database["public"]["Enums"]["visit_status"]
@@ -7799,10 +8155,13 @@ export type Database = {
           completion_source?: string | null
           created_at?: string
           deepclean_charge_cents?: number
+          duration_min?: number | null
           eta_end?: string | null
           eta_start?: string | null
           gate_reply?: string | null
           gate_reply_at?: string | null
+          groom_dog_ids?: string[] | null
+          groom_summary?: string | null
           id?: string
           is_deepclean?: boolean
           live_tracking_stopped_at?: string | null
@@ -7824,6 +8183,7 @@ export type Database = {
             | Database["public"]["Enums"]["skip_reason_code"]
             | null
           skipped_at?: string | null
+          start_time?: string | null
           started_at?: string | null
           station_count_serviced?: number
           status?: Database["public"]["Enums"]["visit_status"]
@@ -7850,10 +8210,13 @@ export type Database = {
           completion_source?: string | null
           created_at?: string
           deepclean_charge_cents?: number
+          duration_min?: number | null
           eta_end?: string | null
           eta_start?: string | null
           gate_reply?: string | null
           gate_reply_at?: string | null
+          groom_dog_ids?: string[] | null
+          groom_summary?: string | null
           id?: string
           is_deepclean?: boolean
           live_tracking_stopped_at?: string | null
@@ -7875,6 +8238,7 @@ export type Database = {
             | Database["public"]["Enums"]["skip_reason_code"]
             | null
           skipped_at?: string | null
+          start_time?: string | null
           started_at?: string | null
           station_count_serviced?: number
           status?: Database["public"]["Enums"]["visit_status"]
@@ -8713,6 +9077,10 @@ export type Database = {
         Args: { _refund_deposit?: boolean; _stay_id: string }
         Returns: Json
       }
+      can_use_vaccine_record: {
+        Args: { name: string; write: boolean }
+        Returns: boolean
+      }
       can_write_org: {
         Args: { _org_id: string; _user_id: string }
         Returns: boolean
@@ -8721,6 +9089,7 @@ export type Database = {
         Args: { _cancel_booked: boolean; _client_package_id: string }
         Returns: number
       }
+      capture_routing_run_undo: { Args: { _run_id: string }; Returns: number }
       cast_roadmap_vote: {
         Args: { p_feature: string; p_voter: string }
         Returns: undefined
@@ -9612,6 +9981,24 @@ export type Database = {
         }
         Returns: string
       }
+      portal_request_groom: {
+        Args: {
+          _addons: Json
+          _dog_id: string
+          _from: string
+          _message: string
+          _on: string
+          _quoted_cents: number
+          _quoted_minutes: number
+          _service_id: string
+          _token: string
+          _until: string
+        }
+        Returns: {
+          created: boolean
+          ticket_id: string
+        }[]
+      }
       portal_request_one_off: {
         Args: {
           _message: string
@@ -9835,6 +10222,10 @@ export type Database = {
         Args: { _staff_id: string; _visit_id: string }
         Returns: undefined
       }
+      recompute_lane_etas: {
+        Args: { _day: string; _org_id: string; _staff_id: string }
+        Returns: number
+      }
       record_care_entry: {
         Args: {
           _at?: string
@@ -9965,6 +10356,7 @@ export type Database = {
         }
         Returns: number
       }
+      restate_stay_billing: { Args: { _stay_id: string }; Returns: string }
       reverse_prepaid_credit_for_payment: {
         Args: { _payment_id: string; _refunded_cents: number }
         Returns: number
@@ -10030,6 +10422,7 @@ export type Database = {
         Returns: boolean
       }
       routing_run_seen: { Args: { _id: string }; Returns: boolean }
+      routing_run_undo_state: { Args: { _run_id: string }; Returns: Json }
       run_billing_cycles: { Args: { _org_id?: string }; Returns: number }
       sales_tax_cents: {
         Args: { _rate_bps: number; _taxable_cents: number }
@@ -10043,6 +10436,7 @@ export type Database = {
         }
         Returns: number
       }
+      seal_routing_run_undo: { Args: { _run_id: string }; Returns: number }
       seed_demo_org: { Args: { _org_id: string }; Returns: Json }
       service_line_item_name: {
         Args: { _fallback?: string; _service_name: string }
@@ -10245,8 +10639,15 @@ export type Database = {
       }
       stay_windows_are_valid: { Args: { _windows: Json }; Returns: boolean }
       stop_service_min: {
-        Args: { _property_min: number; _service_min: number }
+        Args: { _property_min: number; _service_min: number; _visit_min?: number }
         Returns: number
+      }
+      stay_visit_bill: {
+        Args: { _visit_id: string }
+        Returns: {
+          amount_cents: number
+          description: string
+        }[]
       }
       sync_invoice_amount_paid: {
         Args: { _invoice_id: string }
@@ -10279,6 +10680,7 @@ export type Database = {
         Returns: boolean
       }
       trial_enforcement_from: { Args: never; Returns: string }
+      undo_routing_run: { Args: { _run_id: string }; Returns: Json }
       unlink_franchise_child: {
         Args: { _child_org_id: string }
         Returns: undefined
@@ -10451,6 +10853,10 @@ export type Database = {
         | "one_time"
         | "every_n_days"
       skip_reason_code:
+        | "pet_not_ready"
+        | "client_not_home"
+        | "no_parking"
+        | "pet_stressed"
         | "client_cancelled_late"
         | "gate_locked"
         | "dog_outside"
@@ -10665,6 +11071,10 @@ export const Constants = {
         "every_n_days",
       ],
       skip_reason_code: [
+        "pet_not_ready",
+        "client_not_home",
+        "no_parking",
+        "pet_stressed",
         "client_cancelled_late",
         "gate_locked",
         "dog_outside",
