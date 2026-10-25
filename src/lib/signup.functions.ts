@@ -10,7 +10,7 @@ import { parseFirstCleanupPricing } from "@/lib/first-cleanup";
 import { parseQuoteOptions, signupChargeFromQuote } from "@/lib/signup-charge";
 import { LEAD_SOURCE } from "@/lib/new-customer-form";
 import { publicServiceChoices, type PublicService } from "@/lib/public-services";
-import { BOOKABLE_SERVICE_LINES } from "@/lib/service-lines";
+import { customerCanRequestService, type ServiceLineAvailability } from "@/lib/service-lines";
 import {
   CALM_REFUSAL,
   ELAPSED_FIELD,
@@ -119,13 +119,22 @@ export const getPublicSignupForm = createServerFn({ method: "GET" })
     // quote-only business and a business that sells one thing both get an
     // empty or one-row list and the form they always had. A lookup that
     // fails lists nothing, for the same reason: the page must still load.
+    // Which lines are live is the platform switch, read at runtime (#531),
+    // and handed to the form with the list so it filters by the same answer.
     let services: PublicService[] = [];
+    let serviceLines: ServiceLineAvailability = { bookable: [], customerRequestable: [] };
     try {
-      const { data: svcRows, error: svcErr } = await sb.rpc("public_services", {
-        _slug: data.slug,
-      });
+      const { loadServiceLineAvailability } =
+        await import("@/lib/service-line-availability.server");
+      const [{ data: svcRows, error: svcErr }, availability] = await Promise.all([
+        sb.rpc("public_services", { _slug: data.slug }),
+        loadServiceLineAvailability(),
+      ]);
       if (svcErr) console.error("signup services lookup failed", found.id, svcErr);
-      else services = publicServiceChoices(svcRows);
+      else {
+        serviceLines = availability;
+        services = publicServiceChoices(svcRows, availability);
+      }
     } catch (e) {
       console.error("signup services lookup failed", found.id, e);
     }
@@ -145,6 +154,7 @@ export const getPublicSignupForm = createServerFn({ method: "GET" })
       form,
       firstCleanup,
       services,
+      serviceLines,
     };
   });
 
@@ -208,7 +218,8 @@ async function refuseAComingSoonService(slug: string, serviceId: string | undefi
     .maybeSingle();
   if (orgErr) throw new Error(orgErr.message);
   if (!org || (org.slug !== slug && org.portal_slug !== slug)) return;
-  if (!(BOOKABLE_SERVICE_LINES as readonly string[]).includes(svc.service_line)) {
+  const { loadServiceLineAvailability } = await import("@/lib/service-line-availability.server");
+  if (!customerCanRequestService(svc.service_line, await loadServiceLineAvailability())) {
     throw new Error(SERVICE_NOT_OFFERED_ONLINE);
   }
 }

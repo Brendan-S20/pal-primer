@@ -17,11 +17,12 @@
  */
 
 import {
-  BOOKABLE_SERVICE_LINES,
+  isBookableLine,
   OFFERED_SERVICE_LINES,
   SERVICE_LINES,
   SERVICE_LINE_LABEL,
   type ServiceLine,
+  type ServiceLineAvailability,
 } from "@/lib/service-lines";
 
 export const PRICE_UNITS = ["visit", "hour", "night"] as const;
@@ -224,20 +225,30 @@ export function durationRequired(line: ServiceLine): boolean {
 /** The lines a service can be put on: every bookable line, plus any line the
  *  business already runs (`other` too) and the line a service being edited
  *  already has, in the order the settings screen lists them. A line that is
- *  Coming soon is offered only to a business that already runs it. */
+ *  Coming soon is offered only to a business that already runs it.
+ *  `availability` is the platform switch (#531); null until it has arrived,
+ *  which offers only the business's own lines. */
 export function serviceLineChoices(
   orgLines: readonly ServiceLine[],
+  availability: ServiceLineAvailability | null,
   current?: ServiceLine | null,
 ): ServiceLine[] {
   return SERVICE_LINES.filter(
-    (l) => BOOKABLE_SERVICE_LINES.includes(l) || orgLines.includes(l) || l === current,
+    (l) =>
+      (availability !== null && isBookableLine(l, availability)) ||
+      orgLines.includes(l) ||
+      l === current,
   );
 }
 
-/** Whether clients can book a service on this line yet. The rest show as
- *  Coming soon in Settings → Services, where an owner may still set them up. */
-export function isBookableServiceLine(line: ServiceLine): boolean {
-  return BOOKABLE_SERVICE_LINES.includes(line);
+/** Whether clients can book a service on this line yet, on the platform
+ *  switch (#531). The rest show as Coming soon in Settings → Services, where
+ *  an owner may still set them up. */
+export function isBookableServiceLine(
+  line: ServiceLine,
+  availability: ServiceLineAvailability,
+): boolean {
+  return isBookableLine(line, availability);
 }
 
 const SERVICE_NAME_EXAMPLE: Record<ServiceLine, string> = {

@@ -16,6 +16,12 @@ import { careLine, type CareRow } from "@/lib/sit-report";
 import { walkReportEmail } from "@/lib/walk-report";
 import { windowLabel } from "@/lib/walk-windows";
 
+// The platform switch (#531). Server-only, so imported inside the handler.
+async function loadAvailability() {
+  const { loadServiceLineAvailability } = await import("@/lib/service-line-availability.server");
+  return loadServiceLineAvailability();
+}
+
 async function admin() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   return supabaseAdmin;
@@ -276,7 +282,7 @@ export const portalListStays = createServerFn({ method: "GET" })
     const due = new Set((deposits.data ?? []).filter((i) => i.status === "open").map((i) => i.id));
     return {
       offered: true,
-      canRequest: customerCanRequestStay(),
+      canRequest: customerCanRequestStay(await loadAvailability()),
       currency: org.currency,
       services: services.data ?? [],
       properties: (properties.data ?? []).map((p) => ({ id: p.id, street: p.street })),
@@ -317,7 +323,8 @@ export const portalRequestStay = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { requirePortalSession } = await import("@/lib/portal-auth.server");
     const session = await requirePortalSession(data.token);
-    if (!customerCanRequestStay()) throw new Error("Pet sitting is coming soon.");
+    if (!customerCanRequestStay(await loadAvailability()))
+      throw new Error("Pet sitting is coming soon.");
     const sb = await admin();
     const { data: service, error } = await sb
       .from("services")

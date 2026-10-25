@@ -5,6 +5,7 @@
 // tests/support/fake-receptionist-store.ts.
 
 import type { Service } from "@/lib/services";
+import type { ServiceLineAvailability } from "@/lib/service-lines";
 import type { ZoneMatchFields } from "@/lib/zone-match";
 
 export const RECEPTIONIST_DEFAULT_DAYS = 14;
@@ -95,6 +96,8 @@ export interface ReceptionistStore {
   /** Every service OF THIS ORG, active or not (a retired one is refused by
    *  name, not silently treated as unknown). */
   services(orgId: string): Promise<ServiceFacts[]>;
+  /** Which lines are live: the platform switch (#531). */
+  serviceLineAvailability(): Promise<ServiceLineAvailability>;
   zones(orgId: string): Promise<ZoneMatchFields[]>;
   /** Days in (after, through] the property has a visit not skipped/canceled. */
   busyDays(orgId: string, propertyId: string, after: string, through: string): Promise<string[]>;

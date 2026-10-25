@@ -28,8 +28,9 @@ const state = vi.hoisted(() => ({
   book: vi.fn(),
   permission: vi.fn(async () => ({ orgId: "org-1", role: "owner" })),
   // Training is Coming soon on main (#506). Most of this file drives the
-  // path as it will run once the line is bookable; the launch list is
-  // restored where a test asks what a client sees today.
+  // path as it will run once the platform switch (#531) makes the line
+  // bookable; the default is restored where a test asks what a client sees
+  // today.
   bookable: ["pet_waste", "training"] as string[],
 }));
 
@@ -106,15 +107,12 @@ vi.mock("@/lib/portal-auth.server", () => ({
     return state.session;
   }),
 }));
-vi.mock("@/lib/service-lines", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/service-lines")>();
-  return {
-    ...actual,
-    get BOOKABLE_SERVICE_LINES() {
-      return state.bookable;
-    },
-  };
-});
+vi.mock("@/lib/service-line-availability.server", () => ({
+  loadServiceLineAvailability: async () => ({
+    bookable: state.bookable,
+    customerRequestable: ["pet_waste", "dog_walking", "pet_sitting", "mobile_grooming", "other"],
+  }),
+}));
 vi.mock("@/lib/notify-center.server", () => ({ notifyRoles: state.notify }));
 vi.mock("@/lib/email/enqueue.server", () => ({ enqueueAppEmail: state.email }));
 vi.mock("@/lib/portal-links.server", () => ({

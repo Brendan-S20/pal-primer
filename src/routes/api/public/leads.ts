@@ -35,7 +35,7 @@ import {
   callerAddress,
   screenSubmission,
 } from "@/lib/public-form-guard";
-import { BOOKABLE_SERVICE_LINES } from "@/lib/service-lines";
+import { customerCanRequestService } from "@/lib/service-lines";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -136,6 +136,7 @@ export const Route = createFileRoute("/api/public/leads")({
         // know that, even if it is no longer sold. A service on a line that is
         // still Coming soon is refused the same way (#506): the form never
         // lists one (publicServiceChoices), so naming one is a hand-built body.
+        // Coming soon is the platform switch, read at runtime (#531).
         let service: { id: string; name: string } | null = null;
         if (data.service_id) {
           const { data: svc } = await (supabaseAdmin.from("services") as any)
@@ -143,9 +144,11 @@ export const Route = createFileRoute("/api/public/leads")({
             .eq("id", data.service_id)
             .eq("organization_id", orgId)
             .maybeSingle();
+          const { loadServiceLineAvailability } =
+            await import("@/lib/service-line-availability.server");
           if (
             !svc?.id ||
-            !(BOOKABLE_SERVICE_LINES as readonly string[]).includes(svc.service_line)
+            !customerCanRequestService(svc.service_line, await loadServiceLineAvailability())
           ) {
             return new Response(JSON.stringify({ error: "Invalid input" }), {
               status: 400,

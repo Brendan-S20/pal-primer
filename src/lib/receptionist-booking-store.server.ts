@@ -89,6 +89,12 @@ export function supabaseReceptionistStore(
       return data ?? [];
     },
 
+    async serviceLineAvailability() {
+      const { loadServiceLineAvailability } =
+        await import("@/lib/service-line-availability.server");
+      return loadServiceLineAvailability();
+    },
+
     async zones(orgId) {
       const { data } = await supabaseAdmin
         .from("zones")

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { BOOKABLE_SERVICE_LINES } from "@/lib/service-lines";
+import { LAUNCH_DEFAULT } from "./support/service-line-availability";
 import { ServiceLinesChoices } from "@/components/ServiceLinesChoices";
 import { stayVisitCount, stayVisitPriceCents } from "@/lib/stays";
 import { revenueByService } from "@/lib/revenue-by-service";
@@ -37,6 +37,15 @@ vi.mock("@/lib/service-lines", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/service-lines")>()),
   customerCanRequestStay: () => state.bookable,
 }));
+// The switch itself (#531): the default, for the reader and for the picker.
+vi.mock("@/lib/service-line-availability.server", async () => ({
+  loadServiceLineAvailability: async () =>
+    (await import("./support/service-line-availability")).LAUNCH_DEFAULT,
+}));
+vi.mock("@/hooks/useServiceLineAvailability", async () => {
+  const { LAUNCH_DEFAULT } = await import("./support/service-line-availability");
+  return { useServiceLineAvailability: () => LAUNCH_DEFAULT };
+});
 vi.mock("@/lib/portal-auth.server", () => ({
   requirePortalSession: async (_token: string, opts: any = {}) => {
     state.auth.push(opts);
@@ -517,7 +526,7 @@ describe("stay billing", () => {
 
 describe("sitting is not bookable yet", () => {
   it("the picker shows sitting as Coming soon and it cannot be ticked", () => {
-    expect(BOOKABLE_SERVICE_LINES).not.toContain("pet_sitting");
+    expect(LAUNCH_DEFAULT.bookable).not.toContain("pet_sitting");
     const html = renderToStaticMarkup(
       createElement(ServiceLinesChoices, { lines: ["pet_waste"], onChange: () => {} }),
     );

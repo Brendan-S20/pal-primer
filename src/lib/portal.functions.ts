@@ -267,7 +267,8 @@ async function loadPortalClient(token: string, _session: PortalSession) {
   // read alone and the answer falls OPEN to pet waste, as everywhere else.
   // The window itself is untouched, and portal_request_reclean still
   // answers: this hides an offer, it does not refuse one.
-  const [{ data: rule }, { data: org }, { data: lines }] = await Promise.all([
+  const { loadServiceLineAvailability } = await import("@/lib/service-line-availability.server");
+  const [{ data: rule }, { data: org }, { data: lines }, availability] = await Promise.all([
     sb
       .from("skip_billing_rules")
       .select("billable_pct")
@@ -280,6 +281,7 @@ async function loadPortalClient(token: string, _session: PortalSession) {
       .eq("id", row.organization_id)
       .maybeSingle(),
     sb.from("organizations").select("service_lines").eq("id", row.organization_id).maybeSingle(),
+    loadServiceLineAvailability(),
   ]);
   const petWaste = runsPetWaste(serviceLinesOrDefault(lines?.service_lines));
   return {
@@ -287,7 +289,7 @@ async function loadPortalClient(token: string, _session: PortalSession) {
     skip_billable_pct: rule?.billable_pct ?? 0,
     reclean_window_hours: petWaste ? Number(org?.reclean_window_hours ?? 0) : 0,
     mobile_grooming: serviceLinesOrDefault(lines?.service_lines).includes("mobile_grooming"),
-    groom_requests: customerCanRequestService("mobile_grooming"),
+    groom_requests: customerCanRequestService("mobile_grooming", availability),
   };
 }
 
@@ -1422,7 +1424,8 @@ export const portalOneOffBookingOptions = createServerFn({ method: "GET" })
     const { bookableDays, ONE_OFF_MAX_DAYS_AHEAD, oneOffServiceOptions } = await import(
       "@/lib/one-off-booking"
     );
-    const [{ data: blackouts }, { data: props }, { data: services }, { data: client }] = await Promise.all([
+    const { loadServiceLineAvailability } = await import("@/lib/service-line-availability.server");
+    const [{ data: blackouts }, { data: props }, { data: services }, { data: client }, availability] = await Promise.all([
       sb
         .from("blackout_dates")
         .select("blackout_on")
@@ -1446,6 +1449,7 @@ export const portalOneOffBookingOptions = createServerFn({ method: "GET" })
         .select("account_type")
         .eq("id", session.clientId)
         .maybeSingle(),
+      loadServiceLineAvailability(),
     ]);
     const priceCents = (org?.one_off_price_cents as number | null) ?? null;
     // The pets at each address, counted exactly as bookOneOffVisit counts them
@@ -1492,6 +1496,7 @@ export const portalOneOffBookingOptions = createServerFn({ method: "GET" })
       services: oneOffServiceOptions(
         ((services ?? []) as any[]).filter((s) => s.service_line !== "mobile_grooming"),
         priceCents,
+        availability,
       ),
       petsByProperty,
       currency: ((org?.currency as string | null) ?? "usd").toLowerCase(),
@@ -1555,14 +1560,18 @@ export const portalRequestOneOff = createServerFn({ method: "POST" })
         .maybeSingle();
       service = svc ?? null;
       // A line that is still Coming soon is never offered (oneOffServiceOptions),
-      // and the RPC does not know about launch lines, so a request that names
-      // one anyway is refused here, before anything is saved (#506).
+      // so a request that names one anyway is refused here, before anything
+      // is saved (#506). The RPC refuses it too; this is the plain sentence.
+      // The platform switch, read at runtime (#531).
       // A service with no price yet is not offered either (oneOffServiceOptions
       // leaves it out), now that a walk can be bookable (#530).
-      const { BOOKABLE_SERVICE_LINES } = await import("@/lib/service-lines");
+      const [{ isBookableLine }, { loadServiceLineAvailability }] = await Promise.all([
+        import("@/lib/service-lines"),
+        import("@/lib/service-line-availability.server"),
+      ]);
       if (
         service &&
-        (!(BOOKABLE_SERVICE_LINES as readonly string[]).includes(service.service_line) ||
+        (!isBookableLine(service.service_line, await loadServiceLineAvailability()) ||
           (service.service_line !== "pet_waste" && service.base_price_cents == null))
       ) {
         const { oneOffRefusalMessage } = await import("@/lib/one-off-booking");

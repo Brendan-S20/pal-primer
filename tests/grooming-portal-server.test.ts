@@ -96,17 +96,21 @@ vi.mock("@/lib/authz.server", () => ({
   requirePermission: state.permission,
   resolveCaller: state.permission,
 }));
-// The request path is closed today (customerCanRequestService refuses
-// mobile_grooming). The tests below that exercise the path open the gate
-// here, so the path is still checked for the day it opens; the gate itself
-// is tested with the real answer.
+// The request path is closed today: the platform switch's seed (#531) has
+// mobile_grooming neither bookable nor customer requestable. The tests below
+// that exercise the path open it on the switch here, so the path is still
+// checked for the day it opens; the gate itself is tested with the default.
 const gate = vi.hoisted(() => ({ open: false }));
-vi.mock("@/lib/service-lines", async (orig) => {
-  const real = await orig<typeof import("@/lib/service-lines")>();
+vi.mock("@/lib/service-line-availability.server", async () => {
+  const { LAUNCH_DEFAULT } = await import("./support/service-line-availability");
   return {
-    ...real,
-    customerCanRequestService: (line: string) =>
-      line === "mobile_grooming" && gate.open ? true : real.customerCanRequestService(line),
+    loadServiceLineAvailability: async () =>
+      gate.open
+        ? {
+            bookable: [...LAUNCH_DEFAULT.bookable, "mobile_grooming"],
+            customerRequestable: [...LAUNCH_DEFAULT.customerRequestable, "mobile_grooming"],
+          }
+        : LAUNCH_DEFAULT,
   };
 });
 

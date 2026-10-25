@@ -15,7 +15,11 @@
 // be offered the day after.
 
 import { addDaysToDay } from "@/lib/reclean";
-import { BOOKABLE_SERVICE_LINES, customerCanRequestService } from "@/lib/service-lines";
+import {
+  customerCanRequestService,
+  isBookableLine,
+  type ServiceLineAvailability,
+} from "@/lib/service-lines";
 import { isZonePriced, servicePriceCents, type Service } from "@/lib/services";
 import { servicePickerOptions } from "@/lib/visit-service";
 
@@ -112,12 +116,11 @@ export function oneOffPriceFor(option: OneOffServiceOption, pets: number): numbe
  *                   request with no price could only wait.
  *
  * Deactivated services are never offered, and neither is a service on a
- * line that is still Coming soon (not in BOOKABLE_SERVICE_LINES, #506): an
- * owner may price a sit ahead of launch, and a client must not be able to
- * ask for it until the line goes live. portalRequestOneOff refuses the same
- * services, so a request built by hand cannot get past this either.
- * `bookable` is the launch list; a test that drives a line's path before its
- * approval passes its own.
+ * line that is still Coming soon (not bookable on the platform switch, #506,
+ * #531): an owner may price a sit ahead of launch, and a client must not be
+ * able to ask for it until the line goes live. portalRequestOneOff refuses
+ * the same services, so a request built by hand cannot get past this either.
+ * `availability` is the switch, read at runtime (loadServiceLineAvailability).
  */
 export function oneOffServiceOptions(
   services: readonly Pick<
@@ -132,12 +135,12 @@ export function oneOffServiceOptions(
     | "default_duration_min"
   >[],
   oneOffPriceCents: number | null,
-  bookable: readonly string[] = BOOKABLE_SERVICE_LINES,
+  availability: ServiceLineAvailability,
 ): OneOffServiceOption[] {
   const out: OneOffServiceOption[] = [];
   for (const s of servicePickerOptions(services)) {
-    if (!s.active || !customerCanRequestService(s.service_line, bookable)) continue;
-    if (!bookable.includes(s.service_line)) continue;
+    if (!s.active || !customerCanRequestService(s.service_line, availability)) continue;
+    if (!isBookableLine(s.service_line, availability)) continue;
     const fields = {
       price_unit: s.price_unit,
       base_price_cents: s.base_price_cents,

@@ -3,6 +3,7 @@ import { SUPABASE_ORIGIN, sweepUser } from "./session";
 import * as fx from "./dataset";
 import * as pfx from "./portal-dataset";
 import { tippedCharge } from "../../../src/lib/tips";
+import { LAUNCH_DEFAULT } from "../../support/service-line-availability";
 
 /**
  * Everything the signed-in app asks the network for, answered locally.
@@ -112,6 +113,10 @@ export const BASE_STUBS: Record<string, Stub> = {
     emailConfirmed: true,
     pendingEmail: null,
   },
+  // The platform switch (#531): the migration's default, so Settings draws
+  // its Coming soon badges as it does in production. LAUNCH_DEFAULT is held
+  // to the seed by tests/a-service-line-is-turned-on-only-when-bookable.test.ts.
+  getServiceLineAvailability: LAUNCH_DEFAULT,
   getMyOrgFeatures: {
     commercialAccounts: true,
     hasCommercialData: true,

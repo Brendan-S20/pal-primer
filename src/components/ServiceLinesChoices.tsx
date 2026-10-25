@@ -1,7 +1,8 @@
 import { Checkbox } from "@/components/ui/checkbox";
 import { ComingSoonBadge } from "@/components/ComingSoonBadge";
+import { useServiceLineAvailability } from "@/hooks/useServiceLineAvailability";
 import {
-  BOOKABLE_SERVICE_LINES,
+  isBookableLine,
   OFFERED_SERVICE_LINES,
   SERVICE_LINE_LABEL,
   toggledServiceLines,
@@ -24,6 +25,10 @@ import {
  *   - the last ticked line cannot be unticked: the database refuses an empty
  *     set, and "runs nothing" is not a business.
  *
+ * Which lines are Coming soon is the platform switch, read at runtime
+ * (useServiceLineAvailability, #531). Until it has arrived no unticked line
+ * can be ticked and none is marked Coming soon.
+ *
  * Each row is the whole label, `min-h-11`, so the 44px target is the row and
  * not the 16px box. Office-only, so English.
  */
@@ -39,12 +44,14 @@ export function ServiceLinesChoices({
   /** Keeps the checkbox ids unique if two copies are ever on one page. */
   idPrefix?: string;
 }) {
+  const availability = useServiceLineAvailability();
   return (
     <>
       <ul className="divide-y rounded-md border">
         {OFFERED_SERVICE_LINES.map((line) => {
           const checked = lines.includes(line);
-          const bookable = BOOKABLE_SERVICE_LINES.includes(line);
+          const known = availability !== null;
+          const bookable = known && isBookableLine(line, availability);
           const onlyOne = checked && lines.length === 1;
           const off = disabled || onlyOne || (!checked && !bookable);
           const id = `${idPrefix}-${line}`;
@@ -67,7 +74,7 @@ export function ServiceLinesChoices({
                   className="shrink-0"
                 />
                 <span className="min-w-0 flex-1 font-medium">{SERVICE_LINE_LABEL[line]}</span>
-                {!bookable && <ComingSoonBadge />}
+                {known && !bookable && <ComingSoonBadge />}
               </label>
             </li>
           );

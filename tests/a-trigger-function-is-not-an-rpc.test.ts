@@ -265,7 +265,12 @@ describe("no trigger function is executable by a signed-in user", () => {
     //
     // 81 -> 89 (mobile grooming stacked on training, #477): the eight above,
     // none of them created by the walking, sitting or training migrations.
-    expect(triggerFunctions().size).toBe(91);
+    //
+    // 91 -> 92 (20261025200000, one switch decides what is bookable, #531):
+    // tg_platform_service_lines_audit, which writes the platform_admin_audit
+    // row for every change to platform_service_lines. REVOKEd from PUBLIC,
+    // anon and authenticated in the same file.
+    expect(triggerFunctions().size).toBe(92);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

@@ -6,9 +6,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { oneOffServiceOptions } from "@/lib/one-off-booking";
-import { CUSTOMER_BOOKABLE_SERVICE_LINES, customerMayBook } from "@/lib/service-lines";
+import { customerCanRequestService } from "@/lib/service-lines";
 import { listServices } from "@/lib/receptionist-booking";
 import type { Caller, ReceptionistStore, ServiceFacts } from "@/lib/receptionist-booking";
+import { LAUNCH_DEFAULT, withBookable } from "./support/service-line-availability";
 
 const read = (file: string) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
 
@@ -35,10 +36,17 @@ const walk: ServiceFacts = {
 
 describe("customers cannot book a groom", () => {
   it("keeps the line off the customer lists", () => {
-    expect(customerMayBook("mobile_grooming")).toBe(false);
+    expect(customerCanRequestService("mobile_grooming", LAUNCH_DEFAULT)).toBe(false);
     // Walking is bookable (#530); the groom beside it is still left out.
-    expect(customerMayBook("dog_walking")).toBe(true);
-    expect(oneOffServiceOptions([groom, walk], null).map((s) => s.id)).toEqual(["walk"]);
+    expect(customerCanRequestService("dog_walking", LAUNCH_DEFAULT)).toBe(true);
+    expect(oneOffServiceOptions([groom, walk], null, LAUNCH_DEFAULT).map((s) => s.id)).toEqual([
+      "walk",
+    ]);
+    // Turning grooming bookable for the office does not hand it to customers:
+    // it is not customer requestable on the switch (#531).
+    expect(
+      oneOffServiceOptions([groom, walk], null, withBookable("mobile_grooming")).map((s) => s.id),
+    ).toEqual(["walk"]);
   });
 
   it("keeps the receptionist from offering or resolving one", async () => {
@@ -51,6 +59,7 @@ describe("customers cannot book a groom", () => {
         route_windows: null,
       }),
       services: async () => [groom, walk],
+      serviceLineAvailability: async () => LAUNCH_DEFAULT,
     } as unknown as ReceptionistStore;
     const caller: Caller = { orgId: "org", fromNumber: "+15555550100", clientId: null };
     const listed = await listServices(store, caller);
@@ -73,8 +82,8 @@ describe("customers cannot book a groom", () => {
 
 describe("a portal groom request is a request, not a booking", () => {
   it("leaves the customer-bookable lines as they were", () => {
-    expect(CUSTOMER_BOOKABLE_SERVICE_LINES).toEqual(["pet_waste", "dog_walking"]);
-    expect(customerMayBook("mobile_grooming")).toBe(false);
+    expect(LAUNCH_DEFAULT.bookable).toEqual(["pet_waste", "dog_walking"]);
+    expect(customerCanRequestService("mobile_grooming", LAUNCH_DEFAULT)).toBe(false);
   });
 
   it("asks portal_request_groom and nothing that books", () => {
@@ -105,9 +114,11 @@ describe("a portal groom request is a request, not a booking", () => {
   it("keeps grooming off public signup, the public form and the receptionist", () => {
     const sql = read("supabase/migrations/20261024100400_grooming-portal.sql");
     expect(sql).not.toMatch(/public_services|public_quote|receptionist/);
-    expect(read("src/lib/service-lines.ts")).toContain(
-      'export const CUSTOMER_BOOKABLE_SERVICE_LINES: readonly ServiceLine[] = BOOKABLE_SERVICE_LINES;',
-    );
+    // Customers are asked through the switch's second column, which the seed
+    // leaves off for grooming (#531).
+    expect(
+      read("supabase/migrations/20261025200000_one-switch-decides-what-is-bookable.sql"),
+    ).toMatch(/\('mobile_grooming',\s*false,\s*false\)/);
   });
 });
 

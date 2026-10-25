@@ -42,6 +42,7 @@ import {
   oneOffVisitNote,
 } from "@/lib/one-off-booking";
 import { describePriceProvenance } from "@/lib/price-provenance";
+import { LAUNCH_DEFAULT, withBookable } from "./support/service-line-availability";
 
 const ROOT = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
@@ -453,7 +454,7 @@ const RETIRED = { ...WALK, id: "r", name: "Old walk", active: false };
 // Walking is Coming soon (#506) and the portal does not offer it yet. These
 // drive the walk's portal path as it will run once the line is bookable;
 // tests/a-coming-soon-service-is-not-offered.test.ts pins today's list.
-const WALKING_LIVE = ["pet_waste", "dog_walking"];
+const WALKING_LIVE = withBookable("dog_walking");
 
 describe("the portal offers the business's services", () => {
   it("lists the extra cleanup at the one-off price and every active, priced service at its own", () => {
@@ -468,7 +469,7 @@ describe("the portal offers the business's services", () => {
   });
 
   it("keeps the extra cleanup on offer with no price, as it always was", () => {
-    const opts = oneOffServiceOptions([PW_SERVICE], null);
+    const opts = oneOffServiceOptions([PW_SERVICE], null, LAUNCH_DEFAULT);
     expect(opts).toHaveLength(1);
     expect(opts[0]).toMatchObject({ id: "pw", priceCents: null, petWaste: true });
   });

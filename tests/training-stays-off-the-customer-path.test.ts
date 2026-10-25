@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { portalShowsTraining } from "../src/lib/training-portal";
 import { customerCanRequestService } from "../src/lib/service-lines";
 import { oneOffServiceOptions } from "../src/lib/one-off-booking";
@@ -8,16 +8,13 @@ import { publicServiceChoices } from "../src/lib/public-services";
 import { bookVisit, getOpenSlots, listServices } from "../src/lib/receptionist-booking";
 import type { ReceptionistStore } from "../src/lib/receptionist-booking";
 import { progressText, scoreProblem } from "../src/lib/training-progress";
+import { LAUNCH_DEFAULT, withBookable } from "./support/service-line-availability";
 
-// Walking and training are Coming soon (#506), so today no customer path offers
-// either. This file asks the question that outlives launch: with both lines
-// bookable, a walk is offered and a lesson still is not.
-vi.mock("@/lib/service-lines", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/service-lines")>()),
-  BOOKABLE_SERVICE_LINES: ["pet_waste", "dog_walking", "training"],
-  customerCanRequestService: (line: string) =>
-    line !== "training" && ["pet_waste", "dog_walking", "training"].includes(line),
-}));
+// Walking is bookable (#530) and training is Coming soon (#506). This file
+// asks the question that outlives launch: with both lines bookable on the
+// platform switch (#531), a walk is offered and a lesson still is not,
+// because training is not customer requestable.
+const LIVE = withBookable("dog_walking", "training");
 
 const lesson = {
   id: "lesson",
@@ -43,10 +40,11 @@ const walk = {
 
 describe("customers cannot request training", () => {
   it("keeps the line off the portal, the public form and the receptionist", async () => {
-    expect(customerCanRequestService("training")).toBe(false);
-    expect(customerCanRequestService("dog_walking")).toBe(true);
-    expect(oneOffServiceOptions([lesson, walk], null).map((s) => s.id)).toEqual(["walk"]);
-    expect(publicServiceChoices([lesson, walk]).map((s) => s.id)).toEqual(["walk"]);
+    expect(LAUNCH_DEFAULT.customerRequestable).not.toContain("training");
+    expect(customerCanRequestService("training", LIVE)).toBe(false);
+    expect(customerCanRequestService("dog_walking", LIVE)).toBe(true);
+    expect(oneOffServiceOptions([lesson, walk], null, LIVE).map((s) => s.id)).toEqual(["walk"]);
+    expect(publicServiceChoices([lesson, walk], LIVE).map((s) => s.id)).toEqual(["walk"]);
 
     const store = {
       org: async () => ({
@@ -57,6 +55,7 @@ describe("customers cannot request training", () => {
         route_windows: null,
       }),
       services: async () => [lesson, walk],
+      serviceLineAvailability: async () => LIVE,
     } as unknown as ReceptionistStore;
     const caller = { orgId: "org", fromNumber: "+15555550100", clientId: null };
     const listed = await listServices(store, caller);

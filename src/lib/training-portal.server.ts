@@ -6,7 +6,8 @@
 // from the browser.
 
 import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
-import { BOOKABLE_SERVICE_LINES, serviceLinesOrDefault } from "@/lib/service-lines";
+import { isBookableLine, serviceLinesOrDefault } from "@/lib/service-lines";
+import { loadServiceLineAvailability } from "@/lib/service-line-availability.server";
 import {
   holdsSession,
   packageState,
@@ -63,10 +64,11 @@ function firstName(name: string | null | undefined): string | null {
 }
 
 /** Whether a client may buy a package or request a lesson. Training is
- *  Coming soon until it joins BOOKABLE_SERVICE_LINES, and a Coming soon line
- *  is never offered to clients (#506). One switch for both portal paths. */
-export function trainingIsForSale(): boolean {
-  return BOOKABLE_SERVICE_LINES.includes("training");
+ *  Coming soon until the platform switch makes it bookable (#531, read at
+ *  runtime), and a Coming soon line is never offered to clients (#506). One
+ *  switch for both portal paths. */
+export async function trainingIsForSale(): Promise<boolean> {
+  return isBookableLine("training", await loadServiceLineAvailability());
 }
 
 export type PortalTraining = Awaited<ReturnType<typeof loadPortalTraining>>;
@@ -116,8 +118,9 @@ export async function loadPortalTraining(sb: Admin, session: Session) {
   const packages = (packs.data ?? []) as PackageRow[];
   // Nothing is for sale while training is Coming soon (#506): a client who
   // already holds a package still sees it, its lessons and its invoice.
+  const forSaleNow = await trainingIsForSale();
   const catalog =
-    runsTraining && trainingIsForSale()
+    runsTraining && forSaleNow
       ? (
           (forSale.data ?? []) as Array<{
             id: string;
@@ -306,7 +309,7 @@ export async function loadPortalTraining(sb: Admin, session: Session) {
         expiresOn: p.expires_on,
         purchasedOn: p.purchased_on,
         state: packageState(p, today),
-        requestBlock: lessonRequestBlock(p, held, asked.length, today, trainingIsForSale()),
+        requestBlock: lessonRequestBlock(p, held, asked.length, today, forSaleNow),
         invoice: invoice
           ? {
               id: invoice.id,
@@ -365,7 +368,10 @@ export async function buyPackageFromPortal(
     .eq("id", session.organizationId)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  if (!serviceLinesOrDefault(org?.service_lines).includes("training") || !trainingIsForSale())
+  if (
+    !serviceLinesOrDefault(org?.service_lines).includes("training") ||
+    !(await trainingIsForSale())
+  )
     throw new Error("Training packages are not offered here.");
   const sale = await createPackageSale(sb as TrainingDb, {
     ...input,

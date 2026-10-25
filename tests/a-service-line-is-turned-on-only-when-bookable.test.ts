@@ -1,63 +1,141 @@
-// The database's list of bookable service lines is the app's list.
+// One switch decides which service lines are bookable (#531).
 //
-// setServiceLines refuses adding a line outside BOOKABLE_SERVICE_LINES, and
-// 20261017004000 refuses the same thing for a REST write, reading
-// public.bookable_service_lines(). Two copies of one list: when a line is
-// approved to go live, both change in the same PR, or this fails.
+// Until 20261025200000 the list was written down twice: BOOKABLE_SERVICE_LINES
+// in src/lib/service-lines.ts and a constant array in
+// public.bookable_service_lines(), and this file held the two equal. Now the
+// answer is one table, public.platform_service_lines, read at runtime, so
+// this file holds the other half of that: the table's seed is the list as it
+// is on main (pet waste and, since #530, walking), every SQL reader reads the table, and nothing in src/ writes
+// the list down again.
 //
-// The SQL copy is read from the LAST migration that defines the function, so
-// a later migration that re-creates it is the one compared.
+// The SQL is read from the LAST migration that defines each function or
+// seeds the table, so a later migration that re-creates one is the one
+// checked. supabase/proofs/20261025200000-one-switch-decides-what-is-bookable.sql
+// is the behaviour, against a real database: who can change it, the audit
+// row, and the organizations gate following the switch.
 
 import { describe, expect, it } from "vitest";
-import { BOOKABLE_SERVICE_LINES, SERVICE_LINES } from "@/lib/service-lines";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { SERVICE_LINES } from "@/lib/service-lines";
 import { migrationFiles, readMigration, stripLineComments } from "./support/sql-migrations";
+import { repoRelative, toPosix } from "./support/repo-paths";
+import { LAUNCH_DEFAULT } from "./support/service-line-availability";
 
+const ROOT = join(import.meta.dirname, "..");
 const GUARD = "20261017004000_a-service-line-is-turned-on-only-when-bookable.sql";
+const SWITCH = "20261025200000_one-switch-decides-what-is-bookable.sql";
 
-function sqlBookable(): { file: string; lines: string[] } | null {
-  let found: { file: string; lines: string[] } | null = null;
+function lastMatch(re: RegExp): { file: string; m: RegExpExecArray } | null {
+  let found: { file: string; m: RegExpExecArray } | null = null;
   for (const file of migrationFiles()) {
-    const sql = stripLineComments(readMigration(file));
-    const m =
-      /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.bookable_service_lines\s*\(\s*\)[\s\S]*?SELECT\s+ARRAY\[([^\]]*)\]::text\[\]/i.exec(
-        sql,
-      );
-    if (m) {
-      const lines = [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]);
-      found = { file, lines };
-    }
+    const m = re.exec(stripLineComments(readMigration(file)));
+    if (m) found = { file, m };
   }
   return found;
 }
 
-describe("a service line is turned on only when bookable", () => {
-  it("finds public.bookable_service_lines() rather than passing on nothing", () => {
-    const found = sqlBookable();
-    expect(found).not.toBeNull();
-    expect(found!.lines.length).toBeGreaterThan(0);
+function seed(): { line: string; bookable: boolean; requestable: boolean }[] {
+  const found = lastMatch(
+    /INSERT\s+INTO\s+public\.platform_service_lines\s*\(\s*service_line\s*,\s*bookable\s*,\s*customer_requestable\s*\)\s*VALUES([\s\S]*?)ON\s+CONFLICT/i,
+  );
+  if (!found) return [];
+  return [
+    ...found.m[1].matchAll(/\(\s*'([a-z_]+)'\s*,\s*(true|false)\s*,\s*(true|false)\s*\)/g),
+  ].map((r) => ({ line: r[1], bookable: r[2] === "true", requestable: r[3] === "true" }));
+}
+
+function functionBody(name: string): string | null {
+  const found = lastMatch(
+    new RegExp(
+      `CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${name}\\s*\\(\\s*\\)[\\s\\S]*?\\$function\\$([\\s\\S]*?)\\$function\\$`,
+      "i",
+    ),
+  );
+  return found ? found.m[1] : null;
+}
+
+function sourceFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) out.push(...sourceFiles(p));
+    else if (/\.(ts|tsx)$/.test(name)) out.push(p);
+  }
+  return out;
+}
+
+describe("one switch decides which service lines are bookable", () => {
+  it("seeds a row for every line the database accepts, and nothing else", () => {
+    expect(
+      seed()
+        .map((r) => r.line)
+        .sort(),
+    ).toEqual([...SERVICE_LINES].sort());
   });
 
-  it("holds the same lines as BOOKABLE_SERVICE_LINES", () => {
-    expect([...sqlBookable()!.lines].sort()).toEqual([...BOOKABLE_SERVICE_LINES].sort());
+  it("seeds the list as it is on main after #530 and #535: pet waste and walking bookable, grooming and training not requestable", () => {
+    const rows = seed();
+    expect(rows.filter((r) => r.bookable).map((r) => r.line)).toEqual(["pet_waste", "dog_walking"]);
+    expect(rows.filter((r) => !r.requestable).map((r) => r.line)).toEqual([
+      "mobile_grooming",
+      "training",
+    ]);
   });
 
-  it("is pinned to exactly pet waste and dog walking, by the #530 flip", () => {
-    const found = sqlBookable()!;
-    expect(found.file).toBe("20261024230000_dog-walking-is-bookable.sql");
-    expect(found.lines).toEqual(["pet_waste", "dog_walking"]);
+  it("comes after the #530 flip, so the table is what a replay ends on", () => {
+    const files = migrationFiles();
+    const flip = files.indexOf("20261024230000_dog-walking-is-bookable.sql");
+    expect(flip).toBeGreaterThanOrEqual(0);
+    expect(files.indexOf(SWITCH)).toBeGreaterThan(flip);
   });
 
-  it("the flip asserts the exact list on replay, not a superset", () => {
-    const sql = stripLineComments(readMigration("20261024230000_dog-walking-is-bookable.sql"));
-    expect(sql).toMatch(
-      /IF public\.bookable_service_lines\(\) IS DISTINCT FROM ARRAY\['pet_waste', 'dog_walking'\]::text\[\] THEN\s+RAISE EXCEPTION/,
-    );
+  it("is the default the TS fixtures drive the rules with", () => {
+    const rows = seed();
+    expect(
+      rows
+        .filter((r) => r.bookable)
+        .map((r) => r.line)
+        .sort(),
+    ).toEqual([...LAUNCH_DEFAULT.bookable].sort());
+    expect(
+      rows
+        .filter((r) => r.requestable)
+        .map((r) => r.line)
+        .sort(),
+    ).toEqual([...LAUNCH_DEFAULT.customerRequestable].sort());
   });
 
-  it("holds only lines the database accepts", () => {
-    for (const line of sqlBookable()!.lines) {
-      expect(SERVICE_LINES as readonly string[]).toContain(line);
+  it("never overwrites a switch a platform admin already flipped", () => {
+    const sql = stripLineComments(readMigration(SWITCH));
+    expect(sql).toMatch(/ON CONFLICT \(service_line\) DO NOTHING;/);
+  });
+
+  it("reads the table in bookable_service_lines() and customer_requestable_service_lines(), with no constant left", () => {
+    for (const name of ["bookable_service_lines", "customer_requestable_service_lines"]) {
+      const body = functionBody(name);
+      expect(body, name).not.toBeNull();
+      expect(body!, name).toMatch(/FROM\s+public\.platform_service_lines/);
+      expect(body!, name).not.toMatch(/ARRAY\s*\[/i);
     }
+  });
+
+  it("lets no client role change it", () => {
+    const sql = stripLineComments(readMigration(SWITCH));
+    expect(sql).toMatch(
+      /REVOKE ALL ON TABLE public\.platform_service_lines FROM PUBLIC, anon, authenticated;/,
+    );
+    expect(sql).toMatch(
+      /GRANT SELECT, INSERT, UPDATE ON public\.platform_service_lines TO service_role;/,
+    );
+    expect(sql).not.toMatch(
+      /GRANT[^;]*ON (?:TABLE )?public\.platform_service_lines TO[^;]*\b(?:anon|authenticated)\b/,
+    );
+    expect(sql).toMatch(/SELECT public\.require_mfa_policy\('public\.platform_service_lines'\);/);
+    expect(sql).toMatch(
+      /IF NOT \(auth\.role\(\) = 'service_role' OR public\.is_platform_admin\(auth\.uid\(\)\)\) THEN/,
+    );
+    expect(sql).toMatch(/INSERT INTO public\.platform_admin_audit/);
   });
 
   it("guards inserts and service_lines updates on organizations, and lets the service role through", () => {
@@ -69,5 +147,31 @@ describe("a service line is turned on only when bookable", () => {
     expect(sql).toMatch(
       /REVOKE ALL ON FUNCTION public\.tg_orgs_service_lines_bookable\(\) FROM PUBLIC, anon, authenticated;/,
     );
+  });
+
+  it("writes the list down nowhere in src/", () => {
+    const offenders: string[] = [];
+    for (const file of sourceFiles(join(ROOT, "src"))) {
+      const rel = toPosix(repoRelative(file, ROOT));
+      const lines = readFileSync(file, "utf8").split(/\r?\n/);
+      lines.forEach((text, i) => {
+        if (/\bBOOKABLE_SERVICE_LINES\b/.test(text)) offenders.push(`${rel}:${i + 1}`);
+        // customerCanRequestService used to be `line !== "training"`.
+        if (/customerCanRequestService[\s\S]*["'](?:training|pet_waste)["']/.test(text))
+          offenders.push(`${rel}:${i + 1}`);
+      });
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("reads the switch on the server through one loader", () => {
+    const loader = readFileSync(join(ROOT, "src/lib/service-line-availability.server.ts"), "utf8");
+    expect(loader).toMatch(/\.rpc\("service_line_availability"\)/);
+    const callers = sourceFiles(join(ROOT, "src")).filter((f) =>
+      /service_line_availability"/.test(readFileSync(f, "utf8")),
+    );
+    expect(callers.map((f) => toPosix(repoRelative(f, ROOT)))).toEqual([
+      "src/lib/service-line-availability.server.ts",
+    ]);
   });
 });

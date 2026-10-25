@@ -25,6 +25,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
+import { withBookable } from "./support/service-line-availability";
 import { join } from "node:path";
 import {
   asksAboutTheYard,
@@ -36,6 +37,17 @@ import {
 } from "@/lib/public-services";
 
 const ROOT = join(import.meta.dirname, "..");
+
+// This file pins how the catalog sells a walk or a groom once their lines are
+// bookable. Today only pet waste is (#506), and what a Coming soon line is
+// refused is pinned in tests/a-coming-soon-service-is-not-offered.test.ts; so
+// here every offered line is treated as launched on the switch (#531).
+// Every offered line launched and, but for training, open to customers: the
+// switch as it would read once grooming and sitting go live.
+const ALL_LIVE = {
+  bookable: withBookable("pet_sitting", "mobile_grooming", "training").bookable,
+  customerRequestable: ["pet_waste", "dog_walking", "pet_sitting", "mobile_grooming", "other"],
+} as const;
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 const codeOnly = (src: string) =>
   src
@@ -209,7 +221,7 @@ const TRAIN = {
 
 describe("what a stranger may pick from", () => {
   it("lists launched services while training still requires its package flow", () => {
-    expect(publicServiceChoices([PW, GROOM, WALK, TRAIN]).map((r) => r.id)).toEqual([
+    expect(publicServiceChoices([PW, GROOM, WALK, TRAIN], ALL_LIVE).map((r) => r.id)).toEqual([
       PW.id,
       GROOM.id,
       WALK.id,
@@ -217,46 +229,46 @@ describe("what a stranger may pick from", () => {
   });
 
   it("keeps the rows the RPC returned, in its order, and drops anything malformed", () => {
-    const rows = publicServiceChoices([
-      PW,
-      WALK,
-      { id: 1, name: "bad" },
-      null,
-      { ...GROOM, price_unit: "week" },
-      WALK,
-    ]);
+    const rows = publicServiceChoices(
+      [PW, WALK, { id: 1, name: "bad" }, null, { ...GROOM, price_unit: "week" }, WALK],
+      ALL_LIVE,
+    );
     expect(rows.map((r) => r.id)).toEqual([PW.id, WALK.id]);
-    expect(publicServiceChoices(undefined)).toEqual([]);
-    expect(publicServiceChoices("nope")).toEqual([]);
+    expect(publicServiceChoices(undefined, ALL_LIVE)).toEqual([]);
+    expect(publicServiceChoices("nope", ALL_LIVE)).toEqual([]);
   });
 
   it("one service, or none, is no choice: the form as it always was", () => {
     expect(offersAChoice([])).toBe(false);
-    expect(offersAChoice(publicServiceChoices([PW]))).toBe(false);
-    expect(offersAChoice(publicServiceChoices([WALK]))).toBe(false);
-    expect(defaultPublicServiceId(publicServiceChoices([PW]))).toBeNull();
-    expect(chosenPublicService(publicServiceChoices([PW]), PW.id)).toBeNull();
-    expect(chosenPublicService(publicServiceChoices([WALK]), WALK.id)).toBeNull();
+    expect(offersAChoice(publicServiceChoices([PW], ALL_LIVE))).toBe(false);
+    expect(offersAChoice(publicServiceChoices([WALK], ALL_LIVE))).toBe(false);
+    expect(defaultPublicServiceId(publicServiceChoices([PW], ALL_LIVE))).toBeNull();
+    expect(chosenPublicService(publicServiceChoices([PW], ALL_LIVE), PW.id)).toBeNull();
+    expect(chosenPublicService(publicServiceChoices([WALK], ALL_LIVE), WALK.id)).toBeNull();
   });
 
   it("with a choice, starts on the pet-waste service when there is one, else the first listed", () => {
-    expect(defaultPublicServiceId(publicServiceChoices([WALK, PW]))).toBe(PW.id);
-    expect(defaultPublicServiceId(publicServiceChoices([WALK, SIT]))).toBe(WALK.id);
-    expect(chosenPublicService(publicServiceChoices([PW, WALK]), "")?.id).toBe(PW.id);
-    expect(chosenPublicService(publicServiceChoices([PW, WALK]), WALK.id)?.id).toBe(WALK.id);
+    expect(defaultPublicServiceId(publicServiceChoices([WALK, PW], ALL_LIVE))).toBe(PW.id);
+    expect(defaultPublicServiceId(publicServiceChoices([WALK, SIT], ALL_LIVE))).toBe(WALK.id);
+    expect(chosenPublicService(publicServiceChoices([PW, WALK], ALL_LIVE), "")?.id).toBe(PW.id);
+    expect(chosenPublicService(publicServiceChoices([PW, WALK], ALL_LIVE), WALK.id)?.id).toBe(
+      WALK.id,
+    );
     // An id that is not listed (a service retired since the page loaded)
     // falls back to the default rather than being sent.
-    expect(chosenPublicService(publicServiceChoices([PW, WALK]), GROOM.id)?.id).toBe(PW.id);
+    expect(chosenPublicService(publicServiceChoices([PW, WALK], ALL_LIVE), GROOM.id)?.id).toBe(
+      PW.id,
+    );
   });
 
   it("asks about the yard with no choice made and for pet waste; a walk has no yard", () => {
     expect(asksAboutTheYard(null)).toBe(true);
-    expect(asksAboutTheYard(publicServiceChoices([PW])[0])).toBe(true);
-    expect(asksAboutTheYard(publicServiceChoices([WALK])[0])).toBe(false);
+    expect(asksAboutTheYard(publicServiceChoices([PW], ALL_LIVE)[0])).toBe(true);
+    expect(asksAboutTheYard(publicServiceChoices([WALK], ALL_LIVE)[0])).toBe(false);
   });
 
   it("labels an option with the business's name and its length, never a price", () => {
-    const [pw, walk, sit] = publicServiceChoices([PW, WALK, SIT]);
+    const [pw, walk, sit] = publicServiceChoices([PW, WALK, SIT], ALL_LIVE);
     expect(publicServiceOptionLabel(pw)).toBe("Pet waste removal");
     expect(publicServiceOptionLabel(walk)).toBe("30-minute walk (30 min)");
     expect(publicServiceOptionLabel(sit)).toBe("Drop-in visit (1 hr 30 min)");
@@ -276,11 +288,13 @@ describe("the public form", () => {
       fns.indexOf("const quoteSchema"),
     );
     expect(lookup).toMatch(/sb\.rpc\("public_services", \{\s*_slug: data\.slug,?\s*\}\)/);
-    expect(lookup).toMatch(/services,\s*\};/);
+    expect(lookup).toMatch(/services,\s*serviceLines,\s*\};/);
     // A lookup that fails lists nothing; the page still loads.
     expect(lookup).toMatch(/let services: PublicService\[\] = \[\];/);
-    expect(lookup).toMatch(/services = publicServiceChoices\(svcRows\);/);
-    expect(flow).toMatch(/publicServiceChoices\(formQ\.data\?\.services\)/);
+    expect(lookup).toMatch(/services = publicServiceChoices\(svcRows, availability\);/);
+    expect(flow).toMatch(
+      /publicServiceChoices\(\s*formQ\.data\?\.services,\s*formQ\.data\?\.serviceLines/,
+    );
   });
 
   it("shows the picker only when there is a choice, and sends the id with both buttons and the quote", () => {
@@ -462,19 +476,16 @@ const admin = {
 };
 
 vi.mock("@/integrations/supabase/client.server", () => ({ supabaseAdmin: admin }));
-// This file pins how the catalog sells a walk or a groom once their lines are
-// bookable. Today only pet waste is (#506), and what a Coming soon line is
-// refused is pinned in tests/a-coming-soon-service-is-not-offered.test.ts; so
-// here every offered line is treated as launched.
-vi.mock("@/lib/service-lines", async (importOriginal) => {
-  const real = await importOriginal<typeof import("@/lib/service-lines")>();
-  return {
-    ...real,
-    BOOKABLE_SERVICE_LINES: real.OFFERED_SERVICE_LINES,
-    customerCanRequestService: (line: string) =>
-      real.customerCanRequestService(line, real.OFFERED_SERVICE_LINES),
-  };
-});
+// This file pins how the catalog sells a walk, a sit or a groom once their lines are
+// bookable. What a Coming soon line is refused is pinned in
+// tests/a-coming-soon-service-is-not-offered.test.ts; so here every offered
+// line is treated as launched, as ALL_LIVE says.
+vi.mock("@/lib/service-line-availability.server", async () => ({
+  loadServiceLineAvailability: async () => ({
+    bookable: ["pet_waste", "dog_walking", "pet_sitting", "mobile_grooming", "training", "other"],
+    customerRequestable: ["pet_waste", "dog_walking", "pet_sitting", "mobile_grooming", "other"],
+  }),
+}));
 vi.mock("@supabase/supabase-js", () => ({
   createClient: () => ({
     rpc: async (fn: string) =>
