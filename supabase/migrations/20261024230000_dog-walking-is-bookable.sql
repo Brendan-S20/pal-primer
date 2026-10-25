@@ -29,8 +29,9 @@
 --      not on a literal 'pet_waste', so restating them unchanged would add a
 --      copy and change nothing.
 --
---   2. portal_request_one_off (newest body 20261018150000, copied unchanged
---      but for ONE condition) also refuses a service with no price yet, with
+--   2. portal_request_one_off (newest body 20261018150000 plus the training
+--      refusal 20261023100000 spliced in, copied unchanged but for ONE
+--      condition) also refuses a service with no price yet, with
 --      the same 'service_not_offered'. Before walking was bookable no
 --      non-pet-waste service could get this far, so the gap was unreachable;
 --      now a hand-built request for an unpriced walk would be recorded as a
@@ -104,6 +105,11 @@ BEGIN
         AND s.service_line = ANY (public.bookable_service_lines())
         AND (s.service_line = 'pet_waste' OR s.base_price_cents IS NOT NULL);
     IF NOT FOUND THEN RAISE EXCEPTION 'service_not_offered'; END IF;
+    -- Training is sold by the office, never from this door (20261023100000
+    -- spliced this in; it is carried here so this body does not drop it).
+    IF (SELECT s.service_line FROM public.services s WHERE s.id = _service_id) = 'training' THEN
+      RAISE EXCEPTION 'service_not_offered';
+    END IF;
     -- The pet-waste service is the extra cleanup: recorded as no service.
     IF (SELECT s.service_line FROM public.services s WHERE s.id = _service_id) = 'pet_waste' THEN
       _service_id := NULL;
@@ -221,6 +227,15 @@ BEGIN
       RAISE EXCEPTION '% offers a service with no price', _fn;
     END IF;
   END LOOP;
+
+  -- A training lesson is still refused here (20261023100000).
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p
+     WHERE p.oid = 'public.portal_request_one_off(uuid, uuid, date, text, uuid)'::regprocedure
+       AND p.prosrc LIKE '%s.service_line FROM public.services s WHERE s.id = _service_id) = ''training''%'
+  ) THEN
+    RAISE EXCEPTION 'portal_request_one_off no longer refuses a training lesson';
+  END IF;
 
   -- The REST gate still reads the list.
   IF NOT EXISTS (
