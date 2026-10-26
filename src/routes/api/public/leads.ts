@@ -36,6 +36,7 @@ import {
   screenSubmission,
 } from "@/lib/public-form-guard";
 import { customerCanRequestService } from "@/lib/service-lines";
+import { isRequestedAsAStay } from "@/lib/public-services";
 import {
   bookingDetailsColumns,
   bookingDetailsSchema,
@@ -146,10 +147,10 @@ export const Route = createFileRoute("/api/public/leads")({
         // still Coming soon is refused the same way (#506): the form never
         // lists one (publicServiceChoices), so naming one is a hand-built body.
         // Coming soon is the platform switch, read at runtime (#531).
-        let service: { id: string; name: string } | null = null;
+        let service: { id: string; name: string; stay: boolean } | null = null;
         if (data.service_id) {
           const { data: svc } = await (supabaseAdmin.from("services") as any)
-            .select("id, name, service_line")
+            .select("id, name, service_line, price_unit")
             .eq("id", data.service_id)
             .eq("organization_id", orgId)
             .maybeSingle();
@@ -164,8 +165,16 @@ export const Route = createFileRoute("/api/public/leads")({
               headers: jsonHeaders,
             });
           }
-          service = { id: svc.id as string, name: (svc.name as string) ?? "" };
+          service = {
+            id: svc.id as string,
+            name: (svc.name as string) ?? "",
+            stay: isRequestedAsAStay(svc),
+          };
         }
+        // A stay (priced per night, #546) is a request for dates, not a
+        // cadence: whatever frequency a body carries, the lead stores none,
+        // so the office never reads "Weekly" on an Overnight stay.
+        const frequency = service?.stay ? null : data.frequency || null;
 
         // The first visit's answers, held to the business's settings. Only
         // what was SENT is checked: a start date before the business can
@@ -232,7 +241,7 @@ export const Route = createFileRoute("/api/public/leads")({
             company: data.company || null,
             location,
             dog_count: data.dog_count ?? null,
-            frequency: data.frequency || null,
+            frequency,
             message: data.message || null,
             source,
             status: "new",
@@ -262,7 +271,7 @@ export const Route = createFileRoute("/api/public/leads")({
           source,
           location,
           dogCount: data.dog_count ?? null,
-          frequency: data.frequency || null,
+          frequency,
           serviceName: service?.name ?? null,
         });
 

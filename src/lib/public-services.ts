@@ -8,6 +8,7 @@
  *    what the picker starts on        defaultPublicServiceId
  *    what is quoted and charged       quotedPublicService
  *    whether the yard questions apply   asksAboutTheYard
+ *    whether it is asked for, not sold  isRequestedAsAStay
  *    how an option reads              publicServiceOptionLabel
  *
  *  The rule the whole file exists for: a business that sells ONE thing sees
@@ -138,6 +139,19 @@ export function quotedPublicService(
  *  was) and for the pet-waste service; a walk has no yard to ask about. */
 export function asksAboutTheYard(chosen: PublicService | null): boolean {
   return chosen === null || isZonePriced(chosen);
+}
+
+/** Whether the service is a STAY: priced per night (an Overnight stay, a
+ *  House sit), so it is asked for and confirmed by the office rather than
+ *  sold online (#546). The public signup provisions a subscription on a
+ *  cadence, and a night is not a visit that repeats weekly: a stranger who
+ *  could "Start service" on one would be subscribed to a nightly stay. So a
+ *  stay offers no cadence, no instant price and no card, only the quote
+ *  request, which writes a lead with the pets, the access notes and the
+ *  preferred first night the form already asks for. A drop-in (per visit)
+ *  or an hourly sit is not a stay and keeps the signup path. */
+export function isRequestedAsAStay(chosen: { price_unit?: unknown } | null | undefined): boolean {
+  return chosen?.price_unit === "night";
 }
 
 /** How an option reads in the picker: the business's own name, and how long

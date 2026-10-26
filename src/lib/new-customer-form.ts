@@ -36,7 +36,7 @@ export type FormBranch<Q = unknown> = {
   /** The price to show, when there is one. */
   quote: Q | null;
   /** Why the page is in the state it is, for the copy beside the buttons. */
-  reason: "priced" | "not-priced-yet" | "no-zone" | "instant-off";
+  reason: "priced" | "not-priced-yet" | "no-zone" | "instant-off" | "stay-request";
 };
 
 /**
@@ -51,13 +51,22 @@ export type FormBranch<Q = unknown> = {
  * request is ALWAYS available, so no answer here is a dead end. The one
  * exception is a caller that has its own fallback and passes
  * `offerQuoteRequest: false` (walk mode, where the tech marks the door).
+ *
+ * `stay` is a service priced per night (isRequestedAsAStay, #546): it is
+ * never priced or started here, whatever the business's switch says, because
+ * Start service is a subscription and a stay is not one. The quote request
+ * is its whole path.
  */
 export function decideFormBranch<Q>(input: {
   instantStart: boolean;
   answer?: QuoteAnswer<Q> | null;
   offerQuoteRequest?: boolean;
+  stay?: boolean;
 }): FormBranch<Q> {
   const canRequestQuote = input.offerQuoteRequest !== false;
+  if (input.stay) {
+    return { canStartService: false, canRequestQuote, quote: null, reason: "stay-request" };
+  }
   if (!input.instantStart) {
     return { canStartService: false, canRequestQuote, quote: null, reason: "instant-off" };
   }

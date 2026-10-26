@@ -177,3 +177,28 @@ export function bookingMetaDescription(lines: readonly ServiceLine[]): string {
   const list = `${nouns.slice(0, -1).join(", ")} or ${nouns[nouns.length - 1]}`;
   return `Get a price for ${list}: pick a service and enter your ZIP and pets, then start service online or ask for a quote.`;
 }
+
+/** What the page says instead for a stay: a service priced per night, which
+ *  is asked for rather than started (isRequestedAsAStay, #546). There is no
+ *  Frequency select and no price, so these are the words that replace them:
+ *  the dates go in the preferred start date (relabelled as the first night)
+ *  and the note, and the office confirms the stay and its price. */
+export const STAY_COPY = {
+  /** Where the Frequency select would be. */
+  howItWorks:
+    "Stays are booked by request. Send your dates and we'll confirm the stay and its price.",
+  /** The quote panel, before anything is sent. */
+  panelHint:
+    "Tell us your dates and pets and we'll get back to you to confirm your stay and its price.",
+  /** The preferred start date's label. */
+  startDateLabel: "First night",
+  /** The "Anything else?" placeholder. */
+  notePlaceholder: "Your last night, pet names, feeding and medication, how to get in…",
+  /** The quote request's button. */
+  requestButton: "Request this stay",
+} as const;
+
+/** Under the first night's date: who confirms it. */
+export function stayStartDateHint(business: string): string {
+  return `${business} will confirm your stay for on or after this date.`;
+}
