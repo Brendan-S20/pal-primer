@@ -280,6 +280,10 @@ jobs:
 
       # Matched on the text: jarsigner exits 0 for an UNSIGNED jar too
       # ("jar is unsigned."), so its exit code cannot answer this.
+      # And matched from a here-string, not a pipe: on a signed bundle the
+      # text is "jar verified." followed by hundreds of warning lines, grep -q
+      # exits at the first line, printf takes SIGPIPE writing the rest, and
+      # pipefail reports a signed bundle as unsigned (run 40348924069).
       - name: Prove the bundle is signed
         run: |
           set -euo pipefail
@@ -289,7 +293,7 @@ jobs:
             exit 1
           fi
           out="$("$JAVA_HOME/bin/jarsigner" -verify "$aab" 2>&1 || true)"
-          if ! printf '%s\n' "$out" | grep -q '^jar verified'; then
+          if ! grep -q '^jar verified' <<<"$out"; then
             printf '%s\n' "$out"
             echo "::error::$aab is not signed; Play would refuse it"
             exit 1
