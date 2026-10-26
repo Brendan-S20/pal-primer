@@ -268,6 +268,16 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon bundleRelease
 
+      # Play rejects READ_MEDIA_IMAGES (and the other photo and storage
+      # permissions) for an app whose core purpose is not the gallery, and
+      # flagged it on 2026-10-23 (#533). The source manifest is pinned by a
+      # test; this reads the MERGED release manifest, which is the only place
+      # a plugin's or a transitive library's permission shows up. Before the
+      # artifact and the upload, so a bundle that asks for one never leaves
+      # the runner.
+      - name: Prove the bundle asks for no photo or storage permission
+        run: node scripts/check-android-release-permissions.mjs
+
       # Matched on the text: jarsigner exits 0 for an UNSIGNED jar too
       # ("jar is unsigned."), so its exit code cannot answer this.
       - name: Prove the bundle is signed

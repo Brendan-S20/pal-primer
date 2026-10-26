@@ -82,15 +82,37 @@ describe.skipIf(!androidExists)("the Android manifest declares what the app does
     }
   }
 
+  it("holds no media or storage permission, and strips any a library merges in", () => {
+    // Play's Photo and video permissions policy (flagged 2026-10-23, #533):
+    // READ_MEDIA_* is for apps whose core purpose is the gallery. A visit
+    // photo, a receipt and an avatar are one-off picks, which the system
+    // chooser serves with no permission. Each of the four must appear ONLY as
+    // a tools:node="remove", so a plugin that declares one cannot bring it back.
+    const src = manifest();
+    expect(src).toMatch(/xmlns:tools="http:\/\/schemas\.android\.com\/tools"/);
+    for (const perm of [
+      "READ_MEDIA_IMAGES",
+      "READ_MEDIA_VIDEO",
+      "READ_EXTERNAL_STORAGE",
+      "WRITE_EXTERNAL_STORAGE",
+    ]) {
+      const tags = [...src.matchAll(/<uses-permission\b[^>]*>/g)]
+        .map((m) => m[0])
+        .filter((tag) => tag.includes(`android:name="android.permission.${perm}"`));
+      expect(tags, `${perm} needs exactly one tools:node="remove" entry`).toHaveLength(1);
+      expect(tags[0], `${perm} is requested rather than removed`).toMatch(/tools:node="remove"/);
+    }
+  });
+
   it("does not back the signed-in session up to Google Drive", () => {
     // `allowBackup` defaults to true in the generated manifest. The WebView's
     // localStorage holds a Supabase access AND refresh token, so the default
     // copies a live session off the device and restores it onto the next one.
     expect(manifest()).toMatch(/android:allowBackup="false"/);
     expect(manifest()).toMatch(/android:dataExtractionRules="@xml\/data_extraction_rules"/);
-    expect(existsSync(resolve(ROOT, "android/app/src/main/res/xml/data_extraction_rules.xml"))).toBe(
-      true,
-    );
+    expect(
+      existsSync(resolve(ROOT, "android/app/src/main/res/xml/data_extraction_rules.xml")),
+    ).toBe(true);
   });
 
   it("wears its own colours rather than Capacitor's", () => {
