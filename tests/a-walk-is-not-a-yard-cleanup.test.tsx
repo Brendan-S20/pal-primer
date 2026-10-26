@@ -182,7 +182,6 @@ describe("pet waste reads exactly as it did", () => {
 
   it("and the map's pet-waste entry is the old copy, word for word", () => {
     const c = BOOKING_COPY.pet_waste;
-    expect(c.outOfArea).toBe("We'll price your yard ourselves and get back to you.");
     expect(c.priceHint).toBe("Enter your ZIP and dogs, then hit");
     expect(c.notePlaceholder).toBe("Gate code, dog names, preferred days…");
     expect(c.visit).toBe("visit");
@@ -207,7 +206,6 @@ describe("the copy map", () => {
       if (line === "pet_waste") continue;
       const words = [
         c.priceHint,
-        c.outOfArea,
         c.notePlaceholder,
         c.metaDescription,
         c.visit,
@@ -276,8 +274,12 @@ describe("the meta description follows what the business sells", () => {
     expect(bookingMetaDescription(["pet_waste", "dog_walking", "dog_walking"])).toBe(
       "Get a price for pet waste removal or dog walking: pick a service and enter your ZIP and pets, then start service online or ask for a quote.",
     );
+    // The route's head builds it from the lines the loader's lookup lists
+    // (#524 moved the lookup into the loader; lib/booking-page.ts wraps the
+    // sentence with the business's name).
     const route = read("src/routes/signup.$slug.tsx");
-    expect(route).toMatch(/bookingMetaDescription\(loaderData\?\.lines \?\? \[\]\)/);
+    expect(route).toMatch(/lines: org \? org\.services\.map\(\(s\) => s\.service_line\) : \[\]/);
+    expect(read("src/lib/booking-page.ts")).toMatch(/bookingMetaDescription\(unique\)/);
     expect(route).not.toMatch(/cleanup frequency to get a price/);
   });
 });

@@ -61,6 +61,7 @@ import {
   createSignupPaymentIntent,
 } from "@/lib/signup.functions";
 import { LAST_CLEANED_QUESTION } from "@/lib/first-cleanup";
+import { outOfAreaAnswer } from "@/lib/booking-page";
 import { stripeAppearance } from "@/lib/stripe-appearance";
 import {
   QUOTE_REQUEST_DISCLOSURE,
@@ -110,6 +111,15 @@ export type SignupPrefill = Partial<{
 
 const EMAIL_RE = /.+@.+\..+/;
 
+/** How long the form lookup is fresh. The public route seeds it from its
+ *  loader (#524), and a fresh entry is not fetched again on hydration. */
+export const SIGNUP_FORM_STALE_MS = 5 * 60_000;
+
+/** The width the page variant lays out in two columns at (Tailwind's `lg`).
+ *  Below it the quote panel is under the whole form, so the price has to be
+ *  shown where the visitor tapped (#523). */
+const TWO_COLUMNS = "(min-width: 1024px)";
+
 export function SignupFlow({
   slug,
   variant = "page",
@@ -143,6 +153,7 @@ export function SignupFlow({
   const formQ = useQuery({
     queryKey: ["signup-form", slug],
     queryFn: () => getForm({ data: { slug } }),
+    staleTime: SIGNUP_FORM_STALE_MS,
     retry: false,
   });
   const instantStart = !!formQ.data?.instantStart;
@@ -214,12 +225,14 @@ export function SignupFlow({
     [ELAPSED_FIELD]: shownAt.current == null ? 0 : Date.now() - shownAt.current,
   });
 
+  // The ZIP is the mutation's variable, so the answer can name the ZIP it
+  // answered for even after the field is edited.
   const quoteMut = useMutation({
-    mutationFn: () =>
+    mutationFn: (postalCode: string) =>
       getQuote({
         data: {
           slug,
-          postal_code: form.postal_code,
+          postal_code: postalCode,
           dog_count: Number(form.dog_count),
           frequency,
           last_cleaned: form.last_cleaned,
@@ -320,6 +333,67 @@ export function SignupFlow({
   const canCheckout =
     branch.canStartService && firstCleanupCents != null && hasContact && !!form.street.trim();
 
+  // ── Where the answer goes below `lg` (#523) ────────────────────────────
+  const narrowOnly = variant === "page" ? "lg:hidden" : "";
+  const answerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  const twoColumns = () =>
+    variant === "page" &&
+    typeof window !== "undefined" &&
+    !!window.matchMedia?.(TWO_COLUMNS).matches;
+
+  // Each new answer is brought into view and given focus, so a phone shows
+  // the price (or the out-of-area answer) the moment it arrives and a screen
+  // reader reads it. Not at `lg`: the sticky panel beside the form already
+  // shows it, and moving focus there would pull a mouse user's place away.
+  useEffect(() => {
+    if (!quoteMut.data || twoColumns()) return;
+    const el = answerRef.current;
+    if (!el) return;
+    el.scrollIntoView({ block: "nearest" });
+    el.focus({ preventScroll: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quoteMut.data]);
+
+  // The compact bar shows while neither the answer nor the panel is on
+  // screen, which is exactly while the visitor is in step 2.
+  const priced = !!quote;
+  const [answerInView, setAnswerInView] = useState(true);
+  const [panelInView, setPanelInView] = useState(false);
+  useEffect(() => {
+    if (!priced || typeof IntersectionObserver === "undefined") return;
+    const watch = (el: Element | null, set: (v: boolean) => void, rootMargin?: string) => {
+      if (!el) return null;
+      const io = new IntersectionObserver(([e]) => set(e.isIntersecting), { rootMargin });
+      io.observe(el);
+      return io;
+    };
+    const a = watch(answerRef.current, setAnswerInView);
+    // The panel counts as reached once it is in the top 60% of the screen,
+    // not when its first pixel peeks over the bottom edge: on a phone the
+    // bottom of the layout viewport is where the keyboard is.
+    const b = watch(panelRef.current, setPanelInView, "0px 0px -40% 0px");
+    return () => {
+      a?.disconnect();
+      b?.disconnect();
+    };
+  }, [priced]);
+  const showBar = !answerInView && !panelInView;
+
+  // "Continue" under the answer: step 2's first field, so the next step is
+  // the one the cursor is in.
+  const goToDetails = () => {
+    const el = document.getElementById("name");
+    el?.scrollIntoView({ block: "center" });
+    el?.focus({ preventScroll: true });
+  };
+  // "Continue" on the compact bar: the panel with Start service in it.
+  const goToPanel = () => {
+    const el = panelRef.current;
+    el?.scrollIntoView({ block: "start" });
+    el?.focus({ preventScroll: true });
+  };
+
   if (formQ.isLoading) {
     return <p className="py-6 text-sm text-muted-foreground">Loading…</p>;
   }
@@ -350,6 +424,94 @@ export function SignupFlow({
       </div>
     );
   }
+
+  const quotedZip = quoteMut.variables ?? form.postal_code;
+  const outOfArea = outOfAreaAnswer(formQ.data.name, quotedZip);
+  const perVisit = quote ? money(quote.recurring_price_cents, quote.currency) : "";
+  const todayCents =
+    quote && firstCleanupCents != null ? firstCleanupCents + quote.recurring_price_cents : null;
+
+  // The price lines, drawn twice below `lg`: in the answer under step 1 and
+  // in the quote panel at the bottom. One copy of the markup, so the two
+  // cannot disagree.
+  const priceLines = quote ? (
+    <>
+      {showsFirstCleanup && (
+        <div className="flex items-baseline justify-between gap-3">
+          <div className="min-w-0 text-sm">
+            First cleanup (one-time)
+            {pickedOption && (
+              <span className="block break-words text-xs text-muted-foreground">
+                Last cleaned: {pickedOption.label}
+              </span>
+            )}
+          </div>
+          <div className="shrink-0 font-medium">
+            {firstCleanupCents == null ? "Answer above" : money(firstCleanupCents, quote.currency)}
+          </div>
+        </div>
+      )}
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="min-w-0 text-sm">Ongoing ({frequencyLabel(frequency)})</div>
+        {/* PER VISIT, not per month. `public_quote` returns
+            `round(base_visit_cents × frequency_multiplier)`, and
+            pricing.ts documents it as "Per-visit price after the
+            frequency multiplier": the multipliers price LESS frequent
+            visits HIGHER (weekly 1.0, biweekly 1.7, monthly 3.2), which
+            only makes sense per visit. Every other surface says /visit;
+            this one said /mo and the line below sold "a prepaid first
+            month" for what buys ONE visit. Weekly service at $25 read
+            "$25.00/mo". */}
+        <div className="shrink-0 font-medium">
+          {perVisit}/{lineCopy.visit}
+        </div>
+      </div>
+      <div className="border-t pt-3 text-xs text-muted-foreground">
+        {firstCleanupCents == null ? (
+          <>Tell us when your yard was last cleaned to see today's total.</>
+        ) : (
+          <>
+            Charged today if you start service:{" "}
+            <strong className="text-foreground">{money(todayCents ?? 0, quote.currency)}</strong>
+            {chargedTodayCovers(line, showsFirstCleanup)}{" "}
+            {perVisitBillingSentence(line, money(quote.recurring_price_cents, quote.currency))}
+          </>
+        )}
+      </div>
+    </>
+  ) : null;
+
+  // The answer to Get instant price, right under the button (#523). On a
+  // phone the quote panel is below the whole contact form, about 1,100 px
+  // down at 390 px, so tapping the button used to change nothing the visitor
+  // could see. At `lg` and up the panel sits beside the form, sticky, and
+  // this is not drawn (`lg:hidden`); the sheet is always narrow, so it
+  // always is. The out-of-area answer gets the same place (#526's words).
+  const answered = !!quote || branch.reason === "no-zone";
+  const quoteAnswer = answered ? (
+    <div
+      ref={answerRef}
+      tabIndex={-1}
+      aria-live="polite"
+      className={`mt-4 space-y-3 rounded-xl border bg-muted/40 p-4 outline-none ${narrowOnly}`}
+    >
+      {quote ? (
+        <>
+          {pickService && chosen && (
+            <div className="min-w-0 break-words text-sm font-medium">{chosen.name}</div>
+          )}
+          {priceLines}
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground">{outOfArea}</p>
+      )}
+      {quote || branch.canRequestQuote ? (
+        <Button className="w-full sm:w-auto" onClick={goToDetails}>
+          Continue
+        </Button>
+      ) : null}
+    </div>
+  ) : null;
 
   const serviceCard = (
     <div className="rounded-2xl border bg-card p-(--card-pad)">
@@ -449,7 +611,7 @@ export function SignupFlow({
       {instantStart && (
         <div className="mt-4">
           <Button
-            onClick={() => quoteMut.mutate()}
+            onClick={() => quoteMut.mutate(form.postal_code)}
             disabled={!canQuote || quoteMut.isPending}
             variant="secondary"
           >
@@ -457,12 +619,7 @@ export function SignupFlow({
           </Button>
         </div>
       )}
-      {branch.reason === "no-zone" ? (
-        <p className="mt-3 text-sm text-muted-foreground">
-          We don't have online pricing for that ZIP yet.
-          {branch.canRequestQuote ? " Add your details and we'll send you a quote." : ""}
-        </p>
-      ) : null}
+      {quoteAnswer}
     </div>
   );
 
@@ -611,10 +768,12 @@ export function SignupFlow({
 
   const quotePanel = (
     <aside
+      ref={panelRef}
+      tabIndex={-1}
       className={
         variant === "page"
-          ? "h-fit min-w-0 rounded-2xl border bg-card p-6 lg:sticky lg:top-24"
-          : "min-w-0 rounded-2xl border bg-card p-6"
+          ? "h-fit min-w-0 rounded-2xl border bg-card p-6 outline-none lg:sticky lg:top-24"
+          : "min-w-0 rounded-2xl border bg-card p-6 outline-none"
       }
     >
       <h2 className="text-base font-semibold">Your quote</h2>
@@ -626,7 +785,7 @@ export function SignupFlow({
                 {lineCopy.priceHint} <em>Get instant price</em>.
               </>
             ) : branch.reason === "no-zone" ? (
-              <>{lineCopy.outOfArea}</>
+              <>{outOfArea}</>
             ) : (
               <>Tell us about your property and pets and we'll get back to you with a price.</>
             )}
@@ -635,58 +794,12 @@ export function SignupFlow({
         </div>
       ) : (
         <div className="mt-4 space-y-4">
-          <div className="text-xs uppercase tracking-wide text-muted-foreground">
-            {quote.zone_name}
-          </div>
+          {/* No zone name here (#526): "MAIN" is the office's label for a
+              set of ZIPs, not something a customer chose or can read. */}
           {pickService && chosen && (
             <div className="min-w-0 break-words text-sm font-medium">{chosen.name}</div>
           )}
-          {showsFirstCleanup && (
-            <div className="flex items-baseline justify-between gap-3">
-              <div className="min-w-0 text-sm">
-                First cleanup (one-time)
-                {pickedOption && (
-                  <span className="block break-words text-xs text-muted-foreground">
-                    Last cleaned: {pickedOption.label}
-                  </span>
-                )}
-              </div>
-              <div className="shrink-0 font-medium">
-                {firstCleanupCents == null
-                  ? "Answer above"
-                  : money(firstCleanupCents, quote.currency)}
-              </div>
-            </div>
-          )}
-          <div className="flex items-baseline justify-between gap-3">
-            <div className="min-w-0 text-sm">Ongoing ({frequencyLabel(frequency)})</div>
-            {/* PER VISIT, not per month. `public_quote` returns
-                `round(base_visit_cents × frequency_multiplier)`, and
-                pricing.ts documents it as "Per-visit price after the
-                frequency multiplier": the multipliers price LESS frequent
-                visits HIGHER (weekly 1.0, biweekly 1.7, monthly 3.2), which
-                only makes sense per visit. Every other surface says /visit;
-                this one said /mo and the line below sold "a prepaid first
-                month" for what buys ONE visit. Weekly service at $25 read
-                "$25.00/mo". */}
-            <div className="shrink-0 font-medium">
-              {money(quote.recurring_price_cents, quote.currency)}/{lineCopy.visit}
-            </div>
-          </div>
-          <div className="border-t pt-3 text-xs text-muted-foreground">
-            {firstCleanupCents == null ? (
-              <>Tell us when your yard was last cleaned to see today's total.</>
-            ) : (
-              <>
-                Charged today if you start service:{" "}
-                <strong className="text-foreground">
-                  {money(firstCleanupCents + quote.recurring_price_cents, quote.currency)}
-                </strong>
-                {chargedTodayCovers(line, showsFirstCleanup)}{" "}
-                {perVisitBillingSentence(line, money(quote.recurring_price_cents, quote.currency))}
-              </>
-            )}
-          </div>
+          {priceLines}
           {intent ? (
             <Elements
               stripe={getStripe(intent.publishableKey, intent.stripeAccount)}
@@ -724,12 +837,42 @@ export function SignupFlow({
     </aside>
   );
 
+  // The price, kept in reach while step 2 is filled in (#523): once the
+  // answer under step 1 has scrolled away and until the quote panel comes
+  // into view. Fixed, not sticky, so showing and hiding it moves nothing
+  // else on the page; `lg:hidden` on the page, where the panel is sticky
+  // beside the form instead.
+  const compactBar =
+    quote && showBar ? (
+      <div
+        className={`fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 px-4 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] backdrop-blur ${narrowOnly}`}
+      >
+        <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
+          <div className="min-w-0 text-sm">
+            <span className="font-medium">
+              {perVisit}/{lineCopy.visit}
+            </span>
+            {todayCents != null ? (
+              <span className="text-muted-foreground">
+                {", "}
+                {money(todayCents, quote.currency)} today
+              </span>
+            ) : null}
+          </div>
+          <Button size="sm" className="shrink-0" onClick={goToPanel}>
+            Continue
+          </Button>
+        </div>
+      </div>
+    ) : null;
+
   if (variant === "sheet") {
     return (
       <div className="space-y-4">
         {serviceCard}
         {detailsCard}
         {quotePanel}
+        {compactBar}
       </div>
     );
   }
@@ -741,6 +884,7 @@ export function SignupFlow({
         {detailsCard}
       </div>
       {quotePanel}
+      {compactBar}
     </div>
   );
 }

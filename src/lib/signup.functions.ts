@@ -9,12 +9,9 @@ import { resolveSupabaseUrl } from "@/lib/supabase-url";
 import { parseFirstCleanupPricing } from "@/lib/first-cleanup";
 import { parseQuoteOptions, signupChargeFromQuote } from "@/lib/signup-charge";
 import { LEAD_SOURCE } from "@/lib/new-customer-form";
+import { serviceAreaSummary } from "@/lib/booking-page";
 import { publicServiceChoices, type PublicService } from "@/lib/public-services";
-import {
-  customerCanRequestService,
-  type ServiceLine,
-  type ServiceLineAvailability,
-} from "@/lib/service-lines";
+import { customerCanRequestService, type ServiceLineAvailability } from "@/lib/service-lines";
 import {
   CALM_REFUSAL,
   ELAPSED_FIELD,
@@ -54,7 +51,10 @@ export const getPublicSignupForm = createServerFn({ method: "GET" })
     const { data: rows, error } = await sb.rpc("public_get_org_for_lead_form", { _slug: data.slug });
     if (error) throw new Error(error.message);
     const found = (rows as Array<{ id: string; name?: string }> | null)?.[0] ?? null;
-    if (!found) throw new Error("This page isn't available.");
+    // No business answers on this address: null, not an error, so the route
+    // can tell "no such page" (a 404, #524) from "the lookup failed" (which
+    // it leaves to the browser to ask again) without reading a message.
+    if (!found) return null;
 
     // Read with the service role because the anon key cannot read
     // organizations, and only for the org the public lookup above resolved.
@@ -64,10 +64,26 @@ export const getPublicSignupForm = createServerFn({ method: "GET" })
     const { data: org } = await (supabaseAdmin as any)
       .from("organizations")
       .select(
-        "id, name, currency, logo_url, brand_color, portal_slug, slug, public_signup_enabled, lead_form_config, first_cleanup_pricing",
+        "id, name, currency, logo_url, brand_color, portal_slug, slug, public_signup_enabled, lead_form_config, first_cleanup_pricing, contact_phone, contact_email",
       )
       .eq("id", found.id)
       .maybeSingle();
+
+    // Where the business works, for "Serving ZIP codes ..." under the
+    // headline (#526): the ZIPs its zones list and nothing else of them, so
+    // no price and no office label ("MAIN") leaves the server. A lookup that
+    // fails hides the line; the page still loads.
+    let serviceArea: string | null = null;
+    try {
+      const { data: zones, error: zonesErr } = await (supabaseAdmin as any)
+        .from("zones")
+        .select("zip_codes, postal_prefix")
+        .eq("organization_id", found.id);
+      if (zonesErr) console.error("signup service area lookup failed", found.id, zonesErr);
+      else serviceArea = serviceAreaSummary(zones ?? []);
+    } catch (e) {
+      console.error("signup service area lookup failed", found.id, e);
+    }
 
     const { normalizeFormConfig } = await import("@/lib/new-customer-form");
     const form = normalizeFormConfig(org?.lead_form_config);
@@ -157,32 +173,17 @@ export const getPublicSignupForm = createServerFn({ method: "GET" })
       instantStart,
       form,
       firstCleanup,
+      // How to reach the business, as the owner set it in Settings → Client
+      // portal (the same two fields its customer email signs with). Each is
+      // null when unset, and the page hides it.
+      contact: {
+        phone: ((org?.contact_phone as string | null) ?? "").trim() || null,
+        email: ((org?.contact_email as string | null) ?? "").trim() || null,
+      },
+      serviceArea,
       services,
       serviceLines,
     };
-  });
-
-/** Which lines a business sells online, for the booking link's meta
- *  description (#525) and nothing else. The route's loader asks it, so it is
- *  kept to the two reads that answer it: public_services (the business's
- *  own gate is in the RPC) and the platform switch, filtered by the same
- *  publicServiceChoices the form reads. Never throws: a link preview built
- *  from nothing describes the page as pet waste, the form it falls back to. */
-export const getPublicSignupLines = createServerFn({ method: "GET" })
-  .inputValidator((d) => z.object({ slug: z.string().trim().min(1).max(120) }).parse(d))
-  .handler(async ({ data }): Promise<{ lines: ServiceLine[] }> => {
-    try {
-      const { loadServiceLineAvailability } =
-        await import("@/lib/service-line-availability.server");
-      const [{ data: rows, error }, availability] = await Promise.all([
-        anon().rpc("public_services", { _slug: data.slug }),
-        loadServiceLineAvailability(),
-      ]);
-      if (error) return { lines: [] };
-      return { lines: publicServiceChoices(rows, availability).map((s) => s.service_line) };
-    } catch {
-      return { lines: [] };
-    }
   });
 
 const quoteSchema = z.object({
@@ -660,10 +661,24 @@ export const getSignupSettings = createServerFn({ method: "GET" })
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
     const { data: org, error } = await context.supabase
       .from("organizations")
-      .select("name, slug, portal_slug, public_signup_enabled")
+      .select("name, slug, portal_slug, public_signup_enabled, contact_phone, contact_email")
       .eq("id", orgId)
       .maybeSingle();
     if (error) throw new Error(error.message);
+    // What the booking page shows about the business (#526), read the way
+    // getPublicSignupForm reads it, so Settings cannot promise a line the
+    // page does not draw. Null when the zones lookup failed: "unknown".
+    let serviceArea: string | null = null;
+    let serviceAreaKnown = false;
+    const { data: zones, error: zonesErr } = await (context.supabase as any)
+      .from("zones")
+      .select("zip_codes, postal_prefix")
+      .eq("organization_id", orgId);
+    if (zonesErr) console.error("signup settings zones lookup failed", orgId, zonesErr);
+    else {
+      serviceArea = serviceAreaSummary(zones ?? []);
+      serviceAreaKnown = true;
+    }
     // Whether a card can be taken, so the settings page can say why the form
     // is still a quote request with the switch on. Null when the lookup
     // failed: that is "unknown", not "no".
@@ -685,6 +700,12 @@ export const getSignupSettings = createServerFn({ method: "GET" })
       // reports the one their own links should use.
       effectiveSlug: (org?.portal_slug as string | null) ?? (org?.slug as string | null) ?? null,
       publicSignupEnabled: !!org?.public_signup_enabled,
+      bookingPage: {
+        phone: ((org?.contact_phone as string | null) ?? "").trim() || null,
+        email: ((org?.contact_email as string | null) ?? "").trim() || null,
+        serviceArea,
+        serviceAreaKnown,
+      },
     };
   });
 

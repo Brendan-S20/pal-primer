@@ -3,8 +3,8 @@
  *  /signup/{slug} was written for one service: pricing a yard. Every word on
  *  it, from the meta description to the "Charged today" sentence, assumed a
  *  scooping business, so a walk read as a cleanup. This is the one map the
- *  page reads its line-dependent words from: the step 1 hint, the
- *  out-of-area line, the quote panel's labels, the "Charged today" sentence,
+ *  page reads its line-dependent words from: the step 1 hint, the quote
+ *  panel's labels, the "Charged today" sentence,
  *  the note's placeholder, the pet field, the cadences, and the meta
  *  description.
  *
@@ -29,8 +29,6 @@ export type BookingCopy = {
   petLabel: "Dogs" | "Pets";
   /** Step 1's hint, before the button's name: "... then hit Get instant price." */
   priceHint: string;
-  /** Under a ZIP no zone prices, before the quote request. */
-  outOfArea: string;
   /** One visit, as the quote panel and the billing sentence name it. */
   visit: string;
   /** Several of them. */
@@ -53,7 +51,6 @@ export const BOOKING_COPY: Readonly<Record<ServiceLine, BookingCopy>> = {
   pet_waste: {
     petLabel: "Dogs",
     priceHint: "Enter your ZIP and dogs, then hit",
-    outOfArea: "We'll price your yard ourselves and get back to you.",
     visit: "visit",
     visits: "visits",
     notePlaceholder: "Gate code, dog names, preferred days…",
@@ -65,7 +62,6 @@ export const BOOKING_COPY: Readonly<Record<ServiceLine, BookingCopy>> = {
   dog_walking: {
     petLabel: "Dogs",
     priceHint: "Enter your ZIP and dogs, then hit",
-    outOfArea: "We'll price your walks ourselves and get back to you.",
     visit: "walk",
     visits: "walks",
     notePlaceholder: "Dog names, how to get in, preferred days and times…",
@@ -77,7 +73,6 @@ export const BOOKING_COPY: Readonly<Record<ServiceLine, BookingCopy>> = {
   pet_sitting: {
     petLabel: "Pets",
     priceHint: "Enter your ZIP and pets, then hit",
-    outOfArea: "We'll price your pet sitting ourselves and get back to you.",
     visit: "visit",
     visits: "visits",
     notePlaceholder: "Pet names, feeding and medication, how to get in…",
@@ -89,7 +84,6 @@ export const BOOKING_COPY: Readonly<Record<ServiceLine, BookingCopy>> = {
   mobile_grooming: {
     petLabel: "Pets",
     priceHint: "Enter your ZIP and pets, then hit",
-    outOfArea: "We'll price your grooming ourselves and get back to you.",
     visit: "groom",
     visits: "grooms",
     notePlaceholder: "Pet names, breed and coat, where the van can park…",
@@ -101,7 +95,6 @@ export const BOOKING_COPY: Readonly<Record<ServiceLine, BookingCopy>> = {
   training: {
     petLabel: "Dogs",
     priceHint: "Enter your ZIP and dogs, then hit",
-    outOfArea: "We'll price your training ourselves and get back to you.",
     visit: "session",
     visits: "sessions",
     notePlaceholder: "Dog names, what you'd like to work on, preferred days…",
@@ -113,7 +106,6 @@ export const BOOKING_COPY: Readonly<Record<ServiceLine, BookingCopy>> = {
   other: {
     petLabel: "Pets",
     priceHint: "Enter your ZIP and pets, then hit",
-    outOfArea: "We'll work out a price ourselves and get back to you.",
     visit: "visit",
     visits: "visits",
     notePlaceholder: "Pet names, how to get in, preferred days…",
