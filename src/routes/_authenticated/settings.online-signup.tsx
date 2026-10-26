@@ -229,6 +229,8 @@ function SignupAndQuoteFormSettings() {
             )}
           </div>
 
+          {cfg?.bookingPage ? <WhatThePageShows facts={cfg.bookingPage} /> : null}
+
           {publicUrl ? (
             <div className="rounded-lg border bg-card p-4">
               <h2 className="mb-2 text-sm font-medium">Embed on your website</h2>
@@ -308,6 +310,66 @@ function SignupAndQuoteFormSettings() {
           ) : null}
         </>
       )}
+    </div>
+  );
+}
+
+/** What the booking page tells a stranger about the business, under its
+ *  headline (#526), and where each line is edited. An unset line is hidden
+ *  on the page, so it says so here rather than leaving the owner to wonder
+ *  why their number is missing. */
+function WhatThePageShows({
+  facts,
+}: {
+  facts: {
+    phone: string | null;
+    email: string | null;
+    serviceArea: string | null;
+    serviceAreaKnown: boolean;
+  };
+}) {
+  const rows: Array<{ label: string; value: string | null; unset: string }> = [
+    { label: "Phone", value: facts.phone, unset: "Not set, so it isn't shown" },
+    { label: "Email", value: facts.email, unset: "Not set, so it isn't shown" },
+    {
+      label: "Service area",
+      value: facts.serviceArea,
+      unset: facts.serviceAreaKnown
+        ? "None of your zones lists a ZIP code, so it isn't shown"
+        : "Couldn't be checked just now",
+    },
+  ];
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <h2 className="text-sm font-medium">What the page says about you</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Shown under your headline, so a new client can see who you are and where you work before
+        they start. Zone names and prices are never shown.
+      </p>
+      <dl className="mt-3 space-y-2 text-sm">
+        {rows.map((r) => (
+          <div key={r.label} className="flex flex-wrap gap-x-3 gap-y-0.5">
+            <dt className="w-28 shrink-0 text-muted-foreground">{r.label}</dt>
+            <dd className={`min-w-0 break-words ${r.value ? "" : "text-muted-foreground italic"}`}>
+              {r.value ?? r.unset}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+        <Link
+          to="/settings/client-portal"
+          className="inline-flex items-center text-primary underline touch:min-h-11"
+        >
+          Edit phone and email
+        </Link>
+        <Link
+          to="/zones"
+          className="inline-flex items-center text-primary underline touch:min-h-11"
+        >
+          Edit service areas
+        </Link>
+      </div>
     </div>
   );
 }

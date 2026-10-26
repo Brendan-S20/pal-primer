@@ -54,6 +54,7 @@ import {
   PORTAL_TOKEN,
   SIGNUP_LONG_TIER_LABEL,
   NO_ZONE_ZIP,
+  SIGNUP_CONTACT_EMAIL,
   QUOTE_ONLY_CONFIRMATION,
   QUOTE_ONLY_HEADLINE,
   QUOTE_ONLY_SLUG,
@@ -426,11 +427,17 @@ test.describe("the signup page, which prices the first cleanup by the customer's
       await page.getByRole("option", { name: SIGNUP_LONG_TIER_LABEL }).click();
       await page.getByRole("button", { name: "Get instant price" }).click();
 
-      await expect(page.getByText(`Last cleaned: ${SIGNUP_LONG_TIER_LABEL}`)).toBeVisible({
-        timeout: 15_000,
-      });
-      await expect(page.getByText("$150.00").first()).toBeVisible();
-      await expect(page.getByText("$25.00/visit")).toBeVisible();
+      // Below `lg` the price is drawn twice, under step 1 and in the panel
+      // (#523), and at `lg` the first of the two is hidden: so "a visible
+      // one", not "the one".
+      await expect(
+        page.getByText(`Last cleaned: ${SIGNUP_LONG_TIER_LABEL}`).filter({ visible: true }).first(),
+      ).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText("$150.00").filter({ visible: true }).first()).toBeVisible();
+      await expect(page.getByText("$25.00/visit").filter({ visible: true }).first()).toBeVisible();
+      // Who the business is, under the headline (#526): the fixture's email
+      // is the longest unbreakable token on the page.
+      await expect(page.getByRole("link", { name: SIGNUP_CONTACT_EMAIL })).toBeVisible();
       // The choice the lead form and the signup merged into: both are on
       // the page once there is a price, and so both are measured.
       await expect(page.getByRole("button", { name: "Start service" })).toBeVisible();
@@ -486,9 +493,13 @@ test.describe("one form for a new customer: a price, or a quote request", () => 
       await page.getByRole("option", { name: SIGNUP_LONG_TIER_LABEL }).click();
       await page.getByRole("button", { name: "Get instant price" }).click();
 
-      await expect(page.getByText("We don't have online pricing for that ZIP yet.", { exact: false })).toBeVisible({
-        timeout: 15_000,
-      });
+      // The honest answer (#526): the business may not work there.
+      await expect(
+        page
+          .getByText(`doesn't list ${NO_ZONE_ZIP} in its service area yet`, { exact: false })
+          .filter({ visible: true })
+          .first(),
+      ).toBeVisible({ timeout: 15_000 });
       await expect(page.getByRole("button", { name: "Request a quote" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Start service" })).toHaveCount(0);
       await measure(page, "no zone", width);
@@ -543,4 +554,127 @@ test.describe("one form for a new customer: a price, or a quote request", () => 
       await measure(page, "redirected embed", width);
     });
   }
+});
+
+test.describe("on a phone the price appears where the visitor tapped (#523)", () => {
+  /**
+   * At 390 px the page is one column: step 1, then seven fields of step 2,
+   * then the quote panel. Tapping Get instant price used to change nothing
+   * the visitor could see: the price was drawn about 1,100 px further down.
+   * Now the answer is drawn under the button and scrolled to, and a compact
+   * bar keeps the price in reach while step 2 is filled in. At 1440 the
+   * panel is sticky beside the form, and neither is drawn.
+   *
+   * Proofs: the business's name (the lookup reached the page) and $175.00,
+   * the long answer's $150.00 first cleanup plus the $25.00 visit, which
+   * only a priced answer for the answer picked can draw.
+   */
+  const priceIt = async (page: import("@playwright/test").Page, width: number, height: number) => {
+    await page.setViewportSize({ width, height });
+    await installStubBackend(page, { portal: true });
+    await page.goto(`/signup/${PORTAL_SLUG}`, { waitUntil: "domcontentloaded" });
+    await expect(page.getByText(PORTAL_ORG_NAME).first()).toBeVisible({ timeout: 30_000 });
+    await page.getByLabel("ZIP code").fill("60601");
+    await page.locator("#last_cleaned").click();
+    await page.getByRole("option", { name: SIGNUP_LONG_TIER_LABEL }).click();
+    await page.getByRole("button", { name: "Get instant price" }).click();
+  };
+
+  for (const [width, height] of [
+    [390, 844],
+    [768, 1024],
+  ] as const) {
+    test(`the price and today's total are on screen at ${width}px, then stay in reach`, async ({
+      page,
+    }) => {
+      await priceIt(page, width, height);
+
+      // Under the button, on screen, without the visitor scrolling.
+      const answer = page.locator('[aria-live="polite"]').filter({ hasText: "$175.00" });
+      await expect(answer).toBeVisible({ timeout: 15_000 });
+      await expect(answer.getByText("$25.00/visit")).toBeInViewport({ ratio: 1 });
+      await expect(answer.getByText("Charged today if you start service:")).toBeInViewport({
+        ratio: 1,
+      });
+      await expect(answer).toBeFocused();
+      await page.waitForTimeout(400);
+      {
+        const { scrollW, innerW } = await measurePageOverflow(page);
+        expect(scrollW, `priced @${width}: scrolls sideways`).toBeLessThanOrEqual(innerW + 1);
+        expect(await findControlsOffTheSide(page), `priced @${width}`).toEqual([]);
+        expect(await findSilentlyClippedText(page), `priced @${width}`).toEqual([]);
+        if (width < 768) {
+          expect(await findControlsUnder44px(page), `priced @${width}`).toEqual([]);
+        }
+      }
+
+      // Continue goes to step 2's first field.
+      await answer.getByRole("button", { name: "Continue" }).click();
+      await expect(page.getByLabel("Full name *")).toBeFocused();
+
+      // Filling step 2, with step 2 at the top of the screen as a thumb
+      // working down it has it: the price is still on screen. At 390 the
+      // answer has scrolled away and the panel is far below, so the bar
+      // holds it; at 768x1024 the page is short enough that the panel itself
+      // is already in view, and the bar correctly stays out of the way.
+      await page.getByLabel("Full name *").fill("Anneliese Okonkwo-Vandermeer");
+      await page.evaluate(() =>
+        document.getElementById("name")?.scrollIntoView({ block: "start" }),
+      );
+      const bar = page.locator(".fixed.bottom-0").filter({ hasText: "$175.00 today" });
+      if (width < 768) {
+        await expect(bar).toBeVisible({ timeout: 5_000 });
+        await expect(bar).toContainText("$25.00/visit");
+      } else {
+        await expect(page.locator("aside").getByText("$175.00")).toBeInViewport();
+        await expect(bar).toHaveCount(0);
+      }
+      await page.waitForTimeout(300);
+      {
+        const { scrollW, innerW } = await measurePageOverflow(page);
+        expect(scrollW, `step 2 @${width}: scrolls sideways`).toBeLessThanOrEqual(innerW + 1);
+        expect(await findControlsOffTheSide(page), `step 2 @${width}`).toEqual([]);
+        expect(await findSilentlyClippedText(page), `step 2 @${width}`).toEqual([]);
+        if (width < 768) {
+          expect(await findControlsUnder44px(page), `step 2 @${width}`).toEqual([]);
+        }
+      }
+
+      // The bar's Continue goes to the panel, and the bar steps aside.
+      if (width < 768) {
+        await bar.getByRole("button", { name: "Continue" }).click();
+        await expect(page.getByRole("button", { name: "Start service" })).toBeInViewport();
+        await expect(bar).toHaveCount(0);
+      }
+    });
+  }
+
+  test("at 1440px the panel beside the form shows it, and nothing else is drawn", async ({
+    page,
+  }) => {
+    await priceIt(page, 1440, 900);
+    await expect(page.locator("aside").getByText("$175.00")).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator("aside")).toBeInViewport();
+    await expect(page.locator('[aria-live="polite"]').filter({ hasText: "$175.00" })).toBeHidden();
+    await expect(page.locator(".fixed.bottom-0")).toHaveCount(0);
+  });
+
+  test("an out-of-area ZIP is answered under the button at 390px too", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await installStubBackend(page, { portal: true });
+    await page.goto(`/signup/${PORTAL_SLUG}`, { waitUntil: "domcontentloaded" });
+    await expect(page.getByText(PORTAL_ORG_NAME).first()).toBeVisible({ timeout: 30_000 });
+    await page.getByLabel("ZIP code").fill(NO_ZONE_ZIP);
+    await page.locator("#last_cleaned").click();
+    await page.getByRole("option", { name: SIGNUP_LONG_TIER_LABEL }).click();
+    await page.getByRole("button", { name: "Get instant price" }).click();
+
+    const answer = page
+      .locator('[aria-live="polite"]')
+      .filter({ hasText: `doesn't list ${NO_ZONE_ZIP} in its service area yet` });
+    await expect(answer).toBeInViewport({ timeout: 15_000 });
+    await expect(answer).toContainText(`${PORTAL_ORG_NAME} doesn't list ${NO_ZONE_ZIP}`);
+    await answer.getByRole("button", { name: "Continue" }).click();
+    await expect(page.getByLabel("Full name *")).toBeFocused();
+  });
 });

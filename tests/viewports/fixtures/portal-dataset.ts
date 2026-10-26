@@ -692,6 +692,9 @@ const SIGNUP_TIERS = [
   { id: "three_months_or_never", label: SIGNUP_LONG_TIER_LABEL, price_cents: 15000 },
 ];
 
+export const SIGNUP_CONTACT_EMAIL =
+  "scheduling-and-billing@whitfield-ramirez-yard-and-waste-services.com";
+
 /** `getPublicSignupForm`: the business, its branding, the form's own
  *  settings (none customised here, so the page draws its defaults), whether
  *  "Start service" is on offer, and the first-cleanup answers. */
@@ -715,6 +718,14 @@ export const SIGNUP_FORM = {
     mode: "by_last_cleaned",
     tiers: SIGNUP_TIERS.map(({ id, label }) => ({ id, label })),
   },
+  // Who the business is, under the headline (#526). The email is the
+  // longest unbreakable token on the page on purpose: an address is exactly
+  // the value with no space in it that widens a row at 360 px.
+  contact: {
+    phone: "(773) 555-0142",
+    email: SIGNUP_CONTACT_EMAIL,
+  },
+  serviceArea: "Serving ZIP codes 60618, 60625, 60640 and 9 more",
 };
 
 // ── The same form for a business that only wants leads ─────────────────────
