@@ -187,6 +187,14 @@ describe("the CI release workflow signs with nothing in the repo", () => {
     expect(verify?.run).toMatch(/exit 1/);
   });
 
+  it("does not pipe jarsigner's text into grep -q, which pipefail turns against a signed bundle", () => {
+    // Run 40348924069: "jar verified." then hundreds of warning lines; grep -q
+    // exited at the first, the writer took SIGPIPE, and pipefail failed the
+    // step on a bundle that was signed.
+    const verify = releaseSteps().find((s) => /jarsigner"?\s+-verify/.test(s.run ?? ""));
+    expect(verify?.run).not.toMatch(/\|\s*grep\s+-q/);
+  });
+
   it("never traces its shell, which would print the secrets it handles", () => {
     for (const step of releaseSteps()) {
       expect(step.run ?? "", step.name ?? step.uses).not.toMatch(/set -[a-z]*x|set -o xtrace/);
