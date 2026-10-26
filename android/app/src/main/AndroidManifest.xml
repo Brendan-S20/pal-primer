@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <application
         android:allowBackup="false"
@@ -175,12 +176,21 @@
 
     <!-- @capacitor/camera: completing a visit with a photo, and DNA samples. -->
     <uses-permission android:name="android.permission.CAMERA" />
-    <!-- Reading an existing photo. READ_MEDIA_IMAGES is the Android 13+ form;
-         READ_EXTERNAL_STORAGE is capped below it for older devices. -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
+    <!-- Attaching an EXISTING photo (visit photo, receipt, avatar) needs no
+         permission at all. Every one goes through an <input type="file">, which
+         Capacitor's BridgeWebChromeClient turns into the system chooser
+         (ACTION_GET_CONTENT; the photo picker on Android 13+). The chooser
+         hands back one content:// URI with a one-time read grant.
+
+         So the app holds no media or storage permission, and Play forbids it
+         to: READ_MEDIA_IMAGES/VIDEO are only for apps whose core purpose is
+         broad gallery access, and Play flagged this one for it on 2026-10-23
+         (#533). The removals below also strip any a library merges in.
+         Enforced by tests/an-android-app-that-could-not-use-the-camera.test.ts. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
 
     <!-- @capacitor/geolocation: "locate me" on the route map. COARSE as well as
          FINE because Android 12+ lets someone grant only the approximate one,
