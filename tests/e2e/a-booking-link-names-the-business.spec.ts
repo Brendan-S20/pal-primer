@@ -26,7 +26,11 @@ function split(html: string) {
     .slice(html.indexOf("<body"))
     .replace(/<script[\s\S]*?<\/script>/g, "")
     .replace(/<style[\s\S]*?<\/style>/g, "")
-    .replace(/<[^>]+>/g, " ");
+    .replace(/<[^>]+>/g, " ")
+    // React escapes text, so "isn't" arrives as "isn&#x27;t".
+    .replace(/&#x27;|&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, "&");
   return { head, body };
 }
 
