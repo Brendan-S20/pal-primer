@@ -17,12 +17,16 @@ interface Props extends OrgContact {
   orgName?: string;
   clientName?: string;
   portalUrl?: string;
+  /** "Monday, November 2": the day a booking-link signup's first visit is
+   *  on or after (#527). Absent for a client the office added. */
+  firstVisitDate?: string;
 }
 
 const WelcomeEmail = ({
   orgName = "your service",
   clientName = "there",
   portalUrl,
+  firstVisitDate,
   ...orgContact
 }: Props) => (
   <Html lang="en">
@@ -34,6 +38,11 @@ const WelcomeEmail = ({
         <Text style={styles.text}>
           Thanks for choosing {orgName}. We're set up and ready to keep your yard clean.
         </Text>
+        {firstVisitDate ? (
+          <Text style={styles.text}>
+            {orgName} will confirm your first visit for on or after {firstVisitDate}.
+          </Text>
+        ) : null}
         {portalUrl ? (
           <>
             <Text style={styles.text}>
@@ -60,5 +69,6 @@ export const template = {
     orgName: "Acme Scoop Co.",
     clientName: "Jane",
     portalUrl: "https://example.com/portal/abc",
+    firstVisitDate: "Monday, November 2",
   },
 } satisfies TemplateEntry;

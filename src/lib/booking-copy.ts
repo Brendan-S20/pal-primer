@@ -35,6 +35,12 @@ export type BookingCopy = {
   visits: string;
   /** The "Anything else?" placeholder. */
   notePlaceholder: string;
+  /** The second box on each pet's row (#527): what tells THIS business
+   *  something. A groomer prices a coat; a scooper only wants a size. */
+  breedLabel: string;
+  /** The access box's placeholder (#527). Its label is the same on every
+   *  line, "Gate code or access notes"; what to put in it is not. */
+  accessPlaceholder: string;
   /** The cadences offered, in the order the select lists them. All of them
    *  are recurring: the public signup provisions a subscription, so a
    *  one-time option needs a one-off path from the webhook first. */
@@ -54,6 +60,8 @@ export const BOOKING_COPY: Readonly<Record<ServiceLine, BookingCopy>> = {
     visit: "visit",
     visits: "visits",
     notePlaceholder: "Gate code, dog names, preferred days…",
+    breedLabel: "Breed or size",
+    accessPlaceholder: "Gate code, which gate, where the dogs are during the visit…",
     cadences: RECURRING,
     metaDescription:
       "Enter your ZIP, number of dogs, and cleanup frequency to get a price, then start service online or ask for a quote.",
@@ -65,6 +73,8 @@ export const BOOKING_COPY: Readonly<Record<ServiceLine, BookingCopy>> = {
     visit: "walk",
     visits: "walks",
     notePlaceholder: "Dog names, how to get in, preferred days and times…",
+    breedLabel: "Breed or size",
+    accessPlaceholder: "Gate or door code, where the key or lockbox is, where the leash is…",
     cadences: ["weekly", "twice_weekly", "biweekly", "monthly"],
     metaDescription:
       "Enter your ZIP, number of dogs, and how often you'd like walks to get a price, then start service online or ask for a quote.",
@@ -76,6 +86,8 @@ export const BOOKING_COPY: Readonly<Record<ServiceLine, BookingCopy>> = {
     visit: "visit",
     visits: "visits",
     notePlaceholder: "Pet names, feeding and medication, how to get in…",
+    breedLabel: "Breed or size",
+    accessPlaceholder: "Door code, where the key or lockbox is, alarm, parking…",
     cadences: ["weekly", "twice_weekly", "biweekly", "monthly"],
     metaDescription:
       "Enter your ZIP, number of pets, and how often you'd like visits to get a price, then start service online or ask for a quote.",
@@ -87,6 +99,8 @@ export const BOOKING_COPY: Readonly<Record<ServiceLine, BookingCopy>> = {
     visit: "groom",
     visits: "grooms",
     notePlaceholder: "Pet names, breed and coat, where the van can park…",
+    breedLabel: "Breed and coat",
+    accessPlaceholder: "Where the van can park, gate code, who will hand over your pet…",
     cadences: ["monthly", "biweekly"],
     metaDescription:
       "Enter your ZIP, number of pets, and how often you'd like grooming to get a price, then start service online or ask for a quote.",
@@ -98,6 +112,8 @@ export const BOOKING_COPY: Readonly<Record<ServiceLine, BookingCopy>> = {
     visit: "session",
     visits: "sessions",
     notePlaceholder: "Dog names, what you'd like to work on, preferred days…",
+    breedLabel: "Breed and age",
+    accessPlaceholder: "Gate code, where to park, where to meet…",
     cadences: ["weekly", "biweekly"],
     metaDescription:
       "Enter your ZIP, number of dogs, and how often you'd like sessions to get a price, then start service online or ask for a quote.",
@@ -109,6 +125,8 @@ export const BOOKING_COPY: Readonly<Record<ServiceLine, BookingCopy>> = {
     visit: "visit",
     visits: "visits",
     notePlaceholder: "Pet names, how to get in, preferred days…",
+    breedLabel: "Breed or size",
+    accessPlaceholder: "Gate code, where the key is, parking…",
     cadences: RECURRING,
     metaDescription:
       "Enter your ZIP and number of pets to get a price, then start service online or ask for a quote.",

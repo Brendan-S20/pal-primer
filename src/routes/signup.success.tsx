@@ -5,6 +5,7 @@ import { z } from "zod";
 import { TenantSignupShell } from "@/components/marketing/TenantSignupShell";
 import { getSignupStatus } from "@/lib/signup.functions";
 import { customerTitle } from "@/lib/page-title";
+import { firstVisitSentence, localToday, reachTheBusinessSentence } from "@/lib/booking-details";
 
 const searchSchema = z.object({ sr: z.string().uuid().optional() });
 
@@ -95,6 +96,21 @@ function SuccessPage() {
             "Setting up your account. This takes just a few seconds…"
           )}
         </p>
+        {/* When, and how to reach them before then (#527). Only once the
+            account exists: a promise of a visit is not something to make
+            while it might still be refunded. */}
+        {status === "provisioned" && q.data?.firstVisitOnOrAfter ? (
+          <div className="mx-auto mt-6 max-w-md space-y-1 rounded-xl border bg-card p-4 text-sm">
+            <p className="font-medium break-words">
+              {firstVisitSentence(q.data.orgName, q.data.firstVisitOnOrAfter, localToday())}
+            </p>
+            {reachTheBusinessSentence(q.data.contactPhone, q.data.contactEmail) ? (
+              <p className="break-words text-muted-foreground">
+                {reachTheBusinessSentence(q.data.contactPhone, q.data.contactEmail)}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         <p className="mt-8 text-xs text-muted-foreground">
           {failed
             ? "You can close this tab. We have your details and we'll be in touch."

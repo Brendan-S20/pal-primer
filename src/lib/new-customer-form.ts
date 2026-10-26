@@ -21,6 +21,8 @@
 // Kept pure so the branch decision, the lead body and the redirect can be
 // tested without a browser, a database or a server function in the way.
 
+import { normalizeBookingDetails, type BookingDetailsConfig } from "@/lib/booking-details";
+
 // ── Who the page is for, and what it offers ────────────────────────────────
 
 /** The answer `getSignupQuote` gives, in the shape the decision needs. */
@@ -160,6 +162,8 @@ export type FormConfig = {
   intro: string;
   confirmation: string;
   fields: FormFields;
+  /** The first visit's questions and the earliest start (#527). */
+  details: BookingDetailsConfig;
 };
 
 /** `organizations.lead_form_config`, read defensively. Text the owner has not
@@ -181,6 +185,7 @@ export function normalizeFormConfig(raw: unknown): FormConfig {
       dogCount: f.dogCount !== false,
       message: f.message !== false,
     },
+    details: normalizeBookingDetails(c.details),
   };
 }
 

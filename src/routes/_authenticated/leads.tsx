@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { listLeads, updateLeadStatus, getLeadFormConfig } from "@/lib/leads.functions";
 import { leadConversionState } from "@/lib/lead-conversion";
 import { leadOriginLabel, type LeadSignupState } from "@/lib/new-customer-form";
+import { formatStartDate, localToday, petsSummary } from "@/lib/booking-details";
 import { Eye, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -279,6 +280,32 @@ function LeadsPage() {
                         one thing and the form let them pick (phase 5). */}
                     {(l as any).service?.name ? <> · {(l as any).service.name}</> : null}
                   </div>
+                  {/* What the first visit needs (#527): when they want to
+                      start, the pets by name, and how to get in. */}
+                  {l.preferred_start_date || petsSummary(l.pets) || l.access_notes ? (
+                    <div className="mt-2 space-y-0.5 text-sm">
+                      {l.preferred_start_date ? (
+                        <div>
+                          <span className="text-muted-foreground">Start on or after:</span>{" "}
+                          <span className="font-medium">
+                            {formatStartDate(l.preferred_start_date, localToday())}
+                          </span>
+                        </div>
+                      ) : null}
+                      {petsSummary(l.pets) ? (
+                        <div className="break-words">
+                          <span className="text-muted-foreground">Pets:</span>{" "}
+                          {petsSummary(l.pets)}
+                        </div>
+                      ) : null}
+                      {l.access_notes ? (
+                        <div className="max-w-2xl whitespace-pre-wrap break-words">
+                          <span className="text-muted-foreground">Access:</span>{" "}
+                          {l.access_notes}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {l.message ? (
                     <p className="mt-2 max-w-2xl whitespace-pre-wrap break-words text-sm">
                       {l.message}

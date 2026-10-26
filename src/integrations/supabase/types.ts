@@ -3334,6 +3334,7 @@ export type Database = {
       }
       leads: {
         Row: {
+          access_notes: string | null
           company: string | null
           contacted_at: string | null
           converted_at: string | null
@@ -3347,13 +3348,16 @@ export type Database = {
           message: string | null
           name: string
           organization_id: string | null
+          pets: Json | null
           phone: string | null
+          preferred_start_date: string | null
           service_id: string | null
           source: string
           status: string
           updated_at: string
         }
         Insert: {
+          access_notes?: string | null
           company?: string | null
           contacted_at?: string | null
           converted_at?: string | null
@@ -3367,13 +3371,16 @@ export type Database = {
           message?: string | null
           name: string
           organization_id?: string | null
+          pets?: Json | null
           phone?: string | null
+          preferred_start_date?: string | null
           service_id?: string | null
           source?: string
           status?: string
           updated_at?: string
         }
         Update: {
+          access_notes?: string | null
           company?: string | null
           contacted_at?: string | null
           converted_at?: string | null
@@ -3387,7 +3394,9 @@ export type Database = {
           message?: string | null
           name?: string
           organization_id?: string | null
+          pets?: Json | null
           phone?: string | null
+          preferred_start_date?: string | null
           service_id?: string | null
           source?: string
           status?: string
@@ -6859,6 +6868,7 @@ export type Database = {
       }
       signup_requests: {
         Row: {
+          access_notes: string | null
           city: string | null
           created_at: string
           currency: string
@@ -6873,8 +6883,10 @@ export type Database = {
           lead_id: string | null
           name: string
           organization_id: string
+          pets: Json | null
           phone: string | null
           postal_code: string
+          preferred_start_date: string | null
           provisioned_client_id: string | null
           recurring_price_cents: number
           refunded_amount_cents: number | null
@@ -6890,6 +6902,7 @@ export type Database = {
           zone_id: string | null
         }
         Insert: {
+          access_notes?: string | null
           city?: string | null
           created_at?: string
           currency?: string
@@ -6904,8 +6917,10 @@ export type Database = {
           lead_id?: string | null
           name: string
           organization_id: string
+          pets?: Json | null
           phone?: string | null
           postal_code: string
+          preferred_start_date?: string | null
           provisioned_client_id?: string | null
           recurring_price_cents: number
           refunded_amount_cents?: number | null
@@ -6921,6 +6936,7 @@ export type Database = {
           zone_id?: string | null
         }
         Update: {
+          access_notes?: string | null
           city?: string | null
           created_at?: string
           currency?: string
@@ -6935,8 +6951,10 @@ export type Database = {
           lead_id?: string | null
           name?: string
           organization_id?: string
+          pets?: Json | null
           phone?: string | null
           postal_code?: string
+          preferred_start_date?: string | null
           provisioned_client_id?: string | null
           recurring_price_cents?: number
           refunded_amount_cents?: number | null

@@ -36,6 +36,12 @@ import {
   screenSubmission,
 } from "@/lib/public-form-guard";
 import { customerCanRequestService } from "@/lib/service-lines";
+import {
+  bookingDetailsColumns,
+  bookingDetailsSchema,
+  bookingDetailsProblem,
+  normalizeBookingDetails,
+} from "@/lib/booking-details";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -63,6 +69,9 @@ const leadSchema = z.object({
   // one. An id from public_services, checked below against the business the
   // slug resolved to; a business that sells one thing never sends it.
   service_id: z.string().uuid().optional().nullable(),
+  // The first visit's answers (#527): the pets by name, how to get in, and
+  // when to start. All optional here; see the check below for why.
+  ...bookingDetailsSchema.shape,
   // The spam filters (public-form-guard.ts). Unknown rather than a bounded
   // string, so a script that stuffs the honeypot with a novel gets the same
   // calm refusal as one that writes a word, not a validation error naming it.
@@ -158,6 +167,45 @@ export const Route = createFileRoute("/api/public/leads")({
           service = { id: svc.id as string, name: (svc.name as string) ?? "" };
         }
 
+        // The first visit's answers, held to the business's settings. Only
+        // what was SENT is checked: a start date before the business can
+        // come is refused, but a required question left out is not, because
+        // this endpoint is also the one a tenant's own website posts to, and
+        // a form embedded before #527 has no such fields. Turning "required"
+        // on in Settings must not silently stop the website's leads. The
+        // booking link itself enforces required in the browser.
+        let detailsConfig = normalizeBookingDetails(null);
+        try {
+          const { data: org } = await (supabaseAdmin.from("organizations") as any)
+            .select("lead_form_config")
+            .eq("id", orgId)
+            .maybeSingle();
+          const cfg = org?.lead_form_config;
+          detailsConfig = normalizeBookingDetails(
+            cfg && typeof cfg === "object" ? (cfg as any).details : null,
+          );
+        } catch (e) {
+          console.error("public lead booking details lookup failed", orgId, e);
+        }
+        const detailsAnswer = {
+          pets: data.pets,
+          dogCount: data.dog_count ?? null,
+          accessNotes: data.access_notes,
+          preferredStartDate: data.preferred_start_date,
+        };
+        const detailsProblem = bookingDetailsProblem(
+          { ...detailsConfig, pets: "optional", access: "optional", startDate: "optional" },
+          detailsAnswer,
+          new Date().toISOString().slice(0, 10),
+        );
+        if (detailsProblem) {
+          return new Response(JSON.stringify({ error: detailsProblem }), {
+            status: 400,
+            headers: jsonHeaders,
+          });
+        }
+        const details = bookingDetailsColumns(detailsConfig, detailsAnswer);
+
         const { takePublicFormTurn } = await import("@/lib/public-form-guard.server");
         const turn = await takePublicFormTurn(
           supabaseAdmin as any,
@@ -191,6 +239,9 @@ export const Route = createFileRoute("/api/public/leads")({
             // Only when one was named: a lead from a business that sells one
             // thing is the row it always was, with no service_id key at all.
             ...(service ? { service_id: service.id } : {}),
+            // Only the answers given: a lead from an older embedded form is
+            // the row it always was.
+            ...Object.fromEntries(Object.entries(details).filter(([, v]) => v != null)),
           })
           .select("id")
           .single();

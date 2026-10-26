@@ -2,6 +2,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { feeReversalCents } from "@/lib/platform-fee";
 import { makeStripe, warnOnApiVersionMismatch } from "@/lib/stripe-client.server";
+import {
+  cleanPets,
+  firstVisitOnOrAfter,
+  formatStartDate,
+  normalizeBookingDetails,
+  type PetEntry,
+} from "@/lib/booking-details";
 
 async function provisionSignup(
   supabaseAdmin: SupabaseClient,
@@ -106,10 +113,45 @@ async function provisionSignup(
         region: sr.region,
         postal_code: sr.postal_code,
         country: "US",
+        // "Gate code or access notes" from the booking link (#527), where the
+        // tech already reads Access on My Day and the visit drawer.
+        ...(sr.access_notes ? { access_notes: sr.access_notes as string } : {}),
       })
       .select("id")
       .single();
     if (pErr || !property) throw new Error(pErr?.message || "property insert failed");
+
+    // The pets the visitor named (#527), as dogs on the new property, so the
+    // tech's screen says "Biscuit" rather than "1 dog". Guarded like the
+    // schedule below: the customer has an account by this line, and a pet
+    // row that failed to write must not become the sale being refunded.
+    const pets = cleanPets(Array.isArray(sr.pets) ? (sr.pets as PetEntry[]) : []).filter(
+      (p) => p.name,
+    );
+    if (pets.length > 0) {
+      try {
+        const { error: dErr } = await supabaseAdmin.from("dogs").insert(
+          pets.map((p) => ({
+            organization_id: sr.organization_id,
+            property_id: property.id,
+            name: p.name,
+            breed: p.breed || null,
+          })),
+        );
+        if (dErr) throw dErr;
+      } catch (e) {
+        console.error("signup pets write failed", signupRequestId, e);
+      }
+    }
+
+    // The first visit is on or after the day asked for (#527): the
+    // subscription starts then, and visit generation walks from started_on,
+    // so nothing is scheduled before it. A day already past starts today.
+    const today = new Date().toISOString().slice(0, 10);
+    const startsOn =
+      sr.preferred_start_date && String(sr.preferred_start_date) > today
+        ? String(sr.preferred_start_date)
+        : today;
 
     // Create subscription (prepaid, active)
     const { error: subErr } = await supabaseAdmin.from("subscriptions").insert({
@@ -127,7 +169,7 @@ async function provisionSignup(
       // gives the plan the business's default (its pet-waste service).
       ...(sr.service_id ? { service_id: sr.service_id as string } : {}),
       status: "active",
-      started_on: new Date().toISOString().slice(0, 10),
+      started_on: startsOn,
     });
     if (subErr) throw new Error(subErr.message);
 
@@ -214,6 +256,25 @@ async function provisionSignup(
     try {
       const { buildPortalLink } = await import("@/lib/portal-links.server");
       const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
+      // "<Business> will confirm your first visit for on or after <date>."
+      // (#527), the same day the success page names.
+      let firstVisitDate: string | null = null;
+      try {
+        const { data: org } = await (supabaseAdmin as any)
+          .from("organizations")
+          .select("lead_form_config")
+          .eq("id", sr.organization_id)
+          .maybeSingle();
+        const cfg = org?.lead_form_config;
+        const iso = firstVisitOnOrAfter(
+          (sr.preferred_start_date as string | null) ?? null,
+          String(sr.created_at ?? today).slice(0, 10),
+          normalizeBookingDetails(cfg && typeof cfg === "object" ? cfg.details : null),
+        );
+        firstVisitDate = formatStartDate(iso, today);
+      } catch (e) {
+        console.error("signup first visit date failed", signupRequestId, e);
+      }
       await enqueueAppEmail({
         organizationId: sr.organization_id,
         clientId: client.id,
@@ -225,6 +286,7 @@ async function provisionSignup(
             sr.organization_id,
             client.portal_token as string | null,
           ),
+          ...(firstVisitDate ? { firstVisitDate } : {}),
         },
       });
     } catch (e) {

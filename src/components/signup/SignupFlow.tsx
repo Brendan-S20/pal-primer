@@ -8,7 +8,9 @@
 //
 //   1. ZIP, dogs, how often. Where the business sells online and prices that
 //      ZIP, "Get instant price" shows the price.
-//   2. Name, email, phone, address, a note.
+//   2. Name, email, phone, address, what the first visit needs (the pets by
+//      name, how to get in, when to start: lib/booking-details.ts, #527),
+//      a note.
 //   3. The visitor chooses. "Start service" is the signup it always was: card
 //      here, client + property + subscription from the webhook. "Get a quote
 //      by email" writes a lead the office follows up. Where there is no price
@@ -72,6 +74,20 @@ import {
   type FormFields,
 } from "@/lib/new-customer-form";
 import { ELAPSED_FIELD, HONEYPOT_FIELD } from "@/lib/public-form-guard";
+import {
+  ACCESS_NOTES_MAX,
+  MAX_START_DAYS_OUT,
+  PET_BREED_MAX,
+  PET_NAME_MAX,
+  addDays,
+  bookingDetailsProblem,
+  cleanPets,
+  earliestStartDate,
+  localToday,
+  normalizeBookingDetails,
+  resizePets,
+  type PetEntry,
+} from "@/lib/booking-details";
 import {
   asksAboutTheYard,
   offersAChoice,
@@ -170,6 +186,12 @@ export function SignupFlow({
     region: prefill?.region ?? "",
     last_cleaned: "",
     message: "",
+    // What the first visit needs (#527). One pet row per pet in step 1;
+    // the date is seeded with the earliest the business allows once its
+    // settings have loaded (below), so "2 days out" is the default.
+    pets: [] as PetEntry[],
+    access_notes: "",
+    preferred_start_date: "",
     // The service picked (phase 5). "" until the visitor picks, which reads
     // as the default (the business's pet-waste service, else the first
     // listed). Sent only when the business offers more than one.
@@ -209,6 +231,47 @@ export function SignupFlow({
     instantStart,
   );
   const copy = formQ.data ? formCopy(formQ.data.form, instantStart) : null;
+
+  // The first visit's questions (#527): which are asked, which required,
+  // and the first day the date picker offers.
+  const details = normalizeBookingDetails(formQ.data?.form?.details);
+  const today = localToday();
+  const earliestStart = earliestStartDate(today, details);
+  const petRows = resizePets(form.pets, form.dog_count);
+  const petSingular = lineCopy.petLabel === "Dogs" ? "Dog" : "Pet";
+  // Seeded once, when the settings arrive and nothing has been picked.
+  const seededStart = useRef(false);
+  useEffect(() => {
+    if (!formQ.data || seededStart.current) return;
+    seededStart.current = true;
+    if (details.startDate !== "off") {
+      setForm((f) => (f.preferred_start_date ? f : { ...f, preferred_start_date: earliestStart }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formQ.data]);
+  // The answers as both buttons send them. A question the owner turned off
+  // sends nothing, and the server stores nothing for it either way.
+  const detailsBody = {
+    pets: details.pets === "off" ? [] : cleanPets(petRows),
+    access_notes: details.access === "off" ? "" : form.access_notes,
+    preferred_start_date: details.startDate === "off" ? "" : form.preferred_start_date,
+  };
+  const detailsProblem = bookingDetailsProblem(
+    details,
+    {
+      pets: detailsBody.pets,
+      dogCount: Number(form.dog_count) || 1,
+      accessNotes: detailsBody.access_notes,
+      preferredStartDate: detailsBody.preferred_start_date,
+    },
+    today,
+  );
+  const markRequired = (a: "off" | "optional" | "required") =>
+    a === "required" ? (
+      " *"
+    ) : (
+      <span className="font-normal text-muted-foreground"> (optional)</span>
+    );
 
   // The spam filters' two fields (lib/public-form-guard.ts), sent with both
   // buttons. The honeypot is an input nobody can see or reach, so a person
@@ -271,6 +334,7 @@ export function SignupFlow({
           city: form.city,
           region: form.region,
           message: form.message,
+          ...detailsBody,
           channel,
           ...guardFields(),
         },
@@ -285,8 +349,9 @@ export function SignupFlow({
   const leadMut = useMutation({
     mutationFn: async () => {
       // The lead form's own body and the spam filters' two fields, plus the
-      // service picked when there was one to pick.
-      const lead = { ...leadBodyFromForm(slug, form), ...guardFields() };
+      // service picked when there was one to pick, and the first visit's
+      // answers as the owner's settings shape them (#527).
+      const lead = { ...leadBodyFromForm(slug, form), ...guardFields(), ...detailsBody };
       const res = await fetch("/api/public/leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -331,7 +396,11 @@ export function SignupFlow({
   const showsFirstCleanup =
     asksAboutTheYard(chosen) && (firstCleanupCents == null || firstCleanupCents > 0);
   const canCheckout =
-    branch.canStartService && firstCleanupCents != null && hasContact && !!form.street.trim();
+    branch.canStartService &&
+    firstCleanupCents != null &&
+    hasContact &&
+    !!form.street.trim() &&
+    !detailsProblem;
 
   // ── Where the answer goes below `lg` (#523) ────────────────────────────
   const narrowOnly = variant === "page" ? "lg:hidden" : "";
@@ -720,6 +789,92 @@ export function SignupFlow({
             </div>
           </>
         )}
+        {/* What the first visit needs (#527), each asked as the owner set
+            it in Settings. One row per pet from step 1's count, so the
+            names line up with the dogs the price was made of. */}
+        {details.pets !== "off" && (
+          <fieldset className="min-w-0 space-y-3 sm:col-span-2">
+            <legend className="text-sm font-medium">
+              Your {lineCopy.petLabel.toLowerCase()}
+              {markRequired(details.pets)}
+            </legend>
+            {petRows.map((pet, i) => (
+              <div key={i} className="grid gap-3 sm:grid-cols-2">
+                <div className="min-w-0 space-y-1.5">
+                  <Label htmlFor={`pet-name-${i}`}>
+                    {petSingular} {petRows.length > 1 ? `${i + 1} ` : ""}name
+                  </Label>
+                  <Input
+                    id={`pet-name-${i}`}
+                    maxLength={PET_NAME_MAX}
+                    value={pet.name}
+                    onChange={(e) =>
+                      setFormField({
+                        ...form,
+                        pets: petRows.map((p, j) => (j === i ? { ...p, name: e.target.value } : p)),
+                      })
+                    }
+                  />
+                </div>
+                <div className="min-w-0 space-y-1.5">
+                  <Label htmlFor={`pet-breed-${i}`}>
+                    {lineCopy.breedLabel}{" "}
+                    <span className="font-normal text-muted-foreground">(optional)</span>
+                  </Label>
+                  <Input
+                    id={`pet-breed-${i}`}
+                    maxLength={PET_BREED_MAX}
+                    value={pet.breed}
+                    onChange={(e) =>
+                      setFormField({
+                        ...form,
+                        pets: petRows.map((p, j) =>
+                          j === i ? { ...p, breed: e.target.value } : p,
+                        ),
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            ))}
+          </fieldset>
+        )}
+        {details.access !== "off" && (
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="access_notes">
+              Gate code or access notes
+              {markRequired(details.access)}
+            </Label>
+            <Textarea
+              id="access_notes"
+              rows={2}
+              maxLength={ACCESS_NOTES_MAX}
+              placeholder={lineCopy.accessPlaceholder}
+              value={form.access_notes}
+              onChange={(e) => setFormField({ ...form, access_notes: e.target.value })}
+            />
+          </div>
+        )}
+        {details.startDate !== "off" && (
+          <div className="min-w-0 space-y-1.5">
+            <Label htmlFor="preferred_start_date">
+              Preferred start date
+              {markRequired(details.startDate)}
+            </Label>
+            <Input
+              id="preferred_start_date"
+              type="date"
+              min={earliestStart}
+              max={addDays(today, MAX_START_DAYS_OUT)}
+              value={form.preferred_start_date}
+              onChange={(e) => setFormField({ ...form, preferred_start_date: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground">
+              {formQ.data.name ?? "The business"} will confirm your first visit for on or after this
+              date.
+            </p>
+          </div>
+        )}
         {fields.message && (
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="message">
@@ -744,7 +899,7 @@ export function SignupFlow({
       <Button
         className="w-full"
         variant={branch.canStartService ? "outline" : "default"}
-        disabled={!hasContact || leadMut.isPending}
+        disabled={!hasContact || !!detailsProblem || leadMut.isPending}
         onClick={() => leadMut.mutate()}
       >
         {leadMut.isPending
@@ -758,6 +913,11 @@ export function SignupFlow({
           different problems. */}
       {!hasContact && !(branch.canStartService && firstCleanupCents != null) && (
         <p className="text-xs text-muted-foreground">Add your name and email to send it.</p>
+      )}
+      {/* A first-visit answer the owner requires (#527), once the contact
+          details are in, under the same rule. */}
+      {hasContact && detailsProblem && !(branch.canStartService && firstCleanupCents != null) && (
+        <p className="text-xs text-muted-foreground">{detailsProblem}</p>
       )}
       {leadMut.error ? (
         <p className="text-sm text-destructive">{(leadMut.error as Error).message}</p>
@@ -826,7 +986,9 @@ export function SignupFlow({
               </Button>
               {!canCheckout && firstCleanupCents != null && (
                 <p className="text-xs text-muted-foreground">
-                  Add your name, email and street address to continue.
+                  {!hasContact || !form.street.trim()
+                    ? "Add your name, email and street address to continue."
+                    : detailsProblem}
                 </p>
               )}
             </div>
