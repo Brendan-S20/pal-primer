@@ -13,6 +13,19 @@ import { Switch } from "@/components/ui/switch";
 import { appOrigin } from "@/lib/app-origin";
 import { titleHead } from "@/lib/page-title";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  DEFAULT_BOOKING_DETAILS,
+  MAX_EARLIEST_START_DAYS,
+  type BookingDetailsConfig,
+  type DetailAsk,
+} from "@/lib/booking-details";
+import {
   FORM_DEFAULTS,
   normalizeFormConfig,
   readsAsQuoteOnly,
@@ -378,8 +391,31 @@ const OPTIONAL_FIELDS: { key: keyof FormFields; label: string; pricedAlways?: bo
   { key: "phone", label: "Phone" },
   { key: "location", label: "ZIP and address", pricedAlways: true },
   { key: "dogCount", label: "Number of dogs", pricedAlways: true },
-  { key: "message", label: "Notes (gate code, dog names)" },
+  { key: "message", label: "Anything else? (a free-text note)" },
 ];
+
+// The first visit's questions (#527). Each is off, optional or required;
+// the form asks them in step 2 and the webhook files the answers where the
+// tech reads them.
+const DETAIL_QUESTIONS: { key: "pets" | "access" | "startDate"; label: string; hint: string }[] = [
+  { key: "pets", label: "Pet names", hint: "One row per pet, with a breed or size." },
+  {
+    key: "access",
+    label: "Gate code or access notes",
+    hint: "Saved on the property, where your techs see Access.",
+  },
+  {
+    key: "startDate",
+    label: "Preferred start date",
+    hint: "No visit is scheduled before it.",
+  },
+];
+
+const ASK_LABEL: Record<DetailAsk, string> = {
+  off: "Don't ask",
+  optional: "Optional",
+  required: "Required",
+};
 
 function FormCustomizer({ config: raw, instantOn }: { config: unknown; instantOn: boolean }) {
   const qc = useQueryClient();
@@ -395,6 +431,10 @@ function FormCustomizer({ config: raw, instantOn }: { config: unknown; instantOn
     dogCount: true,
     message: true,
   });
+  const [details, setDetails] = useState<BookingDetailsConfig>(DEFAULT_BOOKING_DETAILS);
+  const [earliestDays, setEarliestDays] = useState(
+    String(DEFAULT_BOOKING_DETAILS.earliestStartDays),
+  );
 
   // The fixture and a business that never saved the form both send null;
   // normalizeFormConfig is the one reading of it the public page uses too.
@@ -406,6 +446,8 @@ function FormCustomizer({ config: raw, instantOn }: { config: unknown; instantOn
     setBrandColor(c.brandColor ?? "");
     setLogoUrl(c.logoUrl ?? "");
     setFields(c.fields);
+    setDetails(c.details);
+    setEarliestDays(String(c.details.earliestStartDays));
   }, [raw]);
 
   const defaults = instantOn ? FORM_DEFAULTS.instant : FORM_DEFAULTS.quoteOnly;
@@ -423,6 +465,13 @@ function FormCustomizer({ config: raw, instantOn }: { config: unknown; instantOn
           brandColor: brandColor.trim() || "",
           logoUrl: logoUrl.trim() || "",
           fields,
+          details: {
+            ...details,
+            earliestStartDays: Math.min(
+              MAX_EARLIEST_START_DAYS,
+              Math.max(0, Math.round(Number(earliestDays) || 0)),
+            ),
+          },
         },
       }),
     onSuccess: () => {
@@ -558,6 +607,66 @@ function FormCustomizer({ config: raw, instantOn }: { config: unknown; instantOn
               </div>
             );
           })}
+        </div>
+      </div>
+
+      <div>
+        <div className="text-xs font-medium">For the first visit</div>
+        <p className="text-xs text-muted-foreground">
+          Asked in step 2, after the price. A question you don't need, like a gate code for a
+          business that only grooms in the van, can be turned off.
+        </p>
+        <div className="mt-2 space-y-3">
+          {DETAIL_QUESTIONS.map((d) => (
+            <div
+              key={d.key}
+              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1"
+            >
+              <div className="min-w-0 flex-1 basis-48">
+                <Label htmlFor={`form-detail-${d.key}`} className="text-sm font-normal">
+                  {d.label}
+                </Label>
+                <p className="text-xs text-muted-foreground">{d.hint}</p>
+              </div>
+              <Select
+                value={details[d.key]}
+                onValueChange={(v) => setDetails((prev) => ({ ...prev, [d.key]: v as DetailAsk }))}
+              >
+                <SelectTrigger id={`form-detail-${d.key}`} className="w-full sm:w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(ASK_LABEL) as DetailAsk[]).map((a) => (
+                    <SelectItem key={a} value={a}>
+                      {ASK_LABEL[a]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ))}
+          {details.startDate !== "off" ? (
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+              <div className="min-w-0 flex-1 basis-48">
+                <Label htmlFor="form-earliest-start" className="text-sm font-normal">
+                  Earliest start, in days from today
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  The first day the date picker offers. 0 is today.
+                </p>
+              </div>
+              <Input
+                id="form-earliest-start"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={MAX_EARLIEST_START_DAYS}
+                className="w-full sm:w-40"
+                value={earliestDays}
+                onChange={(e) => setEarliestDays(e.target.value)}
+              />
+            </div>
+          ) : null}
         </div>
       </div>
 

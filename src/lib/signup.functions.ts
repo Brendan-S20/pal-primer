@@ -10,6 +10,15 @@ import { parseFirstCleanupPricing } from "@/lib/first-cleanup";
 import { parseQuoteOptions, signupChargeFromQuote } from "@/lib/signup-charge";
 import { LEAD_SOURCE } from "@/lib/new-customer-form";
 import { serviceAreaSummary } from "@/lib/booking-page";
+import {
+  DEFAULT_BOOKING_DETAILS,
+  bookingDetailsColumns,
+  bookingDetailsSchema,
+  bookingDetailsProblem,
+  firstVisitOnOrAfter,
+  normalizeBookingDetails,
+  type BookingDetailsConfig,
+} from "@/lib/booking-details";
 import { publicServiceChoices, type PublicService } from "@/lib/public-services";
 import { customerCanRequestService, type ServiceLineAvailability } from "@/lib/service-lines";
 import {
@@ -284,10 +293,34 @@ export const signupCheckoutSchema = quoteSchema.extend({
   // nowhere on a signup request for it, so it goes on the lead the signup
   // writes, where the office reads it beside the quote requests' notes.
   message: z.string().trim().max(2000).optional().or(z.literal("")),
+  // What the first visit needs (#527): the pets by name, how to get in, and
+  // when to start. Never priced; the business's settings decide which are
+  // asked and which are required (bookingDetailsProblem, below).
+  ...bookingDetailsSchema.shape,
   // The spam filters, as the quote request sends them (public-form-guard.ts).
   [HONEYPOT_FIELD]: z.unknown().optional(),
   [ELAPSED_FIELD]: z.unknown().optional(),
 });
+
+/** The business's choices for the first-visit questions, read with the
+ *  service role. A lookup that fails is the defaults (every question
+ *  optional): an outage must not stop a sale, and optional asks nothing a
+ *  visitor did not choose to give. */
+async function loadBookingDetailsConfig(admin: any, orgId: string): Promise<BookingDetailsConfig> {
+  try {
+    const { data, error } = await admin
+      .from("organizations")
+      .select("lead_form_config")
+      .eq("id", orgId)
+      .maybeSingle();
+    if (error) throw error;
+    const cfg = data?.lead_form_config;
+    return normalizeBookingDetails(cfg && typeof cfg === "object" ? (cfg as any).details : null);
+  } catch (e) {
+    console.error("booking details settings lookup failed", orgId, e);
+    return DEFAULT_BOOKING_DETAILS;
+  }
+}
 
 /** In-app signup prepay (Payment Element): records the signup request and
  * mints a PaymentIntent on the tenant's connected account. The prospect pays
@@ -332,6 +365,24 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
     const charge = signupChargeFromQuote(q);
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // The first visit's answers, held to the business's own rules before
+    // anything is written: a required question unanswered, or a start date
+    // before the business can come, is said to the visitor in words.
+    const detailsConfig = await loadBookingDetailsConfig(supabaseAdmin, q.organization_id);
+    const detailsAnswer = {
+      pets: data.pets,
+      dogCount: data.dog_count,
+      accessNotes: data.access_notes,
+      preferredStartDate: data.preferred_start_date,
+    };
+    const detailsProblem = bookingDetailsProblem(
+      detailsConfig,
+      detailsAnswer,
+      new Date().toISOString().slice(0, 10),
+    );
+    if (detailsProblem) throw new Error(detailsProblem);
+    const details = bookingDetailsColumns(detailsConfig, detailsAnswer);
 
     // The chosen service's name, for the lead's notice and nothing else: the
     // price is already in `q`, and public_quote has just confirmed the id is
@@ -438,6 +489,7 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
       message: data.message || null,
       serviceId: data.service_id ?? null,
       serviceName,
+      details,
     });
 
     const { data: sr, error: srErr } = await supabaseAdmin
@@ -464,6 +516,9 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
         first_cleanup_tier_id: charge.firstCleanupLabel ? data.last_cleaned || null : null,
         first_cleanup_label: charge.firstCleanupLabel,
         currency: q.currency,
+        // What the webhook makes the first visit from (#527): dogs rows, the
+        // property's access notes, and the subscription's start.
+        ...details,
       })
       .select("id")
       .single();
@@ -545,6 +600,9 @@ export async function recordSignupLead(
      *  Absent or null, the row has no service_id key at all. */
     serviceId?: string | null;
     serviceName?: string | null;
+    /** The first visit's answers (#527), as bookingDetailsColumns stores
+     *  them. Absent, the row has none of the three keys. */
+    details?: ReturnType<typeof bookingDetailsColumns>;
   },
 ): Promise<string | null> {
   try {
@@ -557,6 +615,7 @@ export async function recordSignupLead(
       frequency: lead.frequency,
       message: lead.message,
       ...(lead.serviceId ? { service_id: lead.serviceId } : {}),
+      ...(lead.details ?? {}),
     };
     const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
     const { data: existing } = await admin
@@ -610,7 +669,7 @@ export const getSignupStatus = createServerFn({ method: "GET" })
     const { data: row, error } = await supabaseAdmin
       .from("signup_requests")
       .select(
-        "status, name, provisioned_client_id, refunded_at, refunded_amount_cents, currency, organization_id",
+        "status, name, provisioned_client_id, refunded_at, refunded_amount_cents, currency, organization_id, preferred_start_date, created_at",
       )
       .eq("id", data.id)
       .maybeSingle();
@@ -622,11 +681,21 @@ export const getSignupStatus = createServerFn({ method: "GET" })
     // and "we have refunded you" is only sayable if the refund actually
     // happened. `error_message` is deliberately NOT returned — it carries
     // Postgres constraint text written for us, not for a homeowner.
-    const { data: org } = await supabaseAdmin
+    const { data: org } = await (supabaseAdmin as any)
       .from("organizations")
-      .select("name, logo_url, brand_color")
+      .select("name, logo_url, brand_color, contact_phone, contact_email, lead_form_config")
       .eq("id", row.organization_id)
       .maybeSingle();
+
+    // When the first visit is (#527): the day asked for, else the earliest
+    // the business allowed on the day of the signup. Said once the account
+    // exists, with how to reach the business before then.
+    const cfg = org?.lead_form_config;
+    const startsOnOrAfter = firstVisitOnOrAfter(
+      (row as any).preferred_start_date ?? null,
+      String((row as any).created_at ?? new Date().toISOString()).slice(0, 10),
+      normalizeBookingDetails(cfg && typeof cfg === "object" ? (cfg as any).details : null),
+    );
 
     return {
       status: row.status,
@@ -638,6 +707,9 @@ export const getSignupStatus = createServerFn({ method: "GET" })
       orgName: (org?.name as string | null) ?? null,
       logoUrl: (org?.logo_url as string | null) ?? null,
       brandColor: (org?.brand_color as string | null) ?? null,
+      firstVisitOnOrAfter: startsOnOrAfter,
+      contactPhone: ((org?.contact_phone as string | null) ?? "").trim() || null,
+      contactEmail: ((org?.contact_email as string | null) ?? "").trim() || null,
     };
   });
 

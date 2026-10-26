@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { LEAD_SOURCE, normalizeFormConfig } from "@/lib/new-customer-form";
+import { DETAIL_ASKS, MAX_EARLIEST_START_DAYS } from "@/lib/booking-details";
 
 const FORM_SOURCES = [LEAD_SOURCE.quoteRequest, LEAD_SOURCE.onlineSignup];
 
@@ -78,6 +79,16 @@ const leadFormConfigSchema = z.object({
     dogCount: z.boolean(),
     message: z.boolean(),
   }),
+  // The first visit's questions and the earliest start (#527). Optional, so
+  // a settings page that predates them saves without wiping them.
+  details: z
+    .object({
+      pets: z.enum(DETAIL_ASKS as [string, ...string[]]),
+      access: z.enum(DETAIL_ASKS as [string, ...string[]]),
+      startDate: z.enum(DETAIL_ASKS as [string, ...string[]]),
+      earliestStartDays: z.coerce.number().int().min(0).max(MAX_EARLIEST_START_DAYS),
+    })
+    .optional(),
 });
 
 export const setLeadFormConfig = createServerFn({ method: "POST" })
@@ -86,6 +97,15 @@ export const setLeadFormConfig = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_leads");
     const color = data.brandColor ? (data.brandColor.startsWith("#") ? data.brandColor : `#${data.brandColor}`) : null;
+    // `details` is kept as saved when this save does not carry it.
+    let details = data.details;
+    if (!details) {
+      const { data: org } = await (context.supabase.from("organizations") as any)
+        .select("lead_form_config")
+        .eq("id", orgId)
+        .maybeSingle();
+      details = normalizeFormConfig(org?.lead_form_config).details;
+    }
     const config = {
       brandColor: color,
       logoUrl: data.logoUrl || null,
@@ -93,6 +113,7 @@ export const setLeadFormConfig = createServerFn({ method: "POST" })
       intro: data.intro || null,
       confirmation: data.confirmation || null,
       fields: data.fields,
+      details,
     };
     const { error } = await (context.supabase.from("organizations") as any)
       .update({ lead_form_config: config })
