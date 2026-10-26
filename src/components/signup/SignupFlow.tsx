@@ -34,10 +34,12 @@ import { appUrl } from "@/lib/app-origin";
 import { frequencyLabel } from "@/lib/frequency-request";
 import {
   BOOKING_COPY,
+  STAY_COPY,
   bookingCadence,
   bookingLine,
   chargedTodayCovers,
   perVisitBillingSentence,
+  stayStartDateHint,
 } from "@/lib/booking-copy";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -90,6 +92,7 @@ import {
 } from "@/lib/booking-details";
 import {
   asksAboutTheYard,
+  isRequestedAsAStay,
   offersAChoice,
   publicServiceChoices,
   publicServiceOptionLabel,
@@ -219,10 +222,17 @@ export function SignupFlow({
   const lineCopy = BOOKING_COPY[line];
   const frequency = bookingCadence(line, form.frequency);
 
+  // A stay (priced per night: an Overnight stay, a House sit) is asked for,
+  // never started (#546): no cadence, no instant price, no card. The quote
+  // request is its path, and it sends no frequency, so the lead is not a
+  // "weekly" anything. `sellsHere` is instant start for everything else.
+  const stay = isRequestedAsAStay(chosen);
+  const sellsHere = instantStart && !stay;
+
   // The pet-waste questions apply when nothing was picked and for the
   // pet-waste service; a walk has no yard to ask about.
   const tiers =
-    instantStart && formQ.data?.firstCleanup?.mode === "by_last_cleaned" && asksAboutTheYard(chosen)
+    sellsHere && formQ.data?.firstCleanup?.mode === "by_last_cleaned" && asksAboutTheYard(chosen)
       ? formQ.data.firstCleanup.tiers
       : [];
   const asksLastCleaned = tiers.length > 0;
@@ -356,8 +366,8 @@ export function SignupFlow({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         // The cadence the line offered, which form.frequency may not be
-        // after the service changed.
-        body: JSON.stringify({ ...lead, frequency, ...serviceField }),
+        // after the service changed. None for a stay (#546).
+        body: JSON.stringify({ ...lead, frequency: stay ? "" : frequency, ...serviceField }),
       });
       if (!res.ok) {
         const b = await res.json().catch(() => ({}));
@@ -371,6 +381,7 @@ export function SignupFlow({
     instantStart,
     answer: quoteMut.data ?? null,
     offerQuoteRequest,
+    stay,
   });
   const quote = branch.quote;
 
@@ -637,21 +648,30 @@ export function SignupFlow({
             />
           </div>
         )}
-        <div className="space-y-1.5">
-          <Label htmlFor="frequency">Frequency</Label>
-          <Select value={frequency} onValueChange={(v) => setFormField({ ...form, frequency: v })}>
-            <SelectTrigger id="frequency">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {lineCopy.cadences.map((k) => (
-                <SelectItem key={k} value={k}>
-                  {frequencyLabel(k)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {stay ? (
+          <p className="min-w-0 text-sm text-muted-foreground sm:col-span-3">
+            {STAY_COPY.howItWorks}
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            <Label htmlFor="frequency">Frequency</Label>
+            <Select
+              value={frequency}
+              onValueChange={(v) => setFormField({ ...form, frequency: v })}
+            >
+              <SelectTrigger id="frequency">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {lineCopy.cadences.map((k) => (
+                  <SelectItem key={k} value={k}>
+                    {frequencyLabel(k)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         {asksLastCleaned && (
           <div className="min-w-0 space-y-1.5 sm:col-span-3">
             <Label htmlFor="last_cleaned">{LAST_CLEANED_QUESTION}</Label>
@@ -677,7 +697,7 @@ export function SignupFlow({
           </div>
         )}
       </div>
-      {instantStart && (
+      {sellsHere && (
         <div className="mt-4">
           <Button
             onClick={() => quoteMut.mutate(form.postal_code)}
@@ -761,7 +781,7 @@ export function SignupFlow({
         {fields.location && (
           <>
             <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="street">Street address{instantStart ? " *" : ""}</Label>
+              <Label htmlFor="street">Street address{sellsHere ? " *" : ""}</Label>
               <Input
                 id="street"
                 autoComplete="street-address"
@@ -858,7 +878,7 @@ export function SignupFlow({
         {details.startDate !== "off" && (
           <div className="min-w-0 space-y-1.5">
             <Label htmlFor="preferred_start_date">
-              Preferred start date
+              {stay ? STAY_COPY.startDateLabel : "Preferred start date"}
               {markRequired(details.startDate)}
             </Label>
             <Input
@@ -870,8 +890,9 @@ export function SignupFlow({
               onChange={(e) => setFormField({ ...form, preferred_start_date: e.target.value })}
             />
             <p className="text-xs text-muted-foreground">
-              {formQ.data.name ?? "The business"} will confirm your first visit for on or after this
-              date.
+              {stay
+                ? stayStartDateHint(formQ.data.name ?? "The business")
+                : `${formQ.data.name ?? "The business"} will confirm your first visit for on or after this date.`}
             </p>
           </div>
         )}
@@ -884,7 +905,7 @@ export function SignupFlow({
               id="message"
               rows={3}
               maxLength={2000}
-              placeholder={lineCopy.notePlaceholder}
+              placeholder={stay ? STAY_COPY.notePlaceholder : lineCopy.notePlaceholder}
               value={form.message}
               onChange={(e) => setFormField({ ...form, message: e.target.value })}
             />
@@ -904,9 +925,11 @@ export function SignupFlow({
       >
         {leadMut.isPending
           ? "Sending…"
-          : branch.canStartService || branch.reason === "not-priced-yet"
-            ? "Get a quote by email"
-            : "Request a quote"}
+          : stay
+            ? STAY_COPY.requestButton
+            : branch.canStartService || branch.reason === "not-priced-yet"
+              ? "Get a quote by email"
+              : "Request a quote"}
       </Button>
       {/* Once Start service is on offer, the one hint under it covers both
           buttons (#528): two hints for the same missing fields read as two
@@ -946,6 +969,8 @@ export function SignupFlow({
               </>
             ) : branch.reason === "no-zone" ? (
               <>{outOfArea}</>
+            ) : branch.reason === "stay-request" ? (
+              <>{STAY_COPY.panelHint}</>
             ) : (
               <>Tell us about your property and pets and we'll get back to you with a price.</>
             )}

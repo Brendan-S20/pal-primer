@@ -19,7 +19,11 @@ import {
   normalizeBookingDetails,
   type BookingDetailsConfig,
 } from "@/lib/booking-details";
-import { publicServiceChoices, type PublicService } from "@/lib/public-services";
+import {
+  isRequestedAsAStay,
+  publicServiceChoices,
+  type PublicService,
+} from "@/lib/public-services";
 import { customerCanRequestService, type ServiceLineAvailability } from "@/lib/service-lines";
 import {
   CALM_REFUSAL,
@@ -195,6 +199,64 @@ export const getPublicSignupForm = createServerFn({ method: "GET" })
     };
   });
 
+/** What a visitor reads when the service they named is not for sale online:
+ *  another business's, a deactivated one, or one still Coming soon. */
+const SERVICE_NOT_OFFERED_ONLINE = "That service isn't offered online right now. Pick another.";
+
+/**
+ * Refuses a service on a line that is still Coming soon (#506), before
+ * public_quote is asked about it. The picker never lists one
+ * (publicServiceChoices), so a request that names one anyway is a hand-built
+ * body; it gets the words a refused service always got. Read with the service role, scoped to the
+ * business the slug names. An id that is not that business's is left to
+ * public_quote, which answers it with silence as before. public_quote also
+ * ignores a Coming soon service itself (20261018150000); this says so in
+ * words, and holds on a database that has not caught up.
+ *
+ * Returns the service it checked when it is this business's, so the caller
+ * can ask the next question of it (refuseAStay) without a second lookup.
+ */
+async function refuseAComingSoonService(
+  slug: string,
+  serviceId: string | undefined,
+): Promise<{ price_unit: unknown } | null> {
+  if (!serviceId) return null;
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data: svc, error: svcErr } = await (supabaseAdmin as any)
+    .from("services")
+    .select("service_line, organization_id, price_unit")
+    .eq("id", serviceId)
+    .maybeSingle();
+  if (svcErr) throw new Error(svcErr.message);
+  if (!svc) return null;
+  const { data: org, error: orgErr } = await (supabaseAdmin as any)
+    .from("organizations")
+    .select("slug, portal_slug")
+    .eq("id", svc.organization_id)
+    .maybeSingle();
+  if (orgErr) throw new Error(orgErr.message);
+  if (!org || (org.slug !== slug && org.portal_slug !== slug)) return null;
+  const { loadServiceLineAvailability } = await import("@/lib/service-line-availability.server");
+  if (!customerCanRequestService(svc.service_line, await loadServiceLineAvailability())) {
+    throw new Error(SERVICE_NOT_OFFERED_ONLINE);
+  }
+  return svc;
+}
+
+/** What a visitor reads when the service they named is a stay. */
+export const A_STAY_IS_REQUESTED =
+  "A stay is booked by request. Send your dates with Request this stay and we'll confirm it.";
+
+/**
+ * Refuses a stay (a service priced per night, #546) before public_quote is
+ * asked about it: a stay is never priced as a cadence or started online. The
+ * form never offers either for one (isRequestedAsAStay), so a request that
+ * does is a hand-built body. Its path is the quote request, a lead.
+ */
+function refuseAStay(svc: { price_unit: unknown } | null) {
+  if (isRequestedAsAStay(svc)) throw new Error(A_STAY_IS_REQUESTED);
+}
+
 const quoteSchema = z.object({
   slug: z.string().min(1).max(80),
   postal_code: z.string().trim().min(3).max(12),
@@ -224,47 +286,11 @@ function publicQuoteArgs(data: z.infer<typeof quoteSchema>) {
   };
 }
 
-/** What a visitor reads when the service they named is not for sale online:
- *  another business's, a deactivated one, or one still Coming soon. */
-const SERVICE_NOT_OFFERED_ONLINE = "That service isn't offered online right now. Pick another.";
-
-/**
- * Refuses a service on a line that is still Coming soon (#506), before
- * public_quote is asked about it. The picker never lists one
- * (publicServiceChoices), so a request that names one anyway is a hand-built
- * body; it gets the words a refused service always got. Read with the service role, scoped to the
- * business the slug names. An id that is not that business's is left to
- * public_quote, which answers it with silence as before. public_quote also
- * ignores a Coming soon service itself (20261018150000); this says so in
- * words, and holds on a database that has not caught up.
- */
-async function refuseAComingSoonService(slug: string, serviceId: string | undefined) {
-  if (!serviceId) return;
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const { data: svc, error: svcErr } = await (supabaseAdmin as any)
-    .from("services")
-    .select("service_line, organization_id")
-    .eq("id", serviceId)
-    .maybeSingle();
-  if (svcErr) throw new Error(svcErr.message);
-  if (!svc) return;
-  const { data: org, error: orgErr } = await (supabaseAdmin as any)
-    .from("organizations")
-    .select("slug, portal_slug")
-    .eq("id", svc.organization_id)
-    .maybeSingle();
-  if (orgErr) throw new Error(orgErr.message);
-  if (!org || (org.slug !== slug && org.portal_slug !== slug)) return;
-  const { loadServiceLineAvailability } = await import("@/lib/service-line-availability.server");
-  if (!customerCanRequestService(svc.service_line, await loadServiceLineAvailability())) {
-    throw new Error(SERVICE_NOT_OFFERED_ONLINE);
-  }
-}
-
 export const getSignupQuote = createServerFn({ method: "POST" })
   .inputValidator((d) => quoteSchema.parse(d))
   .handler(async ({ data }) => {
-    await refuseAComingSoonService(data.slug, data.service_id);
+    const named = await refuseAComingSoonService(data.slug, data.service_id);
+    refuseAStay(named);
     const sb = anon();
     const { data: rows, error } = await sb.rpc("public_quote", publicQuoteArgs(data));
     if (error) throw new Error(error.message);
@@ -343,8 +369,10 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
       throw new Error(CALM_REFUSAL);
     }
 
-    // A Coming soon service takes no card and writes nothing (#506).
-    await refuseAComingSoonService(data.slug, data.service_id);
+    // A Coming soon service takes no card and writes nothing (#506), and
+    // neither does a stay (#546).
+    const named = await refuseAComingSoonService(data.slug, data.service_id);
+    refuseAStay(named);
 
     const sb = anon();
     const { data: qRows, error: qErr } = await sb.rpc("public_quote", publicQuoteArgs(data));
