@@ -22,7 +22,7 @@ import { usePermissions } from "@/hooks/useMyRole";
 import { formatDay } from "@/lib/format";
 import { formatServiceMoney } from "@/lib/services";
 import { invoiceNumberLabel } from "@/lib/invoice-labels";
-import { TRAINER_BUSY, weeklySessionDates } from "@/lib/training-packages";
+import { TRAINER_BUSY, runsTrainingOffice, weeklySessionDates } from "@/lib/training-packages";
 import type { ListedClientPackage } from "@/lib/training-packages.server";
 import {
   listClientPackages,
@@ -50,9 +50,11 @@ export function TrainingPackagesSection({ clientId }: { clientId: string }) {
 function Packages({ clientId }: { clientId: string }) {
   const { t } = useTranslation();
   const today = useOrgToday();
-  const { can } = usePermissions();
+  const { can, role } = usePermissions();
+  // Selling is billing. Booking, extending and canceling a sold package is
+  // the training office's, dispatcher included (#555).
   const canBill = can("manage_client_billing");
-  const canBook = can("manage_pricing");
+  const canBook = runsTrainingOffice(role);
   const qc = useQueryClient();
   const list = useServerFn(listClientPackages);
   const optionsFn = useServerFn(listTrainingBookingOptions);
@@ -68,7 +70,7 @@ function Packages({ clientId }: { clientId: string }) {
   const options = useQuery({
     queryKey: ["training-options", clientId],
     queryFn: () => optionsFn({ data: { clientId } }),
-    enabled: canBill || canBook,
+    enabled: canBook,
   });
   const [action, setAction] = useState<Action | null>(null);
   const [pack, setPack] = useState<ListedClientPackage | null>(null);
@@ -229,7 +231,7 @@ function Packages({ clientId }: { clientId: string }) {
                 {p.invoice.status}
               </p>
             )}
-            {(canBill || canBook) && (
+            {canBook && (
               <div className="flex flex-wrap gap-2">
                 {canBook && p.state === "active" && (
                   <>
@@ -249,7 +251,7 @@ function Packages({ clientId }: { clientId: string }) {
                     </Button>
                   </>
                 )}
-                {canBill && p.state !== "canceled" && (
+                {canBook && p.state !== "canceled" && (
                   <>
                     {p.expires_on && (
                       <Button variant="outline" onClick={() => open("extend", p)}>

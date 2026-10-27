@@ -320,14 +320,19 @@ export type SessionBooking = {
   allowOverlap?: boolean;
 };
 
-/** Package plans use the existing subscription generator, limited to this plan. */
+/** Package plans use the existing subscription generator, limited to this plan.
+ *
+ * The training office books: owner, office manager and dispatcher, the roles
+ * can_write_org admits (#555). Not manage_pricing: a lesson has no price of
+ * its own, the package was priced and invoiced when it was sold. The plan row
+ * goes through book_training_package_plan, because the subscriptions write
+ * policy is manage_pricing and stays that way for every other plan. */
 export async function bookTrainingSessions(
   db: TrainingDb,
   userId: string,
   input: SessionBooking,
   oneTime = false,
 ) {
-  await requirePermission(db, userId, "manage_pricing");
   const orgId = await requireTrainingOffice(db, userId);
   const pack = await trainingPackage(db, input.clientPackageId, orgId);
   const held = await holdingCount(db, pack.id);
@@ -353,18 +358,12 @@ export async function bookTrainingSessions(
   if (!dates.length) throw new Error(`This package expired on ${pack.expires_on}.`);
   const { data: property, error: propertyError } = await db
     .from("properties")
-    .select("id, zone_id, clients(account_type)")
+    .select("id")
     .eq("id", input.propertyId)
     .eq("client_id", pack.client_id)
     .eq("organization_id", orgId)
     .single();
   if (propertyError) throw new Error(propertyError.message);
-  const { count: dogs, error: dogsError } = await db
-    .from("dogs")
-    .select("id", { count: "exact", head: true })
-    .eq("property_id", input.propertyId)
-    .eq("active", true);
-  if (dogsError) throw new Error(dogsError.message);
   if (input.staffId) {
     const { data: staff, error } = await db
       .from("staff")
@@ -403,37 +402,19 @@ export async function bookTrainingSessions(
         );
     }
   }
-  const account = (Array.isArray(property.clients) ? property.clients[0] : property.clients) as {
-    account_type: "residential" | "commercial";
-  };
-  const commercial = account.account_type === "commercial";
-  const { data: plan, error } = await db
-    .from("subscriptions")
-    .insert({
-      organization_id: orgId,
-      client_id: pack.client_id,
-      property_id: input.propertyId,
-      service_id: pack.service_id,
-      client_package_id: pack.id,
-      account_type: account.account_type,
-      preferred_time_of_day: "any",
-      dog_count: commercial ? null : Math.max(1, dogs ?? 1),
-      unit_count: commercial ? 1 : null,
-      frequency: oneTime ? "one_time" : "weekly",
-      weekdays: oneTime ? null : [input.weekday],
-      price_cents: 0,
-      billing_cadence: "postpaid",
-      started_on: input.startOn,
-      ends_on: dates[dates.length - 1],
-      zone_id: property.zone_id,
-      priced_from_zone_id: null,
-      // The lesson's own time slot. The late-cancel rule reads its start.
-      earliest_time: slot?.start ?? null,
-      latest_time: slot?.end ?? null,
-    })
-    .select("id")
-    .single();
+  // The address's zone, account type and dog count are read in the database.
+  const { data: planId, error } = await db.rpc("book_training_package_plan", {
+    _client_package_id: pack.id,
+    _property_id: property.id,
+    _started_on: input.startOn,
+    _ends_on: dates[dates.length - 1],
+    _weekday: oneTime ? undefined : input.weekday,
+    // The lesson's own time slot. The late-cancel rule reads its start.
+    _earliest_time: slot?.start,
+    _latest_time: slot?.end,
+  });
   if (error) throw new Error(error.message);
+  const plan = { id: planId as string };
   const generated = await db.rpc("generate_visits_for_subscription", {
     _org_id: orgId,
     _subscription_id: plan.id,
