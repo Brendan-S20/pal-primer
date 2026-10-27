@@ -38,6 +38,7 @@ import { MetaChip, StatusChip } from "@/components/client-detail/primitives";
 import { RowActions } from "@/components/RowActions";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { CompletedVisitActions } from "@/components/CompletedVisitActions";
 import {
   ClientCalledAtField,
   clientCalledAtIso,
@@ -88,7 +89,12 @@ export function VisitsTab({
   const tz = useOrgTimezone();
   const [statusFilter, setStatusFilter] = useState("all");
   const [propertyFilter, setPropertyFilter] = useState("all");
-  const [detailVisit, setDetailVisit] = useState<any | null>(null);
+  // The open visit by id, read from the list on every render, so a change
+  // made in the popup (Reopen, Mark missed) shows there once the list
+  // refetches, without closing it.
+  const [detailVisitId, setDetailVisitId] = useState<string | null>(null);
+  const detailVisit = detailVisitId ? (visits.find((x) => x.id === detailVisitId) ?? null) : null;
+  const setDetailVisit = (v: any | null) => setDetailVisitId(v?.id ?? null);
   const [view, setView] = useState<"list" | "calendar">("list");
   // The client-scoped entry to the one-off booking. This is the surface that
   // makes OneOffVisitDialog's `clientId` prop mean anything — it shipped with
@@ -1334,6 +1340,12 @@ function VisitDetailDrawer({
                 </Button>
               </form>
             )}
+          </div>
+        )}
+
+        {v.status === "completed" && (
+          <div className="rounded-md border bg-muted/20 p-3">
+            <CompletedVisitActions visit={v} />
           </div>
         )}
 
