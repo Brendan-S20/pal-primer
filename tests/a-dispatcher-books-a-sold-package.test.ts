@@ -61,6 +61,11 @@ describe("book_training_package_plan", () => {
     expect(body).toContain("_p.organization_id, _p.client_id, _property_id, _p.service_id, _p.id");
     expect(body).toContain("0, 'postpaid'");
   });
+  it("refuses a last lesson past the package's expiry, before it writes", () => {
+    const cap = body.indexOf("IF _p.expires_on IS NOT NULL AND _ends_on > _p.expires_on THEN");
+    expect(cap).toBeGreaterThan(-1);
+    expect(cap).toBeLessThan(body.indexOf("INSERT INTO public.subscriptions"));
+  });
   it("only books an address of the package's own client in its own business", () => {
     expect(body).toContain("AND pr.client_id = _p.client_id");
     expect(body).toContain("AND pr.organization_id = _p.organization_id");

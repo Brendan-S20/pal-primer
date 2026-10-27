@@ -68,6 +68,12 @@ BEGIN
      OR (_weekday IS NOT NULL AND _weekday NOT BETWEEN 0 AND 6) THEN
     RAISE EXCEPTION USING ERRCODE = 'check_violation', MESSAGE = 'Choose the lesson dates again.';
   END IF;
+  -- The guard checks the plan's first day against expiry; the last day is
+  -- checked here, so a direct call cannot schedule lessons past it.
+  IF _p.expires_on IS NOT NULL AND _ends_on > _p.expires_on THEN
+    RAISE EXCEPTION USING ERRCODE = 'check_violation',
+      MESSAGE = 'This package expired on ' || to_char(_p.expires_on, 'YYYY-MM-DD') || '.';
+  END IF;
   IF (_earliest_time IS NULL) <> (_latest_time IS NULL) OR _latest_time <= _earliest_time THEN
     RAISE EXCEPTION USING ERRCODE = 'check_violation', MESSAGE = 'Choose the lesson time again.';
   END IF;
