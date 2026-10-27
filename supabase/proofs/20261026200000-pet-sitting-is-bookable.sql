@@ -51,6 +51,13 @@ BEGIN
 END $$;
 
 -- ── 1. The switch ─────────────────────────────────────────────────────────
+-- This proof is about the sitting flip. A later migration that flips another
+-- row (20261027120000, training) is a different file with its own proof, so
+-- put training back to its seed first; sections 1 and 2 rely on it being
+-- Coming soon. Logged with no actor, like any setup write; nothing below
+-- counts training rows.
+UPDATE public.platform_service_lines SET bookable = false WHERE service_line = 'training';
+
 DO $$
 BEGIN
   IF public.bookable_service_lines() IS DISTINCT FROM ARRAY['dog_walking','pet_sitting','pet_waste']::text[] THEN

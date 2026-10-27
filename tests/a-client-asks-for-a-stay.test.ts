@@ -542,8 +542,8 @@ describe("sitting is bookable (#547)", () => {
     expect(read("src/components/portal/Stays.tsx")).toContain("PortalVisitReport");
     expect(read("src/routes/_authenticated/concerns.tsx")).toContain("<RequestedStays />");
     expect(read("src/components/client-detail/StaysSection.tsx")).toContain("<ConfirmStayButton");
-    expect(read("src/routes/_authenticated/settings.services.tsx")).toContain(
-      "other service lines are Coming soon",
+    expect(read("src/routes/_authenticated/settings.services.tsx")).toMatch(
+      /other\s+service\s+lines\s+are\s+Coming\s+soon/,
     );
   });
 });

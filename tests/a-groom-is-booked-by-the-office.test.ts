@@ -82,7 +82,12 @@ describe("customers cannot book a groom", () => {
 
 describe("a portal groom request is a request, not a booking", () => {
   it("leaves the customer-bookable lines as they were", () => {
-    expect(LAUNCH_DEFAULT.bookable).toEqual(["pet_waste", "dog_walking", "pet_sitting"]);
+    expect(LAUNCH_DEFAULT.bookable).toEqual([
+      "pet_waste",
+      "dog_walking",
+      "pet_sitting",
+      "training",
+    ]);
     expect(customerCanRequestService("mobile_grooming", LAUNCH_DEFAULT)).toBe(false);
   });
 

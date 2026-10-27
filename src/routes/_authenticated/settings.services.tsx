@@ -1,9 +1,9 @@
 // Settings → Services: what this business sells.
 //
 // The catalog for service lines (docs/other-trades-service-catalog.md).
-// Pet waste removal, dog walking and pet sitting are bookable; other lines
-// join when their paths work end to end. Office only: the route is limited
-// to owner and office manager in ROUTE_ROLES, the same people who hold
+// Pet waste removal, dog walking, pet sitting and training are bookable;
+// other lines join when their paths work end to end. Office only: the route
+// is limited to owner and office manager in ROUTE_ROLES, the same people who hold
 // manage_pricing, which is what every write here asks for on the server and
 // in RLS.
 //
@@ -228,7 +228,8 @@ function ServicesPage() {
           <h2 className="text-lg font-semibold">Services</h2>
           <p className="text-sm text-muted-foreground">
             Set prices per visit or by the hour, or per night for pet sitting. Pet waste removal,
-            dog walking and pet sitting are bookable today; other service lines are Coming soon.
+            dog walking, pet sitting and training are bookable today; other service lines are Coming
+            soon.
           </p>
         </div>
         {canEdit && (
