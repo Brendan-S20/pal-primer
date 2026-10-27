@@ -65,6 +65,13 @@ BEGIN
 END $$;
 
 -- ── 1. The default ────────────────────────────────────────────────────────
+-- This proof is about the switch, from the seed this file wrote. A later
+-- migration that flips a row (20261026200000, pet sitting) is a different
+-- file with its own proof, so put sitting back to its seed first; section 4
+-- relies on it being Coming soon. Logged with no actor, like any setup write;
+-- nothing below counts pet_sitting rows.
+UPDATE public.platform_service_lines SET bookable = false WHERE service_line = 'pet_sitting';
+
 DO $$
 BEGIN
   IF public.bookable_service_lines() IS DISTINCT FROM ARRAY['dog_walking','pet_waste']::text[] THEN

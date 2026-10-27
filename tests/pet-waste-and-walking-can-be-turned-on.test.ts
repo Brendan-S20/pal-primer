@@ -1,12 +1,13 @@
-// Pet waste and dog walking can be turned on; nothing else until it is
-// approved to go live.
+// Pet waste, dog walking and pet sitting can be turned on; nothing else until
+// it is approved to go live.
 //
 // Dog walking (#410) was turned on in #530, and is on in the platform
 // switch's seed (platform_service_lines, read at runtime, #531). Pet sitting
-// (#411), mobile grooming (#412) and training (#413) are turned on there with
-// their own approval, with no new build. Until then the picker shows them as Coming soon and disabled, and
-// setServiceLines refuses to add one. A business that already runs one keeps
-// it and can turn it off.
+// (#411) was turned on there by 20261026200000 (#547). Mobile grooming (#412)
+// and training (#413) are turned on there with their own approval, with no
+// new build. Until then the picker shows them as Coming soon and disabled,
+// and setServiceLines refuses to add one. A business that already runs one
+// keeps it and can turn it off.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -50,40 +51,43 @@ function isDisabled(row: string): boolean {
   return /\sdisabled=""/.test(button);
 }
 
-describe("pet waste and dog walking can be turned on", () => {
-  it("the switch's default is pet waste and dog walking, exactly", () => {
-    expect([...LAUNCH_DEFAULT.bookable]).toEqual(["pet_waste", "dog_walking"]);
+describe("pet waste, dog walking and pet sitting can be turned on", () => {
+  it("the switch's default is pet waste, dog walking and pet sitting, exactly", () => {
+    expect([...LAUNCH_DEFAULT.bookable]).toEqual(["pet_waste", "dog_walking", "pet_sitting"]);
   });
 
-  it("the picker offers walking with no Coming soon badge, and can tick it", () => {
+  it("the picker offers walking and sitting with no Coming soon badge, and can tick them", () => {
     const r = rows(["pet_waste"]);
-    for (const line of ["pet_waste", "dog_walking"]) expect(r[line]).not.toContain("Coming soon");
+    for (const line of ["pet_waste", "dog_walking", "pet_sitting"])
+      expect(r[line]).not.toContain("Coming soon");
     // Pet waste is the only line ticked, so it is the one that cannot be
-    // unticked; walking is the one being added.
-    expect(r.dog_walking).toContain('aria-checked="false"');
-    expect(isDisabled(r.dog_walking)).toBe(false);
+    // unticked; walking and sitting are the ones being added.
+    for (const line of ["dog_walking", "pet_sitting"]) {
+      expect(r[line]).toContain('aria-checked="false"');
+      expect(isDisabled(r[line])).toBe(false);
+    }
   });
 
-  it("the picker still marks sitting, grooming and training Coming soon and disabled", () => {
+  it("the picker still marks grooming and training Coming soon and disabled", () => {
     const r = rows(["pet_waste"]);
-    for (const line of ["pet_sitting", "mobile_grooming", "training"]) {
+    for (const line of ["mobile_grooming", "training"]) {
       expect(r[line]).toContain("Coming soon");
       expect(isDisabled(r[line])).toBe(true);
     }
   });
 
   it("a Coming soon line the business already runs stays shown and can be turned off", () => {
-    const r = rows(["pet_waste", "pet_sitting"]);
-    expect(r.pet_sitting).toContain("Coming soon");
-    expect(r.pet_sitting).toContain('aria-checked="true"');
-    expect(isDisabled(r.pet_sitting)).toBe(false);
+    const r = rows(["pet_waste", "training"]);
+    expect(r.training).toContain("Coming soon");
+    expect(r.training).toContain('aria-checked="true"');
+    expect(isDisabled(r.training)).toBe(false);
     expect(isDisabled(r.mobile_grooming)).toBe(true);
   });
 
   it("turning a line on or off at the switch changes the picker, with no new build", () => {
-    const on = rows(["pet_waste"], withBookable("pet_sitting"));
-    expect(on.pet_sitting).not.toContain("Coming soon");
-    expect(isDisabled(on.pet_sitting)).toBe(false);
+    const on = rows(["pet_waste"], withBookable("mobile_grooming"));
+    expect(on.mobile_grooming).not.toContain("Coming soon");
+    expect(isDisabled(on.mobile_grooming)).toBe(false);
     const off = rows(["pet_waste"], withoutBookable("dog_walking"));
     expect(off.dog_walking).toContain("Coming soon");
     expect(isDisabled(off.dog_walking)).toBe(true);
@@ -96,15 +100,17 @@ describe("pet waste and dog walking can be turned on", () => {
     expect(isDisabled(r.pet_sitting)).toBe(false);
   });
 
-  it("the server check accepts adding dog walking", () => {
-    expect(
-      serviceLinesAdditionProblem(["pet_waste"], ["pet_waste", "dog_walking"], LAUNCH_DEFAULT),
-    ).toBeNull();
-    expect(serviceLinesAdditionProblem(["pet_waste"], ["dog_walking"], LAUNCH_DEFAULT)).toBeNull();
+  it("the server check accepts adding dog walking or pet sitting", () => {
+    for (const line of ["dog_walking", "pet_sitting"] as const) {
+      expect(
+        serviceLinesAdditionProblem(["pet_waste"], ["pet_waste", line], LAUNCH_DEFAULT),
+      ).toBeNull();
+      expect(serviceLinesAdditionProblem(["pet_waste"], [line], LAUNCH_DEFAULT)).toBeNull();
+    }
   });
 
-  it("the server check refuses adding sitting, grooming or training", () => {
-    for (const line of ["pet_sitting", "mobile_grooming", "training"] as const) {
+  it("the server check refuses adding grooming or training", () => {
+    for (const line of ["mobile_grooming", "training"] as const) {
       expect(serviceLinesAdditionProblem(["pet_waste"], ["pet_waste", line], LAUNCH_DEFAULT)).toBe(
         "That service is coming soon.",
       );
@@ -115,14 +121,12 @@ describe("pet waste and dog walking can be turned on", () => {
   });
 
   it("the server check keeps a line the org already has", () => {
+    expect(serviceLinesAdditionProblem(["training"], ["training"], LAUNCH_DEFAULT)).toBeNull();
     expect(
-      serviceLinesAdditionProblem(["pet_sitting"], ["pet_sitting"], LAUNCH_DEFAULT),
+      serviceLinesAdditionProblem(["training"], ["pet_waste", "training"], LAUNCH_DEFAULT),
     ).toBeNull();
     expect(
-      serviceLinesAdditionProblem(["pet_sitting"], ["pet_waste", "pet_sitting"], LAUNCH_DEFAULT),
-    ).toBeNull();
-    expect(
-      serviceLinesAdditionProblem(["pet_waste", "pet_sitting"], ["pet_waste"], LAUNCH_DEFAULT),
+      serviceLinesAdditionProblem(["pet_waste", "training"], ["pet_waste"], LAUNCH_DEFAULT),
     ).toBeNull();
   });
 

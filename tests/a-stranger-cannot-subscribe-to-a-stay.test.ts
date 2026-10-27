@@ -17,13 +17,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { LAUNCH_DEFAULT, withBookable } from "./support/service-line-availability";
+import {
+  LAUNCH_DEFAULT,
+  SITTING_COMING_SOON,
+  withBookable,
+} from "./support/service-line-availability";
 
 vi.mock("@/lib/service-line-availability.server", async () => {
   const s = await import("./support/service-line-availability");
   return {
     loadServiceLineAvailability: async () =>
-      h.sittingLive ? s.withBookable("pet_sitting") : s.LAUNCH_DEFAULT,
+      h.sittingLive ? s.withBookable("pet_sitting") : s.SITTING_COMING_SOON,
   };
 });
 
@@ -336,7 +340,7 @@ describe("the refusal sits before public_quote in both handlers", () => {
   });
 });
 
-describe("Coming soon is unchanged until the sitting flip", () => {
+describe("with sitting Coming soon (as before #547)", () => {
   const NOT_OFFERED = "That service isn't offered online right now. Pick another.";
 
   it("refuses every sitting service as not offered, a drop-in included", async () => {
@@ -355,8 +359,9 @@ describe("Coming soon is unchanged until the sitting flip", () => {
     expect(h.leads).toEqual([]);
   });
 
-  it("and the launch default still has sitting off", () => {
-    expect(LAUNCH_DEFAULT.bookable).not.toContain("pet_sitting");
+  it("and the launch default has sitting on since #547", () => {
+    expect(LAUNCH_DEFAULT.bookable).toContain("pet_sitting");
+    expect(SITTING_COMING_SOON.bookable).not.toContain("pet_sitting");
     expect(withBookable("pet_sitting").bookable).toContain("pet_sitting");
   });
 });

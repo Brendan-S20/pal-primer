@@ -9,9 +9,9 @@ import {
   addOnExampleFor,
   serviceLinesAdditionProblem,
 } from "@/lib/service-lines";
-import { LAUNCH_DEFAULT, withBookable } from "./support/service-line-availability";
+import { LAUNCH_DEFAULT, withoutBookable } from "./support/service-line-availability";
 
-describe("sitting is ready for QA while its launch gate stays closed", () => {
+describe("sitting is bookable (#547)", () => {
   it("offers sitter reasons in every worker language", () => {
     const codes = techSkipReasonCodes("pet_sitting");
     expect(codes).toEqual(["pet_hiding", "key_failed", "client_home", "access_blocked", "other"]);
@@ -23,13 +23,20 @@ describe("sitting is ready for QA while its launch gate stays closed", () => {
     expect(techSkipReasonCodes("pet_waste")).not.toContain("pet_hiding");
     expect(techSkipReasonCodes("dog_walking")).not.toContain("client_home");
   });
-  it("offers an extra pet add-on and refuses enabling sitting", () => {
+  it("offers an extra pet add-on and lets an owner turn sitting on", () => {
     expect(addOnExampleFor(["pet_sitting"])).toEqual({ code: "extra_pet", name: "Extra pet" });
-    expect(LAUNCH_DEFAULT.bookable).not.toContain("pet_sitting");
-    expect(customerCanRequestStay(LAUNCH_DEFAULT)).toBe(false);
-    expect(customerCanRequestStay(withBookable("pet_sitting"))).toBe(true);
+    expect(LAUNCH_DEFAULT.bookable).toContain("pet_sitting");
+    expect(customerCanRequestStay(LAUNCH_DEFAULT)).toBe(true);
+    expect(customerCanRequestStay(withoutBookable("pet_sitting"))).toBe(false);
     expect(
       serviceLinesAdditionProblem(["pet_waste"], ["pet_waste", "pet_sitting"], LAUNCH_DEFAULT),
+    ).toBeNull();
+    expect(
+      serviceLinesAdditionProblem(
+        ["pet_waste"],
+        ["pet_waste", "pet_sitting"],
+        withoutBookable("pet_sitting"),
+      ),
     ).toBe("That service is coming soon.");
   });
   it("uses neutral fallback words without a service line", () => {

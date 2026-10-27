@@ -14,9 +14,9 @@
 //
 // Rendered as tests/a-walk-is-not-a-yard-cleanup.test.tsx renders it: the
 // claim is about what a visitor can press. Sitting is switched on here
-// (SITTING_LIVE), because the rule has to hold the day it is; on main it is
-// still Coming soon and the stay is not listed at all, which the last block
-// pins as unchanged.
+// (SITTING_LIVE), because the rule has to hold the day it is. The last block
+// switches it back off (SITTING_COMING_SOON, the switch before #547) and
+// finds the stay is not listed at all.
 
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -38,7 +38,11 @@ import {
   quotedPublicService,
 } from "@/lib/public-services";
 import type { ServiceLineAvailability } from "@/lib/service-lines";
-import { LAUNCH_DEFAULT, withBookable } from "./support/service-line-availability";
+import {
+  LAUNCH_DEFAULT,
+  SITTING_COMING_SOON,
+  withBookable,
+} from "./support/service-line-availability";
 
 const SLUG = "riverbend";
 
@@ -205,15 +209,17 @@ describe("with a drop-in and a stay on the picker", () => {
   });
 });
 
-describe("Coming soon is unchanged until the sitting flip", () => {
-  it("lists no sitting service at all on the launch default", () => {
+describe("with sitting Coming soon (as before #547)", () => {
+  it("lists no sitting service at all", () => {
     expect(
-      publicServiceChoices([OVERNIGHT, HOUSE_SIT, DROP_IN, WALK], LAUNCH_DEFAULT).map((s) => s.id),
+      publicServiceChoices([OVERNIGHT, HOUSE_SIT, DROP_IN, WALK], SITTING_COMING_SOON).map(
+        (s) => s.id,
+      ),
     ).toEqual([WALK.id]);
   });
 
   it("and a walk-only business still has its cadence and instant price", () => {
-    const html = render([WALK], LAUNCH_DEFAULT);
+    const html = render([WALK], SITTING_COMING_SOON);
     expect(html).toMatch(/id="frequency"/);
     expect(text(html)).toContain("Get instant price");
   });

@@ -13,6 +13,10 @@
 // checked. supabase/proofs/20261025200000-one-switch-decides-what-is-bookable.sql
 // is the behaviour, against a real database: who can change it, the audit
 // row, and the organizations gate following the switch.
+//
+// A launch after the seed is an UPDATE of one row in a later migration
+// (pet sitting, #547: 20261026200000), never an edit of the seed, so what a
+// replay ends on is the seed with those UPDATEs applied in filename order.
 
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -25,6 +29,7 @@ import { LAUNCH_DEFAULT } from "./support/service-line-availability";
 const ROOT = join(import.meta.dirname, "..");
 const GUARD = "20261017004000_a-service-line-is-turned-on-only-when-bookable.sql";
 const SWITCH = "20261025200000_one-switch-decides-what-is-bookable.sql";
+const SITTING = "20261026200000_pet-sitting-is-bookable.sql";
 
 function lastMatch(re: RegExp): { file: string; m: RegExpExecArray } | null {
   let found: { file: string; m: RegExpExecArray } | null = null;
@@ -43,6 +48,39 @@ function seed(): { line: string; bookable: boolean; requestable: boolean }[] {
   return [
     ...found.m[1].matchAll(/\(\s*'([a-z_]+)'\s*,\s*(true|false)\s*,\s*(true|false)\s*\)/g),
   ].map((r) => ({ line: r[1], bookable: r[2] === "true", requestable: r[3] === "true" }));
+}
+
+type Row = { line: string; bookable: boolean; requestable: boolean };
+
+/** Every `UPDATE public.platform_service_lines SET ... WHERE service_line =
+ *  '...'` after the seed, in filename order. */
+function flips(): { file: string; line: string; set: Partial<Omit<Row, "line">> }[] {
+  const files = migrationFiles();
+  const out: { file: string; line: string; set: Partial<Omit<Row, "line">> }[] = [];
+  for (const file of files.slice(files.indexOf(SWITCH) + 1)) {
+    const sql = stripLineComments(readMigration(file));
+    for (const m of sql.matchAll(
+      /UPDATE\s+public\.platform_service_lines\s+SET\s+([\s\S]*?)\s+WHERE\s+service_line\s*=\s*'([a-z_]+)'/gi,
+    )) {
+      const set: Partial<Omit<Row, "line">> = {};
+      for (const a of m[1].matchAll(/\b(bookable|customer_requestable)\s*=\s*(true|false)\b/gi)) {
+        if (a[1].toLowerCase() === "bookable") set.bookable = a[2] === "true";
+        else set.requestable = a[2] === "true";
+      }
+      out.push({ file, line: m[2], set });
+    }
+  }
+  return out;
+}
+
+/** The switch as a replay of every migration leaves it. */
+function replayed(): Row[] {
+  const rows = seed().map((r) => ({ ...r }));
+  for (const f of flips()) {
+    const row = rows.find((r) => r.line === f.line);
+    if (row) Object.assign(row, f.set);
+  }
+  return rows;
 }
 
 function functionBody(name: string): string | null {
@@ -90,8 +128,32 @@ describe("one switch decides which service lines are bookable", () => {
     expect(files.indexOf(SWITCH)).toBeGreaterThan(flip);
   });
 
+  it("pet sitting is bookable (#547): a replay ends on pet waste, walking and sitting, and nothing else", () => {
+    const rows = replayed();
+    expect(
+      rows
+        .filter((r) => r.bookable)
+        .map((r) => r.line)
+        .sort(),
+    ).toEqual(["dog_walking", "pet_sitting", "pet_waste"]);
+    // Grooming and training stay Coming soon until their own flips.
+    for (const line of ["mobile_grooming", "training"]) {
+      expect(rows.find((r) => r.line === line)?.bookable, line).toBe(false);
+    }
+    // Customers may ask for a priced stay: the seed's true is left alone.
+    expect(rows.find((r) => r.line === "pet_sitting")?.requestable).toBe(true);
+  });
+
+  it("flips sitting in its own migration, after the switch, touching one row and one column", () => {
+    const files = migrationFiles();
+    expect(files.indexOf(SITTING)).toBeGreaterThan(files.indexOf(SWITCH));
+    expect(flips().filter((f) => f.file === SITTING)).toEqual([
+      { file: SITTING, line: "pet_sitting", set: { bookable: true } },
+    ]);
+  });
+
   it("is the default the TS fixtures drive the rules with", () => {
-    const rows = seed();
+    const rows = replayed();
     expect(
       rows
         .filter((r) => r.bookable)

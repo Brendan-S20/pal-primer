@@ -41,7 +41,11 @@ import { LAST_CLEANED_QUESTION } from "@/lib/first-cleanup";
 import { normalizeFormConfig, readsAsQuoteOnly } from "@/lib/new-customer-form";
 import { asksAboutTheYard, publicServiceChoices, quotedPublicService } from "@/lib/public-services";
 import { SERVICE_LINES, type ServiceLineAvailability } from "@/lib/service-lines";
-import { LAUNCH_DEFAULT, withBookable } from "./support/service-line-availability";
+import {
+  LAUNCH_DEFAULT,
+  SITTING_COMING_SOON,
+  withBookable,
+} from "./support/service-line-availability";
 
 const ROOT = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
@@ -49,7 +53,7 @@ const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 const SLUG = "riverbend";
 const YARD_WORDS = /yard|cleanup|cleaned/i;
 
-// Sitting launched and open to customers, as it would be on its launch day.
+// Sitting launched and open to customers (#547).
 const SITTING_LIVE: ServiceLineAvailability = {
   ...withBookable("pet_sitting"),
   customerRequestable: [...LAUNCH_DEFAULT.customerRequestable],
@@ -330,11 +334,11 @@ describe("a quote-only headline on an instant page (#528)", () => {
 
 describe("a Coming soon line is still not offered", () => {
   it("is not listed, so the form has nothing to pick and nothing to price", () => {
-    // Sitting is Coming soon at launch: only the walk is left, so no picker.
-    expect(publicServiceChoices([WALK, SIT], LAUNCH_DEFAULT).map((s) => s.service_line)).toEqual([
-      "dog_walking",
-    ]);
-    const html = render([SCOOP, SIT], LAUNCH_DEFAULT);
+    // With sitting Coming soon, only the walk is left, so no picker.
+    expect(
+      publicServiceChoices([WALK, SIT], SITTING_COMING_SOON).map((s) => s.service_line),
+    ).toEqual(["dog_walking"]);
+    const html = render([SCOOP, SIT], SITTING_COMING_SOON);
     expect(html).not.toMatch(/id="service"/);
     expect(html).not.toContain("Drop-in visit");
   });
