@@ -646,6 +646,20 @@ test.describe("on a phone the price appears where the visitor tapped (#523)", ()
         await bar.getByRole("button", { name: "Continue" }).click();
         await expect(page.getByRole("button", { name: "Start service" })).toBeInViewport();
         await expect(bar).toHaveCount(0);
+        // And stays aside for the rest of the panel: past the prices, over
+        // Start service and what comes after it, the bar's Continue would
+        // point back up at something already passed. The stub draws no
+        // Stripe form, so a screen of padding stands in for its height;
+        // without it the page ends before the prices can leave the top.
+        await page.evaluate(() => {
+          document.body.style.paddingBottom = `${window.innerHeight}px`;
+        });
+        await page
+          .getByRole("button", { name: "Start service" })
+          .evaluate((el) => el.scrollIntoView({ block: "start" }));
+        await page.waitForTimeout(300);
+        await expect(page.locator("aside").getByText("$175.00")).not.toBeInViewport();
+        await expect(bar).toHaveCount(0);
       }
     });
   }

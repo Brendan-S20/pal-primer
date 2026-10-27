@@ -262,6 +262,12 @@ describe("on a phone the price shows where the visitor tapped (#523)", () => {
     expect(flow).toMatch(/ref=\{panelPriceRef\}/);
     expect(flow).toContain("window.visualViewport");
     expect(flow).not.toContain('"0px 0px -40% 0px"');
+    // Reached stays reached past the prices (one-sided), and a scrolling
+    // sheet counts as much as a scrolling window (capture phase).
+    expect(flow).toContain("setPanelInView(r.height > 0 && r.bottom <= bottom + 1);");
+    expect(flow).toMatch(
+      /addEventListener\("scroll", measure, \{ capture: true, passive: true \}\)/,
+    );
   });
 
   it("is the same in walk mode's sheet, which is always narrow", () => {

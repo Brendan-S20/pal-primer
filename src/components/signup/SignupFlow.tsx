@@ -447,30 +447,34 @@ export function SignupFlow({
     const io = answer ? new IntersectionObserver(([e]) => setAnswerInView(e.isIntersecting)) : null;
     if (answer) io?.observe(answer);
     // The panel counts as reached once its price lines, the thing the bar
-    // repeats, are wholly on the part of the screen a person can see. That
-    // is the visual viewport: on a phone the keyboard covers the bottom of
-    // the layout viewport, and a price under it is not on screen. It used to
+    // repeats, have come wholly above the bottom of the part of the screen a
+    // person can see. That is the visual viewport: on a phone the keyboard
+    // covers the bottom of the layout viewport, and a price under it is not
+    // on screen. It used to
     // be "the panel is in the top 60%", a stand-in for the keyboard that
     // stopped holding at 768x1024 once step 2 grew (#545): the panel sat at
     // y=770 with its prices showing, and the bar drew over its own total
-    // (#552).
+    // (#552). One-sided on purpose: prices scrolled up past the top still
+    // count as reached, so the bar stays away over Start service and the
+    // payment form below them. Scroll is listened for in the capture phase
+    // because in walk mode the sheet scrolls, not the window, and an
+    // element's scroll does not bubble.
     const price = panelPriceRef.current;
     const measure = () => {
       if (!price) return;
       const r = price.getBoundingClientRect();
       const vv = window.visualViewport;
-      const top = vv ? vv.offsetTop : 0;
       const bottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
-      setPanelInView(r.height > 0 && r.top >= top - 1 && r.bottom <= bottom + 1);
+      setPanelInView(r.height > 0 && r.bottom <= bottom + 1);
     };
     measure();
-    window.addEventListener("scroll", measure, { passive: true });
+    window.addEventListener("scroll", measure, { capture: true, passive: true });
     window.addEventListener("resize", measure);
     window.visualViewport?.addEventListener("resize", measure);
     window.visualViewport?.addEventListener("scroll", measure);
     return () => {
       io?.disconnect();
-      window.removeEventListener("scroll", measure);
+      window.removeEventListener("scroll", measure, { capture: true });
       window.removeEventListener("resize", measure);
       window.visualViewport?.removeEventListener("resize", measure);
       window.visualViewport?.removeEventListener("scroll", measure);
