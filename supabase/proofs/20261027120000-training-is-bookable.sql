@@ -51,6 +51,14 @@ BEGIN
 END $$;
 
 -- ── 1. The switch ─────────────────────────────────────────────────────────
+-- This proof is about the training flip. A later migration that flips another
+-- row (20261027180000, mobile grooming) is a different file with its own
+-- proof, so put grooming back to its seed first; sections 1 and 2 rely on it
+-- being Coming soon. Logged with no actor, like any setup write; nothing
+-- below counts mobile_grooming rows.
+UPDATE public.platform_service_lines SET bookable = false, customer_requestable = false
+ WHERE service_line = 'mobile_grooming';
+
 DO $$
 BEGIN
   IF public.bookable_service_lines()

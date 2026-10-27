@@ -15,8 +15,8 @@
 // row, and the organizations gate following the switch.
 //
 // A launch after the seed is an UPDATE of one row in a later migration
-// (pet sitting, #547: 20261026200000; training, #548: 20261027120000), never
-// an edit of the seed, so what a
+// (pet sitting, #547: 20261026200000; training, #548: 20261027120000; mobile
+// grooming, #549: 20261027180000), never an edit of the seed, so what a
 // replay ends on is the seed with those UPDATEs applied in filename order.
 
 import { describe, expect, it } from "vitest";
@@ -32,6 +32,7 @@ const GUARD = "20261017004000_a-service-line-is-turned-on-only-when-bookable.sql
 const SWITCH = "20261025200000_one-switch-decides-what-is-bookable.sql";
 const SITTING = "20261026200000_pet-sitting-is-bookable.sql";
 const TRAINING = "20261027120000_training-is-bookable.sql";
+const GROOMING = "20261027180000_mobile-grooming-is-bookable.sql";
 
 function lastMatch(re: RegExp): { file: string; m: RegExpExecArray } | null {
   let found: { file: string; m: RegExpExecArray } | null = null;
@@ -130,20 +131,29 @@ describe("one switch decides which service lines are bookable", () => {
     expect(files.indexOf(SWITCH)).toBeGreaterThan(flip);
   });
 
-  it("training is bookable (#548): a replay ends on pet waste, walking, sitting and training, and nothing else", () => {
+  it("mobile grooming is bookable (#549): a replay ends on pet waste, walking, sitting, training and grooming, and nothing else", () => {
     const rows = replayed();
     expect(
       rows
         .filter((r) => r.bookable)
         .map((r) => r.line)
         .sort(),
-    ).toEqual(["dog_walking", "pet_sitting", "pet_waste", "training"]);
-    // Grooming stays Coming soon until its own flip.
-    expect(rows.find((r) => r.line === "mobile_grooming")?.bookable).toBe(false);
+    ).toEqual(["dog_walking", "mobile_grooming", "pet_sitting", "pet_waste", "training"]);
     // Customers may ask for a priced stay: the seed's true is left alone.
     expect(rows.find((r) => r.line === "pet_sitting")?.requestable).toBe(true);
+    // A client may ask for a groom from the portal; the office books it.
+    expect(rows.find((r) => r.line === "mobile_grooming")?.requestable).toBe(true);
     // Training is sold by the office: the seed's false is left alone.
     expect(rows.find((r) => r.line === "training")?.requestable).toBe(false);
+  });
+
+  it("a replay ends on exactly these customer-requestable lines, grooming in and training out", () => {
+    expect(
+      replayed()
+        .filter((r) => r.requestable)
+        .map((r) => r.line)
+        .sort(),
+    ).toEqual(["dog_walking", "mobile_grooming", "other", "pet_sitting", "pet_waste"]);
   });
 
   it("flips sitting in its own migration, after the switch, touching one row and one column", () => {
@@ -160,6 +170,23 @@ describe("one switch decides which service lines are bookable", () => {
     expect(flips().filter((f) => f.file === TRAINING)).toEqual([
       { file: TRAINING, line: "training", set: { bookable: true } },
     ]);
+  });
+
+  it("flips grooming in its own migration, after training, touching one row and both columns", () => {
+    const files = migrationFiles();
+    expect(files.indexOf(GROOMING)).toBeGreaterThan(files.indexOf(TRAINING));
+    expect(files.indexOf(GROOMING)).toBeGreaterThan(
+      files.indexOf("20261027130000_a-dispatcher-books-a-sold-package.sql"),
+    );
+    expect(flips().filter((f) => f.file === GROOMING)).toEqual([
+      { file: GROOMING, line: "mobile_grooming", set: { bookable: true, requestable: true } },
+    ]);
+    // No other file after the switch touches the grooming row.
+    expect(
+      flips()
+        .filter((f) => f.line === "mobile_grooming")
+        .map((f) => f.file),
+    ).toEqual([GROOMING]);
   });
 
   it("is the default the TS fixtures drive the rules with", () => {

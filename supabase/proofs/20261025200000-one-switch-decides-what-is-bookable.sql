@@ -67,12 +67,14 @@ END $$;
 -- ── 1. The default ────────────────────────────────────────────────────────
 -- This proof is about the switch, from the seed this file wrote. A later
 -- migration that flips a row (20261026200000, pet sitting; 20261027120000,
--- training) is a different file with its own proof, so put those back to
--- their seed first; section 4 relies on sitting being Coming soon. Logged
--- with no actor, like any setup write; nothing below counts pet_sitting or
--- training rows.
+-- training; 20261027180000, mobile grooming) is a different file with its own
+-- proof, so put those back to their seed first; section 4 relies on sitting
+-- being Coming soon. Logged with no actor, like any setup write; nothing below
+-- counts pet_sitting, training or mobile_grooming rows.
 UPDATE public.platform_service_lines SET bookable = false
  WHERE service_line IN ('pet_sitting', 'training');
+UPDATE public.platform_service_lines SET bookable = false, customer_requestable = false
+ WHERE service_line = 'mobile_grooming';
 
 DO $$
 BEGIN
