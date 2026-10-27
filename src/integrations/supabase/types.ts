@@ -9052,6 +9052,18 @@ export type Database = {
         }
         Returns: number
       }
+      book_training_package_plan: {
+        Args: {
+          _client_package_id: string
+          _earliest_time?: string
+          _ends_on: string
+          _latest_time?: string
+          _property_id: string
+          _started_on: string
+          _weekday?: number
+        }
+        Returns: string
+      }
       bootstrap_organization: {
         Args: {
           _display_name?: string

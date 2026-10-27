@@ -1,3 +1,4 @@
+import type { AppRole } from "@/hooks/useMyRole";
 import { addDaysToDay } from "@/lib/reclean";
 
 export type TrainingPackage = {
@@ -78,6 +79,14 @@ export function canBook(pkg: TrainingPackage, holdingCount: number, date: string
   if (holdingCount >= pkg.sessions_count)
     return `No sessions left in this package: ${holdingCount} of ${pkg.sessions_count} are booked or used.`;
   return null;
+}
+
+/** Who runs a sold package: books its lessons, extends or cancels it. The
+ * roles public.can_write_org admits, which is what the server functions and
+ * book_training_package_plan check (#555). Selling one is billing, and stays
+ * manage_client_billing. */
+export function runsTrainingOffice(role: AppRole | null | undefined): boolean {
+  return role === "owner" || role === "office_manager" || role === "dispatcher";
 }
 
 export const CHOOSE_DOG = "Choose which dog this package is for.";

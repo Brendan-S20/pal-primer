@@ -84,7 +84,6 @@ function fake(
     staffError?: DbError;
     package?: Partial<typeof pack>;
     visits?: { status: string; skip_billable: boolean }[];
-    accountType?: string;
     busy?: unknown[];
     lessonMissing?: boolean;
   } = {},
@@ -139,12 +138,7 @@ function fake(
                       { status: "completed", skip_billable: false },
                       { status: "scheduled", skip_billable: false },
                     ]);
-        if (table === "properties")
-          data = {
-            id: PROPERTY,
-            zone_id: null,
-            clients: { account_type: options.accountType ?? "residential" },
-          };
+        if (table === "properties") data = { id: PROPERTY };
         if (table === "dogs") {
           data = [];
           count = 2;
@@ -183,7 +177,9 @@ function fake(
             ? options.canWrite !== false
             : name === "client_package_session_number"
               ? 3
-              : 4,
+              : name === "book_training_package_plan"
+                ? ID
+                : 4,
         error: null,
       };
     },
@@ -289,25 +285,19 @@ describe("booking lessons from a package", () => {
         data: { ...booking, staffId: ID, startTime: "11:00", minutes: 120 },
       }),
     ).toEqual({ subscriptionId: ID, visitCount: 4 });
-    expect(mocks.permission).toHaveBeenCalledWith(db.client, "owner-user", "manage_pricing");
-    expect(db.writes("subscriptions", "insert")).toHaveLength(1);
-    expect(db.writes("subscriptions", "insert")[0].args[0]).toMatchObject({
-      organization_id: "org-a",
-      client_id: ID,
-      property_id: PROPERTY,
-      service_id: ID,
-      client_package_id: ID,
-      frequency: "weekly",
-      weekdays: [1],
-      dog_count: 2,
-      price_cents: 0,
-      billing_cadence: "postpaid",
-      started_on: "2090-01-02",
-      ends_on: "2090-01-23",
-      earliest_time: "11:00",
-      latest_time: "13:00",
-      priced_from_zone_id: null,
+    expect(db.writes("book_training_package_plan", "rpc")).toHaveLength(1);
+    // No price, cadence, service or client: the database takes those from the
+    // package, and its guard holds the price at zero.
+    expect(db.writes("book_training_package_plan", "rpc")[0].args[0]).toEqual({
+      _client_package_id: ID,
+      _property_id: PROPERTY,
+      _started_on: "2090-01-02",
+      _ends_on: "2090-01-23",
+      _weekday: 1,
+      _earliest_time: "11:00",
+      _latest_time: "13:00",
     });
+    expect(db.calls.filter((c) => c.table === "subscriptions")).toEqual([]);
     expect(db.calls).toContainEqual({
       table: "generate_visits_for_subscription",
       op: "rpc",
@@ -321,30 +311,54 @@ describe("booking lessons from a package", () => {
   it("cuts the last date at expiry or an optional smaller count", async () => {
     let db = fake({ package: { expires_on: "2090-01-09" } });
     await bookPackageSessions({ data: booking });
-    expect(db.writes("subscriptions", "insert")[0].args[0]).toMatchObject({
-      ends_on: "2090-01-09",
+    expect(db.writes("book_training_package_plan", "rpc")[0].args[0]).toMatchObject({
+      _ends_on: "2090-01-09",
     });
     db = fake();
     await bookPackageSessions({ data: { ...booking, count: 1 } });
-    expect(db.writes("subscriptions", "insert")[0].args[0]).toMatchObject({
-      ends_on: "2090-01-02",
+    expect(db.writes("book_training_package_plan", "rpc")[0].args[0]).toMatchObject({
+      _ends_on: "2090-01-02",
     });
   });
-  it("creates one one-time plan for exactly the selected day and preserves account shape", async () => {
-    const db = fake({ accountType: "commercial" });
+  it("creates one one-time plan for exactly the selected day", async () => {
+    const db = fake();
     await bookOneSession({
       data: { clientPackageId: ID, propertyId: PROPERTY, date: "2090-01-03" },
     });
-    expect(db.writes("subscriptions", "insert")[0].args[0]).toMatchObject({
-      frequency: "one_time",
-      weekdays: null,
-      started_on: "2090-01-03",
-      ends_on: "2090-01-03",
-      account_type: "commercial",
-      dog_count: null,
-      unit_count: 1,
-      price_cents: 0,
+    // No weekday is the database's one_time; the account shape is read there.
+    expect(db.writes("book_training_package_plan", "rpc")[0].args[0]).toEqual({
+      _client_package_id: ID,
+      _property_id: PROPERTY,
+      _started_on: "2090-01-03",
+      _ends_on: "2090-01-03",
+      _weekday: undefined,
+      _earliest_time: undefined,
+      _latest_time: undefined,
     });
+  });
+  it("lets the training office book without manage_pricing, a dispatcher included (#555)", async () => {
+    const db = fake();
+    mocks.caller.mockResolvedValueOnce({ orgId: "org-a", role: "dispatcher" });
+    await bookOneSession({
+      data: { clientPackageId: ID, propertyId: PROPERTY, date: "2090-01-03" },
+    });
+    expect(mocks.permission).not.toHaveBeenCalled();
+    expect(db.calls).toContainEqual({
+      table: "can_write_org",
+      op: "rpc",
+      args: [{ _user_id: "owner-user", _org_id: "org-a" }],
+    });
+    expect(db.writes("book_training_package_plan", "rpc")).toHaveLength(1);
+  });
+  it("refuses a caller can_write_org refuses, before any write", async () => {
+    const db = fake({ canWrite: false });
+    await expect(
+      bookOneSession({
+        data: { clientPackageId: ID, propertyId: PROPERTY, date: "2090-01-03" },
+      }),
+    ).rejects.toThrow("Not authorized");
+    expect(db.writes("book_training_package_plan", "rpc")).toEqual([]);
+    expect(db.calls.filter((c) => c.op === "rpc").map((c) => c.table)).toEqual(["can_write_org"]);
   });
   it("returns capacity, expiry and cancellation sentences before inserting a plan", async () => {
     for (const [options, message] of [
@@ -363,7 +377,7 @@ describe("booking lessons from a package", () => {
           data: { clientPackageId: ID, propertyId: PROPERTY, date: booking.startOn },
         }),
       ).rejects.toThrow(message);
-      expect(db.writes("subscriptions", "insert")).toEqual([]);
+      expect(db.writes("book_training_package_plan", "rpc")).toEqual([]);
     }
   });
   it("counts billable skips as held and gives cancellations and missed lessons back", async () => {
@@ -376,8 +390,8 @@ describe("booking lessons from a package", () => {
       ],
     });
     await bookPackageSessions({ data: booking });
-    expect(db.writes("subscriptions", "insert")[0].args[0]).toMatchObject({
-      ends_on: "2090-01-30",
+    expect(db.writes("book_training_package_plan", "rpc")[0].args[0]).toMatchObject({
+      _ends_on: "2090-01-30",
     });
   });
   it("validates dates, start times and lesson lengths before any database work", async () => {
@@ -404,7 +418,7 @@ describe("booking lessons from a package", () => {
       op: "eq",
       args: ["organization_id", "org-a"],
     });
-    expect(db.writes("subscriptions", "insert")).toEqual([]);
+    expect(db.writes("book_training_package_plan", "rpc")).toEqual([]);
   });
 });
 
@@ -539,9 +553,9 @@ describe("a lesson at a start time, and the trainer's other lessons", () => {
       data: { clientPackageId: ID, propertyId: PROPERTY, date: "2090-01-03", startTime: "10:00" },
     });
     // No length given: the service's default, or 60 minutes.
-    expect(db.writes("subscriptions", "insert")[0].args[0]).toMatchObject({
-      earliest_time: "10:00",
-      latest_time: "11:00",
+    expect(db.writes("book_training_package_plan", "rpc")[0].args[0]).toMatchObject({
+      _earliest_time: "10:00",
+      _latest_time: "11:00",
     });
   });
   it("refuses an overlapping lesson for the same trainer and names it, before any plan is made", async () => {
@@ -563,7 +577,7 @@ describe("a lesson at a start time, and the trainer's other lessons", () => {
       op: "in",
       args: ["status", ["scheduled", "in_progress"]],
     });
-    expect(db.writes("subscriptions", "insert")).toEqual([]);
+    expect(db.writes("book_training_package_plan", "rpc")).toEqual([]);
   });
   it("ignores lessons that touch but do not overlap, and books anyway when told to", async () => {
     let db = fake({
@@ -581,7 +595,7 @@ describe("a lesson at a start time, and the trainer's other lessons", () => {
       ],
     });
     await bookPackageSessions({ data: timed });
-    expect(db.writes("subscriptions", "insert")).toHaveLength(1);
+    expect(db.writes("book_training_package_plan", "rpc")).toHaveLength(1);
     db = fake({
       busy: [
         {
@@ -592,14 +606,14 @@ describe("a lesson at a start time, and the trainer's other lessons", () => {
       ],
     });
     await bookPackageSessions({ data: { ...timed, allowOverlap: true } });
-    expect(db.writes("subscriptions", "insert")).toHaveLength(1);
+    expect(db.writes("book_training_package_plan", "rpc")).toHaveLength(1);
   });
   it("refuses a lesson that would run past midnight", async () => {
     const db = fake();
     await expect(bookPackageSessions({ data: { ...timed, startTime: "23:30" } })).rejects.toThrow(
       "past midnight",
     );
-    expect(db.writes("subscriptions", "insert")).toEqual([]);
+    expect(db.writes("book_training_package_plan", "rpc")).toEqual([]);
   });
 });
 

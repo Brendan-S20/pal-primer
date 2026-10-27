@@ -28,6 +28,7 @@ import { humanizeEnum } from "@/lib/humanize";
 import { parseFrequencyRequest, frequencyLabel } from "@/lib/frequency-request";
 import { applyFrequencyChangeRequest } from "@/lib/subscriptions.functions";
 import { bookLessonRequest } from "@/lib/training-packages.functions";
+import { runsTrainingOffice } from "@/lib/training-packages";
 import { usePermissions } from "@/hooks/useMyRole";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { VacationHoldDrawer } from "@/components/client-detail/VacationHoldDrawer";
@@ -260,7 +261,7 @@ function LessonRequestRow({
 function ConcernsPage() {
   // The one-click frequency apply is a manage_pricing action — hide it for
   // roles (dispatcher) that can reach Concerns but would be server-rejected.
-  const { can } = usePermissions();
+  const { can, role } = usePermissions();
   const texting = useClientTexting();
   const canManagePricing = can("manage_pricing");
   const [filter, setFilter] = useState<"all" | ConcernStatus>("open");
@@ -683,7 +684,7 @@ function ConcernsPage() {
                   <LessonRequestRow
                     concern={c}
                     status={status}
-                    canBook={canManagePricing}
+                    canBook={runsTrainingOffice(role)}
                     booking={bookLessonMut.isPending && bookLessonMut.variables === c.id}
                     onBook={() => bookLessonMut.mutate(c.id)}
                     declining={mut.isPending}
