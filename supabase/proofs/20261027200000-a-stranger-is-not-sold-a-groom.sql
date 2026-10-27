@@ -74,6 +74,11 @@ BEGIN
   IF _pw IS NULL THEN
     RAISE EXCEPTION 'PROOF FAILED [fixture]: the business has no seeded pet-waste service';
   END IF;
+  -- Turning a line on seeds that line's own services (a sitting business
+  -- gets a drop-in, a house sit, an overnight stay...). Retire every one but
+  -- the four above, so each line has exactly one service to list and price.
+  UPDATE public.services s SET active = false
+   WHERE s.organization_id = _org AND s.id NOT IN (_pw, _walk, _sit, _groom);
 
   INSERT INTO _ids VALUES ('org', _org), ('zone', _zone), ('walk', _walk), ('sit', _sit),
                           ('groom', _groom), ('pw', _pw);
