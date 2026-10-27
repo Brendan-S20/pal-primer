@@ -2,14 +2,15 @@
 //
 // The real answer is public.platform_service_lines, read at runtime. A test
 // that drives the rules without a database passes one of these instead.
-// LAUNCH_DEFAULT is the migration's seed (20261025200000), and
+// LAUNCH_DEFAULT is the switch as a replay of the migrations leaves it: the
+// seed (20261025200000) plus each later flip (20261026200000, pet sitting).
 // tests/a-service-line-is-turned-on-only-when-bookable.test.ts fails if the
 // two ever differ.
 
 import type { ServiceLine, ServiceLineAvailability } from "@/lib/service-lines";
 
 export const LAUNCH_DEFAULT: ServiceLineAvailability = {
-  bookable: ["pet_waste", "dog_walking"],
+  bookable: ["pet_waste", "dog_walking", "pet_sitting"],
   customerRequestable: ["pet_waste", "dog_walking", "pet_sitting", "other"],
 };
 
@@ -29,3 +30,9 @@ export function withoutBookable(...lines: ServiceLine[]): ServiceLineAvailabilit
     bookable: LAUNCH_DEFAULT.bookable.filter((l) => !lines.includes(l)),
   };
 }
+
+/** The switch as it was before pet sitting launched (#547): the one line a
+ *  customer could ask for but nobody could buy yet. Tests whose subject is
+ *  "a Coming soon line a customer may request is still refused" drive it,
+ *  because grooming and training are refused by the second switch first. */
+export const SITTING_COMING_SOON: ServiceLineAvailability = withoutBookable("pet_sitting");

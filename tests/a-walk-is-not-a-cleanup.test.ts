@@ -244,27 +244,27 @@ describe("what makes a service saveable", () => {
   });
 
   it("offers every live line, keeps an old service's line, and starts on the business's first", () => {
-    // Walking is bookable (#530), so every business is offered it. Sitting,
-    // grooming and training are Coming soon, so only a business that already
-    // runs one, or a service already on it, is offered it.
-    expect(serviceLineChoices(["pet_waste"], LAUNCH_DEFAULT)).toEqual(["pet_waste", "dog_walking"]);
-    expect(serviceLineChoices(["pet_waste"], LAUNCH_DEFAULT)).not.toContain("pet_sitting");
+    // Walking (#530) and sitting (#547) are bookable, so every business is
+    // offered them. Grooming and training are Coming soon, so only a business
+    // that already runs one, or a service already on it, is offered it.
+    expect(serviceLineChoices(["pet_waste"], LAUNCH_DEFAULT)).toEqual([
+      "pet_waste",
+      "dog_walking",
+      "pet_sitting",
+    ]);
     expect(serviceLineChoices(["pet_waste"], LAUNCH_DEFAULT)).not.toContain("training");
     expect(serviceLineChoices(["pet_waste", "training"], LAUNCH_DEFAULT)).toContain("training");
-    expect(serviceLineChoices(["pet_waste"], LAUNCH_DEFAULT)).not.toContain("pet_sitting");
     expect(serviceLineChoices(["pet_waste", "dog_walking"], LAUNCH_DEFAULT)).toEqual([
       "pet_waste",
       "dog_walking",
+      "pet_sitting",
     ]);
-    expect(serviceLineChoices(["pet_waste"], LAUNCH_DEFAULT, "pet_sitting")).toEqual([
+    expect(serviceLineChoices(["pet_waste"], LAUNCH_DEFAULT, "training")).toEqual([
       "pet_waste",
       "dog_walking",
       "pet_sitting",
+      "training",
     ]);
-    expect(serviceLineChoices(["pet_sitting"], LAUNCH_DEFAULT)).toContain("pet_sitting");
-    expect(serviceLineChoices(["pet_waste"], LAUNCH_DEFAULT, "pet_sitting")).toContain(
-      "pet_sitting",
-    );
     expect(serviceLineChoices(["pet_waste"], LAUNCH_DEFAULT)).not.toContain("mobile_grooming");
     expect(serviceLineChoices(["mobile_grooming"], LAUNCH_DEFAULT)).toContain("mobile_grooming");
     expect(serviceLineChoices(["training"], LAUNCH_DEFAULT)).toContain("training");
@@ -294,7 +294,11 @@ describe("what makes a service saveable", () => {
       "Private lesson (60 min)",
       "Evaluation (45 min)",
     ]);
-    expect(seeds.filter((s) => s.service_line !== "mobile_grooming").every((s) => s.base_price_cents === null)).toBe(true);
+    expect(
+      seeds
+        .filter((s) => s.service_line !== "mobile_grooming")
+        .every((s) => s.base_price_cents === null),
+    ).toBe(true);
     expect(seeds.find((s) => s.name === "Full groom (90 min)")?.base_price_cents).toBe(8000);
     expect(seeds.find((s) => s.name === "Private lesson (60 min)")).toMatchObject({
       service_line: "training",

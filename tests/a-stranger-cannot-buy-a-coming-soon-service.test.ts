@@ -15,12 +15,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { publicServiceChoices } from "@/lib/public-services";
 import { SERVICE_LINES } from "@/lib/service-lines";
-import { LAUNCH_DEFAULT, withBookable } from "./support/service-line-availability";
+import { SITTING_COMING_SOON, withBookable } from "./support/service-line-availability";
 
-// The switch as the server reads it: the migration's default.
+// The switch as the server reads it, with pet sitting still Coming soon:
+// the state before #547, and the only line a customer may ask for that nobody
+// could buy, so it is the one that proves the bookable switch alone refuses.
 vi.mock("@/lib/service-line-availability.server", async () => ({
   loadServiceLineAvailability: async () =>
-    (await import("./support/service-line-availability")).LAUNCH_DEFAULT,
+    (await import("./support/service-line-availability")).SITTING_COMING_SOON,
 }));
 
 const read = (p: string) => readFileSync(join(import.meta.dirname, "..", p), "utf8");
@@ -205,14 +207,14 @@ beforeEach(() => {
 
 describe("the public signup and quote form's picker", () => {
   it("drops a sit that public_services handed back, keeping pet waste and the walk", () => {
-    expect(publicServiceChoices([PW, WALK, SIT], LAUNCH_DEFAULT).map((s) => s.id)).toEqual([
+    expect(publicServiceChoices([PW, WALK, SIT], SITTING_COMING_SOON).map((s) => s.id)).toEqual([
       "pw",
       "w",
     ]);
   });
 
   it("offers nothing to pick from for a business whose only services are Coming soon", () => {
-    expect(publicServiceChoices([SIT], LAUNCH_DEFAULT)).toEqual([]);
+    expect(publicServiceChoices([SIT], SITTING_COMING_SOON)).toEqual([]);
   });
 
   it("offers a line once the switch turns it on", () => {

@@ -17,7 +17,7 @@ import { techSkipReasonCodes } from "@/lib/skip-rules.functions";
 
 describe("grooming first customer scope", () => {
   it("keeps pet waste bookable and grooming Coming soon in every customer check", () => {
-    expect(LAUNCH_DEFAULT.bookable).toEqual(["pet_waste", "dog_walking"]);
+    expect(LAUNCH_DEFAULT.bookable).toEqual(["pet_waste", "dog_walking", "pet_sitting"]);
     expect(customerCanRequestService("pet_waste", LAUNCH_DEFAULT)).toBe(true);
     expect(customerCanRequestService("mobile_grooming", LAUNCH_DEFAULT)).toBe(false);
     // Turning grooming bookable does not open it to customers on its own.

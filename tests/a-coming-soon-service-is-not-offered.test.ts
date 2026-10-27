@@ -25,12 +25,18 @@ import { SERVICE_LINES } from "@/lib/service-lines";
 import { isBookableServiceLine, serviceNamePlaceholder } from "@/lib/services";
 import { bookVisit, getOpenSlots, listServices } from "../src/lib/receptionist-booking";
 import { twoBusinesses } from "./support/fake-receptionist-store";
-import { LAUNCH_DEFAULT, withBookable, withoutBookable } from "./support/service-line-availability";
+import {
+  SITTING_COMING_SOON,
+  withBookable,
+  withoutBookable,
+} from "./support/service-line-availability";
 
-// The switch as the server reads it: the migration's default.
+// The switch as the server reads it, with pet sitting still Coming soon:
+// the state before #547, and the only line a customer may ask for that nobody
+// could buy, so it is the one that proves the bookable switch alone refuses.
 vi.mock("@/lib/service-line-availability.server", async () => ({
   loadServiceLineAvailability: async () =>
-    (await import("./support/service-line-availability")).LAUNCH_DEFAULT,
+    (await import("./support/service-line-availability")).SITTING_COMING_SOON,
 }));
 
 const read = (p: string) => readFileSync(join(import.meta.dirname, "..", p), "utf8");
@@ -67,7 +73,7 @@ const SIT = {
 
 describe("the portal's extra-visit picker", () => {
   it("does not offer an active, priced sit while its line is Coming soon; offers the walk", () => {
-    const opts = oneOffServiceOptions([PW, WALK, SIT], 4500, LAUNCH_DEFAULT);
+    const opts = oneOffServiceOptions([PW, WALK, SIT], 4500, SITTING_COMING_SOON);
     expect(opts.map((o) => o.id)).toEqual(["pw", "w"]);
   });
 
@@ -75,18 +81,18 @@ describe("the portal's extra-visit picker", () => {
     const opts = oneOffServiceOptions(
       [PW, { ...WALK, base_price_cents: null }],
       4500,
-      LAUNCH_DEFAULT,
+      SITTING_COMING_SOON,
     );
     expect(opts.map((o) => o.id)).toEqual(["pw"]);
   });
 
   it("still offers the pet-waste extra cleanup, at the one-off price", () => {
-    const [pw] = oneOffServiceOptions([WALK, PW], 4500, LAUNCH_DEFAULT);
+    const [pw] = oneOffServiceOptions([WALK, PW], 4500, SITTING_COMING_SOON);
     expect(pw).toMatchObject({ id: "pw", priceCents: 4500, petWaste: true });
   });
 
   it("offers nothing to a business whose only services are Coming soon", () => {
-    expect(oneOffServiceOptions([SIT], 4500, LAUNCH_DEFAULT)).toEqual([]);
+    expect(oneOffServiceOptions([SIT], 4500, SITTING_COMING_SOON)).toEqual([]);
   });
 
   it("offers a line once the switch turns it on", () => {
@@ -95,7 +101,11 @@ describe("the portal's extra-visit picker", () => {
   });
 
   it("stops offering a line once the switch turns it off", () => {
-    const opts = oneOffServiceOptions([PW, WALK, SIT], 4500, withoutBookable("dog_walking"));
+    const opts = oneOffServiceOptions(
+      [PW, WALK, SIT],
+      4500,
+      withoutBookable("dog_walking", "pet_sitting"),
+    );
     expect(opts.map((o) => o.id)).toEqual(["pw"]);
   });
 
@@ -117,6 +127,7 @@ describe("the portal's extra-visit picker", () => {
 /** A priced sit, so the refusal below is about the line and not the price. */
 function withAPricedSit() {
   const b = twoBusinesses();
+  b.db.availability = SITTING_COMING_SOON;
   b.db.serviceRows.push({
     id: "sit-a",
     organization_id: "org-a",
@@ -156,13 +167,13 @@ describe("the AI receptionist", () => {
 describe("Settings → Services", () => {
   it("knows which lines are bookable from the switch", () => {
     for (const line of SERVICE_LINES) {
-      expect(isBookableServiceLine(line, LAUNCH_DEFAULT)).toBe(
-        LAUNCH_DEFAULT.bookable.includes(line),
+      expect(isBookableServiceLine(line, SITTING_COMING_SOON)).toBe(
+        SITTING_COMING_SOON.bookable.includes(line),
       );
     }
-    expect(isBookableServiceLine("pet_waste", LAUNCH_DEFAULT)).toBe(true);
-    expect(isBookableServiceLine("dog_walking", LAUNCH_DEFAULT)).toBe(true);
-    expect(isBookableServiceLine("pet_sitting", LAUNCH_DEFAULT)).toBe(false);
+    expect(isBookableServiceLine("pet_waste", SITTING_COMING_SOON)).toBe(true);
+    expect(isBookableServiceLine("dog_walking", SITTING_COMING_SOON)).toBe(true);
+    expect(isBookableServiceLine("pet_sitting", SITTING_COMING_SOON)).toBe(false);
     expect(isBookableServiceLine("pet_sitting", withBookable("pet_sitting"))).toBe(true);
   });
 
@@ -378,14 +389,14 @@ beforeEach(() => {
 
 describe("the public signup and quote form's picker", () => {
   it("drops a sit that public_services handed back, keeping pet waste and the walk", () => {
-    expect(publicServiceChoices([PW, WALK, SIT], LAUNCH_DEFAULT).map((s) => s.id)).toEqual([
+    expect(publicServiceChoices([PW, WALK, SIT], SITTING_COMING_SOON).map((s) => s.id)).toEqual([
       "pw",
       "w",
     ]);
   });
 
   it("offers nothing to pick from for a business whose only services are Coming soon", () => {
-    expect(publicServiceChoices([SIT], LAUNCH_DEFAULT)).toEqual([]);
+    expect(publicServiceChoices([SIT], SITTING_COMING_SOON)).toEqual([]);
   });
 
   it("offers a line once the switch turns it on", () => {

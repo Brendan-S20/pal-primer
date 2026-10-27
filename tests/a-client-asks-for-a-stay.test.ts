@@ -524,16 +524,16 @@ describe("stay billing", () => {
   });
 });
 
-describe("sitting is not bookable yet", () => {
-  it("the picker shows sitting as Coming soon and it cannot be ticked", () => {
-    expect(LAUNCH_DEFAULT.bookable).not.toContain("pet_sitting");
+describe("sitting is bookable (#547)", () => {
+  it("the picker shows sitting with no Coming soon badge and it can be ticked", () => {
+    expect(LAUNCH_DEFAULT.bookable).toContain("pet_sitting");
     const html = renderToStaticMarkup(
       createElement(ServiceLinesChoices, { lines: ["pet_waste"], onChange: () => {} }),
     );
     const row = html.split("<li").find((r) => r.includes(">Pet sitting</span>"));
     expect(row).toBeDefined();
-    expect(row).toContain("Coming soon");
-    expect(row).toContain('disabled=""');
+    expect(row).not.toContain("Coming soon");
+    expect(row).not.toContain('disabled=""');
   });
   it("mounts requests, timelines and office confirmation with a slot for S2's care log", () => {
     expect(read("src/routes/portal.$slug.$token.requests.tsx")).toContain("<PortalStayRequest />");

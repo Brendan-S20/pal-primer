@@ -399,7 +399,7 @@ describe("what an owner can choose", () => {
       "mobile_grooming",
       "training",
     ]);
-    expect([...LAUNCH_DEFAULT.bookable]).toEqual(["pet_waste", "dog_walking"]);
+    expect([...LAUNCH_DEFAULT.bookable]).toEqual(["pet_waste", "dog_walking", "pet_sitting"]);
   });
 
   it("a Coming soon line can be kept or dropped, never added", () => {
@@ -411,7 +411,7 @@ describe("what an owner can choose", () => {
     ).toMatch(/coming soon/);
     expect(
       serviceLinesAdditionProblem(["pet_waste"], ["pet_waste", "pet_sitting"], LAUNCH_DEFAULT),
-    ).toMatch(/coming soon/);
+    ).toBeNull();
     // Set some other way before the hotfix: it stays, and it can go.
     const kept = ["mobile_grooming"] as const;
     expect(serviceLinesAdditionProblem(kept, [...kept, "pet_waste"], LAUNCH_DEFAULT)).toBeNull();
