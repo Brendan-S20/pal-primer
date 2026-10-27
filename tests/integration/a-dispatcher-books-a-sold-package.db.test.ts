@@ -129,6 +129,10 @@ describe.skipIf(!dbEnabled)("a dispatcher books a sold package", () => {
       name: `Private lessons 4-pack ${runId}`,
       sessions_count: 4,
       price_cents: 40000,
+      // training_client_package_guard sets a sold package's expires_on to
+      // purchased_on (today, in the org's UTC) plus this; an expires_on
+      // written on the client_packages insert is overwritten.
+      expires_after_days: START + 30,
     });
     packageId = await insertRow(admin, "client_packages", {
       organization_id: orgId,
@@ -139,8 +143,13 @@ describe.skipIf(!dbEnabled)("a dispatcher books a sold package", () => {
       sessions_count: 4,
       price_cents: 40000,
       purchased_on: today,
-      expires_on: shift(START + 30),
     });
+    const sold = await admin
+      .from("client_packages")
+      .select("expires_on")
+      .eq("id", packageId)
+      .single();
+    expect(sold.data?.expires_on).toBe(shift(START + 30));
     dispatcher = await person(orgId, "dispatcher", "dispatcher");
     tech = await person(orgId, "tech", "tech");
     strangerDispatcher = await person(otherOrg, "stranger", "dispatcher");
