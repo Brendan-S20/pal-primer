@@ -44,7 +44,9 @@ export function isInsideRecleanWindow(
   windowHours: number | null | undefined,
   now: Date = new Date(),
 ): boolean {
-  if (visit.service_line === "dog_walking") return false;
+  // The guarantee is for pet waste: a walk, a sit, a groom or a lesson is
+  // never inside it (#560). No line is an older visit, which was a yard.
+  if (visit.service_line && visit.service_line !== "pet_waste") return false;
   if (visit.status !== "completed") return false;
   const closes = recleanWindowClosesAt(visit.completed_at, windowHours);
   if (!closes) return false;
@@ -99,6 +101,8 @@ export function recleanRefusalMessage(raw: string): string {
     return "This visit was already a re-clean. Please report a concern instead.";
   if (/visit_is_a_walk/.test(raw))
     return "A walk is not covered by the re-clean guarantee. You can still report a concern.";
+  if (/visit_is_not_pet_waste/.test(raw))
+    return "This visit is not covered by the re-clean guarantee. You can still report a concern.";
   if (/visit_not_found|invalid_token/.test(raw))
     return "We couldn't find that visit on your account.";
   return raw;

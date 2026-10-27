@@ -35,6 +35,8 @@ interface Props extends OrgContact {
   trackUrl?: string;
   /** A dog walk. Absent for every other visit. */
   walk?: boolean;
+  /** False for a sit, a groom or a lesson (#560): no dog out in the yard. */
+  yard?: boolean;
 }
 
 const OnMyWay = ({
@@ -45,6 +47,7 @@ const OnMyWay = ({
   address,
   trackUrl,
   walk,
+  yard,
   ...orgContact
 }: Props) =>
   walk ? (
@@ -91,7 +94,9 @@ const OnMyWay = ({
             </Section>
           ) : null}
           <Text style={styles.text}>
-            If there is a dog out in the yard, or anything the tech should know, reply to this email.
+            {yard === false
+              ? "If anything has changed, or there is anything we should know, reply to this email."
+              : "If there is a dog out in the yard, or anything the tech should know, reply to this email."}
           </Text>
           <OrgFooter {...orgContact} orgName={orgName} />
         </Container>

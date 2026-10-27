@@ -135,6 +135,7 @@ function PortalVisits() {
           concernMut.mutate({ visitId, category: category as any, message })
         }
         reporting={concernMut.isPending}
+        petWaste={(c as { pet_waste?: boolean } | undefined)?.pet_waste !== false}
         // The window comes from portalGetClient, read from the same column
         // portal_request_reclean refuses against. 0 means the owner switched
         // the guarantee off, and then nothing is offered.

@@ -218,7 +218,7 @@ export function SignupFlow({
   // The words that depend on what is being sold (lib/booking-copy.ts, #525):
   // the service picked, else the business's only one, else pet waste. The
   // cadence list is the line's, so the frequency sent is one it showed.
-  const line = bookingLine(services, chosen);
+  const line = bookingLine(services, chosen, formQ.data?.lines);
   const lineCopy = BOOKING_COPY[line];
   const frequency = bookingCadence(line, form.frequency);
 

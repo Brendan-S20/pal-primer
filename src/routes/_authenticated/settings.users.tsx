@@ -131,9 +131,15 @@ function UsersPage() {
             flag — while the control itself was labelled "Field technician". The
             server's own error now points people here by the words on the
             checkbox, so those words have to match. */}
+        {/* Only the owner sees the controls, so only the owner is told they
+            are here (#439): an office manager read "Change roles,
+            deactivate people" over a list with neither. */}
         <p className="text-sm text-muted-foreground">
-          Change roles, deactivate people, and choose who runs routes. Only people who run routes
-          appear on the dispatch board, can be assigned visits, or show up in tech reports.
+          {canEdit
+            ? "Change roles, deactivate people, and choose who runs routes. "
+            : "Who is on the team and what each person can do. Only the owner can change roles. "}
+          Only people who run routes appear on the dispatch board, can be assigned visits, or show
+          up in tech reports.
         </p>
       </div>
 

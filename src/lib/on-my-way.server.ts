@@ -100,6 +100,9 @@ export async function sendOnMyWay(opts: {
       : null;
 
   const walk = isDogWalk((v as { services?: unknown }).services);
+  // A sit, a groom or a lesson is not a yard (#560): no ENT / DNE, and no
+  // dog out in the yard. A visit with no service is pet waste, as before.
+  const yard = isYardService((v as { services?: unknown }).services);
   const textFields = {
     customerName,
     orgName: org.name ?? "your service",
@@ -112,7 +115,7 @@ export async function sendOnMyWay(opts: {
         ...textFields,
         dogs: dogNamesPhrase((prop?.dogs ?? []).filter((d) => d.active !== false).map((d) => d.name)),
       })
-    : onMyWayText(textFields);
+    : onMyWayText({ ...textFields, yard });
 
   const sms = await trySms({
     supabase,
@@ -148,6 +151,7 @@ export async function sendOnMyWay(opts: {
         // A dog walk's email says walk and walker (#410); every other visit's
         // email is exactly what it was.
         ...(isDogWalk((v as any).services) ? { walk: true } : {}),
+        ...(yard ? {} : { yard: false }),
       },
       manual: trigger === "button",
     });
@@ -164,6 +168,12 @@ export async function sendOnMyWay(opts: {
       .eq("id", visitId);
   }
   return result;
+}
+
+function isYardService(services: unknown): boolean {
+  const s = (Array.isArray(services) ? services[0] : services) as
+    { service_line?: string | null } | null | undefined;
+  return !s?.service_line || s.service_line === "pet_waste";
 }
 
 function isDogWalk(services: unknown): boolean {

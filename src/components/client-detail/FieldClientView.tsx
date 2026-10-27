@@ -31,16 +31,29 @@ const DOG_TEMPERAMENTS = new Set(["friendly", "nervous", "aggressive", "unknown"
  *  anything else is shown as the office wrote it. */
 const DOG_SIZES = new Set(["small", "medium", "large", "giant", "xlarge"]);
 
+/** The hazards with a neutral wording under `workerHazard.*`, as on My Day. */
+const WORKER_HAZARDS = new Set<string>([
+  "do_not_enter_if_dog_out",
+  "aggressive_dog",
+  "escape_risk",
+  "invisible_fence",
+  "dog_in_yard_during_service",
+]);
+
 export function FieldClientView({
   client,
   properties,
   dogs,
   grooming = false,
+  petWaste = true,
 }: {
   client: any;
   properties: any[];
   dogs: any[];
   grooming?: boolean;
+  /** Whether the business runs pet waste. Without it the hazards read in the
+   *  words My Day's banner uses (#560): "close gate immediately" is a yard's. */
+  petWaste?: boolean;
 }) {
   const { t } = useTranslation();
   useDocumentTitle(
@@ -54,7 +67,9 @@ export function FieldClientView({
   }
 
   const flagsFor = (p: any) =>
-    HAZARD_FLAGS.filter((flag) => p[flag]).map((flag) => t(`hazard.${flag}`));
+    HAZARD_FLAGS.filter((flag) => p[flag]).map((flag) =>
+      t(!petWaste && WORKER_HAZARDS.has(flag) ? `workerHazard.${flag}` : `hazard.${flag}`),
+    );
 
   const dogDetails = (d: any): ReactNode[] => {
     const parts: ReactNode[] = [];

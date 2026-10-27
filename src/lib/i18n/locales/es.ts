@@ -429,7 +429,7 @@ const es: Translations = {
     photo_training: "Foto de entrenamiento",
   },
   access: {
-    gate: "Casa asegurada",
+    gate: "Código de reja o puerta",
     lockBox: "Caja de llaves",
     key: "Llave",
     alarm: "Alarma",

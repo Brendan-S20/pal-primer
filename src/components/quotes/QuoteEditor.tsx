@@ -23,6 +23,8 @@ import { listClients } from "@/lib/clients.functions";
 import { saveQuoteDraft, sendQuote } from "@/lib/quotes.functions";
 import { getFirstCleanupPricing } from "@/lib/first-cleanup.functions";
 import { LAST_CLEANED_QUESTION, firstCleanupQuoteLine } from "@/lib/first-cleanup";
+import { addOnExampleFor, runsPetWaste, type ServiceLine } from "@/lib/service-lines";
+import { defaultServiceLine, serviceNamePlaceholder } from "@/lib/services";
 import { getQuotePricing } from "@/lib/quote-pricing.functions";
 import {
   QUOTE_FREQUENCIES,
@@ -161,6 +163,7 @@ export function QuoteEditor({
   today,
   leadName,
   onSaved,
+  serviceLines: orgLines = ["pet_waste"],
 }: {
   initial: QuoteEditorValues;
   /** Present when editing a draft that already exists. */
@@ -170,6 +173,9 @@ export function QuoteEditor({
   /** Shown when the quote was started from a lead. */
   leadName?: string | null;
   onSaved: (id: string) => void;
+  /** What the business runs (useServiceLines), for the hints. Omitted, pet
+   *  waste, which reads exactly as the editor always did. */
+  serviceLines?: readonly ServiceLine[];
 }) {
   const qc = useQueryClient();
   const clientsFn = useServerFn(listClients);
@@ -190,6 +196,25 @@ export function QuoteEditor({
     setV((s) => ({ ...s, [k]: val }));
   const setLine = (key: string, patch: Partial<EditorLine>) =>
     setV((s) => ({ ...s, lines: s.lines.map((l) => (l.key === key ? { ...l, ...patch } : l)) }));
+
+  // The hints speak the business's own service (#560). A pet-waste business
+  // reads exactly what it always did.
+  const hints = runsPetWaste(orgLines)
+    ? {
+        title: "Weekly yard service",
+        oneTime: "Initial cleanup",
+        oneTimeExample: "an initial cleanup",
+        recurring: "Weekly visit, two dogs",
+        message:
+          "Thanks for walking the yard with me today. This covers the back lawn and the side run.",
+      }
+    : {
+        title: serviceNamePlaceholder(defaultServiceLine(orgLines)),
+        oneTime: addOnExampleFor(orgLines).name,
+        oneTimeExample: `"${addOnExampleFor(orgLines).name}"`,
+        recurring: `${serviceNamePlaceholder(defaultServiceLine(orgLines))}, two pets`,
+        message: "Thanks for your time today. This covers everything we talked about.",
+      };
 
   // "Add first cleanup": one one-time line, priced from the owner's
   // first-cleanup settings, which the person writing the quote can still
@@ -501,7 +526,7 @@ export function QuoteEditor({
               value={v.title}
               maxLength={QUOTE_LIMITS.title}
               onChange={(e) => set("title", e.target.value)}
-              placeholder="Weekly yard service"
+              placeholder={hints.title}
             />
           </div>
           <div className="space-y-2">
@@ -526,7 +551,7 @@ export function QuoteEditor({
           <h2 className="text-base font-medium">Lines</h2>
           <p className="text-sm text-muted-foreground">
             Tick {RECURRING_LABEL} for a price charged on every visit. Leave it off for a one-time
-            charge, like an initial cleanup.
+            charge, like {hints.oneTimeExample}.
           </p>
         </div>
         {attempted && filled.length === 0 && (
@@ -546,7 +571,7 @@ export function QuoteEditor({
                     value={l.description}
                     maxLength={QUOTE_LIMITS.description}
                     onChange={(e) => setLine(l.key, { description: e.target.value })}
-                    placeholder={l.recurring ? "Weekly visit, two dogs" : "Initial cleanup"}
+                    placeholder={l.recurring ? hints.recurring : hints.oneTime}
                     aria-invalid={attempted && !p.description ? true : undefined}
                   />
                 </div>
@@ -861,7 +886,7 @@ export function QuoteEditor({
             maxLength={QUOTE_LIMITS.message}
             value={v.message}
             onChange={(e) => set("message", e.target.value)}
-            placeholder="Thanks for walking the yard with me today. This covers the back lawn and the side run."
+            placeholder={hints.message}
           />
         </Card>
       ) : null}

@@ -6,6 +6,7 @@ import { TenantSignupShell } from "@/components/marketing/TenantSignupShell";
 import { Mail, MapPin, Phone } from "lucide-react";
 import { getPublicSignupForm } from "@/lib/signup.functions";
 import { formCopy } from "@/lib/new-customer-form";
+import { bookingPageLines, bookingServicesLine } from "@/lib/booking-copy";
 import { bookingPageHead, telHref, unavailablePageHead } from "@/lib/booking-page";
 import { appOrigin } from "@/lib/app-origin";
 import { customerTitle } from "@/lib/page-title";
@@ -67,7 +68,7 @@ export const Route = createFileRoute("/signup/$slug")({
       name: org?.name ?? null,
       logoUrl: org?.logoUrl ?? null,
       slug: org?.resolvedSlug ?? params.slug,
-      lines: org ? org.services.map((s) => s.service_line) : [],
+      lines: org ? bookingPageLines(org.services.map((s) => s.service_line), org.lines) : [],
       origin: appOrigin(),
     });
   },
@@ -135,6 +136,7 @@ function SignupPage() {
 
   const org = formQ.data;
   const copy = formCopy(org.form, org.instantStart);
+  const servicesLine = bookingServicesLine(org.services.map((s) => s.service_line));
 
   return (
     <TenantSignupShell
@@ -155,6 +157,13 @@ function SignupPage() {
               embedded form, which has no header, says it here (QA row 42:
               the name was printed twice). */}
           {embedded && <div className="mb-2 text-sm text-muted-foreground">{org.name}</div>}
+          {/* What the business does, in plain words, before the headline
+              (#560): "Get an instant quote" alone does not say for what. */}
+          {servicesLine && (
+            <p className="mb-1 text-sm font-medium text-muted-foreground" data-booking-services>
+              {servicesLine}
+            </p>
+          )}
           <h1 className="text-3xl font-semibold tracking-tight break-words sm:text-4xl">
             {copy.headline}
           </h1>

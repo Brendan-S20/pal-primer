@@ -156,7 +156,7 @@ function PortalHome() {
           <EmptyBox
             icon={<Camera className="h-6 w-6 shrink-0" />}
             title="No completed visits yet"
-            body="After your first visit we'll post before/after photos here."
+            body="After your first visit, its photos and notes will show here."
           />
         ) : (
           <ul className="space-y-2">

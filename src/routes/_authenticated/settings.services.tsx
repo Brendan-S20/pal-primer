@@ -246,7 +246,8 @@ function ServicesPage() {
           <p className="p-5 text-sm text-destructive">{(error as Error).message}</p>
         ) : services.length === 0 ? (
           <p className="p-5 text-sm text-muted-foreground">
-            No services yet. Add the first thing you sell, like a 30-minute walk.
+            No services yet. Add the first thing you sell, like a{" "}
+            {serviceNamePlaceholder(defaultServiceLine(lines)).toLowerCase()}.
           </p>
         ) : (
           <ul className="divide-y" data-testid="services-list">

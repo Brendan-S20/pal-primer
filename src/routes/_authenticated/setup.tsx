@@ -287,7 +287,7 @@ function StepPanel({ step, onSaved }: { step: OnboardingStep; onSaved: () => voi
       <div className="space-y-3">
         <p>{step.description}</p>
         <Button asChild>
-          <Link to="/settings/services">Review sitting services</Link>
+          <Link to="/settings/services">{step.cta}</Link>
         </Button>
       </div>
     );

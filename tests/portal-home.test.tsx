@@ -212,6 +212,8 @@ describe("portalContext home", () => {
       skip_billable_pct: 25,
       reclean_window_hours: 48,
       mobile_grooming: false,
+      // Which "Report a concern" list the portal offers (#560).
+      pet_waste: true,
       // Grooming is customer requestable since #549; the portal offers the
       // request only to a business that also runs it (mobile_grooming).
       groom_requests: true,

@@ -301,6 +301,7 @@ function ClientDetail() {
           properties={fieldData.properties ?? []}
           dogs={fieldData.dogs ?? []}
           grooming={serviceLines.includes("mobile_grooming")}
+          petWaste={serviceLines.includes("pet_waste")}
         />
       );
     }

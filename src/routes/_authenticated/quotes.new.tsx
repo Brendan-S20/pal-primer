@@ -14,6 +14,7 @@ import { getLeadForConversion } from "@/lib/leads.functions";
 import { isSyntheticLeadEmail } from "@/lib/lead-conversion";
 import { defaultQuoteValidUntil } from "@/lib/quotes";
 import { useOrgToday } from "@/hooks/useOrgToday";
+import { useServiceLines } from "@/components/CommercialOnly";
 import { pageTitle } from "@/lib/page-title";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -30,6 +31,8 @@ function NewQuotePage() {
   const { fromLead } = Route.useSearch();
   const navigate = useNavigate();
   const today = useOrgToday();
+  // The editor's hints speak the business's own service (#560).
+  const { lines: serviceLines } = useServiceLines();
   const getLeadFn = useServerFn(getLeadForConversion);
   const leadQ = useQuery({
     enabled: !!fromLead,
@@ -95,6 +98,7 @@ function NewQuotePage() {
         today={today}
         leadName={lead.name}
         onSaved={(id) => navigate({ to: "/quotes/$quoteId", params: { quoteId: id } })}
+        serviceLines={serviceLines}
       />
     );
   } else {
@@ -104,6 +108,7 @@ function NewQuotePage() {
         initial={blank}
         today={today}
         onSaved={(id) => navigate({ to: "/quotes/$quoteId", params: { quoteId: id } })}
+        serviceLines={serviceLines}
       />
     );
   }

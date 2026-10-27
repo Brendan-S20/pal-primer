@@ -81,7 +81,7 @@ describe("the technician's own words stay between the technician and the office"
   const ui = strip(read("src/lib/portal-ui.tsx"));
 
   it("renders the reason from the code", () => {
-    expect(ui).toMatch(/customerSkipReason\(r\.skip_reason_code\)/);
+    expect(ui).toMatch(/customerSkipReason\(r\.skip_reason_code(, yard)?\)/);
   });
 
   it("shows free text only when the customer wrote it", () => {

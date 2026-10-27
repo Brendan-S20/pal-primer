@@ -466,7 +466,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     photo_training: "صورة التدريب",
   },
   access: {
-    gate: "المنزل مؤمّن",
+    gate: "رمز البوابة أو الباب",
     lockBox: "صندوق المفاتيح",
     key: "المفتاح",
     alarm: "جهاز الإنذار",

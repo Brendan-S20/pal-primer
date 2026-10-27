@@ -135,15 +135,47 @@ export const BOOKING_COPY: Readonly<Record<ServiceLine, BookingCopy>> = {
 };
 
 /** The line the page speaks for: the service picked, else the business's
- *  only service, else pet waste (a business that lists nothing online is
- *  the zone-priced scooping form it always was). */
+ *  only service, else pet waste when the business sells it (a pet-waste
+ *  business that lists nothing online is the zone-priced scooping form it
+ *  always was). A business that runs no pet waste speaks for its own first
+ *  line instead (#560): a walker whose walks are not priced yet, or whose
+ *  visitor has not picked between a walk and a sit, is not asked about a
+ *  yard. `orgLines` is what the business runs; omitted, pet waste. */
 export function bookingLine(
   services: readonly PublicService[],
   chosen: PublicService | null,
+  orgLines: readonly ServiceLine[] = ["pet_waste"],
 ): ServiceLine {
   if (chosen) return chosen.service_line;
   if (services.length === 1) return services[0].service_line;
-  return "pet_waste";
+  const offered = services.length > 0 ? services.map((s) => s.service_line) : orgLines;
+  if (offered.length === 0 || offered.includes("pet_waste")) return "pet_waste";
+  return offered[0];
+}
+
+/** The lines a booking page's description speaks for: the ones it lists
+ *  online, else, for a business that runs no pet waste, the ones it runs
+ *  (#560), so it is not described as a scooping form. A pet-waste business
+ *  that lists nothing reads as it always did. */
+export function bookingPageLines(
+  listed: readonly ServiceLine[],
+  orgLines: readonly ServiceLine[] = [],
+): ServiceLine[] {
+  if (listed.length > 0) return [...listed];
+  return orgLines.includes("pet_waste") ? [] : [...orgLines];
+}
+
+/** The services a booking page names under its headline (#560), so its first
+ *  screen says what the business does: "Dog walking and pet sitting". Null
+ *  when it lists nothing online. */
+export function bookingServicesLine(lines: readonly ServiceLine[]): string | null {
+  const nouns = [...new Set(lines)].map((l) => BOOKING_COPY[l].noun);
+  if (nouns.length === 0) return null;
+  const list =
+    nouns.length === 1
+      ? nouns[0]
+      : `${nouns.slice(0, -1).join(", ")} and ${nouns[nouns.length - 1]}`;
+  return list.charAt(0).toUpperCase() + list.slice(1);
 }
 
 /** The cadence actually used: the one picked when the line offers it, else

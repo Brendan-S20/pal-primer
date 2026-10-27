@@ -36,7 +36,7 @@ const WelcomeEmail = ({
       <Container style={styles.container}>
         <Heading style={styles.h1}>Welcome, {clientName}!</Heading>
         <Text style={styles.text}>
-          Thanks for choosing {orgName}. We're set up and ready to keep your yard clean.
+          Thanks for choosing {orgName}. We're set up and looking forward to your first visit.
         </Text>
         {firstVisitDate ? (
           <Text style={styles.text}>
