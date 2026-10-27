@@ -62,11 +62,10 @@ export const OFFERED_SERVICE_LINES: readonly ServiceLine[] = [
  *    customerRequestable   a customer, the public signup form or the
  *                          receptionist may ask for it, once it is also
  *                          bookable. Training is sold and scheduled by the
- *                          office, and mobile grooming stays with the office
- *                          until a customer can pick pets, add-ons and a
- *                          price the same way the office books one, so both
- *                          start false: turning grooming bookable never opens
- *                          it to customers on its own. */
+ *                          office, so it is false. Mobile grooming is true
+ *                          since #549, so a client may ask for a groom from
+ *                          the portal; the office still books it, and no
+ *                          customer door books one (OFFICE_BOOKED_LINES). */
 export type ServiceLineAvailability = {
   bookable: readonly ServiceLine[];
   customerRequestable: readonly ServiceLine[];
@@ -105,6 +104,27 @@ export function customerCanRequestService(
   return (
     isBookableLine(line, availability) &&
     (availability.customerRequestable as readonly string[]).includes(line)
+  );
+}
+
+/** Lines a customer may ASK for but never book themselves: the office books
+ *  them. A groom is priced by each pet's size and coat and timed with its
+ *  add-ons, which a flat service price cannot say, so a client asks through
+ *  the portal (portal_request_groom) and the office books it (Book this
+ *  groom). The public signup, the booking link, the receptionist and the
+ *  portal's one-off leave these out whatever the switch says. */
+export const OFFICE_BOOKED_LINES: readonly ServiceLine[] = ["mobile_grooming"];
+
+/** Whether a customer, the public signup form, or the receptionist may BOOK
+ *  this line themselves: requestable on the switch, and not one the office
+ *  books (OFFICE_BOOKED_LINES). */
+export function customerCanBookService(
+  line: string,
+  availability: ServiceLineAvailability,
+): boolean {
+  return (
+    customerCanRequestService(line, availability) &&
+    !(OFFICE_BOOKED_LINES as readonly string[]).includes(line)
   );
 }
 

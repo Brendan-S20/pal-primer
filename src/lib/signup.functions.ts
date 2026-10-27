@@ -24,7 +24,7 @@ import {
   publicServiceChoices,
   type PublicService,
 } from "@/lib/public-services";
-import { customerCanRequestService, type ServiceLineAvailability } from "@/lib/service-lines";
+import { customerCanBookService, type ServiceLineAvailability } from "@/lib/service-lines";
 import {
   CALM_REFUSAL,
   ELAPSED_FIELD,
@@ -237,7 +237,7 @@ async function refuseAComingSoonService(
   if (orgErr) throw new Error(orgErr.message);
   if (!org || (org.slug !== slug && org.portal_slug !== slug)) return null;
   const { loadServiceLineAvailability } = await import("@/lib/service-line-availability.server");
-  if (!customerCanRequestService(svc.service_line, await loadServiceLineAvailability())) {
+  if (!customerCanBookService(svc.service_line, await loadServiceLineAvailability())) {
     throw new Error(SERVICE_NOT_OFFERED_ONLINE);
   }
   return svc;

@@ -1,7 +1,9 @@
 // portal_request_groom and the vaccine rejection shape in a real database.
-// While mobile grooming is not customer-requestable the function refuses
-// every request and writes nothing; a business that does not groom gets
-// nothing; the anon key cannot call it. A portal upload can be rejected only
+// With mobile grooming customer requestable (#549) a client's request is
+// taken and nothing is booked; a business that does not groom gets nothing;
+// the anon key cannot call it. The refusal while customer_requestable is off
+// is acted out in supabase/proofs/20261027180000-mobile-grooming-is-bookable.sql,
+// inside a transaction, so this suite never flips the shared switch. A portal upload can be rejected only
 // with a reason and never while verified.
 // Skipped unless TEST_SUPABASE_* point at a local stack.
 
@@ -114,24 +116,26 @@ describe.skipIf(!enabled)("a client asks for a groom in the database", () => {
       ...over,
     });
 
-  // Mobile grooming is not a line a customer may request, so the function
-  // refuses every request from a business that runs it, before it reads a pet
-  // or writes a row. The shape checks behind that refusal come back into
-  // reach when customer requests open (a change to the function and to
-  // customerCanRequestService together).
-  it("refuses every request while grooming is booked by the office, and writes nothing", async () => {
-    const refusal = async (over: Record<string, unknown>) => (await ask(over)).error?.message;
-    expect(await refusal({})).toContain("groom_requests_off");
-    expect(await refusal({ _dog_id: other.dogId })).toContain("groom_requests_off");
-    expect(await refusal({ _on: addDays(day, 200) })).toContain("groom_requests_off");
-    expect(await refusal({ _token: crypto.randomUUID() })).toContain("invalid_token");
-    for (const table of ["qc_tickets", "visits"]) {
-      const { count } = await admin
-        .from(table)
-        .select("id", { count: "exact", head: true })
-        .eq("organization_id", t.orgId);
-      expect(count, table).toBe(0);
-    }
+  // Since 20261027180000 (#549) mobile grooming is bookable and customer
+  // requestable, so a client of a grooming business may ask for a groom. The
+  // request is one qc_tickets row in the office's queue; nothing is booked.
+  it("takes a request, hands it back on a second tap, and books nothing", async () => {
+    const first = await ask();
+    expect(first.error).toBeNull();
+    expect(first.data).toEqual([{ ticket_id: expect.any(String), created: true }]);
+    const again = await ask({ _from: null, _until: null });
+    expect(again.error).toBeNull();
+    expect(again.data).toEqual([{ ticket_id: first.data![0].ticket_id, created: false }]);
+    expect((await ask({ _dog_id: other.dogId, _on: addDays(day, 1) })).error?.message).toContain(
+      "pet_not_found",
+    );
+    expect((await ask({ _on: addDays(day, 200) })).error?.message).toContain("date_too_far");
+    expect((await ask({ _token: crypto.randomUUID() })).error?.message).toContain("invalid_token");
+    const { count } = await admin
+      .from("visits")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", t.orgId);
+    expect(count).toBe(0);
   });
 
   it("refuses a business that does not run mobile grooming", async () => {

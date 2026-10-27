@@ -3,7 +3,9 @@
  * service line that is still Coming soon, keeps the lines the org already
  * runs, and the service role is not gated. Since 20261024230000 (#530) dog
  * walking is bookable and may be added, since 20261026200000 (#547) pet
- * sitting is too, and since 20261027120000 (#548) training; grooming may not.
+ * sitting is too, since 20261027120000 (#548) training, and since
+ * 20261027180000 (#549) mobile grooming. `other` is still Coming soon, so it
+ * stands in for a line that may not be added.
  *
  * Local stack only. Skipped without TEST_SUPABASE_* env.
  */
@@ -107,19 +109,31 @@ describe.skipIf(!enabled)("a service line is turned on only when bookable", () =
     expect(await linesOf()).toEqual(["pet_waste", "training"]);
   });
 
-  it("refuses an owner adding mobile_grooming", async () => {
+  it("lets an owner add mobile grooming", async () => {
+    await resetLines(["pet_waste"]);
+    const { data, error } = await owner
+      .from("organizations")
+      .update({ service_lines: ["pet_waste", "mobile_grooming"] })
+      .eq("id", orgId)
+      .select("id");
+    expect(error).toBeNull();
+    expect(data).toHaveLength(1);
+    expect(await linesOf()).toEqual(["pet_waste", "mobile_grooming"]);
+  });
+
+  it("refuses an owner adding a line that is still Coming soon", async () => {
     await resetLines(["pet_waste"]);
     const { error } = await owner
       .from("organizations")
-      .update({ service_lines: ["pet_waste", "mobile_grooming"] })
+      .update({ service_lines: ["pet_waste", "other"] })
       .eq("id", orgId);
-    expect(error?.message).toMatch(/mobile_grooming service is coming soon/);
+    expect(error?.message).toMatch(/other service is coming soon/);
     expect(error?.hint).toBe("service_line_not_bookable");
     expect(await linesOf()).toEqual(["pet_waste"]);
   });
 
   it("lets an owner drop a line the org already runs and keep another, but not re-add it", async () => {
-    await resetLines(["pet_waste", "dog_walking", "mobile_grooming"]);
+    await resetLines(["pet_waste", "dog_walking", "other"]);
 
     const drop = await owner
       .from("organizations")
@@ -132,9 +146,9 @@ describe.skipIf(!enabled)("a service line is turned on only when bookable", () =
 
     const readd = await owner
       .from("organizations")
-      .update({ service_lines: ["pet_waste", "dog_walking", "mobile_grooming"] })
+      .update({ service_lines: ["pet_waste", "dog_walking", "other"] })
       .eq("id", orgId);
-    expect(readd.error?.message).toMatch(/mobile_grooming service is coming soon/);
+    expect(readd.error?.message).toMatch(/other service is coming soon/);
     expect(await linesOf()).toEqual(["pet_waste", "dog_walking"]);
   });
 
