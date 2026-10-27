@@ -880,6 +880,11 @@ const es: Translations = {
     left_one: "falta {{count}}",
     left_other: "faltan {{count}}",
     allDone: "todo listo",
+    loadFailed: "No se pudo cargar tu agenda y no hay una copia guardada en este dispositivo.",
+    loadFailedOffline:
+      "Estás sin conexión. No se pudo cargar tu agenda y no hay una copia guardada en este dispositivo.",
+    cachedOffline: "Sin conexión: copia guardada, {{age}}",
+    cachedRefreshFailed: "No se pudo actualizar: copia guardada, {{age}}",
   },
   wasteLog: {
     title: "Registro de desechos",

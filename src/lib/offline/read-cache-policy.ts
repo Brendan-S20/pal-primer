@@ -43,11 +43,21 @@ export const READ_CACHE_KEY_PREFIX = "hs:offline-reads:";
  *                     it for the commercial stops on the day (routes/
  *                     _authenticated/my-day.tsx), which is what makes this
  *                     entry mean anything.
+ *  - "my-upcoming-days" the tech's own next two weeks (My schedule): a date,
+ *                     a stop count, zone names and the first and last ETA
+ *                     per day. No address, no code, no client. Without it a
+ *                     tech who opens My schedule in a dead zone after a
+ *                     relaunch reads that their week was cleared (#536).
  *
  * Deliberately NOT here: "addon-services" (a price list feeding a charge the
  * tech cannot create offline anyway), anything under clients/invoices/reports.
  */
-export const PERSISTABLE_QUERY_ROOTS = ["my-day", "my-org", "visit-stations"] as const;
+export const PERSISTABLE_QUERY_ROOTS = [
+  "my-day",
+  "my-org",
+  "visit-stations",
+  "my-upcoming-days",
+] as const;
 
 /** A store older than this is deleted on read rather than shown. A route is a
  * plan for one day; three days later it is not a stale answer, it is a wrong
@@ -172,6 +182,7 @@ const BUDGET_RANK: Record<string, number> = {
   "my-org": 0,
   "my-day": 0,
   "visit-stations": 1,
+  "my-upcoming-days": 2,
 };
 
 /** Unranked roots sort LAST on purpose. A root added to the allowlist and

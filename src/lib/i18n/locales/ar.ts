@@ -935,6 +935,10 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     left_many: "بقيت {{count}}",
     left_other: "بقيت {{count}}",
     allDone: "اكتمل الكل",
+    loadFailed: "تعذّر تحميل جدولك، ولا توجد نسخة محفوظة على هذا الجهاز.",
+    loadFailedOffline: "أنت غير متصل. تعذّر تحميل جدولك، ولا توجد نسخة محفوظة على هذا الجهاز.",
+    cachedOffline: "غير متصل: نسخة محفوظة، {{age}}",
+    cachedRefreshFailed: "تعذّر التحديث: نسخة محفوظة، {{age}}",
   },
   wasteLog: {
     title: "سجل التخلص من النفايات",
