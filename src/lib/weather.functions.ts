@@ -265,8 +265,8 @@ export function forecastLimiter(n: number) {
     const run = waiting.shift();
     if (run) run();
   };
-  return <T>(task: () => Promise<T>): Promise<T> =>
-    new Promise<T>((resolve, reject) => {
+  return function run<T>(task: () => Promise<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
       waiting.push(() => {
         active++;
         task()
@@ -278,6 +278,7 @@ export function forecastLimiter(n: number) {
       });
       next();
     });
+  };
 }
 
 const rangeSchema = z.object({
