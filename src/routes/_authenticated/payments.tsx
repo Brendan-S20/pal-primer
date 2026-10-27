@@ -41,6 +41,14 @@ import { formatDay } from "@/lib/format";
 import { titleHead } from "@/lib/page-title";
 import { connectAppearanceFor } from "@/lib/connect-appearance";
 import { isDarkApplied, watchDarkTheme } from "@/lib/theme";
+import { ConnectCard } from "@/components/payments/ConnectCard";
+import {
+  PAYMENTS_FETCH_TIMEOUT_MS,
+  STRIPE_DID_NOT_ANSWER,
+  balanceSummaryState,
+  withTimeout,
+  type BalanceSummaryData,
+} from "@/lib/payments-load";
 
 function ResendVerification() {
   const sendFn = useServerFn(sendEmailVerification);
@@ -193,6 +201,24 @@ function PaymentsSettings() {
 
       {q.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : q.isError ? (
+        // Its own branch, ahead of `!cfg?.connected` (#436). A failed status
+        // read used to fall through to the not-connected branch and its setup
+        // button, telling an owner whose account is live that they had none.
+        <div role="alert" className="rounded-lg border bg-card p-4">
+          <p className="text-sm text-destructive">
+            Couldn't check your Stripe account: {(q.error as Error)?.message || "unknown error"}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-3"
+            onClick={() => q.refetch()}
+            disabled={q.isFetching}
+          >
+            {q.isFetching ? "Retrying…" : "Try again"}
+          </Button>
+        </div>
       ) : cfg && cfg.emailVerified === false ? (
         // Locked until the owner verifies their email (frictionless-signup gate).
         <div className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-5">
@@ -730,13 +756,24 @@ function ConnectDashboard({
     setInstance(null);
     (async () => {
       try {
-        const first = await sessionFn();
+        // Deadlines on both waits (#436): an Account Session that never comes
+        // back held "Loading payment dashboard…" for as long as the tab was
+        // open, and Stripe's own refetch of it is the same call.
+        const first = await withTimeout(
+          sessionFn(),
+          PAYMENTS_FETCH_TIMEOUT_MS,
+          STRIPE_DID_NOT_ANSWER,
+        );
         if (cancelled) return;
         const { loadConnectAndInitialize } = await import("@stripe/connect-js");
         const inst = loadConnectAndInitialize({
           publishableKey: (first as any).publishableKey,
           fetchClientSecret: async () => {
-            const r = await sessionFn();
+            const r = await withTimeout(
+              sessionFn(),
+              PAYMENTS_FETCH_TIMEOUT_MS,
+              STRIPE_DID_NOT_ANSWER,
+            );
             return (r as any).clientSecret as string;
           },
           appearance: connectAppearance(),
@@ -896,75 +933,6 @@ function maskAccountId(id: string | null | undefined): string {
   return `acct_…${tail}`;
 }
 
-// Each embedded Stripe Connect component can silently fail to load (four empty
-// boxes, B5/I10). Wrap every one in loading/error/retry chrome. The Connect
-// components emit onLoaderStart when they begin rendering and onLoadError when
-// they fail; we drive the card state off those and remount on retry.
-function ConnectCard({
-  title,
-  hint,
-  children,
-}: {
-  title: string;
-  /** One line saying what this panel is for. The embedded components open on a
-   *  table with no heading of their own, so without this the tab is three
-   *  unlabelled grids. */
-  hint?: string;
-  children: (handlers: { onLoaderStart: () => void; onLoadError: (e: any) => void }) => ReactNode;
-}) {
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
-  const [message, setMessage] = useState<string | null>(null);
-  const [attempt, setAttempt] = useState(0);
-  const handlers = {
-    onLoaderStart: () => setState("ready"),
-    onLoadError: (e: any) => {
-      setState("error");
-      setMessage(e?.error?.message ?? null);
-    },
-  };
-  return (
-    <div className="min-w-0 rounded-lg border bg-card p-4">
-      <div className="mb-2">
-        <div className="text-sm font-medium">{title}</div>
-        {hint && <div className="text-2xs text-muted-foreground">{hint}</div>}
-      </div>
-      {state === "error" ? (
-        <div className="space-y-2 text-sm">
-          <p className="text-destructive">
-            Couldn't load {title.toLowerCase()}.{message ? ` ${message}` : ""}
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setState("loading");
-              setMessage(null);
-              setAttempt((a) => a + 1);
-            }}
-          >
-            Retry
-          </Button>
-        </div>
-      ) : (
-        <>
-          {state === "loading" && (
-            <p className="text-sm text-muted-foreground">Loading {title.toLowerCase()}…</p>
-          )}
-          {/* Stripe sizes its iframe to this box. If a panel is ever wider than
-              the content column (a wide table at 1024px), it scrolls here
-              rather than widening the page. */}
-          <div
-            key={attempt}
-            className={state === "loading" ? "hidden" : "max-w-full overflow-x-auto"}
-          >
-            {children(handlers)}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
 /**
  * The headline the Money tab exists to give: how much is available now, how
  * much is still clearing, and when the last payout lands.
@@ -976,20 +944,50 @@ function ConnectCard({
  */
 function BalanceSummary() {
   const fn = useServerFn(getStripeBalanceSummary);
-  const q = useQuery({ queryKey: ["stripe-balance"], queryFn: () => fn() });
+  const q = useQuery({
+    queryKey: ["stripe-balance"],
+    // A deadline, and one retry rather than React Query's three with backoff:
+    // "Loading balance…" is never the last thing this card says (#436).
+    queryFn: () =>
+      withTimeout(
+        fn() as Promise<BalanceSummaryData>,
+        PAYMENTS_FETCH_TIMEOUT_MS,
+        STRIPE_DID_NOT_ANSWER,
+      ),
+    retry: 1,
+  });
   const d = q.data as any;
+  const view = balanceSummaryState(q);
 
-  if (q.isLoading) {
+  if (view.kind === "loading") {
     return (
       <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
         Loading balance…
       </div>
     );
   }
-  // A balance we could not fetch is silent rather than alarming: the embedded
-  // Payouts and Balances panels below are the authoritative view and still
-  // work, so an error banner here would be noise about a duplicate source.
-  if (!d || !d.connected || d.error) return null;
+  // Said, not swallowed. This used to return null on an error, reasoning that
+  // the embedded panels below were the real view. Below 1024px there are no
+  // panels below, and when connect-js is what failed there are none at any
+  // width, so the tab was blank with no reason given (#436). Muted rather
+  // than red: it is one figure we could not fetch, not money gone wrong.
+  if (view.kind === "error") {
+    return (
+      <div role="alert" className="rounded-lg border bg-card p-4 text-sm">
+        <p className="text-muted-foreground">Couldn't load your balance. {view.message}</p>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-3"
+          onClick={() => q.refetch()}
+          disabled={q.isFetching}
+        >
+          {q.isFetching ? "Retrying…" : "Try again"}
+        </Button>
+      </div>
+    );
+  }
+  if (view.kind === "not-connected") return null;
 
   const fmt = (amount: number, currency: string) =>
     new Intl.NumberFormat(undefined, {
