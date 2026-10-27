@@ -15,7 +15,8 @@
 // row, and the organizations gate following the switch.
 //
 // A launch after the seed is an UPDATE of one row in a later migration
-// (pet sitting, #547: 20261026200000), never an edit of the seed, so what a
+// (pet sitting, #547: 20261026200000; training, #548: 20261027120000), never
+// an edit of the seed, so what a
 // replay ends on is the seed with those UPDATEs applied in filename order.
 
 import { describe, expect, it } from "vitest";
@@ -30,6 +31,7 @@ const ROOT = join(import.meta.dirname, "..");
 const GUARD = "20261017004000_a-service-line-is-turned-on-only-when-bookable.sql";
 const SWITCH = "20261025200000_one-switch-decides-what-is-bookable.sql";
 const SITTING = "20261026200000_pet-sitting-is-bookable.sql";
+const TRAINING = "20261027120000_training-is-bookable.sql";
 
 function lastMatch(re: RegExp): { file: string; m: RegExpExecArray } | null {
   let found: { file: string; m: RegExpExecArray } | null = null;
@@ -128,20 +130,20 @@ describe("one switch decides which service lines are bookable", () => {
     expect(files.indexOf(SWITCH)).toBeGreaterThan(flip);
   });
 
-  it("pet sitting is bookable (#547): a replay ends on pet waste, walking and sitting, and nothing else", () => {
+  it("training is bookable (#548): a replay ends on pet waste, walking, sitting and training, and nothing else", () => {
     const rows = replayed();
     expect(
       rows
         .filter((r) => r.bookable)
         .map((r) => r.line)
         .sort(),
-    ).toEqual(["dog_walking", "pet_sitting", "pet_waste"]);
-    // Grooming and training stay Coming soon until their own flips.
-    for (const line of ["mobile_grooming", "training"]) {
-      expect(rows.find((r) => r.line === line)?.bookable, line).toBe(false);
-    }
+    ).toEqual(["dog_walking", "pet_sitting", "pet_waste", "training"]);
+    // Grooming stays Coming soon until its own flip.
+    expect(rows.find((r) => r.line === "mobile_grooming")?.bookable).toBe(false);
     // Customers may ask for a priced stay: the seed's true is left alone.
     expect(rows.find((r) => r.line === "pet_sitting")?.requestable).toBe(true);
+    // Training is sold by the office: the seed's false is left alone.
+    expect(rows.find((r) => r.line === "training")?.requestable).toBe(false);
   });
 
   it("flips sitting in its own migration, after the switch, touching one row and one column", () => {
@@ -149,6 +151,14 @@ describe("one switch decides which service lines are bookable", () => {
     expect(files.indexOf(SITTING)).toBeGreaterThan(files.indexOf(SWITCH));
     expect(flips().filter((f) => f.file === SITTING)).toEqual([
       { file: SITTING, line: "pet_sitting", set: { bookable: true } },
+    ]);
+  });
+
+  it("flips training in its own migration, after sitting, touching one row and one column", () => {
+    const files = migrationFiles();
+    expect(files.indexOf(TRAINING)).toBeGreaterThan(files.indexOf(SITTING));
+    expect(flips().filter((f) => f.file === TRAINING)).toEqual([
+      { file: TRAINING, line: "training", set: { bookable: true } },
     ]);
   });
 

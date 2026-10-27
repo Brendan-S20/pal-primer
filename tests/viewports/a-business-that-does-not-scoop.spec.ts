@@ -94,9 +94,10 @@ async function showAllSteps(page: Page) {
 const allText = (page: Page) => page.evaluate(() => document.body.textContent ?? "");
 
 /** ServiceLinesChoices, as /setup step 1 and Settings → Business defaults both
- *  draw it for a dog-walking business. Pet waste, walking (#530) and sitting
- *  (#547) are bookable, so walking and sitting carry no Coming soon badge;
- *  grooming and training are listed, marked, and cannot be ticked. */
+ *  draw it for a dog-walking business. Pet waste, walking (#530), sitting
+ *  (#547) and training (#548) are bookable, so walking, sitting and training
+ *  carry no Coming soon badge; grooming is listed, marked, and cannot be
+ *  ticked. */
 async function expectServiceLineChoices(page: Page) {
   await expect(page.getByText("Which services do you offer?").first()).toBeVisible({
     timeout: 30_000,
@@ -120,8 +121,10 @@ async function expectServiceLineChoices(page: Page) {
   await expect(page.locator("li").filter({ has: grooming }).getByText("Coming soon")).toBeVisible();
   const training = page.getByRole("checkbox", { name: /^Dog training/ });
   await expect(training).not.toBeChecked();
-  await expect(training).toBeDisabled();
-  await expect(page.locator("li").filter({ has: training }).getByText("Coming soon")).toBeVisible();
+  await expect(training).toBeEnabled();
+  await expect(page.locator("li").filter({ has: training }).getByText("Coming soon")).toHaveCount(
+    0,
+  );
 }
 
 for (const { w, h, label } of WIDTHS) {

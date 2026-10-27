@@ -43,7 +43,7 @@ vi.mock("@tanstack/react-start", () => ({
   },
 }));
 
-import { LAUNCH_DEFAULT } from "./support/service-line-availability";
+import { LAUNCH_DEFAULT, TRAINING_COMING_SOON } from "./support/service-line-availability";
 import {
   DEFAULT_SERVICE_LINES,
   LINE_SEEDS,
@@ -391,7 +391,7 @@ describe("pet_waste seeds exactly what the product seeded before lines existed",
 
 // ── The settings screen and the database agree ────────────────────────────
 describe("what an owner can choose", () => {
-  it("offers five lines; scooping and walking are bookable", () => {
+  it("offers five lines; scooping, walking, sitting and training are bookable", () => {
     expect([...OFFERED_SERVICE_LINES]).toEqual([
       "pet_waste",
       "dog_walking",
@@ -399,7 +399,12 @@ describe("what an owner can choose", () => {
       "mobile_grooming",
       "training",
     ]);
-    expect([...LAUNCH_DEFAULT.bookable]).toEqual(["pet_waste", "dog_walking", "pet_sitting"]);
+    expect([...LAUNCH_DEFAULT.bookable]).toEqual([
+      "pet_waste",
+      "dog_walking",
+      "pet_sitting",
+      "training",
+    ]);
   });
 
   it("a Coming soon line can be kept or dropped, never added", () => {
@@ -408,7 +413,7 @@ describe("what an owner can choose", () => {
     ).toMatch(/coming soon/);
     expect(
       serviceLinesAdditionProblem(["dog_walking"], ["dog_walking", "training"], LAUNCH_DEFAULT),
-    ).toMatch(/coming soon/);
+    ).toBeNull();
     expect(
       serviceLinesAdditionProblem(["pet_waste"], ["pet_waste", "pet_sitting"], LAUNCH_DEFAULT),
     ).toBeNull();
@@ -416,19 +421,21 @@ describe("what an owner can choose", () => {
     const kept = ["mobile_grooming"] as const;
     expect(serviceLinesAdditionProblem(kept, [...kept, "pet_waste"], LAUNCH_DEFAULT)).toBeNull();
     expect(
-      serviceLinesAdditionProblem(["pet_waste", "training"], ["pet_waste"], LAUNCH_DEFAULT),
+      serviceLinesAdditionProblem(["pet_waste", "mobile_grooming"], ["pet_waste"], LAUNCH_DEFAULT),
     ).toBeNull();
     // The setter's own gate is serviceLinesAdditionProblem, pinned by
     // tests/pet-waste-and-walking-can-be-turned-on.test.ts.
   });
 
-  it("training is offered as Coming soon, and neither an owner nor a customer can turn it on", () => {
+  it("training is bookable for an owner (#548), and a customer still cannot ask for it", () => {
     expect(OFFERED_SERVICE_LINES).toContain("training");
-    expect(LAUNCH_DEFAULT.bookable).not.toContain("training");
+    expect(LAUNCH_DEFAULT.bookable).toContain("training");
+    expect(TRAINING_COMING_SOON.bookable).not.toContain("training");
     expect(customerCanRequestService("training", LAUNCH_DEFAULT)).toBe(false);
     expect(customerCanRequestService("dog_walking", LAUNCH_DEFAULT)).toBe(true);
     // The row draws the badge and refuses the tick for any line that is not
-    // bookable, so training reads Coming soon and its box cannot be ticked.
+    // bookable, so grooming (and training with the switch off) reads Coming
+    // soon and its box cannot be ticked.
     const rows = codeOnly(read("src/components/ServiceLinesChoices.tsx"));
     expect(rows).toMatch(/const bookable = known && isBookableLine\(line, availability\);/);
     expect(rows).toMatch(/\{known && !bookable && <ComingSoonBadge \/>\}/);

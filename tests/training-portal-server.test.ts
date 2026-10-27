@@ -27,10 +27,9 @@ const state = vi.hoisted(() => ({
   sale: vi.fn(),
   book: vi.fn(),
   permission: vi.fn(async () => ({ orgId: "org-1", role: "owner" })),
-  // Training is Coming soon on main (#506). Most of this file drives the
-  // path as it will run once the platform switch (#531) makes the line
-  // bookable; the default is restored where a test asks what a client sees
-  // today.
+  // Training is bookable on the platform switch since #548. Most of this
+  // file drives that path; a test that asks what a client sees while
+  // training is Coming soon turns it off itself.
   bookable: ["pet_waste", "training"] as string[],
 }));
 

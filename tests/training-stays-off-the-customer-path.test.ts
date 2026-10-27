@@ -10,10 +10,10 @@ import type { ReceptionistStore } from "../src/lib/receptionist-booking";
 import { progressText, scoreProblem } from "../src/lib/training-progress";
 import { LAUNCH_DEFAULT, withBookable } from "./support/service-line-availability";
 
-// Walking is bookable (#530) and training is Coming soon (#506). This file
-// asks the question that outlives launch: with both lines bookable on the
-// platform switch (#531), a walk is offered and a lesson still is not,
-// because training is not customer requestable.
+// Walking (#530) and training (#548) are both bookable on the platform
+// switch (#531). This file asks the question that outlives launch: a walk is
+// offered and a lesson still is not, because training is not customer
+// requestable.
 const LIVE = withBookable("dog_walking", "training");
 
 const lesson = {
