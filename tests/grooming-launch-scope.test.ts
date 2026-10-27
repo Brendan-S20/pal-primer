@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { LAUNCH_DEFAULT, withBookable } from "./support/service-line-availability";
+import { GROOMING_COMING_SOON, LAUNCH_DEFAULT } from "./support/service-line-availability";
 import {
   customerCanRequestService,
   serviceLinesAdditionProblem,
@@ -16,21 +16,35 @@ import {
 import { techSkipReasonCodes } from "@/lib/skip-rules.functions";
 
 describe("grooming first customer scope", () => {
-  it("keeps pet waste bookable and grooming Coming soon in every customer check", () => {
+  it("grooming is bookable and customer requestable since #549, and needs both switches", () => {
     expect(LAUNCH_DEFAULT.bookable).toEqual([
       "pet_waste",
       "dog_walking",
       "pet_sitting",
       "training",
+      "mobile_grooming",
     ]);
     expect(customerCanRequestService("pet_waste", LAUNCH_DEFAULT)).toBe(true);
-    expect(customerCanRequestService("mobile_grooming", LAUNCH_DEFAULT)).toBe(false);
-    // Turning grooming bookable does not open it to customers on its own.
-    expect(customerCanRequestService("mobile_grooming", withBookable("mobile_grooming"))).toBe(
-      false,
-    );
+    expect(customerCanRequestService("mobile_grooming", LAUNCH_DEFAULT)).toBe(true);
+    // Either switch off closes it to customers.
+    expect(customerCanRequestService("mobile_grooming", GROOMING_COMING_SOON)).toBe(false);
+    expect(
+      customerCanRequestService("mobile_grooming", {
+        ...LAUNCH_DEFAULT,
+        customerRequestable: LAUNCH_DEFAULT.customerRequestable.filter(
+          (l) => l !== "mobile_grooming",
+        ),
+      }),
+    ).toBe(false);
     expect(
       serviceLinesAdditionProblem(["pet_waste"], ["pet_waste", "mobile_grooming"], LAUNCH_DEFAULT),
+    ).toBeNull();
+    expect(
+      serviceLinesAdditionProblem(
+        ["pet_waste"],
+        ["pet_waste", "mobile_grooming"],
+        GROOMING_COMING_SOON,
+      ),
     ).toMatch(/coming soon/);
     expect(
       serviceLinesAdditionProblem(

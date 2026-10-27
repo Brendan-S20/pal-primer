@@ -61,8 +61,10 @@ describe("grooming owner fields", () => {
         createElement(ServiceSizeRulesEditor, { serviceId: "unused", serviceLine: "pet_waste" }),
       ),
     ).toBe("");
-    expect(LAUNCH_DEFAULT.bookable).not.toContain("mobile_grooming");
-    expect(customerCanRequestService("mobile_grooming", LAUNCH_DEFAULT)).toBe(false);
+    // Grooming is bookable and customer requestable since #549; the fields
+    // above still key off the service's line, not the switch.
+    expect(LAUNCH_DEFAULT.bookable).toContain("mobile_grooming");
+    expect(customerCanRequestService("mobile_grooming", LAUNCH_DEFAULT)).toBe(true);
   });
   it("shows coat and weight for grooming and labels the add-on fields", () => {
     expect(petFields(true)).toMatch(/Coat type/);

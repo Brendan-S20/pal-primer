@@ -35,7 +35,7 @@ import {
   callerAddress,
   screenSubmission,
 } from "@/lib/public-form-guard";
-import { customerCanRequestService } from "@/lib/service-lines";
+import { customerCanBookService } from "@/lib/service-lines";
 import { isRequestedAsAStay } from "@/lib/public-services";
 import {
   bookingDetailsColumns,
@@ -158,7 +158,7 @@ export const Route = createFileRoute("/api/public/leads")({
             await import("@/lib/service-line-availability.server");
           if (
             !svc?.id ||
-            !customerCanRequestService(svc.service_line, await loadServiceLineAvailability())
+            !customerCanBookService(svc.service_line, await loadServiceLineAvailability())
           ) {
             return new Response(JSON.stringify({ error: "Invalid input" }), {
               status: 400,

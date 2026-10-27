@@ -50,7 +50,7 @@ import { bookableDays, ONE_OFF_MAX_DAYS_AHEAD } from "@/lib/one-off-booking";
 import { addDaysToDay } from "@/lib/reclean";
 import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
 import { oneOffRequestWord } from "@/lib/one-off-booking";
-import { customerCanRequestService, isBookableLine } from "@/lib/service-lines";
+import { customerCanBookService, isBookableLine } from "@/lib/service-lines";
 import { isZonePriced } from "@/lib/services";
 import { servicePickerOptions } from "@/lib/visit-service";
 import { matchZone, type ZoneMatchFields } from "@/lib/zone-match";
@@ -156,7 +156,7 @@ async function resolveService(
     store.serviceLineAvailability(),
   ]);
   const hit = services.find((s) => s.id === serviceId);
-  if (!hit || !hit.active || !customerCanRequestService(hit.service_line, availability))
+  if (!hit || !hit.active || !customerCanBookService(hit.service_line, availability))
     return { ok: false };
   // A line that is still Coming soon cannot be booked by a client, here any
   // more than from the portal (#506).
@@ -233,7 +233,7 @@ export async function listServices(store: ReceptionistStore, c: Caller) {
   const rows = servicePickerOptions(services).filter(
     (s) =>
       isBookableLine(s.service_line, availability) &&
-      customerCanRequestService(s.service_line, availability) &&
+      customerCanBookService(s.service_line, availability) &&
       (isZonePriced(s) || s.base_price_cents != null),
   );
   return {

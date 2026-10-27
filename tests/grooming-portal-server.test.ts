@@ -96,21 +96,16 @@ vi.mock("@/lib/authz.server", () => ({
   requirePermission: state.permission,
   resolveCaller: state.permission,
 }));
-// The request path is closed today: the platform switch's seed (#531) has
-// mobile_grooming neither bookable nor customer requestable. The tests below
-// that exercise the path open it on the switch here, so the path is still
-// checked for the day it opens; the gate itself is tested with the default.
+// The request path is open since #549 (20261027180000 makes mobile_grooming
+// bookable and customer requestable), which is LAUNCH_DEFAULT. The tests of
+// the gate itself close it again with GROOMING_COMING_SOON, the switch as the
+// seed (#531) wrote it.
 const gate = vi.hoisted(() => ({ open: false }));
 vi.mock("@/lib/service-line-availability.server", async () => {
-  const { LAUNCH_DEFAULT } = await import("./support/service-line-availability");
+  const { LAUNCH_DEFAULT, GROOMING_COMING_SOON } =
+    await import("./support/service-line-availability");
   return {
-    loadServiceLineAvailability: async () =>
-      gate.open
-        ? {
-            bookable: [...LAUNCH_DEFAULT.bookable, "mobile_grooming"],
-            customerRequestable: [...LAUNCH_DEFAULT.customerRequestable, "mobile_grooming"],
-          }
-        : LAUNCH_DEFAULT,
+    loadServiceLineAvailability: async () => (gate.open ? LAUNCH_DEFAULT : GROOMING_COMING_SOON),
   };
 });
 
@@ -301,6 +296,31 @@ describe("groom requests are off while grooming is not customer-requestable", ()
     expect(fn).toContain("IF NOT ('mobile_grooming' = ANY (public.bookable_service_lines())) THEN");
     // Before any row is read or written.
     expect(fn.indexOf("'groom_requests_off'")).toBeLessThan(fn.indexOf("FROM public.dogs"));
+  });
+
+  it("since #549 the database also refuses while grooming is not customer requestable", async () => {
+    const { readFileSync } = await import("node:fs");
+    const sql = readFileSync(
+      new URL(
+        "../supabase/migrations/20261027180000_mobile-grooming-is-bookable.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    const code = sql.replace(/--[^\n]*/g, "");
+    const fn = code.slice(code.indexOf("CREATE OR REPLACE FUNCTION public.portal_request_groom"));
+    expect(fn).toMatch(
+      /IF NOT \('mobile_grooming' = ANY \(public\.bookable_service_lines\(\)\)\)\s+OR NOT \('mobile_grooming' = ANY \(public\.customer_requestable_service_lines\(\)\)\) THEN\s+RAISE EXCEPTION 'groom_requests_off';/,
+    );
+    // Before any row is read or written.
+    expect(fn.indexOf("'groom_requests_off'")).toBeLessThan(fn.indexOf("FROM public.dogs"));
+    // Still the portal server's alone.
+    expect(code).toMatch(
+      /REVOKE ALL ON FUNCTION public\.portal_request_groom\([^)]*\)\s+FROM PUBLIC, anon, authenticated;/,
+    );
+    expect(code).toMatch(
+      /GRANT EXECUTE ON FUNCTION public\.portal_request_groom\([^)]*\)\s+TO service_role;/,
+    );
   });
 });
 

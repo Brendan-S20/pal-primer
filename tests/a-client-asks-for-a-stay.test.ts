@@ -543,7 +543,7 @@ describe("sitting is bookable (#547)", () => {
     expect(read("src/routes/_authenticated/concerns.tsx")).toContain("<RequestedStays />");
     expect(read("src/components/client-detail/StaysSection.tsx")).toContain("<ConfirmStayButton");
     expect(read("src/routes/_authenticated/settings.services.tsx")).toMatch(
-      /other\s+service\s+lines\s+are\s+Coming\s+soon/,
+      /pet\s+sitting,\s+training\s+and\s+mobile\s+grooming\s+are\s+bookable\s+today/,
     );
   });
 });

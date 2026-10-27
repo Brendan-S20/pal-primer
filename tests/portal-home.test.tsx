@@ -212,7 +212,9 @@ describe("portalContext home", () => {
       skip_billable_pct: 25,
       reclean_window_hours: 48,
       mobile_grooming: false,
-      groom_requests: false,
+      // Grooming is customer requestable since #549; the portal offers the
+      // request only to a business that also runs it (mobile_grooming).
+      groom_requests: true,
     });
     expect(state.rpc.mock.calls.filter(([name]) => name === "portal_get_client")).toHaveLength(2);
     for (const [name, read] of Object.entries(parts)) {

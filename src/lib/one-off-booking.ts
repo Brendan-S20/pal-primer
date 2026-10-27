@@ -16,7 +16,7 @@
 
 import { addDaysToDay } from "@/lib/reclean";
 import {
-  customerCanRequestService,
+  customerCanBookService,
   isBookableLine,
   type ServiceLineAvailability,
 } from "@/lib/service-lines";
@@ -139,7 +139,7 @@ export function oneOffServiceOptions(
 ): OneOffServiceOption[] {
   const out: OneOffServiceOption[] = [];
   for (const s of servicePickerOptions(services)) {
-    if (!s.active || !customerCanRequestService(s.service_line, availability)) continue;
+    if (!s.active || !customerCanBookService(s.service_line, availability)) continue;
     if (!isBookableLine(s.service_line, availability)) continue;
     const fields = {
       price_unit: s.price_unit,

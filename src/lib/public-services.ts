@@ -23,7 +23,7 @@
 
 import { isPriceUnit, isZonePriced, serviceDurationLabel, type PriceUnit } from "@/lib/services";
 import {
-  customerCanRequestService,
+  customerCanBookService,
   isBookableLine,
   SERVICE_LINES,
   type ServiceLine,
@@ -71,7 +71,7 @@ export function publicServiceChoices(
     const o = r as Record<string, unknown>;
     if (typeof o.id !== "string" || typeof o.name !== "string") continue;
     if (!isServiceLine(o.service_line) || !isPriceUnit(o.price_unit)) continue;
-    if (!customerCanRequestService(o.service_line, availability)) continue;
+    if (!customerCanBookService(o.service_line, availability)) continue;
     if (!isBookableLine(o.service_line, availability)) continue;
     if (seen.has(o.id)) continue;
     seen.add(o.id);

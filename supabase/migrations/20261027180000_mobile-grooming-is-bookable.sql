@@ -14,6 +14,10 @@
 --                                   for a groom from the portal; the office
 --                                   still books it (Book this groom), so a
 --                                   request never becomes a visit on its own.
+--                                   The app's booking doors (public signup,
+--                                   booking link, receptionist, portal
+--                                   one-off) leave grooming out by line
+--                                   (OFFICE_BOOKED_LINES).
 --   organizations_service_lines_bookable
 --                                   an owner may now add mobile grooming
 --
@@ -23,10 +27,10 @@
 -- office keeps on file are unchanged.
 --
 -- portal_request_groom is restated with one change. 20261024100400 refused a
--- request only while grooming was not bookable, and relied on the line also
--- being non-requestable to keep customers out; with both columns now
--- separate switches, a platform admin who turns customer_requestable off
--- (keeping grooming office-only) must close the portal door too. The refusal
+-- request only while grooming was not bookable. With grooming bookable, a
+-- platform admin who turns customer_requestable off (keeping grooming
+-- office-only) must close the portal door too, as customerCanRequestService
+-- already does in the app. The refusal
 -- is the same 'groom_requests_off', in the same place: before any pet,
 -- service or day is looked at. Every other line of the body is as
 -- 20261024100400 wrote it, and the grants are restated with it.

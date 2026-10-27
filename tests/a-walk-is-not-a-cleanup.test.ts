@@ -28,7 +28,11 @@ import {
   type ServiceDraft,
 } from "@/lib/services";
 import { SERVICE_LINES } from "@/lib/service-lines";
-import { LAUNCH_DEFAULT, TRAINING_COMING_SOON } from "./support/service-line-availability";
+import {
+  GROOMING_COMING_SOON,
+  LAUNCH_DEFAULT,
+  TRAINING_COMING_SOON,
+} from "./support/service-line-availability";
 import { ROUTE_ROLES, canAccess } from "@/hooks/useMyRole";
 import { hasPermission } from "@/lib/permissions";
 import { APP_LINK_PATH_PREFIXES, appLinkClaims } from "@/lib/android-app-links";
@@ -244,29 +248,26 @@ describe("what makes a service saveable", () => {
   });
 
   it("offers every live line, keeps an old service's line, and starts on the business's first", () => {
-    // Walking (#530), sitting (#547) and training (#548) are bookable, so
-    // every business is offered them. Grooming is Coming soon, so only a
-    // business that already runs it, or a service already on it, is offered it.
+    // Walking (#530), sitting (#547), training (#548) and grooming (#549) are
+    // bookable, so every business is offered them, in the screen's order.
     expect(serviceLineChoices(["pet_waste"], LAUNCH_DEFAULT)).toEqual([
       "pet_waste",
       "dog_walking",
       "pet_sitting",
+      "mobile_grooming",
       "training",
     ]);
-    expect(serviceLineChoices(["pet_waste", "dog_walking"], LAUNCH_DEFAULT)).toEqual([
-      "pet_waste",
-      "dog_walking",
-      "pet_sitting",
-      "training",
-    ]);
-    expect(serviceLineChoices(["pet_waste"], LAUNCH_DEFAULT)).not.toContain("mobile_grooming");
-    expect(serviceLineChoices(["pet_waste", "mobile_grooming"], LAUNCH_DEFAULT)).toContain(
+    // With grooming still Coming soon (as before #549), only a business that
+    // already runs it, or a service already on it, was offered it.
+    expect(serviceLineChoices(["pet_waste"], GROOMING_COMING_SOON)).not.toContain(
       "mobile_grooming",
     );
-    expect(serviceLineChoices(["pet_waste"], LAUNCH_DEFAULT, "mobile_grooming")).toContain(
+    expect(serviceLineChoices(["pet_waste", "mobile_grooming"], GROOMING_COMING_SOON)).toContain(
       "mobile_grooming",
     );
-    expect(serviceLineChoices(["mobile_grooming"], LAUNCH_DEFAULT)).toContain("mobile_grooming");
+    expect(serviceLineChoices(["pet_waste"], GROOMING_COMING_SOON, "mobile_grooming")).toContain(
+      "mobile_grooming",
+    );
     // With training still Coming soon (as before #548), it behaved the same way.
     expect(serviceLineChoices(["pet_waste"], TRAINING_COMING_SOON)).not.toContain("training");
     expect(serviceLineChoices(["training"], TRAINING_COMING_SOON)).toContain("training");

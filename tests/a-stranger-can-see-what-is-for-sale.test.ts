@@ -220,10 +220,12 @@ const TRAIN = {
 };
 
 describe("what a stranger may pick from", () => {
-  it("lists launched services while training still requires its package flow", () => {
+  it("lists launched services, but not training (its package flow) or a groom (the office books it)", () => {
+    // Grooming is bookable and customer requestable since #549, and still
+    // left out here: a client asks for one from the portal and the office
+    // books it (OFFICE_BOOKED_LINES).
     expect(publicServiceChoices([PW, GROOM, WALK, TRAIN], ALL_LIVE).map((r) => r.id)).toEqual([
       PW.id,
-      GROOM.id,
       WALK.id,
     ]);
   });
