@@ -253,6 +253,33 @@ export async function cachedForecast(
   }
 }
 
+/** How many distinct points are asked about at once. */
+export const FORECAST_CONCURRENCY = 3;
+
+/** Run at most `n` of the given tasks at a time, in the order they arrive. */
+export function forecastLimiter(n: number) {
+  let active = 0;
+  const waiting: Array<() => void> = [];
+  const next = () => {
+    if (active >= n) return;
+    const run = waiting.shift();
+    if (run) run();
+  };
+  return <T>(task: () => Promise<T>): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+      waiting.push(() => {
+        active++;
+        task()
+          .then(resolve, reject)
+          .finally(() => {
+            active--;
+            next();
+          });
+      });
+      next();
+    });
+}
+
 const rangeSchema = z.object({
   fromDate: z.string(),
   toDate: z.string(),
@@ -302,6 +329,23 @@ export const getWeatherForZones = createServerFn({ method: "GET" })
       counts.set(key, (counts.get(key) ?? 0) + 1);
     });
 
+    // #455: one request per POINT, not per zone, and a few at a time. Zones
+    // stacked on one town share a 0.01° cache key, so firing one fetch per
+    // zone at once sent the same question to Open-Meteo several times in the
+    // same instant, and a business with a dozen zones met its rate limit and
+    // read "Couldn't load 4 zones". Each zone still gets its own status.
+    const byPoint = new Map<string, Promise<{ forecast: DayForecast[]; stale: boolean }>>();
+    const limit = forecastLimiter(FORECAST_CONCURRENCY);
+    const forecastFor = (lat: number, lon: number) => {
+      const key = `${lat.toFixed(2)},${lon.toFixed(2)}`;
+      let p = byPoint.get(key);
+      if (!p) {
+        p = limit(() => cachedForecast(supabase, lat, lon, data.fromDate, data.toDate));
+        byPoint.set(key, p);
+      }
+      return p;
+    };
+
     const results = await Promise.all(
       (zones ?? []).map(async (z: any) => {
         let forecast: DayForecast[] = [];
@@ -314,13 +358,7 @@ export const getWeatherForZones = createServerFn({ method: "GET" })
           status = "no_coords";
         } else {
           try {
-            const cached = await cachedForecast(
-              supabase,
-              z.latitude,
-              z.longitude,
-              data.fromDate,
-              data.toDate,
-            );
+            const cached = await forecastFor(z.latitude, z.longitude);
             forecast = cached.forecast;
             stale = cached.stale;
           } catch (e) {
