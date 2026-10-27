@@ -29,3 +29,23 @@ describe("promo descriptions", () => {
     expect(promoDescription({ ...spring, description: null })).toBeNull();
   });
 });
+
+describe("the demo seed writes DEMOSPRING as the rule it is (#433)", () => {
+  it("the seed and existing seeded rows say one first visit, never three", async () => {
+    const { readFileSync } = await import("node:fs");
+    const sql = readFileSync(
+      "supabase/migrations/20261027230000_the-spring-code-says-one-visit.sql",
+      "utf8",
+    );
+    expect(sql).toContain(
+      "(_org_id, 'DEMOSPRING',  'percent', NULL, 15,   '15% off a new client''s first visit', true)",
+    );
+    expect(sql).toMatch(
+      /UPDATE public\.promo_codes\s+SET description = '15% off a new client''s first visit'/,
+    );
+    expect(sql).toMatch(/AND applies_to = 'first_visit'/);
+    expect(promoDescription({ ...spring, description: "15% off a new client's first visit" })).toBe(
+      "15% off a new client's first visit",
+    );
+  });
+});
