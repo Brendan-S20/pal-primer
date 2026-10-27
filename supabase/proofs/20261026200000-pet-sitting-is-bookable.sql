@@ -121,9 +121,12 @@ BEGIN
   INSERT INTO public.services (organization_id, name, service_line, price_unit, base_price_cents, active)
   VALUES (_org, 'Proof overnight stay', 'pet_sitting', 'night', 8500, true),
          (_org, 'Proof drop-in, no price yet', 'pet_sitting', 'visit', NULL, true);
+  -- Adding the line seeds starter sitting services of its own, so look only
+  -- at the two this section made.
   SELECT array_agg(s.name ORDER BY s.name) INTO _names
     FROM public.public_services('sitting-proof-scoops') s
-   WHERE s.service_line = 'pet_sitting';
+   WHERE s.service_line = 'pet_sitting'
+     AND s.name LIKE 'Proof %';
   IF _names IS DISTINCT FROM ARRAY['Proof overnight stay']::text[] THEN
     RAISE EXCEPTION 'PROOF FAILED [public]: public_services listed % for sitting', _names;
   END IF;
