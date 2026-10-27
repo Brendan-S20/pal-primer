@@ -112,7 +112,14 @@ export function customerCanRequestService(
  *  add-ons, which a flat service price cannot say, so a client asks through
  *  the portal (portal_request_groom) and the office books it (Book this
  *  groom). The public signup, the booking link, the receptionist and the
- *  portal's one-off leave these out whatever the switch says. */
+ *  portal's one-off leave these out whatever the switch says.
+ *
+ *  The database has the same list, public.office_booked_service_lines()
+ *  (migration 20261027200000), which public_services and public_quote read
+ *  so the publishable key cannot list or price one either (#559). It changes
+ *  with code, not with the platform switch; a change here is a new migration
+ *  restating that function, and tests/a-stranger-is-not-sold-a-groom.test.ts
+ *  fails until the two agree. */
 export const OFFICE_BOOKED_LINES: readonly ServiceLine[] = ["mobile_grooming"];
 
 /** Whether a customer, the public signup form, or the receptionist may BOOK
