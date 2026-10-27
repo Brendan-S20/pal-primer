@@ -615,8 +615,9 @@ test.describe("on a phone the price appears where the visitor tapped (#523)", ()
       // Filling step 2, with step 2 at the top of the screen as a thumb
       // working down it has it: the price is still on screen. At 390 the
       // answer has scrolled away and the panel is far below, so the bar
-      // holds it; at 768x1024 the page is short enough that the panel itself
-      // is already in view, and the bar correctly stays out of the way.
+      // holds it; at 768x1024 the page is short enough that the panel's own
+      // prices are already on screen, and the bar stays out of the way rather
+      // than drawing over the total it repeats (#552).
       await page.getByLabel("Full name *").fill("Anneliese Okonkwo-Vandermeer");
       await page.evaluate(() =>
         document.getElementById("name")?.scrollIntoView({ block: "start" }),
@@ -626,7 +627,7 @@ test.describe("on a phone the price appears where the visitor tapped (#523)", ()
         await expect(bar).toBeVisible({ timeout: 5_000 });
         await expect(bar).toContainText("$25.00/visit");
       } else {
-        await expect(page.locator("aside").getByText("$175.00")).toBeInViewport();
+        await expect(page.locator("aside").getByText("$175.00")).toBeInViewport({ ratio: 1 });
         await expect(bar).toHaveCount(0);
       }
       await page.waitForTimeout(300);
