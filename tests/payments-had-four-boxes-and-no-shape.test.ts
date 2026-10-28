@@ -84,7 +84,10 @@ describe("the balance headline", () => {
     // params slot, where Stripe ignores it — that call returns the PLATFORM
     // balance and would show every owner HoundStack's money. It belongs in the
     // options argument, like payouts.list below it.
-    expect(server).toMatch(/balance\.retrieve\(\{\}, \{ stripeAccount: acct \}\)/);
+    // Since #436 the options are one object that also carries a deadline;
+    // the account is still in it, and it is still the second argument.
+    expect(server).toMatch(/const opts = \{ stripeAccount: acct,/);
+    expect(server).toMatch(/balance\.retrieve\(\{\}, opts\)/);
     expect(server).not.toMatch(/balance\.retrieve\(\{ stripeAccount/);
   });
 
@@ -110,11 +113,16 @@ describe("the balance headline", () => {
     expect(page).toMatch(/Expected \{formatDay\(/);
   });
 
-  it("stays quiet when the balance cannot be fetched", () => {
-    // The embedded Balances and Payouts panels below are authoritative and
-    // still work, so an error banner here is noise about a duplicate source.
+  it("says so when the balance cannot be fetched (#436)", () => {
+    // This used to stay quiet, on the premise that the embedded Balances and
+    // Payouts panels below were authoritative and still worked. Below 1024px
+    // there are no panels below, and when connect-js is what failed there are
+    // none at any width, so the Money tab was blank with no reason. The error
+    // is still RETURNED rather than thrown, and the page now shows it.
+    // tests/payments-never-loads-forever.test.tsx has the rest.
     expect(server).toMatch(/return \{ connected: true as const, error:/);
-    expect(page).toMatch(/if \(!d \|\| !d\.connected \|\| d\.error\) return null/);
+    expect(page).not.toMatch(/if \(!d \|\| !d\.connected \|\| d\.error\) return null/);
+    expect(page).toMatch(/Couldn't load your balance/);
   });
 
   it("is gated on the billing permission", () => {

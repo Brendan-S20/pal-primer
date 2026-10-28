@@ -398,14 +398,21 @@ export const getStripeBalanceSummary = createServerFn({ method: "GET" })
     if (!acct || !org?.stripe_connect_charges_enabled) return { connected: false as const };
 
     const secret = process.env.STRIPE_SECRET_KEY;
-    if (!secret) throw new Error("Stripe is not configured on the server");
+    // Answered rather than thrown, so the page says it instead of retrying a
+    // misconfiguration (#436).
+    if (!secret)
+      return { connected: true as const, error: "Stripe is not configured on the server" };
     const { makeStripe } = await import("@/lib/stripe-client.server");
     const stripe = await makeStripe(secret);
+    // A deadline per request (#436). The SDK's default is 80s with retries,
+    // which is a "Loading balance…" nobody waits out. 10s and one retry is the
+    // outer bound; the page has its own deadline on top of this.
+    const opts = { stripeAccount: acct, timeout: 10_000, maxNetworkRetries: 1 };
 
     try {
       const [balance, payouts] = await Promise.all([
-        stripe.balance.retrieve({}, { stripeAccount: acct }),
-        stripe.payouts.list({ limit: 1 }, { stripeAccount: acct }),
+        stripe.balance.retrieve({}, opts),
+        stripe.payouts.list({ limit: 1 }, opts),
       ]);
 
       // Summed per currency, not flattened to one number. A connected account
@@ -437,8 +444,9 @@ export const getStripeBalanceSummary = createServerFn({ method: "GET" })
           : null,
       };
     } catch (e: any) {
-      // A balance we cannot fetch must not take the tab down — the embedded
-      // components below still work and are the authoritative view.
+      // A balance we cannot fetch must not take the tab down. It is returned,
+      // not thrown, and the page shows it with a retry beside the embedded
+      // components, which may still work (#436).
       return { connected: true as const, error: e?.message ?? "Could not load balance" };
     }
   });

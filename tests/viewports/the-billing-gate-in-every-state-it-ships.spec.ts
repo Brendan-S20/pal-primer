@@ -247,7 +247,13 @@ async function reportACoarsePointer(context: BrowserContext) {
  *  account, so the page stops at "Set one up" and never reaches the dashboard
  *  the embeds live in; this forces a connected one so the branch under test
  *  actually renders. Returns the visible text. */
-async function openConnectedPayments(page: Page, context: BrowserContext) {
+async function openConnectedPayments(
+  page: Page,
+  context: BrowserContext,
+  /** Other server functions to answer here: a value is sent as the result,
+   *  "hang" is never answered at all. */
+  overrides: Record<string, unknown> = {},
+) {
   await installStubBackend(context);
   await context.route("**/_serverFn/**", async (route) => {
     const id = new URL(route.request().url()).pathname.split("/_serverFn/")[1] ?? "";
@@ -257,6 +263,14 @@ async function openConnectedPayments(page: Page, context: BrowserContext) {
       name = String(meta.export ?? "").replace(/_createServerFn_handler$/, "");
     } catch {
       /* fall through */
+    }
+    if (name in overrides) {
+      if (overrides[name] === "hang") return; // never fulfilled: a call that does not come back
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ result: overrides[name] }),
+      });
     }
     if (name !== "getStripeConnectStatus") return route.fallback();
     await route.fulfill({
@@ -275,7 +289,8 @@ async function openConnectedPayments(page: Page, context: BrowserContext) {
   await installSignedInSession(context);
 
   await page.goto("/payments");
-  await page.waitForLoadState("networkidle");
+  // A call held open on purpose means the network is never idle.
+  await page.waitForLoadState(Object.values(overrides).includes("hang") ? "load" : "networkidle");
   await page.waitForTimeout(2500);
 
   const body = (await page.locator("body").innerText()).replace(/\s+/g, " ");
@@ -353,5 +368,50 @@ test.describe("a mouse at 1032px", () => {
       "a mouse is getting the narrow replacement: the embeds have been removed for everyone",
     ).not.toContain("needs a wider screen");
     expect(body).toMatch(TOOK_THE_STRIPE_PATH);
+  });
+});
+
+// #436: "Loading balance…" and "Loading payouts…" that never finished. The
+// fence turns back connect-js.stripe.com, which is the same thing a CORS
+// failure or a content blocker does to a real owner, and the balance call is
+// held open forever. Before the fix both cards waited for as long as the tab
+// was open. Now each has a deadline and says it could not load, with a retry.
+test.describe("Stripe that never answers, 1280px", () => {
+  test.use({ viewport: { width: 1280, height: 900 } });
+
+  test("no card on the Money tab is still loading once its deadline has passed", async ({
+    page,
+    context,
+  }) => {
+    test.setTimeout(120_000);
+    await openConnectedPayments(page, context, {
+      createStripeAccountSession: { publishableKey: "pk_test_stub", clientSecret: "stub_secret" },
+      getStripeBalanceSummary: "hang",
+    });
+
+    // Proof the dashboard rendered before anything is measured: a blank page
+    // or the router's skeleton contains no "Loading balance…" either, and an
+    // absence-only check passed on exactly that while this was being written.
+    await expect(page.getByRole("tab", { name: "Money" })).toBeVisible({ timeout: 60_000 });
+    const text = async () => (await page.locator("body").innerText()).replace(/\s+/g, " ");
+    expect(await text(), "the Money tab never showed its loading state").toMatch(
+      /Loading (balance|payouts)…/,
+    );
+
+    // The deadlines are 20s (panels) and 25s (our own calls; the balance
+    // query retries once, so two of them). Polled for the ERROR, not merely
+    // for the loading text going away.
+    await expect
+      .poll(text, { timeout: 80_000, intervals: [2_000] })
+      .toContain("Couldn't load your balance");
+    await expect
+      .poll(text, { timeout: 30_000, intervals: [2_000] })
+      .toMatch(/Couldn't load (payouts|balance\.)/);
+
+    const body = await text();
+    expect(body, "a card on the Money tab is still loading after its deadline").not.toMatch(
+      /Loading (balance|payouts)…/,
+    );
+    await expect(page.getByRole("button", { name: /Retry|Try again/ }).first()).toBeVisible();
   });
 });
