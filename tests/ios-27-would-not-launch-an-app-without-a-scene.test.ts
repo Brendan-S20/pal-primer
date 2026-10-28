@@ -137,3 +137,35 @@ describe("CI launches the app", () => {
     expect(script).toMatch(/This run did not exercise iOS 27/);
   });
 });
+
+describe("the page needs nothing from the app before its first paint", () => {
+  // On the CI Mac, some launches parked the web content process in
+  // native-bridge.js's synchronous prompt() for minutes: the app never
+  // handled it, and the screen stayed blank. HSBridgeViewController answers
+  // the two config questions in the page instead.
+  const vc = codeOnly(read("ios/App/App/HSBridgeViewController.swift"));
+  const bridgeJs = read("node_modules/@capacitor/ios/Capacitor/Capacitor/assets/native-bridge.js");
+
+  it("answers both prompts native-bridge.js makes at document start", () => {
+    for (const type of ["CapacitorCookies.isEnabled", "CapacitorHttp"]) {
+      expect(bridgeJs, `native-bridge.js no longer prompts for ${type}`).toContain(
+        `type: '${type}'`,
+      );
+      expect(vc).toContain(`"${type}": "\\(`);
+    }
+    expect(vc).toMatch(/getPluginConfig\("CapacitorCookies"\)\.getBoolean\("enabled", false\)/);
+    expect(vc).toMatch(/getPluginConfig\("CapacitorHttp"\)\.getBoolean\("enabled", false\)/);
+    // Anything else still reaches the app.
+    expect(vc).toMatch(/return nativePrompt\.apply\(window, arguments\)/);
+  });
+
+  it("adds its script before Capacitor adds native-bridge.js", () => {
+    const override = vc.slice(vc.indexOf("override func webView(with frame: CGRect"));
+    const add = override.indexOf("userContentController.addUserScript(");
+    expect(add).toBeGreaterThan(-1);
+    expect(add).toBeLessThan(
+      override.indexOf("return super.webView(with: frame, configuration: configuration)"),
+    );
+    expect(override).toMatch(/injectionTime: \.atDocumentStart, forMainFrameOnly: true/);
+  });
+});
