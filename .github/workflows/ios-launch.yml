@@ -23,9 +23,12 @@ name: iOS launch
 #
 # ── WHERE ───────────────────────────────────────────────────────────────────
 #
-# GitHub's macOS image by default. IOS_LAUNCH_RUNNER_JSON (a repository
-# variable, JSON) moves it without a commit, e.g. '["self-hosted","macOS"]'
-# for the Mac when it has a newer Xcode than the hosted image. If the newest
+# The self-hosted Mac, the only machine this repo reliably gets a Mac on. The
+# first run of this job asked for GitHub's `macos-26` image and was never
+# given one (runner_id 0, cancelled at fifteen minutes, no logs), which is
+# the same hosted-allocation failure ci.yml records for `verify`.
+# IOS_LAUNCH_RUNNER_JSON (a repository variable, JSON) moves it without a
+# commit, e.g. '"macos-26"' if hosted macOS comes back. If the newest
 # runtime is older than iOS 27 the job still passes and the summary says, in
 # words, that iOS 27 was not exercised.
 
@@ -62,7 +65,7 @@ permissions:
 jobs:
   launch:
     name: The app launches on the newest Xcode
-    runs-on: ${{ fromJSON(vars.IOS_LAUNCH_RUNNER_JSON || '"macos-26"') }}
+    runs-on: ${{ fromJSON(vars.IOS_LAUNCH_RUNNER_JSON || '["self-hosted","macOS"]') }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
