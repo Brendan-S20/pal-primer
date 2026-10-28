@@ -88,6 +88,39 @@ export function forgetInviteToken(): void {
  * that needs its link) so the caller can show it instead of building a
  * second business.
  */
+/** An invitation the database (or the address on it) says this account
+ *  cannot use. Its message is written for the person, and /auth shows it
+ *  instead of carrying on to a business of their own. */
+export class InviteRefusedError extends Error {
+  name = "InviteRefusedError";
+  /** Set when the invitation is fine and the account is the problem, so the
+   *  person can sign out and come back to the same link. */
+  constructor(
+    message: string,
+    readonly retryToken: string | null = null,
+  ) {
+    super(message);
+  }
+}
+
+/** Why a token matched nothing, when the reason is one a person can act on:
+ *  the invitation was sent to a different address than the one signed in. */
+async function addressMismatch(token: string): Promise<string | null> {
+  try {
+    const [{ lookupInviteByToken }, { data }] = await Promise.all([
+      import("@/lib/platform-onboarding.functions"),
+      supabase.auth.getUser(),
+    ]);
+    const me = data.user?.email;
+    const inv = await lookupInviteByToken({ data: { token } });
+    if (!inv.ok || inv.kind !== "staff" || !inv.email || !me) return null;
+    if (inv.email.toLowerCase() === me.toLowerCase()) return null;
+    return `This invitation was sent to ${inv.email}, and you're signed in as ${me}. Sign out, then sign in or create an account with ${inv.email} to join.`;
+  } catch {
+    return null;
+  }
+}
+
 export async function acceptPendingInvite(token = pendingInviteToken()): Promise<string | null> {
   const { data: invitedOrg, error } = await supabase.rpc(
     "accept_org_invite_for_current_user" as any,
@@ -98,14 +131,19 @@ export async function acceptPendingInvite(token = pendingInviteToken()): Promise
     // business). Keeping it would replay the same refusal on every sign-in
     // for a day.
     if (token) forgetInviteToken();
-    throw new Error(error.message);
+    throw new InviteRefusedError(error.message);
   }
   if (!invitedOrg) {
-    // A token that matched nothing (expired, revoked, or for another
-    // address) is dropped, and the email path gets its turn: a newer
-    // invitation for this address may still be waiting.
+    // A token that matched nothing is dropped. Signed in as somebody other
+    // than the invited address (a Google account under another email), that
+    // is said out loud: carrying on silently is how the invitee ends up
+    // asked to name a business of their own (#568). Otherwise (expired,
+    // revoked) the email path gets its turn: a newer invitation for this
+    // address may still be waiting.
     if (token) {
       forgetInviteToken();
+      const mismatch = await addressMismatch(token);
+      if (mismatch) throw new InviteRefusedError(mismatch, token);
       return acceptPendingInvite(null);
     }
     return null;

@@ -5,6 +5,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import {
   ensureBootstrapped,
+  InviteRefusedError,
   NEEDS_ORG_NAME,
   pendingInviteToken,
   rememberInviteToken,
@@ -22,6 +23,7 @@ import { withDeadline } from "@/lib/offline/run-or-queue";
 import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
 import { rememberLandingPath, readLandingPath } from "@/lib/offline/read-cache";
 import { pageTitle } from "@/lib/page-title";
+import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -115,6 +117,25 @@ function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [alert, setAlert] = useState<{ kind: "error" | "info"; text: string } | null>(null);
   const setError = (text: string | null) => setAlert(text ? { kind: "error", text } : null);
+  // A refused invitation leaves the person signed in on a sign-in screen.
+  // They need a way out of the account they are in, and back to the link.
+  const [inviteRefused, setInviteRefused] = useState<InviteRefusedError | null>(null);
+  const { signOut, dialog: signOutDialog } = useOfflineSignOut();
+  const refuseInvite = (err: InviteRefusedError) => {
+    setInviteRefused(err);
+    setError(err.message);
+  };
+  const switchAccounts = async () => {
+    if (!(await signOut())) return;
+    const retry = inviteRefused?.retryToken;
+    setInviteRefused(null);
+    setAlert(null);
+    if (retry) {
+      rememberInviteToken(retry);
+      setInviteToken(retry);
+    }
+    setStage("email");
+  };
   const setInfo = (text: string) => setAlert({ kind: "info", text });
 
   // An invitation link lands here as /auth?invite=<token>. Kept before
@@ -146,6 +167,10 @@ function AuthPage() {
           isNewOrg = await ensureBootstrapped(data.user as any, { requireOrgName: true });
           if (isNewOrg === true) forgetWorkspaceCache();
         } catch (err) {
+          // An invitation refused on the way back from Google is the one
+          // error here a person has to read. Landing anyway would put them on
+          // "name your business" with no idea why (#568).
+          if (err instanceof InviteRefusedError) return refuseInvite(err);
           console.error("bootstrap on landing failed", err);
         }
         if (isNewOrg === NEEDS_ORG_NAME) return navigate({ to: "/no-workspace" });
@@ -182,6 +207,10 @@ function AuthPage() {
           isNewOrg = await ensureBootstrapped(identity.user as any, { requireOrgName: true });
           if (isNewOrg === true) forgetWorkspaceCache();
         } catch (err) {
+          if (err instanceof InviteRefusedError) {
+            if (!cancelled) refuseInvite(err);
+            return;
+          }
           console.error("bootstrap on landing failed", err);
         }
       }
@@ -211,6 +240,7 @@ function AuthPage() {
           if (isNewOrg === true) forgetWorkspaceCache();
       } catch (err) {
         setLoading(false);
+        if (err instanceof InviteRefusedError) return refuseInvite(err);
         return setError(err instanceof Error ? err.message : "Failed to create organization");
       }
     }
@@ -264,6 +294,7 @@ function AuthPage() {
       isNewOrg = await ensureBootstrapped(data.user as any, { requireOrgName: true });
       if (isNewOrg === true) forgetWorkspaceCache();
     } catch (err) {
+      if (err instanceof InviteRefusedError) return refuseInvite(err);
       console.error("bootstrap after native sign-in failed", err);
     }
     if (isNewOrg === NEEDS_ORG_NAME) return navigate({ to: "/no-workspace" });
@@ -596,9 +627,17 @@ function AuthPage() {
           }
         >
           {alert.kind === "info" && <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />}
-          <span>{alert.text}</span>
+          <div className="min-w-0 space-y-2 break-words">
+            <p>{alert.text}</p>
+            {inviteRefused && (
+              <Button type="button" variant="outline" size="sm" onClick={switchAccounts}>
+                Sign out and switch accounts
+              </Button>
+            )}
+          </div>
         </div>
       )}
+      {signOutDialog}
 
       <p className="text-center text-xs text-muted-foreground">
         New here? Entering your email above walks you straight into account setup.

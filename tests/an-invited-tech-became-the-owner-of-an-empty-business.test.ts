@@ -37,13 +37,21 @@ vi.mock("@/lib/signup-attribution", () => ({
   clearSignupAttribution: () => {},
 }));
 
+// What /invite/<token> would say about a token: by default, nothing.
+let lookup: Record<string, any> = { ok: false, reason: "not_found" };
+vi.mock("@/lib/platform-onboarding.functions", () => ({
+  lookupInviteByToken: async () => lookup,
+}));
+
 let existingRole: { role: string } | null = null;
+let signedInAs = "tech@example.com";
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     from: () => ({
       select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: existingRole }) }) }),
     }),
     rpc: (name: string, args?: any) => rpc(name, args),
+    auth: { getUser: async () => ({ data: { user: { email: signedInAs } } }) },
   },
 }));
 
@@ -61,7 +69,7 @@ let search = "";
   removeItem: (k: string) => void store.delete(k),
 };
 
-const { ensureBootstrapped, rememberInviteToken, acceptPendingInvite } =
+const { ensureBootstrapped, rememberInviteToken, acceptPendingInvite, InviteRefusedError } =
   await import("@/lib/ensure-workspace");
 
 const INVITING_ORG = "22222222-2222-2222-2222-222222222222";
@@ -90,6 +98,8 @@ describe("an invited person who arrives through the link", () => {
     store.clear();
     search = "";
     existingRole = null;
+    signedInAs = "tech@example.com";
+    lookup = { ok: false, reason: "not_found" };
     inviteDatabase();
   });
 
@@ -132,6 +142,24 @@ describe("an invited person who arrives through the link", () => {
     expect(store.size).toBe(0);
   });
 
+  it("says so when the link was opened under a different address", async () => {
+    // A Google account under another email: the token matches nothing, and
+    // carrying on would ask them to name a business of their own.
+    const other = "c".repeat(48);
+    rememberInviteToken(other);
+    signedInAs = "tia.personal@gmail.com";
+    lookup = { ok: true, kind: "staff", email: "tech@example.com", role: "tech" };
+    const err = await ensureBootstrapped(
+      { ...invitee, email: signedInAs },
+      { requireOrgName: true },
+    ).catch((e) => e);
+    expect(err).toBeInstanceOf(InviteRefusedError);
+    expect(err.message).toMatch(/sent to tech@example\.com/);
+    expect(err.retryToken, "no way back to the same link after switching").toBe(other);
+    expect(bootstrapOrganization).not.toHaveBeenCalled();
+    expect(store.size, "the refused token would replay on every sign-in").toBe(0);
+  });
+
   it("shows the database's refusal instead of building a second business", async () => {
     rpc.mockImplementation(async (name) => {
       if (name === "is_platform_admin") return { data: false };
@@ -158,6 +186,18 @@ describe("an invited person who arrives through the link", () => {
 });
 
 // ── The wiring, which the behaviour above cannot see ──────────────────────
+
+describe("a refusal is read, not logged", () => {
+  it("/auth shows it on every sign-in path, with a way to switch accounts", () => {
+    const auth = read("src/routes/auth.tsx");
+    const handled =
+      auth.match(/err instanceof InviteRefusedError\) (return )?refuseInvite\(err\)/g) ?? [];
+    const guarded = auth.match(/if \(!cancelled\) refuseInvite\(err\)/g) ?? [];
+    // web landing, native landing, password sign-in, native hand-back
+    expect(handled.length + guarded.length).toBe(4);
+    expect(auth).toMatch(/Sign out and switch accounts/);
+  });
+});
 
 describe("the token survives every page between the email and the join", () => {
   it("/auth passes it to Get started", () => {
