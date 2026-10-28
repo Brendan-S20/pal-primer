@@ -100,6 +100,7 @@ jobs:
             ${{ runner.temp }}/ios-launch-smoke/*.xcresult
             ${{ runner.temp }}/ios-launch-smoke/*.png
             ${{ runner.temp }}/ios-launch-smoke/*.log
+            ${{ runner.temp }}/ios-launch-smoke/*.txt
             ${{ runner.temp }}/ios-launch-smoke/summary.md
             ${{ runner.temp }}/ios-launch-smoke/crashes/
           retention-days: 14

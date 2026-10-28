@@ -126,15 +126,19 @@ fi
 
 # ── 3. Build once ──────────────────────────────────────────────────────────
 #
-# Release, because that is the configuration that ships. Built for the
-# generic simulator so one build installs on every device below.
+# Debug, so Capacitor writes the web page's console to the system log
+# (loggingBehavior "debug"): the first run on iOS 27.1 had three launches
+# reach a window and an EMPTY web view, and a Release build says nothing
+# about why. The scene adoption this guards is the same in both
+# configurations. Built for the generic simulator so one build installs on
+# every device below.
 echo "--- building the app"
 xcodebuild -project "$ROOT/ios/App/App.xcodeproj" -scheme App \
-  -configuration Release -sdk iphonesimulator \
+  -configuration Debug -sdk iphonesimulator \
   -destination 'generic/platform=iOS Simulator' \
   -derivedDataPath "$DD/app" CODE_SIGNING_ALLOWED=NO build \
   > "$OUT/build-app.log" 2>&1 || { tail -80 "$OUT/build-app.log"; echo "::error::app build failed"; exit 1; }
-APP=$(find "$DD/app/Build/Products/Release-iphonesimulator" -maxdepth 1 -name '*.app' | head -1)
+APP=$(find "$DD/app/Build/Products/Debug-iphonesimulator" -maxdepth 1 -name '*.app' | head -1)
 [ -n "$APP" ] || { echo "::error::no .app in the build products"; exit 1; }
 
 echo "--- building the UI tests"
@@ -152,7 +156,9 @@ failed=0
 marker="$OUT/.started"
 touch "$marker"
 
-while IFS=$'\t' read -r type name; do
+# fd 3, not stdin: xcodebuild and simctl read stdin, and the first run lost
+# every device after the first to them.
+while IFS=$'\t' read -r type name <&3; do
   [ -n "$type" ] || continue
   slug=$(echo "$name" | tr -c 'A-Za-z0-9\n' '-')
   echo "--- $name"
@@ -160,6 +166,14 @@ while IFS=$'\t' read -r type name; do
   xcrun simctl boot "$udid"
   xcrun simctl bootstatus "$udid" -b > /dev/null
   xcrun simctl install "$udid" "$APP"
+
+  # Warm it up and sample late (docs/ios-build.md, "Automated device
+  # tests"): the first launch after a boot can sit on rgb(0,0,0) for most
+  # of a minute while the page loads. Recorded, not asserted.
+  xcrun simctl launch "$udid" consulting.thenorth.houndstack > /dev/null 2>&1 || true
+  sleep 60
+  xcrun simctl io "$udid" screenshot "$OUT/$slug-warm.png" > /dev/null 2>&1 || true
+  xcrun simctl terminate "$udid" consulting.thenorth.houndstack > /dev/null 2>&1 || true
 
   result="passed"
   if ! xcodebuild test-without-building \
@@ -173,6 +187,11 @@ while IFS=$'\t' read -r type name; do
   fi
 
   xcrun simctl io "$udid" screenshot "$OUT/$slug.png" > /dev/null 2>&1 || true
+  # What the app, its web view and WebKit's processes said, for a launch
+  # that reached a window and painted nothing.
+  xcrun simctl spawn "$udid" log show --last 30m --style compact --info --debug \
+    --predicate 'process == "HoundStack" OR process BEGINSWITH "com.apple.WebKit"' \
+    > "$OUT/$slug.oslog.txt" 2>&1 < /dev/null || true
   if [ -z "${SMOKE_KEEP_SIMS:-}" ]; then
     xcrun simctl shutdown "$udid" > /dev/null 2>&1 || true
     xcrun simctl delete "$udid" > /dev/null 2>&1 || true
@@ -180,14 +199,14 @@ while IFS=$'\t' read -r type name; do
 
   [ "$result" = "passed" ] || failed=1
   say "| $name | $result |"
-done < <(echo "$picks" | tail -n +2)
+done 3< <(echo "$picks" | tail -n +2)
 
 # ── 5. Any crash, even one a test recovered from ───────────────────────────
 #
 # Simulator crash reports land on the host. A launch that crashes and is
 # relaunched by the next attempt must not pass quietly.
 crashes=$(find "$HOME/Library/Logs/DiagnosticReports" -newer "$marker" \
-  -name 'HoundStack*' 2>/dev/null || true)
+  \( -name 'HoundStack*' -o -name 'com.apple.WebKit*' \) 2>/dev/null || true)
 if [ -n "$crashes" ]; then
   failed=1
   mkdir -p "$OUT/crashes"
