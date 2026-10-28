@@ -45,10 +45,14 @@ describe("the receptionist add-on description", () => {
     expect(text).not.toMatch(/books visits into your calendar/i);
   });
 
-  it("says when it books and when the office does", () => {
-    expect(text).toMatch(/book the visit if you turn on Book requests automatically/);
-    expect(text).toMatch(/send the request to your office to confirm/);
-    expect(text).toMatch(/A new number goes to your office as a lead/);
+  it("says when it books and when the office does, in the owner's one sentence", () => {
+    expect(text).toContain(
+      "It will book the visit if you turn on Book requests automatically and the service has a price; otherwise it sends the request to your office.",
+    );
+  });
+
+  it("does not claim it offers times", () => {
+    expect(text).not.toMatch(/open day|offers? (a )?(time|day)s?/i);
   });
 
   it("is in the future tense while it is coming soon, and keeps what 20261009210000 checks", () => {
@@ -57,9 +61,10 @@ describe("the receptionist add-on description", () => {
     expect(text).not.toMatch(/day and night|—/);
   });
 
-  it("matches the booking rules it describes", () => {
+  it("matches booksStraightIn: the auto-book switch and a price", () => {
     const rules = readFileSync(join(process.cwd(), "src/lib/receptionist-booking.ts"), "utf8");
-    expect(rules).toMatch(/"Book requests automatically" on/);
-    expect(rules).toMatch(/an unknown number becomes a lead/);
+    expect(rules).toMatch(/if \(!org\.portal_auto_accept_bookings\) return false;/);
+    expect(rules).toMatch(/return service\.base_price_cents != null;/);
+    expect(rules).toMatch(/return org\.one_off_price_cents != null;/);
   });
 });
