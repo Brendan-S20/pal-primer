@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/integrations/supabase/types";
+import type { Database, Json } from "@/integrations/supabase/types";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import {
@@ -23,8 +23,10 @@ import {
   findExistingClient,
   importContentHash,
   importDisplayStatus,
+  previewStats,
   propertyKey,
   refusalMessage,
+  retryRefusal,
   type CommitBlock,
   type ExistingClient,
   type ExistingRecords,
@@ -934,10 +936,25 @@ export const getImportBatch = createServerFn({ method: "GET" })
       .order("row_num", { ascending: true })
       .limit(2000);
     if (re) throw new Error(re.message);
+    // Whether "Try again" is offered, and if not, why (#569).
+    let retryBlock: string | null = null;
+    if (importDisplayStatus(batch) === "failed") {
+      let wroteClients = false;
+      if ((batch.entity ?? "clients") === "clients") {
+        const { count } = await supabase
+          .from("clients")
+          .select("id", { count: "exact", head: true })
+          .eq("organization_id", orgId)
+          .eq("import_batch_id", batch.id);
+        wroteClients = (count ?? 0) > 0;
+      }
+      retryBlock = retryRefusal(batch, wroteClients);
+    }
     return {
       batch: { ...batch, status: importDisplayStatus(batch) },
       rows: rows ?? [],
       commitBlock,
+      retryBlock,
     };
   });
 
@@ -1114,6 +1131,59 @@ export const previewImport = createServerFn({ method: "POST" })
     return { batchId, stats };
   });
 
+/** Marks a row that failed at commit, keeping what it was going to do so
+ *  "Try again" can put it back (#569). Until the column that holds that is
+ *  live, the row is still marked, as it always was. */
+async function markRowFailed(
+  supabase: SupabaseClient<Database>,
+  rowId: string,
+  action: string,
+  message: string,
+) {
+  const { error } = await supabase
+    .from("import_rows")
+    .update({
+      action: "error",
+      error: message,
+      commit_failed_action: action as "create" | "update",
+    })
+    .eq("id", rowId);
+  if (error) {
+    await supabase.from("import_rows").update({ action: "error", error: message }).eq("id", rowId);
+  }
+}
+
+/** The reason given most often. */
+function mostCommon(reasons: Map<string, number>): string | null {
+  let top: string | null = null;
+  for (const [reason, n] of reasons) if (!top || n > reasons.get(top)!) top = reason;
+  return top;
+}
+
+/** A commit that threw: the batch is closed as failed with the reason and
+ *  what it had written so far. Only a batch still mid-commit is touched, so a
+ *  failure after the batch was marked committed does not undo that. */
+async function recordCommitFailure(
+  supabase: SupabaseClient<Database>,
+  batchId: string,
+  preview: unknown,
+  counts: { created: number; updated: number; failed: number; skipped: number },
+  e: unknown,
+) {
+  const message = (e as Error)?.message || "The import stopped with an error.";
+  const { error } = await supabase
+    .from("import_batches")
+    .update({
+      status: "failed",
+      error: message,
+      stats: { ...previewStats(preview), ...counts },
+      committed_at: new Date().toISOString(),
+    })
+    .eq("id", batchId)
+    .eq("status", "previewing");
+  if (error) console.error("import: could not record a failed commit", error.message);
+}
+
 export const commitImport = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ batchId: z.string().uuid() }).parse(d))
@@ -1214,402 +1284,420 @@ export const commitImport = createServerFn({ method: "POST" })
     }
     if (!claimed)
       throw new Error("This preview can no longer commit. Refresh to see its current status.");
-    // Never release a claim after partial work: retrying could repeat writes.
-    const { records: existing } = await loadExisting(supabase, orgId, entity, batch.source);
-    const sourceLabel = batch.source === "jobber" ? "Jobber" : batch.source === "sweepgo" ? "Sweep&Go" : "your previous system";
-
-    // The business's services, for a plan row that names one. Read once; a
-    // name the business has not got is created on first sight (no price,
-    // the line its words suggest) and remembered for the rest of the batch.
-    // Creating one needs manage_pricing, as Settings → Services does; an
-    // importer without it gets that row refused with a sentence, and the
-    // rest of the file still goes in.
-    const serviceCatalog: ImportService[] = [];
-    let orgLines: ReturnType<typeof serviceLinesOrDefault> = serviceLinesOrDefault(null);
-    if (entity === "services") {
-      const [{ data: svc, error: svcErr }, { data: orgRow }] = await Promise.all([
-        supabase.from("services").select("id, name, service_line").eq("organization_id", orgId),
-        supabase.from("organizations").select("service_lines").eq("id", orgId).maybeSingle(),
-      ]);
-      if (svcErr) throw new Error(svcErr.message);
-      serviceCatalog.push(...((svc ?? []) as ImportService[]));
-      orgLines = serviceLinesOrDefault(orgRow?.service_lines);
-    }
-    const resolveImportService = async (name: string | null): Promise<ImportService | null> => {
-      const found = matchImportService(name, serviceCatalog);
-      if (found !== undefined) return found;
-      const draft = newServiceDraft(name!, orgLines);
-      const { data: ins, error } = await supabase
-        .from("services")
-        .insert({ ...draft, organization_id: orgId })
-        .select("id, name, service_line")
-        .single();
-      if (error) {
-        if (error.code === "42501") {
-          throw new Error(
-            `"${draft.name}" is not one of your services yet, and adding services needs the pricing permission. Add it in Settings → Services first, or ask an owner to.`,
-          );
-        }
-        throw new Error(`Could not add the service "${draft.name}": ${error.message}`);
-      }
-      const made = ins as ImportService;
-      serviceCatalog.push(made);
-      return made;
-    };
-
     let created = 0,
       updated = 0,
       failed = 0,
       skipped = 0;
+    const rowErrors = new Map<string, number>();
 
-    // Every new client's service address, geocoded up front in ONE call. With
-    // a Geocodio key that is one batch request for the whole import instead
-    // of one throttled Nominatim request per row (a 500-row import was 500
-    // seconds); without one it is the same 1/s loop as before, just earlier.
-    // A row missing from this map -- the batch threw -- is geocoded on its own
-    // in the loop below, which is what every row used to do.
-    const geoByRow = new Map<string, import("./geocode.server").GeocodeResult>();
-    if (entity === "clients") {
-      type Where = { street?: string; city?: string; region?: string; postal_code?: string };
-      const toGeocode = (rows ?? []).flatMap((r) => {
-        const m = (r.mapped ?? {}) as Where;
-        return r.action === "create" && m.street && m.city ? [{ id: r.id, m }] : [];
-      });
-      if (toGeocode.length > 0) {
-        try {
-          const { geocodeAddresses } = await import("./geocode.server");
-          const geos = await geocodeAddresses(
-            toGeocode.map(({ m }) => ({
-              street: m.street,
-              city: m.city,
-              region: m.region,
-              postal_code: m.postal_code,
-            })),
-          );
-          toGeocode.forEach(({ id }, i) => geoByRow.set(id, geos[i]));
-        } catch (ge) {
-          console.error(
-            "import: batch geocode failed; geocoding row by row",
-            (ge as Error).message,
-          );
+    // Whatever stops this commit, the batch says so (#569). It used to stay
+    // "Committing" for ever with no error and no way to try again.
+    try {
+      // Never release a claim after partial work: retrying could repeat writes.
+      const { records: existing } = await loadExisting(supabase, orgId, entity, batch.source);
+      const sourceLabel = batch.source === "jobber" ? "Jobber" : batch.source === "sweepgo" ? "Sweep&Go" : "your previous system";
+
+      // The business's services, for a plan row that names one. Read once; a
+      // name the business has not got is created on first sight (no price,
+      // the line its words suggest) and remembered for the rest of the batch.
+      // Creating one needs manage_pricing, as Settings → Services does; an
+      // importer without it gets that row refused with a sentence, and the
+      // rest of the file still goes in.
+      const serviceCatalog: ImportService[] = [];
+      let orgLines: ReturnType<typeof serviceLinesOrDefault> = serviceLinesOrDefault(null);
+      if (entity === "services") {
+        const [{ data: svc, error: svcErr }, { data: orgRow }] = await Promise.all([
+          supabase.from("services").select("id, name, service_line").eq("organization_id", orgId),
+          supabase.from("organizations").select("service_lines").eq("id", orgId).maybeSingle(),
+        ]);
+        if (svcErr) throw new Error(svcErr.message);
+        serviceCatalog.push(...((svc ?? []) as ImportService[]));
+        orgLines = serviceLinesOrDefault(orgRow?.service_lines);
+      }
+      const resolveImportService = async (name: string | null): Promise<ImportService | null> => {
+        const found = matchImportService(name, serviceCatalog);
+        if (found !== undefined) return found;
+        const draft = newServiceDraft(name!, orgLines);
+        const { data: ins, error } = await supabase
+          .from("services")
+          .insert({ ...draft, organization_id: orgId })
+          .select("id, name, service_line")
+          .single();
+        if (error) {
+          if (error.code === "42501") {
+            throw new Error(
+              `"${draft.name}" is not one of your services yet, and adding services needs the pricing permission. Add it in Settings → Services first, or ask an owner to.`,
+            );
+          }
+          throw new Error(`Could not add the service "${draft.name}": ${error.message}`);
+        }
+        const made = ins as ImportService;
+        serviceCatalog.push(made);
+        return made;
+      };
+
+      // Every new client's service address, geocoded up front in ONE call. With
+      // a Geocodio key that is one batch request for the whole import instead
+      // of one throttled Nominatim request per row (a 500-row import was 500
+      // seconds); without one it is the same 1/s loop as before, just earlier.
+      // A row missing from this map -- the batch threw -- is geocoded on its own
+      // in the loop below, which is what every row used to do.
+      const geoByRow = new Map<string, import("./geocode.server").GeocodeResult>();
+      if (entity === "clients") {
+        type Where = { street?: string; city?: string; region?: string; postal_code?: string };
+        const toGeocode = (rows ?? []).flatMap((r) => {
+          const m = (r.mapped ?? {}) as Where;
+          return r.action === "create" && m.street && m.city ? [{ id: r.id, m }] : [];
+        });
+        if (toGeocode.length > 0) {
+          try {
+            const { geocodeAddresses } = await import("./geocode.server");
+            const geos = await geocodeAddresses(
+              toGeocode.map(({ m }) => ({
+                street: m.street,
+                city: m.city,
+                region: m.region,
+                postal_code: m.postal_code,
+              })),
+            );
+            toGeocode.forEach(({ id }, i) => geoByRow.set(id, geos[i]));
+          } catch (ge) {
+            console.error(
+              "import: batch geocode failed; geocoding row by row",
+              (ge as Error).message,
+            );
+          }
         }
       }
-    }
 
-    for (const row of rows ?? []) {
-      const m = row.mapped as any;
-      try {
-        const duplicate = alreadyInDatabase(entity, m, row.target_id, existing);
-        if (duplicate) {
-          const { error } = await supabase
-            .from("import_rows")
-            .update({ action: "skip", target_id: duplicate })
-            .eq("id", row.id);
-          if (error) throw error;
-          skipped += 1;
-          continue;
-        }
-        if (entity === "clients") {
-          if (row.action === "create") {
-            const { data: ins, error: cErr } = await supabase
-              .from("clients")
-              .insert({
-                organization_id: orgId,
+      for (const row of rows ?? []) {
+        const m = row.mapped as any;
+        try {
+          const duplicate = alreadyInDatabase(entity, m, row.target_id, existing);
+          if (duplicate) {
+            const { error } = await supabase
+              .from("import_rows")
+              .update({ action: "skip", target_id: duplicate })
+              .eq("id", row.id);
+            if (error) throw error;
+            skipped += 1;
+            continue;
+          }
+          if (entity === "clients") {
+            if (row.action === "create") {
+              const { data: ins, error: cErr } = await supabase
+                .from("clients")
+                .insert({
+                  organization_id: orgId,
+                  display_name: m.display_name,
+                  account_type: m.account_type,
+                  primary_email: m.primary_email,
+                  primary_phone: m.primary_phone,
+                  notes: m.notes,
+                  ...(m.tags?.length ? { tags: m.tags } : {}),
+                  import_source: batch.source,
+                  import_external_id: m.external_id,
+                  import_batch_id: batch.id,
+                  // Import comms hold: newly-imported clients must not receive
+                  // automated communications until the org initiates contact
+                  // (manual send clears it) or office lifts the hold. Only set
+                  // on CREATE — updates leave an existing client's flag alone.
+                  comms_paused: true,
+                })
+                .select("id").single();
+              if (cErr) throw cErr;
+              await supabase.from("import_rows").update({ target_id: ins.id }).eq("id", row.id);
+              // If the Clients row carried a service address, create a property
+              // for it (auto-geocoded) so routing/pricing/DNA work downstream —
+              // instead of silently dropping the address (finding #12).
+              if (m.street && m.city) {
+                try {
+                  const { geocodeAddress } = await import("./geocode.server");
+                  const geo = geoByRow.has(row.id)
+                    ? (geoByRow.get(row.id) ?? null)
+                    : await geocodeAddress({
+                        street: m.street,
+                        city: m.city,
+                        region: m.region,
+                        postal_code: m.postal_code,
+                      });
+                  const { detectZoneId } = await import("@/lib/properties.functions");
+                  // Type-appropriate zone matching (B3): the imported property
+                  // inherits the client's account type, so a commercial client
+                  // lands in a commercial zone even when a residential zone
+                  // covers the same ZIP.
+                  const importAccountType =
+                    m.account_type === "commercial" || m.account_type === "residential"
+                      ? m.account_type
+                      : null;
+                  const importZoneId = await detectZoneId(supabase, orgId, {
+                    postalCode: m.postal_code,
+                    point:
+                      geo?.latitude != null && geo?.longitude != null
+                        ? { lat: geo.latitude, lng: geo.longitude }
+                        : null,
+                    accountType: importAccountType,
+                  });
+                  await supabase.from("properties").insert({
+                    organization_id: orgId,
+                    client_id: ins.id,
+                    street: m.street,
+                    city: m.city,
+                    region: m.region || null,
+                    postal_code: m.postal_code || null,
+                    gate_code: m.gate_code || null,
+                    account_type: importAccountType,
+                    address_source: "manual",
+                    auto_zone_id: importZoneId,
+                    zone_id: importZoneId,
+                    latitude: geo?.latitude ?? null,
+                    longitude: geo?.longitude ?? null,
+                  });
+                } catch (pe) {
+                  // Non-fatal: the client is created; a failed property/geocode
+                  // shouldn't roll back the client. Logged for follow-up.
+                  console.error("import: property create/geocode failed", (pe as Error).message);
+                }
+              }
+              // Include clients created earlier in this file in the next check.
+              const added = clientDuplicateIndex(
+                [
+                  {
+                    id: ins.id,
+                    display_name: m.display_name,
+                    primary_email: m.primary_email,
+                    primary_phone: m.primary_phone,
+                    import_source: batch.source,
+                    import_external_id: m.external_id,
+                    streets: [{ street: m.street, postal_code: m.postal_code }],
+                  },
+                ],
+                batch.source,
+              );
+              for (const key of ["byExternal", "byEmail", "byPhone", "byNameAndStreet"] as const) {
+                for (const [value, id] of added[key]) existing.clients[key].set(value, id);
+              }
+              created += 1;
+            } else if (row.action === "update" && row.target_id) {
+              const { error: uErr } = await supabase.from("clients").update({
                 display_name: m.display_name,
                 account_type: m.account_type,
                 primary_email: m.primary_email,
                 primary_phone: m.primary_phone,
                 notes: m.notes,
                 ...(m.tags?.length ? { tags: m.tags } : {}),
-                import_source: batch.source,
-                import_external_id: m.external_id,
-                import_batch_id: batch.id,
-                // Import comms hold: newly-imported clients must not receive
-                // automated communications until the org initiates contact
-                // (manual send clears it) or office lifts the hold. Only set
-                // on CREATE — updates leave an existing client's flag alone.
-                comms_paused: true,
-              })
-              .select("id").single();
-            if (cErr) throw cErr;
-            await supabase.from("import_rows").update({ target_id: ins.id }).eq("id", row.id);
-            // If the Clients row carried a service address, create a property
-            // for it (auto-geocoded) so routing/pricing/DNA work downstream —
-            // instead of silently dropping the address (finding #12).
-            if (m.street && m.city) {
-              try {
-                const { geocodeAddress } = await import("./geocode.server");
-                const geo = geoByRow.has(row.id)
-                  ? (geoByRow.get(row.id) ?? null)
-                  : await geocodeAddress({
-                      street: m.street,
-                      city: m.city,
-                      region: m.region,
-                      postal_code: m.postal_code,
-                    });
-                const { detectZoneId } = await import("@/lib/properties.functions");
-                // Type-appropriate zone matching (B3): the imported property
-                // inherits the client's account type, so a commercial client
-                // lands in a commercial zone even when a residential zone
-                // covers the same ZIP.
-                const importAccountType =
-                  m.account_type === "commercial" || m.account_type === "residential"
-                    ? m.account_type
-                    : null;
-                const importZoneId = await detectZoneId(supabase, orgId, {
-                  postalCode: m.postal_code,
-                  point:
-                    geo?.latitude != null && geo?.longitude != null
-                      ? { lat: geo.latitude, lng: geo.longitude }
-                      : null,
-                  accountType: importAccountType,
-                });
-                await supabase.from("properties").insert({
-                  organization_id: orgId,
-                  client_id: ins.id,
-                  street: m.street,
-                  city: m.city,
-                  region: m.region || null,
-                  postal_code: m.postal_code || null,
-                  gate_code: m.gate_code || null,
-                  account_type: importAccountType,
-                  address_source: "manual",
-                  auto_zone_id: importZoneId,
-                  zone_id: importZoneId,
-                  latitude: geo?.latitude ?? null,
-                  longitude: geo?.longitude ?? null,
-                });
-              } catch (pe) {
-                // Non-fatal: the client is created; a failed property/geocode
-                // shouldn't roll back the client. Logged for follow-up.
-                console.error("import: property create/geocode failed", (pe as Error).message);
-              }
+              }).eq("id", row.target_id);
+              if (uErr) throw uErr;
+              updated += 1;
             }
-            // Include clients created earlier in this file in the next check.
-            const added = clientDuplicateIndex(
-              [
-                {
-                  id: ins.id,
-                  display_name: m.display_name,
-                  primary_email: m.primary_email,
-                  primary_phone: m.primary_phone,
-                  import_source: batch.source,
-                  import_external_id: m.external_id,
-                  streets: [{ street: m.street, postal_code: m.postal_code }],
-                },
-              ],
-              batch.source,
-            );
-            for (const key of ["byExternal", "byEmail", "byPhone", "byNameAndStreet"] as const) {
-              for (const [value, id] of added[key]) existing.clients[key].set(value, id);
-            }
-            created += 1;
-          } else if (row.action === "update" && row.target_id) {
-            const { error: uErr } = await supabase.from("clients").update({
-              display_name: m.display_name,
-              account_type: m.account_type,
-              primary_email: m.primary_email,
-              primary_phone: m.primary_phone,
-              notes: m.notes,
-              ...(m.tags?.length ? { tags: m.tags } : {}),
-            }).eq("id", row.target_id);
-            if (uErr) throw uErr;
-            updated += 1;
-          }
-        } else if (entity === "properties") {
-          if (row.action === "create" && row.target_id) {
-            const { detectZoneId } = await import("@/lib/properties.functions");
-            // Type-appropriate zone matching (B3): fall back to the owning
-            // client's account type so the property lands in a zone typed for
-            // its account (commercial client to commercial zone).
-            const { data: ownerClient } = await supabase
-              .from("clients")
-              .select("account_type")
-              .eq("id", row.target_id)
-              .maybeSingle();
-            const propAccountType =
-              ownerClient?.account_type === "commercial" || ownerClient?.account_type === "residential"
-                ? ownerClient.account_type
-                : null;
-            const propZoneId = await detectZoneId(supabase, orgId, {
-              postalCode: m.postal_code,
-              point: null,
-              accountType: propAccountType,
-            });
-            const { data: ins, error: cErr } = await supabase
-              .from("properties")
-              .insert({
-                organization_id: orgId,
-                client_id: row.target_id,
-                label: m.label,
-                street: m.street,
-                city: m.city,
-                region: m.region,
-                postal_code: m.postal_code,
-                gate_code: m.gate_code,
-                access_notes: m.notes,
-                account_type: propAccountType,
-                address_source: "manual",
-                auto_zone_id: propZoneId,
-                zone_id: propZoneId,
-              })
-              .select("id").single();
-            if (cErr) throw cErr;
-            await supabase.from("import_rows").update({ target_id: ins.id }).eq("id", row.id);
-            created += 1;
-          }
-        } else if (entity === "dogs") {
-          if (row.action === "create" && row.target_id) {
-            // Attach to client's first property
-            const { data: prop, error: pErr } = await supabase
-              .from("properties")
-              .select("id")
-              .eq("organization_id", orgId)
-              .eq("client_id", row.target_id)
-              .order("created_at", { ascending: true })
-              .limit(1)
-              .maybeSingle();
-            if (pErr) throw pErr;
-            if (!prop) throw new Error("Client has no property; import a property first");
-            const { data: ins, error: cErr } = await supabase
-              .from("dogs")
-              .insert({
-                organization_id: orgId,
-                property_id: prop.id,
-                name: m.name,
-                breed: m.breed,
-                weight_class: m.weight_class,
-                notes: m.notes,
-              })
-              .select("id").single();
-            if (cErr) throw cErr;
-            await supabase.from("import_rows").update({ target_id: ins.id }).eq("id", row.id);
-            created += 1;
-          }
-        } else if (entity === "services") {
-          if (row.action === "create" && row.target_id) {
-            const { data: client } = await supabase
-              .from("clients")
-              .select("account_type")
-              .eq("id", row.target_id)
-              .single();
-            const { data: prop } = await supabase
-              .from("properties")
-              .select("id, zone_id")
-              .eq("organization_id", orgId)
-              .eq("client_id", row.target_id)
-              .order("created_at", { ascending: true })
-              .limit(1)
-              .maybeSingle();
-            if (!prop) throw new Error("Client has no address; import clients with their service address first");
-            const isRes = client?.account_type !== "commercial";
-            let dogCount: number | null = m.dog_count;
-            if (isRes && !dogCount) {
-              const { count } = await supabase
-                .from("dogs")
-                .select("id", { count: "exact", head: true })
-                .eq("property_id", prop.id);
-              dogCount = Math.max(1, count ?? 1);
-            }
-            // The service the row names, or none (the database then gives
-            // the plan the business's default, as it always has).
-            const service = await resolveImportService(m.service_name ?? null);
-            const { data: ins, error: sErr } = await supabase
-              .from("subscriptions")
-              .insert(
-                importPlanRow(m, {
-                  orgId,
-                  clientId: row.target_id,
-                  propertyId: prop.id,
-                  zoneId: prop.zone_id ?? null,
-                  isResidential: isRes,
-                  dogCount,
-                  service,
-                  now: new Date().toISOString(),
-                }) as any,
-              )
-              .select("id")
-              .single();
-            if (sErr) throw sErr;
-            await supabase.from("import_rows").update({ target_id: ins.id }).eq("id", row.id);
-            created += 1;
-          }
-        } else if (entity === "balances") {
-          if (row.action === "create" && row.target_id) {
-            const nowIso = new Date().toISOString();
-            const today = nowIso.slice(0, 10);
-            const dueOn = m.due_on ?? new Date(Date.now() + netDays * 86_400_000).toISOString().slice(0, 10);
-            const description = `Opening balance carried over from ${sourceLabel}`;
-            const { data: inv, error: iErr } = await supabase
-              .from("invoices")
-              .insert(
-                newInvoice({
+          } else if (entity === "properties") {
+            if (row.action === "create" && row.target_id) {
+              const { detectZoneId } = await import("@/lib/properties.functions");
+              // Type-appropriate zone matching (B3): fall back to the owning
+              // client's account type so the property lands in a zone typed for
+              // its account (commercial client to commercial zone).
+              const { data: ownerClient } = await supabase
+                .from("clients")
+                .select("account_type")
+                .eq("id", row.target_id)
+                .maybeSingle();
+              const propAccountType =
+                ownerClient?.account_type === "commercial" || ownerClient?.account_type === "residential"
+                  ? ownerClient.account_type
+                  : null;
+              const propZoneId = await detectZoneId(supabase, orgId, {
+                postalCode: m.postal_code,
+                point: null,
+                accountType: propAccountType,
+              });
+              const { data: ins, error: cErr } = await supabase
+                .from("properties")
+                .insert({
                   organization_id: orgId,
                   client_id: row.target_id,
-                  kind: "postpaid",
-                  status: "open",
-                  // No sales tax, whatever the org's rate: an opening balance is
-                  // historical, already taxed (or not) in the books it came from.
-                  // tax_cents and tax_rate_bps default to 0.
-                  subtotal_cents: m.amount_cents,
-                  total_cents: m.amount_cents,
-                  period_start: today,
-                  period_end: today,
-                  issued_at: nowIso,
-                  due_on: dueOn,
-                  notes: m.note ? `${OPENING_BALANCE_NOTE}: ${m.note}` : OPENING_BALANCE_NOTE,
-                }),
-              )
-              .select("id")
-              .single();
-            if (iErr) throw iErr;
-            const { error: lErr } = await supabase
-              .from("invoice_line_items")
-              .insert({ invoice_id: inv.id, description, amount_cents: m.amount_cents });
-            if (lErr) {
-              await supabase.from("invoices").delete().eq("id", inv.id);
-              throw lErr;
+                  label: m.label,
+                  street: m.street,
+                  city: m.city,
+                  region: m.region,
+                  postal_code: m.postal_code,
+                  gate_code: m.gate_code,
+                  access_notes: m.notes,
+                  account_type: propAccountType,
+                  address_source: "manual",
+                  auto_zone_id: propZoneId,
+                  zone_id: propZoneId,
+                })
+                .select("id").single();
+              if (cErr) throw cErr;
+              await supabase.from("import_rows").update({ target_id: ins.id }).eq("id", row.id);
+              created += 1;
             }
-            await supabase.from("import_rows").update({ target_id: inv.id }).eq("id", row.id);
-            created += 1;
+          } else if (entity === "dogs") {
+            if (row.action === "create" && row.target_id) {
+              // Attach to client's first property
+              const { data: prop, error: pErr } = await supabase
+                .from("properties")
+                .select("id")
+                .eq("organization_id", orgId)
+                .eq("client_id", row.target_id)
+                .order("created_at", { ascending: true })
+                .limit(1)
+                .maybeSingle();
+              if (pErr) throw pErr;
+              if (!prop) throw new Error("Client has no property; import a property first");
+              const { data: ins, error: cErr } = await supabase
+                .from("dogs")
+                .insert({
+                  organization_id: orgId,
+                  property_id: prop.id,
+                  name: m.name,
+                  breed: m.breed,
+                  weight_class: m.weight_class,
+                  notes: m.notes,
+                })
+                .select("id").single();
+              if (cErr) throw cErr;
+              await supabase.from("import_rows").update({ target_id: ins.id }).eq("id", row.id);
+              created += 1;
+            }
+          } else if (entity === "services") {
+            if (row.action === "create" && row.target_id) {
+              const { data: client } = await supabase
+                .from("clients")
+                .select("account_type")
+                .eq("id", row.target_id)
+                .single();
+              const { data: prop } = await supabase
+                .from("properties")
+                .select("id, zone_id")
+                .eq("organization_id", orgId)
+                .eq("client_id", row.target_id)
+                .order("created_at", { ascending: true })
+                .limit(1)
+                .maybeSingle();
+              if (!prop) throw new Error("Client has no address; import clients with their service address first");
+              const isRes = client?.account_type !== "commercial";
+              let dogCount: number | null = m.dog_count;
+              if (isRes && !dogCount) {
+                const { count } = await supabase
+                  .from("dogs")
+                  .select("id", { count: "exact", head: true })
+                  .eq("property_id", prop.id);
+                dogCount = Math.max(1, count ?? 1);
+              }
+              // The service the row names, or none (the database then gives
+              // the plan the business's default, as it always has).
+              const service = await resolveImportService(m.service_name ?? null);
+              const { data: ins, error: sErr } = await supabase
+                .from("subscriptions")
+                .insert(
+                  importPlanRow(m, {
+                    orgId,
+                    clientId: row.target_id,
+                    propertyId: prop.id,
+                    zoneId: prop.zone_id ?? null,
+                    isResidential: isRes,
+                    dogCount,
+                    service,
+                    now: new Date().toISOString(),
+                  }) as any,
+                )
+                .select("id")
+                .single();
+              if (sErr) throw sErr;
+              await supabase.from("import_rows").update({ target_id: ins.id }).eq("id", row.id);
+              created += 1;
+            }
+          } else if (entity === "balances") {
+            if (row.action === "create" && row.target_id) {
+              const nowIso = new Date().toISOString();
+              const today = nowIso.slice(0, 10);
+              const dueOn = m.due_on ?? new Date(Date.now() + netDays * 86_400_000).toISOString().slice(0, 10);
+              const description = `Opening balance carried over from ${sourceLabel}`;
+              const { data: inv, error: iErr } = await supabase
+                .from("invoices")
+                .insert(
+                  newInvoice({
+                    organization_id: orgId,
+                    client_id: row.target_id,
+                    kind: "postpaid",
+                    status: "open",
+                    // No sales tax, whatever the org's rate: an opening balance is
+                    // historical, already taxed (or not) in the books it came from.
+                    // tax_cents and tax_rate_bps default to 0.
+                    subtotal_cents: m.amount_cents,
+                    total_cents: m.amount_cents,
+                    period_start: today,
+                    period_end: today,
+                    issued_at: nowIso,
+                    due_on: dueOn,
+                    notes: m.note ? `${OPENING_BALANCE_NOTE}: ${m.note}` : OPENING_BALANCE_NOTE,
+                  }),
+                )
+                .select("id")
+                .single();
+              if (iErr) throw iErr;
+              const { error: lErr } = await supabase
+                .from("invoice_line_items")
+                .insert({ invoice_id: inv.id, description, amount_cents: m.amount_cents });
+              if (lErr) {
+                await supabase.from("invoices").delete().eq("id", inv.id);
+                throw lErr;
+              }
+              await supabase.from("import_rows").update({ target_id: inv.id }).eq("id", row.id);
+              created += 1;
+            }
           }
+        } catch (e: any) {
+          failed += 1;
+          const reason = e?.message ?? String(e);
+          rowErrors.set(reason, (rowErrors.get(reason) ?? 0) + 1);
+          await markRowFailed(supabase, row.id, row.action, reason);
         }
-      } catch (e: any) {
-        failed += 1;
-        await supabase.from("import_rows").update({
-          action: "error",
-          error: e?.message ?? String(e),
-        }).eq("id", row.id);
       }
+
+      // New plans need their visits now, not at tonight's run. One pass for the
+      // whole batch, as onboardClient does for one client.
+      if (entity === "services" && created > 0) {
+        const { generateVisitHorizon } = await import("@/lib/visit-generation.server");
+        await generateVisitHorizon(supabase, orgId);
+      }
+
+      const stats = { created, updated, failed, skipped };
+      const nothingWentIn = failed > 0 && !created && !updated;
+      const { error: finishError } = await supabase
+        .from("import_batches")
+        .update({
+          status: nothingWentIn ? "failed" : "committed",
+          // The preview's counts stay beside the commit's, so the page still
+          // shows what the file held and "Try again" can restore them.
+          stats: { ...previewStats(batch.stats), ...stats },
+          error: nothingWentIn ? mostCommon(rowErrors) : null,
+          committed_at: new Date().toISOString(),
+        })
+        .eq("id", data.batchId);
+
+      if (finishError) throw new Error(finishError.message);
+      const { error: supersedeError } = await supabase
+        .from("import_batches")
+        .update({ status: "cancelled", superseded_by: batch.id })
+        .eq("organization_id", orgId)
+        .eq("content_hash", contentHash)
+        .neq("id", batch.id)
+        .eq("status", "previewing")
+        .is("commit_started_at", null);
+      if (supersedeError) throw new Error(supersedeError.message);
+      return stats;
+    } catch (e) {
+      await recordCommitFailure(
+        supabase,
+        batch.id,
+        batch.stats,
+        { created, updated, failed, skipped },
+        e,
+      );
+      throw e;
     }
-
-    // New plans need their visits now, not at tonight's run. One pass for the
-    // whole batch, as onboardClient does for one client.
-    if (entity === "services" && created > 0) {
-      const { generateVisitHorizon } = await import("@/lib/visit-generation.server");
-      await generateVisitHorizon(supabase, orgId);
-    }
-
-    const stats = { created, updated, failed, skipped };
-    const { error: finishError } = await supabase
-      .from("import_batches")
-      .update({
-      status: failed && !created && !updated ? "failed" : "committed",
-      stats,
-      committed_at: new Date().toISOString(),
-    }).eq("id", data.batchId);
-
-    if (finishError) throw new Error(finishError.message);
-    const { error: supersedeError } = await supabase
-      .from("import_batches")
-      .update({ status: "cancelled", superseded_by: batch.id })
-      .eq("organization_id", orgId)
-      .eq("content_hash", contentHash)
-      .neq("id", batch.id)
-      .eq("status", "previewing")
-      .is("commit_started_at", null);
-    if (supersedeError) throw new Error(supersedeError.message);
-    return stats;
   });
 
 export const cancelImport = createServerFn({ method: "POST" })
@@ -1625,5 +1713,72 @@ export const cancelImport = createServerFn({ method: "POST" })
       .eq("status", "previewing")
       .is("commit_started_at", null);
     if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+/** "Try again" on an import that did not finish (#569). Puts the batch back
+ *  to its preview, with every row that failed at commit back to what it was
+ *  going to do, so the page can commit it again. Refused, with the reason,
+ *  when the first attempt wrote anything (retryRefusal). */
+export const retryImport = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ batchId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+    const { data: batch, error: bErr } = await supabase
+      .from("import_batches")
+      .select("*")
+      .eq("id", data.batchId)
+      .eq("organization_id", orgId)
+      .single();
+    if (bErr) throw new Error(bErr.message);
+
+    let wroteClients = false;
+    if ((batch.entity ?? "clients") === "clients") {
+      const { count, error: cErr } = await supabase
+        .from("clients")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", orgId)
+        .eq("import_batch_id", batch.id);
+      if (cErr) throw new Error(cErr.message);
+      wroteClients = (count ?? 0) > 0;
+    }
+    const refusal = retryRefusal(batch, wroteClients);
+    if (refusal) throw new Error(refusal);
+
+    // The batch first, on the state it was read in, so two taps reopen it
+    // once. Releasing commit_started_at also releases the file's reservation,
+    // which is right here: nothing of it went in.
+    let reopen = supabase
+      .from("import_batches")
+      .update({
+        status: "previewing",
+        commit_started_at: null,
+        committed_at: null,
+        error: null,
+        stats: previewStats(batch.stats) as Json,
+      })
+      .eq("id", batch.id)
+      .eq("status", batch.status);
+    reopen = batch.commit_started_at
+      ? reopen.eq("commit_started_at", batch.commit_started_at)
+      : reopen.is("commit_started_at", null);
+    const { data: reopened, error: rErr } = await reopen.select("id").maybeSingle();
+    if (rErr) throw new Error(rErr.message);
+    if (!reopened) {
+      throw new Error(
+        "This import changed while it was being reopened. Refresh to see where it is.",
+      );
+    }
+
+    for (const action of ["create", "update"] as const) {
+      const { error } = await supabase
+        .from("import_rows")
+        .update({ action, error: null, commit_failed_action: null })
+        .eq("batch_id", batch.id)
+        .eq("commit_failed_action", action);
+      if (error) throw new Error(error.message);
+    }
     return { ok: true };
   });
