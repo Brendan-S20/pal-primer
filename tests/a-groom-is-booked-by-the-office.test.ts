@@ -1,7 +1,9 @@
-// Mobile grooming is a service the office can book. A customer still cannot:
-// the portal's booking, the public signup, the booking link and the
-// receptionist leave it out (OFFICE_BOOKED_LINES, customerCanBookService),
-// even now that #549 has it bookable and customer requestable on the switch.
+// Mobile grooming is a service the office can book. A customer still cannot
+// book one through the portal's one-off or the receptionist: both leave it
+// out (OFFICE_BOOKED_LINES, customerCanBookService), even now that #549 has
+// it bookable and customer requestable on the switch. The public booking
+// link is different since #560: it prices a groom per pet size with its
+// add-ons, and takes it as a request the office books (bookingLinkOffersLine).
 // A portal client of a grooming business can ASK for a groom (20261024100400),
 // and that request goes to the office's queue; only the office books it.
 
@@ -70,18 +72,29 @@ describe("customers cannot book a groom", () => {
     ]);
   });
 
-  it("every door a customer books through asks customerCanBookService, not the request gate", () => {
+  it("the doors that book directly ask customerCanBookService, and the booking link asks bookingLinkOffersLine", () => {
+    for (const file of ["src/lib/one-off-booking.ts", "src/lib/receptionist-booking.ts"]) {
+      const src = read(file);
+      expect(src, file).toContain("customerCanBookService(");
+      expect(src, file).not.toContain("customerCanRequestService(");
+    }
     for (const file of [
-      "src/lib/one-off-booking.ts",
-      "src/lib/receptionist-booking.ts",
       "src/lib/public-services.ts",
       "src/lib/signup.functions.ts",
       "src/routes/api/public/leads.ts",
     ]) {
       const src = read(file);
-      expect(src, file).toContain("customerCanBookService(");
+      expect(src, file).toContain("bookingLinkOffersLine(");
+      expect(src, file).not.toContain("customerCanBookService(");
       expect(src, file).not.toContain("customerCanRequestService(");
     }
+    // A groom on the link is never started: its checkout is refused.
+    const fns = read("src/lib/signup.functions.ts");
+    const checkout = fns.slice(fns.indexOf("export const createSignupPaymentIntent"));
+    expect(checkout.indexOf("refuseAGroomStart(named)")).toBeGreaterThan(-1);
+    expect(checkout.indexOf("refuseAGroomStart(named)")).toBeLessThan(
+      checkout.indexOf('sb.rpc("public_quote"'),
+    );
   });
 
   it.each([
@@ -160,7 +173,7 @@ describe("a portal groom request is a request, not a booking", () => {
     expect(page).toContain("canBook={canManagePricing}");
   });
 
-  it("keeps grooming off public signup, the public form and the receptionist", () => {
+  it("kept grooming off the public form until the booking link could price it (#560)", () => {
     const sql = read("supabase/migrations/20261024100400_grooming-portal.sql");
     expect(sql).not.toMatch(/public_services|public_quote|receptionist/);
     // Customers are asked through the switch's second column, which the seed

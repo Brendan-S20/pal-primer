@@ -74,6 +74,15 @@ function query(rows: () => Row[]) {
   };
   return b;
 }
+function none() {
+  const b: any = {
+    select: () => b,
+    eq: () => b,
+    in: () => b,
+    then: (ok: (v: unknown) => unknown) => ok({ data: [], error: null }),
+  };
+  return b;
+}
 function writable(rows: () => Row[], prefix: string) {
   const b = query(rows);
   b.insert = (row: Row) => ({
@@ -100,6 +109,9 @@ const admin = {
     if (table === "leads") return writable(() => h.leads, "lead");
     if (table === "services") return query(() => h.services);
     if (table === "organizations") return query(() => h.orgs);
+    // The extras a service adds (#560). None here: these businesses list no
+    // add-ons and price every pet the same.
+    if (table === "addon_services" || table === "service_size_rules") return none();
     throw new Error(`unexpected table ${table}`);
   },
   rpc: async (fn: string, args: Row) => {

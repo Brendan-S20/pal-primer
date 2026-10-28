@@ -38,9 +38,14 @@ export type BookingCopy = {
   /** The second box on each pet's row (#527): what tells THIS business
    *  something. A groomer prices a coat; a scooper only wants a size. */
   breedLabel: string;
-  /** The access box's placeholder (#527). Its label is the same on every
-   *  line, "Gate code or access notes"; what to put in it is not. */
+  /** The access box's label. A gate code is a yard's; a sitter needs the
+   *  door (#560). */
+  accessLabel: string;
+  /** The access box's placeholder (#527). */
   accessPlaceholder: string;
+  /** The line under the headline, when the owner's own words are about a
+   *  yard and this line has none (#560). */
+  intro: string;
   /** The cadences offered, in the order the select lists them. All of them
    *  are recurring: the public signup provisions a subscription, so a
    *  one-time option needs a one-off path from the webhook first. */
@@ -61,7 +66,9 @@ export const BOOKING_COPY: Readonly<Record<ServiceLine, BookingCopy>> = {
     visits: "visits",
     notePlaceholder: "Gate code, dog names, preferred days…",
     breedLabel: "Breed or size",
+    accessLabel: "Gate code or access notes",
     accessPlaceholder: "Gate code, which gate, where the dogs are during the visit…",
+    intro: "Tell us about your property and pets and we'll get you a quote.",
     cadences: RECURRING,
     metaDescription:
       "Enter your ZIP, number of dogs, and cleanup frequency to get a price, then start service online or ask for a quote.",
@@ -74,7 +81,9 @@ export const BOOKING_COPY: Readonly<Record<ServiceLine, BookingCopy>> = {
     visits: "walks",
     notePlaceholder: "Dog names, how to get in, preferred days and times…",
     breedLabel: "Breed or size",
+    accessLabel: "Door or gate code, or access notes",
     accessPlaceholder: "Gate or door code, where the key or lockbox is, where the leash is…",
+    intro: "Tell us about your dogs and when you'd like walks, and we'll get you a price.",
     cadences: ["weekly", "twice_weekly", "biweekly", "monthly"],
     metaDescription:
       "Enter your ZIP, number of dogs, and how often you'd like walks to get a price, then start service online or ask for a quote.",
@@ -87,7 +96,9 @@ export const BOOKING_COPY: Readonly<Record<ServiceLine, BookingCopy>> = {
     visits: "visits",
     notePlaceholder: "Pet names, feeding and medication, how to get in…",
     breedLabel: "Breed or size",
+    accessLabel: "Door code or access notes",
     accessPlaceholder: "Door code, where the key or lockbox is, alarm, parking…",
+    intro: "Tell us about your pets and the dates you need, and we'll get you a price.",
     cadences: ["weekly", "twice_weekly", "biweekly", "monthly"],
     metaDescription:
       "Enter your ZIP, number of pets, and how often you'd like visits to get a price, then start service online or ask for a quote.",
@@ -100,7 +111,9 @@ export const BOOKING_COPY: Readonly<Record<ServiceLine, BookingCopy>> = {
     visits: "grooms",
     notePlaceholder: "Pet names, breed and coat, where the van can park…",
     breedLabel: "Breed and coat",
+    accessLabel: "Parking and access notes",
     accessPlaceholder: "Where the van can park, gate code, who will hand over your pet…",
+    intro: "Tell us about your pets and we'll price the groom.",
     cadences: ["monthly", "biweekly"],
     metaDescription:
       "Enter your ZIP, number of pets, and how often you'd like grooming to get a price, then start service online or ask for a quote.",
@@ -113,7 +126,9 @@ export const BOOKING_COPY: Readonly<Record<ServiceLine, BookingCopy>> = {
     visits: "sessions",
     notePlaceholder: "Dog names, what you'd like to work on, preferred days…",
     breedLabel: "Breed and age",
+    accessLabel: "Where to meet, or access notes",
     accessPlaceholder: "Gate code, where to park, where to meet…",
+    intro: "Tell us about your dog and what you'd like to work on, and we'll get you a price.",
     cadences: ["weekly", "biweekly"],
     metaDescription:
       "Enter your ZIP, number of dogs, and how often you'd like sessions to get a price, then start service online or ask for a quote.",
@@ -126,7 +141,9 @@ export const BOOKING_COPY: Readonly<Record<ServiceLine, BookingCopy>> = {
     visits: "visits",
     notePlaceholder: "Pet names, how to get in, preferred days…",
     breedLabel: "Breed or size",
+    accessLabel: "Access notes",
     accessPlaceholder: "Gate code, where the key is, parking…",
+    intro: "Tell us about your pets and we'll get you a price.",
     cadences: RECURRING,
     metaDescription:
       "Enter your ZIP and number of pets to get a price, then start service online or ask for a quote.",
@@ -234,3 +251,47 @@ export const STAY_COPY = {
 export function stayStartDateHint(business: string): string {
   return `${business} will confirm your stay for on or after this date.`;
 }
+
+/** Words that only fit a yard. An owner's own intro that uses one ("Tell us
+ *  about your yard and we'll get you a quote.") is right for pet waste and
+ *  wrong for a sit, a walk, a groom or a lesson. */
+const YARD_ONLY = /\b(yards?|lawns?|scoop\w*|poop|waste|clean-?ups?)\b/i;
+
+/** The line under the headline for the service the visitor is looking at
+ *  (#560): the owner's words, unless they talk about a yard and this line
+ *  has none, in which case the line's own sentence. Pet waste always reads
+ *  the owner's words, exactly as before. */
+export function bookingIntro(ownerOrDefault: string, line: ServiceLine): string {
+  if (line === "pet_waste" || !YARD_ONLY.test(ownerOrDefault)) return ownerOrDefault;
+  return BOOKING_COPY[line].intro;
+}
+
+/** What the page says for a groom (#560): priced here, per pet size and with
+ *  add-ons, then requested, because a groom is an appointment on one
+ *  groomer's van and the office places it. Nothing is charged online. */
+export const GROOM_COPY = {
+  /** The quote panel, under the price. */
+  pricedNote: "Nothing is charged today. We'll confirm a time for your groom, then book it.",
+  /** The quote request's button. */
+  requestButton: "Request this groom",
+  /** The size question's label, per pet. */
+  sizeLabel: "Size",
+  /** Under the size question. */
+  sizeHint: "The groom is priced by each pet's size.",
+} as const;
+
+/** What the page says for a service with no online price yet (#560): it is
+ *  still listed, so a visitor can ask for it, and the office sends the
+ *  price. */
+export const UNPRICED_COPY = {
+  /** The quote panel, before anything is sent. */
+  panelHint: "Tell us about your pets and we'll get back to you with a price.",
+  /** The quote request's button. */
+  requestButton: "Request a quote",
+} as const;
+
+/** The add-ons' heading and hint. */
+export const ADD_ON_COPY = {
+  legend: "Add-ons",
+  hint: (visit: string) => `Each add-on is added to every ${visit}.`,
+} as const;

@@ -12,8 +12,10 @@ import { LAUNCH_DEFAULT, withBookable } from "./support/service-line-availabilit
 
 // Walking (#530) and training (#548) are both bookable on the platform
 // switch (#531). This file asks the question that outlives launch: a walk is
-// offered and a lesson still is not, because training is not customer
-// requestable.
+// offered and a lesson still is not on the portal's one-off or by the
+// receptionist, because training is not customer requestable. The public
+// booking link is the exception since #560: it offers every live line, a
+// lesson included, priced at its base with the line's add-ons.
 const LIVE = withBookable("dog_walking", "training");
 
 const lesson = {
@@ -39,12 +41,13 @@ const walk = {
 };
 
 describe("customers cannot request training", () => {
-  it("keeps the line off the portal, the public form and the receptionist", async () => {
+  it("keeps the line off the portal and the receptionist, and puts it on the booking link", async () => {
     expect(LAUNCH_DEFAULT.customerRequestable).not.toContain("training");
     expect(customerCanRequestService("training", LIVE)).toBe(false);
     expect(customerCanRequestService("dog_walking", LIVE)).toBe(true);
     expect(oneOffServiceOptions([lesson, walk], null, LIVE).map((s) => s.id)).toEqual(["walk"]);
-    expect(publicServiceChoices([lesson, walk], LIVE).map((s) => s.id)).toEqual(["walk"]);
+    // The booking link (#560): every live line, whatever the second column.
+    expect(publicServiceChoices([lesson, walk], LIVE).map((s) => s.id)).toEqual(["lesson", "walk"]);
 
     const store = {
       org: async () => ({
@@ -98,7 +101,7 @@ describe("the package holder's portal path does not open training to new custome
     expect(fn.slice(0, fn.indexOf(")"))).not.toMatch(/_service_id/);
   });
 
-  it("leaves the one-off request and the public service list refusing training", () => {
+  it("leaves the one-off request refusing training, and the package path off the public list", () => {
     const sql = read("supabase/migrations/20261023120000_training-portal.sql");
     expect(sql).not.toMatch(/FUNCTION public\.(portal_request_one_off|public_services)\b/);
     const portal = read("src/lib/portal-training.functions.ts");

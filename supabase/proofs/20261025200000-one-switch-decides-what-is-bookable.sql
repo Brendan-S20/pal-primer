@@ -11,7 +11,9 @@
 --   4. The organizations launch gate follows the switch with no migration:
 --      on, an owner may add the line; off, a business that already runs it
 --      keeps it, and only adding is refused.
---   5. public_services follows customer_requestable.
+--   5. public_services follows bookable. Since 20261028120000 (#560) it no
+--      longer reads customer_requestable: the booking link sells every live
+--      line, and that column gates the portal one-off and the receptionist.
 --   6. Mutation: put the constant array back in bookable_service_lines() and
 --      show the switch stops deciding. If it still decides, INCONCLUSIVE.
 --
@@ -256,7 +258,8 @@ BEGIN
 END $$;
 RESET ROLE;
 
--- ── 5. public_services follows customer_requestable ───────────────────────
+-- ── 5. public_services follows bookable (customer_requestable since #560 ──
+--       gates only the portal one-off and the receptionist) ──────────────
 DO $$
 DECLARE
   _walker uuid := (SELECT v FROM _ids WHERE k = 'walker');
@@ -279,10 +282,17 @@ BEGIN
   END IF;
   UPDATE public.platform_service_lines SET customer_requestable = false WHERE service_line = 'dog_walking';
   SELECT count(*) INTO _n FROM public.public_services(_slug) s WHERE s.service_line = 'dog_walking';
-  IF _n <> 0 THEN
-    RAISE EXCEPTION 'PROOF FAILED [public]: a walk customers cannot request is still listed';
+  IF _n <> 1 THEN
+    RAISE EXCEPTION 'PROOF FAILED [public]: the booking link hid a live walk because customer_requestable is off (% rows)', _n;
   END IF;
-  RAISE NOTICE 'ok: public_services follows customer_requestable';
+  UPDATE public.platform_service_lines SET bookable = false WHERE service_line = 'dog_walking';
+  SELECT count(*) INTO _n FROM public.public_services(_slug) s WHERE s.service_line = 'dog_walking';
+  IF _n <> 0 THEN
+    RAISE EXCEPTION 'PROOF FAILED [public]: a Coming soon walk is still listed';
+  END IF;
+  UPDATE public.platform_service_lines SET bookable = true, customer_requestable = true
+   WHERE service_line = 'dog_walking';
+  RAISE NOTICE 'ok: public_services follows bookable, and not customer_requestable';
 END $$;
 
 -- ── 6. Mutation: a constant array stops the switch deciding ───────────────

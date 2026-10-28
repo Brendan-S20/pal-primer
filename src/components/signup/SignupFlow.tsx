@@ -33,8 +33,11 @@
 import { appUrl } from "@/lib/app-origin";
 import { frequencyLabel } from "@/lib/frequency-request";
 import {
+  ADD_ON_COPY,
   BOOKING_COPY,
+  GROOM_COPY,
   STAY_COPY,
+  UNPRICED_COPY,
   bookingCadence,
   bookingLine,
   chargedTodayCovers,
@@ -49,6 +52,7 @@ import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -92,12 +96,22 @@ import {
 } from "@/lib/booking-details";
 import {
   asksAboutTheYard,
-  isRequestedAsAStay,
   offersAChoice,
   publicServiceChoices,
   publicServiceOptionLabel,
+  publicServiceOptions,
   quotedPublicService,
+  requestedBecause,
 } from "@/lib/public-services";
+import {
+  NO_EXTRAS,
+  addOnsFor,
+  cleanPetSizes,
+  petSizeLabel,
+  sizePricesFor,
+} from "@/lib/booking-extras";
+import { PET_SIZES } from "@/lib/groom";
+import type { ServiceLine } from "@/lib/service-lines";
 
 // Module-scoped Stripe.js cache keyed by publishable key + connected account
 // (Connect direct charges must be scoped to the tenant's account).
@@ -146,6 +160,7 @@ export function SignupFlow({
   onPaid,
   offerQuoteRequest = true,
   channel = "page",
+  onLineChange,
 }: {
   slug: string;
   variant?: "page" | "sheet";
@@ -161,6 +176,9 @@ export function SignupFlow({
   offerQuoteRequest?: boolean;
   /** Where this signup happens, for the label on the lead it writes. */
   channel?: "page" | "door";
+  /** Told the line the page speaks for whenever it changes, so the route
+   *  can word its headline for it (#560). */
+  onLineChange?: (line: ServiceLine) => void;
 }) {
   const getQuote = useServerFn(getSignupQuote);
   const createIntent = useServerFn(createSignupPaymentIntent);
@@ -199,6 +217,10 @@ export function SignupFlow({
     // as the default (the business's pet-waste service, else the first
     // listed). Sent only when the business offers more than one.
     service_id: "",
+    // The extras picked for that service (#560): add-on ids, and a size per
+    // pet where the service prices by size. Ids and sizes only.
+    add_on_ids: [] as string[],
+    pet_sizes: [] as string[],
   });
 
   // What the business sells (public_services, through the form lookup). A
@@ -221,13 +243,37 @@ export function SignupFlow({
   const line = bookingLine(services, chosen, formQ.data?.lines);
   const lineCopy = BOOKING_COPY[line];
   const frequency = bookingCadence(line, form.frequency);
+  useEffect(() => {
+    onLineChange?.(line);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [line]);
+
+  // What this service adds to its base price (#560): its line's add-ons, and
+  // a size per pet when it prices by size. None for pet waste.
+  const extras = formQ.data?.extras ?? NO_EXTRAS;
+  const offeredAddOns = addOnsFor(extras, chosen);
+  const sizePrices = sizePricesFor(extras, chosen);
+  const pickedAddOnIds = offeredAddOns
+    .filter((a) => form.add_on_ids.includes(a.id))
+    .map((a) => a.id);
+  const petSizes = sizePrices.length
+    ? cleanPetSizes(form.pet_sizes, Number(form.dog_count) || 0)
+    : [];
+  const extrasField =
+    chosen && chosen.service_line !== "pet_waste"
+      ? { add_on_ids: pickedAddOnIds, pet_sizes: petSizes }
+      : {};
 
   // A stay (priced per night: an Overnight stay, a House sit) is asked for,
   // never started (#546): no cadence, no instant price, no card. The quote
   // request is its path, and it sends no frequency, so the lead is not a
-  // "weekly" anything. `sellsHere` is instant start for everything else.
-  const stay = isRequestedAsAStay(chosen);
-  const sellsHere = instantStart && !stay;
+  // "weekly" anything. A service with no price yet is asked for the same
+  // way, and a groom is priced and then asked for (#560). `sellsHere` is
+  // whether Get instant price is on offer.
+  const request = requestedBecause(chosen, sizePrices.length > 0);
+  const stay = request === "stay";
+  const groom = request === "groom";
+  const sellsHere = instantStart && !stay && request !== "unpriced";
 
   // The pet-waste questions apply when nothing was picked and for the
   // pet-waste service; a walk has no yard to ask about.
@@ -310,6 +356,7 @@ export function SignupFlow({
           frequency,
           last_cleaned: form.last_cleaned,
           ...serviceField,
+          ...extrasField,
         },
       }),
     onError: (e: Error) => toast.error(e.message),
@@ -335,8 +382,9 @@ export function SignupFlow({
           // The answer, as a tier id. The price is not sent: the server asks
           // the database for it and charges that.
           last_cleaned: form.last_cleaned,
-          // The service picked, as an id, for the same reason.
+          // The service picked, and its extras, as ids, for the same reason.
           ...serviceField,
+          ...extrasField,
           name: form.name,
           email: form.email,
           phone: form.phone,
@@ -367,7 +415,12 @@ export function SignupFlow({
         headers: { "Content-Type": "application/json" },
         // The cadence the line offered, which form.frequency may not be
         // after the service changed. None for a stay (#546).
-        body: JSON.stringify({ ...lead, frequency: stay ? "" : frequency, ...serviceField }),
+        body: JSON.stringify({
+          ...lead,
+          frequency: stay ? "" : frequency,
+          ...serviceField,
+          ...extrasField,
+        }),
       });
       if (!res.ok) {
         const b = await res.json().catch(() => ({}));
@@ -382,6 +435,7 @@ export function SignupFlow({
     answer: quoteMut.data ?? null,
     offerQuoteRequest,
     stay,
+    request: request === "unpriced" || request === "groom" ? request : null,
   });
   const quote = branch.quote;
 
@@ -529,9 +583,16 @@ export function SignupFlow({
 
   const quotedZip = quoteMut.variables ?? form.postal_code;
   const outOfArea = outOfAreaAnswer(formQ.data.name, quotedZip);
-  const perVisit = quote ? money(quote.recurring_price_cents, quote.currency) : "";
+  const perVisit =
+    quote && quote.recurring_price_cents != null
+      ? money(quote.recurring_price_cents, quote.currency)
+      : "";
+  // Nothing is charged today for a groom: it is requested (#560).
   const todayCents =
-    quote && firstCleanupCents != null ? firstCleanupCents + quote.recurring_price_cents : null;
+    quote && !groom && firstCleanupCents != null && quote.recurring_price_cents != null
+      ? firstCleanupCents + quote.recurring_price_cents
+      : null;
+  const extraLines = quote?.extra_lines ?? [];
 
   // The price lines, drawn twice below `lg`: in the answer under step 1 and
   // in the quote panel at the bottom. One copy of the markup, so the two
@@ -553,6 +614,15 @@ export function SignupFlow({
           </div>
         </div>
       )}
+      {extraLines.map((l, i) => (
+        <div key={`${i}-${l.label}`} className="flex items-baseline justify-between gap-3">
+          <div className="min-w-0 break-words text-sm text-muted-foreground">{l.label}</div>
+          <div className="shrink-0 text-sm text-muted-foreground">
+            {l.addOn ? "+" : ""}
+            {money(l.cents, quote.currency)}
+          </div>
+        </div>
+      ))}
       <div className="flex items-baseline justify-between gap-3">
         <div className="min-w-0 text-sm">Ongoing ({frequencyLabel(frequency)})</div>
         {/* PER VISIT, not per month. `public_quote` returns
@@ -569,7 +639,9 @@ export function SignupFlow({
         </div>
       </div>
       <div className="border-t pt-3 text-xs text-muted-foreground">
-        {firstCleanupCents == null ? (
+        {groom ? (
+          <>{GROOM_COPY.pricedNote}</>
+        ) : firstCleanupCents == null ? (
           <>Tell us when your yard was last cleaned to see today's total.</>
         ) : (
           <>
@@ -634,7 +706,7 @@ export function SignupFlow({
                 <SelectValue placeholder="Pick a service" />
               </SelectTrigger>
               <SelectContent>
-                {services.map((s) => (
+                {publicServiceOptions(services).map((s) => (
                   <SelectItem key={s.id} value={s.id}>
                     {publicServiceOptionLabel(s)}
                   </SelectItem>
@@ -717,6 +789,81 @@ export function SignupFlow({
               your first cleanup.
             </p>
           </div>
+        )}
+        {/* A size per pet, where the service prices by size (#560). One
+            select per pet from the count above, so the price is made of the
+            pets the visitor named. "Not sure" sends nothing, and the pet is
+            priced at the service's own price. */}
+        {sizePrices.length > 0 && (
+          <fieldset className="min-w-0 space-y-2 sm:col-span-3">
+            <legend className="text-sm font-medium">{GROOM_COPY.sizeLabel}</legend>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {petSizes.map((size, i) => (
+                <div key={i} className="min-w-0 space-y-1.5">
+                  <Label htmlFor={`pet-size-${i}`} className="text-xs text-muted-foreground">
+                    {petSingular}
+                    {petSizes.length > 1 ? ` ${i + 1}` : ""}
+                  </Label>
+                  <Select
+                    value={size || "unsure"}
+                    onValueChange={(v) => {
+                      const next = [...petSizes];
+                      next[i] = v === "unsure" ? "" : (v as (typeof PET_SIZES)[number]);
+                      setFormField({ ...form, pet_sizes: next });
+                      quoteMut.reset();
+                    }}
+                  >
+                    <SelectTrigger id={`pet-size-${i}`} className="min-w-0">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unsure">Not sure</SelectItem>
+                      {sizePrices.map((sp) => (
+                        <SelectItem key={sp.size} value={sp.size}>
+                          {petSizeLabel(sp.size)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">{GROOM_COPY.sizeHint}</p>
+          </fieldset>
+        )}
+        {/* The line's add-ons (#560), each with what it adds per visit.
+            The whole row is the target, 44px tall, so a thumb can tick it. */}
+        {offeredAddOns.length > 0 && (
+          <fieldset className="min-w-0 space-y-1 sm:col-span-3">
+            <legend className="text-sm font-medium">{ADD_ON_COPY.legend}</legend>
+            {offeredAddOns.map((a) => {
+              const on = pickedAddOnIds.includes(a.id);
+              return (
+                <label
+                  key={a.id}
+                  htmlFor={`add-on-${a.id}`}
+                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-1"
+                >
+                  <Checkbox
+                    id={`add-on-${a.id}`}
+                    checked={on}
+                    onCheckedChange={(v) => {
+                      const next = v
+                        ? [...pickedAddOnIds, a.id]
+                        : pickedAddOnIds.filter((id) => id !== a.id);
+                      setFormField({ ...form, add_on_ids: next });
+                      quoteMut.reset();
+                    }}
+                  />
+                  <span className="min-w-0 flex-1 break-words text-sm">{a.name}</span>
+                  <span className="shrink-0 text-sm text-muted-foreground">
+                    +{money(a.unit_price_cents, formQ.data?.currency ?? "usd")}
+                  </span>
+                </label>
+              );
+            })}
+            <p className="text-xs text-muted-foreground">{ADD_ON_COPY.hint(lineCopy.visit)}</p>
+          </fieldset>
         )}
       </div>
       {sellsHere && (
@@ -884,7 +1031,7 @@ export function SignupFlow({
         {details.access !== "off" && (
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="access_notes">
-              Gate code or access notes
+              {lineCopy.accessLabel}
               {markRequired(details.access)}
             </Label>
             <Textarea
@@ -949,9 +1096,13 @@ export function SignupFlow({
           ? "Sending…"
           : stay
             ? STAY_COPY.requestButton
-            : branch.canStartService || branch.reason === "not-priced-yet"
-              ? "Get a quote by email"
-              : "Request a quote"}
+            : groom
+              ? GROOM_COPY.requestButton
+              : request === "unpriced"
+                ? UNPRICED_COPY.requestButton
+                : branch.canStartService || branch.reason === "not-priced-yet"
+                  ? "Get a quote by email"
+                  : "Request a quote"}
       </Button>
       {/* Once Start service is on offer, the one hint under it covers both
           buttons (#528): two hints for the same missing fields read as two
@@ -993,6 +1144,8 @@ export function SignupFlow({
               <>{outOfArea}</>
             ) : branch.reason === "stay-request" ? (
               <>{STAY_COPY.panelHint}</>
+            ) : branch.reason === "unpriced-request" ? (
+              <>{UNPRICED_COPY.panelHint}</>
             ) : (
               <>Tell us about your property and pets and we'll get back to you with a price.</>
             )}
@@ -1024,7 +1177,7 @@ export function SignupFlow({
                 onPaid={onPaid}
               />
             </Elements>
-          ) : (
+          ) : branch.canStartService ? (
             <div className="space-y-2">
               <Button
                 className="w-full"
@@ -1041,7 +1194,7 @@ export function SignupFlow({
                 </p>
               )}
             </div>
-          )}
+          ) : null}
           {!intent && quoteRequestButton}
         </div>
       )}

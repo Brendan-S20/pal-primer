@@ -9,6 +9,8 @@
  *    what is quoted and charged       quotedPublicService
  *    whether the yard questions apply   asksAboutTheYard
  *    whether it is asked for, not sold  isRequestedAsAStay
+ *    whether it has a price online    isPricedOnline
+ *    why it is a request, if it is    requestedBecause
  *    how an option reads              publicServiceOptionLabel
  *
  *  The rule the whole file exists for: a business that sells ONE thing sees
@@ -23,8 +25,7 @@
 
 import { isPriceUnit, isZonePriced, serviceDurationLabel, type PriceUnit } from "@/lib/services";
 import {
-  customerCanBookService,
-  isBookableLine,
+  bookingLinkOffersLine,
   SERVICE_LINES,
   type ServiceLine,
   type ServiceLineAvailability,
@@ -55,9 +56,10 @@ function isServiceLine(v: unknown): v is ServiceLine {
  * A row on a line that is still Coming soon (not bookable on the platform
  * switch, #531) is dropped too (#506): an owner may set up a sit before
  * launch, and a stranger must not be able to pick it. public_services leaves
- * it out as well (20261018150000, 20261025200000); this is the same rule for
- * a database that has not caught up. `availability` is the switch, read at
- * runtime (loadServiceLineAvailability).
+ * it out as well (20261018150000, 20261028120000); this is the same rule for
+ * a database that has not caught up. Every live line is kept, walking,
+ * training and grooming included (bookingLinkOffersLine, #560). `availability`
+ * is the switch, read at runtime (loadServiceLineAvailability).
  */
 export function publicServiceChoices(
   raw: unknown,
@@ -71,8 +73,7 @@ export function publicServiceChoices(
     const o = r as Record<string, unknown>;
     if (typeof o.id !== "string" || typeof o.name !== "string") continue;
     if (!isServiceLine(o.service_line) || !isPriceUnit(o.price_unit)) continue;
-    if (!customerCanBookService(o.service_line, availability)) continue;
-    if (!isBookableLine(o.service_line, availability)) continue;
+    if (!bookingLinkOffersLine(o.service_line, availability)) continue;
     if (seen.has(o.id)) continue;
     seen.add(o.id);
     out.push({
@@ -154,10 +155,70 @@ export function isRequestedAsAStay(chosen: { price_unit?: unknown } | null | und
   return chosen?.price_unit === "night";
 }
 
+/** Whether the service has a price a stranger can be quoted: the zone's rate
+ *  card for pet waste, else the service's own base price. A walk the owner
+ *  has listed but not priced yet is still offered (#560), as a request: the
+ *  office sends the price. */
+export function isPricedOnline(
+  s: { service_line: ServiceLine; base_price_cents: number | null },
+  hasSizePrices = false,
+): boolean {
+  return isZonePriced(s) || s.base_price_cents != null || hasSizePrices;
+}
+
+/** Why the chosen service is asked for rather than started online, or null
+ *  when it can be started. A stay is a run of nights (#546). A groom is an
+ *  appointment on one groomer's van, which the office places, so it is
+ *  priced here with each pet's size and the add-ons and then requested
+ *  (#560). A service with no price yet is requested so the office can send
+ *  one. Nothing chosen (the form as it always was) is never a request. */
+export function requestedBecause(
+  chosen: PublicService | null,
+  hasSizePrices = false,
+): "stay" | "groom" | "unpriced" | null {
+  if (!chosen) return null;
+  if (isRequestedAsAStay(chosen)) return "stay";
+  if (!isPricedOnline(chosen, hasSizePrices)) return "unpriced";
+  if (chosen.service_line === "mobile_grooming") return "groom";
+  return null;
+}
+
+/** A length already written into a service's name: "30 min", "90 mins",
+ *  "1 hr", "2 hours", "45-minute". */
+const SAYS_ITS_LENGTH = /\b\d+(?:\.\d+)?\s*-?\s*(?:min|mins|minutes?|hr|hrs|hours?)\b/i;
+
 /** How an option reads in the picker: the business's own name, and how long
  *  it usually takes when the service says. Never a price: the price is the
- *  quote's to say, for this ZIP and these pets. */
+ *  quote's to say, for this ZIP and these pets. A name that already says
+ *  its length ("Drop-in (30 min)", "Full groom (90 min)") is not told it
+ *  again (#560). */
 export function publicServiceOptionLabel(s: PublicService): string {
   const duration = serviceDurationLabel(s.default_duration_min);
-  return duration && !isZonePriced(s) ? `${s.name} (${duration})` : s.name;
+  if (!duration || isZonePriced(s) || SAYS_ITS_LENGTH.test(s.name)) return s.name;
+  return `${s.name} (${duration})`;
+}
+
+/** The services the picker draws, in order: each label once (#560). Two
+ *  services that read the same and cost the same ("Drop-in" and "Drop-in
+ *  (30 min)", both 30 minutes at $25, as Riverbend's demo has them) are one
+ *  choice to a visitor, so the first stands for both; either is quoted the
+ *  same. Two that read the same at different prices are both kept. */
+export function publicServiceOptions(services: readonly PublicService[]): PublicService[] {
+  const seen = new Map<string, PublicService>();
+  const out: PublicService[] = [];
+  for (const s of services) {
+    const label = publicServiceOptionLabel(s);
+    const twin = seen.get(label);
+    if (
+      twin &&
+      twin.service_line === s.service_line &&
+      twin.price_unit === s.price_unit &&
+      twin.base_price_cents === s.base_price_cents &&
+      twin.extra_pet_cents === s.extra_pet_cents
+    )
+      continue;
+    if (!twin) seen.set(label, s);
+    out.push(s);
+  }
+  return out;
 }

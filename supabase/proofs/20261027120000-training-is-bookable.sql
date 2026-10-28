@@ -5,8 +5,10 @@
 --      Coming soon. The flip is in platform_admin_audit with no actor.
 --   2. A signed-in owner of a scooping business may add training, and is
 --      still refused grooming.
---   3. public_services lists no training service to a stranger, priced or
---      not: training is sold by the office.
+--   3. public_services lists the business's training to a stranger, priced
+--      or not: since 20261028120000 (#560) the booking link sells every live
+--      line, though training stays off customer_requestable (the portal
+--      one-off and the receptionist still leave it to the office).
 --   4. Mutation: put training back to Coming soon and show the owner's add is
 --      refused again. If it still goes through, INCONCLUSIVE.
 --
@@ -116,7 +118,7 @@ BEGIN
   END IF;
 END $$;
 
--- ── 3. A stranger is offered no training, priced or not ───────────────────
+-- ── 3. A stranger is offered the training, priced or not (#560) ───────────
 DO $$
 DECLARE
   _org uuid := (SELECT v FROM _ids WHERE k = 'org');
@@ -128,10 +130,13 @@ BEGIN
   SELECT count(*) INTO _n
     FROM public.public_services('training-proof-scoops') s
    WHERE s.service_line = 'training';
-  IF _n <> 0 THEN
-    RAISE EXCEPTION 'PROOF FAILED [public]: public_services listed % training service(s) to a stranger', _n;
+  IF _n <> 2 THEN
+    RAISE EXCEPTION 'PROOF FAILED [public]: public_services listed % training service(s) to a stranger, want 2', _n;
   END IF;
-  RAISE NOTICE 'ok: no training service is listed to a stranger; the office sells it';
+  IF 'training' = ANY (public.customer_requestable_service_lines()) THEN
+    RAISE EXCEPTION 'PROOF FAILED [public]: listing training on the link made it customer requestable';
+  END IF;
+  RAISE NOTICE 'ok: both training services are listed on the booking link; the switch is unchanged';
 END $$;
 
 -- ── 4. Mutation: back to Coming soon, the owner is refused ────────────────

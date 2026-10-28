@@ -35,8 +35,17 @@ import {
   callerAddress,
   screenSubmission,
 } from "@/lib/public-form-guard";
-import { customerCanBookService } from "@/lib/service-lines";
+import { bookingLinkOffersLine, type ServiceLine } from "@/lib/service-lines";
 import { isRequestedAsAStay } from "@/lib/public-services";
+import {
+  MAX_ADD_ONS,
+  bookingExtrasFromRows,
+  cleanAddOnIds,
+  cleanPetSizes,
+  extrasNote,
+  messageWithExtras,
+} from "@/lib/booking-extras";
+import { PET_SIZES } from "@/lib/groom";
 import {
   bookingDetailsColumns,
   bookingDetailsSchema,
@@ -70,6 +79,14 @@ const leadSchema = z.object({
   // one. An id from public_services, checked below against the business the
   // slug resolved to; a business that sells one thing never sends it.
   service_id: z.string().uuid().optional().nullable(),
+  // The extras picked for that service on the booking link (#560): add-on
+  // ids and a size per pet. Named on the lead for the office, read back from
+  // the business's own rows; a website's own form sends neither.
+  add_on_ids: z.array(z.string().uuid()).max(MAX_ADD_ONS).optional(),
+  pet_sizes: z
+    .array(z.enum([...PET_SIZES, ""] as [string, ...string[]]))
+    .max(20)
+    .optional(),
   // The first visit's answers (#527): the pets by name, how to get in, and
   // when to start. All optional here; see the check below for why.
   ...bookingDetailsSchema.shape,
@@ -146,8 +163,10 @@ export const Route = createFileRoute("/api/public/leads")({
         // know that, even if it is no longer sold. A service on a line that is
         // still Coming soon is refused the same way (#506): the form never
         // lists one (publicServiceChoices), so naming one is a hand-built body.
-        // Coming soon is the platform switch, read at runtime (#531).
-        let service: { id: string; name: string; stay: boolean } | null = null;
+        // Coming soon is the platform switch, read at runtime (#531). Every
+        // live line is on the link, walking, training and grooming included
+        // (bookingLinkOffersLine, #560).
+        let service: { id: string; name: string; stay: boolean; line: string } | null = null;
         if (data.service_id) {
           const { data: svc } = await (supabaseAdmin.from("services") as any)
             .select("id, name, service_line, price_unit")
@@ -158,7 +177,7 @@ export const Route = createFileRoute("/api/public/leads")({
             await import("@/lib/service-line-availability.server");
           if (
             !svc?.id ||
-            !customerCanBookService(svc.service_line, await loadServiceLineAvailability())
+            !bookingLinkOffersLine(svc.service_line, await loadServiceLineAvailability())
           ) {
             return new Response(JSON.stringify({ error: "Invalid input" }), {
               status: 400,
@@ -169,7 +188,28 @@ export const Route = createFileRoute("/api/public/leads")({
             id: svc.id as string,
             name: (svc.name as string) ?? "",
             stay: isRequestedAsAStay(svc),
+            line: svc.service_line as string,
           };
+        }
+
+        // The extras, by name, for the office (#560). Only the service's own
+        // line's add-ons are named; an id that is not one is dropped rather
+        // than refused, because the person still asked and the office should
+        // still hear about it. The price is the office's to confirm.
+        let extras: string | null = null;
+        if (service && service.line !== "pet_waste") {
+          const wanted = cleanAddOnIds(data.add_on_ids);
+          let names: string[] = [];
+          if (wanted.length) {
+            const { data: rows } = await (supabaseAdmin.from("addon_services") as any)
+              .select("id, name, service_line, unit_price_cents, active")
+              .eq("organization_id", orgId)
+              .in("id", wanted);
+            names = bookingExtrasFromRows(rows, [], [service.line as ServiceLine], []).addOns.map(
+              (a) => a.name,
+            );
+          }
+          extras = extrasNote(names, cleanPetSizes(data.pet_sizes, data.dog_count ?? 0));
         }
         // A stay (priced per night, #546) is a request for dates, not a
         // cadence: whatever frequency a body carries, the lead stores none,
@@ -242,7 +282,7 @@ export const Route = createFileRoute("/api/public/leads")({
             location,
             dog_count: data.dog_count ?? null,
             frequency,
-            message: data.message || null,
+            message: messageWithExtras(data.message, extras) || null,
             source,
             status: "new",
             // Only when one was named: a lead from a business that sells one

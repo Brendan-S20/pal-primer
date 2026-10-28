@@ -36,7 +36,8 @@ export type FormBranch<Q = unknown> = {
   /** The price to show, when there is one. */
   quote: Q | null;
   /** Why the page is in the state it is, for the copy beside the buttons. */
-  reason: "priced" | "not-priced-yet" | "no-zone" | "instant-off" | "stay-request";
+  reason:
+    "priced" | "not-priced-yet" | "no-zone" | "instant-off" | "stay-request" | "unpriced-request";
 };
 
 /**
@@ -56,16 +57,27 @@ export type FormBranch<Q = unknown> = {
  * never priced or started here, whatever the business's switch says, because
  * Start service is a subscription and a stay is not one. The quote request
  * is its whole path.
+ *
+ * `request` is the rest of requestedBecause (lib/public-services.ts, #560).
+ * "unpriced": a service the owner has listed with no price yet, which is
+ * asked for like a stay, and the office sends the price. "groom": priced here
+ * like anything else, with each pet's size and the add-ons, but never
+ * started: the office places the appointment, so the price comes with the
+ * quote request and no Start service.
  */
 export function decideFormBranch<Q>(input: {
   instantStart: boolean;
   answer?: QuoteAnswer<Q> | null;
   offerQuoteRequest?: boolean;
   stay?: boolean;
+  request?: "unpriced" | "groom" | null;
 }): FormBranch<Q> {
   const canRequestQuote = input.offerQuoteRequest !== false;
   if (input.stay) {
     return { canStartService: false, canRequestQuote, quote: null, reason: "stay-request" };
+  }
+  if (input.request === "unpriced") {
+    return { canStartService: false, canRequestQuote, quote: null, reason: "unpriced-request" };
   }
   if (!input.instantStart) {
     return { canStartService: false, canRequestQuote, quote: null, reason: "instant-off" };
@@ -76,7 +88,12 @@ export function decideFormBranch<Q>(input: {
   if (!input.answer.available) {
     return { canStartService: false, canRequestQuote, quote: null, reason: "no-zone" };
   }
-  return { canStartService: true, canRequestQuote, quote: input.answer.quote, reason: "priced" };
+  return {
+    canStartService: input.request !== "groom",
+    canRequestQuote,
+    quote: input.answer.quote,
+    reason: "priced",
+  };
 }
 
 // ── What the quote request sends ───────────────────────────────────────────

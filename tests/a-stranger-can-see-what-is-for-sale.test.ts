@@ -220,13 +220,15 @@ const TRAIN = {
 };
 
 describe("what a stranger may pick from", () => {
-  it("lists launched services, but not training (its package flow) or a groom (the office books it)", () => {
-    // Grooming is bookable and customer requestable since #549, and still
-    // left out here: a client asks for one from the portal and the office
-    // books it (OFFICE_BOOKED_LINES).
+  it("lists every launched service, the groom and the lesson included (#560)", () => {
+    // Brendan, 2026-10-28: walking, training and grooming are self-serve on
+    // the booking link. A groom is priced per pet size and requested; a
+    // lesson is priced and started like a walk (bookingLinkOffersLine).
     expect(publicServiceChoices([PW, GROOM, WALK, TRAIN], ALL_LIVE).map((r) => r.id)).toEqual([
       PW.id,
+      GROOM.id,
       WALK.id,
+      TRAIN.id,
     ]);
   });
 
@@ -272,7 +274,8 @@ describe("what a stranger may pick from", () => {
   it("labels an option with the business's name and its length, never a price", () => {
     const [pw, walk, sit] = publicServiceChoices([PW, WALK, SIT], ALL_LIVE);
     expect(publicServiceOptionLabel(pw)).toBe("Pet waste removal");
-    expect(publicServiceOptionLabel(walk)).toBe("30-minute walk (30 min)");
+    // The name already says its length, so it is not said twice (#560).
+    expect(publicServiceOptionLabel(walk)).toBe("30-minute walk");
     expect(publicServiceOptionLabel(sit)).toBe("Drop-in visit (1 hr 30 min)");
     for (const s of [pw, walk, sit]) expect(publicServiceOptionLabel(s)).not.toMatch(/\$|\d\.\d\d/);
   });
@@ -290,7 +293,7 @@ describe("the public form", () => {
       fns.indexOf("const quoteSchema"),
     );
     expect(lookup).toMatch(/sb\.rpc\("public_services", \{\s*_slug: data\.slug,?\s*\}\)/);
-    expect(lookup).toMatch(/services,\s*serviceLines,\s*\};/);
+    expect(lookup).toMatch(/services,\s*serviceLines,\s*extras,\s*\};/);
     // A lookup that fails lists nothing; the page still loads.
     expect(lookup).toMatch(/let services: PublicService\[\] = \[\];/);
     expect(lookup).toMatch(/services = publicServiceChoices\(svcRows, availability\);/);

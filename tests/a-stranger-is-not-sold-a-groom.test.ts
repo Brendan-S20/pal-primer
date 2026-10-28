@@ -14,10 +14,13 @@
 // 20261024100900 restated the function the same day without it), any later
 // migration that restates either function must carry the filter too.
 //
-// supabase/proofs/20261027200000-a-stranger-is-not-sold-a-groom.sql is the
-// behaviour, against a real database: as anon, no groom listed or priced; the
-// walk, the drop-in and the yard answer as before; and a mutation that empties
-// the list shows the groom for sale again.
+// Since 20261028120000 (#560) the booking link sells a groom: it prices one
+// per pet size with the line's add-ons and takes it as a request. So the
+// filter is spliced back OUT of public_services and public_quote, and the
+// list stays as the app's copy for the portal one-off and the receptionist.
+// supabase/proofs/20261028120000-the-booking-link-sells-every-live-line.sql
+// is that behaviour against a real database, and replaces this file's
+// earlier proof, which held the rule Brendan reversed.
 
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
@@ -28,7 +31,8 @@ import { LAUNCH_DEFAULT } from "./support/service-line-availability";
 
 const ROOT = join(import.meta.dirname, "..");
 const MIGRATION = "20261027200000_a-stranger-is-not-sold-a-groom.sql";
-const PROOF = "supabase/proofs/20261027200000-a-stranger-is-not-sold-a-groom.sql";
+const LATER = "20261028120000_the-booking-link-sells-every-live-line.sql";
+const PROOF = "supabase/proofs/20261028120000-the-booking-link-sells-every-live-line.sql";
 const FILTER = "s.service_line <> ALL (public.office_booked_service_lines())";
 
 const code = (file: string) => stripLineComments(readMigration(file));
@@ -116,13 +120,40 @@ describe("what this change does not touch", () => {
   });
 });
 
+describe("the booking link reads the bookable switch alone (#560)", () => {
+  const sql = () => code(LATER);
+
+  it("splices both filters out of both anon doors, and keeps the bookable one", () => {
+    expect(sql()).toContain("pg_get_functiondef('public.public_services(text)'::regprocedure)");
+    expect(sql()).toContain(
+      "pg_get_functiondef('public.public_quote(text, text, integer, text, text, uuid)'::regprocedure)",
+    );
+    expect(sql().match(/the splice anchor moved/g)?.length).toBe(2);
+    expect(sql()).toContain("'%customer_requestable_service_lines%'");
+    expect(sql()).toContain(
+      "p.prosrc LIKE '%s.service_line = ANY (public.bookable_service_lines())%'",
+    );
+  });
+
+  it("changes no switch row and leaves the office-booked list and the portal doors alone", () => {
+    expect(sql()).not.toMatch(/UPDATE\s+public\.platform_service_lines/i);
+    expect(sql()).not.toMatch(/FUNCTION\s+public\.(portal_request_groom|portal_request_one_off)/i);
+    expect(sql()).toContain(
+      "IF public.office_booked_service_lines() IS DISTINCT FROM ARRAY['mobile_grooming']::text[] THEN",
+    );
+  });
+});
+
 describe("the proof", () => {
-  it("acts it out as anon, mutates the list, and rolls everything back", () => {
+  it("acts it out as anon, mutates the switch, and rolls everything back", () => {
     expect(existsSync(join(ROOT, PROOF))).toBe(true);
+    expect(
+      existsSync(join(ROOT, "supabase/proofs/20261027200000-a-stranger-is-not-sold-a-groom.sql")),
+    ).toBe(false);
     const proof = readFileSync(join(ROOT, PROOF), "utf8");
     expect(proof).toContain("SET LOCAL ROLE anon;");
-    expect(proof).toContain("public.public_services('groom-sale-proof')");
-    expect(proof).toMatch(/public\.public_quote\('groom-sale-proof'[^;]*k = 'groom'/);
+    expect(proof).toContain("public.public_services('every-line-proof')");
+    expect(proof).toMatch(/public\.public_quote\('every-line-proof'[^;]*k = 'groom'/);
     expect(proof).toContain("INCONCLUSIVE [mutation]");
     expect(proof.trimEnd().endsWith("ROLLBACK;")).toBe(true);
   });
