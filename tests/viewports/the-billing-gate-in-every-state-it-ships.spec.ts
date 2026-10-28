@@ -412,6 +412,8 @@ test.describe("Stripe that never answers, 1280px", () => {
     expect(body, "a card on the Money tab is still loading after its deadline").not.toMatch(
       /Loading (balance|payouts)…/,
     );
-    await expect(page.getByRole("button", { name: /Retry|Try again/ }).first()).toBeVisible();
+    // One label for every retry on the page (product review on #563).
+    await expect(page.getByRole("button", { name: "Try again" }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(0);
   });
 });

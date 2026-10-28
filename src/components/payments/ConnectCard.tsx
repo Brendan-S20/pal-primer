@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import {
   CONNECT_PANEL_TIMEOUT_MS,
   INITIAL_CONNECT_CARD,
+  TRY_AGAIN,
   connectCardReducer,
 } from "@/lib/payments-load";
 
@@ -24,7 +25,7 @@ export type ConnectHandlers = {
 // blocker, no network), Stripe has nothing to emit either event FROM, and the
 // card read "Loading payouts…" for as long as the tab was open. After
 // CONNECT_PANEL_TIMEOUT_MS without onLoaderStart, it says it could not load,
-// with Retry, like any other failure.
+// with Try again, like any other failure.
 export function ConnectCard({
   title,
   hint,
@@ -53,8 +54,11 @@ export function ConnectCard({
 
   const handlers: ConnectHandlers = {
     onLoaderStart: () => dispatch({ type: "loaderStart" }),
-    onLoadError: (e: ConnectLoadError) =>
-      dispatch({ type: "loadError", message: e?.error?.message ?? null }),
+    onLoadError: (e: ConnectLoadError) => {
+      // The raw text is for support, not the owner (see STRIPE_HAD_A_PROBLEM).
+      console.error(`[payments] Stripe ${title} panel failed to load:`, e?.error?.message ?? e);
+      dispatch({ type: "loadError" });
+    },
   };
   return (
     <div className="min-w-0 rounded-lg border bg-card p-4">
@@ -68,7 +72,7 @@ export function ConnectCard({
             Couldn't load {title.toLowerCase()}.{message ? ` ${message}` : ""}
           </p>
           <Button variant="outline" size="sm" onClick={() => dispatch({ type: "retry" })}>
-            Retry
+            {TRY_AGAIN}
           </Button>
         </div>
       ) : (

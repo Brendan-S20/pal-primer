@@ -30,6 +30,22 @@ export const PAYMENTS_FETCH_TIMEOUT_MS = 25_000;
 export const STRIPE_DID_NOT_ANSWER =
   "Stripe didn't respond. Check your connection (or any ad or content blocker) and try again.";
 
+/** What the owner reads for any other failure. A fixed sentence, never the
+ *  raw text: Stripe's and the server's messages are written for developers
+ *  ("Invalid API Key provided", "No such account") and are logged to the
+ *  console instead, where support can still find them. */
+export const STRIPE_HAD_A_PROBLEM =
+  "Stripe returned an error. Try again in a moment, and contact support if it keeps happening.";
+
+/** The one label every retry button on this page uses. */
+export const TRY_AGAIN = "Try again";
+
+/** The sentence an owner reads for a raw failure message: the deadline's own
+ *  sentence when it was the deadline, the fixed one for anything else. */
+export function ownerSentenceFor(raw: string | null | undefined): string {
+  return raw === STRIPE_DID_NOT_ANSWER ? STRIPE_DID_NOT_ANSWER : STRIPE_HAD_A_PROBLEM;
+}
+
 /** Reject with `message` if `p` has not settled within `ms`. The timer is
  *  cleared either way, so a fast answer leaves nothing behind. */
 export function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
@@ -43,15 +59,12 @@ export function withTimeout<T>(p: Promise<T>, ms: number, message: string): Prom
 export type ConnectCardState = {
   state: "loading" | "ready" | "error";
   message: string | null;
-  /** Bumped on Retry; keys the panel so Stripe's component remounts. */
+  /** Bumped on Try again; keys the panel so Stripe's component remounts. */
   attempt: number;
 };
 
 export type ConnectCardEvent =
-  | { type: "loaderStart" }
-  | { type: "loadError"; message: string | null }
-  | { type: "deadline" }
-  | { type: "retry" };
+  { type: "loaderStart" } | { type: "loadError" } | { type: "deadline" } | { type: "retry" };
 
 export const INITIAL_CONNECT_CARD: ConnectCardState = {
   state: "loading",
@@ -67,10 +80,12 @@ export function connectCardReducer(s: ConnectCardState, e: ConnectCardEvent): Co
     case "loaderStart":
       return s.state === "loading" ? { ...s, state: "ready", message: null } : s;
     case "loadError":
-      return { ...s, state: "error", message: e.message };
+      // Stripe's own text goes to the console (ConnectCard logs it); the
+      // owner reads the fixed sentence.
+      return { ...s, state: "error", message: STRIPE_HAD_A_PROBLEM };
     case "deadline":
       // Only a card still waiting times out. One that rendered, or already
-      // failed with Stripe's own reason, keeps what it has.
+      // failed with Stripe's own error, keeps what it has.
       return s.state === "loading" ? { ...s, state: "error", message: STRIPE_DID_NOT_ANSWER } : s;
     case "retry":
       return { state: "loading", message: null, attempt: s.attempt + 1 };
@@ -94,7 +109,9 @@ export type BalanceSummaryData =
  *
  *   loading        a request is in flight (and has a deadline: see above)
  *   error          the request failed, timed out, or Stripe answered with an
- *                  error. Visible, with a retry. Never silent.
+ *                  error. Visible, with a retry. Never silent. `message` is
+ *                  the owner's sentence; `detail` is the raw text, for the
+ *                  console only.
  *   not-connected  no live Stripe account, so there is no balance to show.
  *                  The page around it already says how to connect.
  *   ready          a balance, including a new account's $0.00.
@@ -106,16 +123,16 @@ export function balanceSummaryState(q: {
   data?: BalanceSummaryData | null;
 }):
   | { kind: "loading" }
-  | { kind: "error"; message: string }
+  | { kind: "error"; message: string; detail: string }
   | { kind: "not-connected" }
   | { kind: "ready" } {
   if (q.isError) {
-    const msg = q.error instanceof Error && q.error.message ? q.error.message : null;
-    return { kind: "error", message: msg ?? "Couldn't reach Stripe." };
+    const raw = q.error instanceof Error && q.error.message ? q.error.message : "unknown error";
+    return { kind: "error", message: ownerSentenceFor(raw), detail: raw };
   }
   if (q.isPending) return { kind: "loading" };
   const d = q.data;
   if (!d || !d.connected) return { kind: "not-connected" };
-  if (d.error) return { kind: "error", message: d.error };
+  if (d.error) return { kind: "error", message: ownerSentenceFor(d.error), detail: d.error };
   return { kind: "ready" };
 }

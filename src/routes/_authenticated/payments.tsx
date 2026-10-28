@@ -45,7 +45,9 @@ import { ConnectCard } from "@/components/payments/ConnectCard";
 import {
   PAYMENTS_FETCH_TIMEOUT_MS,
   STRIPE_DID_NOT_ANSWER,
+  TRY_AGAIN,
   balanceSummaryState,
+  ownerSentenceFor,
   withTimeout,
   type BalanceSummaryData,
 } from "@/lib/payments-load";
@@ -83,6 +85,11 @@ function PaymentsSettings() {
 
   const q = useQuery({ queryKey: ["stripe-connect"], queryFn: () => statusFn() });
   const cfg = q.data as any;
+  // The owner reads a fixed sentence; the raw text is for support (#436).
+  const statusError = q.isError ? ((q.error as Error)?.message ?? "unknown error") : null;
+  useEffect(() => {
+    if (statusError) console.error("[payments] Stripe status read failed:", statusError);
+  }, [statusError]);
 
   const ensure = useMutation({
     mutationFn: () => ensureFn(),
@@ -207,7 +214,7 @@ function PaymentsSettings() {
         // button, telling an owner whose account is live that they had none.
         <div role="alert" className="rounded-lg border bg-card p-4">
           <p className="text-sm text-destructive">
-            Couldn't check your Stripe account: {(q.error as Error)?.message || "unknown error"}
+            Couldn't check your Stripe account. {ownerSentenceFor(statusError)}
           </p>
           <Button
             variant="outline"
@@ -216,7 +223,7 @@ function PaymentsSettings() {
             onClick={() => q.refetch()}
             disabled={q.isFetching}
           >
-            {q.isFetching ? "Retrying…" : "Try again"}
+            {q.isFetching ? "Retrying…" : TRY_AGAIN}
           </Button>
         </div>
       ) : cfg && cfg.emailVerified === false ? (
@@ -958,6 +965,11 @@ function BalanceSummary() {
   });
   const d = q.data as any;
   const view = balanceSummaryState(q);
+  // The owner reads view.message; the raw text is for support (#436).
+  const detail = view.kind === "error" ? view.detail : null;
+  useEffect(() => {
+    if (detail) console.error("[payments] Stripe balance read failed:", detail);
+  }, [detail]);
 
   if (view.kind === "loading") {
     return (
@@ -982,7 +994,7 @@ function BalanceSummary() {
           onClick={() => q.refetch()}
           disabled={q.isFetching}
         >
-          {q.isFetching ? "Retrying…" : "Try again"}
+          {q.isFetching ? "Retrying…" : TRY_AGAIN}
         </Button>
       </div>
     );

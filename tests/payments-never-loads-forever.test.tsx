@@ -22,6 +22,9 @@ import {
   CONNECT_PANEL_TIMEOUT_MS,
   PAYMENTS_FETCH_TIMEOUT_MS,
   STRIPE_DID_NOT_ANSWER,
+  STRIPE_HAD_A_PROBLEM,
+  TRY_AGAIN,
+  ownerSentenceFor,
   balanceSummaryState,
   withTimeout,
 } from "@/lib/payments-load";
@@ -51,12 +54,15 @@ describe("an embedded Stripe panel always leaves 'Loading'", () => {
     expect(s.state).toBe("ready");
   });
 
-  it("Stripe's own error keeps Stripe's reason, not ours", () => {
-    const s = run({ type: "loadError", message: "Account session expired" }, { type: "deadline" });
-    expect(s).toMatchObject({ state: "error", message: "Account session expired" });
+  it("Stripe's own error shows the fixed owner sentence, and a late deadline keeps it", () => {
+    // Product review on #563: raw Stripe text is for the console, not the
+    // owner. ConnectCard logs it; the card reads a sentence we wrote.
+    const s = run({ type: "loadError" }, { type: "deadline" });
+    expect(s).toMatchObject({ state: "error", message: STRIPE_HAD_A_PROBLEM });
+    expect(card).toMatch(/console\.error\([\s\S]{0,80}e\?\.error\?\.message/);
   });
 
-  it("Retry goes back to loading, remounts the panel, and the deadline applies again", () => {
+  it("Try again goes back to loading, remounts the panel, and the deadline applies again", () => {
     const s1 = run({ type: "deadline" }, { type: "retry" });
     expect(s1).toMatchObject({ state: "loading", message: null, attempt: 1 });
     const s2 = connectCardReducer(s1, { type: "deadline" });
@@ -108,13 +114,18 @@ describe("the balance headline says what happened", () => {
       isError: true,
       error: new Error(STRIPE_DID_NOT_ANSWER),
     });
-    expect(v).toEqual({ kind: "error", message: STRIPE_DID_NOT_ANSWER });
+    expect(v).toEqual({
+      kind: "error",
+      message: STRIPE_DID_NOT_ANSWER,
+      detail: STRIPE_DID_NOT_ANSWER,
+    });
   });
 
   it("an error with no message still says something", () => {
     expect(balanceSummaryState({ ...base, isError: true, error: {} })).toEqual({
       kind: "error",
-      message: "Couldn't reach Stripe.",
+      message: STRIPE_HAD_A_PROBLEM,
+      detail: "unknown error",
     });
   });
 
@@ -123,7 +134,12 @@ describe("the balance headline says what happened", () => {
       ...base,
       data: { connected: true, error: "Stripe is not configured on the server" },
     });
-    expect(v).toEqual({ kind: "error", message: "Stripe is not configured on the server" });
+    // The owner reads our sentence; the server's text is kept for the console.
+    expect(v).toEqual({
+      kind: "error",
+      message: STRIPE_HAD_A_PROBLEM,
+      detail: "Stripe is not configured on the server",
+    });
   });
 
   it("no live account draws nothing here: the page already says how to connect", () => {
@@ -152,6 +168,28 @@ describe("the balance headline says what happened", () => {
     expect(page).toMatch(/view\.kind === "error"[\s\S]{0,600}Couldn't load your balance/);
     // The old silent branch.
     expect(page).not.toMatch(/if \(!d \|\| !d\.connected \|\| d\.error\) return null;/);
+  });
+});
+
+describe("what the owner reads (product review on #563)", () => {
+  it("raw server or Stripe text never reaches the owner", () => {
+    expect(ownerSentenceFor("Invalid API Key provided: sk_test_****")).toBe(STRIPE_HAD_A_PROBLEM);
+    expect(ownerSentenceFor(undefined)).toBe(STRIPE_HAD_A_PROBLEM);
+    expect(ownerSentenceFor(STRIPE_DID_NOT_ANSWER)).toBe(STRIPE_DID_NOT_ANSWER);
+    // The status branch used to interpolate q.error.message straight in.
+    expect(page).not.toMatch(/Couldn't check your Stripe account: \{/);
+    expect(page).toMatch(
+      /Couldn't check your Stripe account\. \{ownerSentenceFor\(statusError\)\}/,
+    );
+    expect(page).toMatch(/console\.error\("\[payments\] Stripe status read failed:"/);
+    expect(page).toMatch(/console\.error\("\[payments\] Stripe balance read failed:"/);
+  });
+
+  it("every retry button this PR added says the same thing", () => {
+    expect(TRY_AGAIN).toBe("Try again");
+    expect(card).toMatch(/\{TRY_AGAIN\}/);
+    expect(card).not.toMatch(/>\s*Retry\s*</);
+    expect(page.match(/"Retrying…" : TRY_AGAIN/g) ?? []).toHaveLength(2);
   });
 });
 
