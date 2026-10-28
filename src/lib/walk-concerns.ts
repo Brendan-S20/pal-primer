@@ -149,3 +149,14 @@ export function isYardVisit(
 ): boolean {
   return serviceLine ? serviceLine === "pet_waste" : businessRunsPetWaste;
 }
+
+/** Whether the client page a tech opens reads as yard work (#560): any of
+ *  the tech's own visits to this client is a yard visit. `ownVisitLines` is
+ *  null for the office, which goes by what the business runs. */
+export function fieldClientIsYardWork(
+  ownVisitLines: readonly (string | null)[] | null,
+  businessRunsPetWaste: boolean,
+): boolean {
+  if (!ownVisitLines) return businessRunsPetWaste;
+  return ownVisitLines.some((line) => isYardVisit(line, businessRunsPetWaste));
+}

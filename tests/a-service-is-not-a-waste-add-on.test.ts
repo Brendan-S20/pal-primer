@@ -100,3 +100,37 @@ describe("a tech's stop", () => {
     expect(myDay).toMatch(/const dnaEnrolled = petWaste && /);
   });
 });
+
+describe("the examples read as English", () => {
+  it("picks a or an for the services empty state and the quote hint", async () => {
+    const { withArticle } = await import("@/lib/services");
+    expect(withArticle("Overnight stay")).toBe("an overnight stay");
+    expect(withArticle("30-minute walk")).toBe("a 30-minute walk");
+    expect(withArticle("One-hour training session")).toBe("a one-hour training session");
+    expect(withArticle("Extra pet")).toBe("an extra pet");
+    expect(withArticle("Full groom")).toBe("a full groom");
+  });
+});
+
+describe("the client page a tech opens", () => {
+  it("reads as yard work only when one of the tech's own visits there is", async () => {
+    const { fieldClientIsYardWork } = await import("@/lib/walk-concerns");
+    // A walker in a business that also scoops: their visits are walks.
+    expect(fieldClientIsYardWork(["dog_walking"], true)).toBe(false);
+    expect(fieldClientIsYardWork(["dog_walking", "pet_waste"], true)).toBe(true);
+    // A visit with no service is what the business runs.
+    expect(fieldClientIsYardWork([null], true)).toBe(true);
+    expect(fieldClientIsYardWork([null], false)).toBe(false);
+    // The office goes by the business.
+    expect(fieldClientIsYardWork(null, true)).toBe(true);
+  });
+});
+
+describe("the office visit drawer", () => {
+  it("decides yard words the way My Day does", () => {
+    const drawer = read("src/components/VisitDetailDrawer.tsx");
+    expect(drawer).toMatch(
+      /const yardVisit = isYardVisit\(v\?\.services\?\.service_line, businessRunsPetWaste\)/,
+    );
+  });
+});

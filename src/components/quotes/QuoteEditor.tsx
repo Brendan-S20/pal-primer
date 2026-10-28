@@ -24,7 +24,7 @@ import { saveQuoteDraft, sendQuote } from "@/lib/quotes.functions";
 import { getFirstCleanupPricing } from "@/lib/first-cleanup.functions";
 import { LAST_CLEANED_QUESTION, firstCleanupQuoteLine } from "@/lib/first-cleanup";
 import { addOnExampleFor, runsPetWaste, type ServiceLine } from "@/lib/service-lines";
-import { defaultServiceLine, serviceNamePlaceholder } from "@/lib/services";
+import { defaultServiceLine, serviceNamePlaceholder, withArticle } from "@/lib/services";
 import { getQuotePricing } from "@/lib/quote-pricing.functions";
 import {
   QUOTE_FREQUENCIES,
@@ -211,7 +211,7 @@ export function QuoteEditor({
     : {
         title: serviceNamePlaceholder(defaultServiceLine(orgLines)),
         oneTime: addOnExampleFor(orgLines).name,
-        oneTimeExample: `"${addOnExampleFor(orgLines).name}"`,
+        oneTimeExample: withArticle(addOnExampleFor(orgLines).name),
         recurring: `${serviceNamePlaceholder(defaultServiceLine(orgLines))}, two pets`,
         message: "Thanks for your time today. This covers everything we talked about.",
       };

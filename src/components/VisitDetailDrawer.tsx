@@ -67,6 +67,15 @@ import {
   nowAsCalledAt,
 } from "@/components/training/ClientCalledAtField";
 import { CompletedVisitActions } from "@/components/CompletedVisitActions";
+import { BUSINESS_REASONS } from "@/lib/training-packages";
+import { useServiceLines } from "@/components/CommercialOnly";
+import { isYardVisit } from "@/lib/walk-concerns";
+
+const MISSED_REASON_LABELS: Record<(typeof BUSINESS_REASONS)[number], string> = {
+  our_fault: "Our fault",
+  weather: "Weather",
+  unsafe_conditions: "Unsafe conditions",
+};
 
 function fmtAddress(p: any): string {
   if (!p) return "";
@@ -152,6 +161,10 @@ export function VisitDetailDrawer({
   // office server functions is the real one. Showing a dispatcher a button
   // that throws is the failure this whole change is about, so hide it.
   const { can, role } = usePermissions();
+  // Yard wording only on a pet-waste visit, decided as My Day decides it
+  // (#560): the visit's own line, and for a visit with no service, what the
+  // business runs.
+  const { petWaste: businessRunsPetWaste } = useServiceLines();
   const canActFromOffice = can("manage_client_billing");
 
   // Q-12, narrowest useful answer. Below 768px the dnd board is display:none
@@ -310,10 +323,8 @@ export function VisitDetailDrawer({
   const dogs = data?.dogs ?? [];
   const recent = data?.recent ?? [];
   const upcoming = data?.upcoming ?? [];
-  const hazards = hazardList(
-    p,
-    !v?.services?.service_line || v.services.service_line === "pet_waste",
-  );
+  const yardVisit = isYardVisit(v?.services?.service_line, businessRunsPetWaste);
+  const hazards = hazardList(p, yardVisit);
   const dir = directionsUrl(p);
   // There is no office_start_visit — starting a visit stamps a tech's arrival,
   // and the office has no honest value to stamp. The Start button here never
@@ -665,9 +676,9 @@ export function VisitDetailDrawer({
                           value={skipReason}
                           onChange={(e) => setSkipReason(e.target.value)}
                           placeholder={
-                            v.services?.service_line && v.services.service_line !== "pet_waste"
-                              ? "No one home, could not get in, weather…"
-                              : "Gate locked, dog outside, weather…"
+                            yardVisit
+                              ? "Gate locked, dog outside, weather…"
+                              : "No one home, could not get in, weather…"
                           }
                         />
                         {v.client_package_id && (

@@ -27,6 +27,7 @@ import { SummaryTab } from "@/components/client-detail/SummaryTab";
 import { FieldClientView } from "@/components/client-detail/FieldClientView";
 import { Skeleton } from "@/components/ui/skeleton";
 import { pageTitle, titleHead, useDocumentTitle } from "@/lib/page-title";
+import { fieldClientIsYardWork } from "@/lib/walk-concerns";
 
 // ── EVERY TAB BUT THE FIRST IS ITS OWN CHUNK ─────────────────────────────
 //
@@ -301,7 +302,10 @@ function ClientDetail() {
           properties={fieldData.properties ?? []}
           dogs={fieldData.dogs ?? []}
           grooming={serviceLines.includes("mobile_grooming")}
-          petWaste={serviceLines.includes("pet_waste")}
+          petWaste={fieldClientIsYardWork(
+            fieldData.ownVisitLines ?? null,
+            serviceLines.includes("pet_waste"),
+          )}
         />
       );
     }
