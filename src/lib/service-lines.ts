@@ -17,7 +17,7 @@
  *  not take a tech's waste log away mid-route. */
 
 import { DEFAULT_EST_TIME_CONFIG, type EstTimeConfig } from "@/lib/estimated-time";
-import { SUGGESTED_CHECKLIST } from "@/lib/visit-checklist";
+import { SUGGESTED_CHECKLIST, type ChecklistItem } from "@/lib/visit-checklist";
 
 /** Every value the database accepts (service_lines_are_valid). Order is the
  *  order the settings screen lists them in. */
@@ -407,6 +407,37 @@ export function suggestedChecklistFor(
     }
   }
   return out;
+}
+
+/** The suggestions the checklist editor offers, each with the line it is
+ *  saved under (#565). One line: that line's list, as suggestedChecklistFor
+ *  gives it. More than one: every line's own list, not merged, so "Gate
+ *  latched" can be asked on a scoop and on a walk as two items. */
+export function checklistSuggestionsFor(
+  lines: readonly ServiceLine[],
+): { label: string; required: boolean; line: ServiceLine }[] {
+  if (lines.length <= 1) {
+    const line = lines[0] ?? "pet_waste";
+    return suggestedChecklistFor([line]).map((s) => ({ ...s, line }));
+  }
+  return lines.flatMap((line) => LINE_SEEDS[line].checklist.map((s) => ({ ...s, line })));
+}
+
+/** How the editor lays the list out. Null for a one-line business: one list,
+ *  as it always was. Otherwise the every-visit items first, then one group
+ *  per line the business runs, and one for any line an item still names
+ *  after the business stopped running it, so that item can be seen. */
+export function checklistGroupsFor(
+  items: readonly ChecklistItem[],
+  lines: readonly ServiceLine[],
+): { line: ServiceLine | null; items: ChecklistItem[] }[] | null {
+  if (lines.length <= 1) return null;
+  const named = new Set(items.map((i) => i.line));
+  const shown = SERVICE_LINES.filter((l) => lines.includes(l) || named.has(l));
+  return [
+    { line: null, items: items.filter((i) => !i.line) },
+    ...shown.map((line) => ({ line, items: items.filter((i) => i.line === line) })),
+  ];
 }
 
 /** The add-on placeholder: the first line's. Pet waste first when present, so

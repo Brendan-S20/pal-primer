@@ -6,8 +6,8 @@ import { resolveCaller } from "@/lib/authz.server";
 import { RECLEAN_WINDOW_DEFAULT_HOURS, RECLEAN_WINDOW_MAX_HOURS } from "@/lib/reclean";
 import {
   MAX_CHECKLIST_ID,
-  MAX_CHECKLIST_ITEMS,
   MAX_CHECKLIST_LABEL,
+  MAX_CHECKLIST_TOTAL,
   checklistProblem,
   parseChecklist,
   type ChecklistItem,
@@ -171,9 +171,11 @@ export const setVisitChecklist = createServerFn({ method: "POST" })
               id: z.string().min(1).max(MAX_CHECKLIST_ID),
               label: z.string().trim().min(1).max(MAX_CHECKLIST_LABEL),
               required: z.boolean(),
+              // Omitted: asked on every visit, whatever the line.
+              line: z.enum(SERVICE_LINES as unknown as [ServiceLine, ...ServiceLine[]]).optional(),
             }),
           )
-          .max(MAX_CHECKLIST_ITEMS),
+          .max(MAX_CHECKLIST_TOTAL),
       })
       .parse(d),
   )

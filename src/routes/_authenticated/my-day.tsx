@@ -175,7 +175,13 @@ import {
 } from "@/lib/photo-kinds";
 import { Checkbox } from "@/components/ui/checkbox";
 import { VisitChecklistAnswers } from "@/components/VisitChecklistAnswers";
-import { answersFor, missingRequired, parseAnswers } from "@/lib/visit-checklist";
+import {
+  answersFor,
+  checklistForLine,
+  checklistLineOf,
+  missingRequired,
+  parseAnswers,
+} from "@/lib/visit-checklist";
 import { isLiveActivityAction, type LiveActivityAction } from "@/lib/live-activity-links";
 import { useLiveActivityAction } from "@/components/my-day/use-live-activity-action";
 import { pageTitle, titleHead, useDocumentTitle } from "@/lib/page-title";
@@ -1799,7 +1805,14 @@ function VisitCard({
   // What the tech tells the office on completion, why there is no photo when
   // the business requires one, and which checklist items were checked. All
   // three travel with the queued action.
-  const { requireCompletionPhoto, checklist } = useOrgFieldRules();
+  const { requireCompletionPhoto, checklist: orgChecklist } = useOrgFieldRules();
+  // Only what THIS stop is asked (#565): the every-visit items and its own
+  // line's. complete_visit filters the same way, with no service as pet waste.
+  const visitLine = checklistLineOf(visit.services?.service_line);
+  const checklist = useMemo(
+    () => checklistForLine(orgChecklist, visitLine),
+    [orgChecklist, visitLine],
+  );
   const [checkedItems, setCheckedItems] = useState<string[]>([]);
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState("");
