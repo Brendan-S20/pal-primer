@@ -43,10 +43,32 @@ vi.mock("@/components/CommercialOnly", () => ({
     known: true,
   }),
 }));
+const saveChecklist = vi.hoisted(() => vi.fn(async (_arg: unknown) => ({ ok: true })));
 vi.mock("@/lib/org-features.functions", () => ({
-  setVisitChecklist: vi.fn(),
+  setVisitChecklist: saveChecklist,
   setEmailVisitChecklist: vi.fn(),
 }));
+// A static render cannot click, so each button's handler is kept by its label
+// and called by hand. Everything else about the button is plain markup.
+const clicks = vi.hoisted(() => new Map<string, () => void>());
+vi.mock("@/components/ui/button", async () => {
+  const R = await import("react");
+  const Button = ({
+    children,
+    onClick,
+    variant: _v,
+    size: _s,
+    ...rest
+  }: Record<string, unknown> & { children?: React.ReactNode; onClick?: () => void }) => {
+    const text = R.Children.toArray(children)
+      .filter((c) => typeof c === "string")
+      .join("")
+      .trim();
+    if (onClick) clicks.set(text, onClick);
+    return R.createElement("button", rest, children);
+  };
+  return { Button, buttonVariants: () => "" };
+});
 
 import {
   answersFor,
@@ -60,6 +82,10 @@ import {
 } from "@/lib/visit-checklist";
 import {
   LINE_SEEDS,
+  WASTE_ONLY_CHECKLIST_LABELS,
+  askOnPetWasteOnly,
+  everyVisitWasteItems,
+  otherVisitsPhrase,
   checklistGroupsFor,
   checklistSuggestionsFor,
   suggestedChecklistFor,
@@ -112,6 +138,19 @@ describe("a visit is asked only its own line's items", () => {
     expect(checklistLineOf(undefined)).toBe("pet_waste");
     expect(checklistLineOf("")).toBe("pet_waste");
     expect(checklistLineOf("dog_walking")).toBe("dog_walking");
+    expect(checklistLineOf(null, ["pet_waste", "dog_walking"])).toBe("pet_waste");
+    expect(checklistLineOf("pet_waste", ["dog_walking"])).toBe("pet_waste");
+  });
+
+  it("a visit with no service in a one-line business is that line's", () => {
+    // A walking-only business saves its suggestions as dog_walking. A visit
+    // with no service must still be asked them, as it was before lines.
+    expect(checklistLineOf(null, ["dog_walking"])).toBe("dog_walking");
+    expect(checklistLineOf(undefined, ["grooming"])).toBe("grooming");
+    const walkOnly: ChecklistItem[] = [
+      { id: "dog", label: "Dog collected and returned", required: true, line: "dog_walking" },
+    ];
+    expect(checklistForLine(walkOnly, checklistLineOf(null, ["dog_walking"]))).toEqual(walkOnly);
   });
 
   it("a list saved before lines existed applies to every line, unchanged", () => {
@@ -236,11 +275,131 @@ describe("the editor groups the list by line when the business runs more than on
   });
 });
 
+describe("an old every-visit list with pet-waste items gets a callout (#565)", () => {
+  // Saved before lines existed: nothing has a line, so a walk is asked to bag
+  // waste. No migration rewrites it; the owner moves it with one tap.
+  const OLD: ChecklistItem[] = [
+    { id: "old-all", label: "All areas walked", required: true },
+    { id: "old-waste", label: " waste bagged and disposed ", required: true },
+    { id: "old-gate", label: "Gate latched", required: true },
+    { id: "old-bowl", label: "Water bowl checked", required: false },
+    { id: "old-dog", label: "Dog collected and returned", required: true, line: "dog_walking" },
+  ];
+
+  it("names the waste items, not the gate, and only for a business that scoops and runs more", () => {
+    expect(WASTE_ONLY_CHECKLIST_LABELS).toEqual([
+      "All areas walked",
+      "Waste bagged and disposed",
+      "Water bowl checked",
+    ]);
+    // Each one is a pet-waste suggestion.
+    for (const l of WASTE_ONLY_CHECKLIST_LABELS) {
+      expect(LINE_SEEDS.pet_waste.checklist.map((x) => x.label)).toContain(l);
+    }
+    expect(everyVisitWasteItems(OLD, ["pet_waste", "dog_walking"]).map((i) => i.id)).toEqual([
+      "old-all",
+      "old-waste",
+      "old-bowl",
+    ]);
+    expect(everyVisitWasteItems(OLD, ["pet_waste"])).toEqual([]);
+    expect(everyVisitWasteItems(OLD, ["dog_walking", "pet_sitting"])).toEqual([]);
+    // Already on pet waste: nothing to say.
+    expect(
+      everyVisitWasteItems(askOnPetWasteOnly(OLD, ["old-all", "old-waste", "old-bowl"]), [
+        "pet_waste",
+        "dog_walking",
+      ]),
+    ).toEqual([]);
+  });
+
+  it("applying keeps every id, label and the order, and sets pet_waste on those items only", () => {
+    const next = askOnPetWasteOnly(OLD, ["old-all", "old-waste", "old-bowl"]);
+    expect(next.map((i) => i.id)).toEqual(OLD.map((i) => i.id));
+    expect(next.map((i) => i.label)).toEqual(OLD.map((i) => i.label));
+    expect(next.map((i) => i.line)).toEqual([
+      "pet_waste",
+      "pet_waste",
+      undefined,
+      "pet_waste",
+      "dog_walking",
+    ]);
+    // A walk is now asked the gate and its own item, nothing about waste.
+    expect(checklistForLine(next, "dog_walking").map((i) => i.id)).toEqual(["old-gate", "old-dog"]);
+    expect(checklistProblem(next)).toBeNull();
+  });
+
+  it("says which other visits ask them, in plain words", () => {
+    expect(otherVisitsPhrase(["pet_waste", "dog_walking"])).toBe("walks");
+    expect(
+      otherVisitsPhrase(["pet_waste", "dog_walking", "pet_sitting", "mobile_grooming", "training"]),
+    ).toBe("walks, sits, grooms and lessons");
+  });
+
+  function render(saved: ChecklistItem[]) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } });
+    clicks.clear();
+    return renderToStaticMarkup(
+      <QueryClientProvider client={qc}>
+        <VisitChecklistEditor saved={saved} emailOn={false} canEdit loading={false} />
+      </QueryClientProvider>,
+    );
+  }
+
+  it("draws the callout, and one tap saves the list with those items on pet waste", async () => {
+    lines.current = ["pet_waste", "dog_walking", "pet_sitting"];
+    try {
+      const html = render(OLD);
+      expect(html).toContain("All areas walked, waste bagged and disposed, Water bowl checked");
+      expect(html).toContain(
+        "These are asked on every visit, including walks and sits. Ask them on pet waste visits only?",
+      );
+      const apply = clicks.get("Ask on pet waste visits only");
+      expect(apply).toBeTypeOf("function");
+
+      saveChecklist.mockClear();
+      apply!();
+      await vi.waitFor(() => expect(saveChecklist).toHaveBeenCalledTimes(1));
+      const [arg] = saveChecklist.mock.calls[0] as unknown as [
+        { data: { items: ChecklistItem[] } },
+      ];
+      const sent = arg.data.items;
+      expect(sent.map((i) => i.id)).toEqual(OLD.map((i) => i.id));
+      expect(sent.find((i) => i.id === "old-all")?.line).toBe("pet_waste");
+      expect(sent.find((i) => i.id === "old-waste")?.line).toBe("pet_waste");
+      expect(sent.find((i) => i.id === "old-bowl")?.line).toBe("pet_waste");
+      expect(sent.find((i) => i.id === "old-gate")?.line).toBeUndefined();
+      expect(sent.find((i) => i.id === "old-dog")?.line).toBe("dog_walking");
+    } finally {
+      lines.current = ["pet_waste"];
+    }
+  });
+
+  it("no callout for a business that only scoops, or once the items are moved", () => {
+    lines.current = ["pet_waste"];
+    expect(render(OLD)).not.toContain("Ask on pet waste visits only");
+    lines.current = ["pet_waste", "dog_walking"];
+    try {
+      expect(render(askOnPetWasteOnly(OLD, ["old-all", "old-waste", "old-bowl"]))).not.toContain(
+        "Ask on pet waste visits only",
+      );
+      // One item reads as one.
+      expect(render([OLD[0]])).toContain(
+        "This is asked on every visit, including walks. Ask it on pet waste visits only?",
+      );
+    } finally {
+      lines.current = ["pet_waste"];
+    }
+  });
+});
+
 describe("My Day draws only the visit's line's items", () => {
   it("filters the owner's list by the stop's service line before anything reads it", () => {
     const page = codeOnly(read("src/routes/_authenticated/my-day.tsx"));
     expect(page).toMatch(/checklist: orgChecklist \} = useOrgFieldRules\(\)/);
-    expect(page).toMatch(/const visitLine = checklistLineOf\(visit\.services\?\.service_line\)/);
+    expect(page).toMatch(
+      /const visitLine = checklistLineOf\(visit\.services\?\.service_line, businessLines\)/,
+    );
+    expect(page).toMatch(/lines: businessLines \} = useServiceLines\(\)/);
     expect(page).toMatch(/checklistForLine\(orgChecklist, visitLine\)/);
     // Nothing else in the card reads the unfiltered list.
     expect(page.match(/orgChecklist/g)?.length).toBe(3);
@@ -254,10 +413,12 @@ describe("My Day draws only the visit's line's items", () => {
 });
 
 describe("complete_visit asks only the visit's line (the migration)", () => {
-  it("reads the visit's line, with pet waste for no service, and filters before refusing", () => {
+  it("reads the visit's line, with the only line or pet waste for no service, and filters before refusing", () => {
     const sql = codeOnly(read(MIGRATION_REL));
     const fn = sql.slice(sql.indexOf("CREATE OR REPLACE FUNCTION public.complete_visit"));
-    expect(fn).toMatch(/COALESCE\(s\.service_line, 'pet_waste'\)/);
+    expect(fn).toMatch(
+      /COALESCE\(s\.service_line,\s+CASE WHEN cardinality\(o\.service_lines\) = 1 THEN o\.service_lines\[1\] END,\s+'pet_waste'\)/,
+    );
     expect(fn).toMatch(/LEFT JOIN public\.services s ON s\.id = v\.service_id/);
     const filter = fn.indexOf("WHERE NOT (item ? 'line') OR item ->> 'line' = _line");
     const refusal = fn.indexOf("RAISE EXCEPTION 'Check off every required item");
@@ -311,9 +472,10 @@ describe.skipIf(!reachable)("complete_visit asks only the visit's line (a real d
     const out = `${r.stdout}\n${r.stderr}`;
     expect(r.status, out).toBe(0);
     expect(out).not.toMatch(/PROOF FAILED/);
-    expect(out.match(/NOTICE:\s+ok: /g)?.length, out).toBe(5);
+    expect(out.match(/NOTICE:\s+ok: /g)?.length, out).toBe(6);
     expect(out).toMatch(/ok: a walk completes without the waste item/);
     expect(out).toMatch(/ok: a scoop is still refused without the waste item/);
+    expect(out).toMatch(/ok: a visit with no service in a one-line business/);
     expect(out).toMatch(/ALL PER-LINE CHECKLIST PROOFS PASSED/);
 
     const left = spawnSync(

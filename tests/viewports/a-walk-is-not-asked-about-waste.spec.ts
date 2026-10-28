@@ -7,6 +7,9 @@
  *     scoops and walks: the list in groups (every visit, pet waste, dog
  *     walking), with a line picker on each row. The control is the same
  *     list for a pet-waste-only business: one list, no groups.
+ *   - The same screen with a list saved before lines existed: its waste
+ *     items have no line, so they are asked on every visit, and a callout
+ *     names them with the one tap that moves them to pet waste.
  *   - My Day for a tech in that business: the walk stop draws the walking
  *     item and not the waste item; the scoop beside it (the control) draws
  *     the waste item and not the walking one. Both draw the every-visit item.
@@ -40,7 +43,10 @@ const SHOTS = join(process.cwd(), "docs/evidence/565");
 const SHOT_WIDTHS = [360, 1280];
 const MIXED = ["pet_waste", "dog_walking"];
 
-const EVERY = "All areas walked";
+// Neutral on purpose: a walk and a scoop both latch the gate. A waste item
+// with no line is the OLD case, drawn by its own test with the callout.
+const EVERY = "Gate latched";
+const OLD_WASTE = "All areas walked";
 const WASTE = "Waste bagged and disposed";
 const DOG = "Dog collected and returned";
 const LIST = [
@@ -78,11 +84,19 @@ async function measure(page: Page, label: string, width: number) {
   }
 }
 
-function features(lines: string[]) {
+// A list saved before lines existed, then one item added for walks.
+const OLD_LIST = [
+  { id: "c7a1e0de-0000-4000-8000-000000056511", label: OLD_WASTE, required: true },
+  { id: "c7a1e0de-0000-4000-8000-000000056512", label: WASTE, required: true },
+  { id: "c7a1e0de-0000-4000-8000-000000056513", label: EVERY, required: true },
+  LIST[2],
+];
+
+function features(lines: string[], list: unknown[] = LIST) {
   return {
     ...(BASE_STUBS.getMyOrgFeatures as Record<string, unknown>),
     serviceLines: lines,
-    visitChecklist: LIST,
+    visitChecklist: list,
   };
 }
 
@@ -147,7 +161,37 @@ for (const { w, h } of WIDTHS) {
       await expect(page.getByRole("combobox", { name: `Which visits ask ${WASTE}` })).toHaveText(
         "Pet waste removal (scooping)",
       );
+      await expect(page.getByRole("textbox", { name: "Checklist item 1" })).toHaveValue(EVERY);
+      // Nothing about waste is on every visit, so nothing to call out.
+      await expect(page.getByRole("button", { name: "Ask on pet waste visits only" })).toHaveCount(
+        0,
+      );
       await measure(page, "settings-checklist-by-line", w);
+    });
+
+    test("Settings: an old list's waste items on every visit are called out", async ({ page }) => {
+      await installSignedInSession(page);
+      await installStubBackend(page, {
+        role: "owner",
+        serviceLines: MIXED,
+        overrides: { getMyOrgFeatures: features(MIXED, OLD_LIST) },
+      });
+      await page.goto("/settings/business", { waitUntil: "domcontentloaded" });
+      const callout = page.getByRole("region", { name: "Pet waste items asked on every visit" });
+      // Seen before the editor is opened: the folded summary is where an owner lands.
+      await expect(callout).toBeVisible({ timeout: 45_000 });
+      await page.getByRole("button", { name: "Edit checklist" }).click();
+      await expect(callout.getByText(`${OLD_WASTE}, ${WASTE}`)).toBeVisible();
+      await expect(
+        callout.getByText(
+          "These are asked on every visit, including walks. Ask them on pet waste visits only?",
+        ),
+      ).toBeVisible();
+      await expect(callout.getByText(EVERY)).toHaveCount(0);
+      await expect(
+        callout.getByRole("button", { name: "Ask on pet waste visits only" }),
+      ).toBeVisible();
+      await measure(page, "settings-checklist-old-waste-callout", w);
     });
 
     test("Settings control: a pet-waste-only business sees one list", async ({ page }) => {
@@ -189,6 +233,7 @@ for (const { w, h } of WIDTHS) {
       await expect(walk.getByText(DOG)).toBeVisible();
       await expect(walk.getByText(EVERY)).toBeVisible();
       await expect(walk.getByText(WASTE)).toHaveCount(0);
+      await expect(walk.getByText(OLD_WASTE)).toHaveCount(0);
       await measure(page, "my-day-checklist-by-line", w);
       if (process.env.SHOTS && SHOT_WIDTHS.includes(w)) {
         await walk.scrollIntoViewIfNeeded();

@@ -21,8 +21,9 @@
  *  An item may name a service `line` (#565). It is then asked only on a
  *  visit of that line; an item with no line is asked on every visit, which
  *  is what every list saved before lines existed means. A visit with no
- *  service counts as pet waste, the same as complete_visit decides it
- *  (migration 20261028100000). */
+ *  service counts as the business's only line, or pet waste when it runs
+ *  more than one, the same as complete_visit decides it (migration
+ *  20261028100000). */
 
 import type { ServiceLine } from "@/lib/service-lines";
 
@@ -36,11 +37,17 @@ export const MAX_CHECKLIST_ID = 64;
 export type ChecklistItem = { id: string; label: string; required: boolean; line?: ServiceLine };
 export type ChecklistAnswer = { id: string; label: string; required: boolean; checked: boolean };
 
-/** The line a visit's checklist is drawn for. No service is pet waste: the
- *  database decides it the same way, and the two must agree or a queued
- *  completion is refused on replay. */
-export function checklistLineOf(serviceLine: string | null | undefined): string {
-  return serviceLine || "pet_waste";
+/** The line a visit's checklist is drawn for. No service is the business's
+ *  only line when it runs exactly one, so a walking-only business is still
+ *  asked its walking items; otherwise pet waste. The database decides it the
+ *  same way, and the two must agree or a queued completion is refused on
+ *  replay. */
+export function checklistLineOf(
+  serviceLine: string | null | undefined,
+  orgLines: readonly string[] = [],
+): string {
+  if (serviceLine) return serviceLine;
+  return orgLines.length === 1 ? orgLines[0] : "pet_waste";
 }
 
 /** The items asked on a visit of `line`, in the owner's order. */

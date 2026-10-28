@@ -16,15 +16,26 @@
 --                                  means, so no existing list changes.
 --
 -- complete_visit asks only the items for the visit's own line: its service's
--- service_line, and for a visit with no service, pet waste (the same rule as
--- the app after #564). Only those items are recorded on the visit.
+-- service_line. A visit with no service is the business's only line when it
+-- runs exactly one (a walking-only business is still asked its walking
+-- items), and pet waste when it runs more than one. checklistLineOf in
+-- src/lib/visit-checklist.ts decides it the same way. Only those items are
+-- recorded on the visit.
 --
 -- visit_checklist_is_valid guards both the owner's list and a visit's
 -- answers, so its count rule changes from "twelve items" to "twelve asked on
 -- any one visit": the every-line items plus the largest line's. A list with
--- no line keys is held to twelve exactly as before. The new rule accepts
--- everything the old one did, so the existing CHECK constraints need no
--- re-validation.
+-- no line keys is held to twelve exactly as before.
+--
+-- The new rule is NOT a pure superset of the old one. The old function
+-- ignored any extra key on an item; this one refuses an item whose `line` is
+-- not a string naming a known service line. The app never wrote `line`
+-- before this change, so no list saved through it carries one, and every
+-- list without `line` is judged exactly as before. The existing CHECK
+-- constraints are not re-validated by this file. Before it is applied live,
+-- a read-only count of stored lists (organizations.visit_checklist and
+-- visits.visit_checklist) with any item carrying a `line` key is run, and it
+-- must be zero; a stray row would otherwise fail its next write.
 --
 -- CREATE OR REPLACE with the same signature keeps complete_visit's grants;
 -- they are restated anyway, and the check block asserts them.
@@ -104,9 +115,12 @@ BEGIN
     RAISE EXCEPTION 'Not authorized for this visit';
   END IF;
 
-  -- The visit's line: its service's, and pet waste for a visit with none.
+  -- The visit's line: its service's. With no service, the business's only
+  -- line when it runs exactly one, else pet waste.
   SELECT COALESCE(o.require_completion_photo, true), COALESCE(o.visit_checklist, '[]'::jsonb),
-         COALESCE(s.service_line, 'pet_waste')
+         COALESCE(s.service_line,
+                  CASE WHEN cardinality(o.service_lines) = 1 THEN o.service_lines[1] END,
+                  'pet_waste')
     INTO _required, _checklist, _line
     FROM public.visits v
     JOIN public.organizations o ON o.id = v.organization_id
@@ -210,8 +224,8 @@ BEGIN
   IF _src !~ 'require_completion_photo' THEN
     RAISE EXCEPTION 'complete_visit no longer reads the organization''s photo rule';
   END IF;
-  IF _src !~ 'COALESCE\(s\.service_line, ''pet_waste''\)' THEN
-    RAISE EXCEPTION 'complete_visit does not read the visit''s line, with pet waste for no service';
+  IF _src !~ 'cardinality\(o\.service_lines\) = 1 THEN o\.service_lines\[1\]' THEN
+    RAISE EXCEPTION 'complete_visit does not read the visit''s line, with the only line for no service';
   END IF;
   IF has_function_privilege('anon', 'public.complete_visit(uuid, timestamptz, text, text, text[])', 'EXECUTE') THEN
     RAISE EXCEPTION 'anon can execute complete_visit';

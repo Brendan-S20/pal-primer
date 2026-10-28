@@ -154,6 +154,36 @@ BEGIN
 END $$;
 RESET ROLE;
 
+-- ── A business that only walks: no service is a walk ───────────────────────
+-- v3 is still under way, refused above. The same visit in a walking-only
+-- business is asked the walking item, not the waste one.
+SET LOCAL app.allow_protected_org_write = '1';
+UPDATE public.organizations SET service_lines = '{dog_walking}'
+ WHERE id = '0d000000-0000-4000-8000-0000000000dd';
+SET LOCAL app.allow_protected_org_write = '';
+SET LOCAL request.jwt.claims = '{"sub":"c2000000-0000-4000-8000-00000000c002","role":"authenticated"}';
+SET ROLE authenticated;
+DO $$
+DECLARE _err text; _status text; _answers jsonb;
+BEGIN
+  BEGIN
+    PERFORM public.complete_visit('7d000000-0000-4000-8000-000000000003', NULL, NULL, NULL, ARRAY['all', 'waste']);
+  EXCEPTION WHEN OTHERS THEN _err := SQLERRM;
+  END;
+  IF _err IS NULL OR _err NOT LIKE '%: Dog collected and returned' THEN
+    RAISE EXCEPTION 'PROOF FAILED [one line]: a no-service visit in a walking-only business was not asked as a walk: %',
+      COALESCE(_err, 'completed');
+  END IF;
+  PERFORM public.complete_visit('7d000000-0000-4000-8000-000000000003', NULL, NULL, NULL, ARRAY['all', 'dog']);
+  SELECT status::text, visit_checklist INTO _status, _answers
+    FROM public.visits WHERE id = '7d000000-0000-4000-8000-000000000003';
+  IF _status <> 'completed' OR jsonb_array_length(_answers) <> 2 OR _answers -> 1 ->> 'id' <> 'dog' THEN
+    RAISE EXCEPTION 'PROOF FAILED [one line]: %, %', _status, _answers;
+  END IF;
+  RAISE NOTICE 'ok: a visit with no service in a one-line business is asked that line''s items';
+END $$;
+RESET ROLE;
+
 -- ── A list saved before lines existed applies to every line ────────────────
 UPDATE public.organizations
    SET visit_checklist = '[

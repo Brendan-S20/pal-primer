@@ -1728,7 +1728,7 @@ function VisitCard({
   // sit, a groom or a lesson in a business that also scoops gets no yard
   // outline prompt, no stations, no DNA and the neutral hazard and photo
   // words (PET_WASTE_MODULES), the same as in a business that never scoops.
-  const { petWaste: businessRunsPetWaste } = useServiceLines();
+  const { petWaste: businessRunsPetWaste, lines: businessLines } = useServiceLines();
   const petWaste = isYardVisit(visit.services?.service_line, businessRunsPetWaste);
   const smsFn = useServerFn(sendVisitStatusSms);
   const onMyWayFn = useServerFn(sendOnMyWayMessage);
@@ -1807,8 +1807,9 @@ function VisitCard({
   // three travel with the queued action.
   const { requireCompletionPhoto, checklist: orgChecklist } = useOrgFieldRules();
   // Only what THIS stop is asked (#565): the every-visit items and its own
-  // line's. complete_visit filters the same way, with no service as pet waste.
-  const visitLine = checklistLineOf(visit.services?.service_line);
+  // line's. complete_visit filters the same way: no service is the business's
+  // only line, or pet waste when it runs more than one.
+  const visitLine = checklistLineOf(visit.services?.service_line, businessLines);
   const checklist = useMemo(
     () => checklistForLine(orgChecklist, visitLine),
     [orgChecklist, visitLine],

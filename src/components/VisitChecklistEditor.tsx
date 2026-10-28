@@ -26,8 +26,11 @@ import {
 } from "@/lib/visit-checklist";
 import {
   SERVICE_LINE_LABEL,
+  askOnPetWasteOnly,
   checklistGroupsFor,
   checklistSuggestionsFor,
+  everyVisitWasteItems,
+  otherVisitsPhrase,
   type ServiceLine,
 } from "@/lib/service-lines";
 import { useServiceLines } from "@/components/CommercialOnly";
@@ -62,6 +65,12 @@ const EVERY = "every";
  * group and the walking group, never the pet-waste one, and complete_visit
  * asks the same. Suggested items are saved with their line, so a business
  * that adds a line later is not asked to bag waste on a walk.
+ *
+ * A list saved before lines existed has no line on any item, so its
+ * pet-waste items are still asked on every visit. Those are not rewritten
+ * by a migration; the owner is shown them and moves them with one tap
+ * (everyVisitWasteItems). The ids stay, so a queued completion still
+ * matches.
  */
 export function VisitChecklistEditor({
   saved,
@@ -148,6 +157,31 @@ export function VisitChecklistEditor({
   });
 
   const busy = !canEdit || loading || save.isPending;
+
+  // Pet-waste items still asked on every visit, from a list saved before
+  // lines existed. One tap moves them to pet waste: saved at once when there
+  // are no other edits, otherwise added to the draft for the owner to save.
+  const wasteOnEvery = useMemo(() => everyVisitWasteItems(draft, lines), [draft, lines]);
+  const moveWasteItems = () => {
+    const next = askOnPetWasteOnly(
+      draft,
+      wasteOnEvery.map((i) => i.id),
+    );
+    if (dirty) {
+      setDraft(next);
+      return;
+    }
+    save.mutate(next);
+  };
+  const wasteCallout =
+    wasteOnEvery.length === 0 ? null : (
+      <WasteOnEveryVisitCallout
+        labels={wasteOnEvery.map((i) => i.label.trim())}
+        others={otherVisitsPhrase(lines)}
+        disabled={busy}
+        onApply={moveWasteItems}
+      />
+    );
   const update = (id: string, patch: Partial<ChecklistItem>) =>
     setDraft((d) => d.map((i) => (i.id === id ? { ...i, ...patch } : i)));
 
@@ -254,23 +288,26 @@ export function VisitChecklistEditor({
     // are the tech's to read on My Day and the owner's to read in the editor.
     const required = saved.filter((i) => i.required).length;
     return (
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-sm font-medium">Visit checklist</div>
-          <div className="text-xs text-muted-foreground">
-            {saved.length} item{saved.length === 1 ? "" : "s"}, {required} required
-            {emailOn ? ", in the completion email" : ""}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm font-medium">Visit checklist</div>
+            <div className="text-xs text-muted-foreground">
+              {saved.length} item{saved.length === 1 ? "" : "s"}, {required} required
+              {emailOn ? ", in the completion email" : ""}
+            </div>
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 shrink-0"
+            disabled={busy}
+            onClick={() => setOpen(true)}
+          >
+            Edit checklist
+          </Button>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          className="h-11 shrink-0"
-          disabled={busy}
-          onClick={() => setOpen(true)}
-        >
-          Edit checklist
-        </Button>
+        {wasteCallout}
       </div>
     );
   }
@@ -318,6 +355,8 @@ export function VisitChecklistEditor({
           finish; the answers are kept on the visit, worded as they were that day.
         </div>
       </div>
+
+      {wasteCallout}
 
       {draft.length === 0 ? (
         <p className="text-sm text-muted-foreground">
@@ -432,6 +471,42 @@ export function VisitChecklistEditor({
         />
       </div>
     </div>
+  );
+}
+
+/** Old every-visit waste items, and the one tap that asks them on pet waste
+ *  visits only. */
+function WasteOnEveryVisitCallout({
+  labels,
+  others,
+  disabled,
+  onApply,
+}: {
+  labels: string[];
+  others: string;
+  disabled: boolean;
+  onApply: () => void;
+}) {
+  return (
+    <section
+      aria-label="Pet waste items asked on every visit"
+      className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-700 dark:bg-amber-950/40"
+    >
+      <p className="font-medium">{labels.join(", ")}</p>
+      <p className="text-muted-foreground">
+        {labels.length === 1 ? "This is" : "These are"} asked on every visit, including {others}.
+        Ask {labels.length === 1 ? "it" : "them"} on pet waste visits only?
+      </p>
+      <Button
+        type="button"
+        variant="outline"
+        className="h-11"
+        disabled={disabled}
+        onClick={onApply}
+      >
+        Ask on pet waste visits only
+      </Button>
+    </section>
   );
 }
 
