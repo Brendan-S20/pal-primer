@@ -68,7 +68,7 @@ export const Route = createFileRoute("/signup/$slug")({
       name: org?.name ?? null,
       logoUrl: org?.logoUrl ?? null,
       slug: org?.resolvedSlug ?? params.slug,
-      lines: org ? bookingPageLines(org.services.map((s) => s.service_line), org.lines) : [],
+      lines: org ? bookingPageLines((org.services ?? []).map((s) => s.service_line), org.lines) : [],
       origin: appOrigin(),
     });
   },
@@ -136,7 +136,7 @@ function SignupPage() {
 
   const org = formQ.data;
   const copy = formCopy(org.form, org.instantStart);
-  const servicesLine = bookingServicesLine(org.services.map((s) => s.service_line));
+  const servicesLine = bookingServicesLine((org.services ?? []).map((s) => s.service_line));
 
   return (
     <TenantSignupShell

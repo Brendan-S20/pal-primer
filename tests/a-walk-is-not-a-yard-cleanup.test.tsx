@@ -283,7 +283,7 @@ describe("the meta description follows what the business sells", () => {
     // sentence with the business's name).
     const route = read("src/routes/signup.$slug.tsx");
     expect(route).toMatch(
-      /lines: org \? bookingPageLines\(org\.services\.map\(\(s\) => s\.service_line\), org\.lines\) : \[\]/,
+      /lines: org \? bookingPageLines\(\(org\.services \?\? \[\]\)\.map\(\(s\) => s\.service_line\), org\.lines\) : \[\]/,
     );
     expect(read("src/lib/booking-page.ts")).toMatch(/bookingMetaDescription\(unique\)/);
     expect(route).not.toMatch(/cleanup frequency to get a price/);
