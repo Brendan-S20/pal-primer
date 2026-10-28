@@ -20,6 +20,10 @@ interface Props extends OrgContact {
   /** "Monday, November 2": the day a booking-link signup's first visit is
    *  on or after (#527). Absent for a client the office added. */
   firstVisitDate?: string;
+  /** "Tuesday, November 3 at 9:30 AM": a groom booked and paid for on the
+   *  booking link (#560). Said instead of firstVisitDate: the time is booked,
+   *  not waiting to be confirmed. */
+  bookedGroom?: string;
 }
 
 const WelcomeEmail = ({
@@ -27,6 +31,7 @@ const WelcomeEmail = ({
   clientName = "there",
   portalUrl,
   firstVisitDate,
+  bookedGroom,
   ...orgContact
 }: Props) => (
   <Html lang="en">
@@ -38,7 +43,9 @@ const WelcomeEmail = ({
         <Text style={styles.text}>
           Thanks for choosing {orgName}. We're set up and looking forward to your first visit.
         </Text>
-        {firstVisitDate ? (
+        {bookedGroom ? (
+          <Text style={styles.text}>Your first groom is booked for {bookedGroom}.</Text>
+        ) : firstVisitDate ? (
           <Text style={styles.text}>
             {orgName} will confirm your first visit for on or after {firstVisitDate}.
           </Text>

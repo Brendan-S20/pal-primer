@@ -18,7 +18,7 @@
  *  only: anything a customer reads speaks the business's language (CLAUDE.md,
  *  "What stays English on purpose"). */
 
-import { PORTAL_FREQUENCY_VALUES } from "@/lib/frequency-request";
+import { PORTAL_FREQUENCY_VALUES, frequencyLabel } from "@/lib/frequency-request";
 import type { PublicService } from "@/lib/public-services";
 import type { ServiceLine } from "@/lib/service-lines";
 
@@ -332,3 +332,11 @@ export const ADD_ON_COPY = {
   hint: (visit: string) => `Each add-on is added to every ${visit}.`,
   unpricedHint: "Your add-ons go with your request. We'll send the full price with your quote.",
 } as const;
+
+/** How a cadence reads on the booking link. A groom plan repeats in whole
+ *  weeks, so "monthly" is every four weeks (groomEveryWeeks), and says so
+ *  rather than promising twelve grooms a year and booking thirteen (#560). */
+export function bookingCadenceLabel(line: ServiceLine, cadence: string): string {
+  if (line === "mobile_grooming" && cadence === "monthly") return "Every 4 weeks";
+  return frequencyLabel(cadence);
+}

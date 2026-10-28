@@ -15,7 +15,13 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createFakeAdmin, stripeSignature } from "./helpers/fake-supabase";
+import { bookingCadenceLabel } from "@/lib/booking-copy";
+import { priceVisitWithExtras } from "@/lib/booking-extras";
+import { groomQuote } from "@/lib/groom";
+import { signupChargeFromQuote } from "@/lib/signup-charge";
 import {
+  bookedGroomPhrase,
+  bookedGroomSentence,
   groomDayProblem,
   groomEveryWeeks,
   groomTimeLabel,
@@ -70,6 +76,86 @@ describe("the rules for a groom booked online", () => {
     expect(groomTimeLabel("09:30")).toBe("9:30 AM");
     expect(groomTimeLabel("12:00")).toBe("12:00 PM");
     expect(groomTimeLabel("15:15")).toBe("3:15 PM");
+  });
+
+  it("charges today exactly what the plan and its add-ons will bill for the first groom", () => {
+    // The card pays for the first groom: the quote's per-groom total. The
+    // plan stores the pets' price and charges each add-on when the groom is
+    // done (bookGroomAppointment: price_cents is petCents, groom_addons the
+    // rest), so the two must add up to the same number.
+    const service = {
+      name: "Full groom",
+      price_unit: "visit" as const,
+      base_price_cents: 8000,
+      extra_pet_cents: 0,
+      default_duration_min: 90,
+    };
+    const sizes = [
+      { service_id: "g", size: "small" as const, price_cents: 6500 },
+      { service_id: "g", size: "large" as const, price_cents: 9500 },
+    ];
+    const teeth = {
+      id: "t",
+      name: "Teeth brushing",
+      service_line: "mobile_grooming" as const,
+      unit_price_cents: 1200,
+    };
+    const priced = priceVisitWithExtras({
+      service,
+      baseCents: 16_000,
+      petCount: 3,
+      sizes: ["small", "large", ""],
+      sizePrices: sizes,
+      addOns: [teeth],
+    });
+    const charge = signupChargeFromQuote({
+      recurring_price_cents: priced.perVisitCents,
+      initial_cleanup_cents: 0,
+    });
+
+    const plan = groomQuote({
+      service,
+      rules: sizes.map((r) => ({
+        size: r.size,
+        coat_type: null,
+        duration_min: 60,
+        price_cents: r.price_cents,
+      })),
+      pets: [
+        { id: "1", name: "A", size: "small", coat_type: null },
+        { id: "2", name: "B", size: "large", coat_type: null },
+        { id: "3", name: "C", size: null, coat_type: null },
+      ],
+      addons: [{ ...teeth, duration_min: 15, quantity: 1 }],
+    });
+    const petCents = plan.pets.reduce((sum, p) => sum + (p.cents ?? 0), 0);
+    const addOnCents = plan.addons.reduce((sum, a) => sum + a.cents, 0);
+
+    expect(charge.amountCents).toBe(6500 + 9500 + 8000 + 1200);
+    expect(charge.amountCents).toBe(petCents + addOnCents);
+    expect(charge.firstCleanupCents).toBe(0);
+  });
+
+  it("calls a monthly groom what it is: every four weeks", () => {
+    expect(groomEveryWeeks("monthly")).toBe(4);
+    expect(bookingCadenceLabel("mobile_grooming", "monthly")).toBe("Every 4 weeks");
+    expect(bookingCadenceLabel("mobile_grooming", "biweekly")).toBe("Every 2 weeks");
+    // Every other line keeps the cadence's own name.
+    expect(bookingCadenceLabel("dog_walking", "monthly")).toBe("Monthly");
+  });
+
+  it("names the booked day and time, not a day to confirm", () => {
+    const when = bookedGroomPhrase("Tuesday, November 3", "09:30");
+    expect(when).toBe("Tuesday, November 3 at 9:30 AM");
+    expect(bookedGroomSentence(when)).toBe(
+      "Your first groom is booked for Tuesday, November 3 at 9:30 AM.",
+    );
+    const hook = read("src/routes/api/public/hooks/stripe.ts");
+    expect(hook).toContain("bookedGroom: bookedGroomPhrase(");
+    expect(read("src/lib/email-templates/welcome.tsx")).toContain(
+      "Your first groom is booked for {bookedGroom}.",
+    );
+    expect(read("src/routes/signup.success.tsx")).toContain("bookedGroomSentence(");
   });
 
   it("checks the time before the card, against every groom on the day", () => {

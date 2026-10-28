@@ -77,6 +77,17 @@ export const GROOM_NEEDS_VACCINES =
 /** What a visitor reads when the time they picked has gone. */
 export const GROOM_TIME_TAKEN = "That time was just taken. Pick another time.";
 
+/** "Tuesday, November 3 at 9:30 AM": a groom booked online, as the success
+ *  page and the welcome email say it (#560). `day` is already formatted. */
+export function bookedGroomPhrase(day: string, startTime: string): string {
+  return `${day} at ${groomTimeLabel(startTime)}`;
+}
+
+/** "Your first groom is booked for Tuesday, November 3 at 9:30 AM." */
+export function bookedGroomSentence(when: string): string {
+  return `Your first groom is booked for ${when}.`;
+}
+
 /** "09:30" as a customer reads it: "9:30 AM". */
 export function groomTimeLabel(hhmm: string): string {
   const m = /^(\d{2}):(\d{2})$/.exec(hhmm);

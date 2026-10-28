@@ -42,7 +42,12 @@ import {
   type ExtraLine,
 } from "@/lib/booking-extras";
 import { PET_SIZES, type PetSize } from "@/lib/groom";
-import { GROOM_TIME_TAKEN, groomEveryWeeks, type OnlineGroomBooking } from "@/lib/groom-online";
+import {
+  GROOM_TIME_TAKEN,
+  groomEveryWeeks,
+  onlineGroomBookingFrom,
+  type OnlineGroomBooking,
+} from "@/lib/groom-online";
 import {
   CALM_REFUSAL,
   ELAPSED_FIELD,
@@ -953,7 +958,7 @@ export const getSignupStatus = createServerFn({ method: "GET" })
     const { data: row, error } = await supabaseAdmin
       .from("signup_requests")
       .select(
-        "status, name, provisioned_client_id, refunded_at, refunded_amount_cents, currency, organization_id, preferred_start_date, created_at",
+        "status, name, provisioned_client_id, refunded_at, refunded_amount_cents, currency, organization_id, preferred_start_date, created_at, groom_booking",
       )
       .eq("id", data.id)
       .maybeSingle();
@@ -992,6 +997,11 @@ export const getSignupStatus = createServerFn({ method: "GET" })
       logoUrl: (org?.logo_url as string | null) ?? null,
       brandColor: (org?.brand_color as string | null) ?? null,
       firstVisitOnOrAfter: startsOnOrAfter,
+      // A groom booked online (#560): its start time, so the page names the
+      // booked day and time rather than a day to confirm.
+      groomStartTime:
+        onlineGroomBookingFrom((row as { groom_booking?: unknown }).groom_booking)?.start_time ??
+        null,
       contactPhone: ((org?.contact_phone as string | null) ?? "").trim() || null,
       contactEmail: ((org?.contact_email as string | null) ?? "").trim() || null,
     };

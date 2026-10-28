@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { feeReversalCents } from "@/lib/platform-fee";
 import { makeStripe, warnOnApiVersionMismatch } from "@/lib/stripe-client.server";
-import { onlineGroomBookingFrom } from "@/lib/groom-online";
+import { bookedGroomPhrase, onlineGroomBookingFrom } from "@/lib/groom-online";
 import {
   cleanPets,
   firstVisitOnOrAfter,
@@ -345,6 +345,15 @@ async function provisionSignup(
             client.portal_token as string | null,
           ),
           ...(firstVisitDate ? { firstVisitDate } : {}),
+          // A groom booked online has a day and a time, not a day to confirm.
+          ...(groom && sr.preferred_start_date
+            ? {
+                bookedGroom: bookedGroomPhrase(
+                  formatStartDate(String(sr.preferred_start_date), today),
+                  groom.start_time,
+                ),
+              }
+            : {}),
         },
       });
     } catch (e) {

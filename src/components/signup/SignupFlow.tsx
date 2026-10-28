@@ -31,7 +31,6 @@
 // marks the door. `offerQuoteRequest` is off in walk mode, which has its own
 // fallback (mark the door, the office finishes it).
 import { appUrl } from "@/lib/app-origin";
-import { frequencyLabel } from "@/lib/frequency-request";
 import {
   ADD_ON_COPY,
   BOOKING_COPY,
@@ -41,6 +40,7 @@ import {
   perVisitLineLabel,
   requestPanelHint,
   bookingCadence,
+  bookingCadenceLabel,
   bookingLine,
   chargedTodayCovers,
   perVisitBillingSentence,
@@ -671,7 +671,7 @@ export function SignupFlow({
       ))}
       <div className="flex items-baseline justify-between gap-3">
         <div className="min-w-0 text-sm">
-          {perVisitLineLabel(line, groom)} ({frequencyLabel(frequency)})
+          {perVisitLineLabel(line, groom)} ({bookingCadenceLabel(line, frequency)})
         </div>
         {/* PER VISIT, not per month. `public_quote` returns
             `round(base_visit_cents × frequency_multiplier)`, and
@@ -806,7 +806,7 @@ export function SignupFlow({
               <SelectContent>
                 {lineCopy.cadences.map((k) => (
                   <SelectItem key={k} value={k}>
-                    {frequencyLabel(k)}
+                    {bookingCadenceLabel(line, k)}
                   </SelectItem>
                 ))}
               </SelectContent>
