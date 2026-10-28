@@ -41,7 +41,7 @@ import {
   type BookingExtras,
   type ExtraLine,
 } from "@/lib/booking-extras";
-import { PET_SIZES } from "@/lib/groom";
+import { PET_SIZES, type PetSize } from "@/lib/groom";
 import {
   CALM_REFUSAL,
   ELAPSED_FIELD,
@@ -341,12 +341,12 @@ async function quoteWithExtras<
 >(
   q: Q,
   data: { service_id?: string; dog_count: number; add_on_ids?: string[]; pet_sizes?: string[] },
-): Promise<Q & { extra_lines: ExtraLine[]; add_on_names: string[]; pet_sizes: string[] }> {
+): Promise<Q & { extra_lines: ExtraLine[]; add_on_names: string[]; pet_sizes: (PetSize | "")[] }> {
   const plain = {
     ...q,
     extra_lines: [] as ExtraLine[],
     add_on_names: [] as string[],
-    pet_sizes: [] as string[],
+    pet_sizes: [] as (PetSize | "")[],
   };
   if (!data.service_id) return plain;
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -545,7 +545,7 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
     // The add-ons picked, priced from the database and charged with every
     // visit: the plan's per-visit price includes them (#560).
     const q = await quoteWithExtras(q0, data);
-    const note = extrasNote(q.add_on_names, []);
+    const note = extrasNote(q.add_on_names, q.pet_sizes);
     // Everything charged below comes from `q`, which the database priced. See
     // signup-charge.ts: there is no path from the request body to an amount.
     const charge = signupChargeFromQuote(q);

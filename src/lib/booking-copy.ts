@@ -284,14 +284,32 @@ export const GROOM_COPY = {
  *  still listed, so a visitor can ask for it, and the office sends the
  *  price. */
 export const UNPRICED_COPY = {
-  /** The quote panel, before anything is sent. */
-  panelHint: "Tell us about your pets and we'll get back to you with a price.",
   /** The quote request's button. */
   requestButton: "Request a quote",
 } as const;
 
-/** The add-ons' heading and hint. */
+/** The quote panel's hint when the page is a request with no price on it:
+ *  a service with no price yet, or a business that does not price online.
+ *  A pet-waste page asks about the property, as it always did; any other
+ *  line asks about the dogs or pets it serves (#560). */
+export function requestPanelHint(line: ServiceLine): string {
+  if (line === "pet_waste")
+    return "Tell us about your property and pets and we'll get back to you with a price.";
+  return `Tell us about your ${BOOKING_COPY[line].petLabel.toLowerCase()} and we'll get back to you with a price.`;
+}
+
+/** The price line's label for one visit. A groom is requested, not started,
+ *  so it reads "Each groom" rather than "Ongoing" (#560). */
+export function perVisitLineLabel(line: ServiceLine, requested: boolean): string {
+  if (!requested) return "Ongoing";
+  const v = BOOKING_COPY[line].visit;
+  return `Each ${v}`;
+}
+
+/** The add-ons' heading and hint. With no price yet, the add-ons ride the
+ *  request and the price comes with the quote (#560). */
 export const ADD_ON_COPY = {
   legend: "Add-ons",
   hint: (visit: string) => `Each add-on is added to every ${visit}.`,
+  unpricedHint: "Your add-ons go with your request. We'll send the full price with your quote.",
 } as const;

@@ -38,6 +38,8 @@ import {
   GROOM_COPY,
   STAY_COPY,
   UNPRICED_COPY,
+  perVisitLineLabel,
+  requestPanelHint,
   bookingCadence,
   bookingLine,
   chargedTodayCovers,
@@ -624,7 +626,9 @@ export function SignupFlow({
         </div>
       ))}
       <div className="flex items-baseline justify-between gap-3">
-        <div className="min-w-0 text-sm">Ongoing ({frequencyLabel(frequency)})</div>
+        <div className="min-w-0 text-sm">
+          {perVisitLineLabel(line, groom)} ({frequencyLabel(frequency)})
+        </div>
         {/* PER VISIT, not per month. `public_quote` returns
             `round(base_visit_cents × frequency_multiplier)`, and
             pricing.ts documents it as "Per-visit price after the
@@ -862,7 +866,9 @@ export function SignupFlow({
                 </label>
               );
             })}
-            <p className="text-xs text-muted-foreground">{ADD_ON_COPY.hint(lineCopy.visit)}</p>
+            <p className="text-xs text-muted-foreground">
+              {request === "unpriced" ? ADD_ON_COPY.unpricedHint : ADD_ON_COPY.hint(lineCopy.visit)}
+            </p>
           </fieldset>
         )}
       </div>
@@ -1145,9 +1151,9 @@ export function SignupFlow({
             ) : branch.reason === "stay-request" ? (
               <>{STAY_COPY.panelHint}</>
             ) : branch.reason === "unpriced-request" ? (
-              <>{UNPRICED_COPY.panelHint}</>
+              <>{requestPanelHint(line)}</>
             ) : (
-              <>Tell us about your property and pets and we'll get back to you with a price.</>
+              <>{requestPanelHint(line)}</>
             )}
           </p>
           {quoteRequestButton}

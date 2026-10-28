@@ -34,8 +34,11 @@ import {
   BOOKING_COPY,
   GROOM_COPY,
   STAY_COPY,
+  ADD_ON_COPY,
   UNPRICED_COPY,
   bookingIntro,
+  perVisitLineLabel,
+  requestPanelHint,
 } from "@/lib/booking-copy";
 import {
   addOnsFor,
@@ -354,10 +357,27 @@ describe("each line reaches a quote or a request", () => {
 
   it("draws an unpriced walk as a request, with no instant price", () => {
     const html = render([WALK, LESSON]);
-    expect(html).toContain(UNPRICED_COPY.panelHint);
+    // A walk asks about the dogs, not "pets" or a property.
+    expect(html).toContain(requestPanelHint("dog_walking"));
+    expect(requestPanelHint("dog_walking")).toBe(
+      "Tell us about your dogs and we'll get back to you with a price.",
+    );
+    expect(requestPanelHint("pet_waste")).toMatch(/property and pets/);
+    // A ticked add-on with no price yet says the price comes with the quote.
+    expect(html).toContain(ADD_ON_COPY.unpricedHint);
     expect(html).toContain(UNPRICED_COPY.requestButton);
     expect(html).not.toContain("Get instant price");
     expect(html).toContain("Extra 15 minutes");
+  });
+
+  it("labels a groom's price per groom, not as an ongoing charge", () => {
+    expect(perVisitLineLabel("mobile_grooming", true)).toBe("Each groom");
+    expect(perVisitLineLabel("dog_walking", false)).toBe("Ongoing");
+  });
+
+  it("names the sizes on a signup's lead as well as a request's", () => {
+    const fns = read("src/lib/signup.functions.ts");
+    expect(fns).toContain("extrasNote(q.add_on_names, q.pet_sizes)");
   });
 
   it("draws a lesson with its add-on and an instant price", () => {
