@@ -372,7 +372,9 @@ describe("pet_waste seeds exactly what the product seeded before lines existed",
     expect(addons).toMatch(/placeholder=\{example\.code\}/);
     expect(addons).toMatch(/placeholder=\{example\.name\}/);
     const editor = codeOnly(read("src/components/VisitChecklistEditor.tsx"));
-    expect(editor).toMatch(/suggestedChecklistFor\(lines\)/);
+    // checklistSuggestionsFor is suggestedChecklistFor for one line, with the
+    // line attached (#565); visit-checklist-per-line.test.ts holds that.
+    expect(editor).toMatch(/checklistSuggestionsFor\(lines\)/);
     expect(editor).not.toMatch(/SUGGESTED_CHECKLIST/);
   });
 

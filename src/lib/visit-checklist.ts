@@ -16,14 +16,44 @@
  *
  *  The limits are the database's (`visit_checklist_is_valid`), spelled out
  *  once so the settings editor refuses what the CHECK would refuse, with a
- *  sentence instead of a constraint name. */
+ *  sentence instead of a constraint name.
+ *
+ *  An item may name a service `line` (#565). It is then asked only on a
+ *  visit of that line; an item with no line is asked on every visit, which
+ *  is what every list saved before lines existed means. A visit with no
+ *  service counts as the business's only line, or pet waste when it runs
+ *  more than one, the same as complete_visit decides it (migration
+ *  20261028100000). */
 
+import type { ServiceLine } from "@/lib/service-lines";
+
+/** Items one visit can be asked: the every-line items plus that line's. */
 export const MAX_CHECKLIST_ITEMS = 12;
+/** Items on the owner's whole list: twelve per line, six lines. */
+export const MAX_CHECKLIST_TOTAL = 72;
 export const MAX_CHECKLIST_LABEL = 120;
 export const MAX_CHECKLIST_ID = 64;
 
-export type ChecklistItem = { id: string; label: string; required: boolean };
-export type ChecklistAnswer = ChecklistItem & { checked: boolean };
+export type ChecklistItem = { id: string; label: string; required: boolean; line?: ServiceLine };
+export type ChecklistAnswer = { id: string; label: string; required: boolean; checked: boolean };
+
+/** The line a visit's checklist is drawn for. No service is the business's
+ *  only line when it runs exactly one, so a walking-only business is still
+ *  asked its walking items; otherwise pet waste. The database decides it the
+ *  same way, and the two must agree or a queued completion is refused on
+ *  replay. */
+export function checklistLineOf(
+  serviceLine: string | null | undefined,
+  orgLines: readonly string[] = [],
+): string {
+  if (serviceLine) return serviceLine;
+  return orgLines.length === 1 ? orgLines[0] : "pet_waste";
+}
+
+/** The items asked on a visit of `line`, in the owner's order. */
+export function checklistForLine(items: readonly ChecklistItem[], line: string): ChecklistItem[] {
+  return items.filter((i) => !i.line || i.line === line);
+}
 
 /** The set an owner can add with one tap. Required by default: an item a tech
  *  can skip past is one nobody reads, and the owner can untick it. */
@@ -55,13 +85,17 @@ export function parseChecklist(raw: unknown): ChecklistItem[] {
   const out: ChecklistItem[] = [];
   for (const r of raw) {
     if (!r || typeof r !== "object") continue;
-    const { id, label, required } = r as Record<string, unknown>;
+    const { id, label, required, line } = r as Record<string, unknown>;
     if (typeof id !== "string" || !id || seen.has(id)) continue;
     if (typeof label !== "string" || !label.trim()) continue;
     seen.add(id);
-    out.push({ id, label: label.trim(), required: required === true });
+    const item: ChecklistItem = { id, label: label.trim(), required: required === true };
+    // Checked by shape, not against SERVICE_LINES: service-lines imports this
+    // file, and the database already refuses a line it does not know.
+    if (typeof line === "string" && /^[a-z_]{1,32}$/.test(line)) item.line = line as ServiceLine;
+    out.push(item);
   }
-  return out.slice(0, MAX_CHECKLIST_ITEMS);
+  return out.slice(0, MAX_CHECKLIST_TOTAL);
 }
 
 /** What a visit recorded, out of `visits.visit_checklist`. Null when the visit
@@ -69,7 +103,7 @@ export function parseChecklist(raw: unknown): ChecklistItem[] {
  *  ask (the office, the end-of-day close-out). */
 export function parseAnswers(raw: unknown): ChecklistAnswer[] | null {
   if (!Array.isArray(raw)) return null;
-  const items = parseChecklist(raw);
+  const items = parseChecklist(raw).map(({ id, label, required }) => ({ id, label, required }));
   const byId = new Map(
     raw
       .filter((r): r is Record<string, unknown> => !!r && typeof r === "object")
@@ -96,7 +130,12 @@ export function answersFor(
   checkedIds: readonly string[],
 ): ChecklistAnswer[] {
   const checked = new Set(checkedIds);
-  return items.map((i) => ({ ...i, checked: checked.has(i.id) }));
+  return items.map(({ id, label, required }) => ({
+    id,
+    label,
+    required,
+    checked: checked.has(id),
+  }));
 }
 
 /** The labels of the items that were checked, in the owner's order: what the
@@ -105,11 +144,31 @@ export function checkedLabels(answers: readonly ChecklistAnswer[] | null): strin
   return (answers ?? []).filter((a) => a.checked).map((a) => a.label);
 }
 
+/** How many more items can go on the list for `line`, or for every visit
+ *  when `line` is omitted, before some visit is asked more than twelve. */
+export function checklistRoom(items: readonly ChecklistItem[], line?: string): number {
+  const everyLine = items.filter((i) => !i.line).length;
+  const perLine = new Map<string, number>();
+  for (const i of items) if (i.line) perLine.set(i.line, (perLine.get(i.line) ?? 0) + 1);
+  const asked = line ? (perLine.get(line) ?? 0) : Math.max(0, ...perLine.values());
+  return Math.max(
+    0,
+    Math.min(MAX_CHECKLIST_ITEMS - everyLine - asked, MAX_CHECKLIST_TOTAL - items.length),
+  );
+}
+
 /** Why the owner's draft cannot be saved, or null when it can. The same rules
  *  as `visit_checklist_is_valid`, in words. */
 export function checklistProblem(items: readonly ChecklistItem[]): string | null {
-  if (items.length > MAX_CHECKLIST_ITEMS) {
-    return `A checklist can have up to ${MAX_CHECKLIST_ITEMS} items.`;
+  // Twelve asked on any one visit: the every-line items plus each line's.
+  const everyLine = items.filter((i) => !i.line).length;
+  const perLine = new Map<string, number>();
+  for (const i of items) if (i.line) perLine.set(i.line, (perLine.get(i.line) ?? 0) + 1);
+  const most = Math.max(0, ...perLine.values());
+  if (items.length > MAX_CHECKLIST_TOTAL || everyLine + most > MAX_CHECKLIST_ITEMS) {
+    return perLine.size === 0
+      ? `A checklist can have up to ${MAX_CHECKLIST_ITEMS} items.`
+      : `A visit can ask up to ${MAX_CHECKLIST_ITEMS} items, counting the ones for every visit.`;
   }
   const ids = new Set<string>();
   for (const i of items) {

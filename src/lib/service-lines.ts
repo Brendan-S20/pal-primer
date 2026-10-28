@@ -17,7 +17,7 @@
  *  not take a tech's waste log away mid-route. */
 
 import { DEFAULT_EST_TIME_CONFIG, type EstTimeConfig } from "@/lib/estimated-time";
-import { SUGGESTED_CHECKLIST } from "@/lib/visit-checklist";
+import { SUGGESTED_CHECKLIST, type ChecklistItem } from "@/lib/visit-checklist";
 
 /** Every value the database accepts (service_lines_are_valid). Order is the
  *  order the settings screen lists them in. */
@@ -407,6 +407,92 @@ export function suggestedChecklistFor(
     }
   }
   return out;
+}
+
+/** The suggestions the checklist editor offers, each with the line it is
+ *  saved under (#565). One line: that line's list, as suggestedChecklistFor
+ *  gives it. More than one: every line's own list, not merged, so "Gate
+ *  latched" can be asked on a scoop and on a walk as two items. */
+export function checklistSuggestionsFor(
+  lines: readonly ServiceLine[],
+): { label: string; required: boolean; line: ServiceLine }[] {
+  if (lines.length <= 1) {
+    const line = lines[0] ?? "pet_waste";
+    return suggestedChecklistFor([line]).map((s) => ({ ...s, line }));
+  }
+  return lines.flatMap((line) => LINE_SEEDS[line].checklist.map((s) => ({ ...s, line })));
+}
+
+/** How the editor lays the list out. Null for a one-line business: one list,
+ *  as it always was. Otherwise the every-visit items first, then one group
+ *  per line the business runs, and one for any line an item still names
+ *  after the business stopped running it, so that item can be seen. */
+export function checklistGroupsFor(
+  items: readonly ChecklistItem[],
+  lines: readonly ServiceLine[],
+): { line: ServiceLine | null; items: ChecklistItem[] }[] | null {
+  if (lines.length <= 1) return null;
+  const named = new Set(items.map((i) => i.line));
+  const shown = SERVICE_LINES.filter((l) => lines.includes(l) || named.has(l));
+  return [
+    { line: null, items: items.filter((i) => !i.line) },
+    ...shown.map((line) => ({ line, items: items.filter((i) => i.line === line) })),
+  ];
+}
+
+/** Pet-waste suggestions that make no sense on a walk, a sit, a groom or a
+ *  lesson. Saved before lines existed, they have no line, so they are asked
+ *  on every visit (#565). "Gate latched" is not here: a walker and a sitter
+ *  latch gates too. "Water bowl checked" is: it is the yard's bowl, and the
+ *  other lines have their own water item. */
+export const WASTE_ONLY_CHECKLIST_LABELS: readonly string[] = [
+  "All areas walked",
+  "Waste bagged and disposed",
+  "Water bowl checked",
+];
+
+/** What a non-waste visit is called in the callout below. */
+const VISIT_NOUN: Record<ServiceLine, string> = {
+  pet_waste: "scoops",
+  dog_walking: "walks",
+  pet_sitting: "sits",
+  mobile_grooming: "grooms",
+  training: "lessons",
+  other: "other visits",
+};
+
+/** The every-visit items that read as pet-waste work, for a business that
+ *  scoops and runs another line. Empty for anyone else: a business that only
+ *  scoops is asked them on scoops anyway, and one that does not scoop would
+ *  lose them entirely by moving them to pet waste. Matched on the label, as
+ *  the owner sees it, ignoring case and spaces at the ends. */
+export function everyVisitWasteItems(
+  items: readonly ChecklistItem[],
+  lines: readonly ServiceLine[],
+): ChecklistItem[] {
+  if (!lines.includes("pet_waste") || !lines.some((l) => l !== "pet_waste")) return [];
+  const waste = new Set(WASTE_ONLY_CHECKLIST_LABELS.map((l) => l.toLowerCase()));
+  return items.filter((i) => !i.line && waste.has(i.label.trim().toLowerCase()));
+}
+
+/** The same list with the named items asked on pet waste visits only. Ids,
+ *  labels, order and every other item are kept, so a completion queued on a
+ *  phone before the change still finds its items. */
+export function askOnPetWasteOnly(
+  items: readonly ChecklistItem[],
+  ids: readonly string[],
+): ChecklistItem[] {
+  const move = new Set(ids);
+  return items.map((i) => (move.has(i.id) && !i.line ? { ...i, line: "pet_waste" } : i));
+}
+
+/** "walks and sits", "walks, sits and lessons": the business's other lines. */
+export function otherVisitsPhrase(lines: readonly ServiceLine[]): string {
+  const nouns = SERVICE_LINES.filter((l) => l !== "pet_waste" && lines.includes(l)).map(
+    (l) => VISIT_NOUN[l],
+  );
+  if (nouns.length <= 1) return nouns[0] ?? "";
+  return `${nouns.slice(0, -1).join(", ")} and ${nouns[nouns.length - 1]}`;
 }
 
 /** The add-on placeholder: the first line's. Pet waste first when present, so
