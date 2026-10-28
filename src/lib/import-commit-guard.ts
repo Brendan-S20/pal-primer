@@ -26,7 +26,14 @@
  *  worked out against the clients of that day. */
 export const IMPORT_PREVIEW_TTL_MS = 24 * 60 * 60 * 1000;
 
-export type CommitRefusal = "committed" | "committing" | "superseded" | "closed" | "stale";
+/** A claimed commit with no result after this long has stopped: the request
+ *  that held it is gone (a timeout, a closed tab on a slow import, a crash)
+ *  and nothing will ever finish it. An hour is longer than the slowest
+ *  import runs, which geocodes one address a second without a Geocodio key. */
+export const IMPORT_COMMIT_STALL_MS = 60 * 60 * 1000;
+
+export type CommitRefusal =
+  "committed" | "committing" | "superseded" | "closed" | "stale" | "failed";
 
 export type CommitBlock = {
   reason: CommitRefusal;
@@ -37,6 +44,9 @@ export type CommitBlock = {
 
 export type BatchState = {
   status: string;
+  entity?: string | null;
+  error?: string | null;
+  stats?: unknown;
   created_at: string;
   commit_started_at?: string | null;
   superseded_by?: string | null;
@@ -45,22 +55,35 @@ export type BatchState = {
 /** The status a person is shown. "committing" and "superseded" are not
  *  values of the import_status enum: they are 'previewing' with a claimed
  *  commit, and 'cancelled' because another batch committed the same file
- *  (see 20261015090000_an-import-went-in-twice.sql for why). */
-export function importDisplayStatus(batch: BatchState): string {
-  if (batch.status === "previewing" && batch.commit_started_at) return "committing";
+ *  (see 20261015090000_an-import-went-in-twice.sql for why). A claim older
+ *  than IMPORT_COMMIT_STALL_MS is shown as "failed" (#569): it used to read
+ *  "Committing" for ever, with no error and no way to try again. */
+export function importDisplayStatus(batch: BatchState, now: number = Date.now()): string {
+  if (batch.status === "previewing" && batch.commit_started_at) {
+    return commitStalled(batch, now) ? "failed" : "committing";
+  }
   if (batch.status === "cancelled" && batch.superseded_by) return "superseded";
   return batch.status;
 }
 
+/** A claimed commit that has had no result for IMPORT_COMMIT_STALL_MS. */
+export function commitStalled(batch: BatchState, now: number = Date.now()): boolean {
+  if (batch.status !== "previewing" || !batch.commit_started_at) return false;
+  const started = Date.parse(batch.commit_started_at);
+  return Number.isFinite(started) && now - started > IMPORT_COMMIT_STALL_MS;
+}
+
 /** Why this batch cannot be committed now, or null when it can. */
 export function commitRefusal(batch: BatchState, now: number = Date.now()): CommitRefusal | null {
-  switch (importDisplayStatus(batch)) {
+  switch (importDisplayStatus(batch, now)) {
     case "previewing":
       break;
     case "committed":
       return "committed";
     case "committing":
       return "committing";
+    case "failed":
+      return "failed";
     case "superseded":
       return "superseded";
     default:
@@ -84,7 +107,55 @@ export function refusalMessage(reason: CommitRefusal): string {
       return "This preview is more than 24 hours old, so what it says it will create may no longer be true. Start a new import to check the file against your clients as they are now.";
     case "closed":
       return "This import is closed and cannot be committed. Start a new import instead.";
+    case "failed":
+      return "This import did not finish.";
   }
+}
+
+// ── Trying a failed import again (#569) ────────────────────────────────────
+
+type CommitStats = { created?: number; updated?: number; update?: number };
+
+/** Why a failed import cannot be tried again, or null when it can.
+ *
+ *  Trying again puts the batch back to its preview and commits it a second
+ *  time, so it is only offered when the first attempt wrote nothing. A commit
+ *  that failed with an error says how much it wrote (stats.created and
+ *  stats.updated). One that stopped with no result says nothing, so it is
+ *  only retried for a clients file with no updates, where the clients that
+ *  carry this batch's id are the whole record of what went in.
+ *  `wroteClients`: some client carries this batch's id. */
+export function retryRefusal(
+  batch: BatchState,
+  wroteClients: boolean,
+  now: number = Date.now(),
+): string | null {
+  if (importDisplayStatus(batch, now) !== "failed") {
+    return "Only an import that did not finish can be tried again.";
+  }
+  const stats = (batch.stats ?? {}) as CommitStats;
+  if (wroteClients || (stats.created ?? 0) > 0 || (stats.updated ?? 0) > 0) {
+    return "Some rows went in before this import stopped, so committing it again could add them twice. Check the rows below, then start a new import with the ones that are missing.";
+  }
+  if (
+    commitStalled(batch, now) &&
+    ((batch.entity ?? "clients") !== "clients" || (stats.update ?? 0) > 0)
+  ) {
+    return "This import stopped partway and it is not possible to tell which rows went in. Check your records, then start a new import with the rows that are missing.";
+  }
+  return null;
+}
+
+/** The preview's own counts, without the ones a commit adds. */
+export function previewStats(stats: unknown): Record<string, unknown> {
+  const {
+    created: _c,
+    updated: _u,
+    failed: _f,
+    skipped: _s,
+    ...rest
+  } = (stats ?? {}) as Record<string, unknown>;
+  return rest;
 }
 
 // ── The file's fingerprint ─────────────────────────────────────────────────

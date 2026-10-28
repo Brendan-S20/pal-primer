@@ -2928,6 +2928,7 @@ export type Database = {
         Row: {
           action: Database["public"]["Enums"]["import_row_action"]
           batch_id: string
+          commit_failed_action: Database["public"]["Enums"]["import_row_action"] | null
           created_at: string
           error: string | null
           id: string
@@ -2940,6 +2941,7 @@ export type Database = {
         Insert: {
           action?: Database["public"]["Enums"]["import_row_action"]
           batch_id: string
+          commit_failed_action?: Database["public"]["Enums"]["import_row_action"] | null
           created_at?: string
           error?: string | null
           id?: string
@@ -2952,6 +2954,7 @@ export type Database = {
         Update: {
           action?: Database["public"]["Enums"]["import_row_action"]
           batch_id?: string
+          commit_failed_action?: Database["public"]["Enums"]["import_row_action"] | null
           created_at?: string
           error?: string | null
           id?: string

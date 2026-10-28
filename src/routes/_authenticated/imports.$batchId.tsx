@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { toast } from "sonner";
-import { getImportBatch, commitImport, cancelImport } from "@/lib/imports.functions";
+import { getImportBatch, commitImport, cancelImport, retryImport } from "@/lib/imports.functions";
 import { commitRefusal, refusalMessage } from "@/lib/import-commit-guard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,7 @@ function BatchDetail() {
   const getFn = useServerFn(getImportBatch);
   const commitFn = useServerFn(commitImport);
   const cancelFn = useServerFn(cancelImport);
+  const retryFn = useServerFn(retryImport);
   const [busy, setBusy] = useState(false);
   const [filter, setFilter] = useState<"all" | "create" | "update" | "skip" | "error">("all");
 
@@ -67,6 +68,24 @@ function BatchDetail() {
     }
   };
 
+  // Reopens the batch, then commits it again. A second failure lands back
+  // here with its own reason.
+  const doRetry = async () => {
+    setBusy(true);
+    try {
+      await retryFn({ data: { batchId } });
+      const s = await commitFn({ data: { batchId } });
+      toast.success(
+        `Committed. ${s.created} created, ${s.updated} updated, ${s.skipped} skipped, ${s.failed} failed.`,
+      );
+    } catch (e) {
+      toast.error((e as Error)?.message ?? "The import did not finish");
+    } finally {
+      refetch();
+      setBusy(false);
+    }
+  };
+
   const doCancel = async () => {
     setBusy(true);
     try {
@@ -105,7 +124,33 @@ function BatchDetail() {
         <StatCard label="Errors" value={stats.errors ?? 0} tone="red" />
       </div>
 
-      {blocked && blocked !== "committed" && (
+      {blocked === "failed" && (
+        <div
+          role="alert"
+          className="space-y-3 rounded border border-destructive/30 bg-destructive/5 p-4 text-sm"
+        >
+          <p className="font-medium text-destructive">{refusalMessage("failed")}</p>
+          <p className="break-words">
+            {batch.error ??
+              (batch.commit_started_at && !batch.committed_at
+                ? "It stopped without a result. Nothing is still running."
+                : "Every row was refused. The reasons are below.")}
+          </p>
+          {data.retryBlock && <p className="text-muted-foreground">{data.retryBlock}</p>}
+          <div className="flex flex-wrap gap-2">
+            {!data.retryBlock && (
+              <Button onClick={doRetry} disabled={busy}>
+                {busy ? "Trying again…" : "Try again"}
+              </Button>
+            )}
+            <Button asChild variant={data.retryBlock ? "default" : "outline"}>
+              <Link to="/imports">Start a fresh import</Link>
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {blocked && blocked !== "committed" && blocked !== "failed" && (
         <div role="status" className="space-y-3 rounded border bg-muted/40 p-4 text-sm">
           <p>{refusalMessage(blocked)}</p>
           {blocked !== "committing" && (
