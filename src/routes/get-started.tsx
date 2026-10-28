@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   clearSignupAttribution,
   readSignupAttribution,
@@ -9,6 +10,9 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { bootstrapOrganization, recordSmsConsent, validateSignupCode } from "@/lib/org.functions";
 import { registerAccount, sendEmailVerification } from "@/lib/auth-entry.functions";
+import { lookupInviteByToken } from "@/lib/platform-onboarding.functions";
+import { acceptPendingInvite, rememberInviteToken } from "@/lib/ensure-workspace";
+import { humanizeRole } from "@/lib/humanize";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +32,10 @@ export const Route = createFileRoute("/get-started")({
   // ref/utm_* also land here directly when a marketing link skips /sign-up.
   validateSearch: (s: Record<string, unknown>) => ({
     email: typeof s.email === "string" ? s.email : undefined,
+    // An invitation token, carried from /auth?invite=… (#568). With one, this
+    // page creates the account and joins the inviting business; it never asks
+    // for a business name.
+    invite: typeof s.invite === "string" ? s.invite : undefined,
     ref: typeof s.ref === "string" ? s.ref : undefined,
     utm_source: typeof s.utm_source === "string" ? s.utm_source : undefined,
     utm_medium: typeof s.utm_medium === "string" ? s.utm_medium : undefined,
@@ -56,6 +64,11 @@ export { SMS_CONSENT_TEXT } from "@/components/SmsOptInFields";
 const STEPS = ["Your account", "Your business", "Finish"] as const;
 
 function GetStartedPage() {
+  const search = Route.useSearch();
+  return search.invite ? <JoinTeamPage token={search.invite} email={search.email} /> : <NewBusinessPage />;
+}
+
+function NewBusinessPage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
   const { email: emailFromAuth } = search;
@@ -134,6 +147,15 @@ function GetStartedPage() {
         password,
       });
       if (signInErr) throw signInErr;
+
+      // Invited without the link (opened the app and signed up directly): the
+      // email path still finds the invitation, and joining it is the right
+      // answer rather than a second business under the same address (#568).
+      if (await acceptPendingInvite(null)) {
+        clearSignupAttribution();
+        navigate({ to: "/auth" });
+        return;
+      }
 
       const attribution = readSignupAttribution();
       const boot = await bootstrapOrganization({
@@ -363,6 +385,159 @@ function GetStartedPage() {
             </form>
           )}
         </div>
+    </PublicShell>
+  );
+}
+
+/**
+ * The invited teammate's path through Get started (#568).
+ *
+ * Before this, /auth sent a new address here without the token and the page
+ * asked for a business name, so the person who was invited became the owner
+ * of a new, empty business and the invitation stayed pending forever. Here
+ * they create an account with the invited address and join the business that
+ * invited them, with the role it chose. No organization is created.
+ */
+function JoinTeamPage({ token, email: emailFromAuth }: { token: string; email?: string }) {
+  const navigate = useNavigate();
+  const q = useQuery({
+    queryKey: ["invite", token],
+    queryFn: () => lookupInviteByToken({ data: { token } }),
+    retry: false,
+  });
+  const invite = q.data?.ok && q.data.kind === "staff" ? q.data : null;
+
+  const [email, setEmail] = useState(emailFromAuth ?? "");
+  const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    rememberInviteToken(token);
+  }, [token]);
+  useEffect(() => {
+    if (invite?.email && !emailFromAuth) setEmail(invite.email);
+  }, [invite?.email, emailFromAuth]);
+
+  const emailMatches =
+    !!invite?.email && email.trim().toLowerCase() === invite.email.toLowerCase();
+  const valid = emailMatches && password.length >= 8 && displayName.trim().length > 0;
+
+  const join = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      await registerAccount({
+        data: { email: email.trim(), password, displayName: displayName.trim() },
+      });
+      const { error: signInErr } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (signInErr) throw signInErr;
+      const joined = await acceptPendingInvite(token);
+      if (!joined) {
+        throw new Error(
+          "Your account is created, but this invitation could not be used. Ask whoever invited you to send a new one.",
+        );
+      }
+      // /auth sees a signed-in teammate and lands them where their role works.
+      navigate({ to: "/auth" });
+    } catch (err) {
+      setBusy(false);
+      setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
+    }
+  };
+
+  return (
+    <PublicShell tagline="Join your team on HoundStack." className="max-w-lg">
+      <div className="rounded-xl border bg-card p-(--card-pad) shadow-sm">
+        {q.isLoading ? (
+          <p className="text-sm text-muted-foreground">Checking your invitation…</p>
+        ) : !invite ? (
+          <div className="space-y-3">
+            <h1 className="text-lg font-semibold">This invitation can't be used</h1>
+            <p className="text-sm text-muted-foreground">
+              {q.data?.reason === "expired"
+                ? "It has expired."
+                : q.data?.reason === "revoked"
+                  ? "It was cancelled."
+                  : q.data?.reason === "accepted"
+                    ? "It has already been used. Sign in instead."
+                    : "We couldn't find it."}{" "}
+              Ask whoever invited you to send a new one.
+            </p>
+            <Button asChild variant="outline" className="w-full">
+              <Link to="/auth">Go to sign in</Link>
+            </Button>
+          </div>
+        ) : (
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (valid) join();
+            }}
+          >
+            <div className="min-w-0">
+              <h1 className="text-lg font-semibold">
+                Join <bdi className="break-words">{invite.organization_name ?? "your team"}</bdi>
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                You were invited as {humanizeRole(invite.role ?? "")}. Create your account to join.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gs-email">Email</Label>
+              <Input
+                id="gs-email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+              {email.trim().length > 0 && !emailMatches && (
+                <p className="text-xs text-destructive">
+                  This invitation was sent to <span className="break-words">{invite.email}</span>. Use that address.
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gs-name">Your name</Label>
+              <Input
+                id="gs-name"
+                required
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Jane Doe"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gs-pass">Password</Label>
+              <Input
+                id="gs-pass"
+                type="password"
+                required
+                minLength={8}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="At least 8 characters"
+              />
+            </div>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <Button type="submit" className="w-full" disabled={!valid || busy}>
+              {busy ? "Joining…" : "Create account and join"}
+            </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              Already have an account?{" "}
+              <Link to="/auth" search={{ invite: token } as never} className="underline">
+                Sign in
+              </Link>
+            </p>
+          </form>
+        )}
+      </div>
     </PublicShell>
   );
 }

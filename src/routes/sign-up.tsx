@@ -38,6 +38,7 @@ function SignUpRedirect() {
       to: "/get-started",
       search: {
         email: search.email,
+        invite: undefined,
         ref: undefined,
         utm_source: undefined,
         utm_medium: undefined,

@@ -3,7 +3,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
-import { ensureBootstrapped, NEEDS_ORG_NAME } from "@/lib/ensure-workspace";
+import {
+  ensureBootstrapped,
+  NEEDS_ORG_NAME,
+  pendingInviteToken,
+  rememberInviteToken,
+} from "@/lib/ensure-workspace";
 import { checkEmailAccount } from "@/lib/auth-entry.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -111,6 +116,17 @@ function AuthPage() {
   const [alert, setAlert] = useState<{ kind: "error" | "info"; text: string } | null>(null);
   const setError = (text: string | null) => setAlert(text ? { kind: "error", text } : null);
   const setInfo = (text: string) => setAlert({ kind: "info", text });
+
+  // An invitation link lands here as /auth?invite=<token>. Kept before
+  // anything else runs: the OAuth round-trip returns to the site root with
+  // no query string, and the new-account path leaves for /get-started (#568).
+  // Read after mount so the server-rendered page and the first client render
+  // agree.
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
+  useEffect(() => {
+    rememberInviteToken();
+    setInviteToken(pendingInviteToken());
+  }, []);
 
   useEffect(() => {
     // If already signed in (incl. returning from an OAuth redirect), ensure
@@ -352,7 +368,12 @@ function AuthPage() {
       if (r.exists) {
         setStage("password");
       } else {
-        navigate({ to: "/get-started", search: { email: email.trim() } as never });
+        // The invitation goes with them. Without it /get-started asks for a
+        // business name and builds a new one, and the invite stays pending.
+        navigate({
+          to: "/get-started",
+          search: { email: email.trim(), ...(inviteToken ? { invite: inviteToken } : {}) } as never,
+        });
       }
     } catch (err) {
       setLoading(false);
@@ -378,7 +399,11 @@ function AuthPage() {
           {stage === "email" ? "Sign in or create your account" : "Welcome back"}
         </h1>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          {stage === "email" ? "Enter your work email to continue." : email}
+          {stage === "email"
+            ? inviteToken
+              ? "Enter the email address your invitation was sent to."
+              : "Enter your work email to continue."
+            : email}
         </p>
 
         {stage === "email" ? (

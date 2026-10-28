@@ -172,9 +172,16 @@ async function sendInviteEmail(
   email: string,
   role: string,
   token?: string,
-): Promise<void> {
+): Promise<boolean> {
   const { sendInviteEmail: send } = await import("@/lib/invite-email.server");
-  await send(orgName, email, role, token);
+  return send(orgName, email, role, token);
+}
+
+/** The link an owner can copy and send by hand when the email does not go
+ *  out, or goes to spam. Same page the email links to. */
+async function inviteLink(token: string): Promise<string> {
+  const { appUrl } = await import("@/lib/app-origin");
+  return appUrl(`/invite/${encodeURIComponent(token)}`);
 }
 
 export const createOrgInvite = createServerFn({ method: "POST" })
@@ -218,13 +225,16 @@ export const createOrgInvite = createServerFn({ method: "POST" })
     // had an account when they were invited cannot join at all: the email path
     // in accept_org_invite_for_current_user only accepts invitations older than
     // the account, which is what closes the pre-claim.
-    await sendInviteEmail(
+    // Reported, not assumed: "Invite sent" when the provider is off or
+    // refused the address left owners waiting on an email that never left
+    // (#568). The link works either way.
+    const emailSent = await sendInviteEmail(
       (org as any)?.name ?? "HoundStack",
       email,
       data.role,
       row.token as string,
     );
-    return { id: row.id as string };
+    return { id: row.id as string, emailSent, link: await inviteLink(row.token as string) };
   });
 
 // Re-send the invite email for a still-pending invite and refresh its expiry.
@@ -260,13 +270,13 @@ export const resendOrgInvite = createServerFn({ method: "POST" })
     // The token matters most on THIS path: resend is what somebody presses when
     // the first email did not arrive, and an invitee whose account already
     // existed can only join through the link.
-    await sendInviteEmail(
+    const emailSent = await sendInviteEmail(
       (org as any)?.name ?? "HoundStack",
       invite.email as string,
       invite.role as string,
       invite.token as string,
     );
-    return { ok: true };
+    return { ok: true, emailSent, link: await inviteLink(invite.token as string) };
   });
 
 export const listOrgInvites = createServerFn({ method: "GET" })
@@ -276,12 +286,20 @@ export const listOrgInvites = createServerFn({ method: "GET" })
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_users");
     const { data, error } = await (context.supabase as any)
       .from("org_invites")
-      .select("id, email, role, status, created_at, expires_at, accepted_at")
+      .select("id, email, role, status, created_at, expires_at, accepted_at, token")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false })
       .limit(100);
     if (error) throw new Error(error.message);
-    return { invites: data ?? [] };
+    // The token leaves the server only as a link, and only while it can still
+    // be used.
+    const invites = await Promise.all(
+      (data ?? []).map(async ({ token, ...inv }: any) => ({
+        ...inv,
+        link: inv.status === "pending" && token ? await inviteLink(token) : null,
+      })),
+    );
+    return { invites };
   });
 
 export const revokeOrgInvite = createServerFn({ method: "POST" })

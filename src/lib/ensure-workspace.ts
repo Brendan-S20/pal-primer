@@ -26,6 +26,102 @@ function browserTimezone(): string | undefined {
   }
 }
 
+// ── The invite token ─────────────────────────────────────────────────────────
+//
+// `?invite=<token>` comes from the invitation link. Reading it only from the
+// address bar lost it twice (#568): /auth handed a new email to /get-started
+// without it, and an OAuth round-trip comes back to the site root with no
+// query string at all. So the first page that sees it keeps a copy here, and
+// whoever accepts it clears it.
+const INVITE_KEY = "hs.pending-invite";
+const INVITE_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** Keep the token from the current URL, if there is one. */
+export function rememberInviteToken(token?: string | null): void {
+  const t =
+    token ??
+    (typeof window === "undefined"
+      ? null
+      : new URLSearchParams(window.location.search).get("invite"));
+  if (!t) return;
+  try {
+    localStorage.setItem(INVITE_KEY, JSON.stringify({ token: t, at: Date.now() }));
+  } catch {
+    // Private mode or blocked storage: the URL still carries it on this page.
+  }
+}
+
+/** The token in the URL, or the one kept from an earlier page today. */
+export function pendingInviteToken(): string | null {
+  if (typeof window === "undefined") return null;
+  const fromUrl = new URLSearchParams(window.location.search).get("invite");
+  if (fromUrl) return fromUrl;
+  try {
+    const raw = localStorage.getItem(INVITE_KEY);
+    if (!raw) return null;
+    const { token, at } = JSON.parse(raw) as { token?: string; at?: number };
+    if (!token || typeof at !== "number" || Date.now() - at > INVITE_TTL_MS) {
+      localStorage.removeItem(INVITE_KEY);
+      return null;
+    }
+    return token;
+  } catch {
+    return null;
+  }
+}
+
+export function forgetInviteToken(): void {
+  try {
+    localStorage.removeItem(INVITE_KEY);
+  } catch {
+    // nothing to forget
+  }
+}
+
+/**
+ * Join the organization this account was invited to, if any.
+ *
+ * Uses the token when there is one (the only way in for an account that
+ * existed before the invitation), otherwise the email path. Returns the
+ * organization joined, or null when there was nothing to accept. Throws the
+ * database's own refusal (already in another organization, a pending invite
+ * that needs its link) so the caller can show it instead of building a
+ * second business.
+ */
+export async function acceptPendingInvite(token = pendingInviteToken()): Promise<string | null> {
+  const { data: invitedOrg, error } = await supabase.rpc(
+    "accept_org_invite_for_current_user" as any,
+    { _token: token } as any,
+  );
+  if (error) {
+    // A refusal is final for this token (wrong account, already in another
+    // business). Keeping it would replay the same refusal on every sign-in
+    // for a day.
+    if (token) forgetInviteToken();
+    throw new Error(error.message);
+  }
+  if (!invitedOrg) {
+    // A token that matched nothing (expired, revoked, or for another
+    // address) is dropped, and the email path gets its turn: a newer
+    // invitation for this address may still be waiting.
+    if (token) {
+      forgetInviteToken();
+      return acceptPendingInvite(null);
+    }
+    return null;
+  }
+  forgetInviteToken();
+  // A new employee just joined — reconcile the org's Stripe seat count so
+  // per-employee billing catches up immediately. Best-effort.
+  try {
+    const { resyncMySeats } = await import("@/lib/users.functions");
+    await resyncMySeats();
+  } catch (err) {
+    console.error("seat resync after invite acceptance failed", err);
+  }
+  return invitedOrg as string;
+}
+
 /** The signed-in user's shape, as much of it as the bootstrap needs. */
 export type BootstrapUser = {
   id: string;
@@ -93,7 +189,14 @@ export async function ensureBootstrapped(
     .select("role")
     .eq("user_id", user.id)
     .maybeSingle();
-  if (existing) return false;
+  if (existing) {
+    // Already somebody's teammate, arriving through an invitation link. The
+    // database either records the invite as used (same business) or says why
+    // it cannot be (a different one); either way the person finds out here
+    // instead of the invitation sitting pending forever.
+    if (pendingInviteToken()) await acceptPendingInvite();
+    return false;
+  }
 
   // Platform admins have zero user_roles rows by design — they must never get
   // a tenant org auto-provisioned. (bootstrap_organization also guards this
@@ -104,32 +207,7 @@ export async function ensureBootstrapped(
   // Teammate invite (finding #40): if this email was invited to an existing
   // org, join THAT org with the invited role instead of bootstrapping a new
   // one. Idempotent server-side; returns null when there's no pending invite.
-  // `?invite=<token>` comes from the link in the invitation email. It is the
-  // route for somebody who already had an account when they were invited --
-  // the email path now only accepts invitations older than the account, so a
-  // pre-existing account has no other way in. Absent on an ordinary sign-in,
-  // where the email path still handles it.
-  const inviteToken =
-    typeof window === "undefined"
-      ? null
-      : new URLSearchParams(window.location.search).get("invite");
-  const { data: invitedOrg } = await supabase.rpc(
-    "accept_org_invite_for_current_user" as any,
-    {
-      _token: inviteToken,
-    } as any,
-  );
-  if (invitedOrg) {
-    // A new employee just joined — reconcile the org's Stripe seat count so
-    // per-employee billing catches up immediately. Best-effort.
-    try {
-      const { resyncMySeats } = await import("@/lib/users.functions");
-      await resyncMySeats();
-    } catch (err) {
-      console.error("seat resync after invite acceptance failed", err);
-    }
-    return false;
-  }
+  if (await acceptPendingInvite()) return false;
 
   const md = user.user_metadata ?? {};
   const emailLocal = (user.email ?? "").split("@")[0] || "Owner";

@@ -62,6 +62,37 @@ export const bootstrapOrganization = createServerFn({ method: "POST" })
       }
     }
 
+    // An invited address never gets a business of its own by accident (#568).
+    // Every client path tries the invitation first; this is the backstop for
+    // one that forgets, because a second membership can never be undone into
+    // the first (BUG-18) and the invitation would sit pending forever.
+    // Somebody who already belongs to a business is a re-run, not a new one,
+    // and bootstrap_organization answers that idempotently below.
+    const { data: member } = await (supabaseAdmin as any)
+      .from("user_roles")
+      .select("organization_id")
+      .eq("user_id", userId)
+      .limit(1);
+    if (!member?.length) {
+      const { data: who } = await supabaseAdmin.auth.admin.getUserById(userId);
+      const email = who?.user?.email?.toLowerCase();
+      if (email) {
+        const { data: invites } = await (supabaseAdmin as any)
+          .from("org_invites")
+          .select("organizations:organization_id(name)")
+          .ilike("email", email.replace(/[\\%_]/g, "\\$&"))
+          .eq("status", "pending")
+          .gt("expires_at", new Date().toISOString())
+          .limit(1);
+        if (invites?.length) {
+          const business = invites[0].organizations?.name ?? "a business";
+          throw new Error(
+            `This email has a pending invitation to join ${business}. Open the link in that invitation email to join, or ask them to cancel the invitation first.`,
+          );
+        }
+      }
+    }
+
     const { data: orgId, error } = await supabase.rpc("bootstrap_organization", {
       _org_name: data.orgName,
       _display_name: data.displayName,

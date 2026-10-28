@@ -307,9 +307,31 @@ function InvitePanel() {
   const invitesQ = useQuery({ queryKey: ["org-invites"], queryFn: () => listFn() });
   const invites: any[] = (invitesQ.data as any)?.invites ?? [];
 
+  // Say what happened. The email is best-effort; the link always works.
+  const copyLink = (link: string | null | undefined) => {
+    if (!link) return;
+    navigator.clipboard.writeText(link).then(
+      () => toast.success("Invite link copied"),
+      () => toast.error(`Couldn't copy. The link is ${link}`),
+    );
+  };
+  const reportSend = (to: string, r: { emailSent?: boolean; link?: string }, verb: string) => {
+    if (r.emailSent) {
+      toast.success(`Invite ${verb} to ${to}`);
+    } else {
+      toast.warning(`Invite created, but the email to ${to} did not go out. Copy the invite link and send it to them yourself.`, {
+        duration: 15000,
+        action: r.link ? { label: "Copy link", onClick: () => copyLink(r.link) } : undefined,
+      });
+    }
+  };
   const createMut = useMutation({
     mutationFn: () => createFn({ data: { email: email.trim(), role } }),
-    onSuccess: () => { toast.success("Invite sent"); setEmail(""); qc.invalidateQueries({ queryKey: ["org-invites"] }); },
+    onSuccess: (r) => {
+      reportSend(email.trim(), r, "emailed");
+      setEmail("");
+      qc.invalidateQueries({ queryKey: ["org-invites"] });
+    },
     onError: (e) => toast.error((e as Error).message),
   });
   const revokeMut = useMutation({
@@ -319,7 +341,7 @@ function InvitePanel() {
   });
   const resendMut = useMutation({
     mutationFn: (id: string) => resendFn({ data: { id } }),
-    onSuccess: () => toast.success("Invite resent"),
+    onSuccess: (r, id) => reportSend(invites.find((i) => i.id === id)?.email ?? "them", r, "emailed again"),
     onError: (e) => toast.error((e as Error).message),
   });
 
@@ -357,7 +379,7 @@ function InvitePanel() {
           </Button>
         </form>
         <p className="text-xs text-muted-foreground">
-          They'll get an email; their role is assigned automatically when they sign up with this address.
+          We email them a link. If it doesn't arrive, use Copy link below and send it yourself. Their role is set when they join.
         </p>
 
         {invites.filter((i) => i.status === "pending").length > 0 && (
@@ -370,11 +392,14 @@ function InvitePanel() {
                 left. */}
             <ul className="divide-y">
               {invites.filter((i) => i.status === "pending").map((i) => (
-                <li key={i.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                <li key={i.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2 text-sm">
                   <span className="min-w-0 break-words">{i.email} <span className="text-muted-foreground">· {humanizeRole(i.role)}</span></span>
                   <span className="flex shrink-0 items-center gap-3">
-                    <button className="text-xs underline disabled:opacity-50" onClick={() => resendMut.mutate(i.id)} disabled={resendMut.isPending}>Resend</button>
-                    <button className="text-xs text-destructive underline" onClick={() => revokeMut.mutate(i.id)}>Revoke</button>
+                    {i.link && (
+                      <button className="text-xs underline touch:min-h-11" onClick={() => copyLink(i.link)}>Copy link</button>
+                    )}
+                    <button className="text-xs underline disabled:opacity-50 touch:min-h-11" onClick={() => resendMut.mutate(i.id)} disabled={resendMut.isPending}>Resend</button>
+                    <button className="text-xs text-destructive underline touch:min-h-11" onClick={() => revokeMut.mutate(i.id)}>Revoke</button>
                   </span>
                 </li>
               ))}
