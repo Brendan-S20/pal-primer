@@ -3,7 +3,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
-import { ensureBootstrapped, NEEDS_ORG_NAME } from "@/lib/ensure-workspace";
+import {
+  ensureBootstrapped,
+  InviteRefusedError,
+  NEEDS_ORG_NAME,
+  pendingInviteToken,
+  rememberInviteToken,
+} from "@/lib/ensure-workspace";
 import { checkEmailAccount } from "@/lib/auth-entry.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +23,7 @@ import { withDeadline } from "@/lib/offline/run-or-queue";
 import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
 import { rememberLandingPath, readLandingPath } from "@/lib/offline/read-cache";
 import { pageTitle } from "@/lib/page-title";
+import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -110,7 +117,37 @@ function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [alert, setAlert] = useState<{ kind: "error" | "info"; text: string } | null>(null);
   const setError = (text: string | null) => setAlert(text ? { kind: "error", text } : null);
+  // A refused invitation leaves the person signed in on a sign-in screen.
+  // They need a way out of the account they are in, and back to the link.
+  const [inviteRefused, setInviteRefused] = useState<InviteRefusedError | null>(null);
+  const { signOut, dialog: signOutDialog } = useOfflineSignOut();
+  const refuseInvite = (err: InviteRefusedError) => {
+    setInviteRefused(err);
+    setError(err.message);
+  };
+  const switchAccounts = async () => {
+    if (!(await signOut())) return;
+    const retry = inviteRefused?.retryToken;
+    setInviteRefused(null);
+    setAlert(null);
+    if (retry) {
+      rememberInviteToken(retry);
+      setInviteToken(retry);
+    }
+    setStage("email");
+  };
   const setInfo = (text: string) => setAlert({ kind: "info", text });
+
+  // An invitation link lands here as /auth?invite=<token>. Kept before
+  // anything else runs: the OAuth round-trip returns to the site root with
+  // no query string, and the new-account path leaves for /get-started (#568).
+  // Read after mount so the server-rendered page and the first client render
+  // agree.
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
+  useEffect(() => {
+    rememberInviteToken();
+    setInviteToken(pendingInviteToken());
+  }, []);
 
   useEffect(() => {
     // If already signed in (incl. returning from an OAuth redirect), ensure
@@ -130,6 +167,10 @@ function AuthPage() {
           isNewOrg = await ensureBootstrapped(data.user as any, { requireOrgName: true });
           if (isNewOrg === true) forgetWorkspaceCache();
         } catch (err) {
+          // An invitation refused on the way back from Google is the one
+          // error here a person has to read. Landing anyway would put them on
+          // "name your business" with no idea why (#568).
+          if (err instanceof InviteRefusedError) return refuseInvite(err);
           console.error("bootstrap on landing failed", err);
         }
         if (isNewOrg === NEEDS_ORG_NAME) return navigate({ to: "/no-workspace" });
@@ -166,6 +207,10 @@ function AuthPage() {
           isNewOrg = await ensureBootstrapped(identity.user as any, { requireOrgName: true });
           if (isNewOrg === true) forgetWorkspaceCache();
         } catch (err) {
+          if (err instanceof InviteRefusedError) {
+            if (!cancelled) refuseInvite(err);
+            return;
+          }
           console.error("bootstrap on landing failed", err);
         }
       }
@@ -195,6 +240,7 @@ function AuthPage() {
           if (isNewOrg === true) forgetWorkspaceCache();
       } catch (err) {
         setLoading(false);
+        if (err instanceof InviteRefusedError) return refuseInvite(err);
         return setError(err instanceof Error ? err.message : "Failed to create organization");
       }
     }
@@ -248,6 +294,7 @@ function AuthPage() {
       isNewOrg = await ensureBootstrapped(data.user as any, { requireOrgName: true });
       if (isNewOrg === true) forgetWorkspaceCache();
     } catch (err) {
+      if (err instanceof InviteRefusedError) return refuseInvite(err);
       console.error("bootstrap after native sign-in failed", err);
     }
     if (isNewOrg === NEEDS_ORG_NAME) return navigate({ to: "/no-workspace" });
@@ -352,7 +399,12 @@ function AuthPage() {
       if (r.exists) {
         setStage("password");
       } else {
-        navigate({ to: "/get-started", search: { email: email.trim() } as never });
+        // The invitation goes with them. Without it /get-started asks for a
+        // business name and builds a new one, and the invite stays pending.
+        navigate({
+          to: "/get-started",
+          search: { email: email.trim(), ...(inviteToken ? { invite: inviteToken } : {}) } as never,
+        });
       }
     } catch (err) {
       setLoading(false);
@@ -378,7 +430,11 @@ function AuthPage() {
           {stage === "email" ? "Sign in or create your account" : "Welcome back"}
         </h1>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          {stage === "email" ? "Enter your work email to continue." : email}
+          {stage === "email"
+            ? inviteToken
+              ? "Enter the email address your invitation was sent to."
+              : "Enter your work email to continue."
+            : email}
         </p>
 
         {stage === "email" ? (
@@ -571,9 +627,17 @@ function AuthPage() {
           }
         >
           {alert.kind === "info" && <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />}
-          <span>{alert.text}</span>
+          <div className="min-w-0 space-y-2 break-words">
+            <p>{alert.text}</p>
+            {inviteRefused && (
+              <Button type="button" variant="outline" size="sm" onClick={switchAccounts}>
+                Sign out and switch accounts
+              </Button>
+            )}
+          </div>
         </div>
       )}
+      {signOutDialog}
 
       <p className="text-center text-xs text-muted-foreground">
         New here? Entering your email above walks you straight into account setup.

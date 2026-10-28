@@ -31,7 +31,9 @@ export const registerAccount = createServerFn({ method: "POST" })
     z.object({
       email: z.string().trim().email().max(255),
       password: z.string().min(8).max(200),
-      orgName: z.string().trim().min(1).max(120),
+      // Absent for an invited teammate, who joins a business instead of
+      // naming one.
+      orgName: z.string().trim().min(1).max(120).optional(),
       displayName: z.string().trim().min(1).max(120),
       phone: z.string().trim().max(40).optional(),
       smsConsent: z.boolean().optional(),
@@ -44,7 +46,7 @@ export const registerAccount = createServerFn({ method: "POST" })
       password: data.password,
       email_confirm: true,
       user_metadata: {
-        org_name: data.orgName,
+        org_name: data.orgName || undefined,
         display_name: data.displayName,
         phone: data.phone || undefined,
         sms_consent: data.smsConsent && data.phone ? true : undefined,

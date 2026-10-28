@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { lookupInviteByToken, acceptPlatformInvite } from "@/lib/platform-onboarding.functions";
 import { supabase } from "@/integrations/supabase/client";
+import { acceptPendingInvite, rememberInviteToken } from "@/lib/ensure-workspace";
 import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
 import { humanizeRole } from "@/lib/humanize";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -46,10 +47,37 @@ function InvitePage() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  const queryClient = useQueryClient();
+  // A teammate invitation (org_invites) is not a platform invite: it is
+  // accepted by accept_org_invite_for_current_user, and signing in goes
+  // through /auth?invite=, which keeps the token through Get started and an
+  // OAuth round-trip (#568).
+  const isStaff = q.data?.ok === true && q.data.kind === "staff";
+  useEffect(() => {
+    if (isStaff) rememberInviteToken(token);
+  }, [isStaff, token]);
+  const signInTo = () =>
+    isStaff
+      ? navigate({ to: "/auth", search: { invite: token } as any })
+      : navigate({ to: "/auth", search: { redirect: `/invite/${token}` } as any });
+
   const acceptM = useMutation({
-    mutationFn: () => acceptFn({ data: { token } }),
+    mutationFn: async () => {
+      if (!isStaff) return acceptFn({ data: { token } });
+      const joined = await acceptPendingInvite(token);
+      if (!joined) throw new Error("This invitation could not be used. Ask for a new one.");
+      return joined;
+    },
     onSuccess: () => {
       toast.success("Welcome aboard!");
+      if (isStaff) {
+        // The route guard caches "no organization" for a minute; this account
+        // has one now. /auth lands them where their role works.
+        queryClient.removeQueries({ queryKey: ["my-org"] });
+        queryClient.removeQueries({ queryKey: ["platform-context"] });
+        navigate({ to: "/auth" });
+        return;
+      }
       navigate({ to: "/dashboard" });
     },
     onError: (e) => toast.error((e as Error).message),
@@ -59,7 +87,7 @@ function InvitePage() {
     <div className="mx-auto flex min-h-screen max-w-md items-center px-4">
       <Card className="w-full">
         <CardHeader>
-          <CardTitle>Platform invite</CardTitle>
+          <CardTitle>{isStaff ? "Team invitation" : "Platform invite"}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {q.isLoading || checkingSession ? (
@@ -96,11 +124,14 @@ function InvitePage() {
               {!session ? (
                 <div className="space-y-2">
                   <div className="text-sm text-muted-foreground">
-                    Sign in as <strong>{q.data.email}</strong> to accept.
+                    {isStaff ? (
+                      <>Sign in or create an account as <strong className="break-words">{q.data.email}</strong> to accept.</>
+                    ) : (
+                      <>Sign in as <strong>{q.data.email}</strong> to accept.</>
+                    )}
                   </div>
-                  <Button className="w-full" onClick={() =>
-                    navigate({ to: "/auth", search: { redirect: `/invite/${token}` } as any })}>
-                    Sign in
+                  <Button className="w-full" onClick={signInTo}>
+                    {isStaff ? "Continue" : "Sign in"}
                   </Button>
                 </div>
               ) : session.email?.toLowerCase() !== q.data.email?.toLowerCase() ? (
@@ -116,7 +147,7 @@ function InvitePage() {
                     // is pushed before any of it is dropped. If they decide to
                     // keep it, stay put rather than half-switching.
                     if (!(await signOut())) return;
-                    navigate({ to: "/auth", search: { redirect: `/invite/${token}` } as any });
+                    signInTo();
                   }}>
                     Sign out &amp; switch accounts
                   </Button>

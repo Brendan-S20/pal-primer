@@ -15,6 +15,13 @@
 // and simply signs up at the app with the invited address still lands in the
 // right organization with the right role.
 //
+// #568: the paragraph above held for an invited person who signed in, and
+// not for one who signed UP. /auth sent a new address to /get-started without
+// the token, and Get started built a business without asking about invites,
+// so the invitee became the owner of an empty business. Get started now joins
+// the invitation (by token, or by the email path), and bootstrapOrganization
+// refuses an address with a pending invitation.
+//
 // That is why a send failure is logged rather than thrown — but callers should
 // still tell the user which addresses failed, because "we emailed them" and "we
 // tried to email them" are different promises.
@@ -47,7 +54,11 @@ export async function sendInviteEmail(
   try {
     const resendApiKey = process.env.RESEND_API_KEY;
     if (!resendApiKey) return false;
-    const link = token ? appUrl(`/auth?invite=${encodeURIComponent(token)}`) : appUrl("/auth");
+    // /invite/<token> names the business and the role before asking for
+    // anything, then hands on to /auth?invite=, which keeps the token through
+    // Get started and an OAuth round-trip (#568). Emails already sent with the
+    // /auth?invite= link still work.
+    const link = token ? appUrl(`/invite/${encodeURIComponent(token)}`) : appUrl("/auth");
     const label = role.replace(/_/g, " ");
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",

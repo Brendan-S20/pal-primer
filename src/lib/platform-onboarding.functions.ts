@@ -195,6 +195,10 @@ export const resendPlatformInvite = createServerFn({ method: "POST" })
 
 export type InviteLookupResult = {
   ok: boolean;
+  /** "staff" is a teammate invitation (org_invites), accepted through
+   *  accept_org_invite_for_current_user; "platform" is a platform_invites row,
+   *  accepted through acceptPlatformInvite. */
+  kind?: "platform" | "staff";
   reason?: "not_found" | "expired" | "revoked" | "accepted";
   email?: string;
   role?: string;
@@ -211,18 +215,41 @@ export const lookupInviteByToken = createServerFn({ method: "GET" })
       .select("email, role, organization_id, organization_name, expires_at, accepted_at, revoked_at, organizations:organization_id(name)")
       .eq("token", data.token)
       .maybeSingle();
-    if (error || !inv) return { ok: false, reason: "not_found" };
+    // Teammate invitations live in org_invites, and this page only ever read
+    // platform_invites, so every staff link said "Invite not found" (#568).
+    if (error || !inv) return lookupStaffInvite(supabaseAdmin, data.token);
     if (inv.accepted_at) return { ok: false, reason: "accepted" };
     if (inv.revoked_at) return { ok: false, reason: "revoked" };
     if (new Date(inv.expires_at).getTime() < Date.now()) return { ok: false, reason: "expired" };
     return {
       ok: true,
+      kind: "platform",
       email: inv.email,
       role: inv.role,
       organization_id: inv.organization_id,
       organization_name: inv.organization_name ?? (inv as any).organizations?.name ?? null,
     };
   });
+
+async function lookupStaffInvite(admin: any, token: string): Promise<InviteLookupResult> {
+  const { data: inv, error } = await admin
+    .from("org_invites")
+    .select("email, role, status, expires_at, organization_id, organizations:organization_id(name)")
+    .eq("token", token)
+    .maybeSingle();
+  if (error || !inv) return { ok: false, reason: "not_found" };
+  if (inv.status === "accepted") return { ok: false, reason: "accepted" };
+  if (inv.status !== "pending") return { ok: false, reason: "revoked" };
+  if (new Date(inv.expires_at).getTime() < Date.now()) return { ok: false, reason: "expired" };
+  return {
+    ok: true,
+    kind: "staff",
+    email: inv.email,
+    role: inv.role,
+    organization_id: inv.organization_id,
+    organization_name: inv.organizations?.name ?? null,
+  };
+}
 
 const acceptInviteSchema = z.object({
   token: z.string().min(10).max(200),
