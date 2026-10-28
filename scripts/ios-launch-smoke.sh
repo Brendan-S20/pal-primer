@@ -174,15 +174,33 @@ while IFS=$'\t' read -r type name <&3; do
   # minute to paint the same page later launches paint in five seconds, so
   # a fixed sleep is not enough: ColdLaunchWarmUp waits for the sign-in form
   # itself, up to 300s per launch. A page that never paints still fails.
+  #
+  # A launch that has not painted after 150s is not slow, it is stuck: on
+  # 2026-10-28 one committed index.html and then its web content process
+  # logged nothing for 300s, with the app, the scene and WebKit's network
+  # process all healthy. Simulator processes are ordinary processes on this
+  # Mac, so `sample` can say where that one's main thread is waiting.
   result="passed"
-  if ! xcodebuild test-without-building \
+  xcodebuild test-without-building \
       -project "$ROOT/ios/UITests/UITests.xcodeproj" -scheme HoundStackUITests \
       -destination "id=$udid" -derivedDataPath "$DD/tests" \
       -resultBundlePath "$OUT/$slug-warmup.xcresult" \
       -only-testing:HoundStackUITests/ColdLaunchWarmUp \
-      CODE_SIGNING_ALLOWED=NO > "$OUT/$slug-warmup.log" 2>&1; then
+      CODE_SIGNING_ALLOWED=NO > "$OUT/$slug-warmup.log" 2>&1 < /dev/null &
+  warm_pid=$!
+  (
+    sleep 150
+    kill -0 "$warm_pid" 2>/dev/null || exit 0
+    for p in $(pgrep -f 'com.apple.WebKit.WebContent|HoundStack.app/HoundStack' || true); do
+      ps -p "$p" -o command= 2>/dev/null | grep -q CoreSimulator || continue
+      sample "$p" 3 -file "$OUT/$slug-stuck-$p.sample.txt" > /dev/null 2>&1 || true
+    done
+  ) &
+  sampler_pid=$!
+  if ! wait "$warm_pid"; then
     result="FAILED (warm-up: never reached sign-in)"
     tail -60 "$OUT/$slug-warmup.log"
+    wait "$sampler_pid" 2>/dev/null || true
   elif ! xcodebuild test-without-building \
       -project "$ROOT/ios/UITests/UITests.xcodeproj" -scheme HoundStackUITests \
       -destination "id=$udid" -derivedDataPath "$DD/tests" \
@@ -192,6 +210,7 @@ while IFS=$'\t' read -r type name <&3; do
     result="FAILED"
     tail -60 "$OUT/$slug.log"
   fi
+  kill "$sampler_pid" 2>/dev/null || true
 
   xcrun simctl io "$udid" screenshot "$OUT/$slug.png" > /dev/null 2>&1 || true
   # What the app, its web view and WebKit's processes said, for a launch
