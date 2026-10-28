@@ -89,6 +89,14 @@ say "- Xcode: \`$(xcodebuild -version | tr '\n' ' ')\` ($XCODE)"
 # confirmed on), the iPhone 17e (the issue names it), then the newest iPhone
 # the runtime offers. One iPad, because an iPad launch is a different
 # window size from the first frame.
+#
+# Every device type the runtime offers goes into device-types.txt and its
+# count into the summary: four runs picked the iPhone Duo alone, never an
+# iPhone 17e or an iPad, and the summary could not say whether the runtime
+# had none or the picker missed them. Types come from `simctl list
+# devicetypes` (which carries productFamily) narrowed to the identifiers the
+# runtime supports, rather than from the runtime's own list alone.
+xcrun simctl list devicetypes -j > "$OUT/devicetypes.json"
 picks=$(xcrun simctl list runtimes -j | python3 -I -c '
 import json, sys
 rts = [r for r in json.load(sys.stdin)["runtimes"]
@@ -97,7 +105,12 @@ if not rts:
     sys.exit("no available iOS simulator runtime")
 key = lambda r: [int(x) for x in r["version"].split(".")]
 rt = max(rts, key=key)
-types = rt.get("supportedDeviceTypes", [])
+with open(sys.argv[1]) as f:
+    known = {t["identifier"]: t for t in json.load(f)["devicetypes"]}
+types = [dict(known.get(t["identifier"], {}), **t) for t in rt.get("supportedDeviceTypes", [])]
+with open(sys.argv[2], "w") as f:
+    for t in types:
+        f.write(t.get("productFamily", "?") + "\t" + t["name"] + "\t" + t["identifier"] + "\n")
 phones = [t for t in types if t.get("productFamily") == "iPhone"]
 pads = [t for t in types if t.get("productFamily") == "iPad"]
 chosen = []
@@ -112,18 +125,28 @@ take(next((t for t in pads if t["name"].startswith("iPad (")), pads[0] if pads e
 print(rt["identifier"] + "\t" + rt["version"])
 for t in chosen:
     print(t["identifier"] + "\t" + t["name"])
-')
+' "$OUT/devicetypes.json" "$OUT/device-types.txt")
 RUNTIME=$(echo "$picks" | head -1 | cut -f1)
 DEVICES=$(echo "$picks" | tail -n +2 | cut -f2 | paste -sd, - | sed 's/,/, /g')
 IOS_VERSION=$(echo "$picks" | head -1 | cut -f2)
 say "- iOS runtime: $IOS_VERSION ($RUNTIME)"
 say "- Devices picked: ${DEVICES:-none}"
+say "- Device types the runtime offers: $(grep -c . "$OUT/device-types.txt" || true) ($(grep -c '^iPhone' "$OUT/device-types.txt" || true) iPhone, $(grep -c '^iPad' "$OUT/device-types.txt" || true) iPad), listed in device-types.txt"
+
+# #570's acceptance names an iPad. A run that cannot make one is not a pass.
+if ! echo "$picks" | tail -n +2 | cut -f2 | grep -q '^iPad'; then
+  say ""
+  say "> **No iPad simulator on this runtime.** Install one for iOS $IOS_VERSION on this Mac (Xcode > Settings > Components, or \`xcrun simctl create\` with an iPad device type)."
+  echo "::error::The iOS $IOS_VERSION runtime offers no iPad device type; #570 needs an iPad launch."
+  NO_IPAD=1
+fi
 
 IOS_MAJOR="${IOS_VERSION%%.*}"
 if [ "$IOS_MAJOR" -lt 27 ]; then
   say ""
   say "> **This run did not exercise iOS 27.** The newest runtime on this machine is iOS $IOS_VERSION. #570 crashed on iOS 27.1 only, so a pass here says nothing about it."
-  echo "::warning::iOS launch smoke ran on iOS $IOS_VERSION, not iOS 27. It does not prove #570 is fixed."
+  echo "::error::iOS launch smoke ran on iOS $IOS_VERSION, not iOS 27. It does not prove #570 is fixed."
+  OLD_RUNTIME=1
 fi
 
 # ── 3. Build once ──────────────────────────────────────────────────────────
@@ -241,6 +264,11 @@ if [ -n "$crashes" ]; then
   say "**Crash reports from this run:**"
   echo "$crashes" | while read -r f; do say "- $(basename "$f")"; done
 fi
+
+# Measured what it could, then fails: a gate for #570 that never ran iOS 27,
+# or never ran an iPad, must not read green.
+[ -z "${NO_IPAD:-}" ] || failed=1
+[ -z "${OLD_RUNTIME:-}" ] || failed=1
 
 [ -z "${GITHUB_STEP_SUMMARY:-}" ] || cat "$SUMMARY" >> "$GITHUB_STEP_SUMMARY"
 exit "$failed"
