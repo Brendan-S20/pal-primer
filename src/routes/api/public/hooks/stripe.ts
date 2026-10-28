@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { feeReversalCents } from "@/lib/platform-fee";
 import { makeStripe, warnOnApiVersionMismatch } from "@/lib/stripe-client.server";
+import { bookedGroomPhrase, onlineGroomBookingFrom } from "@/lib/groom-online";
 import {
   cleanPets,
   firstVisitOnOrAfter,
@@ -128,7 +129,31 @@ async function provisionSignup(
     const pets = cleanPets(Array.isArray(sr.pets) ? (sr.pets as PetEntry[]) : []).filter(
       (p) => p.name,
     );
-    if (pets.length > 0) {
+    // A groom booked from the booking link (#560) is booked for its pets,
+    // so they are written here with the size each was priced at, one row per
+    // pet counted, named as given or "Pet 2" where no name was. Unguarded,
+    // unlike the plain pet rows below: without them there is no groom to
+    // book, and the catch refunds the card.
+    const groom = onlineGroomBookingFrom((sr as any).groom_booking);
+    let groomPetIds: string[] = [];
+    if (groom) {
+      const given = cleanPets(Array.isArray(sr.pets) ? (sr.pets as PetEntry[]) : []);
+      const count = Math.max(1, sr.dog_count ?? 1);
+      const { data: rows, error: gpErr } = await supabaseAdmin
+        .from("dogs")
+        .insert(
+          Array.from({ length: count }, (_, i) => ({
+            organization_id: sr.organization_id,
+            property_id: property.id,
+            name: given[i]?.name || `Pet ${i + 1}`,
+            breed: given[i]?.breed || null,
+            weight_class: groom.pet_sizes[i] || null,
+          })),
+        )
+        .select("id");
+      if (gpErr || !rows?.length) throw new Error(gpErr?.message || "groom pets insert failed");
+      groomPetIds = rows.map((r: { id: string }) => r.id);
+    } else if (pets.length > 0) {
       try {
         const { error: dErr } = await supabaseAdmin.from("dogs").insert(
           pets.map((p) => ({
@@ -153,25 +178,58 @@ async function provisionSignup(
         ? String(sr.preferred_start_date)
         : today;
 
-    // Create subscription (prepaid, active)
-    const { error: subErr } = await supabaseAdmin.from("subscriptions").insert({
-      organization_id: sr.organization_id,
-      client_id: client.id,
-      property_id: property.id,
-      account_type: "residential",
-      frequency: sr.frequency,
-      price_cents: sr.recurring_price_cents,
-      billing_cadence: "prepaid",
-      dog_count: sr.dog_count,
-      zone_id: sr.zone_id,
-      // The service signed up for (phase 5), when the visitor picked one.
-      // Absent, the row is the insert it always was and tg_subscriptions_service
-      // gives the plan the business's default (its pet-waste service).
-      ...(sr.service_id ? { service_id: sr.service_id as string } : {}),
-      status: "active",
-      started_on: startsOn,
-    });
-    if (subErr) throw new Error(subErr.message);
+    // A groom booked online is booked the way the office books one (#560):
+    // the plan's start time, length, summary and add-ons, the day checked
+    // again, its visits generated. A refusal here (the time was taken in
+    // the minutes since the card, the day was closed) throws into the catch,
+    // which refunds the card.
+    if (groom) {
+      if (!sr.service_id || !sr.preferred_start_date)
+        throw new Error("groom booking has no service or day");
+      const { bookGroomAppointment } = await import("@/lib/groom-booking.server");
+      await bookGroomAppointment(supabaseAdmin, {
+        orgId: sr.organization_id,
+        actorUserId: null,
+        clientId: client.id,
+        propertyId: property.id,
+        serviceId: sr.service_id as string,
+        petIds: groomPetIds,
+        addons: groom.add_on_ids.map((id) => ({ addonServiceId: id, quantity: 1 })),
+        scheduledOn: String(sr.preferred_start_date),
+        startTime: groom.start_time,
+        everyWeeks: groom.every_weeks,
+        staffId: null,
+        parkingNotes: null,
+        // A new customer has no vaccine records on file. A "block" rule
+        // never reaches here (the link offers a request instead); a "warn"
+        // rule books with the warning, as the office can.
+        acknowledgeWarning: true,
+        billingCadence: "prepaid",
+        asService: true,
+      });
+    }
+
+    if (!groom) {
+      // Create subscription (prepaid, active)
+      const { error: subErr } = await supabaseAdmin.from("subscriptions").insert({
+        organization_id: sr.organization_id,
+        client_id: client.id,
+        property_id: property.id,
+        account_type: "residential",
+        frequency: sr.frequency,
+        price_cents: sr.recurring_price_cents,
+        billing_cadence: "prepaid",
+        dog_count: sr.dog_count,
+        zone_id: sr.zone_id,
+        // The service signed up for (phase 5), when the visitor picked one.
+        // Absent, the row is the insert it always was and tg_subscriptions_service
+        // gives the plan the business's default (its pet-waste service).
+        ...(sr.service_id ? { service_id: sr.service_id as string } : {}),
+        status: "active",
+        started_on: startsOn,
+      });
+      if (subErr) throw new Error(subErr.message);
+    }
 
     // An active service must have visits immediately (QA follow-up 1.6). Every
     // other path that creates a subscription — the client wizard, the service
@@ -287,6 +345,15 @@ async function provisionSignup(
             client.portal_token as string | null,
           ),
           ...(firstVisitDate ? { firstVisitDate } : {}),
+          // A groom booked online has a day and a time, not a day to confirm.
+          ...(groom && sr.preferred_start_date
+            ? {
+                bookedGroom: bookedGroomPhrase(
+                  formatStartDate(String(sr.preferred_start_date), today),
+                  groom.start_time,
+                ),
+              }
+            : {}),
         },
       });
     } catch (e) {

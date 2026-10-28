@@ -59,13 +59,15 @@ export const OFFERED_SERVICE_LINES: readonly ServiceLine[] = [
  *                          sold it. Until then the picker shows it as Coming
  *                          soon. A business that already runs one keeps it;
  *                          setServiceLines refuses only adding one.
- *    customerRequestable   a customer, the public signup form or the
- *                          receptionist may ask for it, once it is also
+ *    customerRequestable   a customer or the receptionist may ask for it
+ *                          from the portal or by text, once it is also
  *                          bookable. Training is sold and scheduled by the
- *                          office, so it is false. Mobile grooming is true
- *                          since #549, so a client may ask for a groom from
- *                          the portal; the office still books it, and no
- *                          customer door books one (OFFICE_BOOKED_LINES). */
+ *                          office on those doors, so it is false. Mobile
+ *                          grooming is true since #549, so a client may ask
+ *                          for a groom from the portal; the office still
+ *                          books it there (OFFICE_BOOKED_LINES). The public
+ *                          booking link reads only `bookable` since #560
+ *                          (bookingLinkOffersLine). */
 export type ServiceLineAvailability = {
   bookable: readonly ServiceLine[];
   customerRequestable: readonly ServiceLine[];
@@ -107,20 +109,40 @@ export function customerCanRequestService(
   );
 }
 
-/** Lines a customer may ASK for but never book themselves: the office books
- *  them. A groom is priced by each pet's size and coat and timed with its
- *  add-ons, which a flat service price cannot say, so a client asks through
+/** Lines a customer may ASK for but never book themselves through the
+ *  receptionist or the portal's one-off: the office books them. Neither door
+ *  asks for a pet's size or prices add-ons, and a groom is priced by each
+ *  pet's size and coat and timed with its add-ons, so a client asks through
  *  the portal (portal_request_groom) and the office books it (Book this
- *  groom). The public signup, the booking link, the receptionist and the
- *  portal's one-off leave these out whatever the switch says.
+ *  groom).
+ *
+ *  The booking link is not one of these doors any more (#560): it asks each
+ *  pet's size and prices the add-ons with the office's own groomQuote, so it
+ *  lists every line that is live (bookingLinkOffersLine).
  *
  *  The database has the same list, public.office_booked_service_lines()
- *  (migration 20261027200000), which public_services and public_quote read
- *  so the publishable key cannot list or price one either (#559). It changes
- *  with code, not with the platform switch; a change here is a new migration
- *  restating that function, and tests/a-stranger-is-not-sold-a-groom.test.ts
- *  fails until the two agree. */
+ *  (migration 20261027200000). It changes with code, not with the platform
+ *  switch; a change here is a new migration restating that function, and
+ *  tests/a-stranger-is-not-sold-a-groom.test.ts fails until the two agree. */
 export const OFFICE_BOOKED_LINES: readonly ServiceLine[] = ["mobile_grooming"];
+
+/** Whether the public booking link (/signup/{slug}) offers this line: every
+ *  line that is live on the platform switch (#560). Walking, sitting,
+ *  training and grooming are each self-serve there, with a base price and
+ *  the line's add-ons, a size per pet where the service prices by size, and
+ *  a request when a step cannot be done online (a stay, a groom's
+ *  appointment, a service with no price yet).
+ *
+ *  It does not read customer_requestable. That column still gates the doors
+ *  that cannot ask the questions the link asks: the portal's one-off and the
+ *  receptionist. public_services and public_quote read the same rule
+ *  (20261028120000). */
+export function bookingLinkOffersLine(
+  line: string,
+  availability: ServiceLineAvailability,
+): boolean {
+  return isBookableLine(line, availability);
+}
 
 /** Whether a customer, the public signup form, or the receptionist may BOOK
  *  this line themselves: requestable on the switch, and not one the office

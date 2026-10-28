@@ -6,7 +6,14 @@ import { TenantSignupShell } from "@/components/marketing/TenantSignupShell";
 import { Mail, MapPin, Phone } from "lucide-react";
 import { getPublicSignupForm } from "@/lib/signup.functions";
 import { formCopy } from "@/lib/new-customer-form";
-import { bookingPageLines, bookingServicesLine } from "@/lib/booking-copy";
+import {
+  bookingIntro,
+  bookingLine,
+  bookingPageLines,
+  bookingServicesLine,
+} from "@/lib/booking-copy";
+import { quotedPublicService } from "@/lib/public-services";
+import type { ServiceLine } from "@/lib/service-lines";
 import { bookingPageHead, telHref, unavailablePageHead } from "@/lib/booking-page";
 import { appOrigin } from "@/lib/app-origin";
 import { customerTitle } from "@/lib/page-title";
@@ -102,6 +109,10 @@ function SignupPage() {
   const { form: loaded } = Route.useLoaderData();
   const embedded = useEmbedded(search.embed);
   const getForm = useServerFn(getPublicSignupForm);
+  // The line the form is speaking for, as it tells us (#560), so the words
+  // under the headline follow the service picked. Null until it does: the
+  // first render works it out the way the form will.
+  const [pickedLine, setPickedLine] = useState<ServiceLine | null>(null);
 
   // Starts from the loader's answer, so the server's HTML is the form, not
   // "Loading…". When the loader's lookup failed this fetches as it always
@@ -137,6 +148,11 @@ function SignupPage() {
   const org = formQ.data;
   const copy = formCopy(org.form, org.instantStart);
   const servicesLine = bookingServicesLine((org.services ?? []).map((s) => s.service_line));
+  const services = org.services ?? [];
+  const line = pickedLine ?? bookingLine(services, quotedPublicService(services, ""), org.lines);
+  // An owner's own words about a yard are not said over a sit, a walk, a
+  // groom or a lesson (#560).
+  const intro = bookingIntro(copy.intro, line);
 
   return (
     <TenantSignupShell
@@ -167,11 +183,13 @@ function SignupPage() {
           <h1 className="text-3xl font-semibold tracking-tight break-words sm:text-4xl">
             {copy.headline}
           </h1>
-          <p className="mt-2 break-words text-muted-foreground">{copy.intro}</p>
+          <p className="mt-2 break-words text-muted-foreground" data-booking-intro>
+            {intro}
+          </p>
           <BusinessFacts contact={org.contact} serviceArea={org.serviceArea} />
         </div>
 
-        <SignupFlow slug={slug} variant="page" />
+        <SignupFlow slug={slug} variant="page" onLineChange={setPickedLine} />
       </section>
     </TenantSignupShell>
   );

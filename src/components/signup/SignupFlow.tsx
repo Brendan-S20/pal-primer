@@ -31,11 +31,16 @@
 // marks the door. `offerQuoteRequest` is off in walk mode, which has its own
 // fallback (mark the door, the office finishes it).
 import { appUrl } from "@/lib/app-origin";
-import { frequencyLabel } from "@/lib/frequency-request";
 import {
+  ADD_ON_COPY,
   BOOKING_COPY,
+  GROOM_COPY,
   STAY_COPY,
+  UNPRICED_COPY,
+  perVisitLineLabel,
+  requestPanelHint,
   bookingCadence,
+  bookingCadenceLabel,
   bookingLine,
   chargedTodayCovers,
   perVisitBillingSentence,
@@ -49,6 +54,7 @@ import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -62,6 +68,7 @@ import {
 import {
   getPublicSignupForm,
   getSignupQuote,
+  getPublicGroomTimes,
   createSignupPaymentIntent,
 } from "@/lib/signup.functions";
 import { LAST_CLEANED_QUESTION } from "@/lib/first-cleanup";
@@ -92,12 +99,23 @@ import {
 } from "@/lib/booking-details";
 import {
   asksAboutTheYard,
-  isRequestedAsAStay,
   offersAChoice,
   publicServiceChoices,
   publicServiceOptionLabel,
+  publicServiceOptions,
   quotedPublicService,
+  requestedBecause,
 } from "@/lib/public-services";
+import {
+  NO_EXTRAS,
+  addOnsFor,
+  cleanPetSizes,
+  petSizeLabel,
+  sizePricesFor,
+} from "@/lib/booking-extras";
+import { PET_SIZES } from "@/lib/groom";
+import { groomTimeLabel } from "@/lib/groom-online";
+import type { ServiceLine } from "@/lib/service-lines";
 
 // Module-scoped Stripe.js cache keyed by publishable key + connected account
 // (Connect direct charges must be scoped to the tenant's account).
@@ -146,6 +164,7 @@ export function SignupFlow({
   onPaid,
   offerQuoteRequest = true,
   channel = "page",
+  onLineChange,
 }: {
   slug: string;
   variant?: "page" | "sheet";
@@ -161,9 +180,13 @@ export function SignupFlow({
   offerQuoteRequest?: boolean;
   /** Where this signup happens, for the label on the lead it writes. */
   channel?: "page" | "door";
+  /** Told the line the page speaks for whenever it changes, so the route
+   *  can word its headline for it (#560). */
+  onLineChange?: (line: ServiceLine) => void;
 }) {
   const getQuote = useServerFn(getSignupQuote);
   const createIntent = useServerFn(createSignupPaymentIntent);
+  const getGroomTimes = useServerFn(getPublicGroomTimes);
   const getForm = useServerFn(getPublicSignupForm);
 
   // Who the business is, what its form asks, whether it sells online, and
@@ -199,6 +222,13 @@ export function SignupFlow({
     // as the default (the business's pet-waste service, else the first
     // listed). Sent only when the business offers more than one.
     service_id: "",
+    // The extras picked for that service (#560): add-on ids, and a size per
+    // pet where the service prices by size. Ids and sizes only.
+    add_on_ids: [] as string[],
+    pet_sizes: [] as string[],
+    // A groom booked online (#560): the start time picked from the open
+    // times on the groom's day (preferred_start_date).
+    groom_start_time: "",
   });
 
   // What the business sells (public_services, through the form lookup). A
@@ -221,13 +251,37 @@ export function SignupFlow({
   const line = bookingLine(services, chosen, formQ.data?.lines);
   const lineCopy = BOOKING_COPY[line];
   const frequency = bookingCadence(line, form.frequency);
+  useEffect(() => {
+    onLineChange?.(line);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [line]);
+
+  // What this service adds to its base price (#560): its line's add-ons, and
+  // a size per pet when it prices by size. None for pet waste.
+  const extras = formQ.data?.extras ?? NO_EXTRAS;
+  const offeredAddOns = addOnsFor(extras, chosen);
+  const sizePrices = sizePricesFor(extras, chosen);
+  const pickedAddOnIds = offeredAddOns
+    .filter((a) => form.add_on_ids.includes(a.id))
+    .map((a) => a.id);
+  const petSizes = sizePrices.length
+    ? cleanPetSizes(form.pet_sizes, Number(form.dog_count) || 0)
+    : [];
+  const extrasField =
+    chosen && chosen.service_line !== "pet_waste"
+      ? { add_on_ids: pickedAddOnIds, pet_sizes: petSizes }
+      : {};
 
   // A stay (priced per night: an Overnight stay, a House sit) is asked for,
   // never started (#546): no cadence, no instant price, no card. The quote
   // request is its path, and it sends no frequency, so the lead is not a
-  // "weekly" anything. `sellsHere` is instant start for everything else.
-  const stay = isRequestedAsAStay(chosen);
-  const sellsHere = instantStart && !stay;
+  // "weekly" anything. A service with no price yet is asked for the same
+  // way, and a groom is priced and then asked for (#560). `sellsHere` is
+  // whether Get instant price is on offer.
+  const request = requestedBecause(chosen, sizePrices.length > 0);
+  const stay = request === "stay";
+  const groom = request === "groom";
+  const sellsHere = instantStart && !stay && request !== "unpriced";
 
   // The pet-waste questions apply when nothing was picked and for the
   // pet-waste service; a walk has no yard to ask about.
@@ -310,6 +364,7 @@ export function SignupFlow({
           frequency,
           last_cleaned: form.last_cleaned,
           ...serviceField,
+          ...extrasField,
         },
       }),
     onError: (e: Error) => toast.error(e.message),
@@ -335,8 +390,9 @@ export function SignupFlow({
           // The answer, as a tier id. The price is not sent: the server asks
           // the database for it and charges that.
           last_cleaned: form.last_cleaned,
-          // The service picked, as an id, for the same reason.
+          // The service picked, and its extras, as ids, for the same reason.
           ...serviceField,
+          ...extrasField,
           name: form.name,
           email: form.email,
           phone: form.phone,
@@ -345,6 +401,14 @@ export function SignupFlow({
           region: form.region,
           message: form.message,
           ...detailsBody,
+          // A groom is booked for its day and time, whatever the start-date
+          // setting (#560).
+          ...(groom
+            ? {
+                preferred_start_date: form.preferred_start_date,
+                groom_start_time: form.groom_start_time,
+              }
+            : {}),
           channel,
           ...guardFields(),
         },
@@ -367,7 +431,12 @@ export function SignupFlow({
         headers: { "Content-Type": "application/json" },
         // The cadence the line offered, which form.frequency may not be
         // after the service changed. None for a stay (#546).
-        body: JSON.stringify({ ...lead, frequency: stay ? "" : frequency, ...serviceField }),
+        body: JSON.stringify({
+          ...lead,
+          frequency: stay ? "" : frequency,
+          ...serviceField,
+          ...extrasField,
+        }),
       });
       if (!res.ok) {
         const b = await res.json().catch(() => ({}));
@@ -382,6 +451,7 @@ export function SignupFlow({
     answer: quoteMut.data ?? null,
     offerQuoteRequest,
     stay,
+    request: request === "unpriced" ? request : null,
   });
   const quote = branch.quote;
 
@@ -406,12 +476,43 @@ export function SignupFlow({
   // The first cleanup is a yard's: never shown for a walk, a sit or a groom.
   const showsFirstCleanup =
     asksAboutTheYard(chosen) && (firstCleanupCents == null || firstCleanupCents > 0);
+  // A groom booked online (#560): the open start times on the groom's day,
+  // for these pets and add-ons, once it is priced. The server works out how
+  // long the groom holds the van and checks the time again before the card.
+  const groomDay = form.preferred_start_date;
+  const groomTimesQ = useQuery({
+    queryKey: [
+      "groom-times",
+      slug,
+      chosen?.id,
+      groomDay,
+      form.dog_count,
+      petSizes.join(","),
+      pickedAddOnIds.join(","),
+    ],
+    queryFn: () =>
+      getGroomTimes({
+        data: {
+          slug,
+          service_id: chosen!.id,
+          dog_count: Number(form.dog_count) || 1,
+          date: groomDay,
+          add_on_ids: pickedAddOnIds,
+          pet_sizes: petSizes,
+        },
+      }),
+    enabled: groom && !!quote && !!chosen && /^\d{4}-\d{2}-\d{2}$/.test(groomDay),
+    retry: false,
+  });
+  const groomTimes = groomTimesQ.data?.times ?? [];
+  const groomTime = groomTimes.includes(form.groom_start_time) ? form.groom_start_time : "";
   const canCheckout =
     branch.canStartService &&
     firstCleanupCents != null &&
     hasContact &&
     !!form.street.trim() &&
-    !detailsProblem;
+    !detailsProblem &&
+    (!groom || !!groomTime);
 
   // ── Where the answer goes below `lg` (#523) ────────────────────────────
   const narrowOnly = variant === "page" ? "lg:hidden" : "";
@@ -529,9 +630,15 @@ export function SignupFlow({
 
   const quotedZip = quoteMut.variables ?? form.postal_code;
   const outOfArea = outOfAreaAnswer(formQ.data.name, quotedZip);
-  const perVisit = quote ? money(quote.recurring_price_cents, quote.currency) : "";
+  const perVisit =
+    quote && quote.recurring_price_cents != null
+      ? money(quote.recurring_price_cents, quote.currency)
+      : "";
   const todayCents =
-    quote && firstCleanupCents != null ? firstCleanupCents + quote.recurring_price_cents : null;
+    quote && firstCleanupCents != null && quote.recurring_price_cents != null
+      ? firstCleanupCents + quote.recurring_price_cents
+      : null;
+  const extraLines = quote?.extra_lines ?? [];
 
   // The price lines, drawn twice below `lg`: in the answer under step 1 and
   // in the quote panel at the bottom. One copy of the markup, so the two
@@ -553,8 +660,19 @@ export function SignupFlow({
           </div>
         </div>
       )}
+      {extraLines.map((l, i) => (
+        <div key={`${i}-${l.label}`} className="flex items-baseline justify-between gap-3">
+          <div className="min-w-0 break-words text-sm text-muted-foreground">{l.label}</div>
+          <div className="shrink-0 text-sm text-muted-foreground">
+            {l.addOn ? "+" : ""}
+            {money(l.cents, quote.currency)}
+          </div>
+        </div>
+      ))}
       <div className="flex items-baseline justify-between gap-3">
-        <div className="min-w-0 text-sm">Ongoing ({frequencyLabel(frequency)})</div>
+        <div className="min-w-0 text-sm">
+          {perVisitLineLabel(line, groom)} ({bookingCadenceLabel(line, frequency)})
+        </div>
         {/* PER VISIT, not per month. `public_quote` returns
             `round(base_visit_cents × frequency_multiplier)`, and
             pricing.ts documents it as "Per-visit price after the
@@ -573,10 +691,11 @@ export function SignupFlow({
           <>Tell us when your yard was last cleaned to see today's total.</>
         ) : (
           <>
-            Charged today if you start service:{" "}
+            {groom ? GROOM_COPY.chargedTodayLead : "Charged today if you start service:"}{" "}
             <strong className="text-foreground">{money(todayCents ?? 0, quote.currency)}</strong>
             {chargedTodayCovers(line, showsFirstCleanup)}{" "}
             {perVisitBillingSentence(line, money(quote.recurring_price_cents, quote.currency))}
+            {groom && <span className="mt-2 block">{GROOM_COPY.orRequest}</span>}
           </>
         )}
       </div>
@@ -634,7 +753,7 @@ export function SignupFlow({
                 <SelectValue placeholder="Pick a service" />
               </SelectTrigger>
               <SelectContent>
-                {services.map((s) => (
+                {publicServiceOptions(services).map((s) => (
                   <SelectItem key={s.id} value={s.id}>
                     {publicServiceOptionLabel(s)}
                   </SelectItem>
@@ -687,7 +806,7 @@ export function SignupFlow({
               <SelectContent>
                 {lineCopy.cadences.map((k) => (
                   <SelectItem key={k} value={k}>
-                    {frequencyLabel(k)}
+                    {bookingCadenceLabel(line, k)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -717,6 +836,83 @@ export function SignupFlow({
               your first cleanup.
             </p>
           </div>
+        )}
+        {/* A size per pet, where the service prices by size (#560). One
+            select per pet from the count above, so the price is made of the
+            pets the visitor named. "Not sure" sends nothing, and the pet is
+            priced at the service's own price. */}
+        {sizePrices.length > 0 && (
+          <fieldset className="min-w-0 space-y-2 sm:col-span-3">
+            <legend className="text-sm font-medium">{GROOM_COPY.sizeLabel}</legend>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {petSizes.map((size, i) => (
+                <div key={i} className="min-w-0 space-y-1.5">
+                  <Label htmlFor={`pet-size-${i}`} className="text-xs text-muted-foreground">
+                    {petSingular}
+                    {petSizes.length > 1 ? ` ${i + 1}` : ""}
+                  </Label>
+                  <Select
+                    value={size || "unsure"}
+                    onValueChange={(v) => {
+                      const next = [...petSizes];
+                      next[i] = v === "unsure" ? "" : (v as (typeof PET_SIZES)[number]);
+                      setFormField({ ...form, pet_sizes: next });
+                      quoteMut.reset();
+                    }}
+                  >
+                    <SelectTrigger id={`pet-size-${i}`} className="min-w-0">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unsure">Not sure</SelectItem>
+                      {sizePrices.map((sp) => (
+                        <SelectItem key={sp.size} value={sp.size}>
+                          {petSizeLabel(sp.size)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">{GROOM_COPY.sizeHint}</p>
+          </fieldset>
+        )}
+        {/* The line's add-ons (#560), each with what it adds per visit.
+            The whole row is the target, 44px tall, so a thumb can tick it. */}
+        {offeredAddOns.length > 0 && (
+          <fieldset className="min-w-0 space-y-1 sm:col-span-3">
+            <legend className="text-sm font-medium">{ADD_ON_COPY.legend}</legend>
+            {offeredAddOns.map((a) => {
+              const on = pickedAddOnIds.includes(a.id);
+              return (
+                <label
+                  key={a.id}
+                  htmlFor={`add-on-${a.id}`}
+                  className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-1"
+                >
+                  <Checkbox
+                    id={`add-on-${a.id}`}
+                    checked={on}
+                    onCheckedChange={(v) => {
+                      const next = v
+                        ? [...pickedAddOnIds, a.id]
+                        : pickedAddOnIds.filter((id) => id !== a.id);
+                      setFormField({ ...form, add_on_ids: next });
+                      quoteMut.reset();
+                    }}
+                  />
+                  <span className="min-w-0 flex-1 break-words text-sm">{a.name}</span>
+                  <span className="shrink-0 text-sm text-muted-foreground">
+                    +{money(a.unit_price_cents, formQ.data?.currency ?? "usd")}
+                  </span>
+                </label>
+              );
+            })}
+            <p className="text-xs text-muted-foreground">
+              {request === "unpriced" ? ADD_ON_COPY.unpricedHint : ADD_ON_COPY.hint(lineCopy.visit)}
+            </p>
+          </fieldset>
         )}
       </div>
       {sellsHere && (
@@ -884,7 +1080,7 @@ export function SignupFlow({
         {details.access !== "off" && (
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="access_notes">
-              Gate code or access notes
+              {lineCopy.accessLabel}
               {markRequired(details.access)}
             </Label>
             <Textarea
@@ -897,11 +1093,19 @@ export function SignupFlow({
             />
           </div>
         )}
-        {details.startDate !== "off" && (
+        {(details.startDate !== "off" || groom) && (
           <div className="min-w-0 space-y-1.5">
             <Label htmlFor="preferred_start_date">
-              {stay ? STAY_COPY.startDateLabel : "Preferred start date"}
-              {markRequired(details.startDate)}
+              {stay
+                ? STAY_COPY.startDateLabel
+                : groom
+                  ? GROOM_COPY.dayLabel
+                  : "Preferred start date"}
+              {groom ? (
+                <span className="font-normal text-muted-foreground"> {GROOM_COPY.toBook}</span>
+              ) : (
+                markRequired(details.startDate)
+              )}
             </Label>
             <Input
               id="preferred_start_date"
@@ -914,7 +1118,47 @@ export function SignupFlow({
             <p className="text-xs text-muted-foreground">
               {stay
                 ? stayStartDateHint(formQ.data.name ?? "The business")
-                : `${formQ.data.name ?? "The business"} will confirm your first visit for on or after this date.`}
+                : groom
+                  ? GROOM_COPY.dayHint
+                  : `${formQ.data.name ?? "The business"} will confirm your first visit for on or after this date.`}
+            </p>
+          </div>
+        )}
+        {/* The groom's start time (#560): the openings on that day for a
+            groom this long, once it is priced. Booking needs one; a request
+            does not. */}
+        {groom && (
+          <div className="min-w-0 space-y-1.5">
+            <Label htmlFor="groom_start_time">
+              {GROOM_COPY.timeLabel}
+              <span className="font-normal text-muted-foreground"> {GROOM_COPY.toBook}</span>
+            </Label>
+            <Select
+              value={groomTime}
+              onValueChange={(v) => setFormField({ ...form, groom_start_time: v })}
+              disabled={groomTimes.length === 0}
+            >
+              <SelectTrigger id="groom_start_time" className="min-w-0">
+                <SelectValue placeholder={GROOM_COPY.timePlaceholder} />
+              </SelectTrigger>
+              <SelectContent>
+                {groomTimes.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {groomTimeLabel(t)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {!quote
+                ? GROOM_COPY.timeNeedsPrice
+                : !groomDay
+                  ? GROOM_COPY.timeNeedsDay
+                  : groomTimesQ.isFetching
+                    ? GROOM_COPY.timeLoading
+                    : (groomTimesQ.data?.problem ??
+                      (groomTimesQ.error ? (groomTimesQ.error as Error).message : null) ??
+                      GROOM_COPY.timeHint)}
             </p>
           </div>
         )}
@@ -949,9 +1193,13 @@ export function SignupFlow({
           ? "Sending…"
           : stay
             ? STAY_COPY.requestButton
-            : branch.canStartService || branch.reason === "not-priced-yet"
-              ? "Get a quote by email"
-              : "Request a quote"}
+            : groom
+              ? GROOM_COPY.requestButton
+              : request === "unpriced"
+                ? UNPRICED_COPY.requestButton
+                : branch.canStartService || branch.reason === "not-priced-yet"
+                  ? "Get a quote by email"
+                  : "Request a quote"}
       </Button>
       {/* Once Start service is on offer, the one hint under it covers both
           buttons (#528): two hints for the same missing fields read as two
@@ -993,8 +1241,10 @@ export function SignupFlow({
               <>{outOfArea}</>
             ) : branch.reason === "stay-request" ? (
               <>{STAY_COPY.panelHint}</>
+            ) : branch.reason === "unpriced-request" ? (
+              <>{requestPanelHint(line)}</>
             ) : (
-              <>Tell us about your property and pets and we'll get back to you with a price.</>
+              <>{requestPanelHint(line)}</>
             )}
           </p>
           {quoteRequestButton}
@@ -1024,24 +1274,28 @@ export function SignupFlow({
                 onPaid={onPaid}
               />
             </Elements>
-          ) : (
+          ) : branch.canStartService ? (
             <div className="space-y-2">
               <Button
                 className="w-full"
                 disabled={!canCheckout || checkoutMut.isPending}
                 onClick={() => checkoutMut.mutate()}
               >
-                {checkoutMut.isPending ? "Preparing payment…" : "Start service"}
+                {checkoutMut.isPending
+                  ? "Preparing payment…"
+                  : groom
+                    ? GROOM_COPY.bookButton
+                    : "Start service"}
               </Button>
               {!canCheckout && firstCleanupCents != null && (
                 <p className="text-xs text-muted-foreground">
                   {!hasContact || !form.street.trim()
                     ? "Add your name, email and street address to continue."
-                    : detailsProblem}
+                    : (detailsProblem ?? (groom && !groomTime ? GROOM_COPY.pickTime : null))}
                 </p>
               )}
             </div>
-          )}
+          ) : null}
           {!intent && quoteRequestButton}
         </div>
       )}

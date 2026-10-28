@@ -25,10 +25,29 @@ import {
   type PublicService,
 } from "@/lib/public-services";
 import {
-  customerCanBookService,
+  bookingLinkOffersLine,
   serviceLinesOrDefault,
   type ServiceLineAvailability,
 } from "@/lib/service-lines";
+import {
+  MAX_ADD_ONS,
+  NO_EXTRAS,
+  bookingExtrasFromRows,
+  cleanAddOnIds,
+  cleanPetSizes,
+  extrasNote,
+  messageWithExtras,
+  priceVisitWithExtras,
+  type BookingExtras,
+  type ExtraLine,
+} from "@/lib/booking-extras";
+import { PET_SIZES, type PetSize } from "@/lib/groom";
+import {
+  GROOM_TIME_TAKEN,
+  groomEveryWeeks,
+  onlineGroomBookingFrom,
+  type OnlineGroomBooking,
+} from "@/lib/groom-online";
 import {
   CALM_REFUSAL,
   ELAPSED_FIELD,
@@ -176,6 +195,40 @@ export const getPublicSignupForm = createServerFn({ method: "GET" })
       console.error("signup services lookup failed", found.id, e);
     }
 
+    // What each listed line adds to its base price (#560): its add-ons, and a
+    // size per pet where a service prices by size. Read with the service role
+    // for the business the lookup resolved, and only for what it lists, so
+    // nothing comes back that the page does not sell. A lookup that fails
+    // offers no extras; every service still has its base price.
+    let extras: BookingExtras = NO_EXTRAS;
+    const otherLines = [...new Set(services.map((s) => s.service_line))].filter(
+      (l) => l !== "pet_waste",
+    );
+    if (otherLines.length > 0) {
+      try {
+        const ids = services.map((s) => s.id);
+        const [{ data: addOnRows, error: aErr }, { data: sizeRows, error: zErr }] =
+          await Promise.all([
+            (supabaseAdmin as any)
+              .from("addon_services")
+              .select("id, name, service_line, unit_price_cents, active, audience")
+              .eq("organization_id", found.id)
+              .eq("active", true)
+              .in("service_line", otherLines)
+              .in("audience", ["any", "residential"]),
+            (supabaseAdmin as any)
+              .from("service_size_rules")
+              .select("service_id, size, coat_type, price_cents")
+              .eq("organization_id", found.id)
+              .in("service_id", ids),
+          ]);
+        if (aErr || zErr) console.error("signup extras lookup failed", found.id, aErr ?? zErr);
+        else extras = bookingExtrasFromRows(addOnRows, sizeRows, otherLines, ids);
+      } catch (e) {
+        console.error("signup extras lookup failed", found.id, e);
+      }
+    }
+
     return {
       id: found.id as string,
       name: ((org?.name as string | null) ?? found.name ?? null) as string | null,
@@ -204,6 +257,7 @@ export const getPublicSignupForm = createServerFn({ method: "GET" })
       serviceArea,
       services,
       serviceLines,
+      extras,
     };
   });
 
@@ -227,7 +281,7 @@ const SERVICE_NOT_OFFERED_ONLINE = "That service isn't offered online right now.
 async function refuseAComingSoonService(
   slug: string,
   serviceId: string | undefined,
-): Promise<{ price_unit: unknown } | null> {
+): Promise<{ price_unit: unknown; service_line: string; organization_id: string } | null> {
   if (!serviceId) return null;
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data: svc, error: svcErr } = await (supabaseAdmin as any)
@@ -245,7 +299,7 @@ async function refuseAComingSoonService(
   if (orgErr) throw new Error(orgErr.message);
   if (!org || (org.slug !== slug && org.portal_slug !== slug)) return null;
   const { loadServiceLineAvailability } = await import("@/lib/service-line-availability.server");
-  if (!customerCanBookService(svc.service_line, await loadServiceLineAvailability())) {
+  if (!bookingLinkOffersLine(svc.service_line, await loadServiceLineAvailability())) {
     throw new Error(SERVICE_NOT_OFFERED_ONLINE);
   }
   return svc;
@@ -265,6 +319,167 @@ function refuseAStay(svc: { price_unit: unknown } | null) {
   if (isRequestedAsAStay(svc)) throw new Error(A_STAY_IS_REQUESTED);
 }
 
+/** What a visitor reads when they book a groom with no day or time. */
+export const PICK_A_GROOM_TIME = "Pick a day and a start time for the groom.";
+
+/**
+ * A groom booked from the link (#560): the day and time it was booked for,
+ * held against the business's own rules before any card is taken. The day
+ * must be one the business grooms on, not closed, not sooner than it allows;
+ * the time must be open beside every groom already on that day; and a
+ * business whose vaccine rule blocks a pet with no records is booked by
+ * request instead (a new customer has none on file). The webhook books it
+ * with bookGroomAppointment, which checks the day and the groomer again.
+ */
+async function onlineGroomBookingFor(
+  admin: any,
+  data: z.infer<typeof signupCheckoutSchema>,
+  orgId: string,
+  sizes: (PetSize | "")[],
+  earliestDays: number,
+): Promise<OnlineGroomBooking> {
+  if (!data.service_id || !data.groom_start_time || !data.preferred_start_date)
+    throw new Error(PICK_A_GROOM_TIME);
+  const { loadOnlineGroomFacts, onlineGroomTimes } = await import("@/lib/groom-online.server");
+  const addOnIds = cleanAddOnIds(data.add_on_ids);
+  const facts = await loadOnlineGroomFacts(admin, {
+    orgId,
+    serviceId: data.service_id,
+    dogCount: data.dog_count,
+    sizes,
+    addOnIds,
+    earliestDays,
+  });
+  const { times, problem } = await onlineGroomTimes(admin, facts, data.preferred_start_date);
+  if (problem) throw new Error(problem);
+  if (!times.includes(data.groom_start_time)) throw new Error(GROOM_TIME_TAKEN);
+  return {
+    start_time: data.groom_start_time,
+    pet_sizes: sizes,
+    add_on_ids: addOnIds,
+    every_weeks: groomEveryWeeks(data.frequency),
+  };
+}
+
+/**
+ * The start times a stranger may book a groom at on one day (#560), for
+ * these pets and add-ons: how long the groom holds the van comes from the
+ * office's rule (groomQuote, plus setup and cleanup), and the openings from
+ * the grooms already on that day. Empty, with the reason in words, for a day
+ * the business does not groom, a closed day, one too soon, or a business
+ * whose vaccine rule needs records first.
+ */
+export const getPublicGroomTimes = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z
+      .object({
+        slug: z.string().min(1).max(80),
+        service_id: z.string().uuid(),
+        dog_count: z.coerce.number().int().min(1).max(20),
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        add_on_ids: z.array(z.string().uuid()).max(MAX_ADD_ONS).optional(),
+        pet_sizes: z
+          .array(z.enum([...PET_SIZES, ""] as [string, ...string[]]))
+          .max(20)
+          .optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const named = await refuseAComingSoonService(data.slug, data.service_id);
+    if (!named || named.service_line !== "mobile_grooming")
+      throw new Error(SERVICE_NOT_OFFERED_ONLINE);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { loadOnlineGroomFacts, onlineGroomTimes } = await import("@/lib/groom-online.server");
+    const config = await loadBookingDetailsConfig(supabaseAdmin, named.organization_id);
+    const facts = await loadOnlineGroomFacts(supabaseAdmin, {
+      orgId: named.organization_id,
+      serviceId: data.service_id,
+      dogCount: data.dog_count,
+      sizes: cleanPetSizes(data.pet_sizes, data.dog_count),
+      addOnIds: cleanAddOnIds(data.add_on_ids),
+      earliestDays: config.earliestStartDays,
+    });
+    const { times, problem } = await onlineGroomTimes(supabaseAdmin, facts, data.date);
+    return { times, problem, minutes: facts.holdMinutes };
+  });
+
+/** What a visitor reads when an add-on they picked is no longer offered. */
+export const ADD_ON_NOT_OFFERED = "An add-on you picked isn't offered any more. Pick again.";
+
+/**
+ * The quote with the visitor's extras (#560): the add-ons they picked and a
+ * size per pet, priced by the office's rule (priceVisitWithExtras) from rows
+ * read HERE with the service role. The body names ids and sizes, never a
+ * price. An add-on that is not this business's, not active, or not on the
+ * service's line is refused in words. Pet waste, and a quote with no service
+ * named, has no extras and comes back exactly as public_quote said it.
+ */
+async function quoteWithExtras<
+  Q extends { organization_id: string; recurring_price_cents: number | null },
+>(
+  q: Q,
+  data: { service_id?: string; dog_count: number; add_on_ids?: string[]; pet_sizes?: string[] },
+): Promise<Q & { extra_lines: ExtraLine[]; add_on_names: string[]; pet_sizes: (PetSize | "")[] }> {
+  const plain = {
+    ...q,
+    extra_lines: [] as ExtraLine[],
+    add_on_names: [] as string[],
+    pet_sizes: [] as (PetSize | "")[],
+  };
+  if (!data.service_id) return plain;
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data: svc, error: sErr } = await (supabaseAdmin as any)
+    .from("services")
+    .select(
+      "id, name, service_line, price_unit, base_price_cents, extra_pet_cents, default_duration_min",
+    )
+    .eq("id", data.service_id)
+    .eq("organization_id", q.organization_id)
+    .maybeSingle();
+  if (sErr) throw new Error(sErr.message);
+  if (!svc || svc.service_line === "pet_waste") return plain;
+
+  const wanted = cleanAddOnIds(data.add_on_ids);
+  const [{ data: addOnRows, error: aErr }, { data: sizeRows, error: zErr }] = await Promise.all([
+    wanted.length
+      ? (supabaseAdmin as any)
+          .from("addon_services")
+          .select("id, name, service_line, unit_price_cents, active, audience")
+          .eq("organization_id", q.organization_id)
+          .in("id", wanted)
+      : Promise.resolve({ data: [], error: null }),
+    (supabaseAdmin as any)
+      .from("service_size_rules")
+      .select("service_id, size, coat_type, price_cents")
+      .eq("organization_id", q.organization_id)
+      .eq("service_id", svc.id),
+  ]);
+  if (aErr || zErr) throw new Error((aErr ?? zErr).message);
+  const usable = ((addOnRows ?? []) as Array<{ audience?: string }>).filter(
+    (r) => r.audience == null || r.audience === "any" || r.audience === "residential",
+  );
+  const extras = bookingExtrasFromRows(usable, sizeRows, [svc.service_line], [svc.id]);
+  if (extras.addOns.length !== wanted.length) throw new Error(ADD_ON_NOT_OFFERED);
+
+  const sizes = extras.sizePrices.length ? cleanPetSizes(data.pet_sizes, data.dog_count) : [];
+  const priced = priceVisitWithExtras({
+    service: svc,
+    baseCents: q.recurring_price_cents,
+    petCount: data.dog_count,
+    sizes,
+    sizePrices: extras.sizePrices,
+    addOns: extras.addOns,
+  });
+  return {
+    ...q,
+    recurring_price_cents: priced.perVisitCents,
+    extra_lines: priced.lines,
+    add_on_names: priced.addOnNames,
+    pet_sizes: sizes,
+  };
+}
+
 const quoteSchema = z.object({
   slug: z.string().min(1).max(80),
   postal_code: z.string().trim().min(3).max(12),
@@ -279,10 +494,18 @@ const quoteSchema = z.object({
   // Absent for a business that sells one thing, whose quote is the call it
   // always was.
   service_id: z.string().uuid().optional(),
+  // The extras picked for that service (#560): add-on ids and a size per
+  // pet. Ids and sizes only; quoteWithExtras prices them from the database.
+  add_on_ids: z.array(z.string().uuid()).max(MAX_ADD_ONS).optional(),
+  pet_sizes: z
+    .array(z.enum([...PET_SIZES, ""] as [string, ...string[]]))
+    .max(20)
+    .optional(),
 });
 
 /** The arguments public_quote takes from a quote request: only ever ids and
- *  answers, never a number of cents. Both callers below build them here. */
+ *  answers, never a number of cents. Both callers below build them here. The
+ *  extras are not public_quote's: quoteWithExtras adds them after. */
 function publicQuoteArgs(data: z.infer<typeof quoteSchema>) {
   return {
     _slug: data.slug,
@@ -304,9 +527,10 @@ export const getSignupQuote = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     const q = rows?.[0];
     if (!q) return { available: false as const };
+    const withExtras = await quoteWithExtras(q, data);
     return {
       available: true as const,
-      quote: { ...q, first_cleanup_options: parseQuoteOptions(q.first_cleanup_options) },
+      quote: { ...withExtras, first_cleanup_options: parseQuoteOptions(q.first_cleanup_options) },
     };
   });
 
@@ -331,6 +555,13 @@ export const signupCheckoutSchema = quoteSchema.extend({
   // when to start. Never priced; the business's settings decide which are
   // asked and which are required (bookingDetailsProblem, below).
   ...bookingDetailsSchema.shape,
+  // A groom booked online (#560): the start time picked from
+  // getPublicGroomTimes, on the business's clock. Checked again before the
+  // card (onlineGroomBookingFor) and by the webhook's booking.
+  groom_start_time: z
+    .string()
+    .regex(/^\d{2}:\d{2}$/)
+    .optional(),
   // The spam filters, as the quote request sends them (public-form-guard.ts).
   [HONEYPOT_FIELD]: z.unknown().optional(),
   [ELAPSED_FIELD]: z.unknown().optional(),
@@ -378,15 +609,15 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
     }
 
     // A Coming soon service takes no card and writes nothing (#506), and
-    // neither does a stay (#546).
+    // neither does a stay (#546). A groom does, with a day and a time (#560).
     const named = await refuseAComingSoonService(data.slug, data.service_id);
     refuseAStay(named);
 
     const sb = anon();
     const { data: qRows, error: qErr } = await sb.rpc("public_quote", publicQuoteArgs(data));
     if (qErr) throw new Error(qErr.message);
-    const q = qRows?.[0];
-    if (!q) {
+    const q0 = qRows?.[0];
+    if (!q0) {
       // public_quote answers nothing for a ZIP outside every zone, and the
       // same nothing for a service that is not this business's or is no
       // longer offered. With a service named, say the second.
@@ -396,6 +627,10 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
           : "No service in that ZIP code yet. Try another.",
       );
     }
+    // The add-ons picked, priced from the database and charged with every
+    // visit: the plan's per-visit price includes them (#560).
+    const q = await quoteWithExtras(q0, data);
+    const note = extrasNote(q.add_on_names, q.pet_sizes);
     // Everything charged below comes from `q`, which the database priced. See
     // signup-charge.ts: there is no path from the request body to an amount.
     const charge = signupChargeFromQuote(q);
@@ -419,6 +654,19 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
     );
     if (detailsProblem) throw new Error(detailsProblem);
     const details = bookingDetailsColumns(detailsConfig, detailsAnswer);
+
+    // A groom is booked for a day and a time (#560), checked here before
+    // the card and booked by the webhook once it has gone through.
+    const groomBooking =
+      named?.service_line === "mobile_grooming"
+        ? await onlineGroomBookingFor(
+            supabaseAdmin,
+            data,
+            q.organization_id,
+            q.pet_sizes,
+            detailsConfig.earliestStartDays,
+          )
+        : null;
 
     // The chosen service's name, for the lead's notice and nothing else: the
     // price is already in `q`, and public_quote has just confirmed the id is
@@ -522,7 +770,7 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
         .join(", "),
       dogCount: data.dog_count,
       frequency: data.frequency,
-      message: data.message || null,
+      message: messageWithExtras(data.message, note) || null,
       serviceId: data.service_id ?? null,
       serviceName,
       details,
@@ -555,6 +803,11 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
         // What the webhook makes the first visit from (#527): dogs rows, the
         // property's access notes, and the subscription's start.
         ...details,
+        // A groom booked online (#560): its day is always kept, whatever
+        // the start-date setting, because the groom is booked for it.
+        ...(groomBooking
+          ? { preferred_start_date: data.preferred_start_date, groom_booking: groomBooking }
+          : {}),
       })
       .select("id")
       .single();
@@ -705,7 +958,7 @@ export const getSignupStatus = createServerFn({ method: "GET" })
     const { data: row, error } = await supabaseAdmin
       .from("signup_requests")
       .select(
-        "status, name, provisioned_client_id, refunded_at, refunded_amount_cents, currency, organization_id, preferred_start_date, created_at",
+        "status, name, provisioned_client_id, refunded_at, refunded_amount_cents, currency, organization_id, preferred_start_date, created_at, groom_booking",
       )
       .eq("id", data.id)
       .maybeSingle();
@@ -744,6 +997,11 @@ export const getSignupStatus = createServerFn({ method: "GET" })
       logoUrl: (org?.logo_url as string | null) ?? null,
       brandColor: (org?.brand_color as string | null) ?? null,
       firstVisitOnOrAfter: startsOnOrAfter,
+      // A groom booked online (#560): its start time, so the page names the
+      // booked day and time rather than a day to confirm.
+      groomStartTime:
+        onlineGroomBookingFrom((row as { groom_booking?: unknown }).groom_booking)?.start_time ??
+        null,
       contactPhone: ((org?.contact_phone as string | null) ?? "").trim() || null,
       contactEmail: ((org?.contact_email as string | null) ?? "").trim() || null,
     };

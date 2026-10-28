@@ -5,8 +5,9 @@
 --      Coming soon. The flip is in platform_admin_audit with no actor.
 --   2. A signed-in owner of a scooping business may add pet_sitting, and is
 --      still refused grooming and training.
---   3. public_services lists a PRICED sitting service to a stranger and
---      leaves an unpriced one out.
+--   3. public_services lists a priced sitting service to a stranger, and
+--      since 20261028120000 (#560) an unpriced one too, so it can be asked
+--      for; public_quote still prices only the priced one.
 --   4. Mutation: put sitting back to Coming soon and show the owner's add is
 --      refused again. If it still goes through, INCONCLUSIVE.
 --
@@ -121,7 +122,7 @@ BEGIN
   END IF;
 END $$;
 
--- ── 3. A stranger sees a priced stay and not an unpriced one ──────────────
+-- ── 3. A stranger sees both; only the priced one has a price ─────────────
 DO $$
 DECLARE
   _org uuid := (SELECT v FROM _ids WHERE k = 'org');
@@ -136,10 +137,14 @@ BEGIN
     FROM public.public_services('sitting-proof-scoops') s
    WHERE s.service_line = 'pet_sitting'
      AND s.name LIKE 'Proof %';
-  IF _names IS DISTINCT FROM ARRAY['Proof overnight stay']::text[] THEN
+  IF _names IS DISTINCT FROM ARRAY['Proof drop-in, no price yet', 'Proof overnight stay']::text[] THEN
     RAISE EXCEPTION 'PROOF FAILED [public]: public_services listed % for sitting', _names;
   END IF;
-  RAISE NOTICE 'ok: a priced stay is listed to a stranger; an unpriced one is not';
+  IF (SELECT s.base_price_cents FROM public.public_services('sitting-proof-scoops') s
+       WHERE s.name = 'Proof drop-in, no price yet') IS NOT NULL THEN
+    RAISE EXCEPTION 'PROOF FAILED [public]: the unpriced drop-in was listed with a price';
+  END IF;
+  RAISE NOTICE 'ok: a priced stay and an unpriced drop-in are listed; only the stay has a price';
 END $$;
 
 -- ── 4. Mutation: back to Coming soon, the owner is refused ────────────────

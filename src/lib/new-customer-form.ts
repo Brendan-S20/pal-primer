@@ -36,7 +36,8 @@ export type FormBranch<Q = unknown> = {
   /** The price to show, when there is one. */
   quote: Q | null;
   /** Why the page is in the state it is, for the copy beside the buttons. */
-  reason: "priced" | "not-priced-yet" | "no-zone" | "instant-off" | "stay-request";
+  reason:
+    "priced" | "not-priced-yet" | "no-zone" | "instant-off" | "stay-request" | "unpriced-request";
 };
 
 /**
@@ -56,16 +57,25 @@ export type FormBranch<Q = unknown> = {
  * never priced or started here, whatever the business's switch says, because
  * Start service is a subscription and a stay is not one. The quote request
  * is its whole path.
+ *
+ * `request` "unpriced" is a service the owner has listed with no price yet
+ * (requestedBecause, lib/public-services.ts, #560): asked for like a stay,
+ * and the office sends the price. A groom is not a request here: it is priced
+ * and then either booked and paid for, or requested, and both buttons show.
  */
 export function decideFormBranch<Q>(input: {
   instantStart: boolean;
   answer?: QuoteAnswer<Q> | null;
   offerQuoteRequest?: boolean;
   stay?: boolean;
+  request?: "unpriced" | null;
 }): FormBranch<Q> {
   const canRequestQuote = input.offerQuoteRequest !== false;
   if (input.stay) {
     return { canStartService: false, canRequestQuote, quote: null, reason: "stay-request" };
+  }
+  if (input.request === "unpriced") {
+    return { canStartService: false, canRequestQuote, quote: null, reason: "unpriced-request" };
   }
   if (!input.instantStart) {
     return { canStartService: false, canRequestQuote, quote: null, reason: "instant-off" };

@@ -5,7 +5,13 @@ import { z } from "zod";
 import { TenantSignupShell } from "@/components/marketing/TenantSignupShell";
 import { getSignupStatus } from "@/lib/signup.functions";
 import { customerTitle } from "@/lib/page-title";
-import { firstVisitSentence, localToday, reachTheBusinessSentence } from "@/lib/booking-details";
+import {
+  firstVisitSentence,
+  formatStartDate,
+  localToday,
+  reachTheBusinessSentence,
+} from "@/lib/booking-details";
+import { bookedGroomPhrase, bookedGroomSentence } from "@/lib/groom-online";
 
 const searchSchema = z.object({ sr: z.string().uuid().optional() });
 
@@ -102,7 +108,14 @@ function SuccessPage() {
         {status === "provisioned" && q.data?.firstVisitOnOrAfter ? (
           <div className="mx-auto mt-6 max-w-md space-y-1 rounded-xl border bg-card p-4 text-sm">
             <p className="font-medium break-words">
-              {firstVisitSentence(q.data.orgName, q.data.firstVisitOnOrAfter, localToday())}
+              {q.data.groomStartTime
+                ? bookedGroomSentence(
+                    bookedGroomPhrase(
+                      formatStartDate(q.data.firstVisitOnOrAfter, localToday()),
+                      q.data.groomStartTime,
+                    ),
+                  )
+                : firstVisitSentence(q.data.orgName, q.data.firstVisitOnOrAfter, localToday())}
             </p>
             {reachTheBusinessSentence(q.data.contactPhone, q.data.contactEmail) ? (
               <p className="break-words text-muted-foreground">

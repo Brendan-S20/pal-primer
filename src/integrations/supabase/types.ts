@@ -6877,6 +6877,7 @@ export type Database = {
           error_message: string | null
           first_cleanup_label: string | null
           first_cleanup_tier_id: string | null
+          groom_booking: Json | null
           frequency: string
           id: string
           initial_cleanup_cents: number
@@ -6911,6 +6912,7 @@ export type Database = {
           error_message?: string | null
           first_cleanup_label?: string | null
           first_cleanup_tier_id?: string | null
+          groom_booking?: Json | null
           frequency: string
           id?: string
           initial_cleanup_cents: number
@@ -6945,6 +6947,7 @@ export type Database = {
           error_message?: string | null
           first_cleanup_label?: string | null
           first_cleanup_tier_id?: string | null
+          groom_booking?: Json | null
           frequency?: string
           id?: string
           initial_cleanup_cents?: number
