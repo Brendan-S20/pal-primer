@@ -577,7 +577,8 @@ describe("the native project", () => {
     const code = demo.split("\n").filter((l) => !l.trim().startsWith("//"));
     expect(code.find((l) => l.trim())).toBe("#if DEBUG");
     expect(code.filter((l) => l.trim()).at(-1)).toBe("#endif");
-    expect(read("ios/App/App/AppDelegate.swift")).toMatch(
+    // sceneDidBecomeActive since #570: a scene app's delegate is not told.
+    expect(read("ios/App/App/SceneDelegate.swift")).toMatch(
       /#if DEBUG[\s\S]*?RouteActivityDemo\.startIfAsked\(\)[\s\S]*?#endif/,
     );
   });

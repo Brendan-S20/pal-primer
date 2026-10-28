@@ -1,0 +1,103 @@
+name: iOS launch
+
+# ── WHAT THIS DOES ──────────────────────────────────────────────────────────
+#
+# Builds the iOS app for the simulator with the newest Xcode on the runner and
+# launches it: five cold launches to the sign-in form on a fresh iPhone and a
+# fresh iPad on the newest iOS runtime, then a link from cold and a link while
+# running. scripts/ios-launch-smoke.sh is the implementation and says what it
+# does and does not prove.
+#
+# ── WHY ─────────────────────────────────────────────────────────────────────
+#
+# #570: the app crashed on every launch on iOS 27.1, built with Xcode 27.1,
+# because it had not adopted the scene lifecycle. Nothing here launched the
+# binary, so nothing here could see it. Xcode Cloud archives and stops.
+#
+# ── WHEN ────────────────────────────────────────────────────────────────────
+#
+# On a pull request or a push to main that touches the native project, the
+# web bundle's native config, or this check. Weekly as well, because the
+# fault this exists for arrives with a NEW Xcode on an unchanged repo, and a
+# path filter cannot see that. And by hand.
+#
+# ── WHERE ───────────────────────────────────────────────────────────────────
+#
+# GitHub's macOS image by default. IOS_LAUNCH_RUNNER_JSON (a repository
+# variable, JSON) moves it without a commit, e.g. '["self-hosted","macOS"]'
+# for the Mac when it has a newer Xcode than the hosted image. If the newest
+# runtime is older than iOS 27 the job still passes and the summary says, in
+# words, that iOS 27 was not exercised.
+
+on:
+  pull_request:
+    paths:
+      - "ios/**"
+      - "capacitor.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/ios-launch-smoke.sh"
+      - ".github/workflows/ios-launch.yml"
+  push:
+    branches: [main]
+    paths:
+      - "ios/**"
+      - "capacitor.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/ios-launch-smoke.sh"
+      - ".github/workflows/ios-launch.yml"
+  schedule:
+    # Mondays 14:17 UTC.
+    - cron: "17 14 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ios-launch-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  launch:
+    name: The app launches on the newest Xcode
+    runs-on: ${{ fromJSON(vars.IOS_LAUNCH_RUNNER_JSON || '"macos-26"') }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # With lifecycle scripts: postinstall (scripts/patch-native-plugins.mjs)
+      # is what lets Swift Package Manager resolve at all.
+      - name: Install
+        run: npm ci
+
+      - name: Build the web bundle for native
+        run: npm run build:native
+
+      - name: Copy it into the iOS project
+        run: npx cap sync ios
+
+      - name: Launch on simulators
+        run: scripts/ios-launch-smoke.sh
+        env:
+          SMOKE_OUT: ${{ runner.temp }}/ios-launch-smoke
+
+      - name: Keep the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-launch-smoke
+          path: |
+            ${{ runner.temp }}/ios-launch-smoke/*.xcresult
+            ${{ runner.temp }}/ios-launch-smoke/*.png
+            ${{ runner.temp }}/ios-launch-smoke/*.log
+            ${{ runner.temp }}/ios-launch-smoke/summary.md
+            ${{ runner.temp }}/ios-launch-smoke/crashes/
+          retention-days: 14
+          if-no-files-found: ignore

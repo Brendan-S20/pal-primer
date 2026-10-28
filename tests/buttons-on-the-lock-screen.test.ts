@@ -394,10 +394,12 @@ describe("the widget's buttons", () => {
 
   it("Navigate is passed on by the app, which iOS hands the card's link to, rebuilt and not echoed", () => {
     // Measured on the simulator: a Link on a Live Activity opens the app
-    // that owns it with the URL, whatever the URL is. So AppDelegate has to
+    // that owns it with the URL, whatever the URL is. So the app has to
     // pass a directions link on, and must do it before Capacitor sees it.
-    const delegate = codeOnly(read("ios/App/App/AppDelegate.swift"));
-    const open = delegate.slice(delegate.indexOf("open url: URL"));
+    // SceneDelegate since #570: with a scene, UIKit stops asking AppDelegate.
+    const delegate = codeOnly(read("ios/App/App/SceneDelegate.swift"));
+    expect(delegate.indexOf("func open(url: URL")).toBeGreaterThan(-1);
+    const open = delegate.slice(delegate.indexOf("func open(url: URL"));
     const handOff = open.indexOf("RouteLinks.directionsHandOff(url)");
     expect(handOff).toBeGreaterThan(-1);
     expect(handOff).toBeLessThan(open.indexOf("ApplicationDelegateProxy.shared.application(app, open: url"));
