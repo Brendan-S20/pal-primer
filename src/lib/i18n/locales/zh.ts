@@ -843,6 +843,10 @@ const zh: TranslationsWithPlurals<"other"> = {
     stops_other: "站",
     left_other: "剩 {{count}} 站",
     allDone: "全部完成",
+    loadFailed: "无法加载你的日程，此设备上也没有已保存的副本。",
+    loadFailedOffline: "你已离线。无法加载你的日程，此设备上也没有已保存的副本。",
+    cachedOffline: "离线：已保存的副本，{{age}}",
+    cachedRefreshFailed: "无法刷新：已保存的副本，{{age}}",
   },
   wasteLog: {
     title: "倾倒记录",

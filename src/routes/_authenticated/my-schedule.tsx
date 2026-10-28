@@ -1,8 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { CalendarDays, MapPin } from "lucide-react";
+import { CalendarDays, MapPin, RefreshCw, WifiOff } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { getMyUpcomingDays, type UpcomingDay } from "@/lib/my-day.functions";
 import { orgLocalTime } from "@/lib/org-day";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
@@ -11,6 +12,9 @@ import { pageTitle, useDocumentTitle } from "@/lib/page-title";
 import { ScheduleDaysSkeleton } from "@/components/PageSkeletons";
 import { PullToRefresh } from "@/components/motion/PullToRefresh";
 import { useMotionList } from "@/lib/motion/use-motion-list";
+import { useOnline } from "@/lib/offline/useOnline";
+import { isDefinitelyOffline } from "@/lib/offline/connectivity";
+import { cacheAgeParts } from "@/lib/offline/read-cache-policy";
 
 /**
  * A technician's own next two weeks.
@@ -61,12 +65,24 @@ function MySchedulePage() {
   const locale = useIntlLocale();
   const tz = useOrgTimezone();
   const fn = useServerFn(getMyUpcomingDays);
-  const { data, isLoading } = useQuery({
+  const online = useOnline();
+  const { data, isLoading, isError, isFetching, dataUpdatedAt, refetch } = useQuery({
     queryKey: ["my-upcoming-days"],
     queryFn: () => fn({ data: {} }),
+    // As on My Day: coming back to the app in a dead zone is not a reason to
+    // ask, the request can only fail.
+    refetchOnWindowFocus: () => !isDefinitelyOffline(),
   });
 
   const days = (data?.days ?? []) as UpcomingDay[];
+  // #536: a failed load used to fall through to "You have no visits assigned",
+  // so a tech in a dead zone read that their week had been cleared. The empty
+  // state is now only for a load that SUCCEEDED and returned no days. With no
+  // copy it says the schedule could not load; with one (this session's, or
+  // the device's saved copy, read-cache-policy.ts) it shows the days and says
+  // how old they are, the same words My Day uses.
+  const noCopy = !data && !isLoading && (isError || !online);
+  const savedCopy = !!data && (isError || !online);
   // The org's today, not the device's: the "Today" badge below has to sit on
   // the same row the ETAs (already on the org clock) and My Day's default day
   // call today, or a phone in another timezone badges the wrong morning.
@@ -84,7 +100,48 @@ function MySchedulePage() {
 
       {isLoading && <ScheduleDaysSkeleton label={t("schedule.loading")} />}
 
-      {!isLoading && days.length === 0 && (
+      {savedCopy && (
+        <div className="flex min-h-9 items-center gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 ps-2.5 text-xs text-amber-700 dark:text-amber-400">
+          {online ? (
+            <RefreshCw className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          ) : (
+            <WifiOff className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          )}
+          <p role="status" className="min-w-0 flex-1 truncate py-1 font-medium">
+            {t(online ? "schedule.cachedRefreshFailed" : "schedule.cachedOffline", {
+              age: cacheAgeText(t, Date.now() - dataUpdatedAt),
+            })}
+          </p>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-md px-3 text-xs font-semibold hover:bg-current/10 touch:min-h-11"
+          >
+            <RefreshCw className="h-3 w-3 shrink-0" aria-hidden="true" /> {t("common.retryShort")}
+          </button>
+        </div>
+      )}
+
+      {noCopy && (
+        <div
+          role="alert"
+          className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground"
+        >
+          <WifiOff className="mx-auto mb-3 h-8 w-8 opacity-60 shrink-0" aria-hidden="true" />
+          <p>{t(online ? "schedule.loadFailed" : "schedule.loadFailedOffline")}</p>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="mt-3 inline-flex min-h-9 items-center gap-1 rounded-md border px-3 text-xs font-semibold hover:bg-muted touch:min-h-11"
+          >
+            <RefreshCw className="h-3 w-3 shrink-0" aria-hidden="true" /> {t("common.retryShort")}
+          </button>
+        </div>
+      )}
+
+      {!!data && days.length === 0 && (
         <div className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground">
           <CalendarDays className="mx-auto mb-3 h-8 w-8 opacity-60 shrink-0" />
           <p>{t("schedule.empty")}</p>
@@ -155,4 +212,12 @@ function MySchedulePage() {
       </ul>
     </>
   );
+}
+
+/** The age of the saved copy, in the tech's language (as My Day's). */
+function cacheAgeText(t: TFunction, ageMs: number): string {
+  const age = cacheAgeParts(ageMs);
+  return "count" in age
+    ? t(`cacheAge.${age.unit}`, { count: age.count })
+    : t(`cacheAge.${age.unit}`);
 }

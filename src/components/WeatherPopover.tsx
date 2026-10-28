@@ -127,6 +127,44 @@ function AreaCard({ cluster }: { cluster: ZoneForecast[] }) {
   );
 }
 
+/** The zones with no forecast, each with its own reason (#455). This was
+ *  one line, "Couldn't load 4 zones (missing coordinates or weather service
+ *  error)", which did not say which zones, which of the two it was, or what
+ *  to do. A zone with no location is fixed in Zones and a retry will not help
+ *  it; a service error is worth a retry, so only then is Retry offered. */
+export function FailedZones({
+  zones,
+  retrying,
+  onRetry,
+}: {
+  zones: Pick<ZoneForecast, "id" | "name" | "status" | "error">[];
+  retrying: boolean;
+  onRetry: () => void;
+}) {
+  if (zones.length === 0) return null;
+  const serviceErrors = zones.filter((z) => z.status === "error");
+  return (
+    <div className="space-y-1.5 rounded-md border border-dashed p-2" role="status">
+      <ul className="space-y-1 text-2xs text-muted-foreground">
+        {zones.map((z) => (
+          <li key={z.id} className="min-w-0 [overflow-wrap:anywhere]">
+            <span className="font-medium text-foreground">{z.name}</span>
+            {": "}
+            {z.status === "no_coords"
+              ? "no location set. Add one in Zones to see its forecast."
+              : (z.error ?? "the weather service did not answer.")}
+          </li>
+        ))}
+      </ul>
+      {serviceErrors.length > 0 && (
+        <Button size="sm" variant="outline" onClick={onRetry} disabled={retrying}>
+          {retrying ? "Retrying…" : "Retry"}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function LoadingSkeleton() {
   return (
     <div className="space-y-2" aria-label="Loading forecast">
@@ -168,7 +206,7 @@ export function WeatherPopover() {
 
   const zones = ((query.data as { zones: ZoneForecast[] } | undefined)?.zones ?? []) as ZoneForecast[];
   const okZones = zones.filter((z) => z.status === "ok");
-  const failedCount = zones.length - okZones.length;
+  const failed = zones.filter((z) => z.status !== "ok");
   const clusters = useMemo(() => clusterZones(okZones), [query.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
@@ -214,12 +252,11 @@ export function WeatherPopover() {
               {clusters.map((c) => (
                 <AreaCard key={c[0].id} cluster={c} />
               ))}
-              {failedCount > 0 && (
-                <p className="text-2xs text-muted-foreground">
-                  Couldn't load {failedCount} zone{failedCount === 1 ? "" : "s"} (missing
-                  coordinates or weather service error).
-                </p>
-              )}
+              <FailedZones
+                zones={failed}
+                retrying={query.isFetching}
+                onRetry={() => query.refetch()}
+              />
             </>
           )}
         </div>

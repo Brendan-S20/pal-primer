@@ -888,6 +888,10 @@ const en = {
     left_one: "{{count}} left",
     left_other: "{{count}} left",
     allDone: "all done",
+    loadFailed: "Your schedule couldn't load, and no saved copy is on this device.",
+    loadFailedOffline: "You're offline. Your schedule couldn't load, and no saved copy is on this device.",
+    cachedOffline: "Offline: saved copy, {{age}}",
+    cachedRefreshFailed: "Couldn't refresh: saved copy, {{age}}",
   },
   wasteLog: {
     title: "Waste disposal log",

@@ -26,8 +26,6 @@ import {
   completeVisitFromOffice,
   cancelVisitFromOffice,
   deleteVisitPhotoFromOffice,
-  markVisitMissedFromOffice,
-  reopenVisitFromOffice,
   reassignVisit,
   rescheduleVisitFromOffice,
   listStaff,
@@ -49,7 +47,6 @@ import {
   Camera,
   PawPrint,
   Plus,
-  RotateCcw,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -69,13 +66,7 @@ import {
   clientCalledAtIso,
   nowAsCalledAt,
 } from "@/components/training/ClientCalledAtField";
-import { BUSINESS_REASONS } from "@/lib/training-packages";
-
-const MISSED_REASON_LABELS: Record<(typeof BUSINESS_REASONS)[number], string> = {
-  our_fault: "Our fault",
-  weather: "Weather",
-  unsafe_conditions: "Unsafe conditions",
-};
+import { CompletedVisitActions } from "@/components/CompletedVisitActions";
 
 function fmtAddress(p: any): string {
   if (!p) return "";
@@ -152,8 +143,6 @@ export function VisitDetailDrawer({
   // can_write_org.
   const doComplete = useServerFn(completeVisitFromOffice);
   const doCancel = useServerFn(cancelVisitFromOffice);
-  const doReopen = useServerFn(reopenVisitFromOffice);
-  const doMarkMissed = useServerFn(markVisitMissedFromOffice);
   // Cosmetic gate only — requirePermission("manage_client_billing") inside the
   // office server functions is the real one. Showing a dispatcher a button
   // that throws is the failure this whole change is about, so hide it.
@@ -310,27 +299,6 @@ export function VisitDetailDrawer({
     },
     onError: (e: Error) => toast.error(e.message),
   });
-  const reopenMut = useMutation({
-    mutationFn: () => doReopen({ data: { visitId: visitId! } }),
-    onSuccess: () => {
-      toast.success("Visit reopened");
-      invalidate();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-  // On a training package lesson, why it was missed. The business's own
-  // reasons use no session.
-  const [missedCode, setMissedCode] = useState<"" | (typeof BUSINESS_REASONS)[number]>("");
-  useEffect(() => setMissedCode(""), [visitId]);
-  const markMissedMut = useMutation({
-    mutationFn: () => doMarkMissed({ data: { visitId: visitId!, code: missedCode || null } }),
-    onSuccess: () => {
-      toast.success("Visit marked missed");
-      invalidate();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
   const v: any = data?.visit;
   const p = v?.properties;
   const client = v?.clients;
@@ -715,52 +683,7 @@ export function VisitDetailDrawer({
 
             {canReviewCompleted && (
               <section className="space-y-2 border-t pt-3">
-                {canActFromOffice || role === "dispatcher" ? (
-                  <div className="flex flex-wrap gap-2">
-                    {v.client_package_id && (
-                      <div className="w-full space-y-1">
-                        <Label htmlFor="missed-reason" className="text-xs">
-                          If it was missed, why
-                        </Label>
-                        <select
-                          id="missed-reason"
-                          className="h-9 w-full rounded-md border bg-background px-2 text-sm touch:min-h-11"
-                          value={missedCode}
-                          onChange={(e) => setMissedCode(e.target.value as typeof missedCode)}
-                        >
-                          <option value="">Client no-show</option>
-                          {BUSINESS_REASONS.map((code) => (
-                            <option key={code} value={code}>
-                              {MISSED_REASON_LABELS[code]} (no session used)
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => reopenMut.mutate()}
-                      disabled={reopenMut.isPending || markMissedMut.isPending}
-                    >
-                      <RotateCcw className="mr-1.5 h-4 w-4 shrink-0" />
-                      Reopen
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => markMissedMut.mutate()}
-                      disabled={reopenMut.isPending || markMissedMut.isPending}
-                    >
-                      <SkipForward className="mr-1.5 h-4 w-4 shrink-0" />
-                      Mark missed
-                    </Button>
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    You do not have permission to change this completed visit.
-                  </p>
-                )}
+                <CompletedVisitActions visit={v} />
               </section>
             )}
           </div>
