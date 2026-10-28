@@ -71,6 +71,11 @@ describe("on my way", () => {
     const text = onMyWayText({ ...base, yard: false });
     expect(text).not.toMatch(/Reply ENT|Reply DNE|Dogs inside/);
     expect(text).toMatch(/Reply STOP to opt out\.$/);
+    // Word for word: Product checks this against the carrier registration's
+    // sample messages, so a change here is a change there too.
+    expect(text).toBe(
+      "Hi Jane, Sam from Acme is on the way for today's visit. Anything we should know? Reply here. Reply STOP to opt out.",
+    );
   });
 
   it("leaves the yard's text word for word", () => {
@@ -109,6 +114,9 @@ describe("the examples read as English", () => {
     expect(withArticle("One-hour training session")).toBe("a one-hour training session");
     expect(withArticle("Extra pet")).toBe("an extra pet");
     expect(withArticle("Full groom")).toBe("a full groom");
+    // The quote hint's grooming add-on is an activity, so it takes no article.
+    const editor = read("src/components/quotes/QuoteEditor.tsx");
+    expect(editor).toMatch(/\/ing\$\/i\.test\(addOnExampleFor\(orgLines\)\.name\)/);
   });
 });
 

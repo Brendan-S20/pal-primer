@@ -211,7 +211,10 @@ export function QuoteEditor({
     : {
         title: serviceNamePlaceholder(defaultServiceLine(orgLines)),
         oneTime: addOnExampleFor(orgLines).name,
-        oneTimeExample: withArticle(addOnExampleFor(orgLines).name),
+        // "an extra pet", but "teeth brushing": an activity takes no article.
+        oneTimeExample: /ing$/i.test(addOnExampleFor(orgLines).name)
+          ? addOnExampleFor(orgLines).name.toLowerCase()
+          : withArticle(addOnExampleFor(orgLines).name),
         recurring: `${serviceNamePlaceholder(defaultServiceLine(orgLines))}, two pets`,
         message: "Thanks for your time today. This covers everything we talked about.",
       };
