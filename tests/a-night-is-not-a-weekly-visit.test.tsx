@@ -26,6 +26,7 @@ vi.mock("@tanstack/react-start", () => ({ useServerFn: (f: unknown) => f }));
 vi.mock("@/lib/signup.functions", () => ({
   getPublicSignupForm: vi.fn(),
   getSignupQuote: vi.fn(),
+  getPublicGroomTimes: vi.fn(),
   createSignupPaymentIntent: vi.fn(),
 }));
 

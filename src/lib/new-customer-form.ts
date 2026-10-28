@@ -58,19 +58,17 @@ export type FormBranch<Q = unknown> = {
  * Start service is a subscription and a stay is not one. The quote request
  * is its whole path.
  *
- * `request` is the rest of requestedBecause (lib/public-services.ts, #560).
- * "unpriced": a service the owner has listed with no price yet, which is
- * asked for like a stay, and the office sends the price. "groom": priced here
- * like anything else, with each pet's size and the add-ons, but never
- * started: the office places the appointment, so the price comes with the
- * quote request and no Start service.
+ * `request` "unpriced" is a service the owner has listed with no price yet
+ * (requestedBecause, lib/public-services.ts, #560): asked for like a stay,
+ * and the office sends the price. A groom is not a request here: it is priced
+ * and then either booked and paid for, or requested, and both buttons show.
  */
 export function decideFormBranch<Q>(input: {
   instantStart: boolean;
   answer?: QuoteAnswer<Q> | null;
   offerQuoteRequest?: boolean;
   stay?: boolean;
-  request?: "unpriced" | "groom" | null;
+  request?: "unpriced" | null;
 }): FormBranch<Q> {
   const canRequestQuote = input.offerQuoteRequest !== false;
   if (input.stay) {
@@ -88,12 +86,7 @@ export function decideFormBranch<Q>(input: {
   if (!input.answer.available) {
     return { canStartService: false, canRequestQuote, quote: null, reason: "no-zone" };
   }
-  return {
-    canStartService: input.request !== "groom",
-    canRequestQuote,
-    quote: input.answer.quote,
-    reason: "priced",
-  };
+  return { canStartService: true, canRequestQuote, quote: input.answer.quote, reason: "priced" };
 }
 
 // ── What the quote request sends ───────────────────────────────────────────

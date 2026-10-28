@@ -267,17 +267,36 @@ export function bookingIntro(ownerOrDefault: string, line: ServiceLine): string 
 }
 
 /** What the page says for a groom (#560): priced here, per pet size and with
- *  add-ons, then requested, because a groom is an appointment on one
- *  groomer's van and the office places it. Nothing is charged online. */
+ *  add-ons, and then either booked for a day and an open time and paid for,
+ *  or sent as a request the office confirms a time for, with no charge. */
 export const GROOM_COPY = {
-  /** The quote panel, under the price. */
-  pricedNote: "Nothing is charged today. We'll confirm a time for your groom, then book it.",
+  /** Under the price, before the usual billing sentence. */
+  chargedTodayLead: "Charged today if you book:",
+  /** Under the billing sentence: the other way in. */
+  orRequest: "Or send a request without paying, and we'll confirm a time.",
+  /** The booking button, where Start service would be. */
+  bookButton: "Book and pay",
   /** The quote request's button. */
   requestButton: "Request this groom",
   /** The size question's label, per pet. */
   sizeLabel: "Size",
   /** Under the size question. */
   sizeHint: "The groom is priced by each pet's size.",
+  /** The day's label, where Preferred start date would be. */
+  dayLabel: "Groom date",
+  /** After the day's and the time's labels. */
+  toBook: "(to book)",
+  /** Under the day. */
+  dayHint: "Pick a day to see open times. A request can leave this empty.",
+  /** The time's label. */
+  timeLabel: "Start time",
+  timePlaceholder: "Pick a time",
+  timeNeedsPrice: "Get your price first, then pick a time.",
+  timeNeedsDay: "Pick a day first.",
+  timeLoading: "Finding open times…",
+  timeHint: "Times are when the van arrives.",
+  /** Under Book and pay, once everything else is in. */
+  pickTime: "Pick a day and a start time to book.",
 } as const;
 
 /** What the page says for a service with no online price yet (#560): it is

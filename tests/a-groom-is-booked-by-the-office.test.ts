@@ -88,12 +88,16 @@ describe("customers cannot book a groom", () => {
       expect(src, file).not.toContain("customerCanBookService(");
       expect(src, file).not.toContain("customerCanRequestService(");
     }
-    // A groom on the link is never started: its checkout is refused.
+    // A groom booked on the link is checked before the card and booked by
+    // the webhook through the office's own bookGroomAppointment (#560).
     const fns = read("src/lib/signup.functions.ts");
     const checkout = fns.slice(fns.indexOf("export const createSignupPaymentIntent"));
-    expect(checkout.indexOf("refuseAGroomStart(named)")).toBeGreaterThan(-1);
-    expect(checkout.indexOf("refuseAGroomStart(named)")).toBeLessThan(
-      checkout.indexOf('sb.rpc("public_quote"'),
+    expect(checkout).toContain("await onlineGroomBookingFor(");
+    expect(checkout.indexOf("await onlineGroomBookingFor(")).toBeLessThan(
+      checkout.indexOf("stripe.paymentIntents.create("),
+    );
+    expect(read("src/routes/api/public/hooks/stripe.ts")).toContain(
+      "await bookGroomAppointment(supabaseAdmin, {",
     );
   });
 

@@ -42,6 +42,7 @@ import {
   type ExtraLine,
 } from "@/lib/booking-extras";
 import { PET_SIZES, type PetSize } from "@/lib/groom";
+import { GROOM_TIME_TAKEN, groomEveryWeeks, type OnlineGroomBooking } from "@/lib/groom-online";
 import {
   CALM_REFUSAL,
   ELAPSED_FIELD,
@@ -275,7 +276,7 @@ const SERVICE_NOT_OFFERED_ONLINE = "That service isn't offered online right now.
 async function refuseAComingSoonService(
   slug: string,
   serviceId: string | undefined,
-): Promise<{ price_unit: unknown; service_line: string } | null> {
+): Promise<{ price_unit: unknown; service_line: string; organization_id: string } | null> {
   if (!serviceId) return null;
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data: svc, error: svcErr } = await (supabaseAdmin as any)
@@ -313,17 +314,90 @@ function refuseAStay(svc: { price_unit: unknown } | null) {
   if (isRequestedAsAStay(svc)) throw new Error(A_STAY_IS_REQUESTED);
 }
 
-/** What a visitor reads when they try to start a groom online. */
-export const A_GROOM_IS_REQUESTED =
-  "A groom is booked by request. Send it with Request this groom and we'll confirm a time.";
+/** What a visitor reads when they book a groom with no day or time. */
+export const PICK_A_GROOM_TIME = "Pick a day and a start time for the groom.";
 
-/** A groom is priced on the booking link but never started there (#560):
- *  it is an appointment on one groomer's van, which the office places with
- *  Book this groom. The form offers no Start service for one, so a checkout
- *  that names one is a hand-built body. */
-function refuseAGroomStart(svc: { service_line: string } | null) {
-  if (svc?.service_line === "mobile_grooming") throw new Error(A_GROOM_IS_REQUESTED);
+/**
+ * A groom booked from the link (#560): the day and time it was booked for,
+ * held against the business's own rules before any card is taken. The day
+ * must be one the business grooms on, not closed, not sooner than it allows;
+ * the time must be open beside every groom already on that day; and a
+ * business whose vaccine rule blocks a pet with no records is booked by
+ * request instead (a new customer has none on file). The webhook books it
+ * with bookGroomAppointment, which checks the day and the groomer again.
+ */
+async function onlineGroomBookingFor(
+  admin: any,
+  data: z.infer<typeof signupCheckoutSchema>,
+  orgId: string,
+  sizes: (PetSize | "")[],
+  earliestDays: number,
+): Promise<OnlineGroomBooking> {
+  if (!data.service_id || !data.groom_start_time || !data.preferred_start_date)
+    throw new Error(PICK_A_GROOM_TIME);
+  const { loadOnlineGroomFacts, onlineGroomTimes } = await import("@/lib/groom-online.server");
+  const addOnIds = cleanAddOnIds(data.add_on_ids);
+  const facts = await loadOnlineGroomFacts(admin, {
+    orgId,
+    serviceId: data.service_id,
+    dogCount: data.dog_count,
+    sizes,
+    addOnIds,
+    earliestDays,
+  });
+  const { times, problem } = await onlineGroomTimes(admin, facts, data.preferred_start_date);
+  if (problem) throw new Error(problem);
+  if (!times.includes(data.groom_start_time)) throw new Error(GROOM_TIME_TAKEN);
+  return {
+    start_time: data.groom_start_time,
+    pet_sizes: sizes,
+    add_on_ids: addOnIds,
+    every_weeks: groomEveryWeeks(data.frequency),
+  };
 }
+
+/**
+ * The start times a stranger may book a groom at on one day (#560), for
+ * these pets and add-ons: how long the groom holds the van comes from the
+ * office's rule (groomQuote, plus setup and cleanup), and the openings from
+ * the grooms already on that day. Empty, with the reason in words, for a day
+ * the business does not groom, a closed day, one too soon, or a business
+ * whose vaccine rule needs records first.
+ */
+export const getPublicGroomTimes = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z
+      .object({
+        slug: z.string().min(1).max(80),
+        service_id: z.string().uuid(),
+        dog_count: z.coerce.number().int().min(1).max(20),
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        add_on_ids: z.array(z.string().uuid()).max(MAX_ADD_ONS).optional(),
+        pet_sizes: z
+          .array(z.enum([...PET_SIZES, ""] as [string, ...string[]]))
+          .max(20)
+          .optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const named = await refuseAComingSoonService(data.slug, data.service_id);
+    if (!named || named.service_line !== "mobile_grooming")
+      throw new Error(SERVICE_NOT_OFFERED_ONLINE);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { loadOnlineGroomFacts, onlineGroomTimes } = await import("@/lib/groom-online.server");
+    const config = await loadBookingDetailsConfig(supabaseAdmin, named.organization_id);
+    const facts = await loadOnlineGroomFacts(supabaseAdmin, {
+      orgId: named.organization_id,
+      serviceId: data.service_id,
+      dogCount: data.dog_count,
+      sizes: cleanPetSizes(data.pet_sizes, data.dog_count),
+      addOnIds: cleanAddOnIds(data.add_on_ids),
+      earliestDays: config.earliestStartDays,
+    });
+    const { times, problem } = await onlineGroomTimes(supabaseAdmin, facts, data.date);
+    return { times, problem, minutes: facts.holdMinutes };
+  });
 
 /** What a visitor reads when an add-on they picked is no longer offered. */
 export const ADD_ON_NOT_OFFERED = "An add-on you picked isn't offered any more. Pick again.";
@@ -476,6 +550,13 @@ export const signupCheckoutSchema = quoteSchema.extend({
   // when to start. Never priced; the business's settings decide which are
   // asked and which are required (bookingDetailsProblem, below).
   ...bookingDetailsSchema.shape,
+  // A groom booked online (#560): the start time picked from
+  // getPublicGroomTimes, on the business's clock. Checked again before the
+  // card (onlineGroomBookingFor) and by the webhook's booking.
+  groom_start_time: z
+    .string()
+    .regex(/^\d{2}:\d{2}$/)
+    .optional(),
   // The spam filters, as the quote request sends them (public-form-guard.ts).
   [HONEYPOT_FIELD]: z.unknown().optional(),
   [ELAPSED_FIELD]: z.unknown().optional(),
@@ -523,10 +604,9 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
     }
 
     // A Coming soon service takes no card and writes nothing (#506), and
-    // neither does a stay (#546) or a groom (#560).
+    // neither does a stay (#546). A groom does, with a day and a time (#560).
     const named = await refuseAComingSoonService(data.slug, data.service_id);
     refuseAStay(named);
-    refuseAGroomStart(named);
 
     const sb = anon();
     const { data: qRows, error: qErr } = await sb.rpc("public_quote", publicQuoteArgs(data));
@@ -569,6 +649,19 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
     );
     if (detailsProblem) throw new Error(detailsProblem);
     const details = bookingDetailsColumns(detailsConfig, detailsAnswer);
+
+    // A groom is booked for a day and a time (#560), checked here before
+    // the card and booked by the webhook once it has gone through.
+    const groomBooking =
+      named?.service_line === "mobile_grooming"
+        ? await onlineGroomBookingFor(
+            supabaseAdmin,
+            data,
+            q.organization_id,
+            q.pet_sizes,
+            detailsConfig.earliestStartDays,
+          )
+        : null;
 
     // The chosen service's name, for the lead's notice and nothing else: the
     // price is already in `q`, and public_quote has just confirmed the id is
@@ -705,6 +798,11 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
         // What the webhook makes the first visit from (#527): dogs rows, the
         // property's access notes, and the subscription's start.
         ...details,
+        // A groom booked online (#560): its day is always kept, whatever
+        // the start-date setting, because the groom is booked for it.
+        ...(groomBooking
+          ? { preferred_start_date: data.preferred_start_date, groom_booking: groomBooking }
+          : {}),
       })
       .select("id")
       .single();

@@ -68,6 +68,7 @@ import {
 import {
   getPublicSignupForm,
   getSignupQuote,
+  getPublicGroomTimes,
   createSignupPaymentIntent,
 } from "@/lib/signup.functions";
 import { LAST_CLEANED_QUESTION } from "@/lib/first-cleanup";
@@ -113,6 +114,7 @@ import {
   sizePricesFor,
 } from "@/lib/booking-extras";
 import { PET_SIZES } from "@/lib/groom";
+import { groomTimeLabel } from "@/lib/groom-online";
 import type { ServiceLine } from "@/lib/service-lines";
 
 // Module-scoped Stripe.js cache keyed by publishable key + connected account
@@ -184,6 +186,7 @@ export function SignupFlow({
 }) {
   const getQuote = useServerFn(getSignupQuote);
   const createIntent = useServerFn(createSignupPaymentIntent);
+  const getGroomTimes = useServerFn(getPublicGroomTimes);
   const getForm = useServerFn(getPublicSignupForm);
 
   // Who the business is, what its form asks, whether it sells online, and
@@ -223,6 +226,9 @@ export function SignupFlow({
     // pet where the service prices by size. Ids and sizes only.
     add_on_ids: [] as string[],
     pet_sizes: [] as string[],
+    // A groom booked online (#560): the start time picked from the open
+    // times on the groom's day (preferred_start_date).
+    groom_start_time: "",
   });
 
   // What the business sells (public_services, through the form lookup). A
@@ -395,6 +401,14 @@ export function SignupFlow({
           region: form.region,
           message: form.message,
           ...detailsBody,
+          // A groom is booked for its day and time, whatever the start-date
+          // setting (#560).
+          ...(groom
+            ? {
+                preferred_start_date: form.preferred_start_date,
+                groom_start_time: form.groom_start_time,
+              }
+            : {}),
           channel,
           ...guardFields(),
         },
@@ -437,7 +451,7 @@ export function SignupFlow({
     answer: quoteMut.data ?? null,
     offerQuoteRequest,
     stay,
-    request: request === "unpriced" || request === "groom" ? request : null,
+    request: request === "unpriced" ? request : null,
   });
   const quote = branch.quote;
 
@@ -462,12 +476,43 @@ export function SignupFlow({
   // The first cleanup is a yard's: never shown for a walk, a sit or a groom.
   const showsFirstCleanup =
     asksAboutTheYard(chosen) && (firstCleanupCents == null || firstCleanupCents > 0);
+  // A groom booked online (#560): the open start times on the groom's day,
+  // for these pets and add-ons, once it is priced. The server works out how
+  // long the groom holds the van and checks the time again before the card.
+  const groomDay = form.preferred_start_date;
+  const groomTimesQ = useQuery({
+    queryKey: [
+      "groom-times",
+      slug,
+      chosen?.id,
+      groomDay,
+      form.dog_count,
+      petSizes.join(","),
+      pickedAddOnIds.join(","),
+    ],
+    queryFn: () =>
+      getGroomTimes({
+        data: {
+          slug,
+          service_id: chosen!.id,
+          dog_count: Number(form.dog_count) || 1,
+          date: groomDay,
+          add_on_ids: pickedAddOnIds,
+          pet_sizes: petSizes,
+        },
+      }),
+    enabled: groom && !!quote && !!chosen && /^\d{4}-\d{2}-\d{2}$/.test(groomDay),
+    retry: false,
+  });
+  const groomTimes = groomTimesQ.data?.times ?? [];
+  const groomTime = groomTimes.includes(form.groom_start_time) ? form.groom_start_time : "";
   const canCheckout =
     branch.canStartService &&
     firstCleanupCents != null &&
     hasContact &&
     !!form.street.trim() &&
-    !detailsProblem;
+    !detailsProblem &&
+    (!groom || !!groomTime);
 
   // ── Where the answer goes below `lg` (#523) ────────────────────────────
   const narrowOnly = variant === "page" ? "lg:hidden" : "";
@@ -589,9 +634,8 @@ export function SignupFlow({
     quote && quote.recurring_price_cents != null
       ? money(quote.recurring_price_cents, quote.currency)
       : "";
-  // Nothing is charged today for a groom: it is requested (#560).
   const todayCents =
-    quote && !groom && firstCleanupCents != null && quote.recurring_price_cents != null
+    quote && firstCleanupCents != null && quote.recurring_price_cents != null
       ? firstCleanupCents + quote.recurring_price_cents
       : null;
   const extraLines = quote?.extra_lines ?? [];
@@ -643,16 +687,15 @@ export function SignupFlow({
         </div>
       </div>
       <div className="border-t pt-3 text-xs text-muted-foreground">
-        {groom ? (
-          <>{GROOM_COPY.pricedNote}</>
-        ) : firstCleanupCents == null ? (
+        {firstCleanupCents == null ? (
           <>Tell us when your yard was last cleaned to see today's total.</>
         ) : (
           <>
-            Charged today if you start service:{" "}
+            {groom ? GROOM_COPY.chargedTodayLead : "Charged today if you start service:"}{" "}
             <strong className="text-foreground">{money(todayCents ?? 0, quote.currency)}</strong>
             {chargedTodayCovers(line, showsFirstCleanup)}{" "}
             {perVisitBillingSentence(line, money(quote.recurring_price_cents, quote.currency))}
+            {groom && <span className="mt-2 block">{GROOM_COPY.orRequest}</span>}
           </>
         )}
       </div>
@@ -1050,11 +1093,19 @@ export function SignupFlow({
             />
           </div>
         )}
-        {details.startDate !== "off" && (
+        {(details.startDate !== "off" || groom) && (
           <div className="min-w-0 space-y-1.5">
             <Label htmlFor="preferred_start_date">
-              {stay ? STAY_COPY.startDateLabel : "Preferred start date"}
-              {markRequired(details.startDate)}
+              {stay
+                ? STAY_COPY.startDateLabel
+                : groom
+                  ? GROOM_COPY.dayLabel
+                  : "Preferred start date"}
+              {groom ? (
+                <span className="font-normal text-muted-foreground"> {GROOM_COPY.toBook}</span>
+              ) : (
+                markRequired(details.startDate)
+              )}
             </Label>
             <Input
               id="preferred_start_date"
@@ -1067,7 +1118,47 @@ export function SignupFlow({
             <p className="text-xs text-muted-foreground">
               {stay
                 ? stayStartDateHint(formQ.data.name ?? "The business")
-                : `${formQ.data.name ?? "The business"} will confirm your first visit for on or after this date.`}
+                : groom
+                  ? GROOM_COPY.dayHint
+                  : `${formQ.data.name ?? "The business"} will confirm your first visit for on or after this date.`}
+            </p>
+          </div>
+        )}
+        {/* The groom's start time (#560): the openings on that day for a
+            groom this long, once it is priced. Booking needs one; a request
+            does not. */}
+        {groom && (
+          <div className="min-w-0 space-y-1.5">
+            <Label htmlFor="groom_start_time">
+              {GROOM_COPY.timeLabel}
+              <span className="font-normal text-muted-foreground"> {GROOM_COPY.toBook}</span>
+            </Label>
+            <Select
+              value={groomTime}
+              onValueChange={(v) => setFormField({ ...form, groom_start_time: v })}
+              disabled={groomTimes.length === 0}
+            >
+              <SelectTrigger id="groom_start_time" className="min-w-0">
+                <SelectValue placeholder={GROOM_COPY.timePlaceholder} />
+              </SelectTrigger>
+              <SelectContent>
+                {groomTimes.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {groomTimeLabel(t)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {!quote
+                ? GROOM_COPY.timeNeedsPrice
+                : !groomDay
+                  ? GROOM_COPY.timeNeedsDay
+                  : groomTimesQ.isFetching
+                    ? GROOM_COPY.timeLoading
+                    : (groomTimesQ.data?.problem ??
+                      (groomTimesQ.error ? (groomTimesQ.error as Error).message : null) ??
+                      GROOM_COPY.timeHint)}
             </p>
           </div>
         )}
@@ -1190,13 +1281,17 @@ export function SignupFlow({
                 disabled={!canCheckout || checkoutMut.isPending}
                 onClick={() => checkoutMut.mutate()}
               >
-                {checkoutMut.isPending ? "Preparing payment…" : "Start service"}
+                {checkoutMut.isPending
+                  ? "Preparing payment…"
+                  : groom
+                    ? GROOM_COPY.bookButton
+                    : "Start service"}
               </Button>
               {!canCheckout && firstCleanupCents != null && (
                 <p className="text-xs text-muted-foreground">
                   {!hasContact || !form.street.trim()
                     ? "Add your name, email and street address to continue."
-                    : detailsProblem}
+                    : (detailsProblem ?? (groom && !groomTime ? GROOM_COPY.pickTime : null))}
                 </p>
               )}
             </div>

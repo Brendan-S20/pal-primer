@@ -26,6 +26,7 @@ vi.mock("@tanstack/react-start", () => ({ useServerFn: (f: unknown) => f }));
 vi.mock("@/lib/signup.functions", () => ({
   getPublicSignupForm: vi.fn(),
   getSignupQuote: vi.fn(),
+  getPublicGroomTimes: vi.fn(),
   createSignupPaymentIntent: vi.fn(),
 }));
 
@@ -250,10 +251,12 @@ describe("each line reaches a quote or a request", () => {
     expect(requestedBecause({ ...groom, base_price_cents: null }, false)).toBe("unpriced");
   });
 
-  it("prices a groom and offers no Start service for it; asks for an unpriced walk", () => {
+  it("prices a groom and offers both paths; asks for an unpriced walk", () => {
     const answer = { available: true as const, quote: { recurring_price_cents: 9500 } };
-    const g = decideFormBranch({ instantStart: true, answer, request: "groom" });
-    expect(g).toMatchObject({ canStartService: false, canRequestQuote: true, reason: "priced" });
+    // A groom is priced like anything else: Book and pay and Request this
+    // groom are both on offer (Brendan, 2026-10-28).
+    const g = decideFormBranch({ instantStart: true, answer, request: null });
+    expect(g).toMatchObject({ canStartService: true, canRequestQuote: true, reason: "priced" });
     expect(g.quote).toEqual(answer.quote);
     const u = decideFormBranch({ instantStart: true, answer: null, request: "unpriced" });
     expect(u).toMatchObject({
@@ -261,10 +264,6 @@ describe("each line reaches a quote or a request", () => {
       canRequestQuote: true,
       reason: "unpriced-request",
     });
-    // A lesson and a priced walk start like anything else.
-    expect(decideFormBranch({ instantStart: true, answer, request: null }).canStartService).toBe(
-      true,
-    );
   });
 
   it("offers each line its own add-ons, and pet waste none", () => {
@@ -351,6 +350,10 @@ describe("each line reaches a quote or a request", () => {
     expect(html).toContain("+$12.00");
     expect(html).toContain(GROOM_COPY.requestButton);
     expect(html).toContain("Get instant price");
+    // The booking half: a day and a start time, which need the price first.
+    expect(html).toContain(GROOM_COPY.dayLabel);
+    expect(html).toContain('id="groom_start_time"');
+    expect(html).toContain(GROOM_COPY.timeNeedsPrice);
     // The add-on row is the target, 44px tall.
     expect(html).toMatch(/<label[^>]*for="add-on-[^"]+"[^>]*class="[^"]*min-h-11/);
   });
@@ -387,12 +390,14 @@ describe("each line reaches a quote or a request", () => {
     expect(html).not.toContain('id="pet-size-0"');
   });
 
-  it("refuses to start a groom on the server, before anything is priced or written", () => {
+  it("checks a groom booking's day and time on the server before the card", () => {
     const fns = read("src/lib/signup.functions.ts");
     const checkout = fns.slice(fns.indexOf("export const createSignupPaymentIntent"));
-    expect(checkout.indexOf("refuseAGroomStart(named);")).toBeLessThan(
-      checkout.indexOf('sb.rpc("public_quote"'),
+    expect(checkout.indexOf("await onlineGroomBookingFor(")).toBeGreaterThan(-1);
+    expect(checkout.indexOf("await onlineGroomBookingFor(")).toBeLessThan(
+      checkout.indexOf('.from("signup_requests")'),
     );
+    expect(checkout).toContain("groom_booking: groomBooking");
     // The extras are priced from rows the server read, never from the body.
     const quote = fns.slice(fns.indexOf("async function quoteWithExtras"));
     expect(quote).toContain('.from("addon_services")');

@@ -6,8 +6,10 @@
 // database copies them onto every visit the plan generates, so the route
 // planner and the invoice read the same numbers on the tenth groom as on the
 // first.
-// A customer cannot reach this: the portal, public signup and the receptionist
-// leave mobile grooming out.
+// The portal and the receptionist leave mobile grooming out. The booking link
+// reaches this only through the Stripe webhook (#560): a visitor who booked a
+// time and paid has the groom booked here, with the pets the webhook has just
+// created, exactly as the office would book it.
 
 import {
   clockMinutes,
@@ -48,6 +50,13 @@ export type BookGroomInput = {
   staffId: string | null;
   parkingNotes: string | null;
   acknowledgeWarning: boolean;
+  /** The plan's billing. Absent, it follows the client's newest plan, as an
+   *  office booking does. The booking link passes "prepaid": the first groom
+   *  was paid for online (#560). */
+  billingCadence?: "prepaid" | "postpaid";
+  /** True when `db` is the service role (the booking link's webhook, #560),
+   *  which has no auth.uid() for generate_visits_for_subscription to check. */
+  asService?: boolean;
 };
 
 export type BookGroomResult = {
@@ -274,8 +283,8 @@ export async function bookGroomAppointment(
   // Same cadence inheritance as a one-off: a new plan must not flip a prepaid
   // client to postpaid by taking the column default. Read before the insert,
   // or this plan would be the newest active row and answer about itself.
-  let cadence: "postpaid" | "prepaid" = "postpaid";
-  {
+  let cadence: "postpaid" | "prepaid" = input.billingCadence ?? "postpaid";
+  if (!input.billingCadence) {
     const { data: newest } = await db
       .from("subscriptions")
       .select("billing_cadence")
@@ -333,11 +342,23 @@ export async function bookGroomAppointment(
   if (subErr) throw new Error(subErr.message);
 
   const through = once ? input.scheduledOn : addDays(input.scheduledOn, 60);
-  const { error: gErr } = await db.rpc("generate_visits_for_subscription", {
-    _org_id: input.orgId,
-    _subscription_id: sub.id,
-    _through: through,
-  });
+  // The webhook books as the service role, which has no auth.uid() for the
+  // wrapper's can_write_org check to recognise. It calls the core the
+  // wrapper delegates to, scoped to this one plan, after this function has
+  // checked the client, property, service and pets are this organization's:
+  // the same split one-off-visit.server.ts makes for the portal.
+  const { error: gErr } = input.asService
+    ? // rpc-role: service (only on the webhook's path; see above)
+      await db.rpc("generate_visits_core", {
+        _org_id: input.orgId,
+        _through: through,
+        _subscription_id: sub.id,
+      })
+    : await db.rpc("generate_visits_for_subscription", {
+        _org_id: input.orgId,
+        _subscription_id: sub.id,
+        _through: through,
+      });
   if (gErr) {
     await db.from("subscriptions").delete().eq("id", sub.id).eq("organization_id", input.orgId);
     throw new Error(gErr.message);
