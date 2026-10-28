@@ -265,6 +265,14 @@ export function serviceNamePlaceholder(line: ServiceLine): string {
   return SERVICE_NAME_EXAMPLE[line] ?? SERVICE_NAME_EXAMPLE.other;
 }
 
+/** "a 30-minute walk", "an overnight stay", "a one-hour training session":
+ *  the example with its article, lower-cased, for a sentence (#560). "One"
+ *  is said "won", so it takes "a". */
+export function withArticle(noun: string): string {
+  const lower = noun.toLowerCase();
+  return `${/^[aeiou]/.test(lower) && !/^one\b/.test(lower) ? "an" : "a"} ${lower}`;
+}
+
 /** The line a new service starts on: the first one the business runs. */
 export function defaultServiceLine(orgLines: readonly ServiceLine[]): ServiceLine {
   return orgLines[0] ?? "pet_waste";

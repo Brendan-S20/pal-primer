@@ -585,6 +585,16 @@ export const completeVisit = createServerFn({ method: "POST" })
           ? (v as any).services[0]
           : (v as any).services;
         const sitting = svc?.service_line === "pet_sitting";
+        // A groom or a lesson is not a cleanup (#560). A visit with no
+        // service is an older pet-waste visit and reads as it always did.
+        const doneLine = svc?.service_line as string | null | undefined;
+        const yard = !doneLine || doneLine === "pet_waste";
+        const doneNoun =
+          doneLine === "mobile_grooming"
+            ? "groom"
+            : doneLine === "training"
+              ? "training session"
+              : "visit";
         const [{ walkCompletionFor }, sitReport, { enqueueAppEmail }, { sendPushToClient }] =
           await Promise.all([
             import("@/lib/walk-report.server"),
@@ -617,6 +627,7 @@ export const completeVisit = createServerFn({ method: "POST" })
                 checklist,
                 ...(walk ? { walk: walk.email } : {}),
                 ...(sit ? { sit: sit.email } : {}),
+                ...(yard ? {} : { petWaste: false }),
               },
             }),
             keepAlive,
@@ -629,9 +640,13 @@ export const completeVisit = createServerFn({ method: "POST" })
                 ? walk.push.body
                 : sit
                   ? sit.push.body
-                  : address
-                    ? `We just cleaned up at ${address}.`
-                    : "Your yard visit is complete.",
+                  : yard
+                    ? address
+                      ? `We just cleaned up at ${address}.`
+                      : "Your yard visit is complete."
+                    : address
+                      ? `We just finished your ${doneNoun} at ${address}.`
+                      : `Your ${doneNoun} is complete.`,
               tag: `visit-${data.visitId}`,
               url: "/portal",
             }),

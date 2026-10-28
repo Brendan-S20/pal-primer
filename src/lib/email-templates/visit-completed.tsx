@@ -22,6 +22,9 @@ interface Props extends OrgContact {
   /** Set only for a pet sitting visit (#411): the email is then a visit
    *  report. Absent for every other visit. */
   sit?: SitReportEmail;
+  /** False for a groom, a lesson or any visit that is not pet waste (#560):
+   *  the sign-off then says nothing about dirty work. */
+  petWaste?: boolean;
 }
 
 const VisitCompleted = (props: Props) =>
@@ -43,6 +46,7 @@ const CleanupComplete = ({
   checklist = [],
   walk: _walk,
   sit: _sit,
+  petWaste,
   ...orgContact
 }: Props) => (
   <Html lang="en">
@@ -86,7 +90,11 @@ const CleanupComplete = ({
             />
           </>
         ) : null}
-        <Text style={styles.small}>Thanks for trusting us with the dirty work.</Text>
+        <Text style={styles.small}>
+          {petWaste === false
+            ? "Thanks for trusting us with your pets."
+            : "Thanks for trusting us with the dirty work."}
+        </Text>
         <OrgFooter {...orgContact} orgName={orgName} />
       </Container>
     </Body>

@@ -52,12 +52,17 @@ export function onMyWayText(p: {
   techName: string | null;
   eta: string | null;
   trackUrl?: string | null;
+  /** False for a sit, a groom or a lesson (#560): ENT / DNE is a yard's
+   *  handshake, so it asks for a reply instead. Omitted is a yard. */
+  yard?: boolean;
 }): string {
   const who = p.techName ? `${p.techName} from ${p.orgName}` : `your ${p.orgName} tech`;
   const when = p.eta ? `, arriving ${p.eta}` : "";
   const track = p.trackUrl ? ` Live map: ${p.trackUrl}` : "";
   // ENT / DNE is the handshake operators teach their customers; the reply
   // lands on the visit (gate-reply.server.ts) and shows on the stop.
+  if (p.yard === false)
+    return `Hi ${p.customerName}, ${who} is on the way for today's visit${when}.${track} Anything we should know? Reply here. Reply STOP to opt out.`;
   return `Hi ${p.customerName}, ${who} is on the way for today's visit${when}.${track} Dogs inside? Reply ENT. Rather we didn't come in? Reply DNE. Reply STOP to opt out.`;
 }
 

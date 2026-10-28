@@ -49,7 +49,7 @@ const FIVE: readonly Template[] = [
   (n, b) =>
     `Thank you${hi(n)}! We're so glad you're happy with the service, and we really appreciate you taking the time to say so. See you on the next visit.\n\n${b}`,
   (n, b) =>
-    `Thanks so much for the kind words${hi(n)}. Reviews like this mean a lot to a small team, and we look forward to keeping your yard clean.\n\n${b}`,
+    `Thanks so much for the kind words${hi(n)}. Reviews like this mean a lot to a small team, and we look forward to the next visit.\n\n${b}`,
 ];
 
 const FOUR: readonly Template[] = [

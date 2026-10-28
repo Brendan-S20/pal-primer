@@ -93,7 +93,7 @@ describe("contact details under the headline (#526)", () => {
 
   it("comes from the one lookup, and each item hides when unset", () => {
     const fns = read("src/lib/signup.functions.ts");
-    expect(fns).toMatch(/first_cleanup_pricing, contact_phone, contact_email"/);
+    expect(fns).toMatch(/first_cleanup_pricing, contact_phone, contact_email(, service_lines)?"/);
     const route = read("src/routes/signup.$slug.tsx");
     expect(route).toMatch(
       /<BusinessFacts contact=\{org\.contact\} serviceArea=\{org\.serviceArea\} \/>/,

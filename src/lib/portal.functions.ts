@@ -16,11 +16,15 @@ import {
   serviceLinesOrDefault,
 } from "@/lib/service-lines";
 import {
+  VISIT_ISSUE_CODES,
+  VISIT_ISSUE_LABELS,
   WALK_ISSUE_CODES,
   WALK_ISSUE_LABELS,
   YARD_ONLY_CONCERNS,
+  isVisitIssue,
   isWalkIssue,
   isWalkLine,
+  visitConcernRow,
   walkConcernRow,
 } from "@/lib/walk-concerns";
 
@@ -288,6 +292,9 @@ async function loadPortalClient(token: string, _session: PortalSession) {
     ...row,
     skip_billable_pct: rule?.billable_pct ?? 0,
     reclean_window_hours: petWaste ? Number(org?.reclean_window_hours ?? 0) : 0,
+    // Which words the portal's general "Report a concern" offers (#560): the
+    // yard list only to a business that runs pet waste.
+    pet_waste: petWaste,
     mobile_grooming: serviceLinesOrDefault(lines?.service_lines).includes("mobile_grooming"),
     groom_requests: customerCanRequestService("mobile_grooming", availability),
   };
@@ -1141,12 +1148,12 @@ async function serviceLinesOf(
  *  when it cannot tell, so a refusal that depends on it cannot be skipped by
  *  a failed read. A visit that is not the client's is not a walk here; the
  *  RPC refuses it on its own. */
-async function visitIsWalk(
+async function visitServiceLine(
   sb: any,
   session: { clientId: string; organizationId: string },
   visitId: string | null,
-): Promise<boolean> {
-  if (!visitId) return false;
+): Promise<string | null> {
+  if (!visitId) return null;
   const { data, error } = await sb
     .from("visits")
     .select("id, services(service_line)")
@@ -1156,7 +1163,13 @@ async function visitIsWalk(
     .maybeSingle();
   if (error) throw new Error("We couldn't check that visit. Please try again.");
   const svc = Array.isArray(data?.services) ? data.services[0] : data?.services;
-  return isWalkLine(svc?.service_line);
+  return (svc?.service_line as string | null | undefined) ?? null;
+}
+
+/** A visit with a service that is not pet waste: a walk, a sit, a groom, a
+ *  lesson. A visit with no service is left to the RPC, as before. */
+function isNotYardLine(line: string | null): boolean {
+  return line !== null && line !== "pet_waste";
 }
 
 export const portalListRecentVisits = createServerFn({ method: "GET" })
@@ -1241,6 +1254,7 @@ export const portalReportConcern = createServerFn({ method: "POST" })
           "wrong_yard",
           "other",
           ...WALK_ISSUE_CODES,
+          ...VISIT_ISSUE_CODES,
         ]),
         message: z.string().max(1000).optional().default(""),
       })
@@ -1250,17 +1264,23 @@ export const portalReportConcern = createServerFn({ method: "POST" })
     const { requirePortalSession } = await portalAuth();
     const session = await requirePortalSession(data.token);
     const sb = await admin();
-    // A walk is not a yard: the portal does not offer these on a walk, and
-    // a request that sends one anyway is refused.
-    if (
-      (YARD_ONLY_CONCERNS as readonly string[]).includes(data.category) &&
-      (await visitIsWalk(sb, session, data.visitId))
-    ) {
-      throw new Error("That option is for a yard visit. Pick one that fits the walk.");
+    // A walk, a sit, a groom or a lesson is not a yard: the portal does not
+    // offer these on one, and a request that sends one anyway is refused.
+    if ((YARD_ONLY_CONCERNS as readonly string[]).includes(data.category)) {
+      const line = await visitServiceLine(sb, session, data.visitId);
+      if (isNotYardLine(line)) {
+        throw new Error(
+          isWalkLine(line)
+            ? "That option is for a yard visit. Pick one that fits the walk."
+            : "That option is for a yard visit. Pick one that fits the visit.",
+        );
+      }
     }
     const row = isWalkIssue(data.category)
       ? walkConcernRow(data.category, data.message)
-      : { category: data.category, message: data.message };
+      : isVisitIssue(data.category)
+        ? visitConcernRow(data.category, data.message)
+        : { category: data.category, message: data.message };
     const { data: id, error } = await sb.rpc("portal_report_concern", {
       _token: data.token,
       _visit_id: data.visitId as string,
@@ -1328,11 +1348,15 @@ export const portalRequestReclean = createServerFn({ method: "POST" })
     const session = await requirePortalSession(data.token);
     const sb = await admin();
 
-    // The guarantee is for pet waste. A walk is refused here, before
-    // anything is written, so a request sent past the portal is refused too.
-    if (await visitIsWalk(sb, session, data.visitId)) {
+    // The guarantee is for pet waste. A walk, a sit, a groom or a lesson is
+    // refused here, before anything is written, so a request sent past the
+    // portal is refused too.
+    const line = await visitServiceLine(sb, session, data.visitId);
+    if (isNotYardLine(line)) {
       const { recleanRefusalMessage } = await import("@/lib/reclean");
-      throw new Error(recleanRefusalMessage("visit_is_a_walk"));
+      throw new Error(
+        recleanRefusalMessage(isWalkLine(line) ? "visit_is_a_walk" : "visit_is_not_pet_waste"),
+      );
     }
 
     // Was there already an open request? Asked before the RPC so the office
@@ -1712,7 +1736,9 @@ const CONCERN_LABELS: Record<string, string> = {
 
 /** The office's words for a category, or for a walk issue (#410). */
 function concernLabel(category: string): string | undefined {
-  return isWalkIssue(category) ? `Walk: ${WALK_ISSUE_LABELS.en[category]}` : CONCERN_LABELS[category];
+  if (isWalkIssue(category)) return `Walk: ${WALK_ISSUE_LABELS.en[category]}`;
+  if (isVisitIssue(category)) return `Visit: ${VISIT_ISSUE_LABELS[category]}`;
+  return CONCERN_LABELS[category];
 }
 
 /** Exported for the groom request (portal-groom.server.ts) and the training

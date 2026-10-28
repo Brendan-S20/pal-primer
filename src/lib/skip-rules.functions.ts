@@ -93,9 +93,20 @@ export function officeSkipReason(code: string | null | undefined): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
-/** The customer-facing sentence for a code, with a fallback for unknown codes. */
-export function customerSkipReason(code: string | null | undefined): string {
+/** The yard sentences, said for a visit that is not to a yard (#560): a sit,
+ *  a groom or a lesson. */
+const CUSTOMER_SKIP_REASON_AWAY_FROM_A_YARD: Partial<Record<string, string>> = {
+  gate_locked: "The gate or door was locked, so we could not get in",
+  dog_outside: "Your dog was loose outside",
+  access_blocked: "We could not get in",
+};
+
+/** The customer-facing sentence for a code, with a fallback for unknown codes.
+ *  `yard` false says the access reasons without a yard in them. */
+export function customerSkipReason(code: string | null | undefined, yard = true): string {
   if (!code) return "Skipped";
+  if (!yard && CUSTOMER_SKIP_REASON_AWAY_FROM_A_YARD[code])
+    return CUSTOMER_SKIP_REASON_AWAY_FROM_A_YARD[code]!;
   return CUSTOMER_SKIP_REASON_LABELS[code as (typeof SKIP_REASON_CODES)[number]] ?? "Skipped";
 }
 

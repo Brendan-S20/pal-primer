@@ -138,6 +138,7 @@ import {
   type CollectAnswer,
 } from "@/components/my-day/StopFacts";
 import { useServiceLines } from "@/components/CommercialOnly";
+import { isYardVisit } from "@/lib/walk-concerns";
 import {
   WalkAccess,
   WalkMeta,
@@ -1716,9 +1717,13 @@ function VisitCard({
   const qc = useQueryClient();
   const { t } = useTranslation();
   const locale = useIntlLocale();
-  // Whether this business runs pet waste: without it, a missing yard outline
-  // is not worth a line on the card (PET_WASTE_MODULES.yard_outline_prompt).
-  const { petWaste } = useServiceLines();
+  // Whether THIS STOP is pet waste (#560): its own service's line, and for a
+  // visit with no service, whether the business runs pet waste. A walk, a
+  // sit, a groom or a lesson in a business that also scoops gets no yard
+  // outline prompt, no stations, no DNA and the neutral hazard and photo
+  // words (PET_WASTE_MODULES), the same as in a business that never scoops.
+  const { petWaste: businessRunsPetWaste } = useServiceLines();
+  const petWaste = isYardVisit(visit.services?.service_line, businessRunsPetWaste);
   const smsFn = useServerFn(sendVisitStatusSms);
   const onMyWayFn = useServerFn(sendOnMyWayMessage);
   const { role } = useMyRole();
@@ -1759,7 +1764,7 @@ function VisitCard({
   // remembered: a technician who opened Skip on stop 3 is not asking for it on
   // stop 4, and a card that opens pre-expanded is the busy card again.
   const [showMore, setShowMore] = useState(false);
-  const dnaEnrolled = !!visit.clients?.dna_compliance_enabled;
+  const dnaEnrolled = petWaste && !!visit.clients?.dna_compliance_enabled;
   const [addonSvcId, setAddonSvcId] = useState("");
   const [addonQty, setAddonQty] = useState("1");
   const addonListFn = useServerFn(listAddonServices);
@@ -2138,11 +2143,17 @@ function VisitCard({
   const p = visit.properties;
   // Waste stations only exist on commercial or multi-unit properties. On a
   // residential card there are never any, so the button never appears.
-  const hasStations = p?.account_type === "commercial" || !!p?.has_units;
+  // And only on a pet-waste stop: a walker at an apartment complex has no bags
+  // to count.
+  const hasStations = petWaste && (p?.account_type === "commercial" || !!p?.has_units);
   const windowLabel = visitWindowLabel(visit, tz, t, locale);
   const service = visitServiceLabel(visit.services);
   const walkStop = service?.line === "dog_walking";
-  const skipCodes = techSkipReasonCodes(service?.line);
+  // A stop that is not pet waste and has no line of its own (no service, or
+  // "other") gets the sitter's list, which has no gate or yard in it.
+  const skipLine =
+    !petWaste && (!service || service.line === "other") ? "pet_sitting" : service?.line;
+  const skipCodes = techSkipReasonCodes(skipLine);
 
   // ── ONE BUTTON WALKS THE VISIT (src/lib/visit-step.ts) ─────────────────
   //
@@ -2655,7 +2666,7 @@ function VisitCard({
                     ? t("visit.skippedAt", { time: orgLocalTime(visit.skipped_at, tz, locale) })
                     : ""}
                   {visit.skip_reason_code
-                    ? ` (${skipReasonLabel(t, visit.skip_reason_code, service?.line)})`
+                    ? ` (${skipReasonLabel(t, visit.skip_reason_code, skipLine)})`
                     : ""}
                   {visit.skip_reason ? ": " : ""}
                   {visit.skip_reason ? <bdi>{visit.skip_reason}</bdi> : null}
@@ -3082,7 +3093,7 @@ function VisitCard({
                 >
                   {skipCodes.map((c) => (
                     <option key={c} value={c}>
-                      {skipReasonLabel(t, c, service?.line)}
+                      {skipReasonLabel(t, c, skipLine)}
                     </option>
                   ))}
                 </select>

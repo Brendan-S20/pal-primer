@@ -90,3 +90,73 @@ export function walkConcernRow(
 export function isWalkLine(serviceLine: string | null | undefined): boolean {
   return serviceLine === "dog_walking";
 }
+
+/** What a client can report about a sit, a groom or a lesson (#560). The yard
+ *  list's "Missed spot" and "Wrong yard serviced" mean nothing on those either,
+ *  and a walk's list talks about a walker. Stored the same way as a walk
+ *  issue: an existing category, the issue in plain words at the start of the
+ *  message. English only, because the portal speaks the business's language. */
+export const VISIT_ISSUE_CODES = [
+  "visit_short",
+  "visit_late",
+  "pet_problem",
+  "home_unsecured",
+  "visit_damage",
+  "visit_other",
+] as const;
+export type VisitIssue = (typeof VISIT_ISSUE_CODES)[number];
+
+export const VISIT_ISSUE_CATEGORY: Record<VisitIssue, "other" | "gate_left_open" | "damage"> = {
+  visit_short: "other",
+  visit_late: "other",
+  pet_problem: "other",
+  home_unsecured: "gate_left_open",
+  visit_damage: "damage",
+  visit_other: "other",
+};
+
+export const VISIT_ISSUE_LABELS: Record<VisitIssue, string> = {
+  visit_short: "The visit was shorter than booked",
+  visit_late: "Nobody came, or they were late",
+  pet_problem: "My pet was hurt, unwell or upset afterwards",
+  home_unsecured: "A door, gate or key was left unsecured",
+  visit_damage: "Something was damaged",
+  visit_other: "Something else",
+};
+
+export const VISIT_CONCERN_OPTIONS: Array<{ value: VisitIssue; label: string }> =
+  VISIT_ISSUE_CODES.map((value) => ({ value, label: VISIT_ISSUE_LABELS[value] }));
+
+export function isVisitIssue(v: unknown): v is VisitIssue {
+  return typeof v === "string" && (VISIT_ISSUE_CODES as readonly string[]).includes(v);
+}
+
+export function visitConcernRow(
+  issue: VisitIssue,
+  message: string,
+): { category: "other" | "gate_left_open" | "damage"; message: string } {
+  const head = `Visit: ${VISIT_ISSUE_LABELS[issue]}.`;
+  const body = message.trim();
+  return { category: VISIT_ISSUE_CATEGORY[issue], message: body ? `${head} ${body}` : head };
+}
+
+/** Whether a visit is a yard visit: its service is pet waste. A visit whose
+ *  line could not be read is what the business runs, pet waste when it runs
+ *  it, the same fail-open rule as serviceLinesOrDefault. */
+export function isYardVisit(
+  serviceLine: string | null | undefined,
+  businessRunsPetWaste: boolean,
+): boolean {
+  return serviceLine ? serviceLine === "pet_waste" : businessRunsPetWaste;
+}
+
+/** Whether the client page a tech opens reads as yard work (#560): any of
+ *  the tech's own visits to this client is a yard visit. `ownVisitLines` is
+ *  null for the office, which goes by what the business runs. */
+export function fieldClientIsYardWork(
+  ownVisitLines: readonly (string | null)[] | null,
+  businessRunsPetWaste: boolean,
+): boolean {
+  if (!ownVisitLines) return businessRunsPetWaste;
+  return ownVisitLines.some((line) => isYardVisit(line, businessRunsPetWaste));
+}

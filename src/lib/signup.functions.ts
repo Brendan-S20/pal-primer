@@ -24,7 +24,11 @@ import {
   publicServiceChoices,
   type PublicService,
 } from "@/lib/public-services";
-import { customerCanBookService, type ServiceLineAvailability } from "@/lib/service-lines";
+import {
+  customerCanBookService,
+  serviceLinesOrDefault,
+  type ServiceLineAvailability,
+} from "@/lib/service-lines";
 import {
   CALM_REFUSAL,
   ELAPSED_FIELD,
@@ -77,7 +81,7 @@ export const getPublicSignupForm = createServerFn({ method: "GET" })
     const { data: org } = await (supabaseAdmin as any)
       .from("organizations")
       .select(
-        "id, name, currency, logo_url, brand_color, portal_slug, slug, public_signup_enabled, lead_form_config, first_cleanup_pricing, contact_phone, contact_email",
+        "id, name, currency, logo_url, brand_color, portal_slug, slug, public_signup_enabled, lead_form_config, first_cleanup_pricing, contact_phone, contact_email, service_lines",
       )
       .eq("id", found.id)
       .maybeSingle();
@@ -193,6 +197,10 @@ export const getPublicSignupForm = createServerFn({ method: "GET" })
         phone: ((org?.contact_phone as string | null) ?? "").trim() || null,
         email: ((org?.contact_email as string | null) ?? "").trim() || null,
       },
+      // What the business runs (organizations.service_lines), so a page with
+      // no service listed online speaks for that line rather than for pet
+      // waste (#560). Not private: it is what the page sells.
+      lines: serviceLinesOrDefault(org?.service_lines),
       serviceArea,
       services,
       serviceLines,

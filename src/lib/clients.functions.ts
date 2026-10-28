@@ -211,6 +211,10 @@ export const getFieldClientInfo = createServerFn({ method: "GET" })
     const { supabase, userId } = context;
     const caller = await resolveCaller(supabase, userId);
     const canReadDirectory = caller.role !== "tech";
+    // The lines of the tech's own visits to this client (#560): the page's
+    // hazard words follow the work the tech does here, not the business.
+    // Null for the office, which reads the business's lines.
+    let ownVisitLines: (string | null)[] | null = null;
 
     if (!canReadDirectory) {
       const { data: staff, error: staffErr } = await supabase
@@ -224,14 +228,21 @@ export const getFieldClientInfo = createServerFn({ method: "GET" })
 
       const { data: assigned, error: visitErr } = await supabase
         .from("visits")
-        .select("id")
+        .select("id, services(service_line)")
         .eq("client_id", data.clientId)
         .eq("organization_id", caller.orgId)
         .eq("assigned_staff_id", staff.id)
         .neq("status", "canceled")
-        .limit(1);
+        .limit(50);
       if (visitErr) throw new Error(visitErr.message);
       if (!assigned?.length) throw new Error("Not authorized");
+      ownVisitLines = assigned.map((v: { services?: unknown }) => {
+        const s = (Array.isArray(v.services) ? v.services[0] : v.services) as
+          | { service_line?: string | null }
+          | null
+          | undefined;
+        return s?.service_line ?? null;
+      });
     }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -309,6 +320,7 @@ export const getFieldClientInfo = createServerFn({ method: "GET" })
       dogs: (dogs ?? [])
         .filter((d: any) => d.active !== false)
         .map((d) => (vaccineStatuses[d.id] ? { ...d, vaccine_status: vaccineStatuses[d.id] } : d)),
+      ownVisitLines,
     };
   });
 

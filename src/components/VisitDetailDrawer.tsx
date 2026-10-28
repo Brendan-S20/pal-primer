@@ -67,6 +67,15 @@ import {
   nowAsCalledAt,
 } from "@/components/training/ClientCalledAtField";
 import { CompletedVisitActions } from "@/components/CompletedVisitActions";
+import { BUSINESS_REASONS } from "@/lib/training-packages";
+import { useServiceLines } from "@/components/CommercialOnly";
+import { isYardVisit } from "@/lib/walk-concerns";
+
+const MISSED_REASON_LABELS: Record<(typeof BUSINESS_REASONS)[number], string> = {
+  our_fault: "Our fault",
+  weather: "Weather",
+  unsafe_conditions: "Unsafe conditions",
+};
 
 function fmtAddress(p: any): string {
   if (!p) return "";
@@ -83,17 +92,22 @@ function directionsUrl(p: any): string | null {
   return `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`;
 }
 
-function hazardList(p: any): string[] {
+/** `yard` false for a walk, a sit, a groom or a lesson (#560): the same flags
+ *  in words without a yard in them, as My Day's workerHazard keys say them. */
+function hazardList(p: any, yard = true): string[] {
   if (!p) return [];
   const flags: [boolean, string][] = [
-    [p.aggressive_dog, "Aggressive dog"],
-    [p.dog_in_yard_during_service, "Dog in yard"],
+    [p.aggressive_dog, yard ? "Aggressive dog" : "Pet may bite"],
+    [p.dog_in_yard_during_service, yard ? "Dog in yard" : "Pet may be loose at arrival"],
     [p.escape_risk, "Escape risk"],
     [p.invisible_fence, "Invisible fence"],
     [p.bees_wasps, "Bees / wasps"],
     [p.sharp_objects, "Sharp objects"],
     [p.slippery_surfaces, "Slippery surfaces"],
-    [p.do_not_enter_if_dog_out, "Do NOT enter if dog is out"],
+    [
+      p.do_not_enter_if_dog_out,
+      yard ? "Do NOT enter if dog is out" : "Do not approach an unsecured pet",
+    ],
   ];
   return flags.filter(([v]) => v).map(([, l]) => l);
 }
@@ -147,6 +161,10 @@ export function VisitDetailDrawer({
   // office server functions is the real one. Showing a dispatcher a button
   // that throws is the failure this whole change is about, so hide it.
   const { can, role } = usePermissions();
+  // Yard wording only on a pet-waste visit, decided as My Day decides it
+  // (#560): the visit's own line, and for a visit with no service, what the
+  // business runs.
+  const { petWaste: businessRunsPetWaste } = useServiceLines();
   const canActFromOffice = can("manage_client_billing");
 
   // Q-12, narrowest useful answer. Below 768px the dnd board is display:none
@@ -305,7 +323,8 @@ export function VisitDetailDrawer({
   const dogs = data?.dogs ?? [];
   const recent = data?.recent ?? [];
   const upcoming = data?.upcoming ?? [];
-  const hazards = hazardList(p);
+  const yardVisit = isYardVisit(v?.services?.service_line, businessRunsPetWaste);
+  const hazards = hazardList(p, yardVisit);
   const dir = directionsUrl(p);
   // There is no office_start_visit — starting a visit stamps a tech's arrival,
   // and the office has no honest value to stamp. The Start button here never
@@ -656,7 +675,11 @@ export function VisitDetailDrawer({
                           rows={2}
                           value={skipReason}
                           onChange={(e) => setSkipReason(e.target.value)}
-                          placeholder="Gate locked, dog outside, weather…"
+                          placeholder={
+                            yardVisit
+                              ? "Gate locked, dog outside, weather…"
+                              : "No one home, could not get in, weather…"
+                          }
                         />
                         {v.client_package_id && (
                           <ClientCalledAtField

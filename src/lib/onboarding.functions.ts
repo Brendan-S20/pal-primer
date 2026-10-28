@@ -364,6 +364,31 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
     );
   }
 
+  // A walking business prices each walk on Settings, Services; a zone's
+  // per-visit price is what a pet-waste plan is quoted from, so asking a
+  // walker for one sends them to a number no walk ever reads. Signup
+  // seeds the walks with blank prices, and done means one has a price.
+  if (orgLines.includes("dog_walking") && !petWaste && !grooming && !runsTraining && !sitting) {
+    const { data: walks } = await supabase
+      .from("services")
+      .select("base_price_cents")
+      .eq("organization_id", orgId)
+      .eq("service_line", "dog_walking")
+      .eq("active", true);
+    Object.assign(
+      steps.find((step) => step.id === "zones")!,
+      {
+        label: "Price your walks",
+        description:
+          "Set what a 30-minute walk, a 60-minute walk and a drop-in cost. New clients are quoted these prices. Your service area is on Zones.",
+        done: (walks ?? []).some((w) => (w.base_price_cents ?? 0) > 0),
+        to: "/settings/services",
+        cta: "Price walks",
+        gate: "/settings/services",
+      },
+    );
+  }
+
     if (sitting) {
       const { data: services } = await supabase
         .from("services")

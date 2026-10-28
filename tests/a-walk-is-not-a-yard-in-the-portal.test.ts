@@ -83,6 +83,8 @@ const {
   walkConcernRow,
 } = await import("@/lib/walk-concerns");
 const { isInsideRecleanWindow, recleanRefusalMessage } = await import("@/lib/reclean");
+const { VISIT_CONCERN_OPTIONS, VISIT_ISSUE_CODES, VISIT_ISSUE_CATEGORY, isYardVisit } =
+  await import("@/lib/walk-concerns");
 const { walkSkipReason } = await import("@/lib/walk-notify");
 
 const ROOT = join(import.meta.dirname, "..");
@@ -92,11 +94,25 @@ const TOKEN = "11111111-1111-4111-8111-111111111111";
 const WALK_VISIT = "22222222-2222-4222-8222-222222222222";
 const YARD_VISIT = "33333333-3333-4333-8333-333333333333";
 const OTHER_CLIENTS_VISIT = "44444444-4444-4444-8444-444444444444";
+const SIT_VISIT = "55555555-5555-4555-8555-555555555555";
+const GROOM_VISIT = "66666666-6666-4666-8666-666666666666";
 
 beforeEach(() => {
   db.visits = [
     { id: WALK_VISIT, client_id: "c1", organization_id: "org-1", services: { service_line: "dog_walking" } },
     { id: YARD_VISIT, client_id: "c1", organization_id: "org-1", services: { service_line: "pet_waste" } },
+    {
+      id: SIT_VISIT,
+      client_id: "c1",
+      organization_id: "org-1",
+      services: { service_line: "pet_sitting" },
+    },
+    {
+      id: GROOM_VISIT,
+      client_id: "c1",
+      organization_id: "org-1",
+      services: { service_line: "mobile_grooming" },
+    },
     {
       id: OTHER_CLIENTS_VISIT,
       client_id: "c2",
@@ -234,9 +250,11 @@ describe("service history", () => {
   it("draws walk issues, walk words and no re-clean on a walk", () => {
     const ui = read("src/lib/portal-ui.tsx");
     expect(ui).toMatch(
-      /options=\{isWalkLine\(r\.service_line\) \? WALK_CONCERN_OPTIONS : CONCERN_OPTIONS\}/,
+      /isWalkLine\(r\.service_line\)\s+\? WALK_CONCERN_OPTIONS\s+: yard\s+\? CONCERN_OPTIONS\s+: VISIT_CONCERN_OPTIONS/,
     );
-    expect(ui).toMatch(/\{reclean &&\s+!isWalkLine\(r\.service_line\) &&/);
+    // Only a yard visit (pet waste, #560) is offered the re-clean guarantee.
+    expect(ui).toMatch(/const yard = isYardVisit\(r\.service_line, petWaste\)/);
+    expect(ui).toMatch(/\{reclean &&\s+yard &&/);
     expect(ui).toMatch(
       /isWalkLine\(r\.service_line\) && r\.skip_reason_code !== "customer_requested"\s+\? walkSkipReason\(r\.skip_reason_code\)/,
     );
@@ -245,5 +263,61 @@ describe("service history", () => {
   it("says a blocked walk in walk words, not yard words", () => {
     expect(walkSkipReason("access_blocked")).toBe("The walker could not get in.");
     expect(walkSkipReason("access_blocked")).not.toMatch(/yard/i);
+  });
+});
+
+// #560: a sit, a groom or a lesson is not a yard either.
+describe("a visit that is not a walk and not a yard", () => {
+  const report = (visitId: string, category: string, message = "") =>
+    portalReportConcern({ data: { token: TOKEN, visitId, category, message } } as any);
+
+  it("is a yard visit only when its line is pet waste, or unknown in a pet-waste business", () => {
+    expect(isYardVisit("pet_waste", false)).toBe(true);
+    expect(isYardVisit("pet_sitting", true)).toBe(false);
+    expect(isYardVisit("mobile_grooming", true)).toBe(false);
+    expect(isYardVisit("training", true)).toBe(false);
+    expect(isYardVisit(null, true)).toBe(true);
+    expect(isYardVisit(null, false)).toBe(false);
+  });
+
+  it("offers visit issues with no yard word in them", () => {
+    const labels = VISIT_CONCERN_OPTIONS.map((o) => o.label).join(" | ");
+    expect(labels).not.toMatch(/missed spot|yard|re-clean|scoop|cleanup|walk/i);
+  });
+
+  it("stores visit issues as categories portal_report_concern already accepts", () => {
+    const dir = join(ROOT, "supabase/migrations");
+    const file = readdirSync(dir).find((f) => f.startsWith("20260702162340_"));
+    const sql = readFileSync(join(dir, file!), "utf8");
+    const list = sql.match(/_category NOT IN \(([^)]+)\)/)![1];
+    const accepted = [...list.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+    for (const code of VISIT_ISSUE_CODES)
+      expect(accepted, code).toContain(VISIT_ISSUE_CATEGORY[code]);
+  });
+
+  it("refuses missed spot and wrong yard on a sit and a groom", async () => {
+    await expect(report(SIT_VISIT, "missed_spot")).rejects.toThrow(/fits the visit/);
+    await expect(report(GROOM_VISIT, "wrong_yard")).rejects.toThrow(/fits the visit/);
+    expect(rpcNames()).not.toContain("portal_report_concern");
+  });
+
+  it("stores a visit issue with the issue at the start of the message", async () => {
+    await report(SIT_VISIT, "home_unsecured", "Back door");
+    const call = db.rpcs.find((r) => r.name === "portal_report_concern")!.args;
+    expect(call).toMatchObject({
+      _category: "gate_left_open",
+      _message: "Visit: A door, gate or key was left unsecured. Back door",
+    });
+  });
+
+  it("is never inside the re-clean window, and the server refuses one", async () => {
+    const done = { status: "completed", completed_at: "2026-10-16T10:00:00Z" };
+    const now = new Date("2026-10-16T12:00:00Z");
+    for (const line of ["pet_sitting", "mobile_grooming", "training"])
+      expect(isInsideRecleanWindow({ ...done, service_line: line }, 48, now), line).toBe(false);
+    await expect(
+      portalRequestReclean({ data: { token: TOKEN, visitId: GROOM_VISIT, message: "" } } as any),
+    ).rejects.toThrow(recleanRefusalMessage("visit_is_not_pet_waste"));
+    expect(rpcNames()).not.toContain("portal_request_reclean");
   });
 });

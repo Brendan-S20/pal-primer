@@ -35,6 +35,7 @@ import {
 } from "@/lib/quotes";
 import { formatDateTime } from "@/lib/format";
 import { pageTitle, useDocumentTitle } from "@/lib/page-title";
+import { useServiceLines } from "@/components/CommercialOnly";
 
 export const Route = createFileRoute("/_authenticated/quotes/$quoteId")({
   head: () => ({ meta: [{ title: pageTitle("Quote") }] }),
@@ -44,6 +45,8 @@ export const Route = createFileRoute("/_authenticated/quotes/$quoteId")({
 function QuoteDetailPage() {
   const { quoteId } = Route.useParams();
   const navigate = useNavigate();
+  // The editor's hints speak the business's own service (#560).
+  const { lines: serviceLines } = useServiceLines();
   const qc = useQueryClient();
   const { confirm, dialog } = useConfirmDialog();
   const getFn = useServerFn(getQuote);
@@ -226,6 +229,7 @@ function QuoteDetailPage() {
           today={today}
           leadName={quote.leadName}
           onSaved={() => refresh()}
+          serviceLines={serviceLines}
         />
       </>
     );

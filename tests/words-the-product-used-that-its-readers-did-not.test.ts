@@ -144,17 +144,18 @@ describe("the lifecycle texts call it the same thing the portal does", () => {
     ].map((m) => m[0]),
   ];
 
-  it("finds the three visit texts and the walk text", () => {
-    // Two in one ternary, the scoop on-my-way text, and the walk text.
-    // Fewer would mean this suite is checking a subset of the copy.
-    expect(templates()).toHaveLength(4);
+  it("finds the four visit texts and the walk text", () => {
+    // Two in one ternary, the scoop on-my-way text, the on-my-way text for a
+    // visit that is not a yard (#560), and the walk text. Fewer would mean
+    // this suite is checking a subset of the copy.
+    expect(templates()).toHaveLength(5);
   });
 
   it("says visit on a scoop and walk on a walk", () => {
     const walks = templates().filter((t) => t.includes("today's walk"));
     const visits = templates().filter((t) => !t.includes("today's walk"));
     expect(walks).toHaveLength(1);
-    expect(visits).toHaveLength(3);
+    expect(visits).toHaveLength(4);
     for (const t of visits) expect(t, t).toMatch(/\bvisit\b/);
     expect(walks[0]).toMatch(/\bwalk\b/);
     expect(walks[0]).not.toMatch(/Reply ENT|Reply DNE/);

@@ -419,7 +419,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     photo_training: "训练照片",
   },
   access: {
-    gate: "住家已锁好",
+    gate: "大门或房门密码",
     lockBox: "钥匙盒",
     key: "钥匙",
     alarm: "警报器",

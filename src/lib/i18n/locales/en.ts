@@ -441,7 +441,7 @@ const en = {
     photo_training: "Training photo",
   },
   access: {
-    gate: "Home secured",
+    gate: "Gate or door code",
     lockBox: "Lock box",
     key: "Key",
     alarm: "Alarm",

@@ -1496,6 +1496,7 @@ function RoutesPage() {
                 onOpenVisit={setDetailVisitId}
                 onGeocode={() => geocodeMut.mutate()}
                 geocoding={geocodeMut.isPending}
+                emptyText={day === orgTodayIso ? "No visits today." : "No visits on this day."}
                 compact={compact}
                 drawRoutes
               />
@@ -1978,6 +1979,7 @@ function MapPanel({
   compact = false,
   drawRoutes = true,
   multiDay = false,
+  emptyText = "No visits to show.",
 }: {
   baseStyle: TileVariant;
   onBaseStyle: (v: TileVariant) => void;
@@ -1994,6 +1996,9 @@ function MapPanel({
   compact?: boolean;
   drawRoutes?: boolean;
   multiDay?: boolean;
+  /** What an empty day says (#423). The geocoding prompt is for visits that
+   *  have no pin, never for a day that has no visits. */
+  emptyText?: string;
 }) {
   // perDay must match multiDay: grouping and rendering disagreeing is exactly
   // the bug this replaces.
@@ -2067,7 +2072,7 @@ function MapPanel({
         />
         {visits.length === 0 ? (
           <div className="absolute inset-0 flex items-center justify-center rounded-md bg-background/70 text-sm text-muted-foreground">
-            No visits to show.
+            {emptyText}
           </div>
         ) : (
           mappable === 0 && (

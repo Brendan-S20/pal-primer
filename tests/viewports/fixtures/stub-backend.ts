@@ -1525,7 +1525,7 @@ function tippedIntent<T extends { dueCents: number }>(base: T, args: Record<stri
   return { ...base, amountCents: charge.amountCents, tipCents: charge.tipCents };
 }
 
-const PORTAL_STUBS: Record<string, Stub> = {
+export const PORTAL_STUBS: Record<string, Stub> = {
   portalOrgBySlug: { found: true, branding: pfx.PORTAL_BRANDING },
   portalContext: (args) => ({
     verified: true,

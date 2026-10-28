@@ -11,7 +11,10 @@ export const Route = createFileRoute("/portal/$slug/$token/requests")({
 });
 
 function PortalRequests() {
-  const { requestsQ, concernMut } = usePortalCtx();
+  const { requestsQ, concernMut, clientQ } = usePortalCtx();
+  // The yard list only for a business that runs pet waste (#560). Unknown
+  // reads as pet waste, as everywhere else.
+  const petWaste = (clientQ.data as { pet_waste?: boolean } | undefined)?.pet_waste !== false;
 
   return (
     <div className="space-y-6">
@@ -36,7 +39,7 @@ function PortalRequests() {
         <h2 className="mb-2 text-lg font-semibold">Report a concern</h2>
         <ReportGeneralConcern onSubmit={(cat, msg) =>
           concernMut.mutate({ visitId: null, category: cat as any, message: msg })
-        } pending={concernMut.isPending} />
+        } pending={concernMut.isPending} petWaste={petWaste} />
       </section>
     </div>
   );

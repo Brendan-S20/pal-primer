@@ -47,7 +47,12 @@ import { useNavigate } from "@tanstack/react-router";
 import { customerSkipReason } from "@/lib/skip-rules.functions";
 import { isInsideRecleanWindow, recleanDeadlineLabel } from "@/lib/reclean";
 import { walkSkipReason } from "@/lib/walk-notify";
-import { WALK_CONCERN_OPTIONS, isWalkLine } from "@/lib/walk-concerns";
+import {
+  VISIT_CONCERN_OPTIONS,
+  WALK_CONCERN_OPTIONS,
+  isWalkLine,
+  isYardVisit,
+} from "@/lib/walk-concerns";
 import { oneOffRequestState } from "@/lib/one-off-booking";
 import {
   portalContext,
@@ -1670,6 +1675,7 @@ export function ServiceHistorySection({
   onReport,
   reporting,
   reclean,
+  petWaste = true,
 }: {
   rows: Array<any>;
   signPhotos: (args: {
@@ -1686,6 +1692,9 @@ export function ServiceHistorySection({
     requestedVisitIds: Set<string>;
     onRequest: (visitId: string, message: string) => Promise<unknown>;
   };
+  /** Whether the business runs pet waste (portalGetClient's pet_waste). Only
+   *  decides a visit whose service line could not be read; fails open. */
+  petWaste?: boolean;
 }) {
   const tz = usePortalTimezone();
   const [urls, setUrls] = useState<Record<string, string>>({});
@@ -1732,35 +1741,39 @@ export function ServiceHistorySection({
         <EmptyBox
           icon={<Camera className="h-6 w-6 shrink-0" />}
           title="No completed visits yet"
-          body="After your first visit, we'll post before/after photos here."
+          body="After your first visit, its photos and notes will show here."
         />
       ) : (
         <ul className="space-y-3">
-          {/* A dog walk (#410) reads in walk words, offers walk issues, and
-              never offers the re-clean guarantee, which is for pet waste. */}
-          {rows.map((r) => (
-            <li key={r.visit_id} className="rounded-md border bg-card p-3 text-sm">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <div className="font-medium">{fmtDay(r.scheduled_on)}</div>
-                  <div className="text-xs text-muted-foreground flex flex-wrap gap-2">
-                    {r.status === "completed" ? (
-                      <>
-                        <span className="inline-flex items-center gap-1 text-emerald-700">
-                          <CheckCircle2 className="h-3 w-3 shrink-0" />{" "}
-                          {isWalkLine(r.service_line) ? "Walk done" : "Completed"}
-                          {r.completed_at && <> at {orgLocalTime(r.completed_at, tz)}</>}
-                        </span>
-                        {r.tech_name && (
-                          <span>
-                            · by <strong>{r.tech_name}</strong>
+          {/* A dog walk (#410) reads in walk words and offers walk issues; a
+              sit, a groom or a lesson (#560) offers visit issues; only a yard
+              visit offers yard issues and the re-clean guarantee, which is
+              for pet waste. */}
+          {rows.map((r) => {
+            const yard = isYardVisit(r.service_line, petWaste);
+            return (
+              <li key={r.visit_id} className="rounded-md border bg-card p-3 text-sm">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="font-medium">{fmtDay(r.scheduled_on)}</div>
+                    <div className="text-xs text-muted-foreground flex flex-wrap gap-2">
+                      {r.status === "completed" ? (
+                        <>
+                          <span className="inline-flex items-center gap-1 text-emerald-700">
+                            <CheckCircle2 className="h-3 w-3 shrink-0" />{" "}
+                            {isWalkLine(r.service_line) ? "Walk done" : "Completed"}
+                            {r.completed_at && <> at {orgLocalTime(r.completed_at, tz)}</>}
                           </span>
-                        )}
-                      </>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-amber-700">
-                        <X className="h-3 w-3 shrink-0" />
-                        {/* The reason CODE, phrased for the person whose yard
+                          {r.tech_name && (
+                            <span>
+                              · by <strong>{r.tech_name}</strong>
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-amber-700">
+                          <X className="h-3 w-3 shrink-0" />
+                          {/* The reason CODE, phrased for the person whose yard
                             it is. This used to print `skip_reason` -- the free
                             text a technician types at the gate, 1 to 500
                             characters, with nothing marking it internal and
@@ -1774,72 +1787,78 @@ export function ServiceHistorySection({
 
                             A walk says it in walk words, the same sentence
                             the walk-not-done email used. */}
-                        {isWalkLine(r.service_line) && r.skip_reason_code !== "customer_requested"
-                          ? walkSkipReason(r.skip_reason_code)
-                          : customerSkipReason(r.skip_reason_code)}
-                        {r.skip_reason_code === "customer_requested" && r.skip_reason && (
-                          <>: {r.skip_reason}</>
-                        )}
-                      </span>
-                    )}
+                          {isWalkLine(r.service_line) && r.skip_reason_code !== "customer_requested"
+                            ? walkSkipReason(r.skip_reason_code)
+                            : customerSkipReason(r.skip_reason_code, yard)}
+                          {r.skip_reason_code === "customer_requested" && r.skip_reason && (
+                            <>: {r.skip_reason}</>
+                          )}
+                        </span>
+                      )}
+                    </div>
                   </div>
+                  {r.status === "completed" && (
+                    <ConcernButton
+                      options={
+                        isWalkLine(r.service_line)
+                          ? WALK_CONCERN_OPTIONS
+                          : yard
+                            ? CONCERN_OPTIONS
+                            : VISIT_CONCERN_OPTIONS
+                      }
+                      placeholder={
+                        yard ? "Tell us what to look for or fix" : "Tell us what happened"
+                      }
+                      onSubmit={(cat, msg) => onReport(r.visit_id, cat, msg)}
+                      pending={reporting}
+                    />
+                  )}
                 </div>
-                {r.status === "completed" && (
-                  <ConcernButton
-                    options={isWalkLine(r.service_line) ? WALK_CONCERN_OPTIONS : CONCERN_OPTIONS}
-                    placeholder={
-                      isWalkLine(r.service_line)
-                        ? "Tell us what happened"
-                        : "Tell us what to look for or fix"
-                    }
-                    onSubmit={(cat, msg) => onReport(r.visit_id, cat, msg)}
-                    pending={reporting}
-                  />
-                )}
-              </div>
 
-              {reclean &&
-                !isWalkLine(r.service_line) &&
-                (reclean.requestedVisitIds.has(r.visit_id) ? (
-                  <p className="mt-2 flex items-start gap-1 text-xs text-emerald-700">
-                    <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0" />
-                    <span className="min-w-0">
-                      Re-clean requested. {reclean.businessName} will be back within the guarantee.
-                    </span>
-                  </p>
-                ) : (
-                  isInsideRecleanWindow(r, reclean.windowHours) && (
-                    <RecleanOffer
-                      deadline={recleanDeadlineLabel(r.completed_at, reclean.windowHours, tz)}
-                      visitDay={fmtDay(r.scheduled_on)}
-                      businessName={reclean.businessName}
-                      onSubmit={(msg) => reclean.onRequest(r.visit_id, msg)}
-                    />
-                  )
-                ))}
-
-              {r.status === "completed" && (r.photo_paths?.length ?? 0) === 0 && (
-                <p className="mt-2 text-xs text-muted-foreground italic">
-                  {isWalkLine(r.service_line)
-                    ? "No photos from this walk."
-                    : "Photos not available for this visit."}
-                </p>
-              )}
-
-              {(r.photo_paths?.length ?? 0) > 0 && (
-                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {r.photo_paths.map((p: string, i: number) => (
-                    <PortalVisitPhoto
-                      key={p}
-                      url={urls[p]}
-                      kind={r.photo_kinds?.[i]}
-                      onOpen={() => urls[p] && setLightbox({ visitId: r.visit_id, index: i })}
-                    />
+                {reclean &&
+                  yard &&
+                  (reclean.requestedVisitIds.has(r.visit_id) ? (
+                    <p className="mt-2 flex items-start gap-1 text-xs text-emerald-700">
+                      <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0" />
+                      <span className="min-w-0">
+                        Re-clean requested. {reclean.businessName} will be back within the
+                        guarantee.
+                      </span>
+                    </p>
+                  ) : (
+                    isInsideRecleanWindow(r, reclean.windowHours) && (
+                      <RecleanOffer
+                        deadline={recleanDeadlineLabel(r.completed_at, reclean.windowHours, tz)}
+                        visitDay={fmtDay(r.scheduled_on)}
+                        businessName={reclean.businessName}
+                        onSubmit={(msg) => reclean.onRequest(r.visit_id, msg)}
+                      />
+                    )
                   ))}
-                </div>
-              )}
-            </li>
-          ))}
+
+                {r.status === "completed" && (r.photo_paths?.length ?? 0) === 0 && (
+                  <p className="mt-2 text-xs text-muted-foreground italic">
+                    {isWalkLine(r.service_line)
+                      ? "No photos from this walk."
+                      : "Photos not available for this visit."}
+                  </p>
+                )}
+
+                {(r.photo_paths?.length ?? 0) > 0 && (
+                  <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {r.photo_paths.map((p: string, i: number) => (
+                      <PortalVisitPhoto
+                        key={p}
+                        url={urls[p]}
+                        kind={r.photo_kinds?.[i]}
+                        onOpen={() => urls[p] && setLightbox({ visitId: r.visit_id, index: i })}
+                      />
+                    ))}
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
 
@@ -2142,13 +2161,25 @@ function RecleanOffer({
   );
 }
 
+/** The general "Report a concern" for a business that runs no pet waste
+ *  (#560): no missed spot, no wrong yard. */
+const GENERAL_CONCERN_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "other", label: "Other" },
+  { value: "gate_left_open", label: "A door, gate or key was left unsecured" },
+  { value: "damage", label: "Damage to my home or property" },
+];
+
 export function ReportGeneralConcern({
   onSubmit,
   pending,
+  petWaste = true,
 }: {
   onSubmit: (cat: string, msg: string) => void;
   pending: boolean;
+  /** Whether the business runs pet waste; fails open to the yard list. */
+  petWaste?: boolean;
 }) {
+  const options = petWaste ? CONCERN_OPTIONS : GENERAL_CONCERN_OPTIONS;
   const [cat, setCat] = useState("other");
   const [msg, setMsg] = useState("");
   return (
@@ -2161,7 +2192,7 @@ export function ReportGeneralConcern({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {CONCERN_OPTIONS.map((o) => (
+              {options.map((o) => (
                 <SelectItem key={o.value} value={o.value}>
                   {o.label}
                 </SelectItem>
@@ -2175,7 +2206,11 @@ export function ReportGeneralConcern({
             value={msg}
             onChange={(e) => setMsg(e.target.value)}
             rows={2}
-            placeholder="Missing spot, billing question, anything at all"
+            placeholder={
+              petWaste
+                ? "Missing spot, billing question, anything at all"
+                : "A visit, a billing question, anything at all"
+            }
           />
         </div>
       </div>

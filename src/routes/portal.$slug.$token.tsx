@@ -248,7 +248,7 @@ function PortalShell() {
             <>
               <p className="mt-3 text-sm opacity-95">
                 Your account with us: check your next visit, pay invoices, update your property and
-                dogs, or send us a request.
+                pets, or send us a request.
               </p>
               {(c.primary_frequency || c.credit_balance_cents !== 0) && (
                 <div className="mt-3 flex flex-wrap gap-2 text-sm">
