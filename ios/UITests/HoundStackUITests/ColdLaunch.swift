@@ -29,6 +29,38 @@
 
 import XCTest
 
+/// Gets a freshly booted simulator past its slow first launches, and fails
+/// only if the page never paints at all.
+///
+/// Measured on the Mac CI runner (iOS 27.1, iPhone Duo): the first launches
+/// after a boot served the same index.html and took 4 to 7.5 seconds from
+/// response to commit, then over a minute to finish loading. Later launches
+/// took 5 ms and painted in about 5 seconds. The native side was identical
+/// in both (scene connected, window, visible web view, page served), so a
+/// fixed timeout on those first launches measured the host rather than the
+/// app. scripts/ios-launch-smoke.sh runs this class on its own, before
+/// ColdLaunch.
+final class ColdLaunchWarmUp: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        continueAfterFailure = false
+    }
+
+    func testTheFirstLaunchesAfterABootPaintEventually() {
+        let app = AppDriver.app()
+        for attempt in 1...2 {
+            app.terminate()
+            app.launch()
+            XCTAssertTrue(
+                app.textFields.firstMatch.waitForExistence(timeout: 300),
+                "warm-up launch \(attempt): no sign-in field in 300s, so the page never painted"
+            )
+            AppDriver.screenshot("warm-up-\(attempt)", self)
+        }
+    }
+}
+
 final class ColdLaunch: XCTestCase {
 
     /// The lock-screen card's own shape (src/lib/live-activity-links.ts).

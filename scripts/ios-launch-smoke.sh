@@ -114,8 +114,10 @@ for t in chosen:
     print(t["identifier"] + "\t" + t["name"])
 ')
 RUNTIME=$(echo "$picks" | head -1 | cut -f1)
+DEVICES=$(echo "$picks" | tail -n +2 | cut -f2 | paste -sd, - | sed 's/,/, /g')
 IOS_VERSION=$(echo "$picks" | head -1 | cut -f2)
 say "- iOS runtime: $IOS_VERSION ($RUNTIME)"
+say "- Devices picked: ${DEVICES:-none}"
 
 IOS_MAJOR="${IOS_VERSION%%.*}"
 if [ "$IOS_MAJOR" -lt 27 ]; then
@@ -168,15 +170,20 @@ while IFS=$'\t' read -r type name <&3; do
   xcrun simctl install "$udid" "$APP"
 
   # Warm it up and sample late (docs/ios-build.md, "Automated device
-  # tests"): the first launch after a boot can sit on rgb(0,0,0) for most
-  # of a minute while the page loads. Recorded, not asserted.
-  xcrun simctl launch "$udid" consulting.thenorth.houndstack > /dev/null 2>&1 || true
-  sleep 60
-  xcrun simctl io "$udid" screenshot "$OUT/$slug-warm.png" > /dev/null 2>&1 || true
-  xcrun simctl terminate "$udid" consulting.thenorth.houndstack > /dev/null 2>&1 || true
-
+  # tests"). The first launches after a boot were measured taking over a
+  # minute to paint the same page later launches paint in five seconds, so
+  # a fixed sleep is not enough: ColdLaunchWarmUp waits for the sign-in form
+  # itself, up to 300s per launch. A page that never paints still fails.
   result="passed"
   if ! xcodebuild test-without-building \
+      -project "$ROOT/ios/UITests/UITests.xcodeproj" -scheme HoundStackUITests \
+      -destination "id=$udid" -derivedDataPath "$DD/tests" \
+      -resultBundlePath "$OUT/$slug-warmup.xcresult" \
+      -only-testing:HoundStackUITests/ColdLaunchWarmUp \
+      CODE_SIGNING_ALLOWED=NO > "$OUT/$slug-warmup.log" 2>&1; then
+    result="FAILED (warm-up: never reached sign-in)"
+    tail -60 "$OUT/$slug-warmup.log"
+  elif ! xcodebuild test-without-building \
       -project "$ROOT/ios/UITests/UITests.xcodeproj" -scheme HoundStackUITests \
       -destination "id=$udid" -derivedDataPath "$DD/tests" \
       -resultBundlePath "$OUT/$slug.xcresult" \

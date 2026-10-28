@@ -124,7 +124,12 @@ describe("CI launches the app", () => {
     expect(wf).toMatch(/run: scripts\/ios-launch-smoke\.sh/);
     expect(wf).toMatch(/schedule:/);
     const script = read("scripts/ios-launch-smoke.sh");
-    expect(script).toMatch(/-only-testing:HoundStackUITests\/ColdLaunch/);
+    expect(script).toMatch(/-only-testing:HoundStackUITests\/ColdLaunch \\/);
+    // A fresh simulator's first launches took over a minute to paint on the
+    // CI Mac; the timed checks run only after the warm-up has painted.
+    const warm = script.indexOf("-only-testing:HoundStackUITests/ColdLaunchWarmUp");
+    expect(warm).toBeGreaterThan(-1);
+    expect(warm).toBeLessThan(script.indexOf("-only-testing:HoundStackUITests/ColdLaunch \\"));
     expect(read("ios/UITests/UITests.xcodeproj/project.pbxproj")).toMatch(
       /ColdLaunch\.swift in Sources \*\/,/,
     );
