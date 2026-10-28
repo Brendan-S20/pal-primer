@@ -250,10 +250,13 @@ describe("each line reaches a quote or a request", () => {
     expect(requestedBecause({ ...groom, base_price_cents: null }, false)).toBe("unpriced");
   });
 
-  it("prices a groom and offers no Start service for it; asks for an unpriced walk", () => {
+  it("prices a groom and offers both doors, book or request; asks for an unpriced walk", () => {
+    // Brendan, Oct 28: "There should be both options; it would be
+    // half-finished if not." A priced groom can be booked and paid for, or
+    // requested for the office to place.
     const answer = { available: true as const, quote: { recurring_price_cents: 9500 } };
     const g = decideFormBranch({ instantStart: true, answer, request: "groom" });
-    expect(g).toMatchObject({ canStartService: false, canRequestQuote: true, reason: "priced" });
+    expect(g).toMatchObject({ canStartService: true, canRequestQuote: true, reason: "priced" });
     expect(g.quote).toEqual(answer.quote);
     const u = decideFormBranch({ instantStart: true, answer: null, request: "unpriced" });
     expect(u).toMatchObject({
@@ -387,12 +390,19 @@ describe("each line reaches a quote or a request", () => {
     expect(html).not.toContain('id="pet-size-0"');
   });
 
-  it("refuses to start a groom on the server, before anything is priced or written", () => {
+  it("books a groom at the price the server makes, and still offers the request beside it", () => {
     const fns = read("src/lib/signup.functions.ts");
     const checkout = fns.slice(fns.indexOf("export const createSignupPaymentIntent"));
-    expect(checkout.indexOf("refuseAGroomStart(named);")).toBeLessThan(
-      checkout.indexOf('sb.rpc("public_quote"'),
-    );
+    // No refusal: a groom checks out like a walk, priced by quoteWithExtras
+    // from the sizes and add-ons the server reads, and the lead names them.
+    expect(fns).not.toContain("refuseAGroomStart");
+    expect(checkout).toContain("const q = await quoteWithExtras(q0, data);");
+    expect(checkout).toContain("extrasNote(q.add_on_names, q.pet_sizes");
+    // The panel words both doors for a groom.
+    const flow = read("src/components/signup/SignupFlow.tsx");
+    expect(flow).toContain("GROOM_COPY.bookButton");
+    expect(flow).toContain("GROOM_COPY.requestButton");
+    expect(flow).toContain("GROOM_COPY.requestNote");
     // The extras are priced from rows the server read, never from the body.
     const quote = fns.slice(fns.indexOf("async function quoteWithExtras"));
     expect(quote).toContain('.from("addon_services")');

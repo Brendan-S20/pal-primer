@@ -267,11 +267,16 @@ export function bookingIntro(ownerOrDefault: string, line: ServiceLine): string 
 }
 
 /** What the page says for a groom (#560): priced here, per pet size and with
- *  add-ons, then requested, because a groom is an appointment on one
- *  groomer's van and the office places it. Nothing is charged online. */
+ *  add-ons, then either booked and paid for now, like a walk, or requested
+ *  for the office to place. Brendan, Oct 28: "There should be both options."
+ *  The visitor picks. */
 export const GROOM_COPY = {
-  /** The quote panel, under the price. */
-  pricedNote: "Nothing is charged today. We'll confirm a time for your groom, then book it.",
+  /** The quote panel, under the price: the second door, said once. */
+  requestNote: "Or send a request and pay nothing today. We'll confirm a time, then book it.",
+  /** Before the amount booking charges today. */
+  chargedToday: "Charged today if you book:",
+  /** The checkout button, beside the request. */
+  bookButton: "Book and pay",
   /** The quote request's button. */
   requestButton: "Request this groom",
   /** The size question's label, per pet. */
@@ -298,8 +303,10 @@ export function requestPanelHint(line: ServiceLine): string {
   return `Tell us about your ${BOOKING_COPY[line].petLabel.toLowerCase()} and we'll get back to you with a price.`;
 }
 
-/** The price line's label for one visit. A groom is requested, not started,
- *  so it reads "Each groom" rather than "Ongoing" (#560). */
+/** The price line's label for one visit. A groom reads "Each groom" rather
+ *  than "Ongoing": the price is the same whether it is booked here or
+ *  requested, and "Ongoing" above "pay nothing today" reads as a charge
+ *  (#560). */
 export function perVisitLineLabel(line: ServiceLine, requested: boolean): string {
   if (!requested) return "Ongoing";
   const v = BOOKING_COPY[line].visit;

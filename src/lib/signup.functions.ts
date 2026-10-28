@@ -313,18 +313,6 @@ function refuseAStay(svc: { price_unit: unknown } | null) {
   if (isRequestedAsAStay(svc)) throw new Error(A_STAY_IS_REQUESTED);
 }
 
-/** What a visitor reads when they try to start a groom online. */
-export const A_GROOM_IS_REQUESTED =
-  "A groom is booked by request. Send it with Request this groom and we'll confirm a time.";
-
-/** A groom is priced on the booking link but never started there (#560):
- *  it is an appointment on one groomer's van, which the office places with
- *  Book this groom. The form offers no Start service for one, so a checkout
- *  that names one is a hand-built body. */
-function refuseAGroomStart(svc: { service_line: string } | null) {
-  if (svc?.service_line === "mobile_grooming") throw new Error(A_GROOM_IS_REQUESTED);
-}
-
 /** What a visitor reads when an add-on they picked is no longer offered. */
 export const ADD_ON_NOT_OFFERED = "An add-on you picked isn't offered any more. Pick again.";
 
@@ -523,10 +511,10 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
     }
 
     // A Coming soon service takes no card and writes nothing (#506), and
-    // neither does a stay (#546) or a groom (#560).
+    // neither does a stay (#546). A groom may be booked here or requested
+    // (#560): its price below is the same groomQuote the request shows.
     const named = await refuseAComingSoonService(data.slug, data.service_id);
     refuseAStay(named);
-    refuseAGroomStart(named);
 
     const sb = anon();
     const { data: qRows, error: qErr } = await sb.rpc("public_quote", publicQuoteArgs(data));

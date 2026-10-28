@@ -61,9 +61,10 @@ export type FormBranch<Q = unknown> = {
  * `request` is the rest of requestedBecause (lib/public-services.ts, #560).
  * "unpriced": a service the owner has listed with no price yet, which is
  * asked for like a stay, and the office sends the price. "groom": priced here
- * like anything else, with each pet's size and the add-ons, but never
- * started: the office places the appointment, so the price comes with the
- * quote request and no Start service.
+ * like anything else, with each pet's size and the add-ons, and offered both
+ * ways: booked and paid for now, or requested for the office to place
+ * (Brendan, Oct 28: "There should be both options"). So it branches exactly
+ * like a priced walk; the form only words the two buttons for a groom.
  */
 export function decideFormBranch<Q>(input: {
   instantStart: boolean;
@@ -89,7 +90,7 @@ export function decideFormBranch<Q>(input: {
     return { canStartService: false, canRequestQuote, quote: null, reason: "no-zone" };
   }
   return {
-    canStartService: input.request !== "groom",
+    canStartService: true,
     canRequestQuote,
     quote: input.answer.quote,
     reason: "priced",

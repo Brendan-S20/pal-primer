@@ -3,7 +3,7 @@
 // out (OFFICE_BOOKED_LINES, customerCanBookService), even now that #549 has
 // it bookable and customer requestable on the switch. The public booking
 // link is different since #560: it prices a groom per pet size with its
-// add-ons, and takes it as a request the office books (bookingLinkOffersLine).
+// add-ons, then lets the customer book and pay or send a request.
 // A portal client of a grooming business can ASK for a groom (20261024100400),
 // and that request goes to the office's queue; only the office books it.
 
@@ -88,13 +88,12 @@ describe("customers cannot book a groom", () => {
       expect(src, file).not.toContain("customerCanBookService(");
       expect(src, file).not.toContain("customerCanRequestService(");
     }
-    // A groom on the link is never started: its checkout is refused.
+    // A groom on the link can be booked and paid for, or requested (#560,
+    // Brendan Oct 28: both options). Its checkout is not refused; a stay's is.
     const fns = read("src/lib/signup.functions.ts");
     const checkout = fns.slice(fns.indexOf("export const createSignupPaymentIntent"));
-    expect(checkout.indexOf("refuseAGroomStart(named)")).toBeGreaterThan(-1);
-    expect(checkout.indexOf("refuseAGroomStart(named)")).toBeLessThan(
-      checkout.indexOf('sb.rpc("public_quote"'),
-    );
+    expect(fns).not.toContain("refuseAGroomStart");
+    expect(checkout).toContain("refuseAStay(named);");
   });
 
   it.each([

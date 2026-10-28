@@ -589,9 +589,10 @@ export function SignupFlow({
     quote && quote.recurring_price_cents != null
       ? money(quote.recurring_price_cents, quote.currency)
       : "";
-  // Nothing is charged today for a groom: it is requested (#560).
+  // What booking now charges. A groom has a second door, the request, which
+  // charges nothing; the panel says so under this (#560).
   const todayCents =
-    quote && !groom && firstCleanupCents != null && quote.recurring_price_cents != null
+    quote && firstCleanupCents != null && quote.recurring_price_cents != null
       ? firstCleanupCents + quote.recurring_price_cents
       : null;
   const extraLines = quote?.extra_lines ?? [];
@@ -643,19 +644,21 @@ export function SignupFlow({
         </div>
       </div>
       <div className="border-t pt-3 text-xs text-muted-foreground">
-        {groom ? (
-          <>{GROOM_COPY.pricedNote}</>
-        ) : firstCleanupCents == null ? (
+        {firstCleanupCents == null ? (
           <>Tell us when your yard was last cleaned to see today's total.</>
         ) : (
           <>
-            Charged today if you start service:{" "}
+            {groom ? GROOM_COPY.chargedToday : "Charged today if you start service:"}{" "}
             <strong className="text-foreground">{money(todayCents ?? 0, quote.currency)}</strong>
             {chargedTodayCovers(line, showsFirstCleanup)}{" "}
             {perVisitBillingSentence(line, money(quote.recurring_price_cents, quote.currency))}
           </>
         )}
       </div>
+      {/* A groom can be booked here or requested (#560, Brendan Oct 28:
+          "There should be both options"). The request's price is the same;
+          it just takes no card. */}
+      {groom && <p className="text-xs text-muted-foreground">{GROOM_COPY.requestNote}</p>}
     </>
   ) : null;
 
@@ -1190,7 +1193,11 @@ export function SignupFlow({
                 disabled={!canCheckout || checkoutMut.isPending}
                 onClick={() => checkoutMut.mutate()}
               >
-                {checkoutMut.isPending ? "Preparing payment…" : "Start service"}
+                {checkoutMut.isPending
+                  ? "Preparing payment…"
+                  : groom
+                    ? GROOM_COPY.bookButton
+                    : "Start service"}
               </Button>
               {!canCheckout && firstCleanupCents != null && (
                 <p className="text-xs text-muted-foreground">
