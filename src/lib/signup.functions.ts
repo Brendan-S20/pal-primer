@@ -49,6 +49,11 @@ import {
   type OnlineGroomBooking,
 } from "@/lib/groom-online";
 import {
+  startedChargeDescription,
+  type StartedBookingMode,
+} from "@/lib/public-booking-mode";
+import type { PublicBooking } from "@/lib/public-booking-mode.server";
+import {
   CALM_REFUSAL,
   ELAPSED_FIELD,
   HONEYPOT_FIELD,
@@ -195,6 +200,29 @@ export const getPublicSignupForm = createServerFn({ method: "GET" })
       console.error("signup services lookup failed", found.id, e);
     }
 
+    // How each listed service is started (#574): the owner's mode, and the
+    // package a package-mode service sells. Read with the service role for
+    // the business the lookup resolved; nothing private comes back (a
+    // package's name, its session count and the price the page shows
+    // anyway). A database the mode has not reached leaves the list as it
+    // was. A lookup that fails makes every service a quote request, so an
+    // outage never takes a card for something the owner did not mean to sell.
+    if (services.length > 0) {
+      try {
+        const { loadPublicBookings } = await import("@/lib/public-booking-mode.server");
+        const bookings = await loadPublicBookings(supabaseAdmin, found.id, services);
+        if (bookings) {
+          services = services.map((s) => {
+            const b = bookings.get(s.id);
+            return { ...s, booking_mode: b?.mode ?? null, package: b?.pack ?? null };
+          });
+        }
+      } catch (e) {
+        console.error("signup booking modes lookup failed", found.id, e);
+        services = services.map((s) => ({ ...s, booking_mode: null, package: null }));
+      }
+    }
+
     // What each listed line adds to its base price (#560): its add-ons, and a
     // size per pet where a service prices by size. Read with the service role
     // for the business the lookup resolved, and only for what it lists, so
@@ -296,12 +324,18 @@ const SERVICE_NOT_OFFERED_ONLINE = "That service isn't offered online right now.
 async function refuseAComingSoonService(
   slug: string,
   serviceId: string | undefined,
-): Promise<{ price_unit: unknown; service_line: string; organization_id: string } | null> {
+): Promise<{
+  id: string;
+  name: string;
+  price_unit: unknown;
+  service_line: string;
+  organization_id: string;
+} | null> {
   if (!serviceId) return null;
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data: svc, error: svcErr } = await (supabaseAdmin as any)
     .from("services")
-    .select("service_line, organization_id, price_unit")
+    .select("id, name, service_line, organization_id, price_unit")
     .eq("id", serviceId)
     .maybeSingle();
   if (svcErr) throw new Error(svcErr.message);
@@ -332,6 +366,61 @@ export const A_STAY_IS_REQUESTED =
  */
 function refuseAStay(svc: { price_unit: unknown } | null) {
   if (isRequestedAsAStay(svc)) throw new Error(A_STAY_IS_REQUESTED);
+}
+
+/** What a visitor reads when the owner takes this service by request only
+ *  (#574), or has not said how it is started. */
+export const REQUEST_ONLY =
+  "This service is booked by request. Send your details with Request a quote and we'll get back to you.";
+
+/** How the named service is started on the link (#574). No service named is
+ *  the business's own plan, as it always was. */
+async function publicBookingFor(
+  named: { id: string; service_line: string; organization_id: string } | null,
+): Promise<PublicBooking> {
+  const { loadPublicBooking } = await import("@/lib/public-booking-mode.server");
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  return loadPublicBooking(supabaseAdmin, named?.organization_id ?? "", named);
+}
+
+/** Refuses a card for a service the owner takes by request only. The form
+ *  never offers one (requestedBecause), so this is a hand-built body. */
+function refuseRequestOnly(b: PublicBooking): asserts b is PublicBooking & {
+  mode: StartedBookingMode;
+} {
+  if (b.mode === "request_only") throw new Error(REQUEST_ONLY);
+}
+
+/** The quote's request as public_quote prices it. A one-visit or package
+ *  service has no cadence, so it is priced as one visit (weekly's factor is
+ *  one visit at the service's price), whatever the body said. */
+function pricedAs<T extends { frequency: (typeof FREQS)[number] }>(
+  data: T,
+  mode: StartedBookingMode,
+): T {
+  return mode === "recurring" ? data : ({ ...data, frequency: "weekly" } as T);
+}
+
+/** A package is sold at the package's price: no add-ons, no first cleanup,
+ *  no per-visit price. Everything else public_quote said (the business, the
+ *  zone, the currency) stands. */
+function asPackageQuote<
+  Q extends {
+    recurring_price_cents: number | null;
+    initial_cleanup_cents: number | null;
+    first_cleanup_mode?: string | null;
+    extra_lines: ExtraLine[];
+    add_on_names: string[];
+  },
+>(q: Q, pack: { price_cents: number }): Q {
+  return {
+    ...q,
+    recurring_price_cents: pack.price_cents,
+    initial_cleanup_cents: 0,
+    first_cleanup_mode: "off",
+    extra_lines: [],
+    add_on_names: [],
+  };
 }
 
 /** What a visitor reads when they book a groom with no day or time. */
@@ -537,15 +626,33 @@ export const getSignupQuote = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const named = await refuseAComingSoonService(data.slug, data.service_id);
     refuseAStay(named);
+    const booking = await publicBookingFor(named);
+    refuseRequestOnly(booking);
+    data = pricedAs(data, booking.mode);
     const sb = anon();
     const { data: rows, error } = await sb.rpc("public_quote", publicQuoteArgs(data));
     if (error) throw new Error(error.message);
     const q = rows?.[0];
     if (!q) return { available: false as const };
     const withExtras = await quoteWithExtras(q, data);
+    const priced =
+      booking.mode === "package" && booking.pack
+        ? asPackageQuote(withExtras, booking.pack)
+        : withExtras;
     return {
       available: true as const,
-      quote: { ...withExtras, first_cleanup_options: parseQuoteOptions(q.first_cleanup_options) },
+      quote: {
+        ...priced,
+        first_cleanup_options:
+          booking.mode === "package" ? [] : parseQuoteOptions(q.first_cleanup_options),
+        // How the form words the price (#574): a repeating plan, one visit,
+        // or a package and the sessions it includes.
+        booking_mode: booking.mode,
+        package:
+          booking.mode === "package" && booking.pack
+            ? { name: booking.pack.name, sessions_count: booking.pack.sessions_count }
+            : null,
+      },
     };
   });
 
@@ -641,8 +748,14 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
 
     // A Coming soon service takes no card and writes nothing (#506), and
     // neither does a stay (#546). A groom does, with a day and a time (#560).
+    // Neither does a service the owner takes by request only (#574).
     const named = await refuseAComingSoonService(data.slug, data.service_id);
     refuseAStay(named);
+    const booking = await publicBookingFor(named);
+    refuseRequestOnly(booking);
+    const mode = booking.mode;
+    const pack = mode === "package" ? booking.pack : null;
+    data = pricedAs(data, mode);
 
     const sb = anon();
     const { data: qRows, error: qErr } = await sb.rpc("public_quote", publicQuoteArgs(data));
@@ -660,10 +773,12 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
     }
     // The add-ons picked, priced from the database and charged with every
     // visit: the plan's per-visit price includes them (#560).
-    const q = await quoteWithExtras(q0, data);
+    const withExtras = await quoteWithExtras(q0, data);
+    const q = pack ? asPackageQuote(withExtras, pack) : withExtras;
     const note = extrasNote(q.add_on_names, q.pet_sizes);
-    // Everything charged below comes from `q`, which the database priced. See
-    // signup-charge.ts: there is no path from the request body to an amount.
+    // Everything charged below comes from `q`, which the database priced, or
+    // from the package row read with the service role. See signup-charge.ts:
+    // there is no path from the request body to an amount.
     const charge = signupChargeFromQuote(q);
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -698,6 +813,8 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
             detailsConfig.earliestStartDays,
           )
         : null;
+    // A groom sold as one visit is one appointment, never a repeating one.
+    if (groomBooking && mode === "one_time") groomBooking.every_weeks = null;
 
     // The chosen service's name, for the lead's notice and nothing else: the
     // price is already in `q`, and public_quote has just confirmed the id is
@@ -800,7 +917,8 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
         .filter(Boolean)
         .join(", "),
       dogCount: data.dog_count,
-      frequency: data.frequency,
+      // A one visit or a package has no cadence, and the lead says none.
+      frequency: mode === "recurring" ? data.frequency : "",
       message: messageWithExtras(data.message, note) || null,
       serviceId: data.service_id ?? null,
       serviceName,
@@ -834,6 +952,10 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
         first_cleanup_tier_id: charge.firstCleanupLabel ? data.last_cleaned || null : null,
         first_cleanup_label: charge.firstCleanupLabel,
         currency: q.currency,
+        // How it was sold (#574), so the webhook provisions what was charged
+        // even if the owner changes the setting before the card clears.
+        booking_mode: mode,
+        ...(pack ? { service_package_id: pack.id } : {}),
         // What the webhook makes the first visit from (#527): dogs rows, the
         // property's access notes, and the subscription's start.
         ...details,
@@ -865,7 +987,10 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
         // "first visit", not "first month": the recurring price is PER VISIT
         // (see the note in SignupFlow.tsx), and the credit this funds pays
         // for exactly one.
-        description: `${charge.firstCleanupCents > 0 ? "First cleanup + first visit" : "First visit"} prepay (${data.frequency.replace("_", "-")}, ${data.dog_count} dog${data.dog_count > 1 ? "s" : ""})`,
+        description:
+          mode === "recurring"
+            ? `${charge.firstCleanupCents > 0 ? "First cleanup + first visit" : "First visit"} prepay (${data.frequency.replace("_", "-")}, ${data.dog_count} dog${data.dog_count > 1 ? "s" : ""})`
+            : `${charge.firstCleanupCents > 0 ? "First cleanup + " : ""}${startedChargeDescription(mode, serviceName, pack)}`,
         metadata: {
           signup_request_id: sr.id,
           organization_id: q.organization_id,
@@ -887,6 +1012,7 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
       amountCents,
       currency: q.currency as string,
       signupRequestId: sr.id as string,
+      bookingMode: mode,
     };
   });
 

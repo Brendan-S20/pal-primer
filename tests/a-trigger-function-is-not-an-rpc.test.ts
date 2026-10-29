@@ -270,7 +270,11 @@ describe("no trigger function is executable by a signed-in user", () => {
     // tg_platform_service_lines_audit, which writes the platform_admin_audit
     // row for every change to platform_service_lines. REVOKEd from PUBLIC,
     // anon and authenticated in the same file.
-    expect(triggerFunctions().size).toBe(92);
+    //
+    // 92 -> 93 (20261029150000, a service says how it is started online,
+    // #574): tg_services_public_booking_mode, the default mode for a service
+    // inserted without one. Revoked from PUBLIC, anon and authenticated there.
+    expect(triggerFunctions().size).toBe(93);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

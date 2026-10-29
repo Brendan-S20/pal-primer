@@ -6774,6 +6774,8 @@ export type Database = {
           name: string
           organization_id: string
           price_unit: string
+          public_booking_mode: string | null
+          public_package_id: string | null
           service_line: string
           updated_at: string
         }
@@ -6789,6 +6791,8 @@ export type Database = {
           name: string
           organization_id: string
           price_unit?: string
+          public_booking_mode?: string | null
+          public_package_id?: string | null
           service_line: string
           updated_at?: string
         }
@@ -6804,6 +6808,8 @@ export type Database = {
           name?: string
           organization_id?: string
           price_unit?: string
+          public_booking_mode?: string | null
+          public_package_id?: string | null
           service_line?: string
           updated_at?: string
         }
@@ -6872,6 +6878,7 @@ export type Database = {
       signup_requests: {
         Row: {
           access_notes: string | null
+          booking_mode: string | null
           city: string | null
           created_at: string
           currency: string
@@ -6897,6 +6904,7 @@ export type Database = {
           refunded_at: string | null
           region: string | null
           service_id: string | null
+          service_package_id: string | null
           sms_consent_phone: string | null
           sms_consent_text: string | null
           status: string
@@ -6909,6 +6917,7 @@ export type Database = {
         }
         Insert: {
           access_notes?: string | null
+          booking_mode?: string | null
           city?: string | null
           created_at?: string
           currency?: string
@@ -6934,6 +6943,7 @@ export type Database = {
           refunded_at?: string | null
           region?: string | null
           service_id?: string | null
+          service_package_id?: string | null
           sms_consent_phone?: string | null
           sms_consent_text?: string | null
           status?: string
@@ -6946,6 +6956,7 @@ export type Database = {
         }
         Update: {
           access_notes?: string | null
+          booking_mode?: string | null
           city?: string | null
           created_at?: string
           currency?: string
@@ -6971,6 +6982,7 @@ export type Database = {
           refunded_at?: string | null
           region?: string | null
           service_id?: string | null
+          service_package_id?: string | null
           sms_consent_phone?: string | null
           sms_consent_text?: string | null
           status?: string

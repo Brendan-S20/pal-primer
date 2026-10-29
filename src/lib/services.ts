@@ -16,6 +16,7 @@
  *  services_night_is_for_sitting); these are the sentences.
  */
 
+import type { PublicBookingMode } from "@/lib/public-booking-mode";
 import {
   isBookableLine,
   OFFERED_SERVICE_LINES,
@@ -57,6 +58,10 @@ export type Service = {
   default_duration_min: number | null;
   max_dogs?: number | null;
   holiday_surcharge_pct?: number;
+  /** How the public booking link starts it (#574). NULL is request only. */
+  public_booking_mode?: PublicBookingMode | null;
+  /** For a package: the service_packages row the link sells. */
+  public_package_id?: string | null;
   active: boolean;
   created_at: string;
   updated_at: string;
@@ -73,6 +78,9 @@ export type ServiceDraft = {
   default_duration_min: number | null;
   max_dogs?: number | null;
   holiday_surcharge_pct?: number;
+  /** Omitted on an insert: the database's default for the line (#574). */
+  public_booking_mode?: PublicBookingMode | null;
+  public_package_id?: string | null;
 };
 
 export type DefaultServiceSeed = ServiceDraft & { active: boolean };

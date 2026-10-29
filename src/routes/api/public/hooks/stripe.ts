@@ -209,7 +209,104 @@ async function provisionSignup(
       });
     }
 
-    if (!groom) {
+    // How the link sold it (#574): a repeating plan (the signup as it always
+    // was, and every signup written before the mode existed), one visit, or a
+    // package. Read from the signup, not the service, so what is provisioned
+    // is what was charged.
+    const mode: "recurring" | "one_time" | "package" =
+      sr.booking_mode === "one_time" || sr.booking_mode === "package"
+        ? sr.booking_mode
+        : "recurring";
+    // Whether this sale has weeks to generate: a plan, or a groom (which books
+    // its own appointment and, when it repeats, its series).
+    const weeks = groom || mode === "recurring";
+
+    // One visit: a one_time plan that ends the day it starts, the shape the
+    // office's "Book a one-off visit" writes (one-off-visit.server.ts), so
+    // visit generation makes exactly one visit and nothing repeats. Prepaid,
+    // so the visit draws down the credit the invoice below adds.
+    let oneTimeSubscriptionId: string | null = null;
+    if (!groom && mode === "one_time") {
+      const { data: sub, error: subErr } = await supabaseAdmin
+        .from("subscriptions")
+        .insert({
+          organization_id: sr.organization_id,
+          client_id: client.id,
+          property_id: property.id,
+          account_type: "residential",
+          frequency: "one_time",
+          price_cents: sr.recurring_price_cents,
+          billing_cadence: "prepaid",
+          dog_count: sr.dog_count,
+          zone_id: sr.zone_id,
+          ...(sr.service_id ? { service_id: sr.service_id as string } : {}),
+          status: "active",
+          started_on: startsOn,
+          ends_on: startsOn,
+        })
+        .select("id")
+        .single();
+      if (subErr || !sub) throw new Error(subErr?.message || "one-visit subscription insert failed");
+      oneTimeSubscriptionId = sub.id as string;
+    }
+
+    // A package: the package the link sold, through the same trigger that
+    // copies its name, sessions and price when the office sells one, so it
+    // shows on the client's Training tab with its sessions to book. No plan
+    // and no visits: the office books the sessions with the customer.
+    let packageInvoiceSale: { clientPackageId: string; name: string; sessions: number } | null =
+      null;
+    if (!groom && mode === "package") {
+      if (!sr.service_package_id) throw new Error("package signup has no package");
+      const { data: pack, error: packErr } = await supabaseAdmin
+        .from("service_packages")
+        .select("id, name, sessions_count")
+        .eq("id", sr.service_package_id as string)
+        .eq("organization_id", sr.organization_id)
+        .single();
+      if (packErr || !pack) throw new Error(packErr?.message || "package not found");
+      // The package the customer paid for. Thrown, not guarded: without it
+      // there is nothing to show for the charge, and the catch refunds it.
+      // request_id is the signup, so a redelivery cannot sell it twice.
+      let clientPackageId: string | null = null;
+      const { data: existingPack } = await supabaseAdmin
+        .from("client_packages")
+        .select("id")
+        .eq("client_id", client.id)
+        .eq("request_id", signupRequestId)
+        .maybeSingle();
+      if (existingPack) clientPackageId = existingPack.id as string;
+      else {
+        const { data: petRows } = await supabaseAdmin
+          .from("dogs")
+          .select("id")
+          .eq("property_id", property.id);
+        const { newClientPackage } = await import("@/lib/db-insert");
+        const { data: cp, error: cpErr } = await supabaseAdmin
+          .from("client_packages")
+          .insert(
+            newClientPackage({
+              organization_id: sr.organization_id,
+              client_id: client.id,
+              service_package_id: pack.id as string,
+              dog_id: petRows?.length === 1 ? (petRows[0].id as string) : null,
+              request_id: signupRequestId,
+              created_by: null,
+            }),
+          )
+          .select("id")
+          .single();
+        if (cpErr || !cp) throw new Error(cpErr?.message || "package insert failed");
+        clientPackageId = cp.id as string;
+      }
+      packageInvoiceSale = {
+        clientPackageId,
+        name: pack.name as string,
+        sessions: pack.sessions_count as number,
+      };
+    }
+
+    if (!groom && mode === "recurring") {
       // Create subscription (prepaid, active)
       const { error: subErr } = await supabaseAdmin.from("subscriptions").insert({
         organization_id: sr.organization_id,
@@ -246,9 +343,25 @@ async function provisionSignup(
     // be able to become the sale being reversed.
     try {
       const { generateVisitHorizon } = await import("@/lib/visit-generation.server");
-      await generateVisitHorizon(supabaseAdmin, sr.organization_id);
+      if (weeks) await generateVisitHorizon(supabaseAdmin, sr.organization_id);
     } catch (e) {
       console.error("signup visit generation failed", signupRequestId, e);
+    }
+    // One visit (#574): its own plan only, through its one day, as the
+    // office's one-off is, never the org-wide weekly horizon. A package has
+    // no plan, and nothing is generated for it. Guarded for the same reason.
+    if (oneTimeSubscriptionId) {
+      try {
+        // rpc-role: service (the webhook has no signed-in user)
+        const { error: gErr } = await (supabaseAdmin as any).rpc("generate_visits_core", {
+          _org_id: sr.organization_id,
+          _through: startsOn,
+          _subscription_id: oneTimeSubscriptionId,
+        });
+        if (gErr) throw gErr;
+      } catch (e) {
+        console.error("signup visit generation failed", signupRequestId, e);
+      }
     }
 
     // The first cleanup, written down. It was always in the charge and was
@@ -256,7 +369,57 @@ async function provisionSignup(
     // Guarded for the same reason as the schedule above: the customer has an
     // account by this line, and a record that failed to write must not become
     // the sale being refunded.
-    if ((sr.initial_cleanup_cents ?? 0) > 0) {
+    if (!groom && mode !== "recurring") {
+      // One visit or a package (#574): one paid invoice and one payment for
+      // the intent, with the first cleanup as a second line when there was
+      // one. The office reads the sale on Invoices and Payments. Guarded like
+      // the rest: the customer has an account by this line.
+      let serviceName: string | null = null;
+      if (sr.service_id) {
+        const { data: svc } = await supabaseAdmin
+          .from("services")
+          .select("name")
+          .eq("id", sr.service_id as string)
+          .maybeSingle();
+        serviceName = (svc?.name as string | null) ?? null;
+      }
+      const { startedChargeDescription } = await import("@/lib/public-booking-mode");
+      const description = startedChargeDescription(
+        mode,
+        serviceName,
+        packageInvoiceSale
+          ? { name: packageInvoiceSale.name, sessions_count: packageInvoiceSale.sessions }
+          : null,
+      );
+      let invoiceId: string | null = null;
+      try {
+        const { billSignupStart } = await import("@/lib/signup-start-billing.server");
+        const billed = await billSignupStart(supabaseAdmin, {
+          orgId: sr.organization_id,
+          clientId: client.id,
+          mode,
+          description,
+          amountCents: Math.max(0, paid.amountTotalCents - (sr.initial_cleanup_cents ?? 0)),
+          firstCleanupCents: sr.initial_cleanup_cents ?? 0,
+          firstCleanupLabel: sr.first_cleanup_label ?? null,
+          dogCount: sr.dog_count ?? 1,
+          currency: sr.currency ?? "usd",
+          subscriptionId: oneTimeSubscriptionId,
+          paymentIntentId: paid.paymentIntentId,
+          stripeRef: paid.stripeRef,
+        });
+        invoiceId = billed.invoiceId;
+      } catch (e) {
+        console.error("signup invoice failed", signupRequestId, e);
+      }
+      if (packageInvoiceSale && invoiceId) {
+        const { error: linkErr } = await supabaseAdmin
+          .from("client_packages")
+          .update({ invoice_id: invoiceId })
+          .eq("id", packageInvoiceSale.clientPackageId);
+        if (linkErr) console.error("signup package invoice link failed", signupRequestId, linkErr);
+      }
+    } else if ((sr.initial_cleanup_cents ?? 0) > 0) {
       try {
         const { billSignupFirstCleanup } = await import("@/lib/first-cleanup-billing.server");
         await billSignupFirstCleanup(supabaseAdmin, {
@@ -274,9 +437,10 @@ async function provisionSignup(
       }
     }
 
-    // Credit the prepay portion to the client's balance
+    // Credit the prepay portion to the client's balance. A one-visit sale's
+    // credit is written with its invoice above, and a package is not credit.
     const prepay = paid.amountTotalCents - (sr.initial_cleanup_cents ?? 0);
-    if (prepay > 0) {
+    if (prepay > 0 && (groom || mode === "recurring")) {
       await supabaseAdmin.from("credit_ledger").insert({
         organization_id: sr.organization_id,
         client_id: client.id,
