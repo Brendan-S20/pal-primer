@@ -280,6 +280,14 @@ function LeadsPage() {
                         one thing and the form let them pick (phase 5). */}
                     {(l as any).service?.name ? <> · {(l as any).service.name}</> : null}
                   </div>
+                  {/* A ZIP no zone lists (#439): the audit found New York
+                      leads for a business that works elsewhere, with nothing
+                      on the row to say so before the office called. */}
+                  {(l as any).service_area === "outside" ? (
+                    <p className="mt-2 text-sm font-medium text-amber-700 dark:text-amber-400">
+                      Outside your service area: no zone lists this ZIP code.
+                    </p>
+                  ) : null}
                   {/* What the first visit needs (#527): when they want to
                       start, the pets by name, and how to get in. */}
                   {l.preferred_start_date || petsSummary(l.pets) || l.access_notes ? (
