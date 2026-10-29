@@ -10,18 +10,22 @@
 # because nothing launched the binary. Xcode Cloud archives it and stops; the
 # XCUITest target needs a signed-in simulator and so never ran unattended.
 #
-# This builds the app for the simulator, makes a fresh iPhone and iPad on the
-# newest iOS runtime installed, and runs ios/UITests/.../ColdLaunch.swift on
+# This builds the app for the simulator, makes a fresh iPhone on the newest
+# iOS runtime installed and a fresh iPad on the newest runtime that offers
+# one (section 2 says why those can differ), and runs
+# ios/UITests/.../ColdLaunch.swift on
 # each: five cold launches to the sign-in form, then a link from cold and a
 # link while running. A fresh simulator has no session, which is what makes
 # this runnable here at all.
 #
 # ── WHAT IT DOES NOT PROVE ────────────────────────────────────────────────
 #
-# It proves whatever the newest INSTALLED Xcode and runtime are. If that is
-# older than iOS 27 the run still passes and says so in the summary, loudly,
-# because "launches on iOS 26" and "launches on iOS 27" must not read the
-# same. It does not exercise a physical device, push tap routing (needs a
+# It proves whatever the newest INSTALLED Xcode and runtimes are. If the
+# newest runtime is older than iOS 27 the run fails and says so in the
+# summary, because "launches on iOS 26" and "launches on iOS 27" must not
+# read the same. The iPad can be one minor version behind the phones when
+# the newest runtime ships without iPads; the summary names each device's
+# runtime. It does not exercise a physical device, push tap routing (needs a
 # session), or the folded and unfolded postures of a foldable, which simctl
 # cannot set.
 #
@@ -83,19 +87,23 @@ say "## iOS launch smoke"
 say ""
 say "- Xcode: \`$(xcodebuild -version | tr '\n' ' ')\` ($XCODE)"
 
-# ── 2. The newest iOS runtime, and the devices to try ──────────────────────
+# ── 2. The runtimes, and the devices to try ────────────────────────────────
 #
-# Preferred iPhones, in order: a foldable (iPhone Duo, the device #570 was
-# confirmed on), the iPhone 17e (the issue names it), then the newest iPhone
-# the runtime offers. One iPad, because an iPad launch is a different
-# window size from the first frame.
+# Phones run on the NEWEST iOS runtime, which is the one #570 is about.
+# Preferred, in order: a foldable (iPhone Duo, the device #570 was confirmed
+# on), the iPhone 17e (the issue names it), then the newest iPhone that
+# runtime offers.
 #
-# Every device type the runtime offers goes into device-types.txt and its
-# count into the summary: four runs picked the iPhone Duo alone, never an
-# iPhone 17e or an iPad, and the summary could not say whether the runtime
-# had none or the picker missed them. Types come from `simctl list
-# devicetypes` (which carries productFamily) narrowed to the identifiers the
-# runtime supports, rather than from the runtime's own list alone.
+# The iPad runs on the newest runtime that offers an iPad at all, which is
+# not always the newest runtime: Apple's iOS 27.1 simulator runtime
+# (24A94425) shipped with one device type, the iPhone Duo, while iOS 27.0
+# offers 29 iPads. One iPad, because an iPad launch is a different window
+# size from the first frame. No runtime with an iPad still fails the run.
+#
+# Every device type each runtime offers goes into device-types.txt, with
+# counts in the summary, so "the runtime had none" and "the picker missed
+# it" read differently. Types come from `simctl list devicetypes` (which
+# carries productFamily) narrowed to the identifiers each runtime supports.
 xcrun simctl list devicetypes -j > "$OUT/devicetypes.json"
 picks=$(xcrun simctl list runtimes -j | python3 -I -c '
 import json, sys
@@ -103,41 +111,49 @@ rts = [r for r in json.load(sys.stdin)["runtimes"]
        if r.get("platform") == "iOS" and r.get("isAvailable")]
 if not rts:
     sys.exit("no available iOS simulator runtime")
-key = lambda r: [int(x) for x in r["version"].split(".")]
-rt = max(rts, key=key)
+rts.sort(key=lambda r: [int(x) for x in r["version"].split(".")], reverse=True)
 with open(sys.argv[1]) as f:
     known = {t["identifier"]: t for t in json.load(f)["devicetypes"]}
-types = [dict(known.get(t["identifier"], {}), **t) for t in rt.get("supportedDeviceTypes", [])]
+def types_of(rt):
+    return [dict(known.get(t["identifier"], {}), **t) for t in rt.get("supportedDeviceTypes", [])]
 with open(sys.argv[2], "w") as f:
-    for t in types:
-        f.write(t.get("productFamily", "?") + "\t" + t["name"] + "\t" + t["identifier"] + "\n")
-phones = [t for t in types if t.get("productFamily") == "iPhone"]
-pads = [t for t in types if t.get("productFamily") == "iPad"]
+    for rt in rts:
+        for t in types_of(rt):
+            f.write(rt["version"] + "\t" + t.get("productFamily", "?") + "\t" + t["name"] + "\t" + t["identifier"] + "\n")
+newest = rts[0]
+phones = [t for t in types_of(newest) if t.get("productFamily") == "iPhone"]
 chosen = []
-def take(t):
-    if t and t not in chosen:
-        chosen.append(t)
-take(next((t for t in phones if "Duo" in t["name"]), None))
-take(next((t for t in phones if t["name"] == "iPhone 17e"), None))
+def take(rt, t):
+    if t and (rt, t["identifier"]) not in [(r, c["identifier"]) for r, c in chosen]:
+        chosen.append((rt, t))
+take(newest, next((t for t in phones if "Duo" in t["name"]), None))
+take(newest, next((t for t in phones if t["name"] == "iPhone 17e"), None))
 if not chosen and phones:
-    take(phones[-1])
-take(next((t for t in pads if t["name"].startswith("iPad (")), pads[0] if pads else None))
-print(rt["identifier"] + "\t" + rt["version"])
-for t in chosen:
-    print(t["identifier"] + "\t" + t["name"])
+    take(newest, phones[-1])
+for rt in rts:
+    pads = [t for t in types_of(rt) if t.get("productFamily") == "iPad"]
+    if pads:
+        take(rt, next((t for t in pads if t["name"].startswith("iPad (")), pads[0]))
+        break
+print("NEWEST\t" + newest["identifier"] + "\t" + newest["version"])
+for rt, t in chosen:
+    print(rt["identifier"] + "\t" + rt["version"] + "\t" + t["identifier"] + "\t" + t["name"])
 ' "$OUT/devicetypes.json" "$OUT/device-types.txt")
-RUNTIME=$(echo "$picks" | head -1 | cut -f1)
-DEVICES=$(echo "$picks" | tail -n +2 | cut -f2 | paste -sd, - | sed 's/,/, /g')
-IOS_VERSION=$(echo "$picks" | head -1 | cut -f2)
-say "- iOS runtime: $IOS_VERSION ($RUNTIME)"
-say "- Devices picked: ${DEVICES:-none}"
-say "- Device types the runtime offers: $(grep -c . "$OUT/device-types.txt" || true) ($(grep -c '^iPhone' "$OUT/device-types.txt" || true) iPhone, $(grep -c '^iPad' "$OUT/device-types.txt" || true) iPad), listed in device-types.txt"
+RUNTIME=$(echo "$picks" | grep '^NEWEST' | cut -f2)
+IOS_VERSION=$(echo "$picks" | grep '^NEWEST' | cut -f3)
+DEVICE_LINES=$(echo "$picks" | grep -v '^NEWEST' || true)
+say "- Newest iOS runtime: $IOS_VERSION ($RUNTIME)"
+say "- Devices picked: $(echo "$DEVICE_LINES" | awk -F'\t' 'NF { printf "%s%s on iOS %s", sep, $4, $2; sep=", " }')"
+# device-types.txt is written newest runtime first.
+for v in $(awk -F'\t' '!seen[$1]++ { print $1 }' "$OUT/device-types.txt"); do
+  say "- iOS $v offers $(awk -F'\t' -v v="$v" '$1==v && $2=="iPhone"' "$OUT/device-types.txt" | grep -c . || true) iPhone and $(awk -F'\t' -v v="$v" '$1==v && $2=="iPad"' "$OUT/device-types.txt" | grep -c . || true) iPad device types"
+done
 
 # #570's acceptance names an iPad. A run that cannot make one is not a pass.
-if ! echo "$picks" | tail -n +2 | cut -f2 | grep -q '^iPad'; then
+if ! echo "$DEVICE_LINES" | cut -f4 | grep -q '^iPad'; then
   say ""
-  say "> **No iPad simulator on this runtime.** Install one for iOS $IOS_VERSION on this Mac (Xcode > Settings > Components, or \`xcrun simctl create\` with an iPad device type)."
-  echo "::error::The iOS $IOS_VERSION runtime offers no iPad device type; #570 needs an iPad launch."
+  say "> **No iOS runtime on this Mac offers an iPad.** Install one (Xcode > Settings > Components)."
+  echo "::error::No installed iOS simulator runtime offers an iPad device type; #570 needs an iPad launch."
   NO_IPAD=1
 fi
 
@@ -175,19 +191,19 @@ xcodebuild build-for-testing -project "$ROOT/ios/UITests/UITests.xcodeproj" \
 
 # ── 4. Each device ─────────────────────────────────────────────────────────
 say ""
-say "| Device | Result |"
-say "|---|---|"
+say "| Device | iOS | Result |"
+say "|---|---|---|"
 failed=0
 marker="$OUT/.started"
 touch "$marker"
 
 # fd 3, not stdin: xcodebuild and simctl read stdin, and the first run lost
 # every device after the first to them.
-while IFS=$'\t' read -r type name <&3; do
+while IFS=$'\t' read -r runtime runtime_version type name <&3; do
   [ -n "$type" ] || continue
   slug=$(echo "$name" | tr -c 'A-Za-z0-9\n' '-')
-  echo "--- $name"
-  udid=$(xcrun simctl create "HS launch smoke $name" "$type" "$RUNTIME")
+  echo "--- $name (iOS $runtime_version)"
+  udid=$(xcrun simctl create "HS launch smoke $name" "$type" "$runtime")
   xcrun simctl boot "$udid"
   xcrun simctl bootstatus "$udid" -b > /dev/null
   xcrun simctl install "$udid" "$APP"
@@ -247,8 +263,8 @@ while IFS=$'\t' read -r type name <&3; do
   fi
 
   [ "$result" = "passed" ] || failed=1
-  say "| $name | $result |"
-done 3< <(echo "$picks" | tail -n +2)
+  say "| $name | $runtime_version | $result |"
+done 3< <(echo "$DEVICE_LINES")
 
 # ── 5. Any crash, even one a test recovered from ───────────────────────────
 #

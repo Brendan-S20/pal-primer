@@ -3,10 +3,10 @@ name: iOS launch
 # ── WHAT THIS DOES ──────────────────────────────────────────────────────────
 #
 # Builds the iOS app for the simulator with the newest Xcode on the runner and
-# launches it: five cold launches to the sign-in form on a fresh iPhone and a
-# fresh iPad on the newest iOS runtime, then a link from cold and a link while
-# running. scripts/ios-launch-smoke.sh is the implementation and says what it
-# does and does not prove.
+# launches it: five cold launches to the sign-in form on a fresh iPhone on the
+# newest iOS runtime and a fresh iPad on the newest runtime that offers one,
+# then a link from cold and a link while running. scripts/ios-launch-smoke.sh
+# is the implementation and says what it does and does not prove.
 #
 # ── WHY ─────────────────────────────────────────────────────────────────────
 #
@@ -28,9 +28,9 @@ name: iOS launch
 # given one (runner_id 0, cancelled at fifteen minutes, no logs), which is
 # the same hosted-allocation failure ci.yml records for `verify`.
 # IOS_LAUNCH_RUNNER_JSON (a repository variable, JSON) moves it without a
-# commit, e.g. '"macos-26"' if hosted macOS comes back. If the newest
-# runtime is older than iOS 27 the job still passes and the summary says, in
-# words, that iOS 27 was not exercised.
+# commit, e.g. '"macos-26"' if hosted macOS comes back. The job fails if the
+# newest runtime is older than iOS 27, or if no installed runtime offers an
+# iPad.
 
 on:
   pull_request:
