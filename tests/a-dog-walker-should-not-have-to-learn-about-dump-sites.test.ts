@@ -328,7 +328,9 @@ describe("pet_waste seeds exactly what the product seeded before lines existed",
       { label: "Water bowl checked", required: false },
     ],
     addOnExample: { code: "extra_visit", name: "Extra visit" },
-    frequencyMultipliers: { weekly: 1.0, biweekly: 1.7, twice_weekly: 1.8, monthly: 3.2 },
+    // twice_weekly was 1.8 a visit until #572 (F-07): 3.6x the weekly plan
+    // for the week. D1 made 1.8 the WEEK, so 0.9 a visit.
+    frequencyMultipliers: { weekly: 1.0, biweekly: 1.7, twice_weekly: 0.9, monthly: 3.2 },
     estTime: {
       baseMin: 5,
       sqftPerMinute: 2000,
@@ -359,8 +361,9 @@ describe("pet_waste seeds exactly what the product seeded before lines existed",
   });
 
   it("the frequency multipliers are the database column's own default", () => {
-    const m = read("supabase/migrations/20260701215820_4512337b-2f80-4abb-87fa-423f545cd1c3.sql");
-    const def = m.match(/frequency_multipliers jsonb NOT NULL DEFAULT '([^']+)'::jsonb/);
+    // The newest default: 20261029120000 moved twice_weekly to 0.9 (#572).
+    const m = read("supabase/migrations/20261029120000_twice-weekly-is-priced-by-the-week.sql");
+    const def = m.match(/frequency_multipliers\s+SET DEFAULT '([^']+)'::jsonb/);
     expect(def, "the column default moved").not.toBeNull();
     expect(JSON.stringify(LINE_SEEDS.pet_waste.frequencyMultipliers)).toBe(
       JSON.stringify(JSON.parse(def![1])),

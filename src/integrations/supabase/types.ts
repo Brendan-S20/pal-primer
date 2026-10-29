@@ -10746,6 +10746,15 @@ export type Database = {
         }
         Returns: undefined
       }
+      update_org_frequency_multipliers: {
+        Args: {
+          _biweekly: number
+          _monthly: number
+          _org_id: string
+          _twice_weekly: number
+        }
+        Returns: undefined
+      }
       update_org_standard_pricing: {
         Args: {
           _org_id: string

@@ -696,7 +696,7 @@ export const BASE_STUBS: Record<string, Stub> = {
     standard: {
       basePriceCents: 2500,
       perDogAddlCents: 500,
-      frequencyMultipliers: { weekly: 1, biweekly: 1.7, twice_weekly: 1.8, monthly: 3.2 },
+      frequencyMultipliers: { weekly: 1, biweekly: 1.7, twice_weekly: 0.9, monthly: 3.2 },
     },
     subject:
       a.clientId || a.leadId
@@ -1101,7 +1101,13 @@ export const BASE_STUBS: Record<string, Stub> = {
     portal_allow_frequency_change: true,
     portal_auto_apply_changes: false,
   },
-  getStandardPricing: { pricing: [] },
+  // The shape getStandardPricing returns. The cadence card (#572) draws its
+  // dollar column from basePriceCents, so a $25 standard price is on the page.
+  getStandardPricing: {
+    basePriceCents: 2500,
+    perDogAddlCents: 500,
+    frequencyMultipliers: { weekly: 1, biweekly: 1.7, twice_weekly: 0.9, monthly: 3.2 },
+  },
   getSignupSettings: {
     orgName: fx.ORG_NAME,
     signupSlug: fx.ORGANIZATION.portal_slug,

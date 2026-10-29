@@ -18,6 +18,7 @@
 
 import { DEFAULT_EST_TIME_CONFIG, type EstTimeConfig } from "@/lib/estimated-time";
 import { SUGGESTED_CHECKLIST, type ChecklistItem } from "@/lib/visit-checklist";
+import { DEFAULT_FREQUENCY_MULTIPLIERS } from "@/lib/frequency-multipliers";
 
 /** Every value the database accepts (service_lines_are_valid). Order is the
  *  order the settings screen lists them in. */
@@ -355,8 +356,8 @@ export const LINE_SEEDS: Readonly<Record<ServiceLine, LineSeeds>> = {
     checklist: SUGGESTED_CHECKLIST,
     addOnExample: { code: "extra_visit", name: "Extra visit" },
     // organizations.frequency_multipliers' column default, migration
-    // 20260701215820.
-    frequencyMultipliers: { weekly: 1.0, biweekly: 1.7, twice_weekly: 1.8, monthly: 3.2 },
+    // 20261029120000 (twice-weekly is 0.9 a visit, 1.8x a week, #572).
+    frequencyMultipliers: DEFAULT_FREQUENCY_MULTIPLIERS,
     estTime: DEFAULT_EST_TIME_CONFIG,
   },
   dog_walking: {

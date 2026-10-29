@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { formatWeekdaySet, normalizeWeekdays } from "@/lib/weekday-set";
+import { MULTIPLIER_MAX, MULTIPLIER_MIN, TWICE_WEEKLY_MAX } from "@/lib/frequency-multipliers";
 
 // Scheduling model (client detail refactor): the five UI choices map to
 //   Weekly            -> weekly (interval_weeks null/1)
@@ -810,6 +811,32 @@ export const updateStandardPricing = createServerFn({ method: "POST" })
       _org_id: orgId,
       _std_base_price_cents: data.basePriceCents as never,
       _std_per_dog_addl_cents: data.perDogAddlCents as never,
+    });
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+// Per-visit price multiplier for each pet-waste cadence (#572). Weekly is the
+// price itself; twice-weekly is capped at 1 a visit so its week is at most
+// two weekly visits. The database function checks the same bounds.
+export const updateFrequencyMultipliers = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        biweekly: z.number().min(MULTIPLIER_MIN).max(MULTIPLIER_MAX),
+        twice_weekly: z.number().min(MULTIPLIER_MIN).max(TWICE_WEEKLY_MAX),
+        monthly: z.number().min(MULTIPLIER_MIN).max(MULTIPLIER_MAX),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const orgId = await loadOrgForCaller(context.supabase, context.userId);
+    const { error } = await context.supabase.rpc("update_org_frequency_multipliers", {
+      _org_id: orgId,
+      _biweekly: data.biweekly,
+      _twice_weekly: data.twice_weekly,
+      _monthly: data.monthly,
     });
     if (error) throw new Error(error.message);
     return { ok: true };

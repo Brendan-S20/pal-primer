@@ -4,8 +4,9 @@
 //
 // `subscriptions.price_cents` is stored POST-multiplier. computeZoneVisitPrice
 // returns `perVisitCents * multiplier` (src/lib/pricing.ts) and that is the
-// value written at create time. The default multipliers are
-// { weekly: 1, biweekly: 1.7, twice_weekly: 1.8, monthly: 3.2 }.
+// value written at create time. The default multipliers were
+// { weekly: 1, biweekly: 1.7, twice_weekly: 1.8, monthly: 3.2 } (twice_weekly
+// is 0.9 since #572; the arithmetic below holds for any map).
 //
 // So a monthly client in a $30 zone carries price_cents = 9600. Approve their
 // request to move to weekly, change only `frequency`, and they are now weekly
