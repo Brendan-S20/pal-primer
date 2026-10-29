@@ -117,7 +117,7 @@ const en = {
     help2:
       "Available now: **priority support** (on the Launch plan; Growth and Scale already include it), and a one-time **done-for-you setup** where we configure the whole platform with you.",
     help3:
-      "Coming soon: the **AI Receptionist**, which will answer client texts and calls using your FAQ and your own prices; **managed texting**; and **white label** (your own domain on the client portal and emails). They show a Coming soon badge on Billing and cannot be bought yet. You can draft the receptionist's persona and FAQ now in [AI receptionist settings](/settings/ai-receptionist).",
+      "Coming soon: the **AI Receptionist**, which will answer client texts and calls using your FAQ and your own prices; and **white label** (your own domain on the client portal and emails). They show a Coming soon badge on Billing and cannot be bought yet. **Managed texting** has launched and is on Billing now. You can draft the receptionist's persona and FAQ now in [AI receptionist settings](/settings/ai-receptionist).",
     addonsTitle: "Plan add-ons",
     contact: "Call or email us to schedule a visit.",
     updateDetails: "Need to update your details? Call or email us and we'll take care of it.",
