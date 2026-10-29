@@ -57,6 +57,7 @@
 import { appUrl } from "@/lib/app-origin";
 import {
   BUSINESS_TYPES,
+  STALE_SUBMIT_MS,
   einDigits,
   einFormatted,
   statusFromVerification,
@@ -308,8 +309,10 @@ export function detailsColumns(d: RegistrationDetails) {
 
 // ── Submit ────────────────────────────────────────────────────────────────
 
-/** A submit that has been "submitting" this long is taken to have died. */
-const STALE_SUBMIT_MS = 10 * 60 * 1000;
+/** The statuses a submit may start from. A "submitting" row joins them once
+ *  it is STALE_SUBMIT_MS old: the request that set it died (a closed tab, an
+ *  evicted worker, a timeout) before it could record success or failure. */
+const SUBMITTABLE = "status.in.(draft,rejected,failed)";
 
 /**
  * File the business's details with Twilio: subaccount, business profile,
@@ -327,33 +330,48 @@ export async function submitTextingRegistration(p: {
 }): Promise<{ status: RegistrationStatus; error?: string }> {
   const { orgId, details, ein } = p;
   const db = await admin();
-  const existing = await loadRow(orgId);
-  if (existing) {
-    const busy =
-      existing.status === "submitting" &&
-      Date.now() - new Date(existing.updated_at).getTime() < STALE_SUBMIT_MS;
-    if (busy) return { status: "submitting", error: "Setup is already running. Give it a minute." };
-    if (["submitted", "in_review", "approved"].includes(existing.status)) {
-      return { status: existing.status, error: "This registration is already with Twilio." };
-    }
-  }
-  const resubmitting = existing?.status === "rejected" && Boolean(existing?.verification_sid);
 
-  const row = {
-    organization_id: orgId,
-    ...detailsColumns(details),
-    ein_last4: einDigits(ein).slice(-4),
-    number_type: "toll_free",
-    status: "submitting",
-    last_error: null,
-    updated_by: p.userId,
-    status_changed_at: new Date().toISOString(),
-  };
-  const { error: upErr } = await db.from("org_texting_registrations").upsert(row, {
-    onConflict: "organization_id",
-  });
-  if (upErr)
-    return { status: existing?.status ?? "draft", error: `Could not save: ${upErr.message}` };
+  // ── Claim the submit, atomically ───────────────────────────────────────
+  //
+  // One conditional UPDATE, so two presses of Submit (two tabs, a double
+  // tap) cannot both get past this line: the row lock serialises them and
+  // the second finds the status already "submitting". A read-then-write here
+  // let both through, and the second subaccount's SID overwrote the first,
+  // orphaning it in Twilio. A row that does not exist yet is created as a
+  // draft first, which is then claimed the same way.
+  const { error: seedErr } = await db
+    .from("org_texting_registrations")
+    .upsert(
+      { organization_id: orgId, status: "draft" },
+      { onConflict: "organization_id", ignoreDuplicates: true },
+    );
+  if (seedErr) return { status: "draft", error: `Could not save: ${seedErr.message}` };
+  const staleBefore = new Date(Date.now() - STALE_SUBMIT_MS).toISOString();
+  const { data: claimed, error: claimErr } = await db
+    .from("org_texting_registrations")
+    .update({
+      ...detailsColumns(details),
+      ein_last4: einDigits(ein).slice(-4),
+      number_type: "toll_free",
+      status: "submitting",
+      last_error: null,
+      updated_by: p.userId,
+      status_changed_at: new Date().toISOString(),
+    })
+    .eq("organization_id", orgId)
+    .or(`${SUBMITTABLE},and(status.eq.submitting,updated_at.lt."${staleBefore}")`)
+    .select("organization_id, verification_sid");
+  if (claimErr) return { status: "draft", error: `Could not save: ${claimErr.message}` };
+  if (!claimed?.length) {
+    const now = await loadRow(orgId);
+    if (now?.status === "submitting") {
+      return { status: "submitting", error: "Setup is already running. Give it a minute." };
+    }
+    return { status: now?.status ?? "draft", error: "This registration is already with Twilio." };
+  }
+  // A verification already on file means this is a refiling: after a
+  // rejection, or after a refiling that itself failed.
+  const resubmitting = Boolean(claimed[0].verification_sid);
 
   try {
     const parent = parentAuth();
@@ -424,12 +442,27 @@ export async function submitTextingRegistration(p: {
     });
     let verification: any;
     if (reg.verification_sid) {
+      // A refiling edits the verification Twilio already has, which keeps
+      // its seven-day priority window. It is deleted and filed afresh ONLY
+      // when Twilio says it can no longer be edited (or it is gone). Any
+      // other failure (a 5xx, a dropped connection, a field Twilio refuses)
+      // is recorded as "failed" with the SID kept, so nothing is thrown away
+      // on a blip and the owner can simply submit again.
       const url = `${MESSAGING}/Tollfree/Verifications/${encodeURIComponent(reg.verification_sid)}`;
-      try {
-        verification = await twilio(subAuth, "POST", url, form, ein);
-      } catch {
-        // Past the edit window Twilio will not take an update: file afresh.
-        await twilio(subAuth, "DELETE", url).catch(() => undefined);
+      const current = await twilio(subAuth, "GET", url).catch((e: TwilioSetupError) => {
+        if (e.status === 404) return null;
+        throw e;
+      });
+      if (current && current.edit_allowed !== false) {
+        verification = await twilio(
+          subAuth,
+          "POST",
+          url,
+          { ...form, EditReason: "Updated the business details after review." },
+          ein,
+        );
+      } else {
+        if (current) await twilio(subAuth, "DELETE", url);
         verification = await twilio(
           subAuth,
           "POST",
@@ -650,7 +683,10 @@ export async function refreshTextingStatus(orgId: string): Promise<RegistrationS
   const now = new Date().toISOString();
 
   if (reg.status === "approved") {
-    await activateTexting(orgId, reg);
+    // Approved and already sending: nothing to ask Twilio and nothing to
+    // write. Only an approval whose activation has not landed (a missing
+    // key, a failed write) is finished here.
+    if (!(await hasCredentials(orgId))) await activateTexting(orgId, reg);
     return "approved";
   }
   if (!["submitted", "in_review", "rejected"].includes(reg.status)) return reg.status;
@@ -716,7 +752,21 @@ export async function activateTexting(orgId: string, reg: any): Promise<void> {
     await save(orgId, { last_error: `Approved, but turning texting on failed: ${error.message}` });
     return;
   }
-  await save(orgId, { last_error: null });
+  // Stamped from null exactly once, by a conditional UPDATE, and the owner
+  // is told only by the call that set it. A later re-activation (a lost
+  // credential row being restored) does not tell anybody a second time.
+  const { data: firstTime } = await (
+    await admin()
+  )
+    .from("org_texting_registrations")
+    .update({ last_error: null, activated_at: new Date().toISOString() })
+    .eq("organization_id", orgId)
+    .is("activated_at", null)
+    .select("organization_id");
+  if (!firstTime?.length) {
+    await save(orgId, { last_error: null });
+    return;
+  }
   try {
     const { notifyRoles } = await import("@/lib/notify-center.server");
     await notifyRoles(["owner"], {
@@ -731,16 +781,42 @@ export async function activateTexting(orgId: string, reg: any): Promise<void> {
   }
 }
 
-/** Every open registration, for the ten-minute poll. Counts only. */
-export async function refreshAllTextingStatuses(): Promise<Record<string, number>> {
+/** Whether this business already has its credential row, i.e. is sending. */
+async function hasCredentials(orgId: string): Promise<boolean> {
   const { data } = await (
     await admin()
   )
+    .from("org_twilio_credentials")
+    .select("organization_id")
+    .eq("organization_id", orgId)
+    .maybeSingle();
+  return Boolean(data);
+}
+
+/**
+ * Every open registration, for the ten-minute poll. Counts only. The same
+ * set public.texting_status_due() answers for: with Twilio, or approved with
+ * no credential row yet. A business that is already live is not touched, so
+ * one filing in review does not re-activate (or re-notify) every live one.
+ */
+export async function refreshAllTextingStatuses(): Promise<Record<string, number>> {
+  const db = await admin();
+  const { data } = await db
     .from("org_texting_registrations")
     .select("organization_id, status")
     .in("status", ["submitted", "in_review", "approved"]);
+  const approved = (data ?? [])
+    .filter((r: any) => r.status === "approved")
+    .map((r: any) => r.organization_id);
+  const { data: live } = approved.length
+    ? await db
+        .from("org_twilio_credentials")
+        .select("organization_id")
+        .in("organization_id", approved)
+    : { data: [] as any[] };
+  const sending = new Set((live ?? []).map((r: any) => r.organization_id));
   const counts: Record<string, number> = { checked: 0, errors: 0 };
-  for (const r of data ?? []) {
+  for (const r of (data ?? []).filter((r: any) => !sending.has(r.organization_id))) {
     try {
       const s = await refreshTextingStatus(r.organization_id);
       counts.checked++;

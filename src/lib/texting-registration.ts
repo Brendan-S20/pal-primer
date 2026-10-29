@@ -213,6 +213,7 @@ export function describeStatus(
     rejection_reason?: string | null;
     resubmit_deadline?: string | null;
     last_error?: string | null;
+    updated_at?: string | null;
   } | null,
   formatDate: (iso: string) => string = (iso) => iso.slice(0, 10),
 ): StatusSummary {
@@ -233,6 +234,15 @@ export function describeStatus(
         tone: "neutral",
       };
     case "submitting":
+      if (canSubmit("submitting", r.updated_at)) {
+        return {
+          status: "failed",
+          title: "Setup stopped partway",
+          detail:
+            "Setting up your number did not finish. Submit again and it picks up where it stopped.",
+          tone: "bad",
+        };
+      }
       return {
         status: "submitting",
         title: "Setting up your number",
@@ -281,7 +291,21 @@ export function describeStatus(
   }
 }
 
-/** Whether the owner can edit and (re)submit from this state. */
-export function canSubmit(status: RegistrationStatus | null): boolean {
+/** A submit that has been "submitting" this long is taken to have died:
+ *  the request that started it (a closed tab, an evicted worker, a timeout)
+ *  never got to record success or failure. */
+export const STALE_SUBMIT_MS = 10 * 60 * 1000;
+
+/** Whether the owner can edit and (re)submit from this state. A dead
+ *  "submitting" (older than STALE_SUBMIT_MS) counts, so a submit that died
+ *  partway is never a dead end; it resumes from the last saved step. */
+export function canSubmit(
+  status: RegistrationStatus | null,
+  updatedAt?: string | null,
+  now: number = Date.now(),
+): boolean {
+  if (status === "submitting") {
+    return Boolean(updatedAt) && now - new Date(updatedAt!).getTime() >= STALE_SUBMIT_MS;
+  }
   return status === null || status === "draft" || status === "rejected" || status === "failed";
 }

@@ -161,7 +161,7 @@ function TextingSettings() {
             onCheck={() => check.mutate()}
           />
           {q.data?.live && <LiveSender />}
-          {canSubmit(status) ? (
+          {canSubmit(status, reg?.updated_at ?? null) ? (
             <RegistrationForm
               key={status ?? "new"}
               initial={formFrom(reg, q.data?.suggestions ?? NO_SUGGESTIONS)}

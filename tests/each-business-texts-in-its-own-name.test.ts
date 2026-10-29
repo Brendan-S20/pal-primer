@@ -27,31 +27,50 @@ const read = (p: string) => readFileSync(join(root, p), "utf8");
 type Row = Record<string, any>;
 let reg: Row | null;
 let org: Row;
+/** The org_twilio_credentials row, as activate_org_texting would leave it. */
+let creds: Row | null;
 const writes: Array<{ table: string; op: string; payload: unknown }> = [];
 const rpcs: Array<{ fn: string; args: Row }> = [];
 let rpcError: { message: string } | null = null;
 
+/** The claim filter the submit and the draft save send, evaluated the way
+ *  PostgREST would against the one row: a submittable status, or a
+ *  "submitting" older than the timestamp in the filter. */
+function orMatches(row: Row, filter: string): boolean {
+  const statuses = /status\.in\.\(([^)]*)\)/.exec(filter)?.[1].split(",") ?? [];
+  if (statuses.includes(row.status)) return true;
+  const stale = /and\(status\.eq\.(\w+),updated_at\.lt\."([^"]+)"\)/.exec(filter);
+  return Boolean(
+    stale &&
+    row.status === stale[1] &&
+    new Date(row.updated_at).getTime() < new Date(stale[2]).getTime(),
+  );
+}
+
 function builder(table: string) {
   let op = "select";
   let payload: any;
+  let orFilter: string | null = null;
+  let mustBeNull: string | null = null;
+  let returning = false;
   const b: any = {
-    select: () => b,
+    select: () => ((returning = op === "update"), b),
     eq: () => b,
     in: () => b,
-    upsert: (p: Row) => {
-      op = "upsert";
-      payload = p;
-      writes.push({ table, op, payload: p });
+    or: (f: string) => ((orFilter = f), b),
+    is: (col: string) => ((mustBeNull = col), b),
+    upsert: (p: Row, o?: { ignoreDuplicates?: boolean }) => {
+      writes.push({ table, op: "upsert", payload: p });
       if (table === "org_texting_registrations") {
-        reg = { ...(reg ?? {}), ...p, updated_at: new Date().toISOString() };
+        if (!(reg && o?.ignoreDuplicates)) {
+          reg = { ...(reg ?? {}), ...p, updated_at: new Date().toISOString() };
+        }
       }
       return Promise.resolve({ error: null });
     },
     update: (p: Row) => {
       op = "update";
       payload = p;
-      writes.push({ table, op, payload: p });
-      if (table === "org_texting_registrations" && reg) reg = { ...reg, ...p };
       return b;
     },
     insert: (p: Row) => {
@@ -61,18 +80,33 @@ function builder(table: string) {
     maybeSingle: async () => {
       if (table === "org_texting_registrations") return { data: reg, error: null };
       if (table === "organizations") return { data: org, error: null };
+      if (table === "org_twilio_credentials") return { data: creds, error: null };
       return { data: null, error: null };
     },
     then: (res: (v: unknown) => unknown) => {
-      if (op === "update") return Promise.resolve({ error: null }).then(res);
+      if (op === "update") {
+        let applied = false;
+        if (table === "org_texting_registrations" && reg) {
+          const ok =
+            (!orFilter || orMatches(reg, orFilter)) && (!mustBeNull || reg[mustBeNull] == null);
+          if (ok) {
+            reg = { ...reg, ...payload, updated_at: new Date().toISOString() };
+            applied = true;
+            writes.push({ table, op: "update", payload });
+          }
+        }
+        const data = returning ? (applied ? [{ organization_id: "org-1", ...reg }] : []) : null;
+        return Promise.resolve({ data, error: null }).then(res);
+      }
       if (table === "platform_admins")
         return Promise.resolve({ data: [{ user_id: "admin-1" }], error: null }).then(res);
       if (table === "org_texting_registrations")
         return Promise.resolve({ data: reg ? [reg] : [], error: null }).then(res);
+      if (table === "org_twilio_credentials")
+        return Promise.resolve({ data: creds ? [creds] : [], error: null }).then(res);
       return Promise.resolve({ data: [], error: null }).then(res);
     },
   };
-  void payload;
   return b;
 }
 
@@ -81,6 +115,7 @@ vi.mock("@/integrations/supabase/client.server", () => ({
     from: (t: string) => builder(t),
     rpc: async (fn: string, args: Row) => {
       rpcs.push({ fn, args });
+      if (fn === "activate_org_texting" && !rpcError) creds = { organization_id: args._org_id };
       return { data: null, error: fn === "activate_org_texting" ? rpcError : null };
     },
     auth: {
@@ -100,6 +135,14 @@ const SUB_TOKEN = "f".repeat(32);
 const NUMBER = "+18445550123";
 let tfvStatus = "PENDING_REVIEW";
 let failNumberPurchase = false;
+/** What GET on the verification says about editing it, and what an edit
+ *  POST answers: null for success, else an HTTP status. */
+let editAllowed = true;
+let editFails: number | null = null;
+let verificationsFiled = 0;
+/** Run once, in the middle of the first subaccount request: a second press
+ *  of Submit arriving while the first is with Twilio. */
+let whileCreatingSubaccount: null | (() => Promise<void>) = null;
 const calls: Array<{ method: string; url: string; body: URLSearchParams; auth: string }> = [];
 
 function reply(json: unknown, status = 200) {
@@ -118,32 +161,53 @@ const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
   const auth = String((init?.headers as Record<string, string>)?.Authorization ?? "");
   calls.push({ method, url, body, auth });
   const path = url.split("?")[0];
-  if (path.endsWith("/2010-04-01/Accounts.json")) return reply({ sid: SUB_SID, auth_token: SUB_TOKEN });
-  if (path.endsWith(`/Accounts/${SUB_SID}.json`)) return reply({ sid: SUB_SID, auth_token: SUB_TOKEN });
+  if (path.endsWith("/2010-04-01/Accounts.json")) {
+    if (whileCreatingSubaccount) {
+      const during = whileCreatingSubaccount;
+      whileCreatingSubaccount = null;
+      await during();
+    }
+    return reply({ sid: SUB_SID, auth_token: SUB_TOKEN });
+  }
+  if (path.endsWith(`/Accounts/${SUB_SID}.json`))
+    return reply({ sid: SUB_SID, auth_token: SUB_TOKEN });
   if (path.includes("/Addresses")) return reply({ sid: "AD1" });
   if (path.endsWith("/EndUsers")) {
     const type = body.get("Type");
-    return reply({ sid: type === "customer_profile_business_information" ? "IT_BIZ" : `IT_${type}` });
+    return reply({
+      sid: type === "customer_profile_business_information" ? "IT_BIZ" : `IT_${type}`,
+    });
   }
   if (path.includes("/EndUsers/")) return reply({ sid: "IT_X" });
   if (path.endsWith("/SupportingDocuments")) return reply({ sid: "RD1" });
   if (path.endsWith("/CustomerProfiles")) return reply({ sid: "BU1", status: "draft" });
   if (path.endsWith("/EntityAssignments")) return reply({ sid: "BV1" });
   if (path.endsWith("/Evaluations")) return reply({ status: "compliant", results: [] });
-  if (path.endsWith("/CustomerProfiles/BU1")) return reply({ sid: "BU1", status: "pending-review" });
+  if (path.endsWith("/CustomerProfiles/BU1"))
+    return reply({ sid: "BU1", status: "pending-review" });
   if (path.includes("/AvailablePhoneNumbers/US/TollFree.json"))
     return reply({ available_phone_numbers: [{ phone_number: NUMBER }] });
   if (path.endsWith("/IncomingPhoneNumbers.json")) {
     if (failNumberPurchase) return reply({ message: "number gone", code: 21422 }, 400);
     return reply({ sid: "PN1", phone_number: NUMBER });
   }
-  if (path.endsWith("/Tollfree/Verifications") && method === "POST")
+  if (path.endsWith("/Tollfree/Verifications") && method === "POST") {
+    verificationsFiled++;
+    return reply({ sid: `HH${verificationsFiled}`, status: "PENDING_REVIEW" });
+  }
+  if (path.endsWith("/Tollfree/Verifications/HH1") && method === "POST") {
+    if (editFails) return reply({ message: "Service unavailable" }, editFails);
     return reply({ sid: "HH1", status: "PENDING_REVIEW" });
+  }
+  if (path.endsWith("/Tollfree/Verifications/HH1") && method === "DELETE")
+    return new Response(null, { status: 204 });
   if (path.endsWith("/Tollfree/Verifications/HH1") && method === "GET")
     return reply({
       sid: "HH1",
       status: tfvStatus,
-      rejection_reason: tfvStatus === "TWILIO_REJECTED" ? "Opt-in image does not show consent" : null,
+      edit_allowed: editAllowed,
+      rejection_reason:
+        tfvStatus === "TWILIO_REJECTED" ? "Opt-in image does not show consent" : null,
       error_code: tfvStatus === "TWILIO_REJECTED" ? 30513 : null,
       edit_expiration: tfvStatus === "TWILIO_REJECTED" ? "2026-11-05T00:00:00Z" : null,
     });
@@ -166,14 +230,27 @@ const DETAILS = {
   business_email: "devin@detroitdoo.com",
   business_phone: "(313) 555-0100",
   contacts: [
-    { first_name: "Devin", last_name: "Doe", title: "Owner", email: "devin@detroitdoo.com", phone: "313-555-0101" },
-    { first_name: "Sam", last_name: "Roe", title: "Manager", email: "sam@detroitdoo.com", phone: "313-555-0102" },
+    {
+      first_name: "Devin",
+      last_name: "Doe",
+      title: "Owner",
+      email: "devin@detroitdoo.com",
+      phone: "313-555-0101",
+    },
+    {
+      first_name: "Sam",
+      last_name: "Roe",
+      title: "Manager",
+      email: "sam@detroitdoo.com",
+      phone: "313-555-0102",
+    },
   ],
 };
 
 const logged: string[] = [];
 beforeEach(() => {
   reg = null;
+  creds = null;
   org = { name: "Detroit Doo", slug: "detroit-doo" };
   writes.length = 0;
   rpcs.length = 0;
@@ -183,6 +260,10 @@ beforeEach(() => {
   rpcError = null;
   tfvStatus = "PENDING_REVIEW";
   failNumberPurchase = false;
+  editAllowed = true;
+  editFails = null;
+  verificationsFiled = 0;
+  whileCreatingSubaccount = null;
   vi.stubGlobal("fetch", fetchMock);
   process.env.TWILIO_ACCOUNT_SID = "AC" + "0".repeat(32);
   process.env.TWILIO_AUTH_TOKEN = "parent-token";
@@ -192,7 +273,9 @@ beforeEach(() => {
   delete process.env.PUBLIC_APP_ORIGIN;
   delete process.env.APP_URL;
   for (const k of ["log", "info", "warn", "error"] as const) {
-    vi.spyOn(console, k).mockImplementation((...a: unknown[]) => void logged.push(a.map(String).join(" ")));
+    vi.spyOn(console, k).mockImplementation(
+      (...a: unknown[]) => void logged.push(a.map(String).join(" ")),
+    );
   }
 });
 afterEach(() => {
@@ -218,7 +301,9 @@ describe("1. one submit, no console work", () => {
   it("creates the subaccount, the business profile, a toll-free number and its verification", async () => {
     const r = await submit();
     expect(r).toEqual({ status: "submitted" });
-    const paths = calls.map((c) => `${c.method} ${c.url.split("?")[0].replace(/^https:\/\/[^/]+/, "")}`);
+    const paths = calls.map(
+      (c) => `${c.method} ${c.url.split("?")[0].replace(/^https:\/\/[^/]+/, "")}`,
+    );
     expect(paths[0]).toBe("POST /2010-04-01/Accounts.json");
     expect(paths).toContain("POST /v1/CustomerProfiles");
     expect(paths).toContain("POST /v1/CustomerProfiles/BU1/Evaluations");
@@ -266,13 +351,21 @@ describe("1. one submit, no console work", () => {
     expect(tfv.auth).toBe(`Basic ${Buffer.from(`${SUB_SID}:${SUB_TOKEN}`).toString("base64")}`);
     expect(tfv.body.get("BusinessName")).toBe("Detroit Doo Disposal LLC");
     expect(tfv.body.get("DoingBusinessAs")).toBe("Detroit Doo");
-    expect(tfv.body.getAll("UseCaseCategories")).toEqual(["ACCOUNT_NOTIFICATIONS", "CUSTOMER_CARE"]);
+    expect(tfv.body.getAll("UseCaseCategories")).toEqual([
+      "ACCOUNT_NOTIFICATIONS",
+      "CUSTOMER_CARE",
+    ]);
     expect(tfv.body.get("TollfreePhoneNumberSid")).toBe("PN1");
     expect(tfv.body.get("CustomerProfileSid")).toBe("BU1");
     expect(tfv.body.get("PrivacyPolicyUrl")).toBe("https://detroitdoo.com/privacy");
     expect(tfv.body.get("TermsAndConditionsUrl")).toBe("https://detroitdoo.com/terms");
     // Not HoundStack's name anywhere a reviewer reads as the brand.
-    for (const k of ["BusinessName", "DoingBusinessAs", "BusinessWebsite", "ProductionMessageSample"]) {
+    for (const k of [
+      "BusinessName",
+      "DoingBusinessAs",
+      "BusinessWebsite",
+      "ProductionMessageSample",
+    ]) {
       expect(tfv.body.get(k) ?? "").not.toMatch(/houndstack/i);
     }
     expect(tfv.body.get("ProductionMessageSample")).toMatch(/^Detroit Doo: /);
@@ -391,7 +484,9 @@ describe("2 and 3. status, and texting only on approval", () => {
     expect(tr.describeStatus({ status: "draft" }).title).toBe("Waiting on your details");
     expect(tr.describeStatus({ status: "submitted" }).detail).toMatch(/three business days/);
     expect(tr.describeStatus({ status: "in_review" }).title).toBe("In review");
-    expect(tr.describeStatus({ status: "approved", phone_number: NUMBER }).detail).toContain(NUMBER);
+    expect(tr.describeStatus({ status: "approved", phone_number: NUMBER }).detail).toContain(
+      NUMBER,
+    );
     const rejected = tr.describeStatus({
       status: "rejected",
       rejection_reason: "Opt-in image does not show consent",
@@ -406,7 +501,144 @@ describe("2 and 3. status, and texting only on approval", () => {
     const sql = read("supabase/migrations/20261029160000_each-business-texts-in-its-own-name.sql");
     expect(sql).toMatch(/cron\.schedule\('texting-status', '\*\/10 \* \* \* \*'/);
     expect(sql).toMatch(/AND public\.texting_status_due\(\);/);
-    expect(sql).toMatch(/url := 'https:\/\/app\.houndstack\.com\/api\/public\/hooks\/texting-status'/);
+    expect(sql).toMatch(
+      /url := 'https:\/\/app\.houndstack\.com\/api\/public\/hooks\/texting-status'/,
+    );
+  });
+});
+
+describe("B1 (Product review): a business that is already live is left alone", () => {
+  async function liveBusiness() {
+    await submit();
+    tfvStatus = "TWILIO_APPROVED";
+    await prov.refreshTextingStatus("org-1");
+    expect(rpcs.filter((r) => r.fn === "activate_org_texting")).toHaveLength(1);
+    expect(notified.filter((n: any) => n.type === "texting_approved")).toHaveLength(1);
+  }
+
+  it("the poll, run twice over an approved and activated row, activates nothing and tells nobody", async () => {
+    await liveBusiness();
+    rpcs.length = 0;
+    notified.length = 0;
+    calls.length = 0;
+    await prov.refreshAllTextingStatuses();
+    await prov.refreshAllTextingStatuses();
+    expect(rpcs.filter((r) => r.fn === "activate_org_texting")).toEqual([]);
+    expect(notified).toEqual([]);
+    // Not even the token read.
+    expect(calls).toEqual([]);
+  });
+
+  it("refreshing one live business directly does nothing either", async () => {
+    await liveBusiness();
+    rpcs.length = 0;
+    notified.length = 0;
+    expect(await prov.refreshTextingStatus("org-1")).toBe("approved");
+    expect(rpcs.filter((r) => r.fn === "activate_org_texting")).toEqual([]);
+    expect(notified).toEqual([]);
+  });
+
+  it("restores a lost credential row without telling the owner a second time", async () => {
+    await liveBusiness();
+    creds = null;
+    notified.length = 0;
+    await prov.refreshTextingStatus("org-1");
+    expect(rpcs.filter((r) => r.fn === "activate_org_texting")).toHaveLength(2);
+    expect(notified).toEqual([]);
+  });
+
+  it("Check now refuses a registration that is not with Twilio", () => {
+    const src = read("src/lib/texting-registration.functions.ts");
+    const fn = src.slice(src.indexOf("export const checkTextingStatusNow"));
+    expect(fn).toMatch(/\["submitted", "in_review", "approved"\]\.includes\(data\.status\)/);
+  });
+});
+
+describe("B2 (Product review): a submit that died partway is never a dead end", () => {
+  const elevenMinutesAgo = () => new Date(Date.now() - 11 * 60 * 1000).toISOString();
+
+  it("a stale submitting row can be submitted again, and resumes without a second subaccount", async () => {
+    failNumberPurchase = true;
+    await submit();
+    // The request died after the subaccount and profile, before it could
+    // write "failed": that is the row it leaves.
+    reg = { ...reg!, status: "submitting", updated_at: elevenMinutesAgo() };
+    expect(tr.canSubmit("submitting", reg.updated_at)).toBe(true);
+    failNumberPurchase = false;
+    calls.length = 0;
+    expect(await submit()).toEqual({ status: "submitted" });
+    expect(calls.some((c) => c.url.endsWith("/2010-04-01/Accounts.json"))).toBe(false);
+    expect(calls.some((c) => c.url.endsWith("/v1/CustomerProfiles"))).toBe(false);
+  });
+
+  it("a submit that is still running is not started twice", async () => {
+    reg = { organization_id: "org-1", status: "submitting", updated_at: new Date().toISOString() };
+    expect(tr.canSubmit("submitting", reg.updated_at)).toBe(false);
+    const r = await submit();
+    expect(r.status).toBe("submitting");
+    expect(calls).toEqual([]);
+  });
+
+  it("a second press of Submit while the first is with Twilio makes no second subaccount", async () => {
+    let second: Awaited<ReturnType<typeof submit>> | null = null;
+    whileCreatingSubaccount = async () => {
+      second = await submit();
+    };
+    expect(await submit()).toEqual({ status: "submitted" });
+    expect(second).toEqual({
+      status: "submitting",
+      error: "Setup is already running. Give it a minute.",
+    });
+    expect(calls.filter((c) => c.url.endsWith("/2010-04-01/Accounts.json"))).toHaveLength(1);
+  });
+
+  it("the screen offers the form again, and says why", () => {
+    const stale = tr.describeStatus({ status: "submitting", updated_at: elevenMinutesAgo() });
+    expect(stale.title).toBe("Setup stopped partway");
+    expect(
+      tr.describeStatus({ status: "submitting", updated_at: new Date().toISOString() }).title,
+    ).toBe("Setting up your number");
+    expect(read("src/routes/_authenticated/settings.sms.tsx")).toMatch(
+      /canSubmit\(status, reg\?\.updated_at \?\? null\)/,
+    );
+  });
+});
+
+describe("S1 (Product review): a refiling keeps the verification unless Twilio says it cannot be edited", () => {
+  async function rejected() {
+    await submit();
+    tfvStatus = "TWILIO_REJECTED";
+    await prov.refreshTextingStatus("org-1");
+    expect(reg?.status).toBe("rejected");
+    calls.length = 0;
+  }
+  const methods = (suffix: string) =>
+    calls.filter((c) => c.url.split("?")[0].endsWith(suffix)).map((c) => c.method);
+
+  it("edits the same verification, with a reason, and deletes nothing", async () => {
+    await rejected();
+    expect(await submit()).toEqual({ status: "submitted" });
+    expect(methods("/Tollfree/Verifications/HH1")).toEqual(["GET", "POST"]);
+    const edit = calls.find((c) => c.method === "POST" && c.url.endsWith("/HH1"))!;
+    expect(edit.body.get("EditReason")).toBeTruthy();
+    expect(reg?.verification_sid).toBe("HH1");
+  });
+
+  it("a failed edit is recorded as failed and keeps the verification", async () => {
+    await rejected();
+    editFails = 503;
+    const r = await submit();
+    expect(r.status).toBe("failed");
+    expect(methods("/Tollfree/Verifications/HH1")).not.toContain("DELETE");
+    expect(reg?.verification_sid).toBe("HH1");
+  });
+
+  it("files afresh only when Twilio says the verification can no longer be edited", async () => {
+    await rejected();
+    editAllowed = false;
+    expect(await submit()).toEqual({ status: "submitted" });
+    expect(methods("/Tollfree/Verifications/HH1")).toEqual(["GET", "DELETE"]);
+    expect(reg?.verification_sid).toBe("HH2");
   });
 });
 
@@ -489,7 +721,12 @@ describe("6. every text to a client starts with the business's name", () => {
   it("sendTwilioSms puts the name on anything sent from a subaccount", async () => {
     calls.length = 0;
     fetchMock.mockImplementationOnce(async (input: unknown, init?: RequestInit) => {
-      calls.push({ method: "POST", url: String(input), body: new URLSearchParams(String(init?.body)), auth: "" });
+      calls.push({
+        method: "POST",
+        url: String(input),
+        body: new URLSearchParams(String(init?.body)),
+        auth: "",
+      });
       return reply({ sid: "SM1", status: "queued" });
     });
     await sendTwilioSms({
@@ -516,7 +753,9 @@ describe("6. every text to a client starts with the business's name", () => {
       expect(read(f), f).toMatch(/brandedBody\(\s*sender\.brand/);
     }
     // The portal code already starts with the business's name.
-    expect(read("src/lib/portal-auth.server.ts")).toMatch(/`\$\{contact\.org_name\}: your verification code/);
+    expect(read("src/lib/portal-auth.server.ts")).toMatch(
+      /`\$\{contact\.org_name\}: your verification code/,
+    );
   });
 });
 

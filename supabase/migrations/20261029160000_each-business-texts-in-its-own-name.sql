@@ -86,6 +86,10 @@ CREATE TABLE IF NOT EXISTS public.org_texting_registrations (
 
   submitted_at timestamptz,
   approved_at timestamptz,
+  -- When texting was switched on (activate_org_texting succeeded). Set from
+  -- NULL once, by a conditional UPDATE, and the owner's "Texting is live"
+  -- notice goes only with that first set.
+  activated_at timestamptz,
   status_changed_at timestamptz NOT NULL DEFAULT now(),
   checked_at timestamptz,
   rejection_alerted_at timestamptz,
