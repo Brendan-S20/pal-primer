@@ -110,9 +110,9 @@ const es: Translations = {
     help1:
       "Próximamente: publicaciones de marketing y [recepción con IA](article:platform-addons), que responderá mensajes y llamadas de clientes. Ninguna está activada todavía.",
     help2:
-      "Disponibles ahora: **soporte prioritario** (en Launch; Growth y Scale ya lo incluyen) y **configuración por nuestro equipo** con un pago único.",
+      "Disponibles ahora: **mensajería gestionada**, mensajes de texto con tus clientes desde tu propio número, registrado ante los operadores a nombre de tu negocio (empieza a enviar cuando los operadores aprueban el número, desde [Ajustes de mensajes](/settings/sms)); **soporte prioritario** (en Launch; Growth y Scale ya lo incluyen); y **configuración por nuestro equipo** con un pago único.",
     help3:
-      "Próximamente: **recepción con IA**, que responderá mensajes y llamadas con tus preguntas frecuentes y precios; **mensajería gestionada**; y **marca blanca** (tu dominio en el portal y los correos). En Facturación aparecen como Próximamente y aún no se pueden comprar. Ya puedes redactar la personalidad y las preguntas frecuentes en [Recepción con IA](/settings/ai-receptionist).",
+      "Próximamente: **recepción con IA**, que responderá mensajes y llamadas con tus preguntas frecuentes y precios; y **marca blanca** (tu dominio en el portal y los correos). En Facturación aparecen como Próximamente y aún no se pueden comprar. Ya puedes redactar la personalidad y las preguntas frecuentes en [Recepción con IA](/settings/ai-receptionist).",
     addonsTitle: "Complementos del plan",
     contact: "Llámanos o escríbenos por correo electrónico para programar una visita.",
     updateDetails:

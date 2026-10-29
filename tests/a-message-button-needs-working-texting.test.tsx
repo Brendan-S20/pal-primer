@@ -63,7 +63,7 @@ describe("the client header only offers a working Message action", () => {
   });
 });
 
-it("the shared texting hook stays off even if a business has credentials before launch", async () => {
+it("the shared texting hook needs both the launch flag and the business's own number", async () => {
   const { useClientTexting } = await vi.importActual<typeof import("@/hooks/useClientTexting")>(
     "@/hooks/useClientTexting",
   );
@@ -75,14 +75,16 @@ it("the shared texting hook stays off even if a business has credentials before 
   }
   const render = () =>
     renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(Probe)));
+  const launched = ADDON_LAUNCHED["managed-sms"];
   try {
+    Object.defineProperty(ADDON_LAUNCHED, "managed-sms", { value: false, configurable: true });
     expect(render()).toContain("coming soon");
     Object.defineProperty(ADDON_LAUNCHED, "managed-sms", { value: true, configurable: true });
     expect(render()).toContain("live");
     client.setQueryData(["client-texting"], { available: false });
     expect(render()).toContain("coming soon");
   } finally {
-    Object.defineProperty(ADDON_LAUNCHED, "managed-sms", { value: false, configurable: true });
+    Object.defineProperty(ADDON_LAUNCHED, "managed-sms", { value: launched, configurable: true });
     client.clear();
   }
 });

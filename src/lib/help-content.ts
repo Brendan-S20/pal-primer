@@ -362,8 +362,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
     section: "Financial",
     body: [
       "Add-ons are optional extras for your HoundStack plan, billed on the same subscription invoice. They live at the bottom of [Billing](/settings/billing).",
-      "Available now: **priority support** (on the Launch plan; Growth and Scale already include it), and a one-time **done-for-you setup** where we configure the whole platform with you.",
-      "Coming soon: the **AI Receptionist**, which will answer client texts and calls using your FAQ and your own prices; **managed texting**; and **white label** (your own domain on the client portal and emails). They show a Coming soon badge on Billing and cannot be bought yet. You can draft the receptionist's persona and FAQ now in [AI receptionist settings](/settings/ai-receptionist).",
+      "Available now: **managed texting**, two-way texting with your clients from your own number, registered with carriers in your business name (it starts sending once carriers approve the number, from [Texting settings](/settings/sms)); **priority support** (on the Launch plan; Growth and Scale already include it); and a one-time **done-for-you setup** where we configure the whole platform with you.",
+      "Coming soon: the **AI Receptionist**, which will answer client texts and calls using your FAQ and your own prices; and **white label** (your own domain on the client portal and emails). They show a Coming soon badge on Billing and cannot be bought yet. You can draft the receptionist's persona and FAQ now in [AI receptionist settings](/settings/ai-receptionist).",
       "Adding or removing a monthly add-on adjusts your next invoice automatically (prorated); one-time services land on your next invoice once. Note: these are different from your own [client-facing add-on services](article:add-ons).",
     ],
     appLink: { to: "/settings/billing", label: "Open Billing" },

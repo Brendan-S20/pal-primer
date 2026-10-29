@@ -20,6 +20,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HELD_ADDON_SLUGS, ADDON_LAUNCHED } from "@/lib/addon-launch";
 
+/** The keys whose flag is still off: the ones every refusal below is about. */
+const STILL_HELD = HELD_ADDON_SLUGS.filter((s) => !ADDON_LAUNCHED[s]);
+
 const ORG = "0f000000-0000-4000-8000-0000000000a1";
 const LAUNCH = "10000000-0000-4000-8000-000000000001";
 const GROWTH = "10000000-0000-4000-8000-000000000002";
@@ -168,16 +171,44 @@ beforeEach(() => {
 });
 
 describe("the launch flag", () => {
-  it("holds all five keys, and every one is off", () => {
+  it("holds all five keys, and only Managed texting has launched", () => {
     expect([...HELD_ADDON_SLUGS].sort()).toEqual(
       ["ai-receptionist", "managed-sms", "white-label", "white-label-emails", "white-label-portal"],
     );
-    for (const slug of HELD_ADDON_SLUGS) expect(ADDON_LAUNCHED[slug], slug).toBe(false);
+    expect(ADDON_LAUNCHED["managed-sms"]).toBe(true);
+    expect([...STILL_HELD].sort()).toEqual([
+      "ai-receptionist",
+      "white-label",
+      "white-label-emails",
+      "white-label-portal",
+    ]);
+  });
+
+  it("sells Managed texting: the purchase reaches Stripe and the card reads as for sale", async () => {
+    stripeImpl = {
+      prices: { list: async () => ({ data: [], has_more: false }) },
+      subscriptions: {
+        retrieve: async () => ({ items: { data: [{ price: { recurring: { interval: "month" } } }] } }),
+      },
+      subscriptionItems: { create: async () => ({ id: "si_new" }) },
+    };
+    const { subscribePlatformAddon, listPlatformAddons } = await import(
+      "@/lib/platform-addons.functions"
+    );
+    const id = tables.platform_addons.find((a) => a.slug === "managed-sms")!.id;
+    // As with priority support on Launch below: the fake account has no price
+    // for it, so this stops at the lookup — after Stripe was asked, which a
+    // held add-on never is.
+    await subscribePlatformAddon({ data: { addonId: id } } as any).catch(() => undefined);
+    expect(makeStripe).toHaveBeenCalled();
+    expect(stripeTouches).toContain("prices.list");
+    const { addons } = await listPlatformAddons({} as any);
+    expect(addons.find((a) => a.slug === "managed-sms")?.status).toBe("active");
   });
 });
 
 describe("a held add-on is refused before any Stripe call", () => {
-  for (const slug of HELD_ADDON_SLUGS) {
+  for (const slug of STILL_HELD) {
     it(`${slug}: refused, Stripe untouched, nothing written`, async () => {
       const { subscribePlatformAddon } = await import("@/lib/platform-addons.functions");
       const id = tables.platform_addons.find((a) => a.slug === slug)!.id;
@@ -193,7 +224,7 @@ describe("a held add-on is refused before any Stripe call", () => {
   it("shows each held add-on as coming soon on the billing page, whatever its row says", async () => {
     const { listPlatformAddons } = await import("@/lib/platform-addons.functions");
     const { addons } = await listPlatformAddons({} as any);
-    for (const slug of HELD_ADDON_SLUGS) {
+    for (const slug of STILL_HELD) {
       expect(addons.find((a) => a.slug === slug)?.status, slug).toBe("coming_soon");
     }
     expect(addons.find((a) => a.slug === "priority-support")?.status).toBe("active");
@@ -333,7 +364,7 @@ describe("a grandfathered add-on keeps its price across a yearly-to-monthly swit
     expect(added[0].price_data).toMatchObject({ unit_amount: 2900, recurring: { interval: "month" } });
   });
 
-  it.each(HELD_ADDON_SLUGS)(
+  it.each(STILL_HELD)(
     "%s cannot get a replacement item through an interval change",
     async (slug) => {
       const updates = annualOrgWithOldPriority(9900);

@@ -31,6 +31,12 @@
  * one product; these two stay false.
  *
  * Turning one on is this map plus that row's `status`.
+ *
+ * Managed texting launched on 2026-10-29, once BUILD-3 (#585) had given
+ * each business its own Twilio subaccount and toll-free verification, with
+ * 20261029170000 putting its row on sale. Buying it does not make a business
+ * able to text: that still waits on the business's own verification, which
+ * `orgCanTextClients` reads. The flag only stops refusing the purchase.
  */
 export type HeldAddonSlug =
   | "ai-receptionist"
@@ -41,7 +47,7 @@ export type HeldAddonSlug =
 
 export const ADDON_LAUNCHED: Readonly<Record<HeldAddonSlug, boolean>> = {
   "ai-receptionist": false,
-  "managed-sms": false,
+  "managed-sms": true,
   "white-label": false,
   "white-label-portal": false,
   "white-label-emails": false,

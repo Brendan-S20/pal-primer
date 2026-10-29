@@ -20,7 +20,7 @@ const read = (file: string) => readFileSync(join(import.meta.dirname, "..", "src
 
 /** A paragraph mentioning a held feature must describe its future availability. */
 function claimsHeldFeatureIsLive(text: string): boolean {
-  return /AI Receptionist|managed texting|white[ -]label/i.test(text) && !/coming soon/i.test(text);
+  return /AI Receptionist|white[ -]label/i.test(text) && !/coming soon/i.test(text);
 }
 
 const falsePromises =
@@ -28,8 +28,8 @@ const falsePromises =
 
 describe("held features cannot be sold as live", () => {
   for (const [slug, launched] of Object.entries(ADDON_LAUNCHED)) {
+    if (launched) continue;
     it(`${slug} stays Coming soon even when subscribed or waived`, () => {
-      expect(launched).toBe(false);
       for (const subscribed of [false, true]) {
         for (const billing_interval of ["month", "one_time"]) {
           for (const waivedReason of [null, "Included"]) {
@@ -47,6 +47,31 @@ describe("held features cannot be sold as live", () => {
       }
     });
   }
+
+  it("launched Managed texting alone (2026-10-29)", () => {
+    expect(
+      Object.entries(ADDON_LAUNCHED)
+        .filter(([, on]) => on)
+        .map(([s]) => s),
+    ).toEqual(["managed-sms"]);
+    expect(
+      addonCardState({
+        slug: "managed-sms",
+        subscribed: true,
+        status: "active",
+        billing_interval: "month",
+      }),
+    ).toBe("active");
+    // The catalog row still has the last word: coming_soon there is coming soon here.
+    expect(
+      addonCardState({
+        slug: "managed-sms",
+        subscribed: false,
+        status: "coming_soon",
+        billing_interval: "month",
+      }),
+    ).toBe("coming_soon");
+  });
 
   it("keeps a live paid add-on Active", () => {
     expect(
@@ -82,10 +107,8 @@ describe("help and portal copy makes no unavailable promises", () => {
     expect(
       claimsHeldFeatureIsLive("The AI Receptionist answers client texts for you day and night."),
     ).toBe(true);
-    expect(
-      claimsHeldFeatureIsLive("Also available: managed texting and white-label portal links."),
-    ).toBe(true);
-    expect(claimsHeldFeatureIsLive("Coming soon: the AI Receptionist and managed texting.")).toBe(
+    expect(claimsHeldFeatureIsLive("Also available: white-label portal links.")).toBe(true);
+    expect(claimsHeldFeatureIsLive("Coming soon: the AI Receptionist and white label.")).toBe(
       false,
     );
     expect("We'll text you when the next one is on the calendar.").toMatch(falsePromises);
