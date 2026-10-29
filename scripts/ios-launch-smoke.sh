@@ -197,6 +197,111 @@ failed=0
 marker="$OUT/.started"
 touch "$marker"
 
+# Did a failed run die because the SIMULATOR never started the app?
+#
+# Measured on the CI Mac (fafea0e, c57e725): "Failed to launch
+# consulting.thenorth.houndstack: Timed out attempting to launch app", on
+# the iPhone Duo (27.1) and the iPad (27.0), with no HoundStack process in
+# the system log anywhere between the launch request and the timeout, 33 to
+# 85 s; the next process appeared only after the test had given up. Waiting
+# for the old process to exit first did not prevent it. docs/ios-build.md
+# records the same message with this app before scenes. No app code ran, so
+# it says nothing about the app.
+#
+# Exit 0 only when that is provably what happened: the log has the message
+# AND no HoundStack process started from the failed launch request to the
+# test's tear-down. A process that started and then hung is the app, and is
+# never retried.
+never_started() {  # $1 xcodebuild log, $2 udid
+  grep -q "Timed out attempting to launch app" "$1" || return 1
+  xcrun simctl spawn "$2" log show --last 30m --style compact \
+    --predicate 'process == "HoundStack"' > "$1.processes.txt" 2>/dev/null < /dev/null || return 1
+  python3 -I - "$1" "$1.processes.txt" <<'PY'
+import re, sys
+from datetime import datetime, timedelta
+lines = open(sys.argv[1], errors="replace").read().splitlines()
+err = next(i for i, l in enumerate(lines) if "Timed out attempting to launch app" in l)
+start = launch = None
+for l in reversed(lines[:err]):
+    m = re.search(r"t =\s+([\d.]+)s\s+Launch consulting\.thenorth\.houndstack", l)
+    if m and launch is None:
+        launch = float(m.group(1))
+    m = re.search(r"Start Test at (\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d+)", l)
+    if m:
+        start = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S.%f")
+        break
+end = next((float(m.group(1)) for l in lines[err:]
+            for m in [re.search(r"t =\s+([\d.]+)s Tear Down", l)] if m), None)
+if start is None or launch is None or end is None:
+    sys.exit(1)
+lo, hi = start + timedelta(seconds=launch - 1), start + timedelta(seconds=end)
+first = {}
+for l in open(sys.argv[2], errors="replace"):
+    m = re.match(r"(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d+) \S+ HoundStack\[(\d+)", l)
+    if m:
+        first.setdefault(m.group(2), datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S.%f"))
+started = [p for p, t in first.items() if lo <= t <= hi]
+print(f"launch requested {lo + timedelta(seconds=1):%H:%M:%S}, gave up {hi:%H:%M:%S}, HoundStack processes started in between: {len(started)}")
+sys.exit(0 if not started else 1)
+PY
+}
+
+# One test class on this device. A launch that has not painted after 150s
+# is stuck, not slow (2026-10-28: the web content process waited forever on
+# a synchronous prompt; bf2d1af removed that). Simulator processes are
+# ordinary processes on this Mac, so `sample` keeps where each was waiting.
+run_class() {  # $1 class, $2 result name
+  xcodebuild test-without-building \
+      -project "$ROOT/ios/UITests/UITests.xcodeproj" -scheme HoundStackUITests \
+      -destination "id=$udid" -derivedDataPath "$DD/tests" \
+      -resultBundlePath "$OUT/$slug-$2.xcresult" \
+      -only-testing:"HoundStackUITests/$1" \
+      CODE_SIGNING_ALLOWED=NO > "$OUT/$slug-$2.log" 2>&1 < /dev/null &
+  local test_pid=$!
+  (
+    sleep 150
+    kill -0 "$test_pid" 2>/dev/null || exit 0
+    for p in $(pgrep -f 'com.apple.WebKit.WebContent|HoundStack.app/HoundStack' || true); do
+      ps -p "$p" -o command= 2>/dev/null | grep -q CoreSimulator || continue
+      sample "$p" 3 -file "$OUT/$slug-$2-stuck-$p.sample.txt" > /dev/null 2>&1 || true
+    done
+  ) &
+  local sampler_pid=$!
+  local status=0
+  wait "$test_pid" || status=1
+  kill "$sampler_pid" 2>/dev/null || true
+  return "$status"
+}
+
+# Runs a class; retries it, at most twice, only when never_started proves
+# the simulator, not the app, failed the launch. Each retry first reboots
+# the simulator (docs/ios-build.md: "xcrun simctl shutdown <UDID> && xcrun
+# simctl boot <UDID> clears it") and waits a little longer than the last.
+# Each retry is named in the summary, and every attempt's log and result
+# bundle are kept.
+attempt_class() {  # $1 class, $2 result name
+  local run="$2" why tries
+  run_class "$1" "$run" && return 0
+  tail -60 "$OUT/$slug-$run.log"
+  for tries in 1 2; do
+    why=$(never_started "$OUT/$slug-$run.log" "$udid") || return 1
+    echo "::warning::$name: the simulator never started the app in $1 ($why). Rebooting it and retrying $1 ($tries of 2)."
+    retried="$retried $1"
+    say_later "  - $name, $1: the simulator never started the app ($why); rebooted the simulator and retried ($tries of 2)"
+    xcrun simctl shutdown "$udid" > /dev/null 2>&1 || true
+    sleep $((tries * 10))
+    xcrun simctl boot "$udid"
+    xcrun simctl bootstatus "$udid" -b > /dev/null
+    run="$2-retry$tries"
+    run_class "$1" "$run" && return 0
+    tail -60 "$OUT/$slug-$run.log"
+  done
+  return 1
+}
+
+notes=""
+say_later() { notes="$notes$1"$'\n'; }
+
 # fd 3, not stdin: xcodebuild and simctl read stdin, and the first run lost
 # every device after the first to them.
 while IFS=$'\t' read -r runtime runtime_version type name <&3; do
@@ -209,47 +314,17 @@ while IFS=$'\t' read -r runtime runtime_version type name <&3; do
   xcrun simctl install "$udid" "$APP"
 
   # Warm it up and sample late (docs/ios-build.md, "Automated device
-  # tests"). The first launches after a boot were measured taking over a
-  # minute to paint the same page later launches paint in five seconds, so
-  # a fixed sleep is not enough: ColdLaunchWarmUp waits for the sign-in form
-  # itself, up to 300s per launch. A page that never paints still fails.
-  #
-  # A launch that has not painted after 150s is not slow, it is stuck: on
-  # 2026-10-28 one committed index.html and then its web content process
-  # logged nothing for 300s, with the app, the scene and WebKit's network
-  # process all healthy. Simulator processes are ordinary processes on this
-  # Mac, so `sample` can say where that one's main thread is waiting.
+  # tests"): ColdLaunchWarmUp waits for the sign-in form itself, up to 300s
+  # per launch, before the timed ColdLaunch checks. A page that never
+  # paints still fails.
   result="passed"
-  xcodebuild test-without-building \
-      -project "$ROOT/ios/UITests/UITests.xcodeproj" -scheme HoundStackUITests \
-      -destination "id=$udid" -derivedDataPath "$DD/tests" \
-      -resultBundlePath "$OUT/$slug-warmup.xcresult" \
-      -only-testing:HoundStackUITests/ColdLaunchWarmUp \
-      CODE_SIGNING_ALLOWED=NO > "$OUT/$slug-warmup.log" 2>&1 < /dev/null &
-  warm_pid=$!
-  (
-    sleep 150
-    kill -0 "$warm_pid" 2>/dev/null || exit 0
-    for p in $(pgrep -f 'com.apple.WebKit.WebContent|HoundStack.app/HoundStack' || true); do
-      ps -p "$p" -o command= 2>/dev/null | grep -q CoreSimulator || continue
-      sample "$p" 3 -file "$OUT/$slug-stuck-$p.sample.txt" > /dev/null 2>&1 || true
-    done
-  ) &
-  sampler_pid=$!
-  if ! wait "$warm_pid"; then
+  retried=""
+  if ! attempt_class ColdLaunchWarmUp warmup; then
     result="FAILED (warm-up: never reached sign-in)"
-    tail -60 "$OUT/$slug-warmup.log"
-    wait "$sampler_pid" 2>/dev/null || true
-  elif ! xcodebuild test-without-building \
-      -project "$ROOT/ios/UITests/UITests.xcodeproj" -scheme HoundStackUITests \
-      -destination "id=$udid" -derivedDataPath "$DD/tests" \
-      -resultBundlePath "$OUT/$slug.xcresult" \
-      -only-testing:HoundStackUITests/ColdLaunch \
-      CODE_SIGNING_ALLOWED=NO > "$OUT/$slug.log" 2>&1; then
+  elif ! attempt_class ColdLaunch launches; then
     result="FAILED"
-    tail -60 "$OUT/$slug.log"
   fi
-  kill "$sampler_pid" 2>/dev/null || true
+  [ -z "$retried" ] || [ "$result" != "passed" ] || result="passed (retried after the simulator did not start the app:$retried)"
 
   xcrun simctl io "$udid" screenshot "$OUT/$slug.png" > /dev/null 2>&1 || true
   # What the app, its web view and WebKit's processes said, for a launch
@@ -262,9 +337,15 @@ while IFS=$'\t' read -r runtime runtime_version type name <&3; do
     xcrun simctl delete "$udid" > /dev/null 2>&1 || true
   fi
 
-  [ "$result" = "passed" ] || failed=1
+  case "$result" in passed*) ;; *) failed=1 ;; esac
   say "| $name | $runtime_version | $result |"
 done 3< <(echo "$DEVICE_LINES")
+
+if [ -n "$notes" ]; then
+  say ""
+  say "**Launches the simulator never started** (no HoundStack process from the launch request to the timeout, so no app code ran; the simulator was rebooted and the class retried, at most twice; a process that started and then hung is never retried):"
+  printf '%s' "$notes" | while IFS= read -r line; do say "$line"; done
+fi
 
 # ── 5. Any crash, even one a test recovered from ───────────────────────────
 #

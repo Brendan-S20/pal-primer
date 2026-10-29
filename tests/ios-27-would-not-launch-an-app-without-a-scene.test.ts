@@ -124,12 +124,17 @@ describe("CI launches the app", () => {
     expect(wf).toMatch(/run: scripts\/ios-launch-smoke\.sh/);
     expect(wf).toMatch(/schedule:/);
     const script = read("scripts/ios-launch-smoke.sh");
-    expect(script).toMatch(/-only-testing:HoundStackUITests\/ColdLaunch \\/);
+    expect(script).toMatch(/-only-testing:"HoundStackUITests\/\$1"/);
     // A fresh simulator's first launches took over a minute to paint on the
     // CI Mac; the timed checks run only after the warm-up has painted.
-    const warm = script.indexOf("-only-testing:HoundStackUITests/ColdLaunchWarmUp");
+    const warm = script.indexOf("attempt_class ColdLaunchWarmUp warmup");
     expect(warm).toBeGreaterThan(-1);
-    expect(warm).toBeLessThan(script.indexOf("-only-testing:HoundStackUITests/ColdLaunch \\"));
+    expect(warm).toBeLessThan(script.indexOf("attempt_class ColdLaunch launches"));
+    // A retry is only for a launch the simulator never started: the
+    // message AND no HoundStack process from request to tear-down.
+    const check = script.slice(script.indexOf("never_started() {"));
+    expect(check).toMatch(/grep -q "Timed out attempting to launch app"/);
+    expect(check).toMatch(/sys\.exit\(0 if not started else 1\)/);
     expect(read("ios/UITests/UITests.xcodeproj/project.pbxproj")).toMatch(
       /ColdLaunch\.swift in Sources \*\/,/,
     );
