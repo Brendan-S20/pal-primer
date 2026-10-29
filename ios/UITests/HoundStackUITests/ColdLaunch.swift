@@ -50,8 +50,7 @@ final class ColdLaunchWarmUp: XCTestCase {
     func testTheFirstLaunchesAfterABootPaintEventually() {
         let app = AppDriver.app()
         for attempt in 1...2 {
-            app.terminate()
-            app.launch()
+            ColdLaunch.relaunch(app)
             XCTAssertTrue(
                 app.textFields.firstMatch.waitForExistence(timeout: 300),
                 "warm-up launch \(attempt): no sign-in field in 300s, so the page never painted"
@@ -74,8 +73,7 @@ final class ColdLaunch: XCTestCase {
     func testColdLaunchReachesSignInFiveTimes() {
         let app = AppDriver.app()
         for attempt in 1...5 {
-            app.terminate()
-            app.launch()
+            ColdLaunch.relaunch(app)
             XCTAssertTrue(
                 app.wait(for: .runningForeground, timeout: AppDriver.launchTimeout),
                 "launch \(attempt) of 5 never reached the foreground"
@@ -87,8 +85,7 @@ final class ColdLaunch: XCTestCase {
 
     func testALinkThatLaunchesTheAppLandsOnSignIn() {
         let app = AppDriver.app()
-        app.terminate()
-        XCTAssertTrue(app.wait(for: .notRunning, timeout: 20))
+        ColdLaunch.stop(app)
 
         // Cold: the URL is in the scene's connection options.
         openLink()
@@ -101,7 +98,8 @@ final class ColdLaunch: XCTestCase {
     }
 
     func testALinkWhileRunningKeepsTheAppUp() {
-        let app = AppDriver.launch()
+        let app = AppDriver.app()
+        ColdLaunch.relaunch(app)
         assertOnSignIn(app, "before the link")
 
         // Warm: scene(_:openURLContexts:).
@@ -115,6 +113,26 @@ final class ColdLaunch: XCTestCase {
     }
 
     // MARK: -
+
+    /// Terminate, and wait until the simulator agrees the app is gone.
+    ///
+    /// Measured on the CI Mac (fafea0e, iPhone Duo on iOS 27.1 and iPad on
+    /// iOS 27.0): a launch asked for one second after terminate() failed with
+    /// "Timed out attempting to launch app", and the system log shows no
+    /// HoundStack process at all until after the timeout, 33 s and 74 s
+    /// later. The simulator had not spawned it, so no app code had run. A
+    /// launch now waits for the old process to be reported gone and gives
+    /// CoreSimulator two seconds; a launch that still times out still fails.
+    static func stop(_ app: XCUIApplication) {
+        app.terminate()
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 30), "the previous launch never exited")
+        Thread.sleep(forTimeInterval: 2)
+    }
+
+    static func relaunch(_ app: XCUIApplication) {
+        stop(app)
+        app.launch()
+    }
 
     private func openLink() {
         if #available(iOS 16.4, *) {
