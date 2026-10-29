@@ -4,7 +4,9 @@ import {
   clientDuplicateIndex,
   commitRefusal,
   importContentHash,
+  IMPORT_NOT_FOUND,
   IMPORT_PREVIEW_TTL_MS,
+  refusalMessage,
   type ExistingClient,
   type ExistingRecords,
 } from "@/lib/import-commit-guard";
@@ -83,5 +85,12 @@ it("does not skip a new client, a name alone, or a short phone", () => {
     { primary_phone: "5551234" },
   ]) {
     expect(alreadyInDatabase("clients", row, null, existing)).toBeNull();
+  }
+});
+
+it("tells a removed import apart from one that cannot commit", () => {
+  expect(IMPORT_NOT_FOUND).toMatch(/no longer exists/);
+  for (const reason of ["committed", "committing", "superseded", "closed", "stale"] as const) {
+    expect(refusalMessage(reason)).not.toBe(IMPORT_NOT_FOUND);
   }
 });

@@ -112,6 +112,12 @@ export function refusalMessage(reason: CommitRefusal): string {
   }
 }
 
+/** What the page and commitImport say for a batch that is not there: it was
+ *  deleted, or it belongs to another business. Both read the same, so the
+ *  sentence says nothing about which. */
+export const IMPORT_NOT_FOUND =
+  "This import no longer exists. It may have been removed. Nothing was imported from this page.";
+
 // ── Trying a failed import again (#569) ────────────────────────────────────
 
 type CommitStats = { created?: number; updated?: number; update?: number };

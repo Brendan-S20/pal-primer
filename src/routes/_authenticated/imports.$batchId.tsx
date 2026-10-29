@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { toast } from "sonner";
 import { getImportBatch, commitImport, cancelImport, retryImport } from "@/lib/imports.functions";
-import { commitRefusal, refusalMessage } from "@/lib/import-commit-guard";
+import { commitRefusal, IMPORT_NOT_FOUND, refusalMessage } from "@/lib/import-commit-guard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/format";
@@ -26,13 +26,41 @@ function BatchDetail() {
   const [busy, setBusy] = useState(false);
   const [filter, setFilter] = useState<"all" | "create" | "update" | "skip" | "error">("all");
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["import-batch", batchId],
-    refetchInterval: 30_000,
+    // A batch that is gone stays gone: no point polling it.
+    refetchInterval: (q) => (q.state.data && !q.state.data.batch ? false : 30_000),
+    retry: 1,
     queryFn: () => getFn({ data: { batchId } }),
   });
 
-  if (isLoading || !data) return <p className="text-muted-foreground">Loading…</p>;
+  // Every way out of "Loading…" is a sentence and a way back (#434). A
+  // removed preview used to spin here for good.
+  if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
+  if (isError || !data?.batch) {
+    return (
+      <div role="alert" className="space-y-3 rounded border bg-muted/40 p-4 text-sm">
+        <p className="font-medium">
+          {isError ? "This import could not be loaded." : IMPORT_NOT_FOUND}
+        </p>
+        {isError && (
+          <p className="break-words text-muted-foreground">
+            {(error as Error)?.message ?? "Something went wrong."}
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <Button asChild>
+            <Link to="/imports">Back to Imports</Link>
+          </Button>
+          {isError && (
+            <Button variant="outline" onClick={() => refetch()}>
+              Try again
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   const { batch, rows } = data;
   const blocked = data.commitBlock?.reason ?? commitRefusal(batch);
