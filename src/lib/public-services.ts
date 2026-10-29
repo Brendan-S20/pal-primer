@@ -32,6 +32,7 @@ import {
 } from "@/lib/public-booking-mode";
 import {
   bookingLinkOffersLine,
+  SERVICE_LINE_LABEL,
   SERVICE_LINES,
   type ServiceLine,
   type ServiceLineAvailability,
@@ -225,8 +226,31 @@ const SAYS_ITS_LENGTH = /\b\d+(?:\.\d+)?\s*-?\s*(?:min|mins|minutes?|hr|hrs|hour
  *  it usually takes when the service says. Never a price: the price is the
  *  quote's to say, for this ZIP and these pets. A name that already says
  *  its length ("Drop-in (30 min)", "Full groom (90 min)") is not told it
- *  again (#560). */
-export function publicServiceOptionLabel(s: PublicService): string {
+ *  again (#560). Called as a map callback over the options listed
+ *  (`options.map(publicServiceOptionLabel)`), an option that would read the
+ *  same as another is told apart (#588). */
+export function publicServiceOptionLabel(
+  s: PublicService,
+  _index?: number,
+  listed: readonly PublicService[] = [],
+): string {
+  const label = ownOptionLabel(s);
+  // Two options that still read the same once publicServiceOptions has
+  // folded the true twins are two different things to buy, and a visitor
+  // must be able to tell them apart (#588): Riverbend's walking "Drop-in"
+  // and sitting "Drop-in (30 min)" both read "Drop-in (30 min)". A twin on
+  // the same line came from name + length composing alike, and names are
+  // unique per business, so the business's own name tells them apart; a
+  // twin on another line is told apart by its line.
+  const twins = listed.filter((o) => o.id !== s.id && ownOptionLabel(o) === label);
+  if (twins.length === 0) return label;
+  const name = twins.some((o) => o.service_line === s.service_line) ? s.name : label;
+  return twins.some((o) => o.service_line !== s.service_line)
+    ? `${name} · ${SERVICE_LINE_LABEL[s.service_line]}`
+    : name;
+}
+
+function ownOptionLabel(s: PublicService): string {
   const duration = serviceDurationLabel(s.default_duration_min);
   if (!duration || isZonePriced(s) || SAYS_ITS_LENGTH.test(s.name)) return s.name;
   return `${s.name} (${duration})`;
@@ -241,7 +265,7 @@ export function publicServiceOptions(services: readonly PublicService[]): Public
   const seen = new Map<string, PublicService>();
   const out: PublicService[] = [];
   for (const s of services) {
-    const label = publicServiceOptionLabel(s);
+    const label = ownOptionLabel(s);
     const twin = seen.get(label);
     if (
       twin &&

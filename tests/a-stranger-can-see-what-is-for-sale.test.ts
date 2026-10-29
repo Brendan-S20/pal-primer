@@ -340,7 +340,7 @@ describe("the public form", () => {
     );
     expect(picker).toMatch(/quoteMut\.reset\(\)/);
     expect(picker).toMatch(/last_cleaned: ""/);
-    expect(picker).toMatch(/publicServiceOptionLabel\(s\)/);
+    expect(picker).toMatch(/publicServiceOptionLabel\(s, i, options\)/);
   });
 
   it("passes the service to public_quote on both calls, as an id, from one argument builder", () => {

@@ -483,4 +483,29 @@ describe("a sit does not read as a yard", () => {
     );
     expect(publicServiceOptions(dearer)).toHaveLength(2);
   });
+
+  it("never lists two options a visitor cannot tell apart (#588)", () => {
+    const labels = (raw: Record<string, unknown>[]) => {
+      const options = publicServiceOptions(publicServiceChoices(raw, LAUNCH_DEFAULT));
+      return options.map(publicServiceOptionLabel);
+    };
+    // Riverbend's public link: a walker's drop-in and a sitter's, both
+    // 30 minutes, both read "Drop-in (30 min)" on their own.
+    const WALK_DROP_IN = svc("10", "Drop-in", "dog_walking", { base_price_cents: 2000 });
+    const riverbend = labels([SCOOP, WALK, WALK_DROP_IN, DROP_IN_NAMED, HOUSE_SIT, GROOM, LESSON]);
+    expect(riverbend).toContain("Drop-in (30 min) · Dog walking");
+    expect(riverbend).toContain("Drop-in (30 min) · Pet sitting");
+    // The same line at different prices: the business's own names.
+    expect(labels([DROP_IN_NAMED, { ...DROP_IN, base_price_cents: 3500 }])).toEqual([
+      "Drop-in (30 min)",
+      "Drop-in",
+    ]);
+    // An option with no twin reads as it always did.
+    expect(labels([DROP_IN_NAMED, HOUSE_SIT])).toEqual(["Drop-in (30 min)", "House sit"]);
+    for (const list of [
+      riverbend,
+      labels([DROP_IN, WALK_DROP_IN, { ...DROP_IN_NAMED, base_price_cents: null }]),
+    ])
+      expect(new Set(list).size, list.join(" | ")).toBe(list.length);
+  });
 });
