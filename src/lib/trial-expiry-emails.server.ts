@@ -82,12 +82,13 @@ export function renderTrialNoticeHtml(input: {
 }): string {
   const { orgName, daysLeft, endsOn, billingUrl } = input;
   const when = daysLeft <= 0 ? "today" : daysLeft === 1 ? "tomorrow" : `in ${daysLeft} days`;
-  // HoundStack chrome above and below the card (#577). The card and its
+  // HoundStack chrome above and below the card (#577): the band sits on
+  // the card's top edge, as in SystemLayout. The card and its
   // copy are unchanged.
-  return `<!doctype html><html><body style="font-family:system-ui,sans-serif;background:#f8fafc;padding:24px;color:#0f172a">
-  <div style="max-width:560px;margin:0 auto">
+  return `<!doctype html><html><body style="font-family:system-ui,sans-serif;background:#f4f6f8;margin:0;padding:32px 16px 40px;color:#0f172a">
+  <div style="max-width:600px;margin:0 auto">
   ${systemHeaderHtml()}
-  <div style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)">
+  <div style="background:#fff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px;overflow:hidden">
     <div style="background:#d97706;color:#fff;padding:16px 20px;font-weight:600">Your HoundStack trial ends ${when}</div>
     <div style="padding:20px;line-height:1.55;font-size:15px">
       <p style="margin:0 0 14px">Hi ${escapeHtml(orgName)},</p>

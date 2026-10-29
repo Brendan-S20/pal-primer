@@ -19,6 +19,7 @@ import * as React from "react";
 import { render } from "react-email";
 import { TEMPLATES } from "@/lib/email-templates/registry";
 import { OPERATOR_LINE, safeHexColor, safeLogoUrl } from "@/lib/email-templates/_brand";
+import { existsSync } from "node:fs";
 import { SignupEmail } from "@/lib/email-templates/signup";
 import { InviteEmail } from "@/lib/email-templates/invite";
 import { MagicLinkEmail } from "@/lib/email-templates/magic-link";
@@ -35,6 +36,10 @@ const brand = {
   orgLogoUrl: LOGO,
   orgBrandColor: "#7C3AED",
 };
+
+// The header is the reversed wordmark as an image, never typeset text.
+const WORDMARK =
+  '/brand/houndstack-wordmark-reversed.png" alt="HoundStack" width="234" height="28"';
 
 const TENANT = Object.keys(TEMPLATES).filter((k) => k !== "weekly-digest");
 
@@ -161,7 +166,8 @@ describe("system mail", () => {
     "%s opens with the HoundStack band and names the operator",
     async (_n, C, props) => {
       const out = await html(C, props);
-      expect(out).toContain("background-color:#09311b");
+      expect(out).toContain("background-color:#142937");
+      expect(out).toContain(WORDMARK);
       expect(out).toContain(OPERATOR_LINE);
       expect(out).not.toContain("Powered by");
     },
@@ -213,7 +219,8 @@ describe("platform mail built by hand", () => {
       endsOn: "Nov 1, 2026",
       billingUrl: "https://app.test/settings/billing",
     });
-    expect(out).toContain("background-color:#09311b");
+    expect(out).toContain("background-color:#142937");
+    expect(out).toContain(WORDMARK);
     expect(out).toContain(OPERATOR_LINE);
     expect(out).toContain(
       "Sent by HoundStack · You are receiving this because your workspace is in a free trial.",
@@ -225,9 +232,31 @@ describe("platform mail built by hand", () => {
   it("an announcement wears the HoundStack band and operator line", async () => {
     const { renderAnnouncementHtml } = await import("@/lib/announcement-emails.server");
     const out = renderAnnouncementHtml("Scheduled maintenance", "Sunday 2am to 3am.", "info");
-    expect(out).toContain("background-color:#09311b");
+    expect(out).toContain("background-color:#142937");
+    expect(out).toContain(WORDMARK);
     expect(out).toContain(OPERATOR_LINE);
     expect(out).toContain("Sent by HoundStack · Platform announcement");
     expect(out).toContain("Scheduled maintenance");
+  });
+});
+
+describe("the HoundStack header", () => {
+  it("is the reversed wordmark on website navy with a sage rule", async () => {
+    const out = await html(MagicLinkEmail, {
+      siteName: "HoundStack",
+      confirmationUrl: "https://app.test/c",
+    });
+    expect(out).toContain("background-color:#142937");
+    expect(out).toContain("background-color:#5e845e");
+    expect(out).toContain(WORDMARK);
+    expect(out).not.toContain("filter:");
+  });
+
+  it("the image it points at ships in public/, as a PNG and its SVG source", () => {
+    expect(existsSync("public/brand/houndstack-wordmark-reversed.png")).toBe(true);
+    const svg = read("public/brand/houndstack-wordmark-reversed.svg");
+    expect(svg).not.toContain("currentColor");
+    expect(svg).toContain("fill:#ffffff");
+    expect(svg).toContain("fill:#5e845e");
   });
 });

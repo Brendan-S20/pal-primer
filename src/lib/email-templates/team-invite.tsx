@@ -1,16 +1,6 @@
 import * as React from "react";
-import {
-  Body,
-  Button,
-  Container,
-  Head,
-  Heading,
-  Html,
-  Preview,
-  Text,
-} from "@react-email/components";
-import { styles } from "./_shared";
-import { BRAND, SystemFooter, SystemHeader } from "./_brand";
+import { Button, Heading, Text } from "@react-email/components";
+import { SystemLayout, systemText } from "./_brand";
 
 interface Props {
   orgName: string;
@@ -27,28 +17,23 @@ interface Props {
  * with the business name pasted in unescaped (#577).
  */
 export const TeamInviteEmail = ({ orgName, email, roleLabel, link }: Props) => (
-  <Html lang="en" dir="ltr">
-    <Head />
-    <Preview>{`You've been invited to join ${orgName} on HoundStack`}</Preview>
-    <Body style={styles.main}>
-      <Container style={styles.container}>
-        <SystemHeader />
-        <Heading style={styles.h1}>Join {orgName}</Heading>
-        <Text style={styles.text}>
-          You've been invited to join <strong>{orgName}</strong> on HoundStack as {roleLabel}.
-        </Text>
-        <Text style={styles.text}>
-          Create your account, or sign in, with <strong>{email}</strong>. Your role is assigned
-          automatically on first sign-in.
-        </Text>
-        <Button style={{ ...styles.button, backgroundColor: BRAND.ink }} href={link}>
-          Accept invitation
-        </Button>
-        <Text style={styles.small}>If the button does not work, open this link: {link}</Text>
-        <SystemFooter note="If you weren't expecting this invitation, you can ignore this email." />
-      </Container>
-    </Body>
-  </Html>
+  <SystemLayout
+    preview={`You've been invited to join ${orgName} on HoundStack`}
+    note="If you weren't expecting this invitation, you can ignore this email."
+  >
+    <Heading style={systemText.h1}>Join {orgName}</Heading>
+    <Text style={systemText.text}>
+      You've been invited to join <strong>{orgName}</strong> on HoundStack as {roleLabel}.
+    </Text>
+    <Text style={systemText.text}>
+      Create your account, or sign in, with <strong>{email}</strong>. Your role is assigned
+      automatically on first sign-in.
+    </Text>
+    <Button style={systemText.button} href={link}>
+      Accept invitation
+    </Button>
+    <Text style={systemText.aside}>If the button does not work, open this link: {link}</Text>
+  </SystemLayout>
 );
 
 export default TeamInviteEmail;

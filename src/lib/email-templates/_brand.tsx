@@ -17,15 +17,26 @@
 // so a pale brand colour cannot make anything unreadable.
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { Body, Container, Head, Html, Preview, Section } from "@react-email/components";
 import { APP_NAME } from "@/lib/scoop";
+import { appUrl } from "@/lib/app-origin";
 
 export const HOUNDSTACK_URL = "https://houndstack.com";
+
+/** The reversed wordmark (white "Hound", sage "Stack") from
+ *  src/assets/houndstack-wordmark.svg, as a 2x PNG served from public/brand.
+ *  A PNG because Gmail and Outlook do not render an SVG <img>. Never a CSS
+ *  filter over the colour wordmark. */
+export const WORDMARK_REVERSED_PATH = "/brand/houndstack-wordmark-reversed.png";
 
 /** The app's --brand and --brand-ink tokens (styles.css), as hex. Email
  *  clients do not read oklch. */
 export const BRAND = {
   green: "#267b4c",
   ink: "#09311b",
+  /** Website navy and sage, for the HoundStack header band (Beacon, #577). */
+  navy: "#142937",
+  sage: "#5e845e",
   muted: "#64748b",
   rule: "#e2e8f0",
 };
@@ -60,35 +71,64 @@ export function safeLogoUrl(value: string | null | undefined): string | null {
 const small = { fontSize: "12px", color: BRAND.muted, lineHeight: "1.5", margin: 0 };
 const table = { width: "100%", borderCollapse: "collapse" as const };
 
-/** Top of every system email: the HoundStack wordmark on its own band. */
+/** The wordmark's drawn size. Its artwork is 3626.5 x 434.8, so 28px tall
+ *  is 234px wide; the PNG is drawn at twice that. */
+const WORDMARK_HEIGHT = 28;
+const WORDMARK_WIDTH = 234;
+
+/** The grey canvas, white card and inset that system mail sits in. Exported
+ *  for the platform mail that builds its HTML by hand, so it can line up. */
+export const SYSTEM = {
+  canvas: "#f4f6f8",
+  cardRule: "#e2e8f0",
+  radius: "12px",
+  inset: "28px",
+};
+
+/**
+ * Top of every system email: a sage rule over a navy band carrying the
+ * reversed HoundStack wordmark, rounded at the top so the white card below
+ * reads as its continuation (Beacon, #577). An image, never typeset text,
+ * and never a CSS filter over the colour wordmark.
+ */
 export function SystemHeader() {
   return (
     <table
       role="presentation"
       cellPadding={0}
       cellSpacing={0}
-      style={{ ...table, margin: "0 0 24px" }}
+      style={{
+        ...table,
+        borderCollapse: "separate" as const,
+        borderRadius: `${SYSTEM.radius} ${SYSTEM.radius} 0 0`,
+        overflow: "hidden",
+      }}
     >
       <tbody>
         <tr>
-          <td
-            style={{
-              backgroundColor: BRAND.ink,
-              borderTop: `4px solid ${BRAND.green}`,
-              padding: "14px 20px",
-            }}
-          >
-            <a
-              href={HOUNDSTACK_URL}
-              style={{
-                color: "#ffffff",
-                fontSize: "18px",
-                fontWeight: "bold" as const,
-                letterSpacing: "0.2px",
-                textDecoration: "none",
-              }}
-            >
-              {APP_NAME}
+          <td style={{ backgroundColor: BRAND.sage, height: "4px", fontSize: 0, lineHeight: 0 }}>
+            &nbsp;
+          </td>
+        </tr>
+        <tr>
+          <td style={{ backgroundColor: BRAND.navy, padding: `22px ${SYSTEM.inset}` }}>
+            <a href={HOUNDSTACK_URL} style={{ textDecoration: "none" }}>
+              <img
+                src={appUrl(WORDMARK_REVERSED_PATH)}
+                alt={APP_NAME}
+                width={WORDMARK_WIDTH}
+                height={WORDMARK_HEIGHT}
+                style={{
+                  display: "block",
+                  width: `${WORDMARK_WIDTH}px`,
+                  height: `${WORDMARK_HEIGHT}px`,
+                  border: 0,
+                  // What a client that blocks images shows instead.
+                  color: "#ffffff",
+                  fontSize: "20px",
+                  fontWeight: "bold" as const,
+                }}
+              />
             </a>
           </td>
         </tr>
@@ -100,24 +140,45 @@ export function SystemHeader() {
 /** Bottom of every system email. `note` is the email's own last line (why
  *  it was sent, how to stop it), printed above the operator line.
  *  `poweredBy` is for system mail that carries a business's header (the
- *  weekly digest): the HoundStack line then reads "Powered by HoundStack". */
-export function SystemFooter({ note, poweredBy }: { note?: React.ReactNode; poweredBy?: boolean }) {
+ *  weekly digest): the HoundStack line then reads "Powered by HoundStack".
+ *  `onCanvas` is for mail laid out as a card on the grey canvas: the footer
+ *  sits below the card, inset to line up with the card's text, with no rule
+ *  of its own because the card's edge already is one. */
+export function SystemFooter({
+  note,
+  poweredBy,
+  onCanvas,
+}: {
+  note?: React.ReactNode;
+  poweredBy?: boolean;
+  onCanvas?: boolean;
+}) {
+  const pad = onCanvas ? `0 ${SYSTEM.inset}` : "0";
   return (
     <table
       role="presentation"
       cellPadding={0}
       cellSpacing={0}
-      style={{ ...table, margin: "32px 0 0", borderTop: `1px solid ${BRAND.rule}` }}
+      style={{
+        ...table,
+        margin: onCanvas ? "20px 0 0" : "32px 0 0",
+        ...(onCanvas ? {} : { borderTop: `1px solid ${BRAND.rule}` }),
+      }}
     >
       <tbody>
         {note ? (
           <tr>
-            <td style={{ ...small, padding: "16px 0 0" }}>{note}</td>
+            <td style={{ ...small, padding: onCanvas ? pad : "16px 0 0" }}>{note}</td>
           </tr>
         ) : null}
         <tr>
           <td
-            style={{ ...small, padding: "12px 0 0", fontWeight: "bold" as const, color: BRAND.ink }}
+            style={{
+              ...small,
+              padding: onCanvas ? `12px ${SYSTEM.inset} 0` : "12px 0 0",
+              fontWeight: "bold" as const,
+              color: BRAND.navy,
+            }}
           >
             {poweredBy ? (
               <>
@@ -132,10 +193,83 @@ export function SystemFooter({ note, poweredBy }: { note?: React.ReactNode; powe
           </td>
         </tr>
         <tr>
-          <td style={{ ...small, padding: "2px 0 0" }}>{OPERATOR_LINE}</td>
+          <td style={{ ...small, padding: onCanvas ? `2px ${SYSTEM.inset} 0` : "2px 0 0" }}>
+            {OPERATOR_LINE}
+          </td>
         </tr>
       </tbody>
     </table>
+  );
+}
+
+/** Shared type for system mail laid out with SystemLayout. */
+export const systemText = {
+  h1: {
+    fontSize: "24px",
+    lineHeight: "1.3",
+    fontWeight: "bold" as const,
+    color: "#0f172a",
+    margin: "0 0 16px",
+  },
+  text: { fontSize: "15px", color: "#334155", lineHeight: "1.6", margin: "0 0 20px" },
+  link: { color: "inherit", textDecoration: "underline" },
+  button: {
+    backgroundColor: BRAND.navy,
+    color: "#ffffff",
+    fontSize: "15px",
+    fontWeight: "bold" as const,
+    borderRadius: "8px",
+    padding: "14px 24px",
+    textDecoration: "none",
+    display: "inline-block",
+  },
+  /** The email's own "if you didn't ask for this" line, last in the card. */
+  aside: {
+    fontSize: "13px",
+    color: "#64748b",
+    lineHeight: "1.55",
+    margin: "28px 0 0",
+    paddingTop: "20px",
+    borderTop: `1px solid ${BRAND.rule}`,
+  },
+};
+
+/**
+ * The whole frame of a system email: grey canvas, the HoundStack band, a
+ * white card holding `children`, and SystemFooter below it. Every system
+ * template is this plus its own words, so they cannot drift apart.
+ */
+export function SystemLayout({
+  preview,
+  note,
+  children,
+}: {
+  preview: string;
+  note?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <Html lang="en" dir="ltr">
+      <Head />
+      <Preview>{preview}</Preview>
+      <Body style={{ backgroundColor: SYSTEM.canvas, fontFamily: "Arial, sans-serif", margin: 0 }}>
+        <Container style={{ maxWidth: "600px", padding: "32px 16px 40px" }}>
+          <SystemHeader />
+          <Section
+            style={{
+              backgroundColor: "#ffffff",
+              padding: `32px ${SYSTEM.inset} 28px`,
+              border: `1px solid ${SYSTEM.cardRule}`,
+              borderTop: "none",
+              borderRadius: `0 0 ${SYSTEM.radius} ${SYSTEM.radius}`,
+            }}
+          >
+            {children}
+          </Section>
+          <SystemFooter note={note} onCanvas />
+        </Container>
+      </Body>
+    </Html>
   );
 }
 
@@ -226,5 +360,5 @@ export function systemHeaderHtml(): string {
 }
 
 export function systemFooterHtml(note?: string): string {
-  return renderToStaticMarkup(<SystemFooter note={note} />);
+  return renderToStaticMarkup(<SystemFooter note={note} onCanvas />);
 }
