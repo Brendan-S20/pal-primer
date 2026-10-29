@@ -340,3 +340,16 @@ export function bookingCadenceLabel(line: ServiceLine, cadence: string): string 
   if (line === "mobile_grooming" && cadence === "monthly") return "Every 4 weeks";
   return frequencyLabel(cadence);
 }
+
+/** The price line's label for one visit sold once (#574): "One session". */
+export function oneVisitLineLabel(line: ServiceLine): string {
+  return `One ${BOOKING_COPY[line].visit}`;
+}
+
+/** What "Charged today" covers for one visit sold once (#574). */
+export function chargedTodayCoversOnce(line: ServiceLine, withFirstCleanup: boolean): string {
+  const v = BOOKING_COPY[line].visit;
+  return withFirstCleanup
+    ? `, which covers your first cleanup plus this ${v}.`
+    : `, which covers this ${v}.`;
+}

@@ -24,6 +24,7 @@ import {
   type ServiceLine,
   type ServiceLineAvailability,
 } from "@/lib/service-lines";
+import type { PublicBookingMode } from "@/lib/public-booking-mode";
 
 export const PRICE_UNITS = ["visit", "hour", "night"] as const;
 export type PriceUnit = (typeof PRICE_UNITS)[number];
@@ -57,6 +58,10 @@ export type Service = {
   default_duration_min: number | null;
   max_dogs?: number | null;
   holiday_surcharge_pct?: number;
+  /** How the booking link starts it (#574). NULL reads as request only. */
+  public_booking_mode?: PublicBookingMode | null;
+  /** The package a `package` service sells on the link. */
+  public_package_id?: string | null;
   active: boolean;
   created_at: string;
   updated_at: string;
@@ -73,6 +78,10 @@ export type ServiceDraft = {
   default_duration_min: number | null;
   max_dogs?: number | null;
   holiday_surcharge_pct?: number;
+  /** Omitted on insert: the database picks by line (one visit for training,
+   *  a request for a stay, a repeating plan otherwise). */
+  public_booking_mode?: PublicBookingMode;
+  public_package_id?: string | null;
 };
 
 export type DefaultServiceSeed = ServiceDraft & { active: boolean };
@@ -332,6 +341,16 @@ export function serviceProblem(d: ServiceDraft): string | null {
       (d.service_line !== "pet_sitting" && d.holiday_surcharge_pct !== 0))
   )
     return "A sitting holiday surcharge is a whole percentage from 0 to 500.";
+  if (d.public_booking_mode === "package" && !d.public_package_id)
+    return "Pick the package the booking link sells, or choose another way to book.";
+  if (d.public_booking_mode !== "package" && d.public_package_id)
+    return "Only a package of sessions sells a package.";
+  if (
+    d.price_unit === "night" &&
+    d.public_booking_mode != null &&
+    d.public_booking_mode !== "request_only"
+  )
+    return "A per-night stay is booked by request on the booking link.";
   for (const [cents, what] of [
     [d.base_price_cents, "The price"],
     [d.extra_pet_cents, "The extra-pet charge"],

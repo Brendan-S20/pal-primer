@@ -37,7 +37,13 @@ export type FormBranch<Q = unknown> = {
   quote: Q | null;
   /** Why the page is in the state it is, for the copy beside the buttons. */
   reason:
-    "priced" | "not-priced-yet" | "no-zone" | "instant-off" | "stay-request" | "unpriced-request";
+    | "priced"
+    | "not-priced-yet"
+    | "no-zone"
+    | "instant-off"
+    | "stay-request"
+    | "unpriced-request"
+    | "request-only";
 };
 
 /**
@@ -62,17 +68,24 @@ export type FormBranch<Q = unknown> = {
  * (requestedBecause, lib/public-services.ts, #560): asked for like a stay,
  * and the office sends the price. A groom is not a request here: it is priced
  * and then either booked and paid for, or requested, and both buttons show.
+ *
+ * `request` "request_only" is a service its owner set to Request a quote only
+ * on the booking link, or left with no answer (#574): no price, no card, only
+ * the quote request.
  */
 export function decideFormBranch<Q>(input: {
   instantStart: boolean;
   answer?: QuoteAnswer<Q> | null;
   offerQuoteRequest?: boolean;
   stay?: boolean;
-  request?: "unpriced" | null;
+  request?: "unpriced" | "request_only" | null;
 }): FormBranch<Q> {
   const canRequestQuote = input.offerQuoteRequest !== false;
   if (input.stay) {
     return { canStartService: false, canRequestQuote, quote: null, reason: "stay-request" };
+  }
+  if (input.request === "request_only") {
+    return { canStartService: false, canRequestQuote, quote: null, reason: "request-only" };
   }
   if (input.request === "unpriced") {
     return { canStartService: false, canRequestQuote, quote: null, reason: "unpriced-request" };

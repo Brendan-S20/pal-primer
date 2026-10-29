@@ -43,6 +43,8 @@ import {
   bookingCadenceLabel,
   bookingLine,
   chargedTodayCovers,
+  chargedTodayCoversOnce,
+  oneVisitLineLabel,
   perVisitBillingSentence,
   stayStartDateHint,
 } from "@/lib/booking-copy";
@@ -115,6 +117,13 @@ import {
 } from "@/lib/booking-extras";
 import { PET_SIZES } from "@/lib/groom";
 import { groomTimeLabel } from "@/lib/groom-online";
+import {
+  ONE_SESSION_FREQUENCY,
+  effectiveBookingMode,
+  noCadenceNote,
+  oneTimeChargeSentence,
+  packageChargeSentence,
+} from "@/lib/public-booking-mode";
 import type { ServiceLine } from "@/lib/service-lines";
 
 // Module-scoped Stripe.js cache keyed by publishable key + connected account
@@ -250,7 +259,13 @@ export function SignupFlow({
   // cadence list is the line's, so the frequency sent is one it showed.
   const line = bookingLine(services, chosen, formQ.data?.lines);
   const lineCopy = BOOKING_COPY[line];
-  const frequency = bookingCadence(line, form.frequency);
+  // How the service starts (#574): the owner's mode on the service, never
+  // its name. Nothing chosen is the pet-waste signup it always was. One
+  // visit and a package have no cadence; a request takes no card.
+  const mode = effectiveBookingMode(chosen);
+  const repeats = mode === "recurring";
+  const pkg = mode === "package" ? (chosen?.package ?? null) : null;
+  const frequency = repeats ? bookingCadence(line, form.frequency) : ONE_SESSION_FREQUENCY;
   useEffect(() => {
     onLineChange?.(line);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -259,8 +274,9 @@ export function SignupFlow({
   // What this service adds to its base price (#560): its line's add-ons, and
   // a size per pet when it prices by size. None for pet waste.
   const extras = formQ.data?.extras ?? NO_EXTRAS;
-  const offeredAddOns = addOnsFor(extras, chosen);
-  const sizePrices = sizePricesFor(extras, chosen);
+  // A package is its own price: no add-ons or sizes ride on it.
+  const offeredAddOns = pkg ? [] : addOnsFor(extras, chosen);
+  const sizePrices = pkg ? [] : sizePricesFor(extras, chosen);
   const pickedAddOnIds = offeredAddOns
     .filter((a) => form.add_on_ids.includes(a.id))
     .map((a) => a.id);
@@ -281,7 +297,8 @@ export function SignupFlow({
   const request = requestedBecause(chosen, sizePrices.length > 0);
   const stay = request === "stay";
   const groom = request === "groom";
-  const sellsHere = instantStart && !stay && request !== "unpriced";
+  const askedFor = request === "unpriced" || request === "request_only";
+  const sellsHere = instantStart && !stay && !askedFor;
 
   // The pet-waste questions apply when nothing was picked and for the
   // pet-waste service; a walk has no yard to ask about.
@@ -433,7 +450,7 @@ export function SignupFlow({
         // after the service changed. None for a stay (#546).
         body: JSON.stringify({
           ...lead,
-          frequency: stay ? "" : frequency,
+          frequency: stay || mode === "package" ? "" : mode === "one_time" ? "one_time" : frequency,
           ...serviceField,
           ...extrasField,
         }),
@@ -451,7 +468,7 @@ export function SignupFlow({
     answer: quoteMut.data ?? null,
     offerQuoteRequest,
     stay,
-    request: request === "unpriced" ? request : null,
+    request: askedFor ? (request as "unpriced" | "request_only") : null,
   });
   const quote = branch.quote;
 
@@ -634,8 +651,11 @@ export function SignupFlow({
     quote && quote.recurring_price_cents != null
       ? money(quote.recurring_price_cents, quote.currency)
       : "";
-  const todayCents =
-    quote && firstCleanupCents != null && quote.recurring_price_cents != null
+  // The package the server quoted, which is what is charged (#574).
+  const quotedPkg = quote && quote.booking_mode === "package" ? (quote.package ?? null) : null;
+  const todayCents = quotedPkg
+    ? quotedPkg.price_cents
+    : quote && firstCleanupCents != null && quote.recurring_price_cents != null
       ? firstCleanupCents + quote.recurring_price_cents
       : null;
   const extraLines = quote?.extra_lines ?? [];
@@ -669,11 +689,25 @@ export function SignupFlow({
           </div>
         </div>
       ))}
-      <div className="flex items-baseline justify-between gap-3">
-        <div className="min-w-0 text-sm">
-          {perVisitLineLabel(line, groom)} ({bookingCadenceLabel(line, frequency)})
+      {quotedPkg ? (
+        <div className="flex items-baseline justify-between gap-3">
+          <div className="min-w-0 break-words text-sm">
+            {quotedPkg.name} ({quotedPkg.sessions_count}{" "}
+            {quotedPkg.sessions_count === 1 ? lineCopy.visit : lineCopy.visits})
+          </div>
+          <div className="shrink-0 font-medium">{money(quotedPkg.price_cents, quote.currency)}</div>
         </div>
-        {/* PER VISIT, not per month. `public_quote` returns
+      ) : !repeats ? (
+        <div className="flex items-baseline justify-between gap-3">
+          <div className="min-w-0 text-sm">{oneVisitLineLabel(line)}</div>
+          <div className="shrink-0 font-medium">{perVisit}</div>
+        </div>
+      ) : (
+        <div className="flex items-baseline justify-between gap-3">
+          <div className="min-w-0 text-sm">
+            {perVisitLineLabel(line, groom)} ({bookingCadenceLabel(line, frequency)})
+          </div>
+          {/* PER VISIT, not per month. `public_quote` returns
             `round(base_visit_cents × frequency_multiplier)`, and
             pricing.ts documents it as "Per-visit price after the
             frequency multiplier": the multipliers price LESS frequent
@@ -682,10 +716,11 @@ export function SignupFlow({
             this one said /mo and the line below sold "a prepaid first
             month" for what buys ONE visit. Weekly service at $25 read
             "$25.00/mo". */}
-        <div className="shrink-0 font-medium">
-          {perVisit}/{lineCopy.visit}
+          <div className="shrink-0 font-medium">
+            {perVisit}/{lineCopy.visit}
+          </div>
         </div>
-      </div>
+      )}
       <div className="border-t pt-3 text-xs text-muted-foreground">
         {firstCleanupCents == null ? (
           <>Tell us when your yard was last cleaned to see today's total.</>
@@ -693,8 +728,21 @@ export function SignupFlow({
           <>
             {groom ? GROOM_COPY.chargedTodayLead : "Charged today if you start service:"}{" "}
             <strong className="text-foreground">{money(todayCents ?? 0, quote.currency)}</strong>
-            {chargedTodayCovers(line, showsFirstCleanup)}{" "}
-            {perVisitBillingSentence(line, money(quote.recurring_price_cents, quote.currency))}
+            {quotedPkg ? (
+              <>
+                . {packageChargeSentence(quotedPkg.sessions_count, lineCopy.visits, lineCopy.visit)}
+              </>
+            ) : !repeats ? (
+              <>
+                {chargedTodayCoversOnce(line, showsFirstCleanup)}{" "}
+                {oneTimeChargeSentence(lineCopy.visit)}
+              </>
+            ) : (
+              <>
+                {chargedTodayCovers(line, showsFirstCleanup)}{" "}
+                {perVisitBillingSentence(line, money(quote.recurring_price_cents, quote.currency))}
+              </>
+            )}
             {groom && <span className="mt-2 block">{GROOM_COPY.orRequest}</span>}
           </>
         )}
@@ -792,6 +840,13 @@ export function SignupFlow({
         {stay ? (
           <p className="min-w-0 text-sm text-muted-foreground sm:col-span-3">
             {STAY_COPY.howItWorks}
+          </p>
+        ) : !repeats && !askedFor ? (
+          <p
+            className="min-w-0 text-sm text-muted-foreground sm:col-span-3"
+            data-testid="no-cadence-note"
+          >
+            {noCadenceNote(mode, lineCopy.visit, lineCopy.visits, pkg)}
           </p>
         ) : (
           <div className="space-y-1.5">
@@ -910,7 +965,7 @@ export function SignupFlow({
               );
             })}
             <p className="text-xs text-muted-foreground">
-              {request === "unpriced" ? ADD_ON_COPY.unpricedHint : ADD_ON_COPY.hint(lineCopy.visit)}
+              {askedFor ? ADD_ON_COPY.unpricedHint : ADD_ON_COPY.hint(lineCopy.visit)}
             </p>
           </fieldset>
         )}
@@ -1195,7 +1250,7 @@ export function SignupFlow({
             ? STAY_COPY.requestButton
             : groom
               ? GROOM_COPY.requestButton
-              : request === "unpriced"
+              : askedFor
                 ? UNPRICED_COPY.requestButton
                 : branch.canStartService || branch.reason === "not-priced-yet"
                   ? "Get a quote by email"
@@ -1241,7 +1296,7 @@ export function SignupFlow({
               <>{outOfArea}</>
             ) : branch.reason === "stay-request" ? (
               <>{STAY_COPY.panelHint}</>
-            ) : branch.reason === "unpriced-request" ? (
+            ) : branch.reason === "unpriced-request" || branch.reason === "request-only" ? (
               <>{requestPanelHint(line)}</>
             ) : (
               <>{requestPanelHint(line)}</>
@@ -1314,12 +1369,14 @@ export function SignupFlow({
       >
         <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
           <div className="min-w-0 text-sm">
-            <span className="font-medium">
-              {perVisit}/{lineCopy.visit}
-            </span>
+            {repeats ? (
+              <span className="font-medium">
+                {perVisit}/{lineCopy.visit}
+              </span>
+            ) : null}
             {todayCents != null ? (
-              <span className="text-muted-foreground">
-                {", "}
+              <span className={repeats ? "text-muted-foreground" : "font-medium"}>
+                {repeats ? ", " : ""}
                 {money(todayCents, quote.currency)} today
               </span>
             ) : null}

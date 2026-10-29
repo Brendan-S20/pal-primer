@@ -61,6 +61,8 @@ function row(id: string, name: string, line: string, unit: string) {
     base_price_cents: 6000,
     extra_pet_cents: 1000,
     default_duration_min: 30,
+    // How the booking link starts it (#574), as the backfill sets it.
+    booking_mode: unit === "night" ? "request_only" : "recurring",
   };
 }
 const OVERNIGHT = row(

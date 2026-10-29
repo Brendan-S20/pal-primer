@@ -347,7 +347,10 @@ describe("the public form", () => {
     expect(fns).toMatch(
       /\.\.\.\(data\.service_id \? \{ _service_id: data\.service_id \} : \{\}\),/,
     );
-    expect(fns.match(/sb\.rpc\("public_quote", publicQuoteArgs\(data\)\)/g)?.length).toBe(2);
+    // `asked` is the body with only its cadence set by the service's booking
+    // mode (quoteDataFor, #574): the same ids, never a price.
+    expect(fns.match(/sb\.rpc\("public_quote", publicQuoteArgs\(asked\)\)/g)?.length).toBe(2);
+    expect(fns.match(/const asked = quoteDataFor\(data, terms\);/g)?.length).toBe(2);
     // And no price-shaped key anywhere near the call.
     const args = fns.slice(
       fns.indexOf("function publicQuoteArgs"),

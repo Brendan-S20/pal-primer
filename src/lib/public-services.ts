@@ -30,6 +30,13 @@ import {
   type ServiceLine,
   type ServiceLineAvailability,
 } from "@/lib/service-lines";
+import {
+  effectiveBookingMode,
+  isPublicBookingMode,
+  parsePublicPackage,
+  type PublicBookingMode,
+  type PublicPackage,
+} from "@/lib/public-booking-mode";
 
 /** One row of public_services: what public_quote needs back, and what a
  *  visitor needs to choose. No organization column. */
@@ -41,6 +48,11 @@ export type PublicService = {
   base_price_cents: number | null;
   extra_pet_cents: number;
   default_duration_min: number | null;
+  /** How the link starts it (#574), read by getPublicSignupForm with the
+   *  service role. Absent or unknown reads as a request. */
+  booking_mode?: PublicBookingMode | null;
+  /** The package a `package` service sells, when it has one to sell. */
+  package?: PublicPackage | null;
 };
 
 function isServiceLine(v: unknown): v is ServiceLine {
@@ -85,6 +97,8 @@ export function publicServiceChoices(
       extra_pet_cents: typeof o.extra_pet_cents === "number" ? o.extra_pet_cents : 0,
       default_duration_min:
         typeof o.default_duration_min === "number" ? o.default_duration_min : null,
+      booking_mode: isPublicBookingMode(o.booking_mode) ? o.booking_mode : null,
+      package: parsePublicPackage(o.package),
     });
   }
   return out;
@@ -160,9 +174,10 @@ export function isRequestedAsAStay(chosen: { price_unit?: unknown } | null | und
  *  has listed but not priced yet is still offered (#560), as a request: the
  *  office sends the price. */
 export function isPricedOnline(
-  s: { service_line: ServiceLine; base_price_cents: number | null },
+  s: { service_line: ServiceLine; base_price_cents: number | null; package?: PublicPackage | null },
   hasSizePrices = false,
 ): boolean {
+  if (effectiveBookingMode(s as PublicService) === "package") return true;
   return isZonePriced(s) || s.base_price_cents != null || hasSizePrices;
 }
 
@@ -171,13 +186,19 @@ export function isPricedOnline(
  *  appointment on one groomer's van, which the office places, so it is
  *  priced here with each pet's size and the add-ons and then requested
  *  (#560). A service with no price yet is requested so the office can send
- *  one. Nothing chosen (the form as it always was) is never a request. */
+ *  one. A service the owner set to request only, or left unset, is asked
+ *  for (#574). Nothing chosen (the form as it always was) is never a
+ *  request. */
 export function requestedBecause(
   chosen: PublicService | null,
   hasSizePrices = false,
-): "stay" | "groom" | "unpriced" | null {
+): "stay" | "groom" | "unpriced" | "request_only" | null {
   if (!chosen) return null;
   if (isRequestedAsAStay(chosen)) return "stay";
+  // The owner's answer (#574): a service set to Request a quote only, or
+  // with no answer, takes no card. Before the price, because a request
+  // that is not priced reads the same either way.
+  if (effectiveBookingMode(chosen) === "request_only") return "request_only";
   if (!isPricedOnline(chosen, hasSizePrices)) return "unpriced";
   if (chosen.service_line === "mobile_grooming") return "groom";
   return null;
@@ -221,4 +242,40 @@ export function publicServiceOptions(services: readonly PublicService[]): Public
     out.push(s);
   }
   return out;
+}
+
+/** The listed services with how the link starts each (#574), from the
+ *  service rows' public_booking_mode and the packages they sell, both read
+ *  with the service role for these services only. A row the lookup did not
+ *  return keeps no mode, which reads as a request. A package is attached
+ *  only when it is active, priced, and this service's own. */
+export function withBookingModes(
+  services: readonly PublicService[],
+  modeRows: unknown,
+  packageRows: unknown,
+): PublicService[] {
+  const modes = new Map<string, { mode: unknown; packageId: unknown }>();
+  for (const r of Array.isArray(modeRows) ? modeRows : []) {
+    if (!r || typeof r !== "object") continue;
+    const o = r as Record<string, unknown>;
+    if (typeof o.id === "string")
+      modes.set(o.id, { mode: o.public_booking_mode, packageId: o.public_package_id });
+  }
+  const packages = new Map<string, Record<string, unknown>>();
+  for (const r of Array.isArray(packageRows) ? packageRows : []) {
+    if (!r || typeof r !== "object") continue;
+    const o = r as Record<string, unknown>;
+    if (typeof o.id === "string") packages.set(o.id, o);
+  }
+  return services.map((s) => {
+    const m = modes.get(s.id);
+    const row = typeof m?.packageId === "string" ? packages.get(m.packageId) : undefined;
+    const pkg =
+      row && row.active === true && row.service_id === s.id ? parsePublicPackage(row) : null;
+    return {
+      ...s,
+      booking_mode: isPublicBookingMode(m?.mode) ? m.mode : null,
+      package: pkg,
+    };
+  });
 }

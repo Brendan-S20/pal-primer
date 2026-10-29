@@ -63,3 +63,28 @@ export function parseQuoteOptions(
     return [{ id, label, priceCents: price_cents }];
   });
 }
+
+/** The charge for how the service starts (#574), from the server's own
+ *  terms: a repeating plan and one visit are what the quote says (the first
+ *  cleanup, if any, plus one visit; one visit is priced as one session), and
+ *  a package is the package's price, once, with no first cleanup. The
+ *  package comes from the service_packages row the server read, never from
+ *  the request. `recurringCents` is what the signup row records as the
+ *  price of one: a session's share of a package. */
+export function signupChargeForTerms(
+  q: PricedSignupQuote,
+  terms: {
+    mode: "one_time" | "recurring" | "package";
+    pkg: { price_cents: number; sessions_count: number } | null;
+  },
+): SignupCharge {
+  if (terms.mode !== "package") return signupChargeFromQuote(q);
+  if (!terms.pkg || !(terms.pkg.price_cents > 0)) throw new Error(SERVICE_NOT_PRICED);
+  const amountCents = Math.round(terms.pkg.price_cents);
+  return {
+    firstCleanupCents: 0,
+    recurringCents: Math.round(amountCents / Math.max(1, terms.pkg.sessions_count)),
+    amountCents,
+    firstCleanupLabel: null,
+  };
+}

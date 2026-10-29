@@ -17,6 +17,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 import { SERVICE_LINES } from "@/lib/service-lines";
+import { PUBLIC_BOOKING_MODES } from "@/lib/public-booking-mode";
 import {
   PRICE_UNITS,
   SERVICE_DURATION_MAX,
@@ -30,7 +31,7 @@ import {
 } from "@/lib/services";
 
 const SERVICE_COLUMNS =
-  "id, organization_id, name, service_line, price_unit, base_price_cents, extra_pet_cents, default_duration_min, max_dogs, holiday_surcharge_pct, active, created_at, updated_at";
+  "id, organization_id, name, service_line, price_unit, base_price_cents, extra_pet_cents, default_duration_min, max_dogs, holiday_surcharge_pct, public_booking_mode, public_package_id, active, created_at, updated_at";
 
 const cents = z.number().int().min(0).max(SERVICE_MAX_CENTS);
 
@@ -42,6 +43,8 @@ export const serviceDraftSchema = z.object({
   extra_pet_cents: cents.default(0),
   holiday_surcharge_pct: z.number().int().min(0).max(500).optional(),
   max_dogs: z.number().int().min(1).max(50).nullable().optional(),
+  public_booking_mode: z.enum(PUBLIC_BOOKING_MODES).optional(),
+  public_package_id: z.string().uuid().nullable().optional(),
   default_duration_min: z
     .number()
     .int()
@@ -58,6 +61,11 @@ export function parseServiceDraft(d: unknown): ServiceDraft {
     ...parsed,
     ...(parsed.service_line !== "pet_sitting" ? { holiday_surcharge_pct: 0 } : {}),
     max_dogs: parsed.service_line === "dog_walking" ? (parsed.max_dogs ?? null) : null,
+    // A mode that is not a package sells no package, so a stale one is
+    // cleared rather than left to be refused (#574).
+    ...(parsed.public_booking_mode && parsed.public_booking_mode !== "package"
+      ? { public_package_id: null }
+      : {}),
   };
   const problem = serviceProblem(draft);
   if (problem) throw new Error(problem);

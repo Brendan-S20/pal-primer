@@ -353,6 +353,8 @@ beforeEach(() => {
       name: "Pet waste removal",
       service_line: "pet_waste",
       active: true,
+      // How the booking link starts it (#574), as the backfill set it.
+      public_booking_mode: "recurring",
     },
     {
       id: WALK_ID,
@@ -360,6 +362,8 @@ beforeEach(() => {
       name: "30-minute walk",
       service_line: "dog_walking",
       active: true,
+      // How the booking link starts it (#574), as the backfill set it.
+      public_booking_mode: "recurring",
     },
     {
       id: SIT_ID,
@@ -367,6 +371,8 @@ beforeEach(() => {
       name: "Overnight stay",
       service_line: "pet_sitting",
       active: true,
+      // How the booking link starts it (#574), as the backfill set it.
+      public_booking_mode: "recurring",
     },
     {
       id: OTHER_WALK_ID,
@@ -374,6 +380,8 @@ beforeEach(() => {
       name: "Their walk",
       service_line: "dog_walking",
       active: true,
+      // How the booking link starts it (#574), as the backfill set it.
+      public_booking_mode: "recurring",
     },
   ];
   h.orgs = [

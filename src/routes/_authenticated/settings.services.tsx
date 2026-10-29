@@ -32,6 +32,7 @@ import {
   centsToDollarInput,
   defaultServiceLine,
   durationRequired,
+  formatServiceMoney,
   isBookableServiceLine,
   parseDollarsToCents,
   priceUnitsFor,
@@ -78,7 +79,16 @@ import { TrainingOnly } from "@/components/training/TrainingOnly";
 import { TrainingPackagesCard } from "@/components/settings/TrainingPackagesCard";
 import { TrainingSkillsCard } from "@/components/settings/TrainingSkillsCard";
 import { TrainingSessionRulesCard } from "@/components/settings/TrainingSessionRulesCard";
-import { ensureTrainingCatalog } from "@/lib/training-packages.functions";
+import { ensureTrainingCatalog, listServicePackages } from "@/lib/training-packages.functions";
+import {
+  BOOKING_MODE_HINT,
+  BOOKING_MODE_LABEL,
+  PUBLIC_BOOKING_MODES,
+  bookingModeSummary,
+  defaultPublicBookingMode,
+  isPublicBookingMode,
+  type PublicBookingMode,
+} from "@/lib/public-booking-mode";
 
 export const Route = createFileRoute("/_authenticated/settings/services")({
   head: () => titleHead("Services", "Settings"),
@@ -101,6 +111,19 @@ type FormState = {
   maxDogs: string;
   groupWalk: boolean;
   holidayPct: string;
+  /** How the booking link starts it (#574). */
+  bookingMode: PublicBookingMode;
+  packageId: string;
+};
+
+/** A package this business sells, as the mode's package picker lists it. */
+type PackageChoice = {
+  id: string;
+  service_id: string;
+  name: string;
+  sessions_count: number;
+  price_cents: number;
+  active: boolean;
 };
 
 function formFor(s: Service | null, line: ServiceLine): FormState {
@@ -116,6 +139,8 @@ function formFor(s: Service | null, line: ServiceLine): FormState {
       maxDogs: "",
       groupWalk: false,
       holidayPct: "0",
+      bookingMode: defaultPublicBookingMode(line, "visit"),
+      packageId: "",
     };
   }
   return {
@@ -129,6 +154,12 @@ function formFor(s: Service | null, line: ServiceLine): FormState {
     maxDogs: s.max_dogs == null ? "" : String(s.max_dogs),
     groupWalk: s.max_dogs != null,
     holidayPct: String(s.holiday_surcharge_pct ?? 0),
+    // A row with no answer is a request on the link, and the form says so
+    // rather than showing a default the link does not act on.
+    bookingMode: isPublicBookingMode(s.public_booking_mode)
+      ? s.public_booking_mode
+      : "request_only",
+    packageId: s.public_package_id ?? "",
   };
 }
 
@@ -152,6 +183,8 @@ function draftOf(f: FormState): { draft: ServiceDraft } | { problem: string } {
     extra_pet_cents: extra ?? 0,
     default_duration_min: minutes,
     max_dogs: f.service_line === "dog_walking" && f.groupWalk ? Number(f.maxDogs) : null,
+    public_booking_mode: f.bookingMode,
+    public_package_id: f.bookingMode === "package" && f.packageId ? f.packageId : null,
   };
   const problem = serviceProblem(draft);
   return problem ? { problem } : { draft };
@@ -187,6 +220,15 @@ function ServicesPage() {
     queryFn: () => list({ data: { includeInactive: true } }),
   });
   const services: Service[] = data?.services ?? [];
+  // The packages a `package` service can sell on the link. Only training
+  // has packages, so only a business that runs training asks.
+  const listPackages = useServerFn(listServicePackages);
+  const packagesQ = useQuery({
+    queryKey: ["service-packages"],
+    queryFn: () => listPackages(),
+    enabled: trainingOn,
+  });
+  const packages: PackageChoice[] = (packagesQ.data?.packages ?? []) as PackageChoice[];
 
   const [sizeService, setSizeService] = useState<Service | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
@@ -280,6 +322,12 @@ function ServicesPage() {
                       {s.service_line === "dog_walking" && s.max_dogs != null && (
                         <p>Group walk, up to {s.max_dogs} dogs</p>
                       )}
+                      <p data-testid="service-booking-mode">
+                        {bookingModeSummary(
+                          s.public_booking_mode,
+                          packages.find((p) => p.id === s.public_package_id)?.name ?? null,
+                        )}
+                      </p>
                     </div>
                   </div>
                   {canEdit && (
@@ -349,6 +397,7 @@ function ServicesPage() {
                 setForm(f);
               }}
               lines={lines}
+              packages={packages}
               error={formError}
               saving={save.isPending}
               onSubmit={() => save.mutate(form)}
@@ -364,6 +413,7 @@ function ServiceForm({
   form,
   setForm,
   lines,
+  packages,
   error,
   saving,
   onSubmit,
@@ -371,6 +421,7 @@ function ServiceForm({
   form: FormState;
   setForm: (f: FormState) => void;
   lines: readonly ServiceLine[];
+  packages: readonly PackageChoice[];
   error: string | null;
   saving: boolean;
   onSubmit: () => void;
@@ -379,6 +430,14 @@ function ServiceForm({
   const units = priceUnitsFor(form.service_line);
   const minutesRequired = durationRequired(form.service_line) && form.price_unit !== "night";
   const per = form.price_unit;
+  // A stay is always asked for on the link (#546); a package needs one of
+  // this service's own packages to sell.
+  const ownPackages = packages.filter((p) => form.id && p.service_id === form.id && p.active);
+  const modes = PUBLIC_BOOKING_MODES.filter((m) => {
+    if (form.price_unit === "night") return m === "request_only";
+    if (m === "package") return form.service_line === "training";
+    return true;
+  });
 
   return (
     <form
@@ -420,6 +479,14 @@ function ServiceForm({
               service_line: line,
               price_unit: unit,
               groupWalk: line === "dog_walking" && form.groupWalk,
+              // A package is training's; moving off training moves off it.
+              // A new service follows its line's default until the owner
+              // picks; a package is training's, so moving off training
+              // moves off it.
+              bookingMode:
+                !form.id || (form.bookingMode === "package" && line !== "training")
+                  ? defaultPublicBookingMode(line, unit)
+                  : form.bookingMode,
             });
           }}
         >
@@ -455,7 +522,13 @@ function ServiceForm({
                 type="button"
                 role="radio"
                 aria-checked={on}
-                onClick={() => setForm({ ...form, price_unit: u })}
+                onClick={() =>
+                  setForm({
+                    ...form,
+                    price_unit: u,
+                    bookingMode: u === "night" ? "request_only" : form.bookingMode,
+                  })
+                }
                 className={`inline-flex min-h-9 items-center rounded-md border px-3 text-sm touch:min-h-11 ${
                   on
                     ? "border-primary bg-primary/10 font-medium text-primary"
@@ -559,6 +632,69 @@ function ServiceForm({
           )}
         </fieldset>
       )}
+
+      <fieldset className="space-y-1.5" data-testid="booking-mode">
+        <legend className="text-sm font-medium">On your booking link</legend>
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="On your booking link">
+          {modes.map((m) => {
+            const on = form.bookingMode === m;
+            return (
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                onClick={() => setForm({ ...form, bookingMode: m })}
+                className={`inline-flex min-h-9 items-center rounded-md border px-3 text-sm touch:min-h-11 ${
+                  on
+                    ? "border-primary bg-primary/10 font-medium text-primary"
+                    : "bg-background text-foreground"
+                }`}
+              >
+                {BOOKING_MODE_LABEL[m]}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {form.price_unit === "night"
+            ? "Stays are always booked by request."
+            : BOOKING_MODE_HINT[form.bookingMode]}
+          {form.service_line === "mobile_grooming" && form.bookingMode !== "request_only"
+            ? " Clients still pick a groom day and start time."
+            : ""}
+        </p>
+        {form.bookingMode === "package" && (
+          <div className="space-y-1.5 pt-1">
+            <Label htmlFor="service-package">Package sold on the link</Label>
+            {ownPackages.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                {form.id
+                  ? "This service has no active package yet. Add one under Training packages, then pick it here."
+                  : "Save the service first, then add a package for it under Training packages."}
+              </p>
+            ) : (
+              <Select
+                value={form.packageId}
+                onValueChange={(v) => setForm({ ...form, packageId: v })}
+              >
+                <SelectTrigger id="service-package" className="min-w-0">
+                  <SelectValue placeholder="Pick a package" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ownPackages.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      <span className="min-w-0 truncate">
+                        {p.name}, {p.sessions_count} sessions, {formatServiceMoney(p.price_cents)}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+        )}
+      </fieldset>
 
       {error && (
         <p role="alert" className="text-sm text-destructive">

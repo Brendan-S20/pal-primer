@@ -206,7 +206,14 @@ beforeEach(() => {
   h.notices = [];
   h.intents = [];
   h.services = [
-    { id: WALK, organization_id: ORG, name: "30-minute walk", service_line: "dog_walking" },
+    {
+      id: WALK,
+      organization_id: ORG,
+      name: "30-minute walk",
+      service_line: "dog_walking",
+      // How the booking link starts it (#574), as the backfill set it.
+      public_booking_mode: "recurring",
+    },
   ];
   h.orgs = [{ id: ORG, slug: "whitfield", portal_slug: null }];
 });

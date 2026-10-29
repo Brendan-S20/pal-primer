@@ -85,6 +85,9 @@ function svc(
     base_price_cents: 3000,
     extra_pet_cents: 500,
     default_duration_min: 30,
+    // How the booking link starts it (#574): a repeating plan, as every
+    // service started before the mode existed. A stay is a request.
+    booking_mode: extra.price_unit === "night" ? "request_only" : "recurring",
     ...extra,
   };
 }
