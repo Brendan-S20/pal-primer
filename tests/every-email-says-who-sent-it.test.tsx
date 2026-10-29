@@ -38,7 +38,7 @@ const brand = {
 
 const TENANT = Object.keys(TEMPLATES).filter((k) => k !== "weekly-digest");
 
-async function html(component: React.ComponentType<any>, props: Record<string, unknown>) {
+async function html(component: React.ElementType, props: Record<string, unknown>) {
   return render(React.createElement(component, props));
 }
 
@@ -107,7 +107,7 @@ describe("what a tenant typed never reaches a style or src attribute unchecked",
 });
 
 describe("system mail", () => {
-  const SYSTEM: Array<[string, React.ComponentType<any>, Record<string, unknown>]> = [
+  const SYSTEM: Array<[string, React.ElementType, Record<string, unknown>]> = [
     [
       "signup",
       SignupEmail,
@@ -201,5 +201,33 @@ describe("the weekly digest", () => {
     const src = read("src/lib/digest.server.ts");
     expect(src).toMatch(/\.select\("logo_url, brand_color"\)/);
     expect(src).toMatch(/orgLogoUrl: brand\?\.logo_url \?\? null/);
+  });
+});
+
+describe("platform mail built by hand", () => {
+  it("the trial notice wears the HoundStack band and operator line, copy unchanged", async () => {
+    const { renderTrialNoticeHtml } = await import("@/lib/trial-expiry-emails.server");
+    const out = renderTrialNoticeHtml({
+      orgName: "Riverbend Pet Services",
+      daysLeft: 3,
+      endsOn: "Nov 1, 2026",
+      billingUrl: "https://app.test/settings/billing",
+    });
+    expect(out).toContain("background-color:#09311b");
+    expect(out).toContain(OPERATOR_LINE);
+    expect(out).toContain(
+      "Sent by HoundStack · You are receiving this because your workspace is in a free trial.",
+    );
+    expect(out).toContain("Your HoundStack trial ends in 3 days");
+    expect(out).toContain("Plans start at $79 a month with your first teammate included.");
+  });
+
+  it("an announcement wears the HoundStack band and operator line", async () => {
+    const { renderAnnouncementHtml } = await import("@/lib/announcement-emails.server");
+    const out = renderAnnouncementHtml("Scheduled maintenance", "Sunday 2am to 3am.", "info");
+    expect(out).toContain("background-color:#09311b");
+    expect(out).toContain(OPERATOR_LINE);
+    expect(out).toContain("Sent by HoundStack · Platform announcement");
+    expect(out).toContain("Scheduled maintenance");
   });
 });

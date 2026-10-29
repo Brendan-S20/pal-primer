@@ -16,6 +16,7 @@
 // style attribute, and only text the platform controls ever sits on a colour,
 // so a pale brand colour cannot make anything unreadable.
 import * as React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { APP_NAME } from "@/lib/scoop";
 
 export const HOUNDSTACK_URL = "https://houndstack.com";
@@ -213,4 +214,17 @@ export function PoweredByHoundStack() {
       </tbody>
     </table>
   );
+}
+
+/**
+ * The same header and footer as HTML strings, for platform mail that builds
+ * its HTML by hand (the trial notice, announcements). Rendered from the
+ * components above rather than copied, so the two cannot drift.
+ */
+export function systemHeaderHtml(): string {
+  return renderToStaticMarkup(<SystemHeader />);
+}
+
+export function systemFooterHtml(note?: string): string {
+  return renderToStaticMarkup(<SystemFooter note={note} />);
 }

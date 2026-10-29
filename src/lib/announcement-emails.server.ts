@@ -25,6 +25,8 @@
 // and not one actual trial. An announcement aimed at people mid-trial would
 // have gone to the six accounts that predate trials entirely.
 
+import { systemFooterHtml, systemHeaderHtml } from "@/lib/email-templates/_brand";
+
 export type AnnouncementSendResult = {
   id: string;
   title: string;
@@ -46,11 +48,15 @@ export function renderAnnouncementHtml(title: string, body: string, severity: st
           ? "#059669"
           : "#2563eb";
   const safeBody = body.replace(/</g, "&lt;").replace(/\n/g, "<br/>");
+  // HoundStack chrome above and below the card (#577). The card is unchanged.
   return `<!doctype html><html><body style="font-family:system-ui,sans-serif;background:#f8fafc;padding:24px;color:#0f172a">
-  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)">
+  <div style="max-width:560px;margin:0 auto">
+  ${systemHeaderHtml()}
+  <div style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)">
     <div style="background:${color};color:#fff;padding:16px 20px;font-weight:600">${title}</div>
     <div style="padding:20px;line-height:1.55;font-size:15px">${safeBody}</div>
-    <div style="padding:12px 20px;font-size:12px;color:#64748b;border-top:1px solid #e2e8f0">Sent by HoundStack · Platform announcement</div>
+  </div>
+  ${systemFooterHtml("Sent by HoundStack · Platform announcement")}
   </div></body></html>`;
 }
 
