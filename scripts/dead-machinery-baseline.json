@@ -39,6 +39,7 @@
     "src/routes/api/public/hooks/platform-stripe.ts": "Stripe platform webhook endpoint, for HoundStack's own SaaS billing (bucket A).",
     "src/routes/api/public/hooks/qbo-callback.ts": "QuickBooks OAuth redirect target \u2014 the browser lands here after a tenant authorizes.",
     "src/routes/api/public/hooks/stripe.ts": "Stripe Connect webhook endpoint. Called by Stripe on tenant payment events.",
+    "src/routes/api/public/hooks/texting-status.ts": "pg_cron job 'texting-status', */10 * * * * \u2014 created by 20261029150000 (not yet applied), and it only POSTs when public.texting_status_due() says some business's toll-free verification is with Twilio or approved but not yet activated (#538).",
     "src/routes/api/public/hooks/twilio-voice.ts": "Twilio inbound-voice webhook.",
     "src/routes/api/public/hooks/twilio.ts": "Twilio inbound-SMS webhook.",
     "src/routes/api/public/hooks/webhook-deliveries.ts": "pg_cron job 'deliver-webhooks', * * * * * \u2014 created by 20260929080000, and it only POSTs when the outbox has a delivery due.",

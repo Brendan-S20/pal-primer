@@ -182,19 +182,27 @@ describe("every sender asks the same question", () => {
 });
 
 describe("the wording is one string", () => {
-  it("is exported so the box, the evidence and the policy page cannot drift", () => {
-    const c = read("src/lib/clients.functions.ts");
-    expect(c).toMatch(/export const SMS_CONSENT_TEXT/);
+  // Since #538 the wording names the business and carries its own Terms and
+  // Privacy, so it is built per business by one function rather than held in
+  // one constant. Still one source: every place that asks consent goes
+  // through it.
+  it("is built in one place so the box, the evidence and the policy page cannot drift", () => {
+    const c = read("src/lib/client-sms-consent.ts");
+    expect(c).toMatch(/export function clientSmsConsentText/);
     // The four things a carrier looks for in the disclosure.
     expect(c).toMatch(/not a condition of purchase/i);
     expect(c).toMatch(/Msg & data rates may apply/i);
     expect(c).toMatch(/frequency varies/i);
     expect(c).toMatch(/Reply STOP to opt out/i);
+    // The office records the wording the server builds, not a string of its own.
+    const staff = read("src/lib/clients.functions.ts");
+    expect(staff).toMatch(/orgClientSmsConsentWording/);
+    expect(staff).toMatch(/_source: "staff"/);
   });
 
   it("the portal opt-in stores that same string", () => {
     const p = read("src/lib/portal.functions.ts");
-    expect(p).toMatch(/SMS_CONSENT_TEXT/);
+    expect(p).toMatch(/orgClientSmsConsentWording/);
     expect(p).toMatch(/_source: "portal"/);
   });
 

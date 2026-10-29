@@ -281,12 +281,15 @@ export const HELP_ARTICLES: HelpArticle[] = [
       // 2026-10-07: says "coming soon" first, and points the automated-text
       // switches at Settings > Automation, where they are. It pointed at SMS
       // settings, which has none.
-      "Texting your clients is **coming soon**. Each business will text from its own local number, registered with US carriers under your business name: there is no Twilio account to connect, and HoundStack files the carrier registration on your behalf. Those numbers are waiting on US carrier (10DLC) registration, and until yours is ready nothing is texted to your clients. Visit reminders, on-my-way notices, review requests, overdue and declined-card reminders, and portal sign-in codes go by email instead. [SMS settings](/settings/sms) shows where your number stands.",
+      // 2026-10-29 (#538): one subaccount per business, registered in that
+      // business's own name (toll-free verification by default). The owner
+      // files it from Settings > Texting.
+      "Your business texts from its own toll-free number, registered with US carriers in your business's legal name. There is no Twilio account to connect: fill in your business details in [Texting settings](/settings/sms) and HoundStack files the registration for you. Twilio says review takes up to three business days, and nothing is texted to your clients until it is approved. Until then, visit reminders, on-my-way notices, review requests, overdue and declined-card reminders, and portal sign-in codes go by email instead. Texting settings shows where your registration stands.",
       "While texting is coming soon, the texting controls in the app (New message in [Messages](/messages), the composer on a client's page, the text switches in [Automation](/settings/automation)) show a Coming soon badge instead of sending. Your settings are kept, and they light up on their own when your number is ready.",
       "Once it arrives, every text includes opt-out instructions, and a client who replies STOP is blocked from further texts automatically. A client is texted only after they have agreed to texts, which you can record now on their Communication tab. Consent details live in the public [SMS policy](/legal/sms).",
       "Pick which automated texts go out in [Automation](/settings/automation), under Text notifications; the emails that stand in for them are in [Emails](/settings/emails). Per-client opt-outs show on the client's page.",
     ],
-    appLink: { to: "/settings/sms", label: "Open SMS settings" },
+    appLink: { to: "/settings/sms", label: "Open Texting settings" },
     related: ["client-portal", "ai-tools"],
   },
   {

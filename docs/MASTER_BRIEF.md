@@ -2291,8 +2291,8 @@ integration is managed by HoundStack:
 
 - **AI** runs on HoundStack's keys. Tenants buy an allowance and pay overages
   (Q-7: soft caps + overage billing).
-- **Texting** runs on per-tenant Twilio **subaccounts** under HoundStack's
-  10DLC brand (Q-8, unchanged).
+- **Texting** runs on one Twilio **subaccount** per business, registered in
+  that business's own name (toll-free verification by default) (Q-8, #538).
 - **Accounting** stays a tenant-authorized OAuth connection — QuickBooks and
   Xero, more to follow. This is the one place a tenant still grants us a
   credential, and it is the one that matters most.

@@ -9,8 +9,8 @@
 // What this pins:
 //   1. which way the form can go: priced zone, no zone, instant start off
 //   2. the quote request is the lead form's own request, unchanged
-//   3. consent: exactly what was captured before, which is to say nothing,
-//      stored nowhere, beside the same disclosure line and the same footer
+//   3. consent: the booking link asks (unticked, optional, the business's own
+//      words, #538); the quote request still stores none; same footer
 //   4. the retired address forwards with its query string, byte for byte
 //   5. a signup lands in Leads too, and the webhook marks it converted
 //   6. one settings page, and the old one forwards to it
@@ -186,14 +186,14 @@ describe("the quote request is the lead form's request", () => {
   });
 });
 
-describe("consent: exactly what was captured before", () => {
-  // Neither public form ever showed an SMS consent checkbox or stored a
-  // consent record. The one opt-in HoundStack has filed with Twilio is the
-  // account holder's, at /get-started (docs/twilio-toll-free-resubmission.md,
-  // 30504: one use case, one opt-in). A business's client is texted only from
-  // that business's own number, through endCustomerSmsSender, under its own
-  // 10DLC registration later. So parity means: the same disclosure line, the
-  // same footer links, and still no consent row written by this form.
+describe("consent: the booking link asks, and never requires", () => {
+  // Until #538 neither public form showed an SMS consent checkbox. A
+  // business's client is texted only from that business's own number, under
+  // its own registration, and only with recorded consent, so the booking link
+  // now asks: unticked, optional, in words that name the business and link
+  // its own Terms and Privacy, and only on the start-service branch, which is
+  // the one that makes a client for the consent to belong to. The quote
+  // request still records nothing, because no client exists to hold it.
 
   const flow = codeOnly(read("src/components/signup/SignupFlow.tsx"));
   const page = codeOnly(read("src/routes/signup.$slug.tsx"));
@@ -203,28 +203,36 @@ describe("consent: exactly what was captured before", () => {
     expect(flow).toMatch(/\{QUOTE_REQUEST_DISCLOSURE\}/);
   });
 
-  it("the form adds no consent checkbox and no consent text of its own", () => {
-    for (const src of [flow, page]) {
-      expect(src).not.toMatch(/SMS_CONSENT_TEXT/);
-      expect(src).not.toMatch(/consent/i);
-    }
+  it("the box is unticked until the visitor ticks it, and shows the server's wording", () => {
+    expect(flow).toMatch(/useState\(false\)/);
+    expect(flow).toMatch(/const \[smsOptIn, setSmsOptIn\] = useState\(false\)/);
+    expect(flow).toMatch(/ClientSmsConsentWordingText wording=\{formQ\.data\.smsConsent\}/);
+    // HoundStack's account-holder wording is not the client's.
+    for (const src of [flow, page]) expect(src).not.toMatch(/SMS_CONSENT_TEXT/);
   });
 
-  it("nothing it writes carries a consent field", () => {
+  it("booking never depends on it", () => {
+    const fns = codeOnly(read("src/lib/signup.functions.ts"));
+    expect(fns).toMatch(/sms_opt_in: z\.boolean\(\)\.optional\(\)/);
+    // The stored words are the server's, built from the business's own name.
+    expect(fns).toMatch(/orgClientSmsConsentWording/);
+  });
+
+  it("the quote request still writes no consent field", () => {
     const api = codeOnly(read("src/routes/api/public/leads.ts"));
     const insert = api.slice(
       api.indexOf('.from("leads")'),
       api.indexOf("if (error)", api.indexOf('.from("leads")')),
     );
     expect(insert).not.toMatch(/consent/i);
+  });
 
-    const fns = codeOnly(read("src/lib/signup.functions.ts"));
-    const checkout = fns.slice(fns.indexOf("export const createSignupPaymentIntent"));
-    expect(checkout).not.toMatch(/consent/i);
-
+  it("the paid signup records it as 'booking', only for the number it was given for", () => {
     const hook = codeOnly(read("src/routes/api/public/hooks/stripe.ts"));
     const provision = hook.slice(0, hook.indexOf("Best-effort welcome email"));
-    expect(provision).not.toMatch(/sms_consent|record_client_sms_consent/);
+    expect(provision).toMatch(/record_client_sms_consent/);
+    expect(provision).toMatch(/_source: "booking"/);
+    expect(provision).toMatch(/digits\(onFile\.primary_phone\) === digits\(sr\.sms_consent_phone\)/);
   });
 
   it("the footer that links Privacy, Terms and SMS Consent wraps every state of the page, framed or not", () => {

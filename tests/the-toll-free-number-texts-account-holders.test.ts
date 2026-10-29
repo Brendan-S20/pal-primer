@@ -79,6 +79,8 @@ const SENDS: Record<string, string> = {
   "src/lib/portal-auth.server.ts": "END_CUSTOMER: client portal sign-in code (email otherwise)",
   "src/routes/api/public/hooks/stripe.ts": "END_CUSTOMER: card declined on autopay",
   "src/routes/api/public/hooks/nightly.ts": "END_CUSTOMER: overdue invoice reminder (email otherwise)",
+  "src/lib/client-sms-consent.server.ts":
+    "END_CUSTOMER: the opt-in confirmation after a client agrees to texts (#538), only once the business can text",
 };
 
 /** The definitions themselves. */

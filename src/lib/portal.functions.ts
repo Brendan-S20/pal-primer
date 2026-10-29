@@ -132,11 +132,16 @@ export const portalContext = createServerFn({ method: "GET" })
     const textsLive =
       addonPurchasable("managed-sms") &&
       (await smsOtpDeliverable(contact.organizationId).catch(() => false));
+    // The words the account page's opt-in shows: this business's name and its
+    // own Terms and Privacy (#538). portalSetSmsConsent stores the same.
+    const { orgClientSmsConsentWording } = await import("@/lib/client-sms-consent.server");
+    const smsConsent = await orgClientSmsConsentWording(contact.organizationId);
     return {
       verified: true as const,
       valid: true as const,
       client,
       textsLive,
+      smsConsent,
       branding: contact.branding,
       // A staff preview: the portal shows a banner and the server refuses
       // every action (requirePortalSession).
@@ -2314,12 +2319,23 @@ export const portalSetSmsConsent = createServerFn({ method: "POST" })
       return { ok: true, optedIn: false };
     }
 
-    const { SMS_CONSENT_TEXT } = await import("@/lib/clients.functions");
+    const { data: owner } = await (sb.from("clients") as any)
+      .select("organization_id")
+      .eq("id", clientId)
+      .maybeSingle();
+    if (!owner?.organization_id) throw new Error("No client on this portal session");
+    const { orgClientSmsConsentWording, sendOptInConfirmation } = await import(
+      "@/lib/client-sms-consent.server"
+    );
+    // The words the account page showed: this business's name and its own
+    // Terms and Privacy (#538), stored verbatim as the evidence.
+    const { text } = await orgClientSmsConsentWording(owner.organization_id);
     const { error } = await sb.rpc("record_client_sms_consent" as any, {
       _client_id: clientId,
-      _text: SMS_CONSENT_TEXT,
+      _text: text,
       _source: "portal",
     });
     if (error) throw new Error(error.message);
-    return { ok: true, optedIn: true, text: SMS_CONSENT_TEXT };
+    await sendOptInConfirmation(owner.organization_id, clientId);
+    return { ok: true, optedIn: true, text };
   });

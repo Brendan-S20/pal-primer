@@ -70,6 +70,10 @@ export const NOTIFICATION_TYPES: Array<{ type: string; label: string }> = [
   // A visit booked, or asked for, by text (src/lib/receptionist-booking.ts).
   { type: "receptionist_booking", label: "Visits the AI receptionist booked or asked for" },
   { type: "inbound_sms", label: "Texts needing a reply" },
+  // The business's own texting number, approved or rejected by carriers
+  // (src/lib/twilio-provisioning.server.ts), to the owner.
+  { type: "texting_approved", label: "Texting number approved" },
+  { type: "texting_rejected", label: "Texting registration rejected" },
   { type: "teammate_joined", label: "Teammate joined" },
   { type: "field_collection", label: "Cash or checks collected in the field" },
   { type: "webhook_disabled", label: "A webhook switched off after failing" },

@@ -6897,6 +6897,8 @@ export type Database = {
           refunded_at: string | null
           region: string | null
           service_id: string | null
+          sms_consent_phone: string | null
+          sms_consent_text: string | null
           status: string
           street: string
           stripe_checkout_session_id: string | null
@@ -6932,6 +6934,8 @@ export type Database = {
           refunded_at?: string | null
           region?: string | null
           service_id?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_text?: string | null
           status?: string
           street: string
           stripe_checkout_session_id?: string | null
@@ -6967,6 +6971,8 @@ export type Database = {
           refunded_at?: string | null
           region?: string | null
           service_id?: string | null
+          sms_consent_phone?: string | null
+          sms_consent_text?: string | null
           status?: string
           street?: string
           stripe_checkout_session_id?: string | null

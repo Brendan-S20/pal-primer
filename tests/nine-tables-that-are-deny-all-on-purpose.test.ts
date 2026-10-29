@@ -38,6 +38,8 @@ const DENY_ALL: Record<string, string> = {
   roadmap_votes: "reached only through cast_roadmap_vote / roadmap_vote_counts; nothing in src/ names it",
   roadmap_vote_throttle: "salted hashes of voters' addresses; a readable row is the list the poll promises not to keep",
   webhook_endpoint_secrets: "encrypted webhook signing keys; read only by the delivery worker on the service role",
+  org_texting_registrations:
+    "each business's Twilio subaccount, profile and verification status (#538); read and written only by server code on the service role",
   road_leg_runs:
     "a platform-wide count of road-leg outcomes per workspace; written by refreshRoadLegs and read by the platform routing-health card, both on the service role",
 };

@@ -149,8 +149,17 @@ describe("endCustomerSmsSender", () => {
 
   it("is the subaccount's own credentials and number, never the platform's", async () => {
     credsRow = SUBACCOUNT;
+    orgRow = { name: "Acme Scoop" };
     expect(await endCustomerSmsSender("org-1")).toEqual({
-      credentials: { mode: "direct", accountSid: "ACsub", authToken: "plain:enc-token" },
+      credentials: {
+        mode: "direct",
+        accountSid: "ACsub",
+        authToken: "plain:enc-token",
+        brand: "Acme Scoop",
+      },
+      // The business's own name, which every text to its client starts with
+      // (#538).
+      brand: "Acme Scoop",
       from: SUB_FROM,
       messagingServiceSid: null,
     });

@@ -874,6 +874,59 @@ export const BASE_STUBS: Record<string, Stub> = {
   // (Messages, the client page, Settings > Automation).
   getClientTextingAvailability: { available: false },
 
+  // Settings > Texting (#538), in the state with the most on screen: a
+  // rejection, with Twilio's reason at full length, a resubmit deadline, and
+  // the form open again with every field filled, including the longest
+  // values a real filing has (a 46-character legal name, policy pages deep in
+  // a site). The sweep measures the form and the status card together.
+  getTextingRegistration: {
+    registration: {
+      status: "rejected",
+      legal_name: "Greater Metropolitan Detroit Doo Disposal LLC",
+      business_type: "llc",
+      dba: "Detroit Doo Disposal and Yard Sanitation Services",
+      street: "18000 West Eight Mile Road, Building C",
+      street2: "Suite 2400",
+      city: "Southfield",
+      region: "MI",
+      postal_code: "48075",
+      website_url: "https://www.greatermetropolitandetroitdoodisposal.com",
+      privacy_url: "https://www.greatermetropolitandetroitdoodisposal.com/legal/privacy-policy",
+      terms_url: "https://www.greatermetropolitandetroitdoodisposal.com/legal/terms-of-service",
+      business_email: "compliance@greatermetropolitandetroitdoodisposal.com",
+      business_phone: "+13135550100",
+      contacts: [
+        { first_name: "Devin", last_name: "Abernathy-Kowalczyk", title: "Owner", email: "devin@greatermetropolitandetroitdoodisposal.com", phone: "+13135550101" },
+        { first_name: "Samantha", last_name: "Okonkwo", title: "Office manager", email: "sam@greatermetropolitandetroitdoodisposal.com", phone: "+13135550102" },
+      ],
+      ein_last4: "4567",
+      phone_number: "+18445550123",
+      rejection_reason:
+        "The opt-in image URL does not show the consent language and checkbox the end user sees before the first message. Provide a publicly accessible screenshot of the opt-in.",
+      rejection_code: "30513",
+      resubmit_deadline: "2026-11-05T00:00:00Z",
+      last_error: null,
+      submitted_at: "2026-10-27T15:00:00Z",
+      approved_at: null,
+      checked_at: "2026-10-29T13:50:00Z",
+      status_changed_at: "2026-10-29T13:50:00Z",
+    },
+    live: false,
+    suggestions: { businessName: "Detroit Doo", email: "", phone: "" },
+  },
+  // The client page's consent panel (#538): the business's own wording, with
+  // policy pages long enough to wrap.
+  getClientSmsConsentWording: {
+    businessName: "Detroit Doo",
+    displayName: "Detroit Doo",
+    termsUrl: "https://www.greatermetropolitandetroitdoodisposal.com/legal/terms-of-service",
+    privacyUrl: "https://www.greatermetropolitandetroitdoodisposal.com/legal/privacy-policy",
+    lead:
+      "I agree to receive text messages from Detroit Doo at the number provided about my appointments, visit updates and billing. Consent is optional and is not a condition of purchase. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out, HELP for help.",
+    text:
+      "I agree to receive text messages from Detroit Doo at the number provided about my appointments, visit updates and billing. Consent is optional and is not a condition of purchase. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out, HELP for help. Detroit Doo Terms: https://www.greatermetropolitandetroitdoodisposal.com/legal/terms-of-service Privacy Policy: https://www.greatermetropolitandetroitdoodisposal.com/legal/privacy-policy",
+  },
+
   // /settings/automation, /settings/invoicing and /settings/emails, which
   // read these and threw on the null the fence answered — so the unlisted
   // sweep measured three error boundaries until it learned to refuse one on

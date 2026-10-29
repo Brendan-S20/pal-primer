@@ -47,6 +47,7 @@ import {
   stayStartDateHint,
 } from "@/lib/booking-copy";
 import { useEffect, useRef, useState } from "react";
+import { ClientSmsConsentWordingText } from "@/components/ClientSmsConsentWordingText";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -342,6 +343,9 @@ export function SignupFlow({
   // leaves it empty and a form-filling script does not. The clock starts
   // when the form is on screen, not when the page began loading, so a slow
   // lookup is not counted as typing time.
+  // The texting opt-in (#538): unticked until the visitor ticks it, and
+  // nothing about booking depends on it.
+  const [smsOptIn, setSmsOptIn] = useState(false);
   const [honeypot, setHoneypot] = useState("");
   const shownAt = useRef<number | null>(null);
   useEffect(() => {
@@ -409,6 +413,7 @@ export function SignupFlow({
                 groom_start_time: form.groom_start_time,
               }
             : {}),
+          sms_opt_in: smsOptIn && !!form.phone.trim(),
           channel,
           ...guardFields(),
         },
@@ -980,6 +985,26 @@ export function SignupFlow({
               value={form.phone}
               onChange={(e) => setFormField({ ...form, phone: e.target.value })}
             />
+            {/* The texting opt-in (#538): the business's own name, its own
+                Terms and Privacy, unticked, and never needed to book. Only on
+                the start-service branch, which is the one that makes a client
+                for it to belong to. */}
+            {branch.canStartService && formQ.data?.smsConsent && (
+              <label
+                className={`flex items-start gap-2 rounded-md border p-3 text-2xs leading-relaxed text-muted-foreground ${form.phone.trim() ? "" : "opacity-50"}`}
+              >
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 shrink-0"
+                  checked={smsOptIn}
+                  disabled={!form.phone.trim()}
+                  onChange={(e) => setSmsOptIn(e.target.checked)}
+                />
+                <span className="min-w-0">
+                  Optional. <ClientSmsConsentWordingText wording={formQ.data.smsConsent} />
+                </span>
+              </label>
+            )}
           </div>
         )}
         {/* DELIBERATELY a plain input, not AddressAutocomplete.
