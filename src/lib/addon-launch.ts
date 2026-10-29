@@ -31,6 +31,10 @@
  * one product; these two stay false.
  *
  * Turning one on is this map plus that row's `status`.
+ *
+ * Managed texting launched on 2026-10-29, once BUILD-3 (#585) gave every
+ * business its own registered subaccount; its row went `active` in
+ * 20261029170000. It stays in this map so turning it back off is one line.
  */
 export type HeldAddonSlug =
   | "ai-receptionist"
@@ -41,7 +45,7 @@ export type HeldAddonSlug =
 
 export const ADDON_LAUNCHED: Readonly<Record<HeldAddonSlug, boolean>> = {
   "ai-receptionist": false,
-  "managed-sms": false,
+  "managed-sms": true,
   "white-label": false,
   "white-label-portal": false,
   "white-label-emails": false,

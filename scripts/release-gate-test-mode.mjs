@@ -110,9 +110,9 @@ await check("harness: the app's Stripe client is counted", async () => {
 });
 
 // ── B-P0: purchase blocks ─────────────────────────────────────────────────
+// managed-sms launched on 2026-10-29 (ADDON_LAUNCHED in src/lib/addon-launch.ts).
 const HELD = [
   "ai-receptionist",
-  "managed-sms",
   "white-label",
   "white-label-portal",
   "white-label-emails",

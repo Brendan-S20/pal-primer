@@ -27,9 +27,18 @@ const falsePromises =
   /we['’]ll text you|Text us to get on the route|cards and ACH accepted|plus ACH bank transfers|Add it from Billing|Also available:.*(?:texting|white.label)/i;
 
 describe("held features cannot be sold as live", () => {
-  for (const [slug, launched] of Object.entries(ADDON_LAUNCHED)) {
+  const held = Object.entries(ADDON_LAUNCHED).filter(([, launched]) => !launched);
+  it("holds every add-on except managed texting, which launched", () => {
+    expect(held.map(([slug]) => slug).sort()).toEqual([
+      "ai-receptionist",
+      "white-label",
+      "white-label-emails",
+      "white-label-portal",
+    ]);
+  });
+
+  for (const [slug] of held) {
     it(`${slug} stays Coming soon even when subscribed or waived`, () => {
-      expect(launched).toBe(false);
       for (const subscribed of [false, true]) {
         for (const billing_interval of ["month", "one_time"]) {
           for (const waivedReason of [null, "Included"]) {
@@ -47,6 +56,18 @@ describe("held features cannot be sold as live", () => {
       }
     });
   }
+
+  it("shows launched managed texting as Active once subscribed, and for sale otherwise", () => {
+    const card = (subscribed: boolean) =>
+      addonCardState({
+        slug: "managed-sms",
+        subscribed,
+        status: "active",
+        billing_interval: "month",
+      });
+    expect(card(true)).toBe("active");
+    expect(card(false)).toBe("for_sale");
+  });
 
   it("keeps a live paid add-on Active", () => {
     expect(

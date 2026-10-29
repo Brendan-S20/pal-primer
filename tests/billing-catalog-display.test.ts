@@ -255,18 +255,31 @@ describe("next invoice with a metered line", () => {
 
 describe("add-on status is exclusive", () => {
   it.each(["active", "coming_soon"] as const)(
-    "shows subscribed held add-ons as Coming soon with catalog status %s",
+    "shows a subscribed held add-on as Coming soon with catalog status %s",
     (addonStatus) => {
       const text = renderBilling({ addonStatus });
       expect(text).toContain("AI Receptionist Coming soon");
-      expect(text).toContain("Managed texting Coming soon");
       expect(text.match(/Remove from plan/g)).toHaveLength(2);
       expect(text).toContain("Answers your clients' messages.");
       expect(text).not.toContain("AI Receptionist Active");
-      expect(text).not.toContain("Managed texting Active");
       expect(text).not.toContain("Add to my plan");
     },
   );
+
+  // Managed texting launched (ADDON_LAUNCHED["managed-sms"]): its card follows
+  // the catalog row, so it is Active once the row is active and Coming soon
+  // while the row still says so.
+  it("shows subscribed managed texting as Active once its row is active", () => {
+    const text = renderBilling({ addonStatus: "active" });
+    expect(text).toContain("Managed texting Active");
+    expect(text).not.toContain("Managed texting Coming soon");
+  });
+
+  it("shows managed texting as Coming soon while its row is coming_soon", () => {
+    const text = renderBilling({ addonStatus: "coming_soon" });
+    expect(text).toContain("Managed texting Coming soon");
+    expect(text).not.toContain("Managed texting Active");
+  });
 
   it("shows unsubscribed held add-ons as Coming soon", () => {
     const text = renderBilling({ subscribed: false });
