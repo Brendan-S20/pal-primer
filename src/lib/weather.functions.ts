@@ -284,6 +284,9 @@ export function forecastLimiter(n: number) {
 const rangeSchema = z.object({
   fromDate: z.string(),
   toDate: z.string(),
+  /** Only these zones: the popover's per-zone Retry asks for one zone
+   *  instead of re-asking the weather service about every zone (#455). */
+  zoneIds: z.array(z.string().uuid()).min(1).max(100).optional(),
 });
 
 export const getWeatherForZones = createServerFn({ method: "GET" })
@@ -292,11 +295,12 @@ export const getWeatherForZones = createServerFn({ method: "GET" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
-    const { data: zonesRaw, error } = await supabase
+    let zonesQuery = supabase
       .from("zones")
       .select("id, name, postal_prefix, latitude, longitude, center_latitude, center_longitude")
-      .eq("organization_id", orgId)
-      .order("name");
+      .eq("organization_id", orgId);
+    if (data.zoneIds) zonesQuery = zonesQuery.in("id", data.zoneIds);
+    const { data: zonesRaw, error } = await zonesQuery.order("name");
     if (error) throw new Error(error.message);
     // Zone pin first, else the coverage center — a radius zone drawn on the
     // map has a center but often no pin, and was wrongly reported as

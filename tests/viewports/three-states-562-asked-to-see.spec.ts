@@ -184,9 +184,18 @@ for (const width of WIDTHS) {
       await expect(
         page.getByText("The weather service is busy. Try again in a minute."),
       ).toBeVisible();
-      await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Retry Downriver - Taylor" })).toBeVisible();
       await page.waitForTimeout(300);
       await measure(page, "weather-failed-zones", width);
+
+      // Per-zone retry: the stub answers the same failure again, so the
+      // zone's own line has to say the retry ran and failed.
+      await page.getByRole("button", { name: "Retry Downriver - Taylor" }).click();
+      await expect(page.getByText(/Tried again; still no answer\./)).toBeVisible({
+        timeout: 15_000,
+      });
+      await page.waitForTimeout(300);
+      await measure(page, "weather-zone-retried", width);
     });
   });
 }
