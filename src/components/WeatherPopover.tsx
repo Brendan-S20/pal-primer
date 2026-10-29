@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { CloudSun, Droplets } from "lucide-react";
@@ -186,6 +186,19 @@ export function FailedZones({
   );
 }
 
+/** The popover's zone list with one zone's fresh answer in place of its old
+ *  one. Every other zone is returned as it was. */
+export function withZone<T extends { zones: ZoneForecast[] }>(
+  data: T | undefined,
+  zone: ZoneForecast,
+): T | undefined {
+  return data ? { ...data, zones: data.zones.map((z) => (z.id === zone.id ? zone : z)) } : data;
+}
+
+/** What a zone's line says when the retry request itself failed. Fixed copy:
+ *  the thrown message can be server or validation text. */
+export const RETRY_FAILED = "the weather service did not answer.";
+
 function LoadingSkeleton() {
   return (
     <div className="space-y-2" aria-label="Loading forecast">
@@ -217,9 +230,18 @@ export function WeatherPopover() {
   const toDate = plusDaysIso(fromDate, 6);
 
   const getWeather = useServerFn(getWeatherForZones);
+  const queryKey = ["weather-popover", fromDate, toDate];
+  const [retrying, setRetrying] = useState<ReadonlySet<string>>(new Set());
+  const [retried, setRetried] = useState<ReadonlySet<string>>(new Set());
   const query = useQuery({
-    queryKey: ["weather-popover", fromDate, toDate],
-    queryFn: () => getWeather({ data: { fromDate, toDate } }),
+    queryKey,
+    // A fresh full list replaces every zone's line, so "Tried again" from
+    // before it no longer describes anything on screen.
+    queryFn: async () => {
+      const res = await getWeather({ data: { fromDate, toDate } });
+      setRetried(new Set());
+      return res;
+    },
     // Only fetch once the popover is actually opened.
     enabled: open,
     staleTime: 10 * 60_000,
@@ -229,10 +251,11 @@ export function WeatherPopover() {
   // the cached list, so the zones that loaded keep their cards and the
   // weather service is not asked about them again.
   const queryClient = useQueryClient();
-  const [retrying, setRetrying] = useState<ReadonlySet<string>>(new Set());
-  const [retried, setRetried] = useState<ReadonlySet<string>>(new Set());
+  // A new week is a new list: "Tried again" belongs to the old one.
+  useEffect(() => {
+    setRetried(new Set());
+  }, [fromDate, toDate]);
   const retryZone = async (zoneId: string) => {
-    const key = ["weather-popover", fromDate, toDate];
     setRetrying((s) => new Set(s).add(zoneId));
     let next: ZoneForecast | undefined;
     try {
@@ -240,21 +263,18 @@ export function WeatherPopover() {
         data: { fromDate, toDate, zoneIds: [zoneId] },
       })) as { zones: ZoneForecast[] };
       next = res.zones.find((z) => z.id === zoneId);
-    } catch (e) {
-      const prev = (queryClient.getQueryData(key) as { zones: ZoneForecast[] } | undefined)?.zones;
+    } catch {
+      const prev = (queryClient.getQueryData(queryKey) as { zones: ZoneForecast[] } | undefined)
+        ?.zones;
       const zone = prev?.find((z) => z.id === zoneId);
       if (zone) {
-        next = {
-          ...zone,
-          status: "error",
-          error: e instanceof Error ? e.message : "the weather service did not answer.",
-        };
+        next = { ...zone, status: "error", error: RETRY_FAILED };
       }
     }
     if (next) {
       const replacement = next;
-      queryClient.setQueryData(key, (old: { zones: ZoneForecast[] } | undefined) =>
-        old ? { ...old, zones: old.zones.map((z) => (z.id === zoneId ? replacement : z)) } : old,
+      queryClient.setQueryData(queryKey, (old: { zones: ZoneForecast[] } | undefined) =>
+        withZone(old, replacement),
       );
     }
     setRetried((s) => {
