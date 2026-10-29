@@ -4,6 +4,8 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { LEAD_SOURCE, normalizeFormConfig } from "@/lib/new-customer-form";
 import { DETAIL_ASKS, MAX_EARLIEST_START_DAYS } from "@/lib/booking-details";
+import type { ZoneMatchFields } from "@/lib/zone-match";
+import type { DrawnZoneZips } from "@/lib/lead-service-area";
 
 const FORM_SOURCES = [LEAD_SOURCE.quoteRequest, LEAD_SOURCE.onlineSignup];
 
@@ -122,6 +124,10 @@ export const setLeadFormConfig = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+function prefixed(b: { south: number; west: number; north: number; east: number }) {
+  return { _south: b.south, _west: b.west, _north: b.north, _east: b.east };
+}
+
 export const listLeads = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -137,18 +143,60 @@ export const listLeads = createServerFn({ method: "GET" })
       .order("created_at", { ascending: false })
       .limit(500);
     if (error) throw new Error(error.message);
-    // Whether each lead's ZIP is one this business serves (#439), judged by
-    // the same ZIP levels the signup form's quote uses. A failed zone read
-    // leaves every lead "unknown", so the list still loads with no warning.
+    // Whether each lead's ZIP is one this business serves (#439): by the
+    // zones' ZIP lists, and for a zone drawn on the map, by the ZIP centers
+    // its shape holds (src/lib/lead-service-area.ts). A failed zone read
+    // leaves every lead "unknown", and a failed center lookup leaves that
+    // zone unsure, so the list still loads and nothing is called outside on
+    // a guess.
     const { data: zones, error: zonesErr } = await context.supabase
       .from("zones")
-      .select("id, priority, account_type, postal_prefix, zip_codes, geo_match_mode")
+      .select(
+        "id, priority, account_type, postal_prefix, zip_codes, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
+      )
       .eq("organization_id", orgId);
     if (zonesErr) console.error("leads service area lookup failed", orgId, zonesErr);
-    const { leadServiceArea } = await import("@/lib/lead-service-area");
+    const { leadServiceArea, zoneShape, drawnZoneZips } = await import("@/lib/lead-service-area");
+    const { searchBox, MAX_CANDIDATES } = await import("@/lib/zone-zip-fill");
+    const zoneRows = (zones ?? []) as unknown as ZoneMatchFields[];
+    const drawn = new Map<string, DrawnZoneZips | null>();
+    const anyLeadZip = (data ?? []).some((l) => /\b\d{5}\b/.test(l.location ?? ""));
+    if (!zonesErr && anyLeadZip) {
+      await Promise.all(
+        zoneRows.map(async (z) => {
+          const shape = zoneShape(z);
+          if (!shape) return;
+          const box = searchBox(shape);
+          if (!box || box.north - box.south > 10 || box.east - box.west > 10) {
+            drawn.set(z.id, null);
+            return;
+          }
+          const { data: rows, error: cErr } = await (context.supabase as any).rpc(
+            "zip_centroids_in_box",
+            { _org_id: orgId, ...prefixed(box), _limit: MAX_CANDIDATES },
+          );
+          if (cErr) {
+            console.error("leads zone ZIP centers lookup failed", z.id, cErr);
+            drawn.set(z.id, null);
+            return;
+          }
+          const centroids = (
+            (rows ?? []) as Array<{ zip: string; lat: number; lng: number; radius_m: number }>
+          ).map((r) => ({
+            zip: r.zip,
+            lat: Number(r.lat),
+            lng: Number(r.lng),
+            radiusM: Number(r.radius_m),
+          }));
+          drawn.set(z.id, drawnZoneZips(shape, centroids, centroids.length >= MAX_CANDIDATES));
+        }),
+      );
+    }
     return (data ?? []).map((l) => ({
       ...l,
-      service_area: zonesErr ? ("unknown" as const) : leadServiceArea(l.location, zones ?? []),
+      service_area: zonesErr
+        ? ("unknown" as const)
+        : leadServiceArea(l.location, zoneRows, drawn),
     }));
   });
 
