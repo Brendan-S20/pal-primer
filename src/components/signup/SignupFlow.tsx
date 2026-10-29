@@ -798,9 +798,9 @@ export function SignupFlow({
                 <SelectValue placeholder="Pick a service" />
               </SelectTrigger>
               <SelectContent>
-                {publicServiceOptions(services).map((s) => (
+                {publicServiceOptions(services).map((s, i, options) => (
                   <SelectItem key={s.id} value={s.id}>
-                    {publicServiceOptionLabel(s)}
+                    {publicServiceOptionLabel(s, i, options)}
                   </SelectItem>
                 ))}
               </SelectContent>
