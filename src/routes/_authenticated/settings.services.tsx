@@ -32,6 +32,7 @@ import {
   centsToDollarInput,
   defaultServiceLine,
   durationRequired,
+  formatServiceMoney,
   isBookableServiceLine,
   parseDollarsToCents,
   priceUnitsFor,
@@ -78,7 +79,16 @@ import { TrainingOnly } from "@/components/training/TrainingOnly";
 import { TrainingPackagesCard } from "@/components/settings/TrainingPackagesCard";
 import { TrainingSkillsCard } from "@/components/settings/TrainingSkillsCard";
 import { TrainingSessionRulesCard } from "@/components/settings/TrainingSessionRulesCard";
-import { ensureTrainingCatalog } from "@/lib/training-packages.functions";
+import { ensureTrainingCatalog, listServicePackages } from "@/lib/training-packages.functions";
+import {
+  PACKAGE_NEEDED,
+  PUBLIC_BOOKING_MODES,
+  PUBLIC_BOOKING_MODE_COPY,
+  PUBLIC_BOOKING_MODE_LEGEND,
+  defaultPublicBookingMode,
+  isPublicBookingMode,
+  type PublicBookingMode,
+} from "@/lib/public-booking-mode";
 
 export const Route = createFileRoute("/_authenticated/settings/services")({
   head: () => titleHead("Services", "Settings"),
@@ -101,6 +111,9 @@ type FormState = {
   maxDogs: string;
   groupWalk: boolean;
   holidayPct: string;
+  /** How the booking link starts it (#574). */
+  bookingMode: PublicBookingMode;
+  packageId: string;
 };
 
 function formFor(s: Service | null, line: ServiceLine): FormState {
@@ -116,6 +129,8 @@ function formFor(s: Service | null, line: ServiceLine): FormState {
       maxDogs: "",
       groupWalk: false,
       holidayPct: "0",
+      bookingMode: defaultPublicBookingMode(line, "visit"),
+      packageId: "",
     };
   }
   return {
@@ -129,6 +144,9 @@ function formFor(s: Service | null, line: ServiceLine): FormState {
     maxDogs: s.max_dogs == null ? "" : String(s.max_dogs),
     groupWalk: s.max_dogs != null,
     holidayPct: String(s.holiday_surcharge_pct ?? 0),
+    // Unset is request only, and the form says so rather than guessing.
+    bookingMode: isPublicBookingMode(s.public_booking_mode) ? s.public_booking_mode : "request_only",
+    packageId: s.public_package_id ?? "",
   };
 }
 
@@ -152,7 +170,10 @@ function draftOf(f: FormState): { draft: ServiceDraft } | { problem: string } {
     extra_pet_cents: extra ?? 0,
     default_duration_min: minutes,
     max_dogs: f.service_line === "dog_walking" && f.groupWalk ? Number(f.maxDogs) : null,
+    public_booking_mode: f.bookingMode,
+    public_package_id: f.bookingMode === "package" ? f.packageId || null : null,
   };
+  if (f.bookingMode === "package" && !f.packageId) return { problem: PACKAGE_NEEDED };
   const problem = serviceProblem(draft);
   return problem ? { problem } : { draft };
 }
@@ -277,6 +298,14 @@ function ServicesPage() {
                     <div className="mt-0.5 text-xs text-muted-foreground">
                       {servicePriceLabel(s)}
                       {duration ? ` · usually ${duration}` : ""}
+                      {s.public_booking_mode !== undefined &&
+                        ` · Booking link: ${
+                          PUBLIC_BOOKING_MODE_COPY[
+                            isPublicBookingMode(s.public_booking_mode)
+                              ? s.public_booking_mode
+                              : "request_only"
+                          ].label
+                        }`}
                       {s.service_line === "dog_walking" && s.max_dogs != null && (
                         <p>Group walk, up to {s.max_dogs} dogs</p>
                       )}
@@ -420,6 +449,9 @@ function ServiceForm({
               service_line: line,
               price_unit: unit,
               groupWalk: line === "dog_walking" && form.groupWalk,
+              // A new service starts on its line's default; a saved one keeps
+              // what the owner chose.
+              ...(form.id ? {} : { bookingMode: defaultPublicBookingMode(line, unit) }),
             });
           }}
         >
@@ -455,7 +487,13 @@ function ServiceForm({
                 type="button"
                 role="radio"
                 aria-checked={on}
-                onClick={() => setForm({ ...form, price_unit: u })}
+                onClick={() =>
+                  setForm({
+                    ...form,
+                    price_unit: u,
+                    ...(form.id ? {} : { bookingMode: defaultPublicBookingMode(form.service_line, u) }),
+                  })
+                }
                 className={`inline-flex min-h-9 items-center rounded-md border px-3 text-sm touch:min-h-11 ${
                   on
                     ? "border-primary bg-primary/10 font-medium text-primary"
@@ -560,6 +598,8 @@ function ServiceForm({
         </fieldset>
       )}
 
+      <BookingModeField form={form} setForm={setForm} />
+
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}
@@ -572,5 +612,94 @@ function ServiceForm({
         </Button>
       </DialogFooter>
     </form>
+  );
+}
+
+/** How the booking link starts this service (#574): one visit, a repeating
+ *  plan, a package, or request only. Shown for every line. A package is
+ *  offered once the service has one to sell (they are made under Training
+ *  packages), and for a service that is already set to one. */
+function BookingModeField({
+  form,
+  setForm,
+}: {
+  form: FormState;
+  setForm: (f: FormState) => void;
+}) {
+  const list = useServerFn(listServicePackages);
+  const packagesQ = useQuery({
+    queryKey: ["service-packages"],
+    queryFn: () => list(),
+    enabled: !!form.id,
+    retry: false,
+  });
+  const packages = (packagesQ.data?.packages ?? []).filter(
+    (p) => p.service_id === form.id && (p.active || p.id === form.packageId),
+  );
+  const modes = PUBLIC_BOOKING_MODES.filter(
+    (m) => m !== "package" || packages.length > 0 || form.bookingMode === "package",
+  );
+  return (
+    <fieldset className="space-y-1.5">
+      <legend className="text-sm font-medium">{PUBLIC_BOOKING_MODE_LEGEND}</legend>
+      <div
+        className="grid gap-2 sm:grid-cols-2"
+        role="radiogroup"
+        aria-label={PUBLIC_BOOKING_MODE_LEGEND}
+        data-testid="booking-mode"
+      >
+        {modes.map((m) => {
+          const on = form.bookingMode === m;
+          return (
+            <button
+              key={m}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              onClick={() =>
+                setForm({
+                  ...form,
+                  bookingMode: m,
+                  packageId:
+                    m === "package" && !form.packageId && packages.length === 1
+                      ? packages[0].id
+                      : form.packageId,
+                })
+              }
+              className={`flex min-h-11 min-w-0 flex-col items-start gap-0.5 rounded-md border px-3 py-2 text-start text-sm ${
+                on ? "border-primary bg-primary/10" : "bg-background"
+              }`}
+            >
+              <span className={on ? "font-medium text-primary" : "font-medium text-foreground"}>
+                {PUBLIC_BOOKING_MODE_COPY[m].label}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {PUBLIC_BOOKING_MODE_COPY[m].hint}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {form.bookingMode === "package" && (
+        <div className="space-y-1.5 pt-1">
+          <Label htmlFor="service-public-package">Package sold online</Label>
+          <Select
+            value={form.packageId}
+            onValueChange={(v) => setForm({ ...form, packageId: v })}
+          >
+            <SelectTrigger id="service-public-package" className="min-w-0">
+              <SelectValue placeholder="Pick a package" />
+            </SelectTrigger>
+            <SelectContent>
+              {packages.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name} ({p.sessions_count} sessions, {formatServiceMoney(p.price_cents)})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+    </fieldset>
   );
 }
