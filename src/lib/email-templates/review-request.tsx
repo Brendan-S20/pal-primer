@@ -9,7 +9,7 @@ import {
   Preview,
   Text,
 } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact } from "./_shared";
+import { styles, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
 import type { TemplateEntry } from "./registry";
 
 interface Props extends OrgContact {
@@ -29,6 +29,7 @@ const ReviewRequest = ({
     <Preview>How did we do? Leave {orgName} a quick review</Preview>
     <Body style={styles.main}>
       <Container style={styles.container}>
+        <TenantHeader {...orgContact} orgName={orgName} />
         <Heading style={styles.h1}>How did we do?</Heading>
         <Text style={styles.text}>
           Hi {clientName}, thanks for choosing {orgName}! If we did a great job, a quick review

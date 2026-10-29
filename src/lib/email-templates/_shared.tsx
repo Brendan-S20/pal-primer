@@ -1,4 +1,8 @@
 // Shared inline styles for app email templates.
+import { PoweredByHoundStack, type TenantBrand } from "./_brand";
+
+export { TenantHeader } from "./_brand";
+
 export const styles = {
   main: { backgroundColor: "#ffffff", fontFamily: "Arial, sans-serif" },
   container: { padding: "24px 28px", maxWidth: "560px" },
@@ -42,7 +46,7 @@ export function fmtMoney(cents: number | null | undefined) {
  *  from the org row. They are optional because a tenant may not have filled
  *  them in yet — the footer drops whichever lines are missing rather than
  *  printing "null". */
-export interface OrgContact {
+export interface OrgContact extends TenantBrand {
   orgName?: string;
   orgPhone?: string | null;
   orgEmail?: string | null;
@@ -60,9 +64,20 @@ export interface OrgContact {
  * email.
  *
  * Rendered as a table rather than flex/grid: this is email, and Outlook is
- * still Outlook. Every line is independently optional.
+ * still Outlook. Every contact line is independently optional. The line
+ * after them is not: mail sent as a business always ends "Powered by
+ * HoundStack" (#577).
  */
-export function OrgFooter({ orgName, orgPhone, orgEmail, orgAddress }: OrgContact) {
+export function OrgFooter(props: OrgContact) {
+  return (
+    <>
+      <OrgContactLines {...props} />
+      <PoweredByHoundStack />
+    </>
+  );
+}
+
+function OrgContactLines({ orgName, orgPhone, orgEmail, orgAddress }: OrgContact) {
   const phone = (orgPhone ?? "").trim();
   const email = (orgEmail ?? "").trim();
   const address = (orgAddress ?? "").trim();

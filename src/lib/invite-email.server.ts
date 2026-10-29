@@ -60,6 +60,17 @@ export async function sendInviteEmail(
     // /auth?invite= link still work.
     const link = token ? appUrl(`/invite/${encodeURIComponent(token)}`) : appUrl("/auth");
     const label = role.replace(/_/g, " ");
+    const React = await import("react");
+    const { render } = await import("react-email");
+    const { TeamInviteEmail } = await import("@/lib/email-templates/team-invite");
+    const element = React.createElement(TeamInviteEmail, {
+      orgName,
+      email,
+      roleLabel: label,
+      link,
+    });
+    const html = await render(element);
+    const text = await render(element, { plainText: true });
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
@@ -67,10 +78,8 @@ export async function sendInviteEmail(
         from: `${orgName} <noreply@notify.houndstack.com>`,
         to: [email],
         subject: `You've been invited to join ${orgName}`,
-        html:
-          `<p>You've been invited to join <strong>${orgName}</strong> on HoundStack as ${label}.</p>` +
-          `<p>Create your account (or sign in) with <strong>${email}</strong> here: <a href="${link}">${link}</a>. Your role is assigned automatically on first sign-in.</p>`,
-        text: `You've been invited to join ${orgName} on HoundStack. Sign up with ${email} at ${link}.`,
+        html,
+        text,
       }),
     });
     // The old copy of this ignored the response entirely and reported success

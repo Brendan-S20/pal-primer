@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Body, Container, Head, Heading, Html, Preview, Text } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact } from "./_shared";
+import { styles, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
 import type { TemplateEntry } from "./registry";
 
 interface Props extends OrgContact {
@@ -24,6 +24,7 @@ const WeatherReschedule = ({
     <Preview>Your visit has been rescheduled due to weather</Preview>
     <Body style={styles.main}>
       <Container style={styles.container}>
+        <TenantHeader {...orgContact} orgName={orgName} />
         <Heading style={styles.h1}>Visit rescheduled</Heading>
         <Text style={styles.text}>
           Hi {clientName}, due to weather{reason ? ` (${reason})` : ""} we're moving your visit from{" "}

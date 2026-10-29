@@ -8,7 +8,7 @@ import {
   Preview,
   Text,
 } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact } from "./_shared";
+import { styles, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
 import type { TemplateEntry } from "./registry";
 
 interface Props extends OrgContact {
@@ -38,6 +38,7 @@ function StayNotice({
       <Preview>{title}</Preview>
       <Body style={styles.main}>
         <Container style={styles.container}>
+          <TenantHeader {...contact} orgName={orgName} />
           <Heading style={styles.h1}>{title}</Heading>
           <Text style={styles.text}>
             Hi {clientName},{" "}

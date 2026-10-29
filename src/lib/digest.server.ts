@@ -352,9 +352,19 @@ export async function sendDigestEmail(params: {
     .maybeSingle();
   if (suppressed) return { ok: false, reason: "suppressed" };
 
+  // The business's logo and colour for the digest's header (#577). A read
+  // that fails sends the digest without them rather than not at all.
+  const { data: brand } = await supabaseAdmin
+    .from("organizations")
+    .select("logo_url, brand_color")
+    .eq("id", params.orgId)
+    .maybeSingle();
+
   const data = {
     siteName: SITE_NAME,
     orgName: params.metrics.orgName,
+    orgLogoUrl: brand?.logo_url ?? null,
+    orgBrandColor: brand?.brand_color ?? null,
     weekLabel: params.metrics.weekLabel,
     stats: params.metrics.stats,
     alerts: params.metrics.alerts,

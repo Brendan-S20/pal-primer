@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Body, Container, Head, Heading, Html, Preview, Text } from "@react-email/components";
-import { styles, fmtMoney, OrgFooter, type OrgContact } from "./_shared";
+import { styles, fmtMoney, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
 import type { TemplateEntry } from "./registry";
 
 interface Props extends OrgContact {
@@ -48,6 +48,7 @@ const PaymentReceived = ({
       </Preview>
       <Body style={styles.main}>
         <Container style={styles.container}>
+          <TenantHeader {...orgContact} orgName={orgName} />
           <Heading style={styles.h1}>Payment received</Heading>
           <Text style={styles.text}>
             Thanks {clientName}. {orgName} received your payment.

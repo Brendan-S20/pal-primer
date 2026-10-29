@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Body, Container, Head, Heading, Html, Preview, Text } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact } from "./_shared";
+import { styles, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
 import type { TemplateEntry } from "./registry";
 import { walkCanceledSubject } from "@/lib/walk-notify";
 
@@ -40,6 +40,7 @@ const WalkCanceled = ({
       <Preview>{subject}</Preview>
       <Body style={styles.main}>
         <Container style={styles.container}>
+          <TenantHeader {...orgContact} orgName={orgName} />
           <Heading style={styles.h1}>{subject}</Heading>
           {total === 1 ? (
             <Text style={styles.text}>
