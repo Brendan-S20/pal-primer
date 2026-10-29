@@ -260,7 +260,7 @@ target, entitlement or capability was added, so there is no portal step.
   Navigate button opens, to the property's coordinates (or its address when it
   has none). iOS does not open a Live Activity's link itself: it gives every
   URL tapped on the card to the app that owns it, the Google one included
-  (measured on the simulator), so `AppDelegate` recognises the directions
+  (measured on the simulator), so `SceneDelegate` recognises the directions
   link, rebuilds it with `RouteLinks.directionsHandOff`, and opens it from the
   app. HoundStack comes forward for a moment and Google Maps, or Safari when it
   is not installed, takes over. It does not send the customer's "on my way"
@@ -523,6 +523,46 @@ xcrun simctl io <UDID> screenshot /tmp/warm.png   # should not be black
 
 Worth doing because otherwise the first test in the run absorbs the delay, and
 "the app was still painting" and "the app is broken" produce the same red.
+
+## Scenes, and the launch check (#570)
+
+Built with Xcode 27.1, the app crashed on every launch on iOS 27.1 with
+SIGTRAP in `_UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption`.
+Info.plist named `UIMainStoryboardFile` and had no scene manifest, which is
+the shape Capacitor's template still generates. The app now adopts the scene
+lifecycle:
+
+- `Info.plist` declares `UIApplicationSceneManifest` (one scene, delegate
+  `$(PRODUCT_MODULE_NAME).SceneDelegate`) and no longer names a main
+  storyboard. `AppDelegate` also names `SceneDelegate` in
+  `configurationForConnecting`, so the class is found through Swift.
+- `SceneDelegate.swift` builds the window from `Main.storyboard`, loads the
+  bridge, and only then forwards a launch URL, so the App plugin is already
+  listening. Warm links come through `scene(_:openURLContexts:)`, Universal
+  Links through `scene(_:continue:)`, and the Debug-only Live Activity demo
+  starts from `sceneDidBecomeActive`. UIKit no longer calls the app delegate
+  for any of those.
+- Unchanged: the APNs token still arrives at `AppDelegate`, and a push tap is
+  still delivered to the `UNUserNotificationCenter` delegate that Capacitor's
+  bridge installs.
+
+**If `npx cap add ios` ever regenerates `ios/App`,** it writes the template
+back without a scene. `tests/ios-27-would-not-launch-an-app-without-a-scene.test.ts`
+fails on that.
+
+`.github/workflows/ios-launch.yml` runs `scripts/ios-launch-smoke.sh` on a
+macOS runner: the newest installed Xcode, a fresh iPhone and iPad on the
+newest iOS runtime, and `ios/UITests/HoundStackUITests/ColdLaunch.swift` on
+each (five cold launches to the sign-in form, a link from cold, a link while
+running). It needs no session, which is why it can run unattended. When the
+newest runtime is older than iOS 27 the summary says the run did not exercise
+iOS 27. It cannot prove a physical device, a foldable's folded and unfolded
+postures, or that a push tap routes (that needs a signed-in session). To run
+it on a Mac:
+
+```bash
+npm run build:native && npx cap sync ios && scripts/ios-launch-smoke.sh
+```
 
 ## The privacy manifest
 

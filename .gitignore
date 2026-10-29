@@ -110,3 +110,6 @@ supabase/.temp/
 
 # Google Distance Matrix answers for the one-off routing referee; delete after.
 scripts/routing-trials/.google-cache/
+
+# scripts/ios-launch-smoke.sh results when SMOKE_OUT is not set
+/ios-launch-smoke/

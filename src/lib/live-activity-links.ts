@@ -9,7 +9,7 @@
 //
 //   consulting.thenorth.houndstack://open/my-day?date=2026-10-07&visit=<uuid>&action=start
 //
-// iOS hands that to AppDelegate, Capacitor's App plugin raises appUrlOpen,
+// iOS hands that to SceneDelegate, Capacitor's App plugin raises appUrlOpen,
 // and initAppLinks (src/lib/native.ts) asks this file what to do with it.
 // My Day then scrolls to the stop and puts the tech's thumb on the button
 // (src/components/my-day/use-live-activity-action.ts).

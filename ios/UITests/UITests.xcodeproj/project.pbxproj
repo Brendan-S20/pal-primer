@@ -15,6 +15,7 @@
 		A1000000000000000000007 /* SignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000016 /* SignIn.swift */; };
 		A1000000000000000000008 /* SidebarInset.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000017 /* SidebarInset.swift */; };
 		A1000000000000000000009 /* DialogFocus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000018 /* DialogFocus.swift */; };
+		A1000000000000000000571 /* ColdLaunch.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000570 /* ColdLaunch.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -26,6 +27,7 @@
 		A1000000000000000000016 /* SignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignIn.swift; sourceTree = "<group>"; };
 		A1000000000000000000017 /* SidebarInset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarInset.swift; sourceTree = "<group>"; };
 		A1000000000000000000018 /* DialogFocus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DialogFocus.swift; sourceTree = "<group>"; };
+		A1000000000000000000570 /* ColdLaunch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColdLaunch.swift; sourceTree = "<group>"; };
 		A1000000000000000000020 /* HoundStackUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HoundStackUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -59,6 +61,7 @@
 				A1000000000000000000016 /* SignIn.swift */,
 				A1000000000000000000017 /* SidebarInset.swift */,
 				A1000000000000000000018 /* DialogFocus.swift */,
+				A1000000000000000000570 /* ColdLaunch.swift */,
 			);
 			path = HoundStackUITests;
 			sourceTree = "<group>";
@@ -145,6 +148,7 @@
 				A1000000000000000000007 /* SignIn.swift in Sources */,
 				A1000000000000000000008 /* SidebarInset.swift in Sources */,
 				A1000000000000000000009 /* DialogFocus.swift in Sources */,
+				A1000000000000000000571 /* ColdLaunch.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
