@@ -146,7 +146,7 @@ export function SystemHeader() {
 /** Bottom of every system email. `note` is the email's own last line (why
  *  it was sent, how to stop it), printed above the operator line.
  *  `poweredBy` is for system mail that carries a business's header (the
- *  weekly digest): the HoundStack line then reads "Powered by HoundStack".
+ *  weekly digest): it closes with PoweredByHoundStack, as tenant mail does.
  *  `onCanvas` is for mail laid out as a card on the grey canvas: the footer
  *  sits below the card, inset to line up with the card's text, with no rule
  *  of its own because the card's edge already is one. */
@@ -160,6 +160,29 @@ export function SystemFooter({
   onCanvas?: boolean;
 }) {
   if (onCanvas) return <CanvasFooter note={note} />;
+  if (poweredBy) {
+    // The weekly digest: system mail about a business. Its note, then the
+    // same close tenant mail ends with.
+    return (
+      <>
+        <table
+          role="presentation"
+          cellPadding={0}
+          cellSpacing={0}
+          style={{ ...table, margin: "32px 0 0", borderTop: `1px solid ${BRAND.rule}` }}
+        >
+          <tbody>
+            {note ? (
+              <tr>
+                <td style={{ ...small, padding: "16px 0 0" }}>{note}</td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+        <PoweredByHoundStack />
+      </>
+    );
+  }
   return (
     <table
       role="presentation"
@@ -182,16 +205,7 @@ export function SystemFooter({
               color: BRAND.navy,
             }}
           >
-            {poweredBy ? (
-              <>
-                Powered by{" "}
-                <a href={HOUNDSTACK_URL} style={{ color: BRAND.green }}>
-                  {APP_NAME}
-                </a>
-              </>
-            ) : (
-              APP_NAME
-            )}
+            {APP_NAME}
           </td>
         </tr>
         <tr>
@@ -203,6 +217,49 @@ export function SystemFooter({
 }
 
 const footerLink = { color: BRAND.navy, textDecoration: "none", fontWeight: "bold" as const };
+
+/** The short sage rule that opens every HoundStack close, system or tenant. */
+function SageRule({ centred }: { centred?: boolean }) {
+  return (
+    <table
+      role="presentation"
+      cellPadding={0}
+      cellSpacing={0}
+      style={centred ? { margin: "0 auto" } : { margin: 0 }}
+    >
+      <tbody>
+        <tr>
+          <td
+            style={{
+              width: "32px",
+              height: "3px",
+              backgroundColor: BRAND.sage,
+              fontSize: 0,
+              lineHeight: 0,
+            }}
+          >
+            &nbsp;
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  );
+}
+
+/** Where to reach HoundStack. */
+function ReachLinks() {
+  return (
+    <>
+      <a href={HOUNDSTACK_URL} style={footerLink}>
+        houndstack.com
+      </a>
+      {"  ·  "}
+      <a href={`mailto:${SUPPORT_EMAIL}`} style={footerLink}>
+        {SUPPORT_EMAIL}
+      </a>
+    </>
+  );
+}
 
 /** The footer under a system email's card: the email's own note, a short
  *  sage rule, the HoundStack name, the operator line and where to reach
@@ -226,23 +283,7 @@ function CanvasFooter({ note }: { note?: React.ReactNode }) {
         ) : null}
         <tr>
           <td align="center" style={{ padding: "0 0 16px" }}>
-            <table role="presentation" cellPadding={0} cellSpacing={0} style={{ margin: "0 auto" }}>
-              <tbody>
-                <tr>
-                  <td
-                    style={{
-                      width: "32px",
-                      height: "3px",
-                      backgroundColor: BRAND.sage,
-                      fontSize: 0,
-                      lineHeight: 0,
-                    }}
-                  >
-                    &nbsp;
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <SageRule centred />
           </td>
         </tr>
         <tr>
@@ -257,13 +298,7 @@ function CanvasFooter({ note }: { note?: React.ReactNode }) {
         </tr>
         <tr>
           <td style={{ ...centred, padding: "10px 0 0" }}>
-            <a href={HOUNDSTACK_URL} style={footerLink}>
-              houndstack.com
-            </a>
-            {"  ·  "}
-            <a href={`mailto:${SUPPORT_EMAIL}`} style={footerLink}>
-              {SUPPORT_EMAIL}
-            </a>
+            <ReachLinks />
           </td>
         </tr>
       </tbody>
@@ -399,22 +434,45 @@ export function TenantHeader({ orgName, orgLogoUrl, orgBrandColor }: TenantBrand
   );
 }
 
-/** Last line of every email sent as a business. */
+/**
+ * The close of every email sent as a business, and of the weekly digest
+ * (#577). The business's own name and contact lines come first (OrgFooter);
+ * this follows them as its own block, left-aligned like the rest of the
+ * email: a short sage rule, "Powered by HoundStack", the operator line, and
+ * where to reach HoundStack. The same pieces, in the same order, as the
+ * footer under system mail, so the two read as one family.
+ */
 export function PoweredByHoundStack() {
   return (
     <table
       role="presentation"
       cellPadding={0}
       cellSpacing={0}
-      style={{ ...table, margin: "20px 0 0" }}
+      style={{ ...table, margin: "32px 0 0" }}
     >
       <tbody>
         <tr>
-          <td style={{ ...small, fontSize: "11px" }}>
+          <td style={{ padding: "0 0 14px" }}>
+            <SageRule />
+          </td>
+        </tr>
+        <tr>
+          <td style={{ ...small, fontSize: "13px", color: BRAND.sage }}>
             Powered by{" "}
-            <a href={HOUNDSTACK_URL} style={{ color: BRAND.green, fontWeight: "bold" as const }}>
+            <a
+              href={HOUNDSTACK_URL}
+              style={{ color: BRAND.navy, fontWeight: "bold" as const, textDecoration: "none" }}
+            >
               {APP_NAME}
             </a>
+          </td>
+        </tr>
+        <tr>
+          <td style={{ ...small, padding: "4px 0 0" }}>{OPERATOR_LINE}</td>
+        </tr>
+        <tr>
+          <td style={{ ...small, padding: "8px 0 0" }}>
+            <ReachLinks />
           </td>
         </tr>
       </tbody>

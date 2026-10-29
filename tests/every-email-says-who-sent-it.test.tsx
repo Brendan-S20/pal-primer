@@ -62,6 +62,18 @@ describe("mail sent as a business", () => {
     expect(out).toMatch(/Powered by(<!-- -->)?\s*<a[^>]*>HoundStack<\/a>/);
   });
 
+  it.each(TENANT)("%s closes with the full HoundStack block, not a bare line", async (name) => {
+    const t = TEMPLATES[name];
+    const out = await html(t.component, { ...(t.previewData ?? {}), ...brand });
+    const close = out.slice(out.lastIndexOf("background-color:#5e845e"));
+    expect(close).toMatch(/Powered by(<!-- -->)?\s*<a[^>]*>HoundStack<\/a>/);
+    expect(close).toContain(OPERATOR_LINE);
+    expect(close).toContain('href="https://houndstack.com"');
+    expect(close).toContain('href="mailto:support@houndstack.com"');
+    // The business still opens the email: no HoundStack band on tenant mail.
+    expect(out).not.toContain("background-color:#142937");
+  });
+
   it("falls back to the name over HoundStack green with no logo or colour", async () => {
     const t = TEMPLATES["payment-received"];
     const out = await html(t.component, { ...t.previewData, orgName: "Riverbend Pet Services" });
@@ -200,6 +212,8 @@ describe("the weekly digest", () => {
     expect(out).toContain("3px solid #7c3aed");
     expect(out).toMatch(/Powered by(<!-- -->)?\s*<a[^>]*>HoundStack<\/a>/);
     expect(out).toContain(OPERATOR_LINE);
+    expect(out).toContain("background-color:#5e845e");
+    expect(out).toContain('href="mailto:support@houndstack.com"');
     expect(out).toContain("Settings → Emails");
   });
 
