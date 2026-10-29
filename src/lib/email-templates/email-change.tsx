@@ -11,6 +11,7 @@ import {
   Preview,
   Text,
 } from "@react-email/components";
+import { BRAND, SystemFooter, SystemHeader } from "./_brand";
 
 interface EmailChangeEmailProps {
   siteName: string;
@@ -35,6 +36,7 @@ export const EmailChangeEmail = ({
     <Preview>Confirm your email change for {siteName}</Preview>
     <Body style={main}>
       <Container style={container}>
+        <SystemHeader />
         <Heading style={h1}>Confirm your email change</Heading>
         <Text style={text}>
           You requested to change your email address for {siteName} from{" "}
@@ -54,6 +56,7 @@ export const EmailChangeEmail = ({
         <Text style={footer}>
           If you didn't request this change, please secure your account immediately.
         </Text>
+        <SystemFooter />
       </Container>
     </Body>
   </Html>
@@ -77,7 +80,7 @@ const text = {
 };
 const link = { color: "inherit", textDecoration: "underline" };
 const button = {
-  backgroundColor: "#000000",
+  backgroundColor: BRAND.ink,
   color: "#ffffff",
   fontSize: "14px",
   borderRadius: "8px",

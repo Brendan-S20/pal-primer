@@ -13,6 +13,7 @@ import {
   Column,
 } from "@react-email/components";
 import { styles } from "./_shared";
+import { SystemFooter, TenantHeader, safeHexColor, BRAND } from "./_brand";
 import type { TemplateEntry } from "./registry";
 
 interface StatItem {
@@ -23,6 +24,8 @@ interface StatItem {
 
 interface Props {
   orgName?: string;
+  orgLogoUrl?: string | null;
+  orgBrandColor?: string | null;
   weekLabel?: string;
   stats?: StatItem[];
   headline?: string;
@@ -44,6 +47,8 @@ const statDelta = { color: "#059669", fontSize: 11, margin: "2px 0 0" };
 
 const Digest = ({
   orgName = "your business",
+  orgLogoUrl,
+  orgBrandColor,
   weekLabel = "this past week",
   stats = [],
   headline = "Here's how the week went.",
@@ -56,6 +61,7 @@ const Digest = ({
     <Preview>{`${orgName}: weekly business digest for ${weekLabel}`}</Preview>
     <Body style={styles.main}>
       <Container style={styles.container}>
+        <TenantHeader orgName={orgName} orgLogoUrl={orgLogoUrl} orgBrandColor={orgBrandColor} />
         <Heading style={styles.h1}>Weekly digest</Heading>
         <Text style={styles.small}>
           {orgName} · {weekLabel}
@@ -67,7 +73,12 @@ const Digest = ({
             <Row>
               {stats.slice(0, 3).map((s, i) => (
                 <Column key={i} style={{ padding: 4 }}>
-                  <div style={cell}>
+                  <div
+                    style={{
+                      ...cell,
+                      borderTop: `3px solid ${safeHexColor(orgBrandColor) ?? BRAND.green}`,
+                    }}
+                  >
                     <p style={statLabel}>{s.label}</p>
                     <p style={statValue}>{s.value}</p>
                     {s.delta && <p style={statDelta}>{s.delta}</p>}
@@ -79,7 +90,12 @@ const Digest = ({
               <Row style={{ marginTop: 8 }}>
                 {stats.slice(3, 6).map((s, i) => (
                   <Column key={i} style={{ padding: 4 }}>
-                    <div style={cell}>
+                    <div
+                      style={{
+                        ...cell,
+                        borderTop: `3px solid ${safeHexColor(orgBrandColor) ?? BRAND.green}`,
+                      }}
+                    >
                       <p style={statLabel}>{s.label}</p>
                       <p style={statValue}>{s.value}</p>
                       {s.delta && <p style={statDelta}>{s.delta}</p>}
@@ -133,11 +149,10 @@ const Digest = ({
           </>
         )}
 
-        <Hr style={{ margin: "24px 0" }} />
-        <Text style={styles.small}>
-          Generated automatically each week. You can turn this off in HoundStack under Settings →
-          Emails.
-        </Text>
+        <SystemFooter
+          poweredBy
+          note="Generated automatically each week. You can turn this off in HoundStack under Settings → Emails."
+        />
       </Container>
     </Body>
   </Html>

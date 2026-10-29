@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Body, Container, Head, Heading, Html, Preview, Text, Img } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact } from "./_shared";
+import { styles, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
 import type { TemplateEntry } from "./registry";
 import { walkReportSubject, type WalkReportEmail } from "@/lib/walk-report";
 import { sitReportSubject, sitTimesSentence, type SitReportEmail } from "@/lib/sit-report";
@@ -54,6 +54,7 @@ const CleanupComplete = ({
     <Preview>{orgName} completed today's visit</Preview>
     <Body style={styles.main}>
       <Container style={styles.container}>
+        <TenantHeader {...orgContact} orgName={orgName} />
         <Heading style={styles.h1}>Visit complete</Heading>
         <Text style={styles.text}>
           Hi {clientName}, {orgName} completed your visit
@@ -138,6 +139,7 @@ const WalkReport = ({
       <Preview>{walkReportSubject(orgName, walk.dogs)}</Preview>
       <Body style={styles.main}>
         <Container style={styles.container}>
+          <TenantHeader {...orgContact} orgName={orgName} />
           <Heading style={styles.h1}>Walk complete</Heading>
           <Text style={styles.text}>{greeting}</Text>
           {times ? <Text style={styles.text}>{times}</Text> : null}
@@ -219,6 +221,7 @@ const SitReport = ({
       <Preview>{sitReportSubject(orgName, sit.pets, sit.overnight)}</Preview>
       <Body style={styles.main}>
         <Container style={styles.container}>
+          <TenantHeader {...orgContact} orgName={orgName} />
           <Heading style={styles.h1}>{sit.overnight ? "Overnight stay" : "Visit complete"}</Heading>
           <Text style={styles.text}>{greeting}</Text>
           {times ? <Text style={styles.text}>{times}</Text> : null}

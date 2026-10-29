@@ -10,7 +10,7 @@ import {
   Section,
   Text,
 } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact } from "./_shared";
+import { styles, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
 import type { TemplateEntry } from "./registry";
 
 // "On my way", for a customer who cannot be texted: no consent on file yet,
@@ -66,10 +66,11 @@ const OnMyWay = ({
       <Preview>{`${techName ?? "Your tech"} is on the way${eta ? `, arriving ${eta}` : ""}`}</Preview>
       <Body style={styles.main}>
         <Container style={styles.container}>
+          <TenantHeader {...orgContact} orgName={orgName} />
           <Heading style={styles.h1}>On the way</Heading>
           <Text style={styles.text}>
-            Hi {clientName}, {techName ? `${techName} from ${orgName}` : `your ${orgName} tech`} is on
-            the way for today&apos;s visit
+            Hi {clientName}, {techName ? `${techName} from ${orgName}` : `your ${orgName} tech`} is
+            on the way for today&apos;s visit
             {address ? (
               <>
                 {" "}
@@ -118,6 +119,7 @@ const WalkOnMyWay = ({
     <Preview>{`${techName ?? "Your walker"} is on the way${eta ? `, arriving ${eta}` : ""}`}</Preview>
     <Body style={styles.main}>
       <Container style={styles.container}>
+        <TenantHeader {...orgContact} orgName={orgName} />
         <Heading style={styles.h1}>On the way</Heading>
         <Text style={styles.text}>
           Hi {clientName}, {techName ? `${techName} from ${orgName}` : `your ${orgName} walker`} is

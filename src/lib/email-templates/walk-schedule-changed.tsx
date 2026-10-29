@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Body, Container, Head, Heading, Html, Preview, Text } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact } from "./_shared";
+import { styles, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
 import type { TemplateEntry } from "./registry";
 import type { WalkScheduleLine } from "@/lib/walk-notify";
 
@@ -28,8 +28,11 @@ const WalkScheduleChanged = ({
     <Preview>Your walk schedule changed</Preview>
     <Body style={styles.main}>
       <Container style={styles.container}>
+        <TenantHeader {...orgContact} orgName={orgName} />
         <Heading style={styles.h1}>Your walk schedule changed</Heading>
-        <Text style={styles.text}>Hi {clientName}, {orgName} changed your walk schedule.</Text>
+        <Text style={styles.text}>
+          Hi {clientName}, {orgName} changed your walk schedule.
+        </Text>
         {changes.map((c, i) => (
           <Text key={i} style={styles.text}>
             Was: {c.before}

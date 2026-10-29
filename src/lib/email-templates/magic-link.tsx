@@ -10,6 +10,7 @@ import {
   Preview,
   Text,
 } from "@react-email/components";
+import { BRAND, SystemFooter, SystemHeader } from "./_brand";
 
 interface MagicLinkEmailProps {
   siteName: string;
@@ -22,6 +23,7 @@ export const MagicLinkEmail = ({ siteName, confirmationUrl }: MagicLinkEmailProp
     <Preview>Your login link for {siteName}</Preview>
     <Body style={main}>
       <Container style={container}>
+        <SystemHeader />
         <Heading style={h1}>Your login link</Heading>
         <Text style={text}>
           Click the button below to log in to {siteName}. This link will expire shortly.
@@ -32,6 +34,7 @@ export const MagicLinkEmail = ({ siteName, confirmationUrl }: MagicLinkEmailProp
         <Text style={footer}>
           If you didn't request this link, you can safely ignore this email.
         </Text>
+        <SystemFooter />
       </Container>
     </Body>
   </Html>
@@ -54,7 +57,7 @@ const text = {
   margin: "0 0 25px",
 };
 const button = {
-  backgroundColor: "#000000",
+  backgroundColor: BRAND.ink,
   color: "#ffffff",
   fontSize: "14px",
   borderRadius: "8px",

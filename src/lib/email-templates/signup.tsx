@@ -11,6 +11,7 @@ import {
   Preview,
   Text,
 } from "@react-email/components";
+import { BRAND, SystemFooter, SystemHeader } from "./_brand";
 
 interface SignupEmailProps {
   siteName: string;
@@ -30,6 +31,7 @@ export const SignupEmail = ({
     <Preview>Confirm your email for {siteName}</Preview>
     <Body style={main}>
       <Container style={container}>
+        <SystemHeader />
         <Heading style={h1}>Confirm your email</Heading>
         <Text style={text}>
           Thanks for signing up for{" "}
@@ -51,6 +53,7 @@ export const SignupEmail = ({
         <Text style={footer}>
           If you didn't create an account, you can safely ignore this email.
         </Text>
+        <SystemFooter />
       </Container>
     </Body>
   </Html>
@@ -74,7 +77,7 @@ const text = {
 };
 const link = { color: "inherit", textDecoration: "underline" };
 const button = {
-  backgroundColor: "#000000",
+  backgroundColor: BRAND.ink,
   color: "#ffffff",
   fontSize: "14px",
   borderRadius: "8px",

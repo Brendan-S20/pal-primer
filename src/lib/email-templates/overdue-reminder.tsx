@@ -9,7 +9,7 @@ import {
   Text,
   Button,
 } from "@react-email/components";
-import { styles, fmtMoney, OrgFooter, type OrgContact } from "./_shared";
+import { styles, fmtMoney, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
 import type { TemplateEntry } from "./registry";
 
 interface Props extends OrgContact {
@@ -33,6 +33,7 @@ const OverdueReminder = ({
     <Preview>Friendly reminder: invoice past due</Preview>
     <Body style={styles.main}>
       <Container style={styles.container}>
+        <TenantHeader {...orgContact} orgName={orgName} />
         <Heading style={styles.h1}>Friendly reminder</Heading>
         <Text style={styles.text}>
           Hi {clientName}, your invoice from {orgName} is {daysPastDue} day

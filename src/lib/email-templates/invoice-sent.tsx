@@ -9,7 +9,7 @@ import {
   Text,
   Button,
 } from "@react-email/components";
-import { styles, fmtMoney, OrgFooter, type OrgContact } from "./_shared";
+import { styles, fmtMoney, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
 import type { TemplateEntry } from "./registry";
 
 interface Props extends OrgContact {
@@ -56,6 +56,7 @@ const InvoiceSent = ({
     </Preview>
     <Body style={styles.main}>
       <Container style={styles.container}>
+        <TenantHeader {...orgContact} orgName={orgName} />
         <Heading style={styles.h1}>{reminder ? "Invoice reminder" : "New invoice"}</Heading>
         <Text style={styles.text}>
           {reminder

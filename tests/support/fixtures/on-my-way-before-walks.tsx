@@ -3,6 +3,9 @@
 // tests/a-client-hears-when-a-walk-changes.test.tsx renders it beside the
 // current template with the same props: every non-walk on-my-way email must
 // not change by one character. Do not edit to match the template.
+// The one exception is shared chrome: OrgFooter was always imported from
+// _shared, and TenantHeader joins it (#577), so both sides render the same
+// header and footer and the comparison stays about the body.
 import * as React from "react";
 import {
   Body,
@@ -15,7 +18,7 @@ import {
   Section,
   Text,
 } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact } from "@/lib/email-templates/_shared";
+import { styles, OrgFooter, type OrgContact, TenantHeader } from "@/lib/email-templates/_shared";
 import type { TemplateEntry } from "@/lib/email-templates/registry";
 
 // "On my way", for a customer who cannot be texted: no consent on file yet,
@@ -49,6 +52,7 @@ const OnMyWay = ({
     <Preview>{`${techName ?? "Your tech"} is on the way${eta ? `, arriving ${eta}` : ""}`}</Preview>
     <Body style={styles.main}>
       <Container style={styles.container}>
+        <TenantHeader {...orgContact} orgName={orgName} />
         <Heading style={styles.h1}>On the way</Heading>
         <Text style={styles.text}>
           Hi {clientName}, {techName ? `${techName} from ${orgName}` : `your ${orgName} tech`} is on

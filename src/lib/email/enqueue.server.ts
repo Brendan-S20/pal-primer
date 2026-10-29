@@ -145,8 +145,11 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
     // contact_phone and contact_address join it here because every template
     // now ends in an OrgFooter. They were already on this row and already
     // editable in Settings; nothing had ever put them in an email.
+    //
+    // logo_url and brand_color are the TenantHeader every template opens
+    // with (#577), the same two fields the portal and the booking page use.
     .select(
-      `id, name, contact_email, contact_phone, contact_address${params.notifyKey ? `, ${params.notifyKey}` : ""}`,
+      `id, name, contact_email, contact_phone, contact_address, logo_url, brand_color${params.notifyKey ? `, ${params.notifyKey}` : ""}`,
     )
     .eq("id", params.organizationId)
     .maybeSingle();
@@ -257,6 +260,8 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
     contact_phone?: string | null;
     contact_email?: string | null;
     contact_address?: string | null;
+    logo_url?: string | null;
+    brand_color?: string | null;
   };
   const mergedData = {
     siteName: (org as any).name || SITE_NAME,
@@ -267,6 +272,8 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
     orgPhone: orgContact.contact_phone ?? null,
     orgEmail: orgContact.contact_email ?? null,
     orgAddress: orgContact.contact_address ?? null,
+    orgLogoUrl: orgContact.logo_url ?? null,
+    orgBrandColor: orgContact.brand_color ?? null,
     clientName: client?.display_name ?? params.recipientName ?? undefined,
     ...params.templateData,
     // After the spread: the link is minted here, never supplied by a caller.

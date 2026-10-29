@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Body, Container, Head, Heading, Html, Preview, Text } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact } from "./_shared";
+import { styles, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
 import type { TemplateEntry } from "./registry";
 import { walkNotDoneSubject, type WalkNotDoneKind } from "@/lib/walk-notify";
 
@@ -38,6 +38,7 @@ const WalkNotDone = ({
       <Preview>{subject}</Preview>
       <Body style={styles.main}>
         <Container style={styles.container}>
+          <TenantHeader {...orgContact} orgName={orgName} />
           <Heading style={styles.h1}>{subject}</Heading>
           {kind === "skipped" ? (
             <>
@@ -63,7 +64,11 @@ const WalkNotDone = ({
 export const template = {
   component: WalkNotDone,
   subject: (d: Record<string, any>) =>
-    walkNotDoneSubject(d.kind === "missed" ? "missed" : "skipped", d.dogs ?? "your dog", d.day ?? ""),
+    walkNotDoneSubject(
+      d.kind === "missed" ? "missed" : "skipped",
+      d.dogs ?? "your dog",
+      d.day ?? "",
+    ),
   displayName: "Walk not done",
   previewData: {
     orgName: "Acme Dog Walking",

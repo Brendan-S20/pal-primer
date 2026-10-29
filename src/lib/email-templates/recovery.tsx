@@ -10,6 +10,7 @@ import {
   Preview,
   Text,
 } from "@react-email/components";
+import { BRAND, SystemFooter, SystemHeader } from "./_brand";
 
 interface RecoveryEmailProps {
   siteName: string;
@@ -22,6 +23,7 @@ export const RecoveryEmail = ({ siteName, confirmationUrl }: RecoveryEmailProps)
     <Preview>Reset your password for {siteName}</Preview>
     <Body style={main}>
       <Container style={container}>
+        <SystemHeader />
         <Heading style={h1}>Reset your password</Heading>
         <Text style={text}>
           We received a request to reset your password for {siteName}. Click the button below to
@@ -34,6 +36,7 @@ export const RecoveryEmail = ({ siteName, confirmationUrl }: RecoveryEmailProps)
           If you didn't request a password reset, you can safely ignore this email. Your password
           will not be changed.
         </Text>
+        <SystemFooter />
       </Container>
     </Body>
   </Html>
@@ -56,7 +59,7 @@ const text = {
   margin: "0 0 25px",
 };
 const button = {
-  backgroundColor: "#000000",
+  backgroundColor: BRAND.ink,
   color: "#ffffff",
   fontSize: "14px",
   borderRadius: "8px",

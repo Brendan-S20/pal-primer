@@ -9,7 +9,7 @@ import {
   Preview,
   Text,
 } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact } from "./_shared";
+import { styles, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
 import type { TemplateEntry } from "./registry";
 
 // The day-before reminder, sent by the nightly job. One email per client per
@@ -39,6 +39,7 @@ const VisitReminder = ({
     <Preview>{`Your visit from ${orgName} is tomorrow, ${dayLabel}`}</Preview>
     <Body style={styles.main}>
       <Container style={styles.container}>
+        <TenantHeader {...orgContact} orgName={orgName} />
         <Heading style={styles.h1}>Your visit is tomorrow</Heading>
         <Text style={styles.text}>
           Hi {clientName}, this is a reminder that {orgName} is scheduled to visit on{" "}
