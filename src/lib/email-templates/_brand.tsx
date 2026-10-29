@@ -23,6 +23,9 @@ import { appUrl } from "@/lib/app-origin";
 
 export const HOUNDSTACK_URL = "https://houndstack.com";
 
+/** The support address the trial notice already gives. */
+export const SUPPORT_EMAIL = "support@houndstack.com";
+
 /** The reversed wordmark (white "Hound", sage "Stack") from
  *  src/assets/houndstack-wordmark.svg, as a 2x PNG served from public/brand.
  *  A PNG because Gmail and Outlook do not render an SVG <img>. Never a CSS
@@ -71,18 +74,21 @@ export function safeLogoUrl(value: string | null | undefined): string | null {
 const small = { fontSize: "12px", color: BRAND.muted, lineHeight: "1.5", margin: 0 };
 const table = { width: "100%", borderCollapse: "collapse" as const };
 
-/** The wordmark's drawn size. Its artwork is 3626.5 x 434.8, so 28px tall
- *  is 234px wide; the PNG is drawn at twice that. */
-const WORDMARK_HEIGHT = 28;
-const WORDMARK_WIDTH = 234;
+/** The wordmark's drawn size. Its artwork is 3626.5 x 434.8, so 32px tall
+ *  is 267px wide; the PNG is drawn at twice that. */
+const WORDMARK_HEIGHT = 32;
+const WORDMARK_WIDTH = 267;
 
 /** The grey canvas, white card and inset that system mail sits in. Exported
  *  for the platform mail that builds its HTML by hand, so it can line up. */
 export const SYSTEM = {
   canvas: "#f4f6f8",
   cardRule: "#e2e8f0",
-  radius: "12px",
-  inset: "28px",
+  radius: "14px",
+  inset: "36px",
+  /** A soft lift for the card where a client draws shadows; the 1px rule
+   *  stands in where it does not. */
+  shadow: "0 1px 2px rgba(20,41,55,0.06), 0 8px 24px rgba(20,41,55,0.08)",
 };
 
 /**
@@ -106,12 +112,12 @@ export function SystemHeader() {
     >
       <tbody>
         <tr>
-          <td style={{ backgroundColor: BRAND.sage, height: "4px", fontSize: 0, lineHeight: 0 }}>
+          <td style={{ backgroundColor: BRAND.sage, height: "6px", fontSize: 0, lineHeight: 0 }}>
             &nbsp;
           </td>
         </tr>
         <tr>
-          <td style={{ backgroundColor: BRAND.navy, padding: `22px ${SYSTEM.inset}` }}>
+          <td style={{ backgroundColor: BRAND.navy, padding: `30px ${SYSTEM.inset}` }}>
             <a href={HOUNDSTACK_URL} style={{ textDecoration: "none" }}>
               <img
                 src={appUrl(WORDMARK_REVERSED_PATH)}
@@ -153,29 +159,25 @@ export function SystemFooter({
   poweredBy?: boolean;
   onCanvas?: boolean;
 }) {
-  const pad = onCanvas ? `0 ${SYSTEM.inset}` : "0";
+  if (onCanvas) return <CanvasFooter note={note} />;
   return (
     <table
       role="presentation"
       cellPadding={0}
       cellSpacing={0}
-      style={{
-        ...table,
-        margin: onCanvas ? "20px 0 0" : "32px 0 0",
-        ...(onCanvas ? {} : { borderTop: `1px solid ${BRAND.rule}` }),
-      }}
+      style={{ ...table, margin: "32px 0 0", borderTop: `1px solid ${BRAND.rule}` }}
     >
       <tbody>
         {note ? (
           <tr>
-            <td style={{ ...small, padding: onCanvas ? pad : "16px 0 0" }}>{note}</td>
+            <td style={{ ...small, padding: "16px 0 0" }}>{note}</td>
           </tr>
         ) : null}
         <tr>
           <td
             style={{
               ...small,
-              padding: onCanvas ? `12px ${SYSTEM.inset} 0` : "12px 0 0",
+              padding: "12px 0 0",
               fontWeight: "bold" as const,
               color: BRAND.navy,
             }}
@@ -193,8 +195,75 @@ export function SystemFooter({
           </td>
         </tr>
         <tr>
-          <td style={{ ...small, padding: onCanvas ? `2px ${SYSTEM.inset} 0` : "2px 0 0" }}>
-            {OPERATOR_LINE}
+          <td style={{ ...small, padding: "2px 0 0" }}>{OPERATOR_LINE}</td>
+        </tr>
+      </tbody>
+    </table>
+  );
+}
+
+const footerLink = { color: BRAND.navy, textDecoration: "none", fontWeight: "bold" as const };
+
+/** The footer under a system email's card: the email's own note, a short
+ *  sage rule, the HoundStack name, the operator line and where to reach
+ *  HoundStack, centred on the canvas. */
+function CanvasFooter({ note }: { note?: React.ReactNode }) {
+  const centred = { ...small, textAlign: "center" as const };
+  return (
+    <table
+      role="presentation"
+      cellPadding={0}
+      cellSpacing={0}
+      style={{ ...table, margin: "28px 0 0" }}
+    >
+      <tbody>
+        {note ? (
+          <tr>
+            <td style={{ ...centred, padding: `0 ${SYSTEM.inset} 20px`, color: "#475569" }}>
+              {note}
+            </td>
+          </tr>
+        ) : null}
+        <tr>
+          <td align="center" style={{ padding: "0 0 16px" }}>
+            <table role="presentation" cellPadding={0} cellSpacing={0} style={{ margin: "0 auto" }}>
+              <tbody>
+                <tr>
+                  <td
+                    style={{
+                      width: "32px",
+                      height: "3px",
+                      backgroundColor: BRAND.sage,
+                      fontSize: 0,
+                      lineHeight: 0,
+                    }}
+                  >
+                    &nbsp;
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td
+            style={{ ...centred, fontSize: "13px", fontWeight: "bold" as const, color: BRAND.navy }}
+          >
+            {APP_NAME}
+          </td>
+        </tr>
+        <tr>
+          <td style={{ ...centred, padding: `4px ${SYSTEM.inset} 0` }}>{OPERATOR_LINE}</td>
+        </tr>
+        <tr>
+          <td style={{ ...centred, padding: "10px 0 0" }}>
+            <a href={HOUNDSTACK_URL} style={footerLink}>
+              houndstack.com
+            </a>
+            {"  ·  "}
+            <a href={`mailto:${SUPPORT_EMAIL}`} style={footerLink}>
+              {SUPPORT_EMAIL}
+            </a>
           </td>
         </tr>
       </tbody>
@@ -205,21 +274,23 @@ export function SystemFooter({
 /** Shared type for system mail laid out with SystemLayout. */
 export const systemText = {
   h1: {
-    fontSize: "24px",
-    lineHeight: "1.3",
+    fontSize: "26px",
+    lineHeight: "1.25",
     fontWeight: "bold" as const,
-    color: "#0f172a",
-    margin: "0 0 16px",
+    letterSpacing: "-0.2px",
+    color: BRAND.navy,
+    margin: "0 0 18px",
   },
-  text: { fontSize: "15px", color: "#334155", lineHeight: "1.6", margin: "0 0 20px" },
+  text: { fontSize: "16px", color: "#334155", lineHeight: "1.6", margin: "0 0 20px" },
   link: { color: "inherit", textDecoration: "underline" },
   button: {
     backgroundColor: BRAND.navy,
     color: "#ffffff",
-    fontSize: "15px",
+    fontSize: "16px",
     fontWeight: "bold" as const,
-    borderRadius: "8px",
-    padding: "14px 24px",
+    borderRadius: "10px",
+    padding: "15px 28px",
+    margin: "8px 0 4px",
     textDecoration: "none",
     display: "inline-block",
   },
@@ -228,8 +299,8 @@ export const systemText = {
     fontSize: "13px",
     color: "#64748b",
     lineHeight: "1.55",
-    margin: "28px 0 0",
-    paddingTop: "20px",
+    margin: "32px 0 0",
+    paddingTop: "22px",
     borderTop: `1px solid ${BRAND.rule}`,
   },
 };
@@ -258,8 +329,9 @@ export function SystemLayout({
           <Section
             style={{
               backgroundColor: "#ffffff",
-              padding: `32px ${SYSTEM.inset} 28px`,
+              padding: `40px ${SYSTEM.inset} 36px`,
               border: `1px solid ${SYSTEM.cardRule}`,
+              boxShadow: SYSTEM.shadow,
               borderTop: "none",
               borderRadius: `0 0 ${SYSTEM.radius} ${SYSTEM.radius}`,
             }}

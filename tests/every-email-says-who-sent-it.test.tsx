@@ -39,7 +39,7 @@ const brand = {
 
 // The header is the reversed wordmark as an image, never typeset text.
 const WORDMARK =
-  '/brand/houndstack-wordmark-reversed.png" alt="HoundStack" width="234" height="28"';
+  '/brand/houndstack-wordmark-reversed.png" alt="HoundStack" width="267" height="32"';
 
 const TENANT = Object.keys(TEMPLATES).filter((k) => k !== "weekly-digest");
 
@@ -250,6 +250,15 @@ describe("the HoundStack header", () => {
     expect(out).toContain("background-color:#5e845e");
     expect(out).toContain(WORDMARK);
     expect(out).not.toContain("filter:");
+  });
+
+  it("closes on a footer that says where to reach HoundStack", async () => {
+    const out = await html(MagicLinkEmail, {
+      siteName: "HoundStack",
+      confirmationUrl: "https://app.test/c",
+    });
+    expect(out).toContain('href="https://houndstack.com"');
+    expect(out).toContain('href="mailto:support@houndstack.com"');
   });
 
   it("the image it points at ships in public/, as a PNG and its SVG source", () => {
