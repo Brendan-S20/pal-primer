@@ -25,6 +25,12 @@
 
 import { isPriceUnit, isZonePriced, serviceDurationLabel, type PriceUnit } from "@/lib/services";
 import {
+  effectivePublicBookingMode,
+  isPublicBookingMode,
+  type PublicBookingMode,
+  type PublicPackage,
+} from "@/lib/public-booking-mode";
+import {
   bookingLinkOffersLine,
   SERVICE_LINES,
   type ServiceLine,
@@ -41,7 +47,26 @@ export type PublicService = {
   base_price_cents: number | null;
   extra_pet_cents: number;
   default_duration_min: number | null;
+  /** How the link starts it (#574), as getPublicSignupForm read it: null is
+   *  request only. Absent on a database the mode has not reached, which is
+   *  the link as it was (effectivePublicBookingMode). */
+  booking_mode?: PublicBookingMode | null;
+  /** The package a package-mode service sells. */
+  package?: PublicPackage | null;
 };
+
+function parsePackage(v: unknown): PublicPackage | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  if (
+    typeof o.id !== "string" ||
+    typeof o.name !== "string" ||
+    typeof o.sessions_count !== "number" ||
+    typeof o.price_cents !== "number"
+  )
+    return null;
+  return { id: o.id, name: o.name, sessions_count: o.sessions_count, price_cents: o.price_cents };
+}
 
 function isServiceLine(v: unknown): v is ServiceLine {
   return typeof v === "string" && (SERVICE_LINES as readonly string[]).includes(v);
@@ -85,6 +110,10 @@ export function publicServiceChoices(
       extra_pet_cents: typeof o.extra_pet_cents === "number" ? o.extra_pet_cents : 0,
       default_duration_min:
         typeof o.default_duration_min === "number" ? o.default_duration_min : null,
+      ...("booking_mode" in o
+        ? { booking_mode: isPublicBookingMode(o.booking_mode) ? o.booking_mode : null }
+        : {}),
+      ...("package" in o ? { package: parsePackage(o.package) } : {}),
     });
   }
   return out;
@@ -167,7 +196,9 @@ export function isPricedOnline(
 }
 
 /** Why the chosen service is asked for rather than started online, or null
- *  when it can be started. A stay is a run of nights (#546). A groom is an
+ *  when it can be started. The owner may say so outright: request_only
+ *  (#574), which is also what a service with no mode set reads as. A stay is
+ *  a run of nights (#546). A groom is an
  *  appointment on one groomer's van, which the office places, so it is
  *  priced here with each pet's size and the add-ons and then requested
  *  (#560). A service with no price yet is requested so the office can send
@@ -175,10 +206,13 @@ export function isPricedOnline(
 export function requestedBecause(
   chosen: PublicService | null,
   hasSizePrices = false,
-): "stay" | "groom" | "unpriced" | null {
+): "stay" | "groom" | "unpriced" | "request_only" | null {
   if (!chosen) return null;
   if (isRequestedAsAStay(chosen)) return "stay";
-  if (!isPricedOnline(chosen, hasSizePrices)) return "unpriced";
+  const mode = effectivePublicBookingMode(chosen);
+  if (mode === "request_only") return "request_only";
+  // A package is priced by the package, not the service's own price.
+  if (mode !== "package" && !isPricedOnline(chosen, hasSizePrices)) return "unpriced";
   if (chosen.service_line === "mobile_grooming") return "groom";
   return null;
 }
@@ -214,7 +248,9 @@ export function publicServiceOptions(services: readonly PublicService[]): Public
       twin.service_line === s.service_line &&
       twin.price_unit === s.price_unit &&
       twin.base_price_cents === s.base_price_cents &&
-      twin.extra_pet_cents === s.extra_pet_cents
+      twin.extra_pet_cents === s.extra_pet_cents &&
+      twin.booking_mode === s.booking_mode &&
+      twin.package?.id === s.package?.id
     )
       continue;
     if (!twin) seen.set(label, s);

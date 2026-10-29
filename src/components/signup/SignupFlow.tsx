@@ -114,6 +114,11 @@ import {
   sizePricesFor,
 } from "@/lib/booking-extras";
 import { PET_SIZES } from "@/lib/groom";
+import {
+  ONE_TIME_COPY,
+  PACKAGE_COPY,
+  effectivePublicBookingMode,
+} from "@/lib/public-booking-mode";
 import { groomTimeLabel } from "@/lib/groom-online";
 import type { ServiceLine } from "@/lib/service-lines";
 
@@ -250,7 +255,15 @@ export function SignupFlow({
   // cadence list is the line's, so the frequency sent is one it showed.
   const line = bookingLine(services, chosen, formQ.data?.lines);
   const lineCopy = BOOKING_COPY[line];
-  const frequency = bookingCadence(line, form.frequency);
+  // How the owner starts this service on the link (#574): a repeating plan
+  // (and the form as it always was, with nothing chosen), one visit, or a
+  // package. One visit and a package have no cadence to pick; the server
+  // prices them as one visit or the package whatever is sent.
+  const mode = chosen ? effectivePublicBookingMode(chosen) : "recurring";
+  const oneTime = mode === "one_time";
+  const pack = mode === "package" ? (chosen?.package ?? null) : null;
+  const repeats = mode === "recurring";
+  const frequency = repeats ? bookingCadence(line, form.frequency) : "weekly";
   useEffect(() => {
     onLineChange?.(line);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -259,8 +272,9 @@ export function SignupFlow({
   // What this service adds to its base price (#560): its line's add-ons, and
   // a size per pet when it prices by size. None for pet waste.
   const extras = formQ.data?.extras ?? NO_EXTRAS;
-  const offeredAddOns = addOnsFor(extras, chosen);
-  const sizePrices = sizePricesFor(extras, chosen);
+  // A package is sold at its own price, so it has no extras.
+  const offeredAddOns = pack ? [] : addOnsFor(extras, chosen);
+  const sizePrices = pack ? [] : sizePricesFor(extras, chosen);
   const pickedAddOnIds = offeredAddOns
     .filter((a) => form.add_on_ids.includes(a.id))
     .map((a) => a.id);
@@ -281,7 +295,10 @@ export function SignupFlow({
   const request = requestedBecause(chosen, sizePrices.length > 0);
   const stay = request === "stay";
   const groom = request === "groom";
-  const sellsHere = instantStart && !stay && request !== "unpriced";
+  // Asked for, with no price and no card: a service with no price yet, or
+  // one the owner takes by request only (#574).
+  const asksOnly = request === "unpriced" || request === "request_only";
+  const sellsHere = instantStart && !stay && !asksOnly;
 
   // The pet-waste questions apply when nothing was picked and for the
   // pet-waste service; a walk has no yard to ask about.
@@ -433,7 +450,7 @@ export function SignupFlow({
         // after the service changed. None for a stay (#546).
         body: JSON.stringify({
           ...lead,
-          frequency: stay ? "" : frequency,
+          frequency: stay || !repeats ? "" : frequency,
           ...serviceField,
           ...extrasField,
         }),
@@ -451,7 +468,7 @@ export function SignupFlow({
     answer: quoteMut.data ?? null,
     offerQuoteRequest,
     stay,
-    request: request === "unpriced" ? request : null,
+    request: asksOnly ? "unpriced" : null,
   });
   const quote = branch.quote;
 
@@ -639,6 +656,12 @@ export function SignupFlow({
       ? firstCleanupCents + quote.recurring_price_cents
       : null;
   const extraLines = quote?.extra_lines ?? [];
+  // How the quote was priced (#574), as the server said: the price lines
+  // word what was quoted, not what the picker shows now.
+  const quotedMode = quote?.booking_mode ?? "recurring";
+  const quotedPack = quotedMode === "package" ? (quote?.package ?? null) : null;
+  const quotedOnce = quotedMode === "one_time";
+  const quotedRepeats = quotedMode === "recurring";
 
   // The price lines, drawn twice below `lg`: in the answer under step 1 and
   // in the quote panel at the bottom. One copy of the markup, so the two
@@ -671,7 +694,11 @@ export function SignupFlow({
       ))}
       <div className="flex items-baseline justify-between gap-3">
         <div className="min-w-0 text-sm">
-          {perVisitLineLabel(line, groom)} ({bookingCadenceLabel(line, frequency)})
+          {quotedPack
+            ? PACKAGE_COPY.lineLabel(quotedPack.name, quotedPack.sessions_count)
+            : quotedOnce
+              ? ONE_TIME_COPY.lineLabel
+              : `${perVisitLineLabel(line, groom)} (${bookingCadenceLabel(line, frequency)})`}
         </div>
         {/* PER VISIT, not per month. `public_quote` returns
             `round(base_visit_cents × frequency_multiplier)`, and
@@ -683,12 +710,25 @@ export function SignupFlow({
             month" for what buys ONE visit. Weekly service at $25 read
             "$25.00/mo". */}
         <div className="shrink-0 font-medium">
-          {perVisit}/{lineCopy.visit}
+          {quotedRepeats ? `${perVisit}/${lineCopy.visit}` : perVisit}
         </div>
       </div>
       <div className="border-t pt-3 text-xs text-muted-foreground">
         {firstCleanupCents == null ? (
           <>Tell us when your yard was last cleaned to see today's total.</>
+        ) : quotedPack ? (
+          <>
+            {PACKAGE_COPY.chargedTodayLead}{" "}
+            <strong className="text-foreground">{money(todayCents ?? 0, quote.currency)}</strong>.{" "}
+            {PACKAGE_COPY.sessionsTracked(quotedPack.sessions_count)}
+          </>
+        ) : quotedOnce ? (
+          <>
+            {ONE_TIME_COPY.chargedTodayLead}{" "}
+            <strong className="text-foreground">{money(todayCents ?? 0, quote.currency)}</strong>.{" "}
+            {ONE_TIME_COPY.chargedOnce}
+            {groom && <span className="mt-2 block">{GROOM_COPY.orRequest}</span>}
+          </>
         ) : (
           <>
             {groom ? GROOM_COPY.chargedTodayLead : "Charged today if you start service:"}{" "}
@@ -792,6 +832,14 @@ export function SignupFlow({
         {stay ? (
           <p className="min-w-0 text-sm text-muted-foreground sm:col-span-3">
             {STAY_COPY.howItWorks}
+          </p>
+        ) : pack ? (
+          <p className="min-w-0 text-sm text-muted-foreground sm:col-span-3">
+            {PACKAGE_COPY.howItWorks(pack.sessions_count)}
+          </p>
+        ) : oneTime ? (
+          <p className="min-w-0 text-sm text-muted-foreground sm:col-span-3">
+            {ONE_TIME_COPY.howItWorks}
           </p>
         ) : (
           <div className="space-y-1.5">
@@ -910,7 +958,7 @@ export function SignupFlow({
               );
             })}
             <p className="text-xs text-muted-foreground">
-              {request === "unpriced" ? ADD_ON_COPY.unpricedHint : ADD_ON_COPY.hint(lineCopy.visit)}
+              {asksOnly ? ADD_ON_COPY.unpricedHint : ADD_ON_COPY.hint(lineCopy.visit)}
             </p>
           </fieldset>
         )}
@@ -1195,7 +1243,7 @@ export function SignupFlow({
             ? STAY_COPY.requestButton
             : groom
               ? GROOM_COPY.requestButton
-              : request === "unpriced"
+              : asksOnly
                 ? UNPRICED_COPY.requestButton
                 : branch.canStartService || branch.reason === "not-priced-yet"
                   ? "Get a quote by email"
@@ -1283,9 +1331,13 @@ export function SignupFlow({
               >
                 {checkoutMut.isPending
                   ? "Preparing payment…"
-                  : groom
-                    ? GROOM_COPY.bookButton
-                    : "Start service"}
+                  : pack
+                    ? PACKAGE_COPY.startButton
+                    : oneTime
+                      ? ONE_TIME_COPY.startButton
+                      : groom
+                        ? GROOM_COPY.bookButton
+                        : "Start service"}
               </Button>
               {!canCheckout && firstCleanupCents != null && (
                 <p className="text-xs text-muted-foreground">
@@ -1315,7 +1367,7 @@ export function SignupFlow({
         <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
           <div className="min-w-0 text-sm">
             <span className="font-medium">
-              {perVisit}/{lineCopy.visit}
+              {quotedRepeats ? `${perVisit}/${lineCopy.visit}` : perVisit}
             </span>
             {todayCents != null ? (
               <span className="text-muted-foreground">

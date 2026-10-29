@@ -18,6 +18,11 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 import { SERVICE_LINES } from "@/lib/service-lines";
 import {
+  PACKAGE_AFTER_CREATE,
+  PACKAGE_NEEDED,
+  PUBLIC_BOOKING_MODES,
+} from "@/lib/public-booking-mode";
+import {
   PRICE_UNITS,
   SERVICE_DURATION_MAX,
   SERVICE_DURATION_MIN,
@@ -30,7 +35,7 @@ import {
 } from "@/lib/services";
 
 const SERVICE_COLUMNS =
-  "id, organization_id, name, service_line, price_unit, base_price_cents, extra_pet_cents, default_duration_min, max_dogs, holiday_surcharge_pct, active, created_at, updated_at";
+  "id, organization_id, name, service_line, price_unit, base_price_cents, extra_pet_cents, default_duration_min, max_dogs, holiday_surcharge_pct, public_booking_mode, public_package_id, active, created_at, updated_at";
 
 const cents = z.number().int().min(0).max(SERVICE_MAX_CENTS);
 
@@ -48,6 +53,10 @@ export const serviceDraftSchema = z.object({
     .min(SERVICE_DURATION_MIN)
     .max(SERVICE_DURATION_MAX)
     .nullable(),
+  // How the booking link starts it (#574). Omitted on a create, the
+  // database's default for the line.
+  public_booking_mode: z.enum(PUBLIC_BOOKING_MODES).nullable().optional(),
+  public_package_id: z.string().uuid().nullable().optional(),
 });
 
 /** Schema first (shape), then the sentence-level rules (night is for
@@ -58,7 +67,16 @@ export function parseServiceDraft(d: unknown): ServiceDraft {
     ...parsed,
     ...(parsed.service_line !== "pet_sitting" ? { holiday_surcharge_pct: 0 } : {}),
     max_dogs: parsed.service_line === "dog_walking" ? (parsed.max_dogs ?? null) : null,
+    // A package id means something only for a package.
+    ...(parsed.public_booking_mode !== undefined
+      ? {
+          public_package_id:
+            parsed.public_booking_mode === "package" ? (parsed.public_package_id ?? null) : null,
+        }
+      : {}),
   };
+  if (draft.public_booking_mode === "package" && !draft.public_package_id)
+    throw new Error(PACKAGE_NEEDED);
   const problem = serviceProblem(draft);
   if (problem) throw new Error(problem);
   return draft;
@@ -92,6 +110,7 @@ export const createService = createServerFn({ method: "POST" })
   .inputValidator((d) => parseServiceDraft(d))
   .handler(async ({ data, context }) => {
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_pricing");
+    if (data.public_booking_mode === "package") throw new Error(PACKAGE_AFTER_CREATE);
     const { data: row, error } = await context.supabase
       .from("services")
       .insert({ ...data, name: data.name.trim(), organization_id: orgId, active: true })
@@ -112,6 +131,18 @@ export const updateService = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_pricing");
     const { id, ...draft } = data;
+    if (draft.public_package_id) {
+      // The package has to be this business's, for this service.
+      const { data: pack, error: packErr } = await context.supabase
+        .from("service_packages")
+        .select("id")
+        .eq("id", draft.public_package_id)
+        .eq("organization_id", orgId)
+        .eq("service_id", id)
+        .maybeSingle();
+      if (packErr) throw new Error(packErr.message);
+      if (!pack) throw new Error(PACKAGE_NEEDED);
+    }
     const { data: rows, error } = await context.supabase
       .from("services")
       .update({ ...draft, name: draft.name.trim() })
