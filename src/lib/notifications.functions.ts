@@ -24,7 +24,7 @@ export const sendInvoiceEmail = createServerFn({ method: "POST" })
     const { data: invRow, error } = await supabase
       .from("invoices")
       .select(
-        "id, organization_id, client_id, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, credit_applied_cents, amount_paid_cents, period_start, period_end, public_token, clients(portal_token)",
+        "id, organization_id, client_id, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, credit_applied_cents, amount_paid_cents, period_start, period_end, public_token, clients(portal_token, default_payment_method_id)",
       )
       .eq("id", data.invoiceId)
       .eq("organization_id", orgId)
@@ -45,6 +45,13 @@ export const sendInvoiceEmail = createServerFn({ method: "POST" })
       inv.period_start && inv.period_end
         ? `Services from ${inv.period_start} to ${inv.period_end}`
         : undefined;
+    // No card on file yet: offer the portal's card form under the pay button,
+    // so the client can put one on file without the office taking payment.
+    let cardUrl: string | undefined;
+    if (inv.clients?.portal_token && !inv.clients.default_payment_method_id) {
+      const { buildPortalCardLink } = await import("@/lib/portal-links.server");
+      cardUrl = await buildPortalCardLink(inv.organization_id, inv.clients.portal_token);
+    }
     const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
     // The invoice itself, as a PDF, for the customer's records. Read with the
     // service-role client because the email pipeline is (the invoice was
@@ -70,6 +77,7 @@ export const sendInvoiceEmail = createServerFn({ method: "POST" })
         invoiceUrl,
         periodLabel: period,
         reminder: data.reminder === true,
+        ...(cardUrl ? { cardUrl } : {}),
         // Partly paid: the email says what was paid and what is left, so a
         // reminder does not ask for money that already arrived.
         ...((inv.amount_paid_cents ?? 0) > 0

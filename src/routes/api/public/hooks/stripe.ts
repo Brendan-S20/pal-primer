@@ -1194,8 +1194,11 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                       ) {
                         const { sendTwilioSms } = await import("@/lib/twilio.server");
                         const { brandedBody } = await import("@/lib/sms-brand");
-                        const { buildPortalLink } = await import("@/lib/portal-links.server");
-                        const url = await buildPortalLink(
+                        // Straight to the card form, as the declined-card email.
+                        const { buildPortalCardLink } = await import(
+                          "@/lib/portal-links.server"
+                        );
+                        const url = await buildPortalCardLink(
                           inv.organization_id,
                           c.portal_token as string | null,
                         );

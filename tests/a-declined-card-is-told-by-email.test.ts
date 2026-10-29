@@ -191,8 +191,9 @@ describe("a declined autopay charge", () => {
       expect(body).toContain("INV-1042");
       expect(body).toContain("$85.00");
       expect(body).toContain("declined");
-      // The overdue reminder's link: the client's own portal, by slug.
-      expect(body).toContain(`/portal/detroit-doo/${PORTAL_TOKEN}`);
+      // The client's own portal, by slug, opened at the card form on the
+      // Billing tab so the card can be replaced without the office.
+      expect(body).toContain(`/portal/detroit-doo/${PORTAL_TOKEN}/billing?card=update`);
       // The business's contact details, as every other email shows them.
       expect(body).toContain("(313) 555-0142");
       expect(body).toContain("office@detroitdoo.example");
