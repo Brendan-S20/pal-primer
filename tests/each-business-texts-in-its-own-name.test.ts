@@ -403,7 +403,7 @@ describe("2 and 3. status, and texting only on approval", () => {
   });
 
   it("the poll runs every ten minutes, only while something is with Twilio", () => {
-    const sql = read("supabase/migrations/20261029150000_each-business-texts-in-its-own-name.sql");
+    const sql = read("supabase/migrations/20261029160000_each-business-texts-in-its-own-name.sql");
     expect(sql).toMatch(/cron\.schedule\('texting-status', '\*\/10 \* \* \* \*'/);
     expect(sql).toMatch(/AND public\.texting_status_due\(\);/);
     expect(sql).toMatch(/url := 'https:\/\/app\.houndstack\.com\/api\/public\/hooks\/texting-status'/);
@@ -411,7 +411,7 @@ describe("2 and 3. status, and texting only on approval", () => {
 });
 
 describe("the database refuses what the app must never do", () => {
-  const sql = read("supabase/migrations/20261029150000_each-business-texts-in-its-own-name.sql");
+  const sql = read("supabase/migrations/20261029160000_each-business-texts-in-its-own-name.sql");
   const activate = sql.slice(
     sql.indexOf("CREATE OR REPLACE FUNCTION public.activate_org_texting"),
     sql.indexOf("$fn$;", sql.indexOf("CREATE OR REPLACE FUNCTION public.activate_org_texting")),

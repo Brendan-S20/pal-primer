@@ -5,7 +5,7 @@ import { createFileRoute } from "@tanstack/react-router";
 // The status poll for each business's toll-free verification (#538). pg_cron's
 // `texting-status` job calls this every ten minutes, and only while some
 // registration is with Twilio: the job asks public.texting_status_due() first
-// (see 20261029150000). Ten minutes so a change at Twilio is in Settings within
+// (see 20261029160000). Ten minutes so a change at Twilio is in Settings within
 // fifteen. Same credential as the other cron endpoints, Bearer service-role
 // read from Vault.
 //

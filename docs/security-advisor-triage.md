@@ -195,7 +195,7 @@ platform console can see how often the free public router fails us. Written by
 the service role; there is no tenant-side reader, so there is nothing to open
 it for. The advisor count will read 11 once it is applied.
 
-A twelfth arrives with 20261029150000 (#538, not yet applied):
+A twelfth arrives with 20261029160000 (#538, not yet applied):
 `org_texting_registrations`, each business's Twilio subaccount, business
 profile, number and toll-free verification status. Read and written only by
 server code on the service role (Settings, Texting and the ten-minute status
