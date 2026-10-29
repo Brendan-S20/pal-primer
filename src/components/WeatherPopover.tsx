@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { CloudSun, Droplets } from "lucide-react";
 import { getWeatherForZones } from "@/lib/weather.functions";
@@ -131,36 +131,57 @@ function AreaCard({ cluster }: { cluster: ZoneForecast[] }) {
  *  one line, "Couldn't load 4 zones (missing coordinates or weather service
  *  error)", which did not say which zones, which of the two it was, or what
  *  to do. A zone with no location is fixed in Zones and a retry will not help
- *  it; a service error is worth a retry, so only then is Retry offered. */
+ *  it; a service error is worth a retry, so only that zone gets a Retry, and
+ *  it asks again for that zone alone. A retry that fails again says so on
+ *  the zone's own line, so the button visibly did something. */
 export function FailedZones({
   zones,
   retrying,
+  retried,
   onRetry,
 }: {
   zones: Pick<ZoneForecast, "id" | "name" | "status" | "error">[];
-  retrying: boolean;
-  onRetry: () => void;
+  /** Zones whose retry is in flight. */
+  retrying: ReadonlySet<string>;
+  /** Zones that were retried and still have no forecast. */
+  retried: ReadonlySet<string>;
+  onRetry: (zoneId: string) => void;
 }) {
   if (zones.length === 0) return null;
-  const serviceErrors = zones.filter((z) => z.status === "error");
   return (
-    <div className="space-y-1.5 rounded-md border border-dashed p-2" role="status">
-      <ul className="space-y-1 text-2xs text-muted-foreground">
-        {zones.map((z) => (
-          <li key={z.id} className="min-w-0 [overflow-wrap:anywhere]">
-            <span className="font-medium text-foreground">{z.name}</span>
-            {": "}
-            {z.status === "no_coords"
-              ? "no location set. Add one in Zones to see its forecast."
-              : (z.error ?? "the weather service did not answer.")}
-          </li>
-        ))}
+    <div className="rounded-md border border-dashed p-2" role="status">
+      <ul className="space-y-1.5 text-2xs text-muted-foreground">
+        {zones.map((z) => {
+          const busy = retrying.has(z.id);
+          return (
+            <li key={z.id} className="flex items-center justify-between gap-2">
+              <p className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+                <span className="font-medium text-foreground">{z.name}</span>
+                {": "}
+                {z.status === "no_coords"
+                  ? "no location set. Add one in Zones to see its forecast."
+                  : busy
+                    ? "asking the weather service again…"
+                    : (z.error ?? "the weather service did not answer.")}
+                {z.status === "error" && !busy && retried.has(z.id) && (
+                  <> Tried again; still no answer.</>
+                )}
+              </p>
+              {z.status === "error" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  aria-label={`Retry ${z.name}`}
+                  onClick={() => onRetry(z.id)}
+                  disabled={busy}
+                >
+                  {busy ? "Retrying…" : "Retry"}
+                </Button>
+              )}
+            </li>
+          );
+        })}
       </ul>
-      {serviceErrors.length > 0 && (
-        <Button size="sm" variant="outline" onClick={onRetry} disabled={retrying}>
-          {retrying ? "Retrying…" : "Retry"}
-        </Button>
-      )}
     </div>
   );
 }
@@ -203,6 +224,51 @@ export function WeatherPopover() {
     enabled: open,
     staleTime: 10 * 60_000,
   });
+
+  // Per-zone retry (#455): ask for the one zone and splice its answer into
+  // the cached list, so the zones that loaded keep their cards and the
+  // weather service is not asked about them again.
+  const queryClient = useQueryClient();
+  const [retrying, setRetrying] = useState<ReadonlySet<string>>(new Set());
+  const [retried, setRetried] = useState<ReadonlySet<string>>(new Set());
+  const retryZone = async (zoneId: string) => {
+    const key = ["weather-popover", fromDate, toDate];
+    setRetrying((s) => new Set(s).add(zoneId));
+    let next: ZoneForecast | undefined;
+    try {
+      const res = (await getWeather({
+        data: { fromDate, toDate, zoneIds: [zoneId] },
+      })) as { zones: ZoneForecast[] };
+      next = res.zones.find((z) => z.id === zoneId);
+    } catch (e) {
+      const prev = (queryClient.getQueryData(key) as { zones: ZoneForecast[] } | undefined)?.zones;
+      const zone = prev?.find((z) => z.id === zoneId);
+      if (zone) {
+        next = {
+          ...zone,
+          status: "error",
+          error: e instanceof Error ? e.message : "the weather service did not answer.",
+        };
+      }
+    }
+    if (next) {
+      const replacement = next;
+      queryClient.setQueryData(key, (old: { zones: ZoneForecast[] } | undefined) =>
+        old ? { ...old, zones: old.zones.map((z) => (z.id === zoneId ? replacement : z)) } : old,
+      );
+    }
+    setRetried((s) => {
+      const out = new Set(s);
+      if (next?.status === "ok") out.delete(zoneId);
+      else out.add(zoneId);
+      return out;
+    });
+    setRetrying((s) => {
+      const out = new Set(s);
+      out.delete(zoneId);
+      return out;
+    });
+  };
 
   const zones = ((query.data as { zones: ZoneForecast[] } | undefined)?.zones ?? []) as ZoneForecast[];
   const okZones = zones.filter((z) => z.status === "ok");
@@ -254,8 +320,9 @@ export function WeatherPopover() {
               ))}
               <FailedZones
                 zones={failed}
-                retrying={query.isFetching}
-                onRetry={() => query.refetch()}
+                retrying={retrying}
+                retried={retried}
+                onRetry={(id) => void retryZone(id)}
               />
             </>
           )}
