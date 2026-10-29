@@ -64,6 +64,15 @@ export async function ensureOrgSlug(orgId: string): Promise<string> {
   return slug;
 }
 
+async function resolveSlug(orgId: string, knownSlug?: string | null): Promise<string | null> {
+  if (knownSlug) return knownSlug;
+  try {
+    return await ensureOrgSlug(orgId);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Build the canonical portal deep link for a client. Falls back to the legacy
  * /portal/{token} form only if a slug truly can't be resolved, so a link is
@@ -75,13 +84,37 @@ export async function buildPortalLink(
   knownSlug?: string | null,
 ): Promise<string | undefined> {
   if (!token) return undefined;
-  let slug = knownSlug ?? null;
-  if (!slug) {
-    try {
-      slug = await ensureOrgSlug(orgId);
-    } catch {
-      slug = null;
-    }
-  }
+  const slug = await resolveSlug(orgId, knownSlug);
   return slug ? `${appUrl()}/portal/${slug}/${token}` : `${appUrl()}/portal/${token}`;
+}
+
+/** The portal Billing tab: open invoices, Pay now, and the saved card.
+ *
+ *  Only the canonical /portal/{slug}/{token} form can carry a path: on the
+ *  legacy /portal/{token} fallback, "billing" would be read as the token. So
+ *  without a slug this returns the plain portal link, never a broken one. */
+export async function buildPortalBillingLink(
+  orgId: string,
+  token: string | null | undefined,
+  knownSlug?: string | null,
+): Promise<string | undefined> {
+  if (!token) return undefined;
+  const slug = await resolveSlug(orgId, knownSlug);
+  return slug ? `${appUrl()}/portal/${slug}/${token}/billing` : `${appUrl()}/portal/${token}`;
+}
+
+/** The portal Billing tab with the card form already open: where a client
+ *  adds or replaces the card on file without anyone in the office starting a
+ *  Take payment. `?card=update` is read by the billing route. Same legacy
+ *  fallback as buildPortalBillingLink. */
+export async function buildPortalCardLink(
+  orgId: string,
+  token: string | null | undefined,
+  knownSlug?: string | null,
+): Promise<string | undefined> {
+  if (!token) return undefined;
+  const slug = await resolveSlug(orgId, knownSlug);
+  return slug
+    ? `${appUrl()}/portal/${slug}/${token}/billing?card=update`
+    : `${appUrl()}/portal/${token}`;
 }

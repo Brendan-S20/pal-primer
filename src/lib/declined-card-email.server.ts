@@ -50,7 +50,7 @@ export async function emailClientAboutDeclinedCard(p: {
 }): Promise<DeclinedCardEmailResult> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
-  const { buildPortalLink } = await import("@/lib/portal-links.server");
+  const { buildPortalCardLink } = await import("@/lib/portal-links.server");
   const { invoiceRef } = await import("@/lib/invoice-labels");
   const { appOrigin } = await import("@/lib/app-origin");
 
@@ -60,9 +60,11 @@ export async function emailClientAboutDeclinedCard(p: {
     .eq("id", p.clientId)
     .maybeSingle();
 
-  // The same link the overdue reminder carries, with the same fallback.
+  // Straight to the card form on the portal's Billing tab, where the client
+  // replaces the card themselves and the open invoice sits underneath with
+  // Pay now. Same fallback as the overdue reminder when there is no token.
   const portalUrl =
-    (await buildPortalLink(p.organizationId, client?.portal_token ?? null)) ?? appOrigin();
+    (await buildPortalCardLink(p.organizationId, client?.portal_token ?? null)) ?? appOrigin();
 
   return enqueueAppEmail({
     organizationId: p.organizationId,
