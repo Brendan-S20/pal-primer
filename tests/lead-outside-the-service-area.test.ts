@@ -20,6 +20,13 @@ describe("zipFromLocation", () => {
     expect(zipFromLocation("10024")).toBe("10024");
     expect(zipFromLocation("Ann Arbor MI 48104-1234")).toBe("48104");
   });
+  it("does not read a five-digit house number as the ZIP", () => {
+    expect(zipFromLocation("26000 Woodward Ave, Royal Oak")).toBeNull();
+    expect(zipFromLocation("26000 Woodward Ave, Royal Oak MI 48067")).toBe("48067");
+    expect(zipFromLocation("26000 Woodward Ave, Royal Oak, MI 48067, USA")).toBe("48067");
+    expect(zipFromLocation("MI 48067, 26000 Woodward Ave")).toBe("48067");
+    expect(leadServiceArea("26000 Woodward Ave, Royal Oak", michigan)).toBe("unknown");
+  });
   it("is null when there is no ZIP", () => {
     expect(zipFromLocation("Ann Arbor")).toBeNull();
     expect(zipFromLocation(null)).toBeNull();

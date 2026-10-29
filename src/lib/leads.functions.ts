@@ -156,11 +156,12 @@ export const listLeads = createServerFn({ method: "GET" })
       )
       .eq("organization_id", orgId);
     if (zonesErr) console.error("leads service area lookup failed", orgId, zonesErr);
-    const { leadServiceArea, zoneShape, drawnZoneZips } = await import("@/lib/lead-service-area");
+    const { leadServiceArea, zoneShape, drawnZoneZips, zipFromLocation } =
+      await import("@/lib/lead-service-area");
     const { searchBox, MAX_CANDIDATES } = await import("@/lib/zone-zip-fill");
     const zoneRows = (zones ?? []) as unknown as ZoneMatchFields[];
     const drawn = new Map<string, DrawnZoneZips | null>();
-    const anyLeadZip = (data ?? []).some((l) => /\b\d{5}\b/.test(l.location ?? ""));
+    const anyLeadZip = (data ?? []).some((l) => zipFromLocation(l.location) != null);
     if (!zonesErr && anyLeadZip) {
       await Promise.all(
         zoneRows.map(async (z) => {

@@ -44,12 +44,20 @@ export interface DrawnZoneZips {
   complete: boolean;
 }
 
-/** The last five-digit run in the text, with or without a +4. A US street
- *  number comes before the ZIP, so the last run is the ZIP. */
+/** The ZIP in the text, read only where a ZIP sits: the text ends with it
+ *  (a bare "48067", or "..., Royal Oak MI 48067", optionally "+4" or ", USA"
+ *  after it), or it follows a two-letter state ("MI 48067, Royal Oak").
+ *  A five-digit run anywhere else is not a ZIP: "26000 Woodward Ave, Royal
+ *  Oak" has a house number and no ZIP, and reading 26000 would have called a
+ *  lead the business can serve outside its area (#439 review). */
 export function zipFromLocation(location: string | null | undefined): string | null {
-  const runs = (location ?? "").match(/\b\d{5}(?:-\d{4})?\b/g);
-  if (!runs?.length) return null;
-  return runs[runs.length - 1].slice(0, 5);
+  const text = (location ?? "").trim();
+  const atEnd = text.match(
+    /(?:^|[\s,])(\d{5})(?:-\d{4})?\s*(?:,?\s*(?:USA|US|United States))?\.?$/i,
+  );
+  if (atEnd) return atEnd[1];
+  const afterState = [...text.matchAll(/\b[A-Z]{2}\.?\s+(\d{5})(?:-\d{4})?\b/g)];
+  return afterState.length ? afterState[afterState.length - 1][1] : null;
 }
 
 /** The drawn shape of a zone row, or null when it matches by ZIP only. */
