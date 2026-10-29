@@ -25,6 +25,8 @@
 // and not one actual trial. An announcement aimed at people mid-trial would
 // have gone to the six accounts that predate trials entirely.
 
+import { systemFooterHtml, systemHeaderHtml } from "@/lib/email-templates/_brand";
+
 export type AnnouncementSendResult = {
   id: string;
   title: string;
@@ -46,11 +48,17 @@ export function renderAnnouncementHtml(title: string, body: string, severity: st
           ? "#059669"
           : "#2563eb";
   const safeBody = body.replace(/</g, "&lt;").replace(/\n/g, "<br/>");
-  return `<!doctype html><html><body style="font-family:system-ui,sans-serif;background:#f8fafc;padding:24px;color:#0f172a">
-  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)">
-    <div style="background:${color};color:#fff;padding:16px 20px;font-weight:600">${title}</div>
-    <div style="padding:20px;line-height:1.55;font-size:15px">${safeBody}</div>
-    <div style="padding:12px 20px;font-size:12px;color:#64748b;border-top:1px solid #e2e8f0">Sent by HoundStack · Platform announcement</div>
+  // HoundStack chrome above and below the card (#577): the band sits on
+  // the card's top edge, as in SystemLayout, and the card's spacing
+  // matches it. The copy is unchanged.
+  return `<!doctype html><html><body style="font-family:system-ui,sans-serif;background:#f4f6f8;margin:0;padding:32px 16px 40px;color:#0f172a">
+  <div style="max-width:600px;margin:0 auto">
+  ${systemHeaderHtml()}
+  <div style="background:#fff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 14px 14px;overflow:hidden;box-shadow:0 1px 2px rgba(20,41,55,0.06),0 8px 24px rgba(20,41,55,0.08)">
+    <div style="background:${color};color:#fff;padding:18px 36px;font-weight:600;font-size:16px">${title}</div>
+    <div style="padding:28px 36px 32px;line-height:1.6;font-size:16px;color:#334155">${safeBody}</div>
+  </div>
+  ${systemFooterHtml("Sent by HoundStack · Platform announcement")}
   </div></body></html>`;
 }
 

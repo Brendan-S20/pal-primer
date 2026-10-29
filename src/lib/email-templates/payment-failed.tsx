@@ -9,7 +9,7 @@ import {
   Preview,
   Text,
 } from "@react-email/components";
-import { styles, fmtMoney, OrgFooter, type OrgContact } from "./_shared";
+import { styles, fmtMoney, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
 import type { TemplateEntry } from "./registry";
 
 // The card on file was declined on an automatic charge.
@@ -50,6 +50,7 @@ const PaymentFailed = ({
     <Preview>Your card on file was declined</Preview>
     <Body style={styles.main}>
       <Container style={styles.container}>
+        <TenantHeader {...orgContact} orgName={orgName} />
         <Heading style={styles.h1}>Your card was declined</Heading>
         <Text style={styles.text}>
           Hi {clientName}, {orgName} tried to charge the card you have on file for

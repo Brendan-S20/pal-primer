@@ -682,7 +682,7 @@ async function autoSendScheduledInvoices(
       supabaseAdmin
         .from("invoices")
         .select(
-          "id, client_id, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, period_start, period_end, public_token, send_after, sent_at",
+          "id, client_id, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, period_start, period_end, public_token, send_after, sent_at, clients(portal_token, default_payment_method_id)",
         )
         .eq("organization_id", orgId)
         .eq("status", "open")
@@ -699,11 +699,18 @@ async function autoSendScheduledInvoices(
   if (!invoices?.length) return 0;
 
   const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
+  const { buildPortalCardLink, ensureOrgSlug } = await import("@/lib/portal-links.server");
+  const slug = await ensureOrgSlug(orgId).catch(() => null);
   const base = appUrl();
   let sent = 0;
   let pausedSkipped = 0;
   for (const inv of invoices as any[]) {
     const invoiceUrl = inv.public_token ? `${base}/pay/i/${inv.public_token}` : base;
+    // No card on file yet: the same card-form link the manual send offers.
+    const cardUrl =
+      inv.clients?.portal_token && !inv.clients.default_payment_method_id
+        ? await buildPortalCardLink(orgId, inv.clients.portal_token, slug)
+        : undefined;
     const period =
       inv.period_start && inv.period_end
         ? `Services from ${inv.period_start} to ${inv.period_end}`
@@ -728,6 +735,7 @@ async function autoSendScheduledInvoices(
           invoiceUrl,
           periodLabel: period,
           reminder: false,
+          ...(cardUrl ? { cardUrl } : {}),
           ...invoiceEmailTaxData(inv),
         },
         attachments: pdfAttachment,
@@ -938,14 +946,16 @@ async function sendOverdueEmails(
   const byId = new Map((clients ?? []).map((c: any) => [c.id, c]));
 
   const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
-  const { buildPortalLink, ensureOrgSlug } = await import("@/lib/portal-links.server");
+  const { buildPortalBillingLink, ensureOrgSlug } = await import("@/lib/portal-links.server");
   const slug = await ensureOrgSlug(orgId).catch(() => null);
   let sent = 0;
   let pausedSkipped = 0;
   for (const inv of eligible) {
     const client = byId.get(inv.client_id) as any;
     if (!client) continue;
-    const invoiceUrl = (await buildPortalLink(orgId, client.portal_token, slug)) ?? appUrl();
+    // The Billing tab, where the open invoice, Pay now and the saved card are,
+    // rather than the portal's home page.
+    const invoiceUrl = (await buildPortalBillingLink(orgId, client.portal_token, slug)) ?? appUrl();
     const daysPastDue = daysPastDueFrom(inv.due_on);
     const res = await enqueueAppEmail({
       organizationId: orgId,

@@ -46,6 +46,8 @@
 // the owner because the org never set a contact address" is operationally
 // different from "we mailed the address they chose".
 
+import { systemFooterHtml, systemHeaderHtml } from "@/lib/email-templates/_brand";
+
 export type TrialNoticeOutcome = {
   organizationId: string;
   organizationName: string | null;
@@ -80,17 +82,23 @@ export function renderTrialNoticeHtml(input: {
 }): string {
   const { orgName, daysLeft, endsOn, billingUrl } = input;
   const when = daysLeft <= 0 ? "today" : daysLeft === 1 ? "tomorrow" : `in ${daysLeft} days`;
-  return `<!doctype html><html><body style="font-family:system-ui,sans-serif;background:#f8fafc;padding:24px;color:#0f172a">
-  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)">
-    <div style="background:#d97706;color:#fff;padding:16px 20px;font-weight:600">Your HoundStack trial ends ${when}</div>
-    <div style="padding:20px;line-height:1.55;font-size:15px">
+  // HoundStack chrome above and below the card (#577): the band sits on
+  // the card's top edge, as in SystemLayout, and the card's spacing
+  // matches it. The copy is unchanged.
+  return `<!doctype html><html><body style="font-family:system-ui,sans-serif;background:#f4f6f8;margin:0;padding:32px 16px 40px;color:#0f172a">
+  <div style="max-width:600px;margin:0 auto">
+  ${systemHeaderHtml()}
+  <div style="background:#fff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 14px 14px;overflow:hidden;box-shadow:0 1px 2px rgba(20,41,55,0.06),0 8px 24px rgba(20,41,55,0.08)">
+    <div style="background:#d97706;color:#fff;padding:18px 36px;font-weight:600;font-size:16px">Your HoundStack trial ends ${when}</div>
+    <div style="padding:28px 36px 32px;line-height:1.6;font-size:16px;color:#334155">
       <p style="margin:0 0 14px">Hi ${escapeHtml(orgName)},</p>
       <p style="margin:0 0 14px">Your free trial ends on <strong>${escapeHtml(endsOn)}</strong>. Pick a plan before then to keep going.</p>
       <p style="margin:0 0 14px"><strong>If you don't, the account is locked until you choose a plan, and your data is kept for 30 days.</strong> Choosing a plan unlocks it at once.</p>
-      <p style="margin:0 0 18px"><a href="${billingUrl}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:11px 18px;border-radius:8px;font-weight:600">Choose a plan</a></p>
-      <p style="margin:0;font-size:13px;color:#475569">Plans start at $79 a month with your first teammate included. Nothing is charged automatically. Questions? Email <a href="mailto:support@houndstack.com" style="color:#2563eb">support@houndstack.com</a> before your trial ends and we'll help you choose the right plan.</p>
+      <p style="margin:0 0 18px"><a href="${billingUrl}" style="display:inline-block;background:#142937;color:#fff;text-decoration:none;padding:15px 28px;border-radius:10px;font-weight:700">Choose a plan</a></p>
+      <p style="margin:0;font-size:13px;color:#475569">Plans start at $79 a month with your first teammate included. Nothing is charged automatically. Questions? Email <a href="mailto:support@houndstack.com" style="color:#142937;font-weight:600">support@houndstack.com</a> before your trial ends and we'll help you choose the right plan.</p>
     </div>
-    <div style="padding:12px 20px;font-size:12px;color:#64748b;border-top:1px solid #e2e8f0">Sent by HoundStack &middot; You are receiving this because your workspace is in a free trial.</div>
+  </div>
+  ${systemFooterHtml("Sent by HoundStack · You are receiving this because your workspace is in a free trial.")}
   </div></body></html>`;
 }
 

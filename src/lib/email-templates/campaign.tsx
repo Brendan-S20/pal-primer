@@ -10,7 +10,7 @@ import {
   Preview,
   Text,
 } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact } from "./_shared";
+import { styles, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
 import type { TemplateEntry } from "./registry";
 import { bodyParagraphs, isSafeButtonUrl } from "@/lib/campaigns";
 
@@ -49,6 +49,7 @@ const Campaign = ({
       <Preview>{preview.slice(0, 140)}</Preview>
       <Body style={styles.main}>
         <Container style={styles.container}>
+          <TenantHeader {...orgContact} orgName={orgName} />
           {heading ? <Heading style={styles.h1}>{heading}</Heading> : null}
           {paragraphs.map((lines, i) => (
             <Text key={i} style={styles.text}>

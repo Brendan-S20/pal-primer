@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Body, Container, Head, Heading, Html, Preview, Text } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact } from "./_shared";
+import { styles, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
 import type { TemplateEntry } from "./registry";
 import { missedMedsSubject, type MissedMed } from "@/lib/sit-report";
 
@@ -33,6 +33,7 @@ const SitMissedMeds = ({
       <Preview>{subject}</Preview>
       <Body style={styles.main}>
         <Container style={styles.container}>
+          <TenantHeader {...orgContact} orgName={orgName} />
           <Heading style={styles.h1}>{subject}</Heading>
           <Text style={styles.text}>
             Hi {clientName}, at {day ? `the visit on ${day}` : "today's visit"} the sitter could not

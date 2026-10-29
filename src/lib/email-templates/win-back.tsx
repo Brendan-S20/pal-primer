@@ -9,7 +9,7 @@ import {
   Text,
   Button,
 } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact } from "./_shared";
+import { styles, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
 import type { TemplateEntry } from "./registry";
 
 interface Props extends OrgContact {
@@ -44,6 +44,7 @@ const WinBack = ({
     <Preview>{`We miss you at ${orgName}: ${discountAmount} off to come back`}</Preview>
     <Body style={styles.main}>
       <Container style={styles.container}>
+        <TenantHeader {...orgContact} orgName={orgName} />
         <Heading style={styles.h1}>We miss you, {clientName}</Heading>
         <Text style={styles.text}>
           It's been a while since we've seen you at {orgName}. We'd love to have you back. Here's{" "}

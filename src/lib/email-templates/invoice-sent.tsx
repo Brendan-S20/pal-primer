@@ -8,8 +8,9 @@ import {
   Preview,
   Text,
   Button,
+  Link,
 } from "@react-email/components";
-import { styles, fmtMoney, OrgFooter, type OrgContact } from "./_shared";
+import { styles, fmtMoney, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
 import type { TemplateEntry } from "./registry";
 
 interface Props extends OrgContact {
@@ -31,6 +32,10 @@ interface Props extends OrgContact {
    *  when something was paid, so every other email is unchanged. */
   amountPaidCents?: number;
   balanceCents?: number;
+  /** The portal's card form (buildPortalCardLink). Sent only when the client
+   *  has no card on file, so a client who already saved one is not asked
+   *  again and every other email reads as it always did. */
+  cardUrl?: string;
 }
 
 const InvoiceSent = ({
@@ -45,6 +50,7 @@ const InvoiceSent = ({
   taxLabel,
   amountPaidCents = 0,
   balanceCents,
+  cardUrl,
   ...orgContact
 }: Props) => (
   <Html lang="en">
@@ -56,6 +62,7 @@ const InvoiceSent = ({
     </Preview>
     <Body style={styles.main}>
       <Container style={styles.container}>
+        <TenantHeader {...orgContact} orgName={orgName} />
         <Heading style={styles.h1}>{reminder ? "Invoice reminder" : "New invoice"}</Heading>
         <Text style={styles.text}>
           {reminder
@@ -79,6 +86,13 @@ const InvoiceSent = ({
           <Button style={styles.button} href={invoiceUrl}>
             View &amp; pay invoice
           </Button>
+        ) : null}
+        {cardUrl ? (
+          <Text style={styles.small}>
+            Want to skip this step next time?{" "}
+            <Link href={cardUrl}>Save a card in your account</Link> and pay future invoices in one
+            tap.
+          </Text>
         ) : null}
         <Text style={styles.small}>
           {reminder
@@ -106,5 +120,6 @@ export const template = {
     amountCents: 8500,
     invoiceUrl: "https://example.com/portal/abc",
     periodLabel: "Services from Jun 1 to Jun 30",
+    cardUrl: "https://example.com/portal/acme/abc/billing?card=update",
   },
 } satisfies TemplateEntry;

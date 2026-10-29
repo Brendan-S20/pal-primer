@@ -1,6 +1,6 @@
 import { useLaunchCopy } from "@/lib/launch-copy";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
@@ -39,8 +39,17 @@ export const Route = createFileRoute("/portal/$slug/$token/billing")({
   // set to undefined when absent. A validator that always returns the key
   // makes `search` a required prop on every <Link> to this route, and there
   // are three of them that have no business knowing about payment status.
-  validateSearch: (search: Record<string, unknown>): { paid?: "succeeded" | "processing" } =>
-    search.paid === "succeeded" || search.paid === "processing" ? { paid: search.paid } : {},
+  //
+  // `card=update` is the deep link from the declined-card email and text and
+  // from the invoice emails (buildPortalCardLink): the client lands with the
+  // card form already open, so putting a card on file never needs somebody
+  // in the office to start a Take payment. Optional for the same reason.
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { paid?: "succeeded" | "processing"; card?: "update" } => ({
+    ...(search.paid === "succeeded" || search.paid === "processing" ? { paid: search.paid } : {}),
+    ...(search.card === "update" ? { card: "update" as const } : {}),
+  }),
 });
 
 // Cache Stripe.js per (publishable key + connected account) — Connect direct
@@ -59,12 +68,33 @@ function getStripe(pk: string, stripeAccount?: string) {
 function PortalBilling() {
   const copy = useLaunchCopy();
   const { slug, token } = Route.useParams();
-  const { paid } = Route.useSearch();
+  const { paid, card } = Route.useSearch();
   const navigate = useNavigate();
   const { clientQ, invoicesQ, subsQ, setAutopayMut, removeCardMut, paySavedMut, promoMut } =
     usePortalCtx();
   const c = clientQ.data as any;
-  const [showCard, setShowCard] = useState(false);
+  const [showCard, setShowCard] = useState(card === "update");
+  const cardBoxRef = useRef<HTMLDivElement>(null);
+  // Arriving from an email link: the card form is the reason they came, so
+  // bring it into view rather than leave it below the fold on a phone.
+  useEffect(() => {
+    if (card === "update") cardBoxRef.current?.scrollIntoView({ block: "start" });
+  }, [card]);
+  // Once the card is saved (or the form is closed) the link has done its
+  // job; drop it from the address so a refresh does not reopen the form.
+  const clearCardParam = () => {
+    if (card !== "update") return;
+    navigate({
+      to: "/portal/$slug/$token/billing",
+      params: { slug, token },
+      search: (prev: Record<string, unknown>) => ({ ...prev, card: undefined }) as never,
+      replace: true,
+    });
+  };
+  const toggleCard = () => {
+    if (showCard) clearCardParam();
+    setShowCard((v) => !v);
+  };
   const pdfFn = useServerFn(portalDownloadInvoicePdf);
 
   // In-app top-up: create the prepaid invoice, then pay it on the in-app pay
@@ -121,8 +151,19 @@ function PortalBilling() {
       )}
 
       {/* Payment method */}
-      <div className="rounded-md border bg-card p-3 text-sm space-y-3">
+      <div
+        ref={cardBoxRef}
+        id="payment-method"
+        className="scroll-mt-4 rounded-md border bg-card p-3 text-sm space-y-3"
+      >
         <p className="text-xs uppercase tracking-wider text-muted-foreground">Payment method</p>
+        {card === "update" && (
+          <p className="text-sm">
+            {c?.has_saved_card
+              ? "Enter your new card below. It replaces the one on file."
+              : "Enter your card below to keep it on file. Then pay invoices in one tap, or turn on autopay."}
+          </p>
+        )}
         {c?.has_saved_card ? (
           <>
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -154,7 +195,7 @@ function PortalBilling() {
                 </Button>
               </div>
             </div>
-            <Button size="sm" variant="ghost" onClick={() => setShowCard((v) => !v)}>
+            <Button size="sm" variant="ghost" onClick={toggleCard}>
               {showCard ? "Cancel" : "Replace card"}
             </Button>
           </>
@@ -163,7 +204,7 @@ function PortalBilling() {
             <div className="text-muted-foreground">
               Save a card for one-tap payments, or enable autopay.
             </div>
-            <Button size="sm" onClick={() => setShowCard((v) => !v)}>
+            <Button size="sm" onClick={toggleCard}>
               {showCard ? "Cancel" : "Add payment method"}
             </Button>
           </div>
@@ -173,6 +214,7 @@ function PortalBilling() {
             token={token}
             onDone={() => {
               setShowCard(false);
+              clearCardParam();
               clientQ.refetch();
             }}
           />
@@ -243,8 +285,7 @@ function PortalBilling() {
                       {/* Sales tax inside the total, only when there is some. */}
                       {(i.tax_cents ?? 0) > 0 && (
                         <span className="text-xs text-muted-foreground">
-                          includes {money(i.tax_cents)}{" "}
-                          {taxLineLabel(i.tax_label, i.tax_rate_bps)}
+                          includes {money(i.tax_cents)} {taxLineLabel(i.tax_label, i.tax_rate_bps)}
                         </span>
                       )}
                       <InvoiceStatusBadge status={i.status} />

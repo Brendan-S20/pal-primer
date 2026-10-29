@@ -542,8 +542,6 @@ export function ScheduleCalendar({
                 <button
                   onClick={() => onPickDay(d)}
                   className={`mb-1 flex w-full rounded px-1 text-left transition hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary ${
-                    isToday ? "bg-primary/10 text-primary" : ""
-                  } ${
                     isMonth
                       ? "min-h-[2.75rem] flex-1 flex-col items-center justify-center gap-0 md:mouse:min-h-0 md:flex-none md:flex-row md:items-baseline md:gap-1.5"
                       : "min-h-[2.75rem] items-center gap-1.5 md:mouse:min-h-0 md:flex-col md:items-start md:gap-0 md:border-b md:pb-1"
@@ -558,7 +556,25 @@ export function ScheduleCalendar({
                         {dt.toLocaleDateString(undefined, { weekday: "short" })}
                       </span>
                     )}
-                    <span className="font-medium">{dt.getDate()}</span>
+                    {/* Today used to tint this whole button `bg-primary/10`.
+                        With a near-black primary that is a flat grey bar
+                        across the top of today's column, which the audit read
+                        as an empty, broken row (#439). The ring on the column
+                        already marks today; the date itself is filled now, and
+                        a week says the word. */}
+                    <span
+                      className={
+                        isToday
+                          ? "-mx-0.5 rounded-full bg-primary px-1.5 font-semibold text-primary-foreground"
+                          : "font-medium"
+                      }
+                      data-today-date={isToday ? d : undefined}
+                    >
+                      {dt.getDate()}
+                    </span>
+                    {isToday && !isMonth && (
+                      <span className="text-3xs font-semibold uppercase text-primary">Today</span>
+                    )}
                   </span>
                   {list.length > 0 && (
                     <span

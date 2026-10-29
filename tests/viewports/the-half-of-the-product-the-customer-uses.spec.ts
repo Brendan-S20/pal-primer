@@ -85,6 +85,14 @@ const PAGES = [
   // window, and a fixture with no `completed_at` never drew it.
   { path: "/visits", label: "visits", proof: /Upcoming visits/i, also: /Request a re-clean/i },
   { path: "/billing", label: "billing", proof: /PAYMENT METHOD/i },
+  // The declined-card email's link (buildPortalCardLink): the card form is
+  // open on arrival, with the line above it that only this link draws.
+  {
+    path: "/billing?card=update",
+    label: "billing from the card link",
+    proof: /PAYMENT METHOD/i,
+    also: /Enter your (new )?card below/i,
+  },
   { path: "/property", label: "property", proof: /Your dogs on file/i },
   // The extra-cleanup card waits for its options, so a missing fixture draws
   // a page with the heading and no form -- "Send request" is the proof that

@@ -23,6 +23,7 @@ import {
   findExistingClient,
   importContentHash,
   importDisplayStatus,
+  IMPORT_NOT_FOUND,
   previewStats,
   propertyKey,
   refusalMessage,
@@ -897,8 +898,12 @@ export const getImportBatch = createServerFn({ method: "GET" })
       .select("*")
       .eq("id", data.batchId)
       .eq("organization_id", orgId)
-      .single();
+      .maybeSingle();
     if (be) throw new Error(be.message);
+    // A deleted batch, or one from another business, is an answer rather than
+    // an error (#434). `.single()` threw here, the query retried and the page
+    // said "Loading…" for good.
+    if (!batch) return { batch: null, rows: [], commitBlock: null, retryBlock: null };
     // Why Commit is not offered, when it is not: the same checks commitImport
     // makes, so the page never shows a button the server would refuse.
     let commitBlock: CommitBlock | null = null;
@@ -1195,9 +1200,9 @@ export const commitImport = createServerFn({ method: "POST" })
       .from("import_batches")
       .select("*")
       .eq("id", data.batchId)
-      .single();
+      .maybeSingle();
     if (bErr) throw new Error(bErr.message);
-    if (batch.organization_id !== orgId) throw new Error("Forbidden");
+    if (!batch || batch.organization_id !== orgId) throw new Error(IMPORT_NOT_FOUND);
     const refusal = commitRefusal(batch);
     if (refusal) throw new Error(refusalMessage(refusal));
     const twin = await findCommittedTwin(supabase, orgId, {

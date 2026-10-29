@@ -3,9 +3,12 @@
 // tests/a-walk-report-is-not-a-cleanup-email.test.tsx renders it beside the
 // current template with the same props: a pet-waste business's completion
 // email must not change by one character. Do not edit to match the template.
+// The one exception is shared chrome: OrgFooter was always imported from
+// _shared, and TenantHeader joins it (#577), so both sides render the same
+// header and footer and the comparison stays about the body.
 import * as React from "react";
 import { Body, Container, Head, Heading, Html, Preview, Text, Img } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact } from "@/lib/email-templates/_shared";
+import { styles, OrgFooter, type OrgContact, TenantHeader } from "@/lib/email-templates/_shared";
 import type { TemplateEntry } from "@/lib/email-templates/registry";
 
 interface Props extends OrgContact {
@@ -36,6 +39,7 @@ const VisitCompleted = ({
     <Preview>{orgName} completed today's visit</Preview>
     <Body style={styles.main}>
       <Container style={styles.container}>
+        <TenantHeader {...orgContact} orgName={orgName} />
         <Heading style={styles.h1}>Visit complete</Heading>
         <Text style={styles.text}>
           Hi {clientName}, {orgName} completed your visit
