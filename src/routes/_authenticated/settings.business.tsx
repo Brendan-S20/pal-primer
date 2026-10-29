@@ -12,6 +12,7 @@ import { useServiceLines } from "@/components/CommercialOnly";
 import { toast } from "sonner";
 import { useMyRole, usePermissions } from "@/hooks/useMyRole";
 import { StandardPricingCard } from "@/components/StandardPricingCard";
+import { FrequencyPricingCard } from "@/components/FrequencyPricingCard";
 import { reseedDemoData } from "@/lib/demo.functions";
 import { isDemoOrganization } from "@/lib/demo-org";
 import { getMyOrg } from "@/lib/org.functions";
@@ -150,8 +151,16 @@ function TimeZoneCard() {
 
 function PricingBaselineCard() {
   const { can } = usePermissions();
+  const { petWaste } = useServiceLines();
   if (!can("manage_pricing")) return null;
-  return <StandardPricingCard />;
+  // Schedule pricing is read for pet waste only (a walk costs the same at any
+  // cadence), so a business without the line is not asked about it.
+  return (
+    <>
+      <StandardPricingCard />
+      {petWaste && <FrequencyPricingCard />}
+    </>
+  );
 }
 
 function DemoDataCard() {
