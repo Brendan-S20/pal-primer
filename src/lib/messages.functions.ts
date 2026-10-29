@@ -121,13 +121,16 @@ export const sendSmsToClient = createServerFn({ method: "POST" })
     const fromNumber = sender.from;
 
     const { sendTwilioSms } = await import("@/lib/twilio.server");
+    const { brandedBody } = await import("@/lib/sms-brand");
+    // The business's name first, on what is sent and on what is logged.
+    const body = brandedBody(sender.brand, data.body);
     let sid: string | null = null;
     let status = "queued";
     let errorText: string | null = null;
     try {
       const res = await sendTwilioSms({
         to: client.primary_phone,
-        body: data.body,
+        body,
         from: sender.from ?? undefined,
         messagingServiceSid: sender.messagingServiceSid ?? undefined,
         credentials: sender.credentials,
@@ -147,7 +150,7 @@ export const sendSmsToClient = createServerFn({ method: "POST" })
         visit_id: data.visitId ?? null,
         staff_id: staff?.id ?? null,
         direction: "outbound",
-        body: data.body,
+        body,
         from_number: fromNumber,
         to_number: client.primary_phone,
         twilio_sid: sid,
@@ -291,13 +294,17 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
       .maybeSingle();
 
     const { sendTwilioSms } = await import("@/lib/twilio.server");
+    const { brandedBody } = await import("@/lib/sms-brand");
+    // "Detroit Doo: Hi Sam, ..." The business's name starts every text to
+    // its client (#538); the log carries the same words.
+    const sentBody = brandedBody(sender.brand, body);
     let sid: string | null = null;
     let status = "queued";
     let err: string | null = null;
     try {
       const r = await sendTwilioSms({
         to: destPhone,
-        body,
+        body: sentBody,
         from: sender.from ?? undefined,
         messagingServiceSid: sender.messagingServiceSid ?? undefined,
         credentials: sender.credentials,
@@ -314,7 +321,7 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
       visit_id: v.id,
       staff_id: staff?.id ?? null,
       direction: "outbound",
-      body,
+      body: sentBody,
       from_number: notifyFrom,
       to_number: destPhone,
       twilio_sid: sid,

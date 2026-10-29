@@ -113,6 +113,16 @@ async function measure(page: Page, label: string, width: number) {
 
 test.use({ hasTouch: true });
 
+/** The first wait in each test. Whichever test runs first meets a cold dev
+ *  server, and its first navigation pays for the whole signed-in shell's
+ *  SSR transform (playwright.config.ts: "the FIRST navigation pays for
+ *  dependency optimisation and the whole SSR transform"). That took 19.7 to
+ *  22.6s locally on 2026-10-29, straddling the 20s this used to allow, so the
+ *  360px case failed or passed by a few hundred milliseconds depending on how
+ *  big the shell was that day. 45s matches what other specs here allow a cold
+ *  first paint; every assertion after it keeps its short default. */
+const FIRST_PAINT = { timeout: 45_000 };
+
 for (const width of WIDTHS) {
   test(`a failed import says why and offers Try again at ${width}px`, async ({ page, context }) => {
     await installSignedInSession(context);
@@ -121,7 +131,7 @@ for (const width of WIDTHS) {
     await page.setViewportSize({ width, height: width < 768 ? 800 : 1100 });
     await page.goto(`/imports/${BATCH_ID}`);
     const alert = page.getByRole("alert").filter({ hasText: "This import did not finish." });
-    await expect(alert).toBeVisible({ timeout: 20_000 });
+    await expect(alert).toBeVisible(FIRST_PAINT);
     await expect(alert).toContainText(REASON);
     await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Start a fresh import" })).toBeVisible();
@@ -141,7 +151,7 @@ for (const width of WIDTHS) {
     await page.setViewportSize({ width, height: width < 768 ? 800 : 1100 });
     await page.goto(`/imports/${BATCH_ID}`);
     const alert = page.getByRole("alert").filter({ hasText: "This import did not finish." });
-    await expect(alert).toBeVisible({ timeout: 20_000 });
+    await expect(alert).toBeVisible(FIRST_PAINT);
     await expect(alert).toContainText(why);
     await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Start a fresh import" })).toBeVisible();

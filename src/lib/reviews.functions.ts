@@ -56,7 +56,11 @@ export const sendReviewRequest = createServerFn({ method: "POST" })
       const template =
         org.review_ask_template?.trim() ||
         `Hi {name}, thanks for choosing ${org.name ?? "us"}! If we did a great job, a quick review would mean the world: {link} Reply STOP to opt out.`;
-      const body = template.replace(/\{name\}/g, firstName).replace(/\{link\}/g, org.google_review_url);
+      const { brandedBody } = await import("@/lib/sms-brand");
+      const body = brandedBody(
+        sender.brand,
+        template.replace(/\{name\}/g, firstName).replace(/\{link\}/g, org.google_review_url),
+      );
       const fromNumber = sender.from;
 
       const { data: staff } = await supabase

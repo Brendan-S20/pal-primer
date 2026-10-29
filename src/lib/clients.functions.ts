@@ -1466,15 +1466,18 @@ export const endClientHold = createServerFn({ method: "POST" })
 // nobody had asked read as sendable. Consent is now a recorded fact with the
 // wording attached — see migration 20260805020000.
 
-/** The exact words a client agrees to. Exported because three things must not
- *  drift apart: what the client is shown, what gets stored as evidence, and
- *  what the public SMS policy page says a HoundStack client agreed to. A
- *  carrier asks for this verbatim. */
-export const SMS_CONSENT_TEXT =
-  "I agree to receive text messages from this business at the number provided " +
-  "about my appointments, visit updates and billing. Consent is optional and " +
-  "is not a condition of purchase. Message frequency varies. " +
-  "Msg & data rates may apply. Reply STOP to opt out, HELP for help.";
+/** The exact words a client agrees to, for the caller's business: they name
+ *  the business and carry its own Terms and Privacy links (#538). Built in
+ *  one place (lib/client-sms-consent) so what the office reads out, what the
+ *  portal and the booking link show, and what is stored as evidence cannot
+ *  drift apart. A carrier asks for it verbatim. */
+export const getClientSmsConsentWording = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const { orgClientSmsConsentWording } = await import("@/lib/client-sms-consent.server");
+    return orgClientSmsConsentWording(orgId);
+  });
 
 export const recordClientSmsConsent = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -1490,15 +1493,21 @@ export const recordClientSmsConsent = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!who) throw new Error("That client is not in your organization.");
 
-    // 'staff' — recorded on the client's behalf by someone in the office, which
-    // an audit must be able to tell apart from the client ticking a box.
+    const { orgClientSmsConsentWording, sendOptInConfirmation } = await import(
+      "@/lib/client-sms-consent.server"
+    );
+    const { text } = await orgClientSmsConsentWording(orgId);
+    // 'staff' — recorded on the client's behalf by someone in the office (a
+    // verbal yes, read from the script on the client page), which an audit
+    // must be able to tell apart from the client ticking a box.
     const { error } = await (context.supabase as any).rpc("record_client_sms_consent", {
       _client_id: data.clientId,
-      _text: SMS_CONSENT_TEXT,
+      _text: text,
       _source: "staff",
     });
     if (error) throw new Error(error.message);
-    return { ok: true, text: SMS_CONSENT_TEXT };
+    await sendOptInConfirmation(orgId, data.clientId);
+    return { ok: true, text };
   });
 
 /** How much of the book can actually be texted. Drives the banner, so the gap

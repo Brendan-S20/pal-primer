@@ -1068,6 +1068,8 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     receptionist_escalation: "حالات أحالها موظف الاستقبال الذكي",
     receptionist_booking: "زيارات حجزها أو طلبها موظف الاستقبال الذكي",
     inbound_sms: "رسائل نصية تحتاج إلى رد",
+    texting_approved: "تمت الموافقة على رقم الرسائل النصية",
+    texting_rejected: "تم رفض تسجيل الرسائل النصية",
     teammate_joined: "انضم زميل",
     field_collection: "نقد أو شيكات حُصّلت في الميدان",
     webhook_disabled: "توقف webhook بعد فشله",

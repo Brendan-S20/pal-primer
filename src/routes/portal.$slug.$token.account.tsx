@@ -7,7 +7,8 @@ import { Gift, Bell, CalendarClock, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { PushToggle } from "@/components/PushToggle";
 import { Switch } from "@/components/ui/switch";
-import { SMS_CONSENT_TEXT } from "@/lib/clients.functions";
+import { ClientSmsConsentWordingText } from "@/components/ClientSmsConsentWordingText";
+import type { ClientSmsConsentWording } from "@/lib/client-sms-consent";
 import { usePortalCtx, ReferralCard, EmptyBox, VacationHoldCard } from "@/lib/portal-ui";
 import { PORTAL_FREQUENCY_VALUES, cadenceLabel, frequencyLabel } from "@/lib/frequency-request";
 import {
@@ -219,7 +220,9 @@ function TextOptIn({ token, client }: { token: string; client: any }) {
   const copy = useLaunchCopy();
   const qc = useQueryClient();
   const { contextQ } = usePortalCtx();
-  const textsLive = (contextQ.data as { textsLive?: boolean } | undefined)?.textsLive === true;
+  const ctx = contextQ.data as { textsLive?: boolean; smsConsent?: ClientSmsConsentWording } | undefined;
+  const textsLive = ctx?.textsLive === true;
+  const wording = ctx?.smsConsent;
   const fn = useServerFn(portalSetSmsConsent);
   const optedIn = Boolean(client?.sms_consent_at) && !client?.sms_opt_out;
 
@@ -259,7 +262,11 @@ function TextOptIn({ token, client }: { token: string; client: any }) {
       </div>
       {/* The words themselves, not a link to them. This is what gets stored as
           the consent record, and what a carrier asks to see. */}
-      {!optedIn && <p className="mt-2 text-2xs text-muted-foreground">{SMS_CONSENT_TEXT}</p>}
+      {!optedIn && wording && (
+        <p className="mt-2 text-2xs text-muted-foreground">
+          <ClientSmsConsentWordingText wording={wording} />
+        </p>
+      )}
     </div>
   );
 }

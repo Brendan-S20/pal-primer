@@ -1008,6 +1008,8 @@ const en = {
     receptionist_escalation: "AI receptionist escalations",
     receptionist_booking: "Visits the AI receptionist booked or asked for",
     inbound_sms: "Texts needing a reply",
+    texting_approved: "Texting number approved",
+    texting_rejected: "Texting registration rejected",
     teammate_joined: "Teammate joined",
     field_collection: "Cash or checks collected in the field",
     webhook_disabled: "A webhook switched off after failing",

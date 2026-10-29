@@ -65,7 +65,7 @@ const NAV: NavEntry[] = [
   { label: "Import", to: "/imports", group: "Setup" },
   { label: "Skip rules", to: "/settings/skip-rules", group: "Settings" },
   { label: "Blackouts", to: "/settings/blackouts", group: "Settings" },
-  { label: "SMS", to: "/settings/sms", group: "Settings" },
+  { label: "Texting", to: "/settings/sms", group: "Settings" },
   { label: "AI receptionist", to: "/settings/ai-receptionist", group: "Settings" },
   { label: "Automation", to: "/settings/automation", group: "Settings" },
   { label: "Emails", to: "/settings/emails", group: "Settings" },

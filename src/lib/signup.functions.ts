@@ -282,12 +282,27 @@ export const getPublicSignupForm = createServerFn({ method: "GET" })
       // no service listed online speaks for that line rather than for pet
       // waste (#560). Not private: it is what the page sells.
       lines: serviceLinesOrDefault(org?.service_lines),
+      // The texting opt-in under Phone (#538): this business's name and its
+      // own Terms and Privacy. Unticked, optional, never needed to book.
+      smsConsent: await orgSmsConsentOrNull(found.id),
       serviceArea,
       services,
       serviceLines,
       extras,
     };
   });
+
+/** The consent wording for the booking link, or null when it cannot be read
+ *  (the box is then not offered; the page still loads). */
+async function orgSmsConsentOrNull(orgId: string) {
+  try {
+    const { orgClientSmsConsentWording } = await import("@/lib/client-sms-consent.server");
+    return await orgClientSmsConsentWording(orgId);
+  } catch (e) {
+    console.error("signup texting consent wording lookup failed", orgId, e);
+    return null;
+  }
+}
 
 /** What a visitor reads when the service they named is not for sale online:
  *  another business's, a deactivated one, or one still Coming soon. */
@@ -669,10 +684,26 @@ export const signupCheckoutSchema = quoteSchema.extend({
     .string()
     .regex(/^\d{2}:\d{2}$/)
     .optional(),
+  // The texting opt-in (#538): true only when the visitor ticked the box.
+  // Never required. The wording stored is the server's, not the browser's.
+  sms_opt_in: z.boolean().optional(),
   // The spam filters, as the quote request sends them (public-form-guard.ts).
   [HONEYPOT_FIELD]: z.unknown().optional(),
   [ELAPSED_FIELD]: z.unknown().optional(),
 });
+
+/** The consent columns for a signup request: the business's own wording and
+ *  the number it covers, only when the box was ticked and a phone given. */
+async function bookingSmsConsent(
+  orgId: string,
+  data: { sms_opt_in?: boolean; phone?: string },
+): Promise<{ sms_consent_text?: string; sms_consent_phone?: string }> {
+  const phone = (data.phone ?? "").trim();
+  if (!data.sms_opt_in || !phone) return {};
+  const { orgClientSmsConsentWording } = await import("@/lib/client-sms-consent.server");
+  const { text } = await orgClientSmsConsentWording(orgId);
+  return { sms_consent_text: text, sms_consent_phone: phone };
+}
 
 /** The business's choices for the first-visit questions, read with the
  *  service role. A lookup that fails is the defaults (every question
@@ -907,6 +938,9 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
         name: data.name,
         email: data.email.toLowerCase(),
         phone: data.phone || null,
+        // What the visitor agreed to and for which number, carried to the
+        // client the payment webhook creates (provisionSignup).
+        ...(await bookingSmsConsent(q.organization_id, data)),
         street: data.street,
         city: data.city || null,
         region: data.region || null,

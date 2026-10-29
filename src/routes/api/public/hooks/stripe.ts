@@ -458,6 +458,36 @@ async function provisionSignup(
       })
       .eq("id", signupRequestId);
 
+    // The texting opt-in from the booking link (#538), recorded with the words
+    // the visitor was shown, as source 'booking'. Only for the number they
+    // ticked it for: an existing client whose number on file is different
+    // has not agreed to texts at that number. Best-effort: a failure here
+    // never undoes a paid signup, and no consent means no text.
+    if (sr.sms_consent_text && sr.sms_consent_phone) {
+      try {
+        const { data: onFile } = await supabaseAdmin
+          .from("clients")
+          .select("primary_phone")
+          .eq("id", client.id)
+          .maybeSingle();
+        const digits = (p: string | null | undefined) => (p ?? "").replace(/\D/g, "");
+        if (onFile?.primary_phone && digits(onFile.primary_phone) === digits(sr.sms_consent_phone)) {
+          const { error: consentErr } = await (supabaseAdmin as any).rpc("record_client_sms_consent", {
+            _client_id: client.id,
+            _text: sr.sms_consent_text,
+            _source: "booking",
+          });
+          if (consentErr) console.error("booking texting consent not recorded", signupRequestId, consentErr.message);
+          else {
+            const { sendOptInConfirmation } = await import("@/lib/client-sms-consent.server");
+            await sendOptInConfirmation(sr.organization_id, client.id);
+          }
+        }
+      } catch (e) {
+        console.error("booking texting consent not recorded", signupRequestId, (e as Error).message);
+      }
+    }
+
     // The lead this signup wrote (signup.functions.ts, recordSignupLead) is
     // now a client: Leads shows it as "Started service online" with Open
     // client, rather than as somebody still waiting for a call. Through the
@@ -1163,12 +1193,16 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                         c.primary_phone
                       ) {
                         const { sendTwilioSms } = await import("@/lib/twilio.server");
+                        const { brandedBody } = await import("@/lib/sms-brand");
                         const { buildPortalLink } = await import("@/lib/portal-links.server");
                         const url = await buildPortalLink(
                           inv.organization_id,
                           c.portal_token as string | null,
                         );
-                        const body = `Hi ${c.display_name}, your card on file was declined. Please update your payment method: ${url}`;
+                        const body = brandedBody(
+                          sender.brand,
+                          `Hi ${c.display_name}, your card on file was declined. Please update your payment method: ${url}`,
+                        );
                         const r = await sendTwilioSms({
                           to: c.primary_phone,
                           body,

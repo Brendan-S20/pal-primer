@@ -7,20 +7,21 @@ import { rowCanTextClients } from "@/lib/twilio-credentials.server";
 // Twilio settings after the BYOK retirement (IMP-9).
 //
 // setOrgTwilioSettings and clearOrgTwilioSettings are gone: a tenant no longer
-// pastes their own Account SID and Auth Token. Texting runs on a per-tenant
-// Twilio SUBACCOUNT under HoundStack's 10DLC brand (Q-8), which HoundStack
-// provisions.
+// pastes their own Account SID and Auth Token. Texting runs on one subaccount
+// per business, registered in that business's own name (toll-free
+// verification by default), which HoundStack provisions (#538).
 //
 // org_twilio_credentials STAYS, and the read below stays with it. This is the
 // difference from the AI side, where the equivalent table became dead: a
-// subaccount still has its own SID and auth token, so the row is still real —
-// it is simply written by us during provisioning rather than by the customer.
-// If anything the encryption on that column matters more now, because the
-// credential is one we are responsible for across every tenant.
+// subaccount still has its own SID and auth token, so the row is still real.
+// It is written by public.activate_org_texting when the business's toll-free
+// verification is approved, never by the customer. If anything the encryption
+// on that column matters more now, because the credential is one we are
+// responsible for across every tenant.
 //
-// Provisioning is BUILD-3, which is in the 10DLC compliance queue. Until it
-// clears, this reports honestly that conversational texting is not yet
-// available rather than offering a form that leads nowhere.
+// Settings → Texting reads lib/texting-registration.functions, which reports
+// the registration's status as well. This read is the credential side only:
+// whether the row can send, and the masked hint, never the token.
 
 export const getOrgTwilioSettings = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])

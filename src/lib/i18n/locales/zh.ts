@@ -955,6 +955,8 @@ const zh: TranslationsWithPlurals<"other"> = {
     receptionist_escalation: "AI 接待员转交的事项",
     receptionist_booking: "AI 接待员预约或申请的上门服务",
     inbound_sms: "待回复的短信",
+    texting_approved: "短信号码已获批准",
+    texting_rejected: "短信注册被拒绝",
     teammate_joined: "有同事加入",
     field_collection: "现场收取的现金或支票",
     webhook_disabled: "Webhook 因失败已关闭",

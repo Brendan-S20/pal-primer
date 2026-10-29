@@ -17,14 +17,15 @@
  * questions arrive in: can I text them, why not, and what do I do about it.
  */
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Check, MessageSquareOff, ShieldCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { SMS_CONSENT_TEXT, recordClientSmsConsent } from "@/lib/clients.functions";
+import { getClientSmsConsentWording, recordClientSmsConsent } from "@/lib/clients.functions";
+import { ClientSmsConsentWordingText } from "@/components/ClientSmsConsentWordingText";
 import { formatDay, formatPhone } from "@/lib/format";
 import { useClientTexting } from "@/hooks/useClientTexting";
 
@@ -38,6 +39,14 @@ export function TextingConsentPanel({ client }: { client: any }) {
   // what the first text will be checked against. But "Can be texted" and
   // "You can text this client now" are not true until it can.
   const texting = useClientTexting();
+  // The wording names this business and links its own Terms and Privacy
+  // (#538). The server stores the same string when consent is recorded.
+  const wordingFn = useServerFn(getClientSmsConsentWording);
+  const wording = useQuery({
+    queryKey: ["client-sms-consent-wording"],
+    queryFn: () => wordingFn(),
+    staleTime: 5 * 60_000,
+  });
 
   const record = useMutation({
     mutationFn: () => recordFn({ data: { clientId: client.id } }),
@@ -139,11 +148,12 @@ export function TextingConsentPanel({ client }: { client: any }) {
           <div className="text-xs font-medium">Record consent you already have</div>
           <p className="text-2xs text-muted-foreground">
             Only if this client has actually agreed: in person, on a signed service agreement,
-            or over the phone. This is stored as staff-recorded and is auditable. If you are not
+            or over the phone. On the phone, read them the words below and record it only if
+            they say yes. This is stored as staff-recorded and is auditable. If you are not
             sure, send them their portal link and let them opt in themselves.
           </p>
           <blockquote className="rounded border-l-2 border-muted-foreground/30 bg-muted/40 p-2 text-2xs italic">
-            {SMS_CONSENT_TEXT}
+            {wording.data ? <ClientSmsConsentWordingText wording={wording.data} /> : "Loading…"}
           </blockquote>
           {/* An unticked-by-default attestation, not a bare button. The whole
               point of the consent record is that somebody stands behind it;
@@ -162,7 +172,7 @@ export function TextingConsentPanel({ client }: { client: any }) {
           </label>
           <Button
             size="sm"
-            disabled={!attested || record.isPending}
+            disabled={!attested || record.isPending || !wording.data}
             onClick={() => record.mutate()}
           >
             <Check className="mr-1 h-3.5 w-3.5 shrink-0" />

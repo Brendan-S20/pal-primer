@@ -232,13 +232,15 @@ async function trySms(p: {
   const from = sender.from;
 
   const { sendTwilioSms } = await import("@/lib/twilio.server");
+  const { brandedBody } = await import("@/lib/sms-brand");
+  const body = brandedBody(sender.brand, p.body);
   let sid: string | null = null;
   let status = "queued";
   let err: string | null = null;
   try {
     const r = await sendTwilioSms({
       to: p.destPhone,
-      body: p.body,
+      body,
       from: sender.from ?? undefined,
       messagingServiceSid: sender.messagingServiceSid ?? undefined,
       credentials: sender.credentials,
@@ -255,7 +257,7 @@ async function trySms(p: {
     visit_id: p.visit.id,
     staff_id: p.staffId,
     direction: "outbound",
-    body: p.body,
+    body,
     from_number: from,
     to_number: p.destPhone,
     twilio_sid: sid,

@@ -195,6 +195,14 @@ platform console can see how often the free public router fails us. Written by
 the service role; there is no tenant-side reader, so there is nothing to open
 it for. The advisor count will read 11 once it is applied.
 
+A twelfth arrives with 20261029160000 (#538, not yet applied):
+`org_texting_registrations`, each business's Twilio subaccount, business
+profile, number and toll-free verification status. Read and written only by
+server code on the service role (Settings, Texting and the ten-minute status
+poll); the browser gets the owner's own details and the last four digits of
+the EIN, never a SID. Like every table since 20261002010000 it carries the
+two-step RESTRICTIVE policy, so the advisor will not list it as policy-less.
+
 **It did not, and the reason is #302, not a regression.** On 2026-10-04 the
 advisor's `rls_enabled_no_policy` lists one table, and it is none of these
 eleven: `reference.zip_centroids`, the Census ZIP centres from 20261001120000,

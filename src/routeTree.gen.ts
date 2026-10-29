@@ -156,6 +156,7 @@ import { Route as ApiPublicHooksWeeklyDigestRouteImport } from './routes/api/pub
 import { Route as ApiPublicHooksWebhookDeliveriesRouteImport } from './routes/api/public/hooks/webhook-deliveries'
 import { Route as ApiPublicHooksTwilioVoiceRouteImport } from './routes/api/public/hooks/twilio-voice'
 import { Route as ApiPublicHooksTwilioRouteImport } from './routes/api/public/hooks/twilio'
+import { Route as ApiPublicHooksTextingStatusRouteImport } from './routes/api/public/hooks/texting-status'
 import { Route as ApiPublicHooksStripeRouteImport } from './routes/api/public/hooks/stripe'
 import { Route as ApiPublicHooksQboCallbackRouteImport } from './routes/api/public/hooks/qbo-callback'
 import { Route as ApiPublicHooksPlatformStripeRouteImport } from './routes/api/public/hooks/platform-stripe'
@@ -950,6 +951,12 @@ const ApiPublicHooksTwilioRoute = ApiPublicHooksTwilioRouteImport.update({
   path: '/api/public/hooks/twilio',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicHooksTextingStatusRoute =
+  ApiPublicHooksTextingStatusRouteImport.update({
+    id: '/api/public/hooks/texting-status',
+    path: '/api/public/hooks/texting-status',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksStripeRoute = ApiPublicHooksStripeRouteImport.update({
   id: '/api/public/hooks/stripe',
   path: '/api/public/hooks/stripe',
@@ -1151,6 +1158,7 @@ export interface FileRoutesByFullPath {
   '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
+  '/api/public/hooks/texting-status': typeof ApiPublicHooksTextingStatusRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/webhook-deliveries': typeof ApiPublicHooksWebhookDeliveriesRoute
@@ -1300,6 +1308,7 @@ export interface FileRoutesByTo {
   '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
+  '/api/public/hooks/texting-status': typeof ApiPublicHooksTextingStatusRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/webhook-deliveries': typeof ApiPublicHooksWebhookDeliveriesRoute
@@ -1460,6 +1469,7 @@ export interface FileRoutesById {
   '/api/public/hooks/platform-stripe': typeof ApiPublicHooksPlatformStripeRoute
   '/api/public/hooks/qbo-callback': typeof ApiPublicHooksQboCallbackRoute
   '/api/public/hooks/stripe': typeof ApiPublicHooksStripeRoute
+  '/api/public/hooks/texting-status': typeof ApiPublicHooksTextingStatusRoute
   '/api/public/hooks/twilio': typeof ApiPublicHooksTwilioRoute
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/webhook-deliveries': typeof ApiPublicHooksWebhookDeliveriesRoute
@@ -1620,6 +1630,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/platform-stripe'
     | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
+    | '/api/public/hooks/texting-status'
     | '/api/public/hooks/twilio'
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/webhook-deliveries'
@@ -1769,6 +1780,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/platform-stripe'
     | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
+    | '/api/public/hooks/texting-status'
     | '/api/public/hooks/twilio'
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/webhook-deliveries'
@@ -1928,6 +1940,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/platform-stripe'
     | '/api/public/hooks/qbo-callback'
     | '/api/public/hooks/stripe'
+    | '/api/public/hooks/texting-status'
     | '/api/public/hooks/twilio'
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/webhook-deliveries'
@@ -1990,6 +2003,7 @@ export interface RootRouteChildren {
   ApiPublicHooksPlatformStripeRoute: typeof ApiPublicHooksPlatformStripeRoute
   ApiPublicHooksQboCallbackRoute: typeof ApiPublicHooksQboCallbackRoute
   ApiPublicHooksStripeRoute: typeof ApiPublicHooksStripeRoute
+  ApiPublicHooksTextingStatusRoute: typeof ApiPublicHooksTextingStatusRoute
   ApiPublicHooksTwilioRoute: typeof ApiPublicHooksTwilioRoute
   ApiPublicHooksTwilioVoiceRoute: typeof ApiPublicHooksTwilioVoiceRoute
   ApiPublicHooksWebhookDeliveriesRoute: typeof ApiPublicHooksWebhookDeliveriesRoute
@@ -3027,6 +3041,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksTwilioRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/texting-status': {
+      id: '/api/public/hooks/texting-status'
+      path: '/api/public/hooks/texting-status'
+      fullPath: '/api/public/hooks/texting-status'
+      preLoaderRoute: typeof ApiPublicHooksTextingStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/stripe': {
       id: '/api/public/hooks/stripe'
       path: '/api/public/hooks/stripe'
@@ -3468,6 +3489,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHooksPlatformStripeRoute: ApiPublicHooksPlatformStripeRoute,
   ApiPublicHooksQboCallbackRoute: ApiPublicHooksQboCallbackRoute,
   ApiPublicHooksStripeRoute: ApiPublicHooksStripeRoute,
+  ApiPublicHooksTextingStatusRoute: ApiPublicHooksTextingStatusRoute,
   ApiPublicHooksTwilioRoute: ApiPublicHooksTwilioRoute,
   ApiPublicHooksTwilioVoiceRoute: ApiPublicHooksTwilioVoiceRoute,
   ApiPublicHooksWebhookDeliveriesRoute: ApiPublicHooksWebhookDeliveriesRoute,

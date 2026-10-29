@@ -28,16 +28,20 @@ import type { TwilioCredentials } from "@/lib/twilio.server";
 // ── SUBACCOUNTS ───────────────────────────────────────────────────────────
 //
 // IMP-9: these used to be credentials the CUSTOMER pasted in (BYOK). They are
-// now credentials HOUNDSTACK creates and owns, one subaccount per tenant under
-// our 10DLC brand (Q-8). The read is unchanged (a subaccount has a SID and an
-// auth token like any other account) but who is responsible for the secret
-// flipped, which is why the encryption on that column matters more now, not
-// less: one key protects a credential for every tenant rather than each tenant's
-// own.
+// now credentials HOUNDSTACK creates and owns: one subaccount per business,
+// registered in that business's own name (toll-free verification by default).
+// The read is unchanged (a subaccount has a SID and an auth token like any
+// other account) but who is responsible for the secret flipped, which is why
+// the encryption on that column matters more now, not less: one key protects
+// a credential for every tenant rather than each tenant's own.
 //
-// Provisioning is BUILD-3 and sits in the carrier compliance queue, so no row
-// exists yet and this returns null for every org today. Which means, today, no
-// business's client is texted by anything in this codebase.
+// Provisioning is BUILD-3 (#538, lib/twilio-provisioning.server). The owner
+// files the business's details in Settings, HoundStack creates the subaccount,
+// the business profile, the toll-free number and its verification, and the
+// row below is written ONLY when Twilio approves that verification, by
+// public.activate_org_texting, in the same transaction as
+// organizations.sms_from_number. A number still in review has no row, so
+// nothing here can send from it.
 
 export type TenantTwilio = {
   accountSid: string;
@@ -46,8 +50,8 @@ export type TenantTwilio = {
   messagingServiceSid: string | null;
 };
 
-/** The org's provisioned Twilio subaccount, or null when one hasn't been
- *  provisioned yet (which is every org until BUILD-3 clears 10DLC). Also read
+/** The org's provisioned Twilio subaccount, or null when its toll-free
+ *  verification has not been approved yet. Also read
  *  by inbound webhook auth, which needs the token and nothing else. */
 export async function resolveOrgTwilioConfig(orgId: string): Promise<TenantTwilio | null> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -71,6 +75,8 @@ export async function resolveOrgTwilioConfig(orgId: string): Promise<TenantTwili
  *  number or messaging service. */
 export type EndCustomerSmsSender = {
   credentials: Extract<TwilioCredentials, { mode: "direct" }>;
+  /** The business's own name, which every text to its client starts with. */
+  brand: string;
   from: string | null;
   messagingServiceSid: string | null;
 };
@@ -98,11 +104,25 @@ export async function endCustomerSmsSender(orgId: string): Promise<EndCustomerSm
     })
   )
     return null;
+  const brand = await businessName(orgId);
   return {
-    credentials: { mode: "direct", accountSid: tenant.accountSid, authToken: tenant.authToken },
+    credentials: { mode: "direct", accountSid: tenant.accountSid, authToken: tenant.authToken, brand },
+    brand,
     from: tenant.from,
     messagingServiceSid: tenant.messagingServiceSid,
   };
+}
+
+/** The name a business's texts start with: what it calls itself in the
+ *  product (organizations.name), which STOP and HELP replies already use. */
+async function businessName(orgId: string): Promise<string> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data } = await (supabaseAdmin as any)
+    .from("organizations")
+    .select("name")
+    .eq("id", orgId)
+    .maybeSingle();
+  return ((data?.name as string | null) ?? "").trim();
 }
 
 /** The rule `endCustomerSmsSender` applies, on the raw row: a subaccount with
@@ -129,9 +149,8 @@ export function rowCanTextClients(
  * yes or no and the screens that ask (Messages, the client page, Settings,
  * My Day) never need the secret.
  *
- * False for every business until per-business numbers clear carrier
- * registration. When a subaccount is provisioned for one, that business's
- * texting controls light up and nobody else's do.
+ * False until the business's own toll-free verification is approved. When
+ * it is, that business's texting controls light up and nobody else's do.
  */
 export async function orgCanTextClients(orgId: string): Promise<boolean> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");

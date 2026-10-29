@@ -74,7 +74,7 @@ const TAB_GROUPS: TabGroup[] = [
   {
     title: "Communications",
     tabs: [
-      { label: "SMS", to: "/settings/sms" },
+      { label: "Texting", to: "/settings/sms" },
       { label: "Emails", to: "/settings/emails" },
       { label: "AI receptionist", to: "/settings/ai-receptionist" },
       { label: "Automation", to: "/settings/automation" },

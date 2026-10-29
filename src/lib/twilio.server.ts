@@ -10,6 +10,8 @@
 // `credentials` out, so an end-customer text reached the platform account by
 // omission, which is the opposite of what the toll-free filing says. See
 // lib/twilio-credentials.server.
+import { brandedBody } from "@/lib/sms-brand";
+
 const GATEWAY_URL = "https://connector-gateway.lovable.dev/twilio";
 const TWILIO_API = "https://api.twilio.com/2010-04-01";
 
@@ -25,7 +27,11 @@ export type TwilioCredentials =
    *  decoration: it is the declaration that the person texted signs in to
    *  HoundStack, and the ratchet test allowlists every place that makes it. */
   | { mode: "gateway"; purpose: "account_holder" }
-  | { mode: "direct"; accountSid: string; authToken: string };
+  /** `brand` is the business's own name. Every text to a business's client
+   *  starts with it (carrier rules, and #538): `sendTwilioSms` puts it on the
+   *  front of any body that does not already start with it. */
+  | { mode: "direct"; accountSid: string; authToken: string; brand: string };
+
 
 export async function sendTwilioSms(params: {
   to: string;
@@ -44,7 +50,12 @@ export async function sendTwilioSms(params: {
     throw new Error("Twilio send requires a From number or a Messaging Service SID");
   }
 
-  const form = new URLSearchParams({ To: params.to, Body: params.body });
+  // The business's name first on every text to its client, whatever the
+  // caller built. Callers that log the body brand it themselves first with
+  // `brandedBody`, so the log and the handset read the same.
+  const body =
+    creds.mode === "direct" && creds.brand ? brandedBody(creds.brand, params.body) : params.body;
+  const form = new URLSearchParams({ To: params.to, Body: body });
   if (params.messagingServiceSid) form.set("MessagingServiceSid", params.messagingServiceSid);
   else if (params.from) form.set("From", params.from);
 

@@ -499,11 +499,16 @@ describe("a database can actually be built from these files", () => {
       // late-check joined on 2026-10-07 (20261007160000). Every five minutes,
       // and it only makes a request when some open stop's window is near. It
       // too only WARNS about itself.
+      //
+      // texting-status joined on 2026-10-29 (20261029160000, #538). Every ten
+      // minutes, and only while a business's toll-free verification is with
+      // Twilio. It only WARNS about itself as well.
     ).toEqual([
       "deliver-webhooks",
       "late-check",
       "prune-road-legs",
       "run-billing-cycles",
+      "texting-status",
       "weekly-digest",
     ]);
     expect([...unschedulable]).toEqual([]);

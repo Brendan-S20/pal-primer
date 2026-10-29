@@ -810,6 +810,7 @@ async function sendOverdueReminders(
   const byId = new Map((clients ?? []).map((c: any) => [c.id, c]));
 
   const { sendTwilioSms } = await import("@/lib/twilio.server");
+  const { brandedBody } = await import("@/lib/sms-brand");
   const { buildPortalLink, ensureOrgSlug } = await import("@/lib/portal-links.server");
   const slug = await ensureOrgSlug(orgId).catch(() => null);
   let sent = 0;
@@ -840,7 +841,10 @@ async function sendOverdueReminders(
     }
     const dollars = ((inv.total_cents ?? 0) / 100).toFixed(2);
     const link = await buildPortalLink(orgId, client.portal_token, slug);
-    const body = `Hi ${client.display_name}, this is a friendly reminder that invoice for $${dollars} is past due. Pay: ${link}`;
+    const body = brandedBody(
+      sender.brand,
+      `Hi ${client.display_name}, this is a friendly reminder that invoice for $${dollars} is past due. Pay: ${link}`,
+    );
     try {
       const res = await sendTwilioSms({
         to: client.primary_phone,

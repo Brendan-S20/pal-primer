@@ -717,10 +717,12 @@ export const completeVisit = createServerFn({ method: "POST" })
           const template =
             (o.review_ask_template && String(o.review_ask_template).trim()) ||
             `Hi {name}, thanks for choosing ${o.name ?? "us"}! If we did a great job, a quick review would mean the world: {link} Reply STOP to opt out.`;
-          const body = template
-            .replace(/\{name\}/g, firstName)
-            .replace(/\{link\}/g, o.google_review_url);
           const { sendTwilioSms } = await import("@/lib/twilio.server");
+          const { brandedBody } = await import("@/lib/sms-brand");
+          const body = brandedBody(
+            sender.brand,
+            template.replace(/\{name\}/g, firstName).replace(/\{link\}/g, o.google_review_url),
+          );
           try {
             // The send and its record are one piece of work, so a text that
             // lands after the deadline is still logged and still marks the

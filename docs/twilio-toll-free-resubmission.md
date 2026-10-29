@@ -168,10 +168,17 @@ arrives on the business's own number and is handled on that business's path
 
 ### When customer texts come back
 
-When per-business numbers clear carrier registration. Each business then gets
-a subaccount under HoundStack's 10DLC brand, `endCustomerSmsSender` stops
-returning null for it, and every message in the table above goes out from that
-business's own number with no further code change. Customer texting is not a
+When each business's own number is approved. The model is one subaccount per
+business, registered in that business's own name (toll-free verification by
+default). The owner files the business's details in Settings, Texting;
+HoundStack creates the subaccount, a secondary business profile, a toll-free
+number in that subaccount and its verification in the business's legal name
+(`lib/twilio-provisioning.server.ts`, #538). When Twilio approves it,
+`public.activate_org_texting` writes the encrypted credential and the number
+together, `endCustomerSmsSender` stops returning null for that business, and
+every message in the table above goes out from that business's own number with
+no further code change. 10DLC (Low Volume Standard) is a later option, not the
+default. Customer texting is not a
 use case of the toll-free number at any point, before or after.
 
 ### What keeps it that way
@@ -339,8 +346,10 @@ The visit reminder in `messages.functions.ts` reads "Hi Jane, this is a reminder
 your visit is scheduled for Tue Sep 2. Reply STOP to opt out." without naming
 the business. It no longer leaves the toll-free number at all (see "What a
 business's client gets instead"), so it is not part of this filing. It still
-matters for the per-business 10DLC registration later: prefix `org.name`
-("Acme Pet Waste: hi Jane, …") before those numbers go live.
+matters for each business's own registration, so since #538 every text to a
+business's client starts with the business's name ("Acme Pet Waste: Hi Jane,
+…"): `brandedBody` in `lib/twilio.server.ts`, applied by every sender and
+enforced again by `sendTwilioSms` for a subaccount.
 
 ### Keep consent wording and evidence together
 
@@ -376,7 +385,8 @@ it)". Under the earlier plan, a business's clients would have been texted from
 HoundStack's number, and the end business would have been the pet-care
 company, not HoundStack. Now the end business and the sender are the same:
 HoundStack texts its own account holders, and the opt-in names HoundStack. The
-business's clients get texts only from that business's own number, under
-per-business 10DLC registration, where each business is its own sender. That is
+business's clients get texts only from that business's own number: one
+subaccount per business, registered in that business's own name (toll-free
+verification by default), where each business is its own sender. That is
 the split this section used to recommend, and since #341 it is what the code
 does.
