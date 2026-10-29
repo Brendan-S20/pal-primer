@@ -22,6 +22,11 @@
 //   4. Longest postal prefix among equal candidates, then id so the result
 //      is deterministic regardless of caller sort order.
 // Mirrored in the public_quote RPC (ZIP levels only — signups have no point).
+//
+// A zone that is turned off (`enabled === false`, #449) never matches here or
+// in public_quote. A row read without the column (undefined) counts as on, so
+// a caller that forgets to select it behaves as it did before the column
+// existed rather than matching nothing.
 
 export interface ZoneMatchFields {
   id: string;
@@ -35,6 +40,13 @@ export interface ZoneMatchFields {
   center_longitude?: number | string | null;
   radius_meters?: number | null;
   drive_time_minutes?: number | null;
+  /** False when an owner has turned the zone off (#449). */
+  enabled?: boolean | null;
+}
+
+/** On unless explicitly turned off. */
+export function zoneIsOn(z: { enabled?: boolean | null }): boolean {
+  return z.enabled !== false;
 }
 
 export interface ZoneMatchInput {
@@ -88,6 +100,7 @@ export function matchZone<Z extends ZoneMatchFields>(zones: Z[], input: ZoneMatc
   const acct = input.accountType ?? null;
 
   const best = zones
+    .filter(zoneIsOn)
     .map((z) => {
       const mode = (z.geo_match_mode ?? "zip") as string;
       // A zone can match on several criteria at once (e.g. a radius zone

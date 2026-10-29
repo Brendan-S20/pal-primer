@@ -274,7 +274,11 @@ describe("no trigger function is executable by a signed-in user", () => {
     // 92 -> 93 (20261029150000, a service says how it is started online,
     // #574): tg_services_public_booking_mode, the default mode for a service
     // inserted without one. Revoked from PUBLIC, anon and authenticated there.
-    expect(triggerFunctions().size).toBe(93);
+    //
+    // 93 -> 94 (20261029180000, a zone can be turned off, #449):
+    // tg_zones_enabled_owner_only, which refuses anyone but an owner turning a
+    // zone on or off. Revoked from PUBLIC, anon and authenticated there.
+    expect(triggerFunctions().size).toBe(94);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

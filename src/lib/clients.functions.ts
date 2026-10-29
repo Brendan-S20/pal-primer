@@ -757,7 +757,7 @@ export const getInternalQuote = createServerFn({ method: "POST" })
     const { data: zones, error: zErr } = await supabase
       .from("zones")
       .select(
-        "id, name, priority, account_type, postal_prefix, zip_codes, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, area_max_charge_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
+        "id, name, priority, account_type, postal_prefix, zip_codes, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, area_max_charge_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, enabled",
       )
       .eq("organization_id", orgId);
     if (zErr) throw new Error(zErr.message);

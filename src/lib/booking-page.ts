@@ -25,6 +25,8 @@ export const NEUTRAL_PREVIEW_IMAGE = "/booking-preview.png";
 export type PublicZoneArea = {
   zip_codes?: readonly string[] | null;
   postal_prefix?: string | null;
+  /** False for a zone the owner turned off (#449); it serves nobody new. */
+  enabled?: boolean | null;
 };
 
 function joinAnd(items: readonly string[]): string {
@@ -38,7 +40,8 @@ const ZIPS_SHOWN = 4;
 /** "Serving ZIP codes 78701, 78702 and 78704", from the business's zones.
  *  Null when no zone lists a ZIP or a prefix (a radius drawn on a map with
  *  no ZIPs filled in): the line hides rather than saying "Serving" nothing. */
-export function serviceAreaSummary(zones: readonly PublicZoneArea[]): string | null {
+export function serviceAreaSummary(all: readonly PublicZoneArea[]): string | null {
+  const zones = all.filter((z) => z.enabled !== false);
   const zips = [
     ...new Set(
       zones

@@ -41,7 +41,7 @@
 // only find manual overrides. The question here is what the matcher says NOW,
 // so the only way to answer it is to run the matcher now.
 
-import { matchZone, type ZoneMatchFields } from "@/lib/zone-match";
+import { matchZone, zoneIsOn, type ZoneMatchFields } from "@/lib/zone-match";
 
 export interface CoverageZone extends ZoneMatchFields {
   id: string;
@@ -95,9 +95,25 @@ export function computeZoneCoverage(
   properties: CoverageProperty[],
 ): ZoneCoverage {
   const perZone = new Map<string, { zoneId: string; zoneName: string; wouldMatch: number }>();
-  for (const z of zones) perZone.set(z.id, { zoneId: z.id, zoneName: z.name, wouldMatch: 0 });
+  // A zone that is turned off (#449) is left out of the per-zone counts: it
+  // matching nobody is the point, not a problem to report.
+  for (const z of zones.filter(zoneIsOn))
+    perZone.set(z.id, { zoneId: z.id, zoneName: z.name, wouldMatch: 0 });
+  const offZones = new Map(zones.filter((z) => !zoneIsOn(z)).map((z) => [z.id, z.name]));
 
   const rows: CoverageRow[] = properties.map((p) => {
+    // A property in a zone that is turned off keeps it on purpose, and
+    // re-running detection leaves it there (zones-redetect.server.ts). So it
+    // agrees with the rules rather than being an orphan to clear.
+    if (p.storedZoneId && offZones.has(p.storedZoneId)) {
+      return {
+        propertyId: p.id,
+        storedZoneId: p.storedZoneId,
+        matchedZoneId: p.storedZoneId,
+        matchedZoneName: offZones.get(p.storedZoneId) ?? null,
+        verdict: "agrees" as const,
+      };
+    }
     const m = matchZone(zones, {
       postalCode: p.postalCode,
       point: p.point,

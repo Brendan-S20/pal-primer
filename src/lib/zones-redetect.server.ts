@@ -15,6 +15,12 @@
 // properties' effective zone. Every change to the effective zone_id writes a
 // zone.reassigned activity entry (client timeline) so the move is explainable
 // later, mirroring the manual-override path in updateProperty.
+//
+// #449: a zone that is turned off never matches (matchZone skips it), but a
+// property already IN it is left exactly as it is. Its client keeps their
+// schedule and price, and turning the zone back on finds the property still
+// there. Properties anywhere else are re-detected as usual, so turning a zone
+// on also pulls in addresses that were added while it was off.
 
 import { matchZone } from "@/lib/zone-match";
 
@@ -26,10 +32,15 @@ export async function redetectZonesForOrg(
   const { data: zones, error: zErr } = await supabase
     .from("zones")
     .select(
-      "id, name, priority, account_type, postal_prefix, zip_codes, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
+      "id, name, priority, account_type, postal_prefix, zip_codes, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, enabled",
     )
     .eq("organization_id", orgId);
   if (zErr) throw new Error(zErr.message);
+  const offZoneIds = new Set<string>(
+    ((zones ?? []) as Array<{ id: string; enabled?: boolean | null }>)
+      .filter((z) => z.enabled === false)
+      .map((z) => z.id),
+  );
   const zoneName = new Map<string, string>(
     ((zones ?? []) as Array<{ id: string; name: string | null }>).map((z) => [z.id, z.name ?? "a zone"]),
   );
@@ -45,6 +56,7 @@ export async function redetectZonesForOrg(
 
   let updated = 0;
   for (const p of props ?? []) {
+    if (p.zone_id && offZoneIds.has(p.zone_id)) continue;
     const match = matchZone((zones ?? []) as any[], {
       postalCode: p.postal_code,
       point:

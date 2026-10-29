@@ -118,7 +118,7 @@ export const getPublicSignupForm = createServerFn({ method: "GET" })
     try {
       const { data: zones, error: zonesErr } = await (supabaseAdmin as any)
         .from("zones")
-        .select("zip_codes, postal_prefix")
+        .select("zip_codes, postal_prefix, enabled")
         .eq("organization_id", found.id);
       if (zonesErr) console.error("signup service area lookup failed", found.id, zonesErr);
       else serviceArea = serviceAreaSummary(zones ?? []);
@@ -1198,7 +1198,7 @@ export const getSignupSettings = createServerFn({ method: "GET" })
     let serviceAreaKnown = false;
     const { data: zones, error: zonesErr } = await (context.supabase as any)
       .from("zones")
-      .select("zip_codes, postal_prefix")
+      .select("zip_codes, postal_prefix, enabled")
       .eq("organization_id", orgId);
     if (zonesErr) console.error("signup settings zones lookup failed", orgId, zonesErr);
     else {

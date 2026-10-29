@@ -9,7 +9,7 @@ import { requirePermission } from "@/lib/authz.server";
 import type { QuotePricingZone, QuoteStandardPricing, QuoteSubject } from "@/lib/quote-pricing";
 
 const ZONE_COLUMNS =
-  "id, name, priority, postal_prefix, zip_codes, account_type, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, base_price_cents, per_dog_addl_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, area_max_charge_cents, commercial_base_cents, commercial_per_unit_cents, commercial_per_acre_cents, commercial_per_station_cents";
+  "id, name, priority, postal_prefix, zip_codes, account_type, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, base_price_cents, per_dog_addl_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, area_max_charge_cents, commercial_base_cents, commercial_per_unit_cents, commercial_per_acre_cents, commercial_per_station_cents, enabled";
 
 export const getQuotePricing = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])

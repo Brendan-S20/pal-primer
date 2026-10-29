@@ -8882,6 +8882,7 @@ export type Database = {
           commercial_per_unit_cents: number | null
           created_at: string
           drive_time_minutes: number | null
+          enabled: boolean
           geo_match_mode: string
           id: string
           initial_cleanup_cents: number
@@ -8913,6 +8914,7 @@ export type Database = {
           commercial_per_unit_cents?: number | null
           created_at?: string
           drive_time_minutes?: number | null
+          enabled?: boolean
           geo_match_mode?: string
           id?: string
           initial_cleanup_cents?: number
@@ -8944,6 +8946,7 @@ export type Database = {
           commercial_per_unit_cents?: number | null
           created_at?: string
           drive_time_minutes?: number | null
+          enabled?: boolean
           geo_match_mode?: string
           id?: string
           initial_cleanup_cents?: number

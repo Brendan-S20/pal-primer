@@ -152,14 +152,18 @@ export const listLeads = createServerFn({ method: "GET" })
     const { data: zones, error: zonesErr } = await context.supabase
       .from("zones")
       .select(
-        "id, priority, account_type, postal_prefix, zip_codes, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
+        "id, priority, account_type, postal_prefix, zip_codes, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, enabled",
       )
       .eq("organization_id", orgId);
     if (zonesErr) console.error("leads service area lookup failed", orgId, zonesErr);
     const { leadServiceArea, zoneShape, drawnZoneZips, zipFromLocation } =
       await import("@/lib/lead-service-area");
     const { searchBox, MAX_CANDIDATES } = await import("@/lib/zone-zip-fill");
-    const zoneRows = (zones ?? []) as unknown as ZoneMatchFields[];
+    // A zone that is turned off (#449) serves nobody new, so it does not make a
+    // lead "inside".
+    const zoneRows = ((zones ?? []) as unknown as ZoneMatchFields[]).filter(
+      (z) => z.enabled !== false,
+    );
     const drawn = new Map<string, DrawnZoneZips | null>();
     const anyLeadZip = (data ?? []).some((l) => zipFromLocation(l.location) != null);
     if (!zonesErr && anyLeadZip) {

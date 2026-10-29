@@ -56,7 +56,9 @@ describe("the service area line (#526)", () => {
       fns.indexOf("export const getPublicSignupForm"),
       fns.indexOf("const quoteSchema"),
     );
-    expect(lookup).toMatch(/\.from\("zones"\)\s*\.select\("zip_codes, postal_prefix"\)/);
+    // `enabled` (#449) so a zone that is turned off is left out; still no
+    // name and no price.
+    expect(lookup).toMatch(/\.from\("zones"\)\s*\.select\("zip_codes, postal_prefix, enabled"\)/);
   });
 });
 

@@ -14,6 +14,9 @@ export const ZONE_COLORS = [
   "#0891b2", "#db2777", "#65a30d", "#c026d3", "#0d9488",
 ];
 
+/** A zone that is turned off (#449) draws in this grey, fainter and thinner. */
+export const OFF_ZONE_COLOR = "#9ca3af";
+
 export type OverviewZone = {
   id: string;
   name: string;
@@ -24,6 +27,7 @@ export type OverviewZone = {
   radius_meters: number | null;
   drive_time_minutes: number | null;
   boundary: PolygonGeoJSON | null;
+  enabled?: boolean | null;
 };
 
 export function zoneHasGeo(z: OverviewZone): boolean {
@@ -49,12 +53,15 @@ export function ZonesOverviewMap({ zones, height = 340 }: { zones: OverviewZone[
     const layer = new OverlayGroup();
     const bounds: LatLng[] = [];
     geoZones.forEach((z, i) => {
-      const color = ZONE_COLORS[i % ZONE_COLORS.length];
-      const popupHtml = `<div style="font-weight:600">${escapeHtml(z.name)}</div>`;
+      const off = z.enabled === false;
+      const color = off ? OFF_ZONE_COLOR : ZONE_COLORS[i % ZONE_COLORS.length];
+      const weight = off ? 1 : 2;
+      const fillOpacity = off ? 0.04 : 0.12;
+      const popupHtml = `<div style="font-weight:600">${escapeHtml(z.name)}${off ? " (off)" : ""}</div>`;
       const ring = z.boundary?.coordinates?.[0];
       if (ring && ring.length >= 3) {
         const path = ring.map(([lng, lat]) => ({ lat, lng }));
-        layer.add(map.addPolygon(path, { color, weight: 2, fillOpacity: 0.12, popupHtml }));
+        layer.add(map.addPolygon(path, { color, weight, fillOpacity, popupHtml }));
         bounds.push(...path);
         return;
       }
@@ -66,9 +73,7 @@ export function ZonesOverviewMap({ zones, height = 340 }: { zones: OverviewZone[
         z.radius_meters ??
         (z.drive_time_minutes != null ? z.drive_time_minutes * DRIVE_M_PER_MIN : null);
       if (radius != null) {
-        layer.add(
-          map.addCircle(center, radius, { color, weight: 2, fillOpacity: 0.12, popupHtml }),
-        );
+        layer.add(map.addCircle(center, radius, { color, weight, fillOpacity, popupHtml }));
         bounds.push(...circleBoundsPoints(center, radius));
       } else {
         layer.add(
