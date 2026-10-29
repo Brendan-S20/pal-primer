@@ -220,8 +220,14 @@ describe("the column header says which day and how much of it", () => {
   it("highlights today's column, not merely today's cell", () => {
     const src = calendar();
     expect(src).toMatch(/const isToday = d === todayIso;/);
-    expect(src).toMatch(/isToday \? "bg-primary\/10 text-primary" : ""/);
     expect(src).toMatch(/isToday \? "border-primary ring-1 ring-primary" : ""/);
+    // The header button is no longer tinted for today (#439): with a
+    // near-black primary, `bg-primary/10` drew an empty-looking grey bar
+    // across the top of the column. The date is filled instead, and a week
+    // column says "Today".
+    expect(src).not.toMatch(/isToday \? "bg-primary\/10/);
+    expect(src).toMatch(/rounded-full bg-primary px-1\.5 font-semibold text-primary-foreground/);
+    expect(src).toMatch(/isToday && !isMonth && \(/);
   });
 
   it("groups the untimed work under its own heading instead of interleaving it", () => {

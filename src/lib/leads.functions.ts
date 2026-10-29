@@ -125,7 +125,7 @@ export const setLeadFormConfig = createServerFn({ method: "POST" })
 export const listLeads = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    await requirePermission(context.supabase, context.userId, "manage_leads");
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_leads");
     // With the signup a lead started, when it started one: Leads labels a
     // row "Started service online" or "Started signup online, didn't pay"
     // from it. signup_requests.lead_id (20261008160000) is the link.
@@ -137,7 +137,19 @@ export const listLeads = createServerFn({ method: "GET" })
       .order("created_at", { ascending: false })
       .limit(500);
     if (error) throw new Error(error.message);
-    return data ?? [];
+    // Whether each lead's ZIP is one this business serves (#439), judged by
+    // the same ZIP levels the signup form's quote uses. A failed zone read
+    // leaves every lead "unknown", so the list still loads with no warning.
+    const { data: zones, error: zonesErr } = await context.supabase
+      .from("zones")
+      .select("id, priority, account_type, postal_prefix, zip_codes, geo_match_mode")
+      .eq("organization_id", orgId);
+    if (zonesErr) console.error("leads service area lookup failed", orgId, zonesErr);
+    const { leadServiceArea } = await import("@/lib/lead-service-area");
+    return (data ?? []).map((l) => ({
+      ...l,
+      service_area: zonesErr ? ("unknown" as const) : leadServiceArea(l.location, zones ?? []),
+    }));
   });
 
 // Converting a lead opens the new-client wizard started from it
