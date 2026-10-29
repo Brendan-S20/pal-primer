@@ -401,14 +401,33 @@ export async function loadAccounts(
     return users.length;
   };
 
-  const firstPage = await readPage(1);
-  exhausted = firstPage < ACCOUNT_PAGE_SIZE;
+  // The list endpoint is one all-or-nothing call: a single account it cannot
+  // serialize, or any hiccup in the auth admin API, fails the whole page. The
+  // tenant screen never calls it (one getUserById per member, failures
+  // swallowed), which is how a tenant could show its users while this
+  // directory showed none (#446). A failed listing is therefore not a failed
+  // directory: the memberships are already in hand, so fall through to the
+  // per-member lookups below and let `complete` report anything they miss.
+  let listFailed = false;
+  const tryReadPage = async (page: number) => {
+    try {
+      return await readPage(page);
+    } catch (e) {
+      listFailed = true;
+      console.warn(`[platform directory] listUsers page ${page} failed: ${(e as Error).message}`);
+      return null;
+    }
+  };
+
+  const firstPage = await tryReadPage(1);
+  exhausted = firstPage !== null && firstPage < ACCOUNT_PAGE_SIZE;
 
   const stillMissing = () => memberIds.filter((id) => !byId.has(id));
 
-  if (!exhausted && memberIds.length > MAX_DIRECT_LOOKUPS) {
+  if (!listFailed && !exhausted && memberIds.length > MAX_DIRECT_LOOKUPS) {
     while (!exhausted && scannedPages < MAX_ACCOUNT_PAGES) {
-      const n = await readPage(scannedPages + 1);
+      const n = await tryReadPage(scannedPages + 1);
+      if (n === null) break;
       exhausted = n < ACCOUNT_PAGE_SIZE;
     }
   }

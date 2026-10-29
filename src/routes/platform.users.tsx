@@ -28,6 +28,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/EmptyState";
+import { LoadError } from "@/components/LoadError";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
@@ -108,6 +109,11 @@ function UsersPage() {
   useEffect(() => {
     if (q.data && !q.isPlaceholderData && currentPage !== page) setPage(currentPage);
   }, [q.data, q.isPlaceholderData, currentPage, page]);
+
+  // A failed read has no total, and `?? 0` above turns that into "nobody is
+  // in the directory". That sentence is what #446 reported: tenants had
+  // users and this page said it had none. A failure is said as a failure.
+  const failed = q.isError && !q.data;
 
   const firstShown = total === 0 ? 0 : offset + 1;
   const lastShown = Math.min(offset + rows.length, total);
@@ -198,11 +204,13 @@ function UsersPage() {
           <p className="text-sm text-muted-foreground" data-testid="directory-range">
             {q.isLoading
               ? "Loading the directory…"
-              : total === 0
-                ? narrowed
-                  ? "No users match."
-                  : "No users in the directory yet."
-                : `Showing ${firstShown.toLocaleString()}–${lastShown.toLocaleString()} of ${total.toLocaleString()} ${narrowed ? "matching " : ""}user${total === 1 ? "" : "s"} with an organization membership.`}
+              : failed
+                ? "The directory could not be loaded, so no count is shown."
+                : total === 0
+                  ? narrowed
+                    ? "No users match."
+                    : "No users in the directory yet."
+                  : `Showing ${firstShown.toLocaleString()}–${lastShown.toLocaleString()} of ${total.toLocaleString()} ${narrowed ? "matching " : ""}user${total === 1 ? "" : "s"} with an organization membership.`}
           </p>
           {/* The population here is memberships, not accounts. Saying "12 users"
               beside a database holding 22 of them reads as a census, and the ten
@@ -222,6 +230,19 @@ function UsersPage() {
           ) : null}
         </CardHeader>
         <CardContent>
+          {q.isError ? (
+            <div className="mb-3 space-y-1">
+              <LoadError
+                what="the user directory"
+                onRetry={() => q.refetch()}
+                retrying={q.isFetching}
+              />
+              {q.error instanceof Error && q.error.message ? (
+                <p className="break-words text-xs text-muted-foreground">{q.error.message}</p>
+              ) : null}
+            </div>
+          ) : null}
+
           {/* A scan that ran short says so. Everything on this screen is a
               count of something, and a count nobody can trust is worse than
               no count. */}
@@ -341,7 +362,7 @@ function UsersPage() {
                 ))}
                 {q.isLoading ? (
                   <TableRow><TableCell colSpan={5}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
-                ) : rows.length === 0 ? (
+                ) : failed ? null : rows.length === 0 ? (
                   <TableRow><TableCell colSpan={5} className="py-6">
                     <EmptyState
                       icon={<Users className="h-5 w-5 shrink-0" />}
@@ -364,9 +385,11 @@ function UsersPage() {
               pushing itself off a 360px screen. */}
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">
-              {total === 0
-                ? "Nothing to page through."
-                : `Page ${(currentPage + 1).toLocaleString()} of ${pageCount.toLocaleString()}`}
+              {failed
+                ? ""
+                : total === 0
+                  ? "Nothing to page through."
+                  : `Page ${(currentPage + 1).toLocaleString()} of ${pageCount.toLocaleString()}`}
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <Button
