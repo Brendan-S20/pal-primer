@@ -28,6 +28,8 @@
 //
 // Every price is per visit, after the org's frequency multiplier, which is
 // what a quote's "per visit" line means and what the new-client wizard stores.
+// The multiplier is the PER-VISIT one from frequency-multipliers.ts: twice
+// weekly's 1.8 is a week's total, so each of its two visits is x0.9 (#572).
 
 import {
   computeCommercialZonePrice,
@@ -37,6 +39,12 @@ import {
   type ZonePricingFields,
 } from "./pricing";
 import { matchZone, type ZoneMatchFields } from "./zone-match";
+import {
+  VISITS_PER_CYCLE,
+  cycleMultiplier,
+  formatMultiplier,
+  perVisitMultiplier,
+} from "./frequency-multipliers";
 
 export interface QuotePricingZone
   extends ZoneMatchFields, Partial<ZonePricingFields>, Partial<CommercialZonePricingFields> {
@@ -108,6 +116,19 @@ export function asSentence(note: string): string {
   return /[.!?]$/.test(s) ? s : `${s}.`;
 }
 
+/** ", x0.9 for twice-weekly visits (1.8x a weekly visit, per week)", or "" at x1. */
+function multiplierNote(
+  standard: QuoteStandardPricing | null,
+  frequency: QuoteFrequency,
+  perVisit: number,
+): string {
+  if (perVisit === 1) return "";
+  const note = `, x${formatMultiplier(perVisit)} for ${VISIT_WORDS[frequency].toLowerCase()}s`;
+  if (VISITS_PER_CYCLE[frequency] === 1) return note;
+  const week = cycleMultiplier(standard?.frequencyMultipliers, frequency);
+  return `${note} (${formatMultiplier(week)}x a weekly visit, per week)`;
+}
+
 function dogsWord(n: number) {
   return `${n} ${n === 1 ? "dog" : "dogs"}`;
 }
@@ -132,8 +153,8 @@ export function zoneChoice(
   const kind = subject.accountType === "commercial" ? "commercial" : "residential";
   if (!zoneIsPricedFor(zone, kind)) return null;
   const frequency = quoteFrequency(subject.frequency);
-  const mult = Number(standard?.frequencyMultipliers?.[frequency] ?? 1) || 1;
-  const multNote = mult !== 1 ? `, x${mult} for ${VISIT_WORDS[frequency].toLowerCase()}s` : "";
+  const mult = perVisitMultiplier(standard?.frequencyMultipliers, frequency);
+  const multNote = multiplierNote(standard, frequency, mult);
 
   if (kind === "commercial") {
     const units = Math.max(1, Math.round(subject.unitCount ?? 1));
@@ -203,7 +224,7 @@ export function standardChoice(
   if (!standard || standard.basePriceCents == null) return null;
   if (subject.accountType === "commercial") return null;
   const frequency = quoteFrequency(subject.frequency);
-  const mult = Number(standard.frequencyMultipliers?.[frequency] ?? 1) || 1;
+  const mult = perVisitMultiplier(standard.frequencyMultipliers, frequency);
   const dogs = Math.max(1, Math.min(20, Math.round(subject.dogCount ?? 1)));
   const extra = Math.max(0, dogs - 1) * (standard.perDogAddlCents ?? 0);
   return {
@@ -217,7 +238,7 @@ export function standardChoice(
     breakdown:
       `${money(standard.basePriceCents)} base` +
       (extra > 0 ? ` + ${money(extra)} for ${dogsWord(dogs - 1)} more` : "") +
-      (mult !== 1 ? `, x${mult} for ${VISIT_WORDS[frequency].toLowerCase()}s` : ""),
+      multiplierNote(standard, frequency, mult),
   };
 }
 

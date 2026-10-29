@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { formatWeekdaySet, normalizeWeekdays } from "@/lib/weekday-set";
+import { MAX_MULTIPLIER, MIN_MULTIPLIER } from "@/lib/frequency-multipliers";
 
 // Scheduling model (client detail refactor): the five UI choices map to
 //   Weekly            -> weekly (interval_weeks null/1)
@@ -490,8 +491,10 @@ export const applyFrequencyChangeRequest = createServerFn({ method: "POST" })
         .eq("id", orgId)
         .maybeSingle();
       const mults = (org?.frequency_multipliers ?? {}) as Record<string, number>;
-      const oldMult = Number(mults[before.frequency as string] ?? 1) || 1;
-      const newMult = Number(mults[data.frequency] ?? 1) || 1;
+      // Per-visit factors: twice weekly's stored 1.8 is a week's total (#572).
+      const { perVisitMultiplier } = await import("@/lib/frequency-multipliers");
+      const oldMult = perVisitMultiplier(mults, before.frequency as string);
+      const newMult = perVisitMultiplier(mults, data.frequency);
       const oldPrice = Number(before.price_cents ?? 0);
       const repriced =
         oldPrice > 0 && oldMult > 0 ? Math.round((oldPrice / oldMult) * newMult) : oldPrice;
@@ -814,6 +817,37 @@ export const updateStandardPricing = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+// ── Frequency multipliers (#572, F-07) ────────────────────────────────────
+//
+// What each cadence costs against a weekly visit, per CYCLE (twice weekly's
+// is a week of two visits). Read by every quote and by public_quote, so it is
+// the owner's to see and change rather than a number only the database knew.
+// Same permission and write path as first-cleanup pricing: this is a price
+// list. All four keys are written together; they are the four any code reads.
+
+export const updateFrequencyMultipliers = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => {
+    const m = z.number().min(MIN_MULTIPLIER).max(MAX_MULTIPLIER);
+    return z.object({ weekly: m, twice_weekly: m, biweekly: m, monthly: m }).strict().parse(d);
+  })
+  .handler(async ({ data, context }) => {
+    const orgId = await loadOrgForCaller(context.supabase, context.userId);
+    const { updateOwnOrg } = await import("@/lib/org-write.server");
+    const stored = {
+      weekly: roundMultiplier(data.weekly),
+      biweekly: roundMultiplier(data.biweekly),
+      twice_weekly: roundMultiplier(data.twice_weekly),
+      monthly: roundMultiplier(data.monthly),
+    };
+    await updateOwnOrg(context.supabase, orgId, { frequency_multipliers: stored });
+    return { ok: true as const, frequencyMultipliers: stored };
+  });
+
+function roundMultiplier(n: number): number {
+  return Math.round(n * 1000) / 1000;
+}
 
 // ── Seasonal deep-clean settings ─────────────────────────────────────────
 

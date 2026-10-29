@@ -5,7 +5,9 @@
 // `subscriptions.price_cents` is stored POST-multiplier. computeZoneVisitPrice
 // returns `perVisitCents * multiplier` (src/lib/pricing.ts) and that is the
 // value written at create time. The default multipliers are
-// { weekly: 1, biweekly: 1.7, twice_weekly: 1.8, monthly: 3.2 }.
+// { weekly: 1, biweekly: 1.7, twice_weekly: 1.8, monthly: 3.2 }, and since
+// #572 twice weekly's 1.8 is a week's total, so its per-visit factor is 0.9
+// (perVisitMultiplier in src/lib/frequency-multipliers.ts).
 //
 // So a monthly client in a $30 zone carries price_cents = 9600. Approve their
 // request to move to weekly, change only `frequency`, and they are now weekly
@@ -26,6 +28,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { perVisitMultiplier } from "@/lib/frequency-multipliers";
 
 const root = join(import.meta.dirname, "..");
 const src = readFileSync(join(root, "src/lib/subscriptions.functions.ts"), "utf8");
@@ -50,8 +53,10 @@ describe("approving a frequency change reprices the subscription", () => {
   });
 
   it("biweekly to twice-weekly lands on the create-time price", () => {
-    // 3000 * 1.7 = 5100 stored; moving to twice_weekly should be 3000 * 1.8.
-    expect(reprice(5100, M.biweekly, M.twice_weekly)).toBe(5400);
+    // 3000 * 1.7 = 5100 stored; moving to twice_weekly should be 3000 * 0.9
+    // a visit, 1.8x the weekly plan for the week (#572).
+    const tw = perVisitMultiplier(M, "twice_weekly");
+    expect(reprice(5100, perVisitMultiplier(M, "biweekly"), tw)).toBe(2700);
   });
 
   it("a hand-edited price keeps its own basis rather than being recomputed away", () => {

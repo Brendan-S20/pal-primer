@@ -92,6 +92,7 @@ import { useIntlLocale } from "@/lib/i18n";
 import { createWalkPlans } from "@/lib/walk-plans.functions";
 import { walkWindowsProblem, type WalkWindow } from "@/lib/subscription-form";
 import { isDog } from "@/lib/pets";
+import { formatMultiplier, perVisitMultiplier } from "@/lib/frequency-multipliers";
 import { StaysSection } from "@/components/client-detail/StaysSection";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -1339,7 +1340,8 @@ function ServiceDrawer({
     intervalWeeks: form.intervalWeeks ? parseInt(form.intervalWeeks, 10) : undefined,
     intervalDays: form.intervalDays ? parseInt(form.intervalDays, 10) : undefined,
   });
-  const freqMultiplier = Number(std?.frequencyMultipliers?.[schedFields.frequency] ?? 1) || 1;
+  // Per visit: twice weekly's stored 1.8 is a week's total (#572).
+  const freqMultiplier = perVisitMultiplier(std?.frequencyMultipliers, schedFields.frequency);
   // Breakdown parts (QA follow-up 1.2): the owner must be able to derive the
   // zone price from the Zones page config, so show every component.
   const extraDogs = Math.max(0, dogsForPricing - 1);
@@ -1980,7 +1982,7 @@ function ServiceDrawer({
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <dt>
                         Schedule adjustment (${(commercialPrice.perVisitCents / 100).toFixed(2)} ×{" "}
-                        {freqMultiplier})
+                        {formatMultiplier(freqMultiplier)})
                       </dt>
                       <dd>
                         {zoneCents - commercialPrice.perVisitCents >= 0 ? "+" : "−"}$
@@ -2029,7 +2031,7 @@ function ServiceDrawer({
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <dt>
                         Schedule adjustment (${(zoneParts.perVisit / 100).toFixed(2)} ×{" "}
-                        {freqMultiplier})
+                        {formatMultiplier(freqMultiplier)})
                       </dt>
                       <dd>
                         {zoneCents - zoneParts.perVisit >= 0 ? "+" : "−"}$
@@ -2063,7 +2065,7 @@ function ServiceDrawer({
                       {stdParts.dogAdj > 0
                         ? ` + ${extraDogs} × $${(stdParts.perDog / 100).toFixed(2)}`
                         : ""}
-                      {freqMultiplier !== 1 ? ` × ${freqMultiplier}` : ""})
+                      {freqMultiplier !== 1 ? ` × ${formatMultiplier(freqMultiplier)}` : ""})
                     </span>
                   </dt>
                   <dd className="flex items-center gap-2">

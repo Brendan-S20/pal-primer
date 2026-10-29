@@ -773,7 +773,8 @@ export const getInternalQuote = createServerFn({ method: "POST" })
     });
 
     if (!z) return { available: false as const };
-    const mult = Number((org.frequency_multipliers as any)?.[data.frequency] ?? 1);
+    const { perVisitMultiplier } = await import("@/lib/frequency-multipliers");
+    const mult = perVisitMultiplier(org.frequency_multipliers as any, data.frequency);
     const mode = (z.pricing_mode ?? "flat") as "flat" | "per_sqft" | "per_acre";
 
     const { computeZoneVisitPrice } = await import("@/lib/pricing");

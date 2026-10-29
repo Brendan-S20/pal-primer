@@ -374,6 +374,7 @@ export const updateProperty = createServerFn({ method: "POST" })
         >;
         const { computeCommercialZonePrice, zoneHasCommercialPricing } =
           await import("@/lib/pricing");
+        const { perVisitMultiplier } = await import("@/lib/frequency-multipliers");
         const { logActivity } = await import("@/lib/activity.server");
         for (const sub of subsRes.data ?? []) {
           let pricePatch: Record<string, number> = {};
@@ -386,7 +387,7 @@ export const updateProperty = createServerFn({ method: "POST" })
               .eq("id", sub.zone_id)
               .maybeSingle();
             if (zone && zoneHasCommercialPricing(zone)) {
-              const mult = Number(multipliers[sub.frequency] ?? 1) || 1;
+              const mult = perVisitMultiplier(multipliers, sub.frequency);
               const price = computeCommercialZonePrice(zone, {
                 unitCount: newTotalUnits,
                 boundaryAreaSqm: (current as any).boundary_area_sqm,

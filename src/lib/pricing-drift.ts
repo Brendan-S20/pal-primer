@@ -46,6 +46,7 @@
 // set has nothing to compare against either, and that is its own outcome
 // (`no_price`), not `no_zone` and not on rate.
 
+import { perVisitMultiplier } from "@/lib/frequency-multipliers";
 import { computeZoneVisitPrice, type ZonePricingFields } from "@/lib/pricing";
 import { isZonePriced, servicePriceCents, type ServiceDraft } from "@/lib/services";
 
@@ -167,7 +168,8 @@ export function driftBasis(service: DriftService | null | undefined): DriftBasis
  * `multipliers` is the organization's `frequency_multipliers` map. A frequency
  * missing from it falls back to 1 rather than throwing: an unknown frequency
  * is a data problem worth seeing the rest of the report about, and 1 is the
- * weekly baseline the rest of the pricing code already assumes. It is read
+ * weekly baseline the rest of the pricing code already assumes. Twice weekly's
+ * number is a week's total, so it is halved per visit (#572). It is read
  * for pet waste only: a walk costs the same whatever the cadence.
  */
 export function computePricingDrift(
@@ -238,7 +240,7 @@ export function computePricingDrift(
       };
     }
 
-    const mult = Number(multipliers[s.frequency] ?? 1) || 1;
+    const mult = perVisitMultiplier(multipliers, s.frequency);
     const priced = computeZoneVisitPrice(s.zone, {
       dogCount: s.dogCount ?? 1,
       boundaryAreaSqm: s.boundaryAreaSqm,
