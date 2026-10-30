@@ -125,6 +125,7 @@ const es: Translations = {
     dashboard: "Volver al panel",
   },
   common: {
+    notSaved: "No se guardó. Inténtalo de nuevo.",
     loading: "Cargando…",
     save: "Guardar",
     cancel: "Cancelar",
@@ -590,6 +591,7 @@ const es: Translations = {
     sendOnMyWay: "Enviar “voy en camino”",
   },
   skip: {
+    notSaved: "No se guardó la omisión. Elige un motivo e inténtalo de nuevo.",
     reason: "Motivo",
     detailsPlaceholder: "Detalles (qué pasó, fotos, etc.)",
     confirm: "Confirmar omisión",

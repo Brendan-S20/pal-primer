@@ -220,6 +220,26 @@ export const GROOM_SKIP_REASON_CODES = [
   "other",
 ] as const;
 
+/**
+ * Every code a field picker offers, on any service line, and so every code
+ * skipVisit accepts. Built from the pickers so a reason added to one of them
+ * is accepted by the server too; before this, the server kept its own list
+ * and every grooming reason was refused (#608). `customer_requested` is the
+ * only schedule code left out: the portal writes it, never a tech.
+ */
+export const FIELD_SKIP_REASON_CODES = SKIP_REASON_CODES.filter((c) =>
+  [
+    ...TECH_SKIP_REASON_CODES,
+    ...WALK_SKIP_REASON_CODES,
+    ...(Object.keys(SIT_SKIP_REASON_LABELS) as (keyof typeof SIT_SKIP_REASON_LABELS)[]),
+    ...LESSON_SKIP_REASON_CODES,
+    ...GROOM_SKIP_REASON_CODES,
+  ].includes(c),
+) as unknown as readonly [
+  (typeof SKIP_REASON_CODES)[number],
+  ...(typeof SKIP_REASON_CODES)[number][],
+];
+
 /** The picker's list for a stop on this service line. */
 export function techSkipReasonCodes(line: string | null | undefined): readonly string[] {
   if (line === "pet_sitting") return Object.keys(SIT_SKIP_REASON_LABELS);

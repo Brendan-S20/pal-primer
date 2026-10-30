@@ -189,6 +189,7 @@ import { MyDaySkeleton } from "@/components/PageSkeletons";
 import { PullToRefresh } from "@/components/motion/PullToRefresh";
 import { showCompletionCheck } from "@/lib/motion/completion-check";
 import { useMotionList } from "@/lib/motion/use-motion-list";
+import { readableError } from "@/lib/readable-error";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
   head: () => titleHead("My day"),
@@ -1798,7 +1799,7 @@ function VisitCard({
       setAddonSvcId("");
       setAddonQty("1");
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(readableError(e, t("common.notSaved"))),
   });
   const [reason, setReason] = useState("");
   const [reasonCode, setReasonCode] = useState("other");
@@ -1947,7 +1948,9 @@ function VisitCard({
       // in the tech's language.
       const owed = moreThanOwedFromRefusal(e.message);
       toast.error(
-        owed != null ? t("pay.moreThanDue", { amount: formatMoney(owed, locale) }) : e.message,
+        owed != null
+          ? t("pay.moreThanDue", { amount: formatMoney(owed, locale) })
+          : readableError(e, t("common.notSaved")),
       );
     },
   });
@@ -1965,7 +1968,7 @@ function VisitCard({
     },
     onError: (e: Error) => {
       haptic("error");
-      toast.error(e.message);
+      toast.error(readableError(e, t("common.notSaved")));
     },
   });
   const completeToast = (r: { queued: boolean; result?: unknown }) => {
@@ -2027,7 +2030,7 @@ function VisitCard({
     },
     onError: (e: Error) => {
       haptic("error");
-      toast.error(e.message);
+      toast.error(readableError(e, t("common.notSaved")));
     },
   });
   const skip = useMutation({
@@ -2040,7 +2043,7 @@ function VisitCard({
     },
     onError: (e: Error) => {
       haptic("error");
-      toast.error(e.message);
+      toast.error(readableError(e, t("skip.notSaved")));
     },
   });
   // Text if it can go, email if not; the result says which.
@@ -2054,7 +2057,7 @@ function VisitCard({
     },
     onError: (e: Error) => {
       haptic("error");
-      toast.error(e.message);
+      toast.error(readableError(e, t("common.notSaved")));
     },
   });
   // Navigate tells the customer too, once per visit, when the owner has
@@ -2081,7 +2084,7 @@ function VisitCard({
     },
     onError: (e: Error) => {
       haptic("error");
-      toast.error(e.message);
+      toast.error(readableError(e, t("common.notSaved")));
     },
   });
 
@@ -2116,7 +2119,7 @@ function VisitCard({
       return true;
     } catch (e: any) {
       haptic("error");
-      toast.error(e.message ?? t("photo.uploadFailed"));
+      toast.error(readableError(e, t("photo.uploadFailed")));
       return false;
     } finally {
       setUploading(false);
@@ -3305,7 +3308,7 @@ function DnaSamplePanel({
       toast.success(t("dna.logged"));
       onDone();
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(readableError(e, t("common.notSaved"))),
   });
 
   return (
@@ -3469,7 +3472,7 @@ function StationsSubpanel({ visitId, readOnly = false }: { visitId: string; read
       // contradicting the toast that just said it was saved.
       if (!r.queued) qc.invalidateQueries({ queryKey: ["visit-stations", visitId] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(readableError(e, t("common.notSaved"))),
   });
 
   const stations: any[] = data?.stations ?? [];
