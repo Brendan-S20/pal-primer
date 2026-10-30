@@ -23,6 +23,7 @@ import { Switch } from "@/components/ui/switch";
 import { listDogsForClient } from "@/lib/clients.functions";
 import { addDog, removeDog, updateDog } from "@/lib/dogs.functions";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { applyDogMove } from "@/lib/unit-dog-move";
 import { setClientDnaCompliance } from "@/lib/dna.functions";
 import {
   listUnitsForClient,
@@ -542,6 +543,7 @@ function UnitDogsSection({
   const addFn = useServerFn(addDog);
   const updateFn = useServerFn(updateDog);
   const deleteFn = useServerFn(removeDog);
+  const qc = useQueryClient();
   const { confirm, dialog } = useConfirmDialog();
   // Other units on this property: where a dog put on the wrong unit can go.
   const otherUnits = units.filter((x) => x.id !== unit.id);
@@ -603,10 +605,10 @@ function UnitDogsSection({
   const moveMut = useMutation({
     mutationFn: (v: { id: string; unitId: string }) =>
       updateFn({ data: { id: v.id, unitId: v.unitId } }),
-    onSuccess: (_r, v) => {
+    onSuccess: async (_r, v) => {
       const to = units.find((x) => x.id === v.unitId);
       toast.success(to ? `Moved to Unit ${to.unit_label}` : "Dog moved");
-      onChanged();
+      await applyDogMove(qc, clientId, v.id, v.unitId);
     },
     onError: (e) => toast.error((e as Error).message),
   });
