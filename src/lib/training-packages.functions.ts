@@ -554,7 +554,7 @@ export const listTrainingBookingOptions = createServerFn({ method: "GET" })
         .eq("is_field_tech", true),
       db
         .from("service_packages")
-        .select("*, services(name)")
+        .select("*, services!service_packages_service_id_fkey(name)")
         .eq("organization_id", orgId)
         .eq("active", true)
         .order("name"),

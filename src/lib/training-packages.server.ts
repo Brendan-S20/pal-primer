@@ -251,7 +251,7 @@ export async function createPackageSale(
   if (previous) throw new Error("This package sale was already submitted. Refresh the packages.");
   const { data: pack, error: packError } = await db
     .from("service_packages")
-    .select("*, services(name)")
+    .select("*, services!service_packages_service_id_fkey(name)")
     .eq("id", input.servicePackageId)
     .eq("organization_id", orgId)
     .single();

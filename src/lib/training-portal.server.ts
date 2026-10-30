@@ -92,7 +92,9 @@ export async function loadPortalTraining(sb: Admin, session: Session) {
       .order("created_at", { ascending: false }),
     sb
       .from("service_packages")
-      .select("id, name, sessions_count, price_cents, expires_after_days, services(name, active)")
+      .select(
+        "id, name, sessions_count, price_cents, expires_after_days, services!service_packages_service_id_fkey(name, active)",
+      )
       .eq("organization_id", orgId)
       .eq("active", true)
       .gt("price_cents", 0)
