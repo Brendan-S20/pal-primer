@@ -17,6 +17,7 @@ const URL = process.env.TEST_SUPABASE_URL;
 const SERVICE = process.env.TEST_SUPABASE_SERVICE_KEY;
 const enabled = Boolean(URL && SERVICE);
 const runId = Math.random().toString(36).slice(2, 10);
+const today = new Date().toISOString().slice(0, 10);
 
 let admin: SupabaseClient;
 let orgId: string;
@@ -172,6 +173,14 @@ describe.skipIf(!enabled)("a manual invoice is saved whole or not at all", () =>
         tax_rate_bps: 0,
         tax_cents: 0,
         total_cents: 2_400,
+        // Every column insertManualInvoice sends, so the only thing that can
+        // fail is the add-on.
+        tax_label: "Sales tax",
+        period_start: today,
+        period_end: today,
+        issued_at: new Date().toISOString(),
+        due_on: today,
+        notes: "Manual invoice",
       },
       _lines: [
         { description: "Nail trim", amount_cents: 1_500, addon_charge_id: pending },
