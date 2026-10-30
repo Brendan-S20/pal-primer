@@ -144,8 +144,8 @@ export function BillingPanel({ clientId }: { clientId: string }) {
               </p>
             )}
           </div>
-          {/* Full auto billing: invoices generate nightly on the client's
-              cadence, so manual generate-from-visits is a demoted fallback in
+          {/* Invoice at completion (#605): a visit is invoiced from the visit.
+              Generate from visits is the catch-up for anything left over, in
               an overflow dialog (mirrors the Invoices page). */}
           <Dialog open={advancedOpen} onOpenChange={setAdvancedOpen}>
             <DialogTrigger asChild>
@@ -155,11 +155,11 @@ export function BillingPanel({ clientId }: { clientId: string }) {
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>Generate from visits (manual fallback)</DialogTitle>
+                <DialogTitle>Generate from visits</DialogTitle>
                 <DialogDescription>
-                  Invoices generate automatically on this client's cadence, so you normally never
-                  need this. Use it to bill all unbilled completed visits through today right now,
-                  for example before changing their cadence.
+                  Invoice each visit when it is done, from the visit. This bills every completed
+                  visit of this client's that is not on an invoice yet, through today. A visit
+                  already on an invoice is never billed again.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
@@ -181,7 +181,7 @@ export function BillingPanel({ clientId }: { clientId: string }) {
               compact
               icon={FileText}
               title="No invoices yet"
-              description="Invoices generate automatically when this client's billing cycle ends."
+              description="Invoice a visit when it is done, from the visit. Anything not invoiced is billed when this client's cycle ends."
             />
           </div>
         ) : (

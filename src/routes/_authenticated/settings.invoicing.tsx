@@ -2,16 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useSuspenseQuery, queryOptions } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import {
-  getAutomationSettings,
-  updateAutomationSettings,
-} from "@/lib/automation.functions";
-import {
-  NET_DAYS_MIN,
-  NET_DAYS_MAX,
-  GRACE_DAYS_MIN,
-  GRACE_DAYS_MAX,
-} from "@/lib/billing-settings";
+import { getAutomationSettings, updateAutomationSettings } from "@/lib/automation.functions";
+import { NET_DAYS_MIN, NET_DAYS_MAX, GRACE_DAYS_MIN, GRACE_DAYS_MAX } from "@/lib/billing-settings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -125,8 +117,9 @@ function InvoicingPage() {
             Bill clients automatically on each client's cadence
           </label>
           <p className="text-xs text-muted-foreground">
-            When on, each client is invoiced at the end of their billing cycle for completed and
-            billable skipped visits. The invoice waits for the grace period below, then is emailed.
+            Invoice a visit when it is done, from the visit. When this is on, completed and billable
+            skipped visits that are not on an invoice yet are billed at the end of each client's
+            cycle. That invoice waits for the grace period below, then is emailed.
           </p>
 
           <div className="max-w-xs pt-1">
@@ -154,15 +147,15 @@ function InvoicingPage() {
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
           <p>
-            <span className="font-medium text-foreground">Held (scheduled to send)</span>: a
-            freshly auto-generated invoice waits out its grace period. On the Invoices page and in
-            the invoice drawer it shows a{" "}
+            <span className="font-medium text-foreground">Held (scheduled to send)</span>: a freshly
+            auto-generated invoice waits out its grace period. On the Invoices page and in the
+            invoice drawer it shows a{" "}
             <span className="font-medium text-foreground">Scheduled to send {"{date}"}</span> chip.
           </p>
           <p>
             <span className="font-medium text-foreground">Send now</span>: open a held invoice and
-            use <span className="font-medium text-foreground">Send now</span> to email it right
-            away instead of waiting. It is marked sent and will not be emailed again.
+            use <span className="font-medium text-foreground">Send now</span> to email it right away
+            instead of waiting. It is marked sent and will not be emailed again.
           </p>
           <p>
             <span className="font-medium text-foreground">Sent</span>: once emailed (automatically
@@ -225,9 +218,9 @@ function SalesTaxCard() {
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          Most pet-waste services are not taxable, so this starts at 0% and most businesses leave
-          it there. Some states do tax them. Ask your accountant whether you need to charge sales
-          tax, and at what rate, before you set one.
+          Most pet-waste services are not taxable, so this starts at 0% and most businesses leave it
+          there. Some states do tax them. Ask your accountant whether you need to charge sales tax,
+          and at what rate, before you set one.
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="min-w-0">
@@ -257,8 +250,8 @@ function SalesTaxCard() {
         ) : example ? (
           <p className="text-xs text-muted-foreground">
             A $100.00 invoice becomes ${(example.totalCents / 100).toFixed(2)}, with a line for{" "}
-            {taxLineLabel(example.taxLabel, rateBps)} of ${(example.taxCents / 100).toFixed(2)}.
-            Tax is charged on the whole invoice and rounded once to the nearest cent.
+            {taxLineLabel(example.taxLabel, rateBps)} of ${(example.taxCents / 100).toFixed(2)}. Tax
+            is charged on the whole invoice and rounded once to the nearest cent.
           </p>
         ) : (
           <p className="text-xs text-muted-foreground">

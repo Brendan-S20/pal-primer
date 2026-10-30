@@ -122,7 +122,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     section: "Business setup",
     body: [
       "Routes turn scheduled visits into an ordered day for each tech. Week and month show the calendar beside the map, with each technician in their own color in both. Hover a visit for who is running it, where, and its status. Today shows a drag-and-drop board with a column per tech.",
-      "Only people set to run routes appear here. If someone is missing, turn on \"Runs routes\" for them in [Users & roles](/settings/users).",
+      'Only people set to run routes appear here. If someone is missing, turn on "Runs routes" for them in [Users & roles](/settings/users).',
     ],
     steps: [
       "Open the [Schedule](/routes) and pick Today, Week, or Month.",
@@ -336,11 +336,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "generate-invoices",
-    title: '"Generate from visits" vs. "New invoice"',
+    title: 'Invoicing a visit, "New invoice" and "Generate from visits"',
     section: "Financial",
     body: [
-      "**Generate from visits** bills completed, not-yet-billed visits. It's the batch button for your regular cadence. If it says it generated 0 invoices, that means there were no completed unbilled visits in the window, not that something failed.",
-      '**New invoice** is the direct route: pick a client, add line items, bill immediately. Use it for one-off visits that never went through the schedule: "I did the work, now I bill."',
+      "**Invoice this visit** is the usual route: open a completed visit and invoice it there. The invoice names the visit, so it is never billed again.",
+      "**New invoice** bills a client directly. Pick a client and the visits and add-ons not yet invoiced are listed: tick the ones this invoice covers so they are not billed a second time. Leave them unticked and add your own lines for work that never went through the schedule.",
+      "**Generate from visits** is the catch-up: it bills completed visits that are not on any invoice yet. The end of each client's cycle runs the same thing. If it says it generated 0 invoices, there was no unbilled work in the window, not that something failed.",
     ],
     appLink: { to: "/invoices", label: "Open Invoices" },
     related: ["getting-paid", "skip-rules", "add-ons"],

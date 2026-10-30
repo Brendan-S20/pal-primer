@@ -13,6 +13,12 @@ export type ManualInvoiceItem = {
   amountCents: number;
   quantity?: number;
   unitAmountCents?: number;
+  /** The visit this line bills. Written as invoice_line_items.visit_id, which
+   *  is what keeps the billing run from billing the visit again (#605). */
+  visitId?: string;
+  /** The pending add-on charge this line bills. It is marked invoiced against
+   *  the line, so the billing run no longer picks it up. */
+  addonChargeId?: string;
 };
 
 /** Insert an open invoice and its lines for a client the caller has already
@@ -31,8 +37,15 @@ export async function insertManualInvoice(
     notes?: string;
     /** What the activity log calls it: "manual invoice", "invoice for Q-1001". */
     activityLabel?: string;
+    /** The days the invoice covers. Today when not given. */
+    period?: { start: string; end: string };
   },
 ): Promise<{ invoiceId: string; totalCents: number; taxCents: number }> {
+  const linked = p.items.some((i) => i.visitId || i.addonChargeId);
+  if (linked) {
+    const { checkInvoiceLinks } = await import("@/lib/visit-invoicing.server");
+    await checkInvoiceLinks(supabase, p.orgId, p.clientId, p.items);
+  }
   const subtotal = p.items.reduce((s, i) => s + i.amountCents, 0);
   const nowIso = new Date().toISOString();
   // Due date = issued date + the org's payment terms. (A DB trigger also
@@ -79,8 +92,8 @@ export async function insertManualInvoice(
         tax_cents: totals.taxCents,
         tax_label: totals.taxLabel,
         total_cents: total,
-        period_start: today,
-        period_end: today,
+        period_start: p.period?.start ?? today,
+        period_end: p.period?.end ?? today,
         issued_at: nowIso,
         due_on: dueOn,
         notes: p.notes ?? "Manual invoice",
@@ -90,20 +103,59 @@ export async function insertManualInvoice(
     .single();
   if (iErr) throw new Error(iErr.message);
 
-  const { error: lErr } = await supabase.from("invoice_line_items").insert(
-    p.items.map((i) => ({
-      invoice_id: inv.id,
-      description: i.description,
-      amount_cents: i.amountCents,
-      ...(i.quantity !== undefined
-        ? { quantity: i.quantity, unit_amount_cents: i.unitAmountCents! }
-        : {}),
-    })),
-  );
-  if (lErr) {
+  const lineRow = (i: ManualInvoiceItem) => ({
+    invoice_id: inv.id,
+    description: i.description,
+    amount_cents: i.amountCents,
+    ...(i.visitId ? { visit_id: i.visitId } : {}),
+    ...(i.quantity !== undefined
+      ? { quantity: i.quantity, unit_amount_cents: i.unitAmountCents! }
+      : {}),
+  });
+  // Add-ons claimed so far, so a failure can hand them back to pending.
+  const claimed: string[] = [];
+  const undo = async (message: string): Promise<never> => {
+    if (claimed.length) {
+      await supabase
+        .from("addon_charges")
+        .update({ status: "pending", invoice_line_item_id: null })
+        .in("id", claimed);
+    }
     // Don't leave a headless invoice behind if the lines failed.
     await supabase.from("invoices").delete().eq("id", inv.id);
-    throw new Error(lErr.message);
+    throw new Error(message);
+  };
+
+  const plain = p.items.filter((i) => !i.addonChargeId);
+  if (plain.length) {
+    const { error: lErr } = await supabase.from("invoice_line_items").insert(plain.map(lineRow));
+    if (lErr) await undo(lErr.message);
+  }
+  // One add-on, one line, claimed the way the billing run claims it: only
+  // while it is still pending, so the run and this invoice cannot both bill it.
+  for (const i of p.items.filter((x) => x.addonChargeId)) {
+    const { data: li, error: aErr } = await supabase
+      .from("invoice_line_items")
+      .insert(lineRow(i))
+      .select("id")
+      .single();
+    if (aErr) await undo(aErr.message);
+    const { data: got, error: cErr } = await supabase
+      .from("addon_charges")
+      .update({ status: "invoiced", invoice_line_item_id: li!.id, updated_at: nowIso })
+      .eq("id", i.addonChargeId!)
+      .eq("client_id", p.clientId)
+      .eq("status", "pending")
+      .select("id");
+    if (cErr) await undo(cErr.message);
+    if (!got?.length) await undo("An add-on on this invoice has already been billed.");
+    claimed.push(i.addonChargeId!);
+  }
+  const visitIds = p.items.flatMap((i) => (i.visitId ? [i.visitId] : []));
+  if (visitIds.length) {
+    const { visitBilledElsewhere } = await import("@/lib/visit-invoicing.server");
+    const other = await visitBilledElsewhere(supabase, String(inv.id), visitIds);
+    if (other) await undo(`A visit on this invoice was just billed on invoice ${other}.`);
   }
   const { logActivity } = await import("@/lib/activity.server");
   await logActivity(supabase, {

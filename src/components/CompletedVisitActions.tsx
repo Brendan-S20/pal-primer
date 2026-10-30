@@ -19,6 +19,7 @@ import { useConfirmDialog, type ConfirmOptions } from "@/components/ConfirmDialo
 import { usePermissions, type AppRole } from "@/hooks/useMyRole";
 import { markVisitMissedFromOffice, reopenVisitFromOffice } from "@/lib/visits.functions";
 import { BUSINESS_REASONS } from "@/lib/training-packages";
+import { InvoiceThisVisit } from "@/components/InvoiceThisVisit";
 
 export type CompletedVisitAction = "reopen" | "missed";
 type MissedCode = (typeof BUSINESS_REASONS)[number];
@@ -160,6 +161,8 @@ export function CompletedVisitActions({
   return (
     <div className="space-y-2">
       {dialog}
+      {/* Invoice at completion (#605): the office bills a visit from the visit. */}
+      <InvoiceThisVisit visitId={visit.id} />
       <div className="flex flex-wrap gap-2">
         {visit.client_package_id && (
           <div className="w-full space-y-1">
