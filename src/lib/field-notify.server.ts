@@ -28,6 +28,8 @@ import {
   finishedTitle,
   LATE_GIVE_UP_MIN,
   LATE_LOOKAHEAD_MIN,
+  earlierLateKeys,
+  lateIsStale,
   lateStep,
   minutesLate,
   nextStopPerTechDay,
@@ -607,7 +609,8 @@ async function tellIfLate(
 ): Promise<number> {
   if (!v.assigned_staff_id) return 0;
   const late = minutesLate(v.eta_end, projected);
-  if (late == null) return 0;
+  if (late == null || lateIsStale(v.eta_end, projected)) return 0;
+  const step = lateStep(late);
   const { notifyRoles } = await import("@/lib/notify-center.server");
   const address = addressOf(propOf(v));
   const told = await notifyRoles([...OFFICE], {
@@ -622,10 +625,40 @@ async function tellIfLate(
     threadId: routeThreadId(v.assigned_staff_id, v.scheduled_on),
     // A newer estimate for the same stop replaces the older one on the phone.
     collapseId: `late:${v.id}`,
-    eventKey: `late:${v.id}:${lateStep(late)}`,
+    eventKey: `late:${v.id}:${step}`,
     exceptUserId: actorUserId,
+    exceptUserIds: await readThisStopLate(v, step),
   });
   return told.pushed.length;
+}
+
+/** Who has already read an earlier late notice for this stop. Mark all read
+ *  is the office saying "I know": a further slip on the same stop goes to the
+ *  people who have not seen one yet, and not back into the inbox of the ones
+ *  who cleared it. A failed lookup answers nobody, so a slip is told rather
+ *  than lost. */
+async function readThisStopLate(v: Stop, step: number): Promise<string[]> {
+  const keys = earlierLateKeys(v.id, step);
+  if (!keys.length) return [];
+  try {
+    const db = await admin();
+    const { data, error } = await db
+      .from("app_notifications")
+      .select("recipient_user_id")
+      .eq("organization_id", v.organization_id)
+      .eq("type", FIELD_TYPES.late)
+      .in("event_key", keys)
+      .not("read_at", "is", null);
+    if (error) throw new Error(error.message);
+    return [
+      ...new Set(
+        ((data ?? []) as Array<{ recipient_user_id: string }>).map((r) => r.recipient_user_id),
+      ),
+    ];
+  } catch (e) {
+    console.warn("[field-notify] read late lookup failed", e);
+    return [];
+  }
 }
 
 /**

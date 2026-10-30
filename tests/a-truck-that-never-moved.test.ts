@@ -175,6 +175,7 @@ vi.mock("@/integrations/supabase/client.server", () => {
 });
 
 import {
+  afterStopResolved,
   checkRunningLateFromPosition,
   checkStuckTrucks,
   startRouteWatch,
@@ -182,8 +183,10 @@ import {
 } from "@/lib/field-notify.server";
 import { resetNotifyMemoForTests } from "@/lib/notify-center.server";
 import {
+  earlierLateKeys,
   LATE_GIVE_UP_MIN,
   LATE_LOOKAHEAD_MIN,
+  lateIsStale,
   nextStopPerTechDay,
   whereTheTruckIs,
   withinWorkingHours,
@@ -512,6 +515,77 @@ describe("what the clock does not tell", () => {
     expect((await checkStuckTrucks()).candidates).toBe(0);
     expect(h.reads).toBe(1);
     expect(LATE_CHECK_TELL_CAP).toBeGreaterThan(0);
+  });
+});
+
+// ── Mark all read sticks (#455) ─────────────────────────────────────────────
+//
+// On the Riverbend demo the owner pressed Mark all read and the lateness
+// alerts came back: every 15 minutes of slip is a new event key, so a new
+// unread row, and the finished-stop and GPS triggers had no give-up at all,
+// so a stop whose window closed in the morning came back at the end of the
+// day as "running about 400 min late".
+
+const markAllRead = (uid: string) =>
+  rowsFor(uid).forEach((r) => (r.read_at = new Date().toISOString()));
+
+describe("lateness alerts after Mark all read (#455)", () => {
+  it("a further slip on the same stop does not come back to someone who read it", async () => {
+    stuckAtALongStop();
+    await checkStuckTrucks();
+    markAllRead(U.owner);
+    vi.setSystemTime(new Date(NOW.getTime() + 15 * 60_000));
+    await checkStuckTrucks();
+    expect(pushesTo(U.owner)).toHaveLength(1);
+    expect(rowsFor(U.owner).every((r) => r.read_at)).toBe(true);
+    // The two who did not read it still hear the slip.
+    for (const uid of [U.manager, U.dispatcher]) expect(pushesTo(uid), uid).toHaveLength(2);
+  });
+
+  it("still tells someone who read it about a different stop running late", async () => {
+    stuckAtALongStop();
+    await checkStuckTrucks();
+    markAllRead(U.owner);
+    h.db.visits.push(
+      visit("s1", S.sam, TODAY, 1, { status: "in_progress", started_at: inMin(-40) }),
+      visit("s2", S.sam, TODAY, 2, { eta_end: inMin(-5), travel_min: 15 }),
+    );
+    await checkStuckTrucks();
+    expect(pushesTo(U.owner).map((p) => p.payload.collapseId)).toEqual(["late:v2", "late:s2"]);
+  });
+
+  it("a stop finished at the end of the day does not announce the next one hundreds of minutes late", async () => {
+    // Afternoon: the next stop's window closed at 10:20, about 400 minutes ago.
+    h.db.visits = [
+      visit("v1", S.taylor, TODAY, 1, { status: "completed", completed_at: inMin(-1) }),
+      visit("v2", S.taylor, TODAY, 2, { eta_end: inMin(-400), travel_min: 10 }),
+    ];
+    await afterStopResolved({ visitId: "v1", actorUserId: U.taylor });
+    expect(h.pushed).toEqual([]);
+    expect(h.db.app_notifications).toEqual([]);
+  });
+
+  it("nor does a GPS ping on the way to a stop whose window closed hours ago", async () => {
+    h.db.visits = [visit("v2", S.taylor, TODAY, 2, { eta_end: inMin(-400) })];
+    await checkRunningLateFromPosition({
+      visitId: "v2",
+      lat: 42.38,
+      lng: -83.04,
+      actorUserId: U.taylor,
+    });
+    expect(h.pushed).toEqual([]);
+  });
+
+  it("the rules: stale past the give-up, and only earlier steps count as read", () => {
+    const now = new Date(NOW);
+    expect(lateIsStale(inMin(-5), new Date(Date.now() + 15 * 60_000), now)).toBe(false);
+    expect(lateIsStale(inMin(-LATE_GIVE_UP_MIN - 1), now, now)).toBe(true);
+    expect(
+      lateIsStale(inMin(30), new Date(Date.now() + (31 + LATE_GIVE_UP_MIN) * 60_000), now),
+    ).toBe(true);
+    expect(lateIsStale(null, now, now)).toBe(true);
+    expect(earlierLateKeys("v2", 0)).toEqual([]);
+    expect(earlierLateKeys("v2", 2)).toEqual(["late:v2:0", "late:v2:1"]);
   });
 });
 
