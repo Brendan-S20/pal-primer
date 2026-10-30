@@ -100,7 +100,7 @@ describe("buildWeeklyDigestSummary", () => {
 
   it("states only figures that are in the stats", () => {
     const s = buildWeeklyDigestSummary(stats());
-    expect(s).toContain("40 visits completed of 52 scheduled (77%).");
+    expect(s).toContain("40 visits completed of 52 scheduled. Completion rate 77%, counting missed and skipped visits against it.");
     expect(s).toContain(
       "Collected $900.00 after $50.00 in refunds and chargebacks ($950.00 before them).",
     );

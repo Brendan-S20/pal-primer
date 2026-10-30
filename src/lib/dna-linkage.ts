@@ -204,3 +204,52 @@ export function lastServicedByStation(logs: StationServiceLog[]): Record<string,
   }
   return out;
 }
+
+/** The records that point at a dog, by what they are. Visits, plans and stays
+ *  hold dogs in uuid arrays (groom_dog_ids, pet_ids) that no foreign key
+ *  cleans up, incidents and DNA matches would lose which dog they were
+ *  about, and vaccine records and care instructions cascade away with the
+ *  dog (a vaccine record's uploaded document would be left in storage).
+ *  Counted by the caller; decided here. */
+export type DogLinks = {
+  visits: number;
+  plans: number;
+  stays: number;
+  packages: number;
+  careLogs: number;
+  homework: number;
+  groomNotes: number;
+  incidents: number;
+  dnaMatches: number;
+  qcTickets: number;
+  vaccinations: number;
+  careInstructions: number;
+};
+
+const DOG_LINK_LABELS: Record<keyof DogLinks, string> = {
+  visits: "visits",
+  plans: "service plans",
+  stays: "stays",
+  packages: "training packages",
+  careLogs: "care logs",
+  homework: "homework",
+  groomNotes: "grooming notes",
+  incidents: "unit incidents",
+  dnaMatches: "DNA matches",
+  qcTickets: "quality checks",
+  vaccinations: "vaccine records",
+  careInstructions: "care instructions",
+};
+
+/** Delete a dog outright only when nothing points at it (a dog added to the
+ *  wrong unit, or twice). A dog with any history is marked inactive instead:
+ *  it leaves the unit's list and stops counting, and the visits, plans and
+ *  evidence that name it keep their link (#455). */
+export function dogDeleteOutcome(
+  links: DogLinks,
+): { mode: "delete" } | { mode: "deactivate"; reasons: string[] } {
+  const reasons = (Object.keys(DOG_LINK_LABELS) as Array<keyof DogLinks>)
+    .filter((k) => (links[k] ?? 0) > 0)
+    .map((k) => DOG_LINK_LABELS[k]);
+  return reasons.length ? { mode: "deactivate", reasons } : { mode: "delete" };
+}

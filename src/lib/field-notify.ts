@@ -319,6 +319,31 @@ export function estimateDriveMin(
   return speedKmh > 0 ? (km / speedKmh) * 60 : 0;
 }
 
+/** The late steps already announced before `step` for one stop, as event
+ *  keys: `late:<visitId>:0` up to `late:<visitId>:<step - 1>`. A person who
+ *  read any of them (one by one or with Mark all read) has dealt with this
+ *  stop being late, and a further slip is not pushed to them again. */
+export function earlierLateKeys(visitId: string, step: number): string[] {
+  return Array.from({ length: Math.max(0, step) }, (_, i) => `late:${visitId}:${i}`);
+}
+
+/** Is a late arrival still news? Not once the window closed more than
+ *  LATE_GIVE_UP_MIN ago, and not once the projection is that far past it:
+ *  "about 400 min late" at the end of a day is a stop nobody reached, which
+ *  the office already knows, not an arrival to warn a customer about. Every
+ *  trigger (GPS, a finished stop, the clock) asks this before telling. */
+export function lateIsStale(
+  etaEnd: string | null | undefined,
+  projected: Date,
+  now: Date = new Date(),
+): boolean {
+  const end = Date.parse(String(etaEnd ?? ""));
+  if (Number.isNaN(end)) return true;
+  if (now.getTime() - end > LATE_GIVE_UP_MIN * 60_000) return true;
+  const late = minutesLate(etaEnd, projected);
+  return late != null && late > LATE_GIVE_UP_MIN;
+}
+
 /** "about 25 min": rounded up to five, because a person reads it as a
  *  promise and the estimate is not that precise. */
 export const roundLate = (minutes: number) => Math.ceil(minutes / 5) * 5;

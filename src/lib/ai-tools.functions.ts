@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/authz.server";
 import { generateStructured } from "@/lib/ai.server";
 import { resolveOrgAiCall } from "@/lib/ai-credentials.server";
 import { grossReceivedCents, receivedPaymentStatuses } from "@/lib/revenue";
+import { completionRate } from "@/lib/visit-lifecycle";
 import { MARKETING_AI_LAUNCHED } from "@/lib/ai-launch";
 import { suggestZonePrices, zoneSkipRate } from "@/lib/zone-price-suggestion";
 import { buildWeeklyDigestSummary } from "@/lib/digest-insights";
@@ -286,7 +287,11 @@ export const generateWeeklyDigest = createServerFn({ method: "GET" })
       completed,
       skipped,
       scheduled,
-      completion_rate: scheduled ? Math.round((completed / scheduled) * 100) : 0,
+      // Of the visits that reached an outcome: missed and skipped count
+      // against it, a cancellation or a stop still open today does not
+      // (#455). Dividing by every row scheduled read today's unfinished route
+      // and every canceled visit as failed work.
+      completion_rate: Math.round((completionRate(visits ?? []) ?? 0) * 100),
       revenue_collected_cents: revenueCollected,
       // The components ride along so the digest can name a dispute as the
       // reason revenue moved, instead of attributing it to lost business.

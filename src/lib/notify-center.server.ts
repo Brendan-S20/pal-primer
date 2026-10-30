@@ -28,6 +28,9 @@ export type NotifyInput = {
   /** The person who made the change. Nobody is told about their own action:
    *  a tech who reorders their own day, an owner who skips their own stop. */
   exceptUserId?: string | null;
+  /** People who already dealt with this item (read an earlier notice about
+   *  it) and are not told about it again. */
+  exceptUserIds?: string[];
   /** Fold a burst into one notification. If the recipient already has a row
    *  in the same thread (threadId) from the last `windowMs`, that row is
    *  rewritten with this text and marked unread, and NOTHING is pushed: the
@@ -106,6 +109,7 @@ function isSchemaBehind(error: { code?: string; message?: string } | null | unde
 export async function notifyUsers(userIds: string[], n: NotifyInput): Promise<NotifyResult> {
   let ids = Array.from(new Set(userIds.filter(Boolean)));
   if (n.exceptUserId) ids = ids.filter((uid) => uid !== n.exceptUserId);
+  if (n.exceptUserIds?.length) ids = ids.filter((uid) => !n.exceptUserIds!.includes(uid));
   if (!ids.length || toldRecently(n.eventKey)) return NONE;
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const admin = supabaseAdmin as any;

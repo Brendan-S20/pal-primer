@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { resolveCaller, type CallerContext } from "@/lib/authz.server";
-import { assertValidDogName, dogNeedsUnitReview } from "@/lib/dna-linkage";
+import { assertValidDogName, dogDeleteOutcome, dogNeedsUnitReview, type DogLinks } from "@/lib/dna-linkage";
 import { cleanSpeciesNote, PET_SPECIES, SPECIES_NOTE_MAX } from "@/lib/pets";
 
 /** Server-side twin of the can_write_org() SQL helper (everyone but techs) —
@@ -301,6 +301,123 @@ export const updateDog = createServerFn({ method: "POST" })
       }
     } catch {}
     return { ok: true };
+  });
+
+/** Count what points at a dog. Head-only counts, one per table, all scoped
+ *  to the organization. A failed count throws: deleting on a guess is how a
+ *  plan ends up naming a dog that no longer exists. */
+async function countDogLinks(supabase: any, orgId: string, dogId: string): Promise<DogLinks> {
+  const count = async (table: string, apply: (q: any) => any) => {
+    const { count: n, error } = await apply(
+      supabase.from(table).select("id", { count: "exact", head: true }).eq("organization_id", orgId),
+    );
+    if (error) throw new Error(error.message);
+    return n ?? 0;
+  };
+  const [
+    visits,
+    plans,
+    stays,
+    packages,
+    careLogs,
+    homework,
+    groomNotes,
+    incidents,
+    dnaMatches,
+    qcTickets,
+    vaccinations,
+    careInstructions,
+  ] = await Promise.all([
+      count("visits", (q) => q.contains("groom_dog_ids", [dogId])),
+      count("subscriptions", (q) => q.contains("groom_dog_ids", [dogId])),
+      count("stays", (q) => q.contains("pet_ids", [dogId])),
+      count("client_packages", (q) => q.eq("dog_id", dogId)),
+      count("care_log", (q) => q.eq("pet_id", dogId)),
+      count("homework", (q) => q.eq("dog_id", dogId)),
+      count("pet_groom_notes", (q) => q.eq("dog_id", dogId)),
+      count("unit_incidents", (q) => q.eq("dog_id", dogId)),
+      count("dna_matches", (q) => q.eq("matched_dog_id", dogId)),
+      count("qc_tickets", (q) => q.eq("dog_id", dogId)),
+      count("pet_vaccinations", (q) => q.eq("dog_id", dogId)),
+      count("pet_care_instructions", (q) => q.eq("pet_id", dogId)),
+    ]);
+  return {
+    visits,
+    plans,
+    stays,
+    packages,
+    careLogs,
+    homework,
+    groomNotes,
+    incidents,
+    dnaMatches,
+    qcTickets,
+    vaccinations,
+    careInstructions,
+  };
+}
+
+/** Remove a dog, from the Units tab confirm (#455). Deleted when nothing
+ *  points at it; otherwise marked inactive, which takes it off the unit's
+ *  list and out of the counts without leaving a visit, plan or DNA match
+ *  pointing at a row that is gone, or cascading away its vaccine records
+ *  and care instructions (see dogDeleteOutcome). */
+export const removeDog = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { orgId } = await requireCanWriteOrg(supabase, context.userId);
+    const { data: dog, error: dogErr } = await supabase
+      .from("dogs")
+      .select("id, name, property_id")
+      .eq("id", data.id)
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    if (dogErr) throw new Error(dogErr.message);
+    if (!dog) throw new Error("Dog not found");
+
+    const outcome = dogDeleteOutcome(await countDogLinks(supabase, orgId, data.id));
+    if (outcome.mode === "delete") {
+      const { error } = await supabase.from("dogs").delete().eq("id", data.id).eq("organization_id", orgId);
+      if (error) throw new Error(error.message);
+    } else {
+      const { error } = await supabase
+        .from("dogs")
+        .update({ active: false } as never)
+        .eq("id", data.id)
+        .eq("organization_id", orgId);
+      if (error) throw new Error(error.message);
+    }
+
+    if (dog.property_id) {
+      const { recomputePropertyEstimate } = await import("@/lib/estimate.server");
+      await recomputePropertyEstimate(supabase, dog.property_id);
+    }
+    try {
+      const { data: propRow } = await supabase
+        .from("properties")
+        .select("organization_id, client_id")
+        .eq("id", dog.property_id)
+        .single();
+      if (propRow) {
+        const { logActivity } = await import("@/lib/activity.server");
+        await logActivity(supabase, {
+          orgId: propRow.organization_id,
+          clientId: propRow.client_id,
+          propertyId: dog.property_id,
+          actorUserId: context.userId,
+          kind: outcome.mode === "delete" ? "dog.deleted" : "dog.deactivated",
+          summary:
+            outcome.mode === "delete"
+              ? `Deleted dog ${dog.name}`
+              : `Marked dog ${dog.name} inactive instead of deleting it (has ${outcome.reasons.join(", ")})`,
+        });
+      }
+    } catch {}
+    return outcome.mode === "delete"
+      ? { outcome: "deleted" as const, reasons: [] as string[] }
+      : { outcome: "deactivated" as const, reasons: outcome.reasons };
   });
 
 const dnaSchema = z.object({

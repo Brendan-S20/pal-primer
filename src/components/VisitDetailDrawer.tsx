@@ -70,6 +70,7 @@ import { CompletedVisitActions } from "@/components/CompletedVisitActions";
 import { BUSINESS_REASONS } from "@/lib/training-packages";
 import { useServiceLines } from "@/components/CommercialOnly";
 import { isYardVisit } from "@/lib/walk-concerns";
+import { canOfficeComplete } from "@/lib/visit-lifecycle";
 
 const MISSED_REASON_LABELS: Record<(typeof BUSINESS_REASONS)[number], string> = {
   our_fault: "Our fault",
@@ -329,7 +330,9 @@ export function VisitDetailDrawer({
   // There is no office_start_visit — starting a visit stamps a tech's arrival,
   // and the office has no honest value to stamp. The Start button here never
   // worked; it is gone rather than reimplemented as a lie.
-  const canComplete = v?.status === "scheduled" || v?.status === "in_progress";
+  // A missed visit too: the nightly job marks a past visit missed when
+  // nobody closed it, and it may still have been serviced (#455).
+  const canComplete = canOfficeComplete(v?.status);
   // office_skip_visit is narrower than the tech path on purpose: a visit
   // already in progress has a tech on site, and cancelling it from a desk
   // would overwrite what they are doing.
@@ -648,6 +651,12 @@ export function VisitDetailDrawer({
                   </p>
                 ) : (
                   <>
+                    {v.status === "missed" && (
+                      <p className="text-xs text-muted-foreground">
+                        Marked missed because nobody closed it out. If it was serviced, complete
+                        it here.
+                      </p>
+                    )}
                     {canComplete && (
                       <div className="flex flex-wrap gap-2">
                         {/* `size="sm"` is a 25px box. This is the field
