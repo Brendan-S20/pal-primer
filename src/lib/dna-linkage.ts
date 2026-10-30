@@ -207,8 +207,10 @@ export function lastServicedByStation(logs: StationServiceLog[]): Record<string,
 
 /** The records that point at a dog, by what they are. Visits, plans and stays
  *  hold dogs in uuid arrays (groom_dog_ids, pet_ids) that no foreign key
- *  cleans up, and incidents and DNA matches would lose which dog they were
- *  about. Counted by the caller; decided here. */
+ *  cleans up, incidents and DNA matches would lose which dog they were
+ *  about, and vaccine records and care instructions cascade away with the
+ *  dog (a vaccine record's uploaded document would be left in storage).
+ *  Counted by the caller; decided here. */
 export type DogLinks = {
   visits: number;
   plans: number;
@@ -220,6 +222,8 @@ export type DogLinks = {
   incidents: number;
   dnaMatches: number;
   qcTickets: number;
+  vaccinations: number;
+  careInstructions: number;
 };
 
 const DOG_LINK_LABELS: Record<keyof DogLinks, string> = {
@@ -233,6 +237,8 @@ const DOG_LINK_LABELS: Record<keyof DogLinks, string> = {
   incidents: "unit incidents",
   dnaMatches: "DNA matches",
   qcTickets: "quality checks",
+  vaccinations: "vaccine records",
+  careInstructions: "care instructions",
 };
 
 /** Delete a dog outright only when nothing points at it (a dog added to the

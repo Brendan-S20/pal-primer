@@ -314,8 +314,20 @@ async function countDogLinks(supabase: any, orgId: string, dogId: string): Promi
     if (error) throw new Error(error.message);
     return n ?? 0;
   };
-  const [visits, plans, stays, packages, careLogs, homework, groomNotes, incidents, dnaMatches, qcTickets] =
-    await Promise.all([
+  const [
+    visits,
+    plans,
+    stays,
+    packages,
+    careLogs,
+    homework,
+    groomNotes,
+    incidents,
+    dnaMatches,
+    qcTickets,
+    vaccinations,
+    careInstructions,
+  ] = await Promise.all([
       count("visits", (q) => q.contains("groom_dog_ids", [dogId])),
       count("subscriptions", (q) => q.contains("groom_dog_ids", [dogId])),
       count("stays", (q) => q.contains("pet_ids", [dogId])),
@@ -326,14 +338,30 @@ async function countDogLinks(supabase: any, orgId: string, dogId: string): Promi
       count("unit_incidents", (q) => q.eq("dog_id", dogId)),
       count("dna_matches", (q) => q.eq("matched_dog_id", dogId)),
       count("qc_tickets", (q) => q.eq("dog_id", dogId)),
+      count("pet_vaccinations", (q) => q.eq("dog_id", dogId)),
+      count("pet_care_instructions", (q) => q.eq("pet_id", dogId)),
     ]);
-  return { visits, plans, stays, packages, careLogs, homework, groomNotes, incidents, dnaMatches, qcTickets };
+  return {
+    visits,
+    plans,
+    stays,
+    packages,
+    careLogs,
+    homework,
+    groomNotes,
+    incidents,
+    dnaMatches,
+    qcTickets,
+    vaccinations,
+    careInstructions,
+  };
 }
 
 /** Remove a dog, from the Units tab confirm (#455). Deleted when nothing
  *  points at it; otherwise marked inactive, which takes it off the unit's
  *  list and out of the counts without leaving a visit, plan or DNA match
- *  pointing at a row that is gone (see dogDeleteOutcome). */
+ *  pointing at a row that is gone, or cascading away its vaccine records
+ *  and care instructions (see dogDeleteOutcome). */
 export const removeDog = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))

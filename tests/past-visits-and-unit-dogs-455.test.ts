@@ -223,6 +223,8 @@ const NO_LINKS: DogLinks = {
   incidents: 0,
   dnaMatches: 0,
   qcTickets: 0,
+  vaccinations: 0,
+  careInstructions: 0,
 };
 
 describe("deleting a dog from a unit (#455)", () => {
@@ -235,6 +237,21 @@ describe("deleting a dog from a unit (#455)", () => {
     expect(r).toEqual({ outcome: "deleted", reasons: [] });
     expect(h.deleted).toEqual(["dogs"]);
     expect(h.activity[0]).toMatchObject({ kind: "dog.deleted" });
+  });
+
+  it("marks a dog with a vaccine record inactive, so the record and its document are not cascaded away", async () => {
+    h.counts = { pet_vaccinations: 1 };
+    const r = await removeDog({ data: { id: DOG }, context: ctx() } as any);
+    expect(r).toEqual({ outcome: "deactivated", reasons: ["vaccine records"] });
+    expect(h.deleted).toEqual([]);
+    expect(h.updated).toEqual([{ table: "dogs", patch: { active: false } }]);
+  });
+
+  it("marks a dog with care instructions inactive too", async () => {
+    h.counts = { pet_care_instructions: 2 };
+    const r = await removeDog({ data: { id: DOG }, context: ctx() } as any);
+    expect(r).toEqual({ outcome: "deactivated", reasons: ["care instructions"] });
+    expect(h.deleted).toEqual([]);
   });
 
   it("marks a dog with history inactive instead, so nothing is left naming a missing row", async () => {
@@ -263,10 +280,12 @@ describe("deleting a dog from a unit (#455)", () => {
         "unit_incidents.dog_id",
         "dna_matches.matched_dog_id",
         "qc_tickets.dog_id",
+        "pet_vaccinations.dog_id",
+        "pet_care_instructions.pet_id",
       ].sort(),
     );
     // Every count is scoped to the caller's organization.
-    expect(h.countFilters.filter((f) => f.col === "organization_id")).toHaveLength(10);
+    expect(h.countFilters.filter((f) => f.col === "organization_id")).toHaveLength(12);
   });
 
   it("refuses a dog in another organization", async () => {
