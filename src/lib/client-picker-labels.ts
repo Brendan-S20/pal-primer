@@ -1,7 +1,7 @@
 // The label each client gets in a picker (#429).
 //
 // The quote editor listed clients by display_name alone, so an org with two
-// clients called "Vasquez Landing" showed two identical rows and nothing to
+// clients called "Harbor Point" showed two identical rows and nothing to
 // choose between them. Each client is still one row; a name that more than
 // one client has gets the street of that client's first property, and when
 // that does not settle it either (same street, or none on file) the start of

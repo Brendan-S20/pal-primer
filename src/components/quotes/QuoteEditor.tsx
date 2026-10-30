@@ -338,7 +338,7 @@ export function QuoteEditor({
     street?: string | null;
   }> = (clientsQ.data as any)?.clients ?? [];
   // One row per client, by name, and never two rows that read the same: two
-  // clients called "Vasquez Landing" are told apart by street, then by id
+  // clients called "Harbor Point" are told apart by street, then by id
   // (#429).
   const pickerRows = useMemo(
     () => clientPickerLabels(clients.filter((c) => c.active !== false || c.id === v.clientId)),

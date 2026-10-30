@@ -71,31 +71,31 @@ describe("quote: a price that is not the plan's says so", () => {
 describe("quote client picker: one row per client, no two the same", () => {
   it("tells two clients with one name apart by street", () => {
     const rows = clientPickerLabels([
-      { id: "a1111111-0000", display_name: "Vasquez Landing", street: "12 Elm St" },
-      { id: "b2222222-0000", display_name: "Vasquez Landing", street: "40 Oak Ave" },
+      { id: "a1111111-0000", display_name: "Harbor Point", street: "12 Elm St" },
+      { id: "b2222222-0000", display_name: "Harbor Point", street: "40 Oak Ave" },
       { id: "c3333333-0000", display_name: "Camille Ueda", street: "9 Pine Rd" },
     ]);
     expect(rows.map((r) => r.label)).toEqual([
       "Camille Ueda",
-      "Vasquez Landing · 12 Elm St",
-      "Vasquez Landing · 40 Oak Ave",
+      "Harbor Point · 12 Elm St",
+      "Harbor Point · 40 Oak Ave",
     ]);
   });
 
   it("falls back to the id when the street does not settle it", () => {
     const rows = clientPickerLabels([
-      { id: "a1111111-0000", display_name: "Petrov Mews", street: "1 Main St" },
-      { id: "b2222222-0000", display_name: "petrov mews ", street: "1 Main St" },
-      { id: "c3333333-0000", display_name: "Petrov Mews", street: null },
+      { id: "a1111111-0000", display_name: "Elm Row", street: "1 Main St" },
+      { id: "b2222222-0000", display_name: "elm row ", street: "1 Main St" },
+      { id: "c3333333-0000", display_name: "Elm Row", street: null },
     ]);
     const labels = rows.map((r) => r.label);
     expect(new Set(labels.map((l) => l.toLowerCase())).size).toBe(3);
-    expect(labels).toContain("Petrov Mews · 1 Main St · #a1111111");
-    expect(labels).toContain("Petrov Mews");
+    expect(labels).toContain("Elm Row · 1 Main St · #a1111111");
+    expect(labels).toContain("Elm Row");
   });
 
   it("lists a client id once", () => {
-    const c = { id: "a1111111-0000", display_name: "Jansen Court", street: null };
+    const c = { id: "a1111111-0000", display_name: "Birch Yard", street: null };
     expect(clientPickerLabels([c, c])).toHaveLength(1);
   });
 });
