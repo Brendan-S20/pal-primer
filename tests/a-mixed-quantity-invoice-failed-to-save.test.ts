@@ -9,7 +9,9 @@
 //
 // This is the TypeScript half: what insertManualInvoice sends. The SQL half,
 // that create_manual_invoice saves all of it or none of it and a failure takes
-// no number, is a-failed-invoice-kept-its-number.proof.test.ts.
+// no number, is supabase/proofs/20261030090000-a-failed-invoice-kept-its-number.sql
+// and tests/integration/a-failed-invoice-kept-its-number.db.test.ts, both run
+// by the database job in sandboxes.yml on a database built from migrations.
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
