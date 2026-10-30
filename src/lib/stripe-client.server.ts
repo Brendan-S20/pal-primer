@@ -57,7 +57,7 @@ import type Stripe from "stripe";
  * not, the compiler says so — which is the entire point of typing it against
  * the package rather than writing a string nobody checks.
  */
-export const STRIPE_API_VERSION: PinnedApiVersion = "2026-07-29.dahlia";
+export const STRIPE_API_VERSION: PinnedApiVersion = "2026-08-26.dahlia";
 
 /**
  * The SDK's own `apiVersion` type, read off the constructor rather than
