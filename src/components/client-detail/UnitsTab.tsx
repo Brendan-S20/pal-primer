@@ -621,7 +621,7 @@ function UnitDogsSection({
       );
       onChanged();
     },
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e) => toast.error((e as Error).message || "Could not delete dog"),
   });
 
   const askDelete = async (d: any) => {

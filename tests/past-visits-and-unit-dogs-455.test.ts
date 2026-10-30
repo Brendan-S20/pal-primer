@@ -31,6 +31,9 @@ const h = vi.hoisted(() => ({
   deleted: [] as string[],
   updated: [] as Array<{ table: string; patch: Row }>,
   activity: [] as Row[],
+  rowColumns: {} as Record<string, Set<string>>,
+  headSelects: [] as Array<{ table: string; columns: string }>,
+  blankCountError: null as string | null,
 }));
 
 vi.mock("@tanstack/react-start", () => ({
@@ -75,9 +78,21 @@ function fakeSupabase() {
     from(table: string) {
       let op: "select" | "delete" | "update" = "select";
       let head = false;
+      let headFails = false;
       let patch: Row = {};
       const q: any = {
-        select: (_c?: string, o?: { head?: boolean }) => ((head = !!o?.head), q),
+        select: (c = "*", o?: { head?: boolean }) => {
+          head = !!o?.head;
+          if (head) {
+            h.headSelects.push({ table, columns: c });
+            // PostgREST answers a HEAD for a column the table lacks with a 400
+            // and no body, so supabase-js reports error.message === "".
+            const cols = h.rowColumns[table];
+            const missing = c !== "*" && cols && c.split(",").some((col) => !cols.has(col.trim()));
+            if (missing || h.blankCountError === table) headFails = true;
+          }
+          return q;
+        },
         eq: (col: string, val: unknown) => {
           if (head) h.countFilters.push({ table, op: "eq", col, val });
           return q;
@@ -98,7 +113,8 @@ function fakeSupabase() {
           } else if (op === "update") {
             h.updated.push({ table, patch });
             out = { error: null };
-          } else if (head) out = { count: h.counts[table] ?? 0, error: null };
+          } else if (head && headFails) out = { count: null, error: { message: "" } };
+          else if (head) out = { count: h.counts[table] ?? 0, error: null };
           else if (table === "visits") out = { data: h.visit, error: null };
           else if (table === "dogs") out = { data: h.dog, error: null };
           else if (table === "properties")
@@ -122,7 +138,24 @@ const DOG = "22222222-2222-4222-8222-222222222222";
 const ctx = () => ({ supabase: fakeSupabase(), userId: "u-owner" });
 const read = (p: string) => readFileSync(join(import.meta.dirname, "..", p), "utf8");
 
+/** Each public table's Row columns, read from the generated types, so the
+ *  fake fails a head count the way PostgREST does when a column is missing. */
+function rowColumnsFromTypes(): Record<string, Set<string>> {
+  const src = read("src/integrations/supabase/types.ts");
+  const out: Record<string, Set<string>> = {};
+  const re = /^ {6}(\w+): \{\n {8}Row: \{\n([\s\S]*?)\n {8}\}/gm;
+  for (const m of src.matchAll(re)) {
+    if (out[m[1]]) continue;
+    out[m[1]] = new Set([...m[2].matchAll(/^ {10}(\w+)\??:/gm)].map((c) => c[1]));
+  }
+  return out;
+}
+const ROW_COLUMNS = rowColumnsFromTypes();
+
 beforeEach(() => {
+  h.rowColumns = ROW_COLUMNS;
+  h.headSelects = [];
+  h.blankCountError = null;
   h.visit = null;
   h.rpcs = [];
   h.counts = {};
@@ -286,6 +319,39 @@ describe("deleting a dog from a unit (#455)", () => {
     );
     // Every count is scoped to the caller's organization.
     expect(h.countFilters.filter((f) => f.col === "organization_id")).toHaveLength(12);
+  });
+
+  it("head-counts only columns each table has: homework and pet_care_instructions have no id", async () => {
+    expect(ROW_COLUMNS.homework?.has("visit_id")).toBe(true);
+    expect(ROW_COLUMNS.homework?.has("id")).toBe(false);
+    expect(ROW_COLUMNS.pet_care_instructions?.has("pet_id")).toBe(true);
+    expect(ROW_COLUMNS.pet_care_instructions?.has("id")).toBe(false);
+
+    const r = await removeDog({ data: { id: DOG }, context: ctx() } as any);
+    expect(r).toEqual({ outcome: "deleted", reasons: [] });
+    expect(h.headSelects).toHaveLength(12);
+    for (const { table, columns } of h.headSelects) {
+      expect(ROW_COLUMNS[table], `${table} is in the generated types`).toBeDefined();
+      if (columns === "*") continue;
+      for (const col of columns.split(",")) {
+        expect(ROW_COLUMNS[table].has(col.trim()), `${table}.${col.trim()}`).toBe(true);
+      }
+    }
+  });
+
+  it("a count that fails with a blank message says which table, and deletes nothing", async () => {
+    h.blankCountError = "homework";
+    await expect(removeDog({ data: { id: DOG }, context: ctx() } as any)).rejects.toThrow(
+      "Could not check homework",
+    );
+    expect(h.deleted).toEqual([]);
+    expect(h.updated).toEqual([]);
+  });
+
+  it("the Units tab never shows a blank delete toast", () => {
+    expect(read("src/components/client-detail/UnitsTab.tsx")).toMatch(
+      /toast\.error\(\(e as Error\)\.message \|\| "Could not delete dog"\)/,
+    );
   });
 
   it("refuses a dog in another organization", async () => {
