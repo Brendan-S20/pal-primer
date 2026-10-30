@@ -118,3 +118,29 @@ export function isVisitAwaitingCloseOut(
 export function isMissedVisitCandidate(v: VisitLike, today: string): boolean {
   return v.status === "scheduled" && v.scheduled_on < today && !v.started_at;
 }
+
+/** Statuses the office can mark completed. Mirrors office_complete_visit,
+ *  which has accepted 'missed' since B6: the nightly job marks a past visit
+ *  missed when nobody closed it, and the visit may still have been serviced
+ *  (#455). The server function, the dispatch drawer and the client Visits tab
+ *  all ask this, so none of them can disagree with the SQL again. */
+export const OFFICE_COMPLETABLE_STATUSES = ["scheduled", "in_progress", "missed"] as const;
+
+export function canOfficeComplete(status: string | null | undefined): boolean {
+  return (OFFICE_COMPLETABLE_STATUSES as readonly string[]).includes(String(status));
+}
+
+/** Share of the visits that reached an outcome that were completed, 0 to 1,
+ *  or null when none did. Missed and skipped count against it: missed is not
+ *  done. Canceled visits and ones still open (scheduled, in progress) do not
+ *  count either way, so a week with today's route half run, or a visit the
+ *  client canceled, does not read as work that failed (#455). */
+export function completionRate(rows: Array<{ status: string }>): number | null {
+  let completed = 0;
+  let resolved = 0;
+  for (const r of rows) {
+    if (r.status === "completed") completed++;
+    if (r.status === "completed" || r.status === "skipped" || r.status === "missed") resolved++;
+  }
+  return resolved > 0 ? completed / resolved : null;
+}

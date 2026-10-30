@@ -137,7 +137,7 @@ export function buildWeeklyDigestSummary(s: WeeklyDigestStats): string {
 
   lines.push("### This week");
   lines.push(
-    `- ${plural(s.completed, "visit")} completed of ${s.scheduled} scheduled (${s.completion_rate}%).`,
+    `- ${plural(s.completed, "visit")} completed of ${s.scheduled} scheduled. Completion rate ${s.completion_rate}%, counting missed and skipped visits against it.`,
   );
   if (s.skipped > 0) lines.push(`- ${plural(s.skipped, "visit")} skipped.`);
 

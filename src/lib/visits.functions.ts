@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
 import { resolveCaller } from "@/lib/authz.server";
+import { canOfficeComplete } from "@/lib/visit-lifecycle";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   // Through the shared gate, so a person whose access is turned off is
@@ -495,7 +496,7 @@ async function loadVisitForOfficeAction(supabase: any, userId: string, visitId: 
   };
 }
 
-/** Mark a scheduled/in-progress visit completed from the office. Timestamps
+/** Mark a scheduled, in-progress or missed visit completed from the office. Timestamps
  * default sensibly (completed now, started kept or now); use the timestamp
  * correction flow afterwards if the real times differ. */
 export const completeVisitFromOffice = createServerFn({ method: "POST" })
@@ -504,8 +505,10 @@ export const completeVisitFromOffice = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
-    if (v.status !== "scheduled" && v.status !== "in_progress")
-      throw new Error("Only scheduled or in-progress visits can be completed");
+    // A missed visit can be completed too: it was marked missed overnight
+    // because nobody closed it, not because it was proved undone (#455).
+    if (!canOfficeComplete(v.status))
+      throw new Error("Only scheduled, in-progress, or missed visits can be completed");
     // The office closing a stop takes it off the tech's work for the day:
     // "I did the Smiths myself" is a stop they no longer drive to, and they
     // hear it as one that came off. The lock screen already followed (#337).

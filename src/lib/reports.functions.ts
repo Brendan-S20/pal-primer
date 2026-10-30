@@ -39,6 +39,7 @@ import { createServerFn } from "@tanstack/react-start";
 // tests/org-day.test.ts that this page never takes its day from the server.
 import { DEFAULT_ORG_TIMEZONE } from "@/lib/org-day";
 import { reportZoneId } from "@/lib/report-zone";
+import { completionRate } from "@/lib/visit-lifecycle";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
@@ -323,11 +324,7 @@ export const getReports = createServerFn({ method: "POST" })
       // A missed visit is a terminal service failure and counts against the
       // completion rate alongside skips (B6 finding 5) — otherwise a month of
       // missed visits would still read 100% complete.
-      completionRate:
-        visitCounts.completed + visitCounts.skipped + visitCounts.missed > 0
-          ? visitCounts.completed /
-            (visitCounts.completed + visitCounts.skipped + visitCounts.missed)
-          : null,
+      completionRate: completionRate(visits ?? []),
       perTech: Object.entries(perTech)
         .filter(([id]) => fieldStaffIds.has(id))
         .map(([id, s]) => ({

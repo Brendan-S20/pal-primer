@@ -32,7 +32,7 @@ import { listClientHolds } from "@/lib/clients.functions";
 import { notifyCanceledWalks } from "@/lib/walk-notify.functions";
 import { formatDay, formatTime, formatClock } from "@/lib/format";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
-import { formatVisitDuration } from "@/lib/visit-lifecycle";
+import { canOfficeComplete, formatVisitDuration } from "@/lib/visit-lifecycle";
 import { officeSkipReason } from "@/lib/skip-rules.functions";
 import { MetaChip, StatusChip } from "@/components/client-detail/primitives";
 import { RowActions } from "@/components/RowActions";
@@ -1085,8 +1085,7 @@ function VisitDetailDrawer({
   const durText = formatVisitDuration(v.started_at, v.completed_at);
   // Missed visits can be retroactively completed (it was serviced) or
   // rescheduled (make-up) — the only recovery from the terminal state.
-  const canComplete =
-    v.status === "scheduled" || v.status === "in_progress" || v.status === "missed";
+  const canComplete = canOfficeComplete(v.status);
   const canReschedule = scheduled || missed;
 
   return (
