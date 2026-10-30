@@ -23,6 +23,18 @@ export function manualInvoiceFakeDb(state: FakeDbState) {
     maybeSingle: async () => ({ data, error: null }),
   });
   return {
+    // create_manual_invoice: the invoice and its lines in one transaction.
+    async rpc(
+      fn: string,
+      args: { _invoice: Record<string, unknown>; _lines: Record<string, unknown>[] },
+    ) {
+      if (fn !== "create_manual_invoice") {
+        throw new Error(`manualInvoiceFakeDb was not built to answer rpc ${fn}`);
+      }
+      state.inserted.invoices.push(args._invoice);
+      state.inserted.lines.push(...args._lines);
+      return { data: "11111111-1111-4111-8111-111111111111", error: null };
+    },
     from(table: string) {
       if (table === "organizations") {
         return { select: () => ({ eq: () => single(state.org) }) };
@@ -32,21 +44,8 @@ export function manualInvoiceFakeDb(state: FakeDbState) {
       }
       if (table === "invoices") {
         return {
-          insert(row: Record<string, unknown>) {
-            state.inserted.invoices.push(row);
-            return { select: () => single({ id: "11111111-1111-4111-8111-111111111111" }) };
-          },
           // invoiceRef, for the activity summary.
           select: () => ({ eq: () => single({ number: 1042 }) }),
-          delete: () => ({ eq: async () => ({ error: null }) }),
-        };
-      }
-      if (table === "invoice_line_items") {
-        return {
-          insert: async (rows: Record<string, unknown>[]) => {
-            state.inserted.lines.push(...rows);
-            return { error: null };
-          },
         };
       }
       throw new Error(`manualInvoiceFakeDb was not built to answer ${table}`);
@@ -56,7 +55,12 @@ export function manualInvoiceFakeDb(state: FakeDbState) {
 
 export function freshState(over: Partial<FakeDbState> = {}): FakeDbState {
   return {
-    org: { invoice_net_days: 15, timezone: "America/Chicago", sales_tax_rate_bps: 0, sales_tax_label: "Sales tax" },
+    org: {
+      invoice_net_days: 15,
+      timezone: "America/Chicago",
+      sales_tax_rate_bps: 0,
+      sales_tax_label: "Sales tax",
+    },
     client: { tax_exempt: false },
     inserted: { invoices: [], lines: [] },
     ...over,
