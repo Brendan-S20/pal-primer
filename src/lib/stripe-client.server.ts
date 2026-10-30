@@ -34,12 +34,18 @@
 // would have minted a new signing secret and dropped billing events until it
 // was pasted in).
 //
+// Upgraded again to 22.6.2 on 2026-10-30, whose headline moves the pinned
+// version to 2026-08-26.dahlia. The constant below was bumped with it — the
+// SDK decides the version, and the endpoints are matched to it.
+//
 // Upgrading again is a deliberate two-step change: bump the SDK, bump this
 // constant. Skipping the second step does not compile — that is not a
 // convention, it is the type below, and it fired for real on this very
 // upgrade: TS2322, '2026-06-24.dahlia' is not assignable to
-// '2026-07-29.dahlia'. If a future SDK moves ahead of the endpoints, the
-// runtime warning further down is what says so.
+// '2026-07-29.dahlia'. It fired again on the 22.6.2 upgrade: TS2322,
+// '2026-07-29.dahlia' is not assignable to '2026-08-26.dahlia'. If a future
+// SDK moves ahead of the endpoints, the runtime warning further down is what
+// says so.
 
 import type Stripe from "stripe";
 
@@ -51,7 +57,7 @@ import type Stripe from "stripe";
  * not, the compiler says so — which is the entire point of typing it against
  * the package rather than writing a string nobody checks.
  */
-export const STRIPE_API_VERSION: PinnedApiVersion = "2026-07-29.dahlia";
+export const STRIPE_API_VERSION: PinnedApiVersion = "2026-08-26.dahlia";
 
 /**
  * The SDK's own `apiVersion` type, read off the constructor rather than
