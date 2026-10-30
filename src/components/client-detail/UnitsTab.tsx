@@ -21,7 +21,8 @@ import { isValidEntityName, isValidLabel } from "@/lib/dna-linkage";
 import { usePermissions } from "@/hooks/useMyRole";
 import { Switch } from "@/components/ui/switch";
 import { listDogsForClient } from "@/lib/clients.functions";
-import { addDog, updateDog } from "@/lib/dogs.functions";
+import { addDog, removeDog, updateDog } from "@/lib/dogs.functions";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { setClientDnaCompliance } from "@/lib/dna.functions";
 import {
   listUnitsForClient,
@@ -202,6 +203,7 @@ export function UnitsTab({
                   <UnitCard
                     key={u.id}
                     unit={u}
+                    units={propUnits}
                     clientId={clientId}
                     dogs={dogs.filter((d) => d.unit_id === u.id)}
                     incidents={incidents.filter((i) => i.unit_id === u.id)}
@@ -377,6 +379,7 @@ function ReviewDogsCard({
 
 function UnitCard({
   unit: u,
+  units,
   clientId,
   dogs,
   incidents,
@@ -386,6 +389,8 @@ function UnitCard({
   onChanged,
 }: {
   unit: any;
+  /** Every unit on the same property, this one included: where a dog can move. */
+  units: any[];
   clientId: string;
   dogs: any[];
   incidents: any[];
@@ -461,6 +466,7 @@ function UnitCard({
 
           <UnitDogsSection
             unit={u}
+            units={units}
             clientId={clientId}
             dogs={dogs}
             canWrite={canWrite}
@@ -520,12 +526,14 @@ function UnitCard({
 
 function UnitDogsSection({
   unit,
+  units,
   clientId,
   dogs,
   canWrite,
   onChanged,
 }: {
   unit: any;
+  units: any[];
   clientId: string;
   dogs: any[];
   canWrite: boolean;
@@ -533,6 +541,10 @@ function UnitDogsSection({
 }) {
   const addFn = useServerFn(addDog);
   const updateFn = useServerFn(updateDog);
+  const deleteFn = useServerFn(removeDog);
+  const { confirm, dialog } = useConfirmDialog();
+  // Other units on this property: where a dog put on the wrong unit can go.
+  const otherUnits = units.filter((x) => x.id !== unit.id);
 
   const [adding, setAdding] = useState(false);
   const [editingDogId, setEditingDogId] = useState<string | null>(null);
@@ -588,10 +600,55 @@ function UnitDogsSection({
     onError: (e) => toast.error((e as Error).message),
   });
 
+  const moveMut = useMutation({
+    mutationFn: (v: { id: string; unitId: string }) =>
+      updateFn({ data: { id: v.id, unitId: v.unitId } }),
+    onSuccess: (_r, v) => {
+      const to = units.find((x) => x.id === v.unitId);
+      toast.success(to ? `Moved to Unit ${to.unit_label}` : "Dog moved");
+      onChanged();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteFn({ data: { id } }),
+    onSuccess: (r) => {
+      toast.success(
+        r.outcome === "deleted"
+          ? "Dog deleted"
+          : `Dog marked inactive. It is kept on record because it has ${r.reasons.join(", ")}.`,
+      );
+      onChanged();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const askDelete = async (d: any) => {
+    const ok = await confirm({
+      title: `Delete ${d.name}?`,
+      description: (
+        <>
+          <p>
+            {d.name} comes off Unit {unit.unit_label} and stops counting toward its DNA status.
+          </p>
+          <p>
+            If any visit, plan, incident or DNA match names this dog, it is marked inactive
+            instead, so those records keep their link.
+          </p>
+        </>
+      ),
+      confirmLabel: "Delete dog",
+      destructive: true,
+    });
+    if (ok) deleteMut.mutate(d.id);
+  };
+
   const activeDogs = dogs.filter((d) => d.active !== false);
 
   return (
     <div>
+      {dialog}
       <div className="flex items-center justify-between">
         <SectionLabel>Dogs ({activeDogs.length})</SectionLabel>
         {canWrite && !adding && (
@@ -613,7 +670,7 @@ function UnitDogsSection({
               <DnaChip status={(d.dna_status ?? "not_registered") as DnaStatus} />
             </span>
             {canWrite && (
-              <span className="flex items-center gap-1.5">
+              <span className="flex flex-wrap items-center gap-1.5">
                 <select
                   aria-label={`DNA status for ${d.name}`}
                   value={(d.dna_status ?? "not_registered") as string}
@@ -627,8 +684,35 @@ function UnitDogsSection({
                     </option>
                   ))}
                 </select>
+                {otherUnits.length > 0 && (
+                  <select
+                    aria-label={`Move ${d.name} to another unit`}
+                    value=""
+                    onChange={(e) =>
+                      e.target.value && moveMut.mutate({ id: d.id, unitId: e.target.value })
+                    }
+                    disabled={moveMut.isPending}
+                    className="h-7 min-w-0 max-w-full rounded-md border bg-background px-1.5 text-xs touch:min-h-11"
+                  >
+                    <option value="">Move to…</option>
+                    {otherUnits.map((x) => (
+                      <option key={x.id} value={x.id}>
+                        Unit {x.unit_label}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => startEdit(d)}>
                   Edit
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs text-destructive hover:text-destructive"
+                  onClick={() => askDelete(d)}
+                  disabled={deleteMut.isPending}
+                >
+                  Delete
                 </Button>
               </span>
             )}
