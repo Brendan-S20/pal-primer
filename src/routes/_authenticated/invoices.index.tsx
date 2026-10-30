@@ -11,6 +11,7 @@ import {
   getCollectedThisMonth,
   generateInvoicesForOrg,
   createManualInvoice,
+  listUninvoicedWork,
   bulkVoidInvoices,
   bulkMarkInvoicesPaid,
   voidInvoice,
@@ -52,7 +53,8 @@ import { InvoiceDrawer } from "@/components/InvoiceDrawer";
 import { InvoiceCard, InvoiceRow } from "@/components/InvoiceRow";
 import type { RowAction } from "@/components/RowActions";
 import { invoiceDueCents, invoiceOutstandingCents } from "@/lib/ar";
-import { invoiceNumberLabel } from "@/lib/invoice-labels";
+import { formatLineItemDescription, invoiceNumberLabel } from "@/lib/invoice-labels";
+import type { VisitInvoiceLine } from "@/lib/visit-invoicing";
 import { useRowSelection } from "@/hooks/useRowSelection";
 import { cn } from "@/lib/utils";
 import { titleHead } from "@/lib/page-title";
@@ -87,22 +89,50 @@ function statusLabel(s: StatusKey) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/** P3.1 quick charge — bill a client right now, no visit required. */
+type DraftLine = {
+  description: string;
+  quantity: string;
+  price: string;
+  /** Set on a line that came from "Work not yet invoiced" (#605). */
+  visitId?: string;
+  addonChargeId?: string;
+};
+
+/** A linked line as the form edits it. */
+function draftFrom(
+  l: VisitInvoiceLine,
+  visitId: string | undefined,
+): DraftLine & { from?: string } {
+  return {
+    // Stored with its ISO date, as the billing run stores it; every surface
+    // humanizes it when it renders.
+    description: l.description,
+    quantity: "1",
+    price: (l.amountCents / 100).toFixed(2),
+    visitId: l.visitId,
+    addonChargeId: l.addonChargeId,
+    // Which ticked row this line belongs to, so unticking removes it.
+    from: visitId ?? l.addonChargeId,
+  };
+}
+
+/** P3.1 quick charge: bill a client right now. When the invoice is for work
+ *  already done, the office ticks the visits it covers, and each line then
+ *  names its visit so the billing run does not bill it again (#605). */
 function NewInvoiceDialog() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const clientsFn = useServerFn(listClients);
   const createFn = useServerFn(createManualInvoice);
+  const workFn = useServerFn(listUninvoicedWork);
   const emailFn = useServerFn(sendInvoiceEmail);
   const openedFromLink = Route.useSearch().new === true;
   const [open, setOpen] = useState(openedFromLink);
   const [clientId, setClientId] = useState("");
   // A line is a description, how many, and the price of one. Quantity starts
   // at 1, and a line of one is sent as only a total, exactly as before.
-  const blankLine = { description: "", quantity: "1", price: "" };
-  const [items, setItems] = useState<
-    Array<{ description: string; quantity: string; price: string }>
-  >([blankLine]);
+  const blankLine: DraftLine & { from?: string } = { description: "", quantity: "1", price: "" };
+  const [items, setItems] = useState<Array<DraftLine & { from?: string }>>([blankLine]);
   // Emailed as it is created, by default. A manual invoice has no send_after,
   // so the nightly auto-send never picks it up: before this, "Create invoice"
   // left it Open, unsent, and waiting for somebody to find the Send button on
@@ -121,6 +151,29 @@ function NewInvoiceDialog() {
     active: boolean;
     primary_email?: string | null;
   }> = (clientsQ.data as any)?.clients ?? (clientsQ.data as any) ?? [];
+  const workQ = useQuery({
+    queryKey: ["uninvoiced-work", clientId],
+    queryFn: () => workFn({ data: { clientId } }),
+    enabled: open && !!clientId,
+  });
+  const work = workQ.data;
+  const ticked = new Set(items.flatMap((i) => (i.from ? [i.from] : [])));
+  const toggleWork = (key: string, lines: VisitInvoiceLine[], visitId?: string) => {
+    if (ticked.has(key)) {
+      const rest = items.filter((i) => i.from !== key);
+      setItems(rest.length ? rest : [blankLine]);
+      return;
+    }
+    // Replace the empty starter line rather than leave it above the work.
+    const kept = items.filter((i) => i.from || i.description.trim() || i.price.trim());
+    setItems([...kept, ...lines.map((l) => draftFrom(l, visitId))]);
+  };
+  const pickClient = (id: string) => {
+    setClientId(id);
+    // Lines linked to another client's work cannot go on this invoice.
+    const rest = items.filter((i) => !i.from);
+    setItems(rest.length ? rest : [blankLine]);
+  };
   const picked = clients.find((c) => c.id === clientId);
   const pickedEmail = picked?.primary_email?.trim() || null;
   const willEmail = sendNow && !!pickedEmail;
@@ -129,23 +182,37 @@ function NewInvoiceDialog() {
     const quantity = parseQuantity(i.quantity);
     const unitCents = Math.round((parseFloat(i.price) || 0) * 100);
     const amountCents = quantity === null ? 0 : lineTotalCents(quantity, unitCents);
-    return { description: i.description.trim(), quantity, unitCents, amountCents };
+    return {
+      description: i.description.trim(),
+      quantity,
+      unitCents,
+      amountCents,
+      visitId: i.visitId,
+      addonChargeId: i.addonChargeId,
+    };
   });
   // A quantity that is not one ("0", "1.255", "") blocks the button rather than
   // being quietly read as 1, which would bill something the form does not show.
   const badQuantity = items.some((i, j) => i.description.trim() && lines[j].quantity === null);
   const parsedItems = lines
-    .filter((l) => l.description && l.quantity !== null && l.amountCents > 0)
-    .map((l) =>
-      l.quantity === 1
-        ? { description: l.description, amountCents: l.amountCents }
+    // A visit line may be $0 (a skip the business does not charge for); it
+    // still has to be sent, or the visit is left for the billing run.
+    .filter((l) => l.description && l.quantity !== null && (l.amountCents > 0 || l.visitId))
+    .map((l) => {
+      const link = {
+        ...(l.visitId ? { visitId: l.visitId } : {}),
+        ...(l.addonChargeId ? { addonChargeId: l.addonChargeId } : {}),
+      };
+      return l.quantity === 1
+        ? { description: l.description, amountCents: l.amountCents, ...link }
         : {
             description: l.description,
             amountCents: l.amountCents,
             quantity: l.quantity!,
             unitAmountCents: l.unitCents,
-          },
-    );
+            ...link,
+          };
+    });
   const totalCents = parsedItems.reduce((s, i) => s + i.amountCents, 0);
 
   const createM = useMutation({
@@ -172,6 +239,8 @@ function NewInvoiceDialog() {
         toast.success(`Invoice created: ${fmtCents(r.totalCents)}`);
       }
       qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["uninvoiced-work"] });
+      qc.invalidateQueries({ queryKey: ["visit-invoicing"] });
       setOpen(false);
       setClientId("");
       setItems([blankLine]);
@@ -200,8 +269,9 @@ function NewInvoiceDialog() {
         <DialogHeader>
           <DialogTitle>New invoice</DialogTitle>
           <DialogDescription>
-            Bill a client directly, no visit needed. The invoice opens immediately and is payable
-            from their portal or the link in the email.
+            Bill a client now. If it is for visits already done, tick them below so they are not
+            billed again at the end of the client's cycle. The invoice opens immediately and is
+            payable from their portal or the link in the email.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -211,7 +281,7 @@ function NewInvoiceDialog() {
               // 40pt, and it is the first control in the dialog.
               className="mt-1 h-10 w-full rounded-md border bg-background px-3 text-sm touch:min-h-11"
               value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
+              onChange={(e) => pickClient(e.target.value)}
             >
               <option value="">Select a client…</option>
               {clients
@@ -223,6 +293,14 @@ function NewInvoiceDialog() {
                 ))}
             </select>
           </div>
+          {clientId && (
+            <UninvoicedWorkList
+              loading={workQ.isLoading}
+              work={work}
+              ticked={ticked}
+              onToggle={toggleWork}
+            />
+          )}
           <div className="space-y-2">
             <label className="text-xs font-medium text-muted-foreground">Line items</label>
             {items.map((item, i) => {
@@ -333,6 +411,65 @@ function NewInvoiceDialog() {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** The client's work no invoice covers yet, each row a tick box that adds
+ *  its lines to the invoice. Listing it is the point: work that is not on an
+ *  invoice is visible before the end of the cycle, not discovered after. */
+function UninvoicedWorkList({
+  loading,
+  work,
+  ticked,
+  onToggle,
+}: {
+  loading: boolean;
+  work: Awaited<ReturnType<typeof listUninvoicedWork>> | undefined;
+  ticked: Set<string>;
+  onToggle: (key: string, lines: VisitInvoiceLine[], visitId?: string) => void;
+}) {
+  const rows = [
+    ...(work?.visits ?? []).map((v) => ({
+      key: v.visitId,
+      label: `${v.status === "skipped" ? "Skipped visit" : "Visit"} on ${formatDay(v.scheduledOn)}`,
+      cents: v.totalCents,
+      lines: v.lines,
+      visitId: v.visitId as string | undefined,
+    })),
+    ...(work?.addons ?? []).map((a) => ({
+      key: a.addonChargeId!,
+      label: formatLineItemDescription(a.description),
+      cents: a.amountCents,
+      lines: [a],
+      visitId: undefined,
+    })),
+  ];
+  return (
+    <div className="space-y-1">
+      <label className="text-xs font-medium text-muted-foreground">Work not yet invoiced</label>
+      {loading ? (
+        <Skeleton className="h-11 w-full" />
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          Nothing for this client is waiting to be invoiced.
+        </p>
+      ) : (
+        <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-2">
+          {rows.map((r) => (
+            <label key={r.key} className="flex min-h-11 items-center gap-3 text-sm">
+              <Checkbox
+                checked={ticked.has(r.key)}
+                onCheckedChange={() => onToggle(r.key, r.lines, r.visitId)}
+              />
+              <span className="min-w-0 flex-1 truncate">{r.label}</span>
+              <span className="shrink-0 tabular-nums text-muted-foreground">
+                {fmtCents(r.cents)}
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -758,9 +895,9 @@ function InvoicesPage() {
           >
             <Download className="mr-1 h-4 w-4 shrink-0" /> Export CSV
           </Button>
-          {/* Full auto billing: generation runs nightly on each client's
-              cadence, so manual generate-from-visits is demoted to an
-              overflow dialog kept as a fallback. */}
+          {/* Invoice at completion (#605): a visit is invoiced from the visit.
+              Generate from visits is the catch-up for anything left over, so
+              it stays in an overflow dialog. */}
           <Dialog open={advancedOpen} onOpenChange={setAdvancedOpen}>
             <DialogTrigger asChild>
               <Button variant="ghost" size="sm" aria-label="Advanced invoicing actions">
@@ -769,11 +906,11 @@ function InvoicesPage() {
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>Generate from visits (manual fallback)</DialogTitle>
+                <DialogTitle>Generate from visits</DialogTitle>
                 <DialogDescription>
-                  Invoices generate automatically on each client's cadence, so you normally never
-                  need this. Use it to bill all unbilled completed visits through a date right now,
-                  for example before changing a client's cadence.
+                  Invoice each visit when it is done, from the visit. This bills every completed
+                  visit that is not on an invoice yet, through a date. A visit already on an invoice
+                  is never billed again.
                 </DialogDescription>
               </DialogHeader>
               <div className="flex items-end gap-2">
@@ -1085,7 +1222,7 @@ function InvoicesPage() {
           description={
             filtersActive
               ? "Try widening the search, status, or period filters."
-              : "Invoices generate automatically when each client's billing cycle ends. Use New invoice to bill a client directly."
+              : "Invoice a visit when it is done, from the visit. Anything not invoiced is billed when the client's cycle ends. Use New invoice to bill a client directly."
           }
           actionLabel={filtersActive ? "Reset filters" : undefined}
           onAction={filtersActive ? resetFilters : undefined}
