@@ -305,13 +305,16 @@ export const updateDog = createServerFn({ method: "POST" })
 
 /** Count what points at a dog. Head-only counts, one per table, all scoped
  *  to the organization. A failed count throws: deleting on a guess is how a
- *  plan ends up naming a dog that no longer exists. */
+ *  plan ends up naming a dog that no longer exists. The count selects "*":
+ *  not every table has an id column (homework is keyed by visit_id,
+ *  pet_care_instructions by pet_id), and a HEAD request for a missing column
+ *  fails with an empty body, so the error message is blank (#455). */
 async function countDogLinks(supabase: any, orgId: string, dogId: string): Promise<DogLinks> {
   const count = async (table: string, apply: (q: any) => any) => {
     const { count: n, error } = await apply(
-      supabase.from(table).select("id", { count: "exact", head: true }).eq("organization_id", orgId),
+      supabase.from(table).select("*", { count: "exact", head: true }).eq("organization_id", orgId),
     );
-    if (error) throw new Error(error.message);
+    if (error) throw new Error(error.message || `Could not check ${table}`);
     return n ?? 0;
   };
   const [
