@@ -96,6 +96,9 @@ export const PORTAL_CLIENT = {
   skip_billable_pct: 50,
   // Same: read from organizations by the handler. 48 is the column default.
   reclean_window_hours: 48,
+  // Same again. On, so the tab bar is measured at its widest: seven tabs,
+  // Training beside Visits (#603).
+  training: true,
 };
 
 /** A street long enough to wrap on a 360px phone, and a unit number, which is

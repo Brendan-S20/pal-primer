@@ -217,6 +217,8 @@ describe("portalContext home", () => {
       // Grooming is customer requestable since #549; the portal offers the
       // request only to a business that also runs it (mobile_grooming).
       groom_requests: true,
+      // The tab bar shows Training to a business that trains (#603).
+      training: false,
     });
     expect(state.rpc.mock.calls.filter(([name]) => name === "portal_get_client")).toHaveLength(2);
     for (const [name, read] of Object.entries(parts)) {
