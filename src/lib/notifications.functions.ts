@@ -4,15 +4,26 @@ import { invoiceDueCents } from "@/lib/ar";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { appOrigin } from "@/lib/app-origin";
+import { invoiceEmailDetails } from "@/lib/invoice-email-details";
 
 // Manually email an existing invoice to the client. With reminder: true the
 // same template renders as a payment reminder ("Reminder: …" subject), and
 // the idempotency key is date-stamped so staff can re-remind on later days
 // without the pipeline deduping it away (max one reminder per day).
+//
+// With firstSend: true (the New invoice dialog) it sends only if the invoice
+// has never been sent, and claims sent_at before it queues anything, so a
+// double click or a retry that reaches here twice sends one email (#607).
 export const sendInvoiceEmail = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
-    z.object({ invoiceId: z.string().uuid(), reminder: z.boolean().optional() }).parse(d),
+    z
+      .object({
+        invoiceId: z.string().uuid(),
+        reminder: z.boolean().optional(),
+        firstSend: z.boolean().optional(),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     const { supabase } = context;
@@ -24,13 +35,27 @@ export const sendInvoiceEmail = createServerFn({ method: "POST" })
     const { data: invRow, error } = await supabase
       .from("invoices")
       .select(
-        "id, organization_id, client_id, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, credit_applied_cents, amount_paid_cents, period_start, period_end, public_token, clients(portal_token, default_payment_method_id)",
+        "id, number, due_on, organization_id, client_id, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, credit_applied_cents, amount_paid_cents, period_start, period_end, public_token, clients(portal_token, default_payment_method_id)",
       )
       .eq("id", data.invoiceId)
       .eq("organization_id", orgId)
       .single();
     if (error) throw new Error(error.message);
     const inv = invRow;
+    const { data: lineRows, error: lErr } = await supabase
+      .from("invoice_line_items")
+      .select("description, quantity, unit_amount_cents, amount_cents")
+      .eq("invoice_id", inv.id)
+      .order("created_at");
+    if (lErr) throw new Error(lErr.message);
+    const recipient = async () => {
+      const { data: recip } = await supabase
+        .from("clients")
+        .select("primary_email")
+        .eq("id", inv.client_id)
+        .maybeSingle();
+      return recip?.primary_email ?? null;
+    };
     // Prefer the no-login public pay link (QA round 8); fall back to the
     // portal link for any legacy invoice without a token.
     const publicToken = inv.public_token;
@@ -64,6 +89,32 @@ export const sendInvoiceEmail = createServerFn({ method: "POST" })
       const pdf = await invoicePdfAttachment(supabaseAdmin, inv.id);
       return pdf ? [pdf] : [];
     };
+    // First send only: take sent_at now, atomically. Whoever does not get it
+    // was beaten to it by a send that is already on its way.
+    const firstSend = data.firstSend === true && !data.reminder;
+    let claimedAt: string | null = null;
+    if (firstSend) {
+      claimedAt = new Date().toISOString();
+      const { data: claimed, error: claimErr } = await supabase
+        .from("invoices")
+        .update({ sent_at: claimedAt } as any)
+        .eq("id", inv.id)
+        .is("sent_at" as any, null)
+        .select("id");
+      if (claimErr) throw new Error(claimErr.message);
+      if (!claimed?.length) {
+        return { ok: true, messageId: null, recipient: await recipient(), alreadySent: true };
+      }
+    }
+    // Hand a first-send claim back, so the Send button can try again.
+    const releaseClaim = async () => {
+      if (!claimedAt) return;
+      await supabase
+        .from("invoices")
+        .update({ sent_at: null } as any)
+        .eq("id", inv.id)
+        .eq("sent_at" as any, claimedAt);
+    };
     const res = await enqueueAppEmail({
       organizationId: inv.organization_id,
       clientId: inv.client_id,
@@ -77,6 +128,7 @@ export const sendInvoiceEmail = createServerFn({ method: "POST" })
         invoiceUrl,
         periodLabel: period,
         reminder: data.reminder === true,
+        ...invoiceEmailDetails(inv, lineRows ?? []),
         ...(cardUrl ? { cardUrl } : {}),
         // Partly paid: the email says what was paid and what is left, so a
         // reminder does not ask for money that already arrived.
@@ -91,12 +143,18 @@ export const sendInvoiceEmail = createServerFn({ method: "POST" })
       // bypasses the imported comms hold and clears it on success.
       manual: true,
       attachments: pdfAttachment,
+    }).catch(async (e) => {
+      await releaseClaim();
+      throw e;
     });
-    if (!res.ok) throw new Error(`Email not sent: ${res.reason}`);
+    if (!res.ok) {
+      await releaseClaim();
+      throw new Error(`Email not sent: ${res.reason}`);
+    }
     // Stamp sent_at (full auto billing): a "Send now" during the grace window
     // takes the invoice out of the nightly auto-send loop, so the client can
     // never get the invoice email twice. Reminders don't re-stamp.
-    if (!data.reminder) {
+    if (!data.reminder && !claimedAt) {
       await supabase
         .from("invoices")
         .update({ sent_at: new Date().toISOString() } as any)
@@ -106,12 +164,7 @@ export const sendInvoiceEmail = createServerFn({ method: "POST" })
     // The email is QUEUED here (a cron flips it to sent/failed within ~1 min).
     // Return the log id + recipient so the UI can poll for the real outcome
     // rather than claim "emailed" before it actually sends (finding #32).
-    const { data: recip } = await supabase
-      .from("clients")
-      .select("primary_email")
-      .eq("id", inv.client_id)
-      .maybeSingle();
-    return { ok: true, messageId: res.messageId ?? null, recipient: recip?.primary_email ?? null };
+    return { ok: true, messageId: res.messageId ?? null, recipient: await recipient() };
   });
 
 // Poll the email pipeline's outcome for a queued message (finding #32).

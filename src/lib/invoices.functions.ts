@@ -248,6 +248,9 @@ const manualInvoiceSchema = z.object({
     .min(1)
     .max(25),
   notes: z.string().max(500).optional(),
+  // Minted once each time the dialog opens and sent with every attempt, so a
+  // double click or a retry after a lost response makes one invoice (#607).
+  creationKey: z.string().uuid().optional(),
 });
 
 export const createManualInvoice = createServerFn({ method: "POST" })
@@ -265,6 +268,24 @@ export const createManualInvoice = createServerFn({ method: "POST" })
     if (cErr) throw new Error(cErr.message);
     if (client.organization_id !== orgId) throw new Error("Client not found");
 
+    // This dialog already made its invoice: answer with that one, and log
+    // nothing. Two requests that both get past here are settled by the
+    // unique constraint inside create_manual_invoice, which returns the
+    // first one's id to the second.
+    if (data.creationKey) {
+      const { data: made, error: mErr } = await supabase
+        .from("invoices")
+        .select("id, client_id, total_cents, tax_cents")
+        .eq("organization_id", orgId)
+        .eq("creation_key", data.creationKey)
+        .maybeSingle();
+      if (mErr) throw new Error(mErr.message);
+      if (made) {
+        if (made.client_id !== data.clientId) throw new Error("This invoice was already created");
+        return { invoiceId: made.id, totalCents: made.total_cents, taxCents: made.tax_cents };
+      }
+    }
+
     const { insertManualInvoice } = await import("@/lib/manual-invoice.server");
     return insertManualInvoice(supabase, {
       orgId,
@@ -272,6 +293,7 @@ export const createManualInvoice = createServerFn({ method: "POST" })
       clientId: data.clientId,
       items: data.items,
       notes: data.notes,
+      creationKey: data.creationKey,
     });
   });
 
