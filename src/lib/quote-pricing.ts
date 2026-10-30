@@ -72,6 +72,15 @@ export interface QuoteSubject {
   frequency?: string | null;
 }
 
+/** The plan a client is already on, for saying when a quote's price is not
+ *  what they pay now (#429). */
+export interface QuoteCurrentPlan {
+  /** Per visit, as saved on the plan. */
+  priceCents: number;
+  frequency: string | null;
+  dogCount: number | null;
+}
+
 /** The frequencies a quote line can be priced at, in the wizard's spelling. */
 export const QUOTE_FREQUENCIES = ["weekly", "biweekly", "twice_weekly", "monthly"] as const;
 export type QuoteFrequency = (typeof QUOTE_FREQUENCIES)[number];
@@ -312,4 +321,32 @@ export function choiceToLine(choice: PricingChoice): {
     price: (choice.priceCents / 100).toFixed(2),
     recurring: true,
   };
+}
+
+/**
+ * When a client's current plan bills a different per-visit price from the
+ * one the pricing rules give a quote line, the sentence that says so, or null
+ * when they agree or there is no plan. A plan keeps the price it was saved
+ * with (typed, imported, or set before the zone changed), so the two can
+ * differ for good reasons; what must not happen is a $51.00 line beside a
+ * $34.00 plan with nothing on screen saying why (#429).
+ */
+export function currentPlanNote(
+  plan: QuoteCurrentPlan | null | undefined,
+  linePriceCents: number | null,
+): string | null {
+  if (!plan || linePriceCents == null || plan.priceCents <= 0) return null;
+  if (plan.priceCents === linePriceCents) return null;
+  const known = (QUOTE_FREQUENCIES as readonly string[]).includes(plan.frequency ?? "");
+  const parts = [
+    known ? VISIT_WORDS[plan.frequency as QuoteFrequency].toLowerCase() : null,
+    plan.dogCount != null && plan.dogCount > 0 ? dogsWord(plan.dogCount) : null,
+  ].filter(Boolean);
+  const what = parts.length ? ` (${parts.join(", ")})` : "";
+  return (
+    `Their current plan bills ${money(plan.priceCents)} per visit${what}. ` +
+    `Your pricing rules give ${money(linePriceCents)}, so the quote is ` +
+    `${linePriceCents > plan.priceCents ? "higher" : "lower"} than what they pay now. ` +
+    `The plan keeps its own price until it is changed.`
+  );
 }

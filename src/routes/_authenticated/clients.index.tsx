@@ -597,6 +597,7 @@ function ClientsList() {
                 <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                   <span>
                     {c.dog_count} {c.dog_count === 1 ? "dog" : "dogs"}
+                    {c.dog_count_source === "plan" && " (names not on file)"}
                   </span>
                   <span>
                     {c.active_subscription_count}{" "}
@@ -666,7 +667,13 @@ function ClientsList() {
                         {humanizeEnum(c.account_type)}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">{c.dog_count}</td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {c.dog_count}
+                      {/* Counted from the plan: no dog records yet (#429). */}
+                      {c.dog_count_source === "plan" && (
+                        <span className="block whitespace-nowrap text-2xs">names not on file</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {c.active_subscription_count}
                     </td>

@@ -11,6 +11,8 @@
 // SQL predicate (e.g. the timezone-aware cutoff) must be reflected here, and
 // callers must pass the same `today` the SQL uses (the ORG-LOCAL date, not UTC).
 
+import { orgLocalDay } from "./org-day";
+
 export type VisitLike = {
   status: string;
   scheduled_on: string; // YYYY-MM-DD
@@ -117,6 +119,27 @@ export function isVisitAwaitingCloseOut(
  *  only once the org's own day has moved past it. */
 export function isMissedVisitCandidate(v: VisitLike, today: string): boolean {
   return v.status === "scheduled" && v.scheduled_on < today && !v.started_at;
+}
+
+/** True for a missed visit that was written after its own day had passed,
+ *  so it was never on anybody's route (#429).
+ *
+ *  generate_visits_core walks a plan from its started_on. A plan entered
+ *  with a start date in the past (an import that kept the client's real
+ *  start, or an office back-dating one) gets every date since then inserted
+ *  at once, already behind it, and the nightly job (isMissedVisitCandidate
+ *  above) moves each to 'missed' the same night. Nothing was missed: the
+ *  dates did not exist until after they were over. The row is left as it is,
+ *  since the office can still mark one completed if it was serviced; only
+ *  how it reads changes. `tz` is the org's, the same clock scheduled_on is
+ *  on. */
+export function wasNeverOnARoute(
+  v: { status: string; scheduled_on: string; created_at?: string | null },
+  tz: string,
+): boolean {
+  if (v.status !== "missed" || !v.created_at) return false;
+  const written = orgLocalDay(v.created_at, tz);
+  return written !== "" && written > v.scheduled_on;
 }
 
 /** Statuses the office can mark completed. Mirrors office_complete_visit,

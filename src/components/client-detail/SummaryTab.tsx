@@ -146,13 +146,18 @@ export function SummaryTab({
   }
 
   const activeDogTotal = activeDogCount(dogs);
-  const billedDogs = activeSubs.some(
-    (s: any) => s.account_type === "residential" && (s.dog_count ?? 0) > 0,
+  const billedDogs = Math.max(
+    0,
+    ...activeSubs
+      .filter((s: any) => s.account_type === "residential" && !s.stay_id)
+      .map((s: any) => s.dog_count ?? 0),
   );
-  if (billedDogs && activeDogTotal === 0)
+  // Says the number, because the Clients list, a quote and My Day all count
+  // these dogs from the plan until there are records (propertyDogTally, #429).
+  if (billedDogs > 0 && activeDogTotal === 0)
     alerts.push({
       severity: "warning",
-      text: "Services bill for dogs but no dog records exist on the properties.",
+      text: `Services bill for ${billedDogs} ${billedDogs === 1 ? "dog" : "dogs"}, but no dog is on file. Every screen counts ${billedDogs} from the plan until the dogs are added on Properties.`,
       tab: "properties",
     });
 

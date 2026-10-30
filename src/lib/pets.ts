@@ -149,3 +149,37 @@ export function readMeds(raw: unknown): PetMed[] {
     }))
     .filter((m) => m.name);
 }
+
+// ── How many dogs, the one way every screen counts them (#429) ───────────
+
+/** A count of dogs and where it came from. "records" is the dog records;
+ *  "plan" is what an active plan bills for, used only when there are no
+ *  records, so a client imported with a plan and no dog names reads the
+ *  same number on the Clients list, the client record, a quote and My Day. */
+export type DogTally = { count: number; source: "records" | "plan" | "none" };
+
+/** One property: its active dog records when it has any, otherwise the
+ *  largest dog count an active residential plan on it bills for. The same
+ *  rule as My Day's dogs line (dogsLine in src/lib/stop-facts.ts). */
+export function propertyDogTally(
+  records: number,
+  planDogCounts: ReadonlyArray<number | null | undefined>,
+): DogTally {
+  if (records > 0) return { count: records, source: "records" };
+  const billed = Math.max(
+    0,
+    ...planDogCounts.map((n) => (typeof n === "number" && Number.isFinite(n) ? Math.floor(n) : 0)),
+  );
+  return billed > 0 ? { count: billed, source: "plan" } : { count: 0, source: "none" };
+}
+
+/** A client: the properties added up. "plan" when any of them is counted
+ *  from a plan, because then some names are not on file. */
+export function clientDogTally(perProperty: readonly DogTally[]): DogTally {
+  const count = perProperty.reduce((n, t) => n + t.count, 0);
+  if (count === 0) return { count: 0, source: "none" };
+  return {
+    count,
+    source: perProperty.some((t) => t.source === "plan") ? "plan" : "records",
+  };
+}

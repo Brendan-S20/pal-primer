@@ -32,7 +32,7 @@ import { listClientHolds } from "@/lib/clients.functions";
 import { notifyCanceledWalks } from "@/lib/walk-notify.functions";
 import { formatDay, formatTime, formatClock } from "@/lib/format";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
-import { canOfficeComplete, formatVisitDuration } from "@/lib/visit-lifecycle";
+import { canOfficeComplete, formatVisitDuration, wasNeverOnARoute } from "@/lib/visit-lifecycle";
 import { officeSkipReason } from "@/lib/skip-rules.functions";
 import { MetaChip, StatusChip } from "@/components/client-detail/primitives";
 import { RowActions } from "@/components/RowActions";
@@ -66,6 +66,16 @@ function fmtWindow(v: any, tz: string): string {
   if (early) return `After ${formatClock(early)}`;
   if (late) return `Before ${formatClock(late)}`;
   return "Anytime";
+}
+
+// A missed visit that was written after its own day (a plan entered with a
+// past start date) was never on a route, and reads that way rather than as
+// one more Missed (#429). The row keeps status 'missed'; see wasNeverOnARoute.
+const NEVER_ON_A_ROUTE = "never_on_a_route";
+const NEVER_ON_A_ROUTE_LABEL = "Never on a route";
+
+function shownStatus(v: any, tz: string): string {
+  return wasNeverOnARoute(v, tz) ? NEVER_ON_A_ROUTE : v.status;
 }
 
 function todayISO(): string {
@@ -139,7 +149,7 @@ export function VisitsTab({
 
   const filtered = visits.filter(
     (v: any) =>
-      (statusFilter === "all" || v.status === statusFilter) &&
+      (statusFilter === "all" || shownStatus(v, tz) === statusFilter) &&
       (propertyFilter === "all" || v.property_id === propertyFilter),
   );
 
@@ -334,6 +344,7 @@ export function VisitsTab({
                   <option value="in_progress">In progress</option>
                   <option value="completed">Completed</option>
                   <option value="missed">Missed</option>
+                  <option value={NEVER_ON_A_ROUTE}>{NEVER_ON_A_ROUTE_LABEL}</option>
                   <option value="skipped">Skipped</option>
                   <option value="canceled">Canceled</option>
                 </select>
@@ -723,7 +734,14 @@ function VisitTable({
                   )}
                 </td>
                 <td className="px-4 py-2.5">
-                  <StatusChip label={i18n.t(`status.${v.status}`, { defaultValue: "Visit" })} status={v.status} />
+                  {shownStatus(v, tz) === NEVER_ON_A_ROUTE ? (
+                    <StatusChip label={NEVER_ON_A_ROUTE_LABEL} status="skipped" />
+                  ) : (
+                    <StatusChip
+                      label={i18n.t(`status.${v.status}`, { defaultValue: "Visit" })}
+                      status={v.status}
+                    />
+                  )}
                   {v.status === "skipped" && (v.skip_reason_code || v.skip_reason) && (
                     <span className="ml-1 text-xs text-muted-foreground">
                       {skipReasonText(v)}
@@ -775,6 +793,7 @@ const CHIP_TONES: Record<string, string> = {
   in_progress: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
   completed: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
   missed: "bg-orange-500/15 text-orange-700 dark:text-orange-400",
+  [NEVER_ON_A_ROUTE]: "bg-muted text-muted-foreground",
   skipped: "bg-muted text-muted-foreground",
   canceled: "bg-destructive/15 text-destructive",
 };
@@ -785,6 +804,7 @@ function dateKey(d: Date): string {
 }
 
 function statusLabel(s: string): string {
+  if (s === NEVER_ON_A_ROUTE) return NEVER_ON_A_ROUTE_LABEL;
   const words = String(s).replace(/[_-]/g, " ").trim();
   return words.charAt(0).toUpperCase() + words.slice(1).toLowerCase();
 }
@@ -904,10 +924,10 @@ function VisitCalendar({ visits, onOpen }: { visits: any[]; onOpen: (v: any) => 
                             type="button"
                             onClick={() => onOpen(v)}
                             title={`${v.properties?.street ?? "Visit"} - ${fmtWindow(v, tz)}`}
-                            aria-label={`${statusLabel(v.status)} visit at ${v.properties?.street ?? "unknown property"} on ${formatDay(v.scheduled_on)}`}
+                            aria-label={`${statusLabel(shownStatus(v, tz))} visit at ${v.properties?.street ?? "unknown property"} on ${formatDay(v.scheduled_on)}`}
                             className={cn(
                               "block w-full truncate rounded-md px-1.5 py-0.5 text-left text-xs font-medium",
-                              CHIP_TONES[v.status] ?? "bg-muted text-muted-foreground",
+                              CHIP_TONES[shownStatus(v, tz)] ?? "bg-muted text-muted-foreground",
                             )}
                           >
                             {v.properties?.street ??
@@ -1004,6 +1024,7 @@ function VisitDetailDrawer({
   // A missed visit is recoverable (B6 finding 2): it can be retroactively
   // completed if it was actually serviced, or rescheduled for a make-up.
   const missed = v?.status === "missed";
+  const neverOnARoute = !!v && wasNeverOnARoute(v, tz);
   const { data: staffData } = useQuery({
     queryKey: ["org-staff"],
     queryFn: () => listStaffFn(),
@@ -1101,7 +1122,14 @@ function VisitDetailDrawer({
           <div className="flex items-center justify-between">
             <dt className="text-muted-foreground">Status</dt>
             <dd>
-              <StatusChip label={i18n.t(`status.${v.status}`, { defaultValue: "Visit" })} status={v.status} />
+              {neverOnARoute ? (
+                <StatusChip label={NEVER_ON_A_ROUTE_LABEL} status="skipped" />
+              ) : (
+                <StatusChip
+                  label={i18n.t(`status.${v.status}`, { defaultValue: "Visit" })}
+                  status={v.status}
+                />
+              )}
             </dd>
           </div>
           <div className="flex items-center justify-between">
@@ -1158,7 +1186,14 @@ function VisitDetailDrawer({
 
         {canCorrect && (canComplete || canReschedule) && (
           <div className="space-y-3 rounded-md border bg-muted/20 p-3">
-            {missed && (
+            {missed && neverOnARoute && (
+              <p className="text-xs text-muted-foreground">
+                This date was added after it had passed, because the plan starts earlier than the
+                day it was entered, so it was never on a route. If it was serviced, mark it
+                completed.
+              </p>
+            )}
+            {missed && !neverOnARoute && (
               <p className="text-xs text-muted-foreground">
                 This visit was marked missed. If it was serviced, mark it completed; otherwise
                 reschedule a make-up.

@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupSegment } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { listClients } from "@/lib/clients.functions";
+import { clientPickerLabels } from "@/lib/client-picker-labels";
 import { saveQuoteDraft, sendQuote } from "@/lib/quotes.functions";
 import { getFirstCleanupPricing } from "@/lib/first-cleanup.functions";
 import { LAST_CLEANED_QUESTION, firstCleanupQuoteLine } from "@/lib/first-cleanup";
@@ -29,6 +30,8 @@ import { getQuotePricing } from "@/lib/quote-pricing.functions";
 import {
   QUOTE_FREQUENCIES,
   asSentence,
+  currentPlanNote,
+  type QuoteCurrentPlan,
   type QuotePricingZone,
   type QuoteStandardPricing,
   type QuoteSubject,
@@ -113,6 +116,8 @@ export type QuotePricingData = {
   zones: QuotePricingZone[];
   standard: QuoteStandardPricing | null;
   subject: QuoteSubject | null;
+  /** The plan the client is on now, when there is one. */
+  currentPlan?: QuoteCurrentPlan | null;
 };
 
 export const quotePricingKey = (clientId: string | null, leadId: string | null) =>
@@ -326,8 +331,21 @@ export function QuoteEditor({
     queryFn: () => clientsFn(),
     staleTime: 60_000,
   });
-  const clients: Array<{ id: string; display_name: string; active: boolean | null }> =
-    (clientsQ.data as any)?.clients ?? [];
+  const clients: Array<{
+    id: string;
+    display_name: string;
+    active: boolean | null;
+    street?: string | null;
+  }> = (clientsQ.data as any)?.clients ?? [];
+  // One row per client, by name, and never two rows that read the same: two
+  // clients called "Vasquez Landing" are told apart by street, then by id
+  // (#429).
+  const pickerRows = useMemo(
+    () => clientPickerLabels(clients.filter((c) => c.active !== false || c.id === v.clientId)),
+    [clients, v.clientId],
+  );
+  // The line the app priced for this client, and what their plan bills now.
+  const planNoteKey = v.lines.find((l) => l.recurring && isUntouchedPrefill(l))?.key ?? null;
 
   // Each line parsed once, for the totals, the per-line total and the errors.
   const parsed = useMemo(
@@ -463,13 +481,11 @@ export function QuoteEditor({
               <option value="">
                 {clientsQ.isLoading ? "Loading clients…" : "Select a client…"}
               </option>
-              {clients
-                .filter((c) => c.active !== false || c.id === v.clientId)
-                .map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.display_name}
-                  </option>
-                ))}
+              {pickerRows.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
             </select>
             {attempted && !v.clientId && (
               <p className="text-xs text-destructive">Choose who the quote is for.</p>
@@ -562,6 +578,7 @@ export function QuoteEditor({
         )}
         {v.lines.map((l, i) => {
           const p = parsed[i];
+          const planNote = currentPlanNote(pricing?.currentPlan, p.unit);
           return (
             <div key={l.key} className="space-y-2 rounded-md border p-3">
               <div className="flex items-start gap-2">
@@ -653,6 +670,26 @@ export function QuoteEditor({
                     </>
                   )}
                 </p>
+              )}
+              {l.key === planNoteKey && v.mode === "client" && planNote && (
+                <div
+                  className="flex flex-wrap items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300"
+                  data-testid="line-current-plan"
+                >
+                  <p className="min-w-0 flex-1">{planNote}</p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setLine(l.key, {
+                        price: ((pricing?.currentPlan?.priceCents ?? 0) / 100).toFixed(2),
+                      })
+                    }
+                  >
+                    Use {formatQuoteMoney(pricing?.currentPlan?.priceCents ?? 0)}
+                  </Button>
+                </div>
               )}
               {attempted && !p.ok && (
                 <p className="text-xs text-destructive">

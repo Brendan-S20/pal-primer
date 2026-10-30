@@ -40,16 +40,19 @@ export const listClients = createServerFn({ method: "GET" })
             // without this filter the list keeps showing a count that no other
             // surface agrees with: the same records, two answers.
             .from("properties")
-            .select("id, client_id, dogs(id, active)")
+            .select("id, client_id, street, created_at, dogs(id, active, species)")
             .is("archived_at", null)
             .in("client_id", ids)
+            .order("created_at", { ascending: true })
         : Promise.resolve({ data: [] as any[], error: null }),
       ids.length
         ? supabase
             // ends_on is needed to tell an ended service from a running one —
             // see the isServiceEnded note below.
             .from("subscriptions")
-            .select("client_id, status, frequency, ends_on")
+            .select(
+              "client_id, property_id, status, frequency, ends_on, account_type, dog_count, stay_id",
+            )
             .in("client_id", ids)
         : Promise.resolve({ data: [] as any[], error: null }),
       ids.length
@@ -65,20 +68,6 @@ export const listClients = createServerFn({ method: "GET" })
       if (result.error) throw new Error(result.error.message);
     }
 
-    // Dogs live on properties (dogs.property_id), so aggregate through the
-    // property → client relationship instead of a non-existent dogs.client_id.
-    const dogsByClient = new Map<string, number>();
-    for (const p of (propsRes.data ?? []) as Array<{
-      client_id: string;
-      dogs: Array<{ active?: boolean | null }> | null;
-    }>) {
-      // `active !== false`, not `active === true`: the column is nullable and
-      // a null has always meant active. This mirrors PropertiesTab exactly —
-      // if the two ever diverge again it will be here.
-      const n = Array.isArray(p.dogs) ? p.dogs.filter((d) => d?.active !== false).length : 0;
-      if (!p.client_id) continue;
-      dogsByClient.set(p.client_id, (dogsByClient.get(p.client_id) ?? 0) + n);
-    }
     const activeSubsByClient = new Map<string, number>();
     // Service-frequency label for the list view (punch list #15): distinct
     // active-subscription frequencies per client.
@@ -110,6 +99,46 @@ export const listClients = createServerFn({ method: "GET" })
         }
       }
     }
+    // Dogs live on properties (dogs.property_id), so aggregate through the
+    // property → client relationship instead of a non-existent dogs.client_id.
+    // Counted by propertyDogTally, the rule the client record, a quote and My
+    // Day use too (#429): the dog records when a property has any, otherwise
+    // what its plan bills for. Before that this counted records alone, so a
+    // client imported with a two-dog plan and no dog names read "0 dogs" here
+    // and "2 dogs" on the quote and the tech's stop.
+    //
+    // Inactive dogs and archived properties are excluded because the client
+    // detail page excludes them: PropertiesTab counts activeDogCount, and the
+    // dog-mismatch warning compares the billed count against that number.
+    const { activeDogCount, clientDogTally, propertyDogTally } = await import("@/lib/pets");
+    const billedByProperty = new Map<string, number[]>();
+    for (const s of (subsRes.data ?? []) as any[]) {
+      // A stay's plan counts the pets on the stay, not dogs (#411).
+      if (s.account_type !== "residential" || s.stay_id || !s.property_id) continue;
+      if (isServiceEnded(s, todayISO)) continue;
+      const list = billedByProperty.get(s.property_id) ?? [];
+      list.push(s.dog_count);
+      billedByProperty.set(s.property_id, list);
+    }
+    const talliesByClient = new Map<string, ReturnType<typeof propertyDogTally>[]>();
+    // The oldest property's street, so two clients with the same name can be
+    // told apart in a picker.
+    const streetByClient = new Map<string, string>();
+    for (const p of (propsRes.data ?? []) as Array<{
+      id: string;
+      client_id: string;
+      street: string | null;
+      dogs: Array<{ active?: boolean | null; species?: string | null }> | null;
+    }>) {
+      if (!p.client_id) continue;
+      const tally = propertyDogTally(
+        activeDogCount(Array.isArray(p.dogs) ? p.dogs : []),
+        billedByProperty.get(p.id) ?? [],
+      );
+      talliesByClient.set(p.client_id, [...(talliesByClient.get(p.client_id) ?? []), tally]);
+      if (p.street && !streetByClient.has(p.client_id)) streetByClient.set(p.client_id, p.street);
+    }
+
     // Same AR math as Dashboard "AR Open" and Reports "Outstanding" (finding #7).
     const { outstandingByClient } = await import("@/lib/ar");
     const balanceByClient = outstandingByClient((invRes.data ?? []) as any[]);
@@ -117,7 +146,10 @@ export const listClients = createServerFn({ method: "GET" })
     return {
       clients: clients.map((c: any) => ({
         ...c,
-        dog_count: dogsByClient.get(c.id) ?? 0,
+        dog_count: clientDogTally(talliesByClient.get(c.id) ?? []).count,
+        /** "plan" when the count is what a plan bills for, not dog records. */
+        dog_count_source: clientDogTally(talliesByClient.get(c.id) ?? []).source,
+        street: streetByClient.get(c.id) ?? null,
         active_subscription_count: activeSubsByClient.get(c.id) ?? 0,
         frequencies: freqsByClient.get(c.id) ?? [],
         outstanding_cents: balanceByClient.get(c.id) ?? 0,
@@ -498,7 +530,7 @@ export const listClientVisitHistory = createServerFn({ method: "GET" })
     const { supabase } = context;
     await requirePermission(supabase, context.userId, "view_client_directory");
     const select =
-      "id, subscription_id, property_id, scheduled_on, status, assigned_staff_id, started_at, completed_at, eta_start, eta_end, skip_reason_code, skip_reason, rescheduled_from, is_deepclean, duration_min, groom_summary, client_package_id, properties(street, earliest_service_time, latest_service_time), subscriptions(earliest_time, latest_time), staff:assigned_staff_id(display_name)";
+      "id, subscription_id, property_id, scheduled_on, status, created_at, assigned_staff_id, started_at, completed_at, eta_start, eta_end, skip_reason_code, skip_reason, rescheduled_from, is_deepclean, duration_min, groom_summary, client_package_id, properties(street, earliest_service_time, latest_service_time), subscriptions(earliest_time, latest_time), staff:assigned_staff_id(display_name)";
     const limit = data.limit ?? 100;
     const today = new Date().toISOString().slice(0, 10);
     // Two windows so a heavily scheduled client (many future visits) can't
