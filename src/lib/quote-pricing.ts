@@ -290,6 +290,9 @@ export function pricingChoices(
   if (std) out.push(std);
   for (const z of [...zones].sort((a, b) => a.name.localeCompare(b.name))) {
     if (matched && z.id === matched.id) continue;
+    // A zone that is turned off (#449) is not offered for a new price. The
+    // stored zone above still prices its own client.
+    if (z.enabled === false) continue;
     const c = zoneChoice(z, subject, standard);
     if (c) out.push(c);
   }

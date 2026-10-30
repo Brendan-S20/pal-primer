@@ -24,7 +24,7 @@ export const getZoneCoverage = createServerFn({ method: "GET" })
     const { data: zones, error: zErr } = await (supabase as any)
       .from("zones")
       .select(
-        "id, name, priority, account_type, postal_prefix, zip_codes, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
+        "id, name, priority, account_type, postal_prefix, zip_codes, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, enabled",
       )
       .eq("organization_id", orgId);
     if (zErr) throw new Error(zErr.message);

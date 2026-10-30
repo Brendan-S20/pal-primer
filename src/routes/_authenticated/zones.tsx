@@ -33,10 +33,13 @@ import { MetaChip } from "@/components/client-detail/primitives";
 import {
   ZonesOverviewMap,
   ZONE_COLORS,
+  OFF_ZONE_COLOR,
   zoneHasGeo,
   type OverviewZone,
 } from "@/components/ZonesOverviewMap";
 import { HelpTip } from "@/components/HelpTip";
+import { ZoneEnabledSwitch } from "@/components/ZoneEnabledSwitch";
+import { offZoneNotice } from "@/lib/zone-enabled";
 import { FirstCleanupPricingCard } from "@/components/FirstCleanupPricingCard";
 import { useServiceLines } from "@/components/CommercialOnly";
 import { getFirstCleanupPricing } from "@/lib/first-cleanup.functions";
@@ -119,6 +122,13 @@ function ZonesPage() {
   const [fillOnOpen, setFillOnOpen] = useState(false);
 
   const zones = data?.zones ?? [];
+  const activeClientsKnown = data?.activeClientsKnown ?? false;
+  // Zones that are off stay on the map, muted, unless this is unticked (#449).
+  const [showOffOnMap, setShowOffOnMap] = useState(true);
+  const offCount = zones.filter((z: any) => z.enabled === false).length;
+  const mapZones = (showOffOnMap ? zones : zones.filter((z: any) => z.enabled !== false)).filter(
+    (z: any) => zoneHasGeo(z as OverviewZone),
+  );
   const noGeoZones = zones.filter((z: any) => !zoneHasGeo(z as OverviewZone));
 
   // Multi-select for bulk delete (Invoices-page pattern). Only offered to
@@ -182,19 +192,30 @@ function ZonesPage() {
           the map until someone draws them. */}
       {zones.some((z: any) => zoneHasGeo(z as OverviewZone)) && (
         <div className="space-y-2">
-          <ZonesOverviewMap zones={zones as OverviewZone[]} />
+          <ZonesOverviewMap zones={mapZones as OverviewZone[]} />
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            {zones
-              .filter((z: any) => zoneHasGeo(z as OverviewZone))
-              .map((z: any, i: number) => (
-                <span key={z.id} className="inline-flex items-center gap-1.5">
-                  <span
-                    className="inline-block h-2.5 w-2.5 rounded-full"
-                    style={{ background: ZONE_COLORS[i % ZONE_COLORS.length] }}
-                  />
-                  {z.name}
-                </span>
-              ))}
+            {mapZones.map((z: any, i: number) => (
+              <span key={z.id} className="inline-flex items-center gap-1.5">
+                <span
+                  className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{
+                    background:
+                      z.enabled === false ? OFF_ZONE_COLOR : ZONE_COLORS[i % ZONE_COLORS.length],
+                  }}
+                />
+                {z.name}
+                {z.enabled === false ? " (off)" : ""}
+              </span>
+            ))}
+            {offCount > 0 && (
+              <label className="ms-auto inline-flex min-h-11 items-center gap-2">
+                <Checkbox
+                  checked={showOffOnMap}
+                  onCheckedChange={(v) => setShowOffOnMap(v === true)}
+                />
+                Show zones that are off ({offCount})
+              </label>
+            )}
           </div>
         </div>
       )}
@@ -315,6 +336,7 @@ function ZonesPage() {
               setDrawer(z);
             }}
             showFirstCleanup={zoneFeeIsCharged}
+            activeClientsKnown={activeClientsKnown}
             selected={sel.isSelected(z.id)}
             onToggleSelect={canEdit ? (next) => sel.toggle(z.id, next) : undefined}
           />
@@ -337,6 +359,7 @@ function ZonesPage() {
           onClose={() => setDrawer(null)}
           zone={drawer === "new" ? null : drawer}
           fillOnOpen={drawer !== "new" && fillOnOpen}
+          activeClientsKnown={activeClientsKnown}
         />
       )}
     </>
@@ -362,6 +385,7 @@ function ZoneCard({
   onEdit,
   onFillZips,
   showFirstCleanup = false,
+  activeClientsKnown = true,
   selected = false,
   onToggleSelect,
 }: {
@@ -371,6 +395,7 @@ function ZoneCard({
   /** Open the drawer and fill the ZIP list from the zone's drawn area. */
   onFillZips?: () => void;
   showFirstCleanup?: boolean;
+  activeClientsKnown?: boolean;
   selected?: boolean;
   onToggleSelect?: (next: boolean) => void;
 }) {
@@ -406,9 +431,11 @@ function ZoneCard({
   const deadZips = zipList.slice(0, 12).filter((z) => normalizeUsZip(z) !== z);
   const hasGeo = zoneHasGeo(zone as OverviewZone);
   const summary = coverageSummary(zone);
+  const isOff = zone.enabled === false;
+  const nameClass = isOff ? "font-semibold text-muted-foreground" : "font-semibold";
 
   return (
-    <Card className="p-5">
+    <Card className={isOff ? "bg-muted/40 p-5" : "p-5"}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         {/* Below sm this column takes the whole row, so the price block wraps
             under it instead of squeezing the ZIP warning into a word per line
@@ -425,7 +452,8 @@ function ZoneCard({
           )}
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="font-semibold">{zone.name}</h3>
+              <h3 className={nameClass}>{zone.name}</h3>
+              {isOff && <Badge variant="outline">Off</Badge>}
               <MetaChip>
                 {zone.account_type === "commercial"
                   ? "Commercial"
@@ -523,6 +551,11 @@ function ZoneCard({
             {zone.price_note && (
               <p className="mt-2 text-xs text-muted-foreground">{zone.price_note}</p>
             )}
+            {isOff && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                {offZoneNotice(zone.active_clients ?? 0)}
+              </p>
+            )}
           </div>
         </div>
         {/* On its own line below sm, so it reads from the left like the rest. */}
@@ -570,35 +603,40 @@ function ZoneCard({
         </div>
       </div>
 
-      <div className="mt-3 flex items-center justify-end gap-2 border-t pt-3">
-        {hasGeo && (
-          <Button size="sm" variant="ghost" onClick={() => setViewingCoverage(true)}>
-            <Eye className="mr-1 h-3.5 w-3.5 shrink-0" /> View coverage
-          </Button>
-        )}
-        {canEdit && (
-          <>
-            <Button size="sm" variant="outline" onClick={onEdit}>
-              <Pencil className="mr-1 h-3.5 w-3.5 shrink-0" /> Edit
+      {/* The switch on the left, actions on the right; below sm the actions
+          wrap under the switch rather than pushing it off the card. */}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+        <ZoneEnabledSwitch zone={zone} activeClientsKnown={activeClientsKnown} />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {hasGeo && (
+            <Button size="sm" variant="ghost" onClick={() => setViewingCoverage(true)}>
+              <Eye className="mr-1 h-3.5 w-3.5 shrink-0" /> View coverage
             </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="ghost" aria-label="More actions">
-                  <MoreHorizontal className="h-4 w-4 shrink-0" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
-                  disabled={delMut.isPending}
-                  onClick={handleDelete}
-                >
-                  Delete zone
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </>
-        )}
+          )}
+          {canEdit && (
+            <>
+              <Button size="sm" variant="outline" onClick={onEdit}>
+                <Pencil className="mr-1 h-3.5 w-3.5 shrink-0" /> Edit
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" variant="ghost" aria-label="More actions">
+                    <MoreHorizontal className="h-4 w-4 shrink-0" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    disabled={delMut.isPending}
+                    onClick={handleDelete}
+                  >
+                    Delete zone
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          )}
+        </div>
       </div>
 
       {viewingCoverage && (

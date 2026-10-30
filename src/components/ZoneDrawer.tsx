@@ -28,6 +28,8 @@ import { getStandardPricing } from "@/lib/subscriptions.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ZoneEnabledSwitch } from "@/components/ZoneEnabledSwitch";
+import { offZoneNotice } from "@/lib/zone-enabled";
 import { useCommercialAccounts, useServiceLines } from "@/components/CommercialOnly";
 import {
   addTyped,
@@ -250,6 +252,7 @@ export function ZoneDrawer({
   onClose,
   zone,
   fillOnOpen = false,
+  activeClientsKnown = true,
 }: {
   open: boolean;
   onClose: () => void;
@@ -259,8 +262,13 @@ export function ZoneDrawer({
    *  soon as the zone's area is looked up. The owner asked for it; the save
    *  is still theirs. */
   fillOnOpen?: boolean;
+  /** From listZones: false when active client counts could not be read. */
+  activeClientsKnown?: boolean;
 }) {
   const isNew = !zone;
+  // The switch saves on its own (#449); this only keeps the drawer's copy of
+  // the status current while it stays open.
+  const [enabledNow, setEnabledNow] = useState<boolean>(zone?.enabled !== false);
   const qc = useQueryClient();
   const createFn = useServerFn(createZone);
   const updateFn = useServerFn(updateZone);
@@ -646,6 +654,24 @@ export function ZoneDrawer({
           if (canSave && !saveMut.isPending) saveMut.mutate();
         }}
       >
+        {!isNew && (
+          <div className="space-y-1 rounded-md border p-3">
+            <div className="flex flex-wrap items-center justify-between gap-x-3">
+              <span className="text-sm font-medium">Zone status</span>
+              <ZoneEnabledSwitch
+                zone={{ ...zone, enabled: enabledNow }}
+                activeClientsKnown={activeClientsKnown}
+                onChanged={setEnabledNow}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {enabledNow
+                ? "On. This zone is used for new addresses, the signup page and the lead form."
+                : offZoneNotice(zone.active_clients ?? 0)}{" "}
+              The switch saves right away.
+            </p>
+          </div>
+        )}
         <div className="space-y-2">
           <Label htmlFor="zone-name">Zone name</Label>
           <Input

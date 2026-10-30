@@ -155,12 +155,104 @@ export const listZones = createServerFn({ method: "GET" })
     const { data, error } = await (supabase as any)
       .from("zones")
       .select(
-        "id, name, priority, postal_prefix, zip_codes, account_type, price_note, latitude, longitude, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, area_max_charge_cents, commercial_base_cents, commercial_per_unit_cents, commercial_per_acre_cents, commercial_per_station_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes",
+        "id, name, priority, postal_prefix, zip_codes, account_type, price_note, latitude, longitude, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, area_max_charge_cents, commercial_base_cents, commercial_per_unit_cents, commercial_per_acre_cents, commercial_per_station_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, enabled",
       )
       .eq("organization_id", orgId)
       .order("name");
     if (error) throw new Error(error.message);
-    return { zones: data ?? [] };
+    const activeClients = await activeClientCounts(supabase, orgId);
+    return {
+      zones: (data ?? []).map((z: any) => ({
+        ...z,
+        active_clients: activeClients?.[z.id] ?? 0,
+      })),
+      // Null when the counts could not be read: the switch then asks before
+      // turning any zone off rather than assuming it is empty.
+      activeClientsKnown: activeClients !== null,
+    };
+  });
+
+// Clients with an active service on a property in each zone (#449). The
+// confirm before turning a zone off shows this number. Null on a failed read.
+async function activeClientCounts(
+  supabase: any,
+  orgId: string,
+): Promise<Record<string, number> | null> {
+  // Paged (BUG-23): a single read stops at 1000 rows, and a short count here
+  // could be a 0 that skips the confirm.
+  const { fetchAllPages } = await import("@/lib/supabase-paging.server");
+  const { activeClientsByZone } = await import("@/lib/zone-enabled");
+  try {
+    const [props, subs] = await Promise.all([
+      fetchAllPages<{ id: string; client_id: string | null; zone_id: string | null }>((from, to) =>
+        supabase
+          .from("properties")
+          .select("id, client_id, zone_id")
+          .eq("organization_id", orgId)
+          .not("zone_id", "is", null)
+          .is("archived_at", null)
+          .order("id")
+          .range(from, to),
+      ),
+      fetchAllPages<{ client_id: string | null; property_id: string | null }>((from, to) =>
+        supabase
+          .from("subscriptions")
+          .select("id, client_id, property_id")
+          .eq("organization_id", orgId)
+          .eq("status", "active")
+          .order("id")
+          .range(from, to),
+      ),
+    ]);
+    return activeClientsByZone(props, subs);
+  } catch (e) {
+    console.error("[zones] active client count failed", e);
+    return null;
+  }
+}
+
+// Turn a zone on or off without touching its shape, ZIPs or pricing (#449).
+// Owner only, here and in the database (tg_zones_enabled_owner_only). Saves on
+// its own, not through updateZone, because the switch saves the moment it is
+// pressed and must not carry a half-edited drawer with it.
+export const setZoneEnabled = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ id: z.string().uuid(), enabled: z.boolean() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { orgId, role } = await resolveCaller(supabase, userId);
+    const { canToggleZone } = await import("@/lib/zone-enabled");
+    if (!canToggleZone(role)) throw new Error("Only an owner can turn a zone on or off.");
+
+    const { data: row, error } = await (supabase as any)
+      .from("zones")
+      .update({ enabled: data.enabled })
+      .eq("id", data.id)
+      .eq("organization_id", orgId)
+      .select("id, name")
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!row) throw new Error("Zone not found.");
+
+    const counts = await activeClientCounts(supabase, orgId);
+    const activeClients = counts?.[data.id] ?? null;
+    try {
+      const { logActivity } = await import("@/lib/activity.server");
+      await logActivity(supabase, {
+        orgId,
+        actorUserId: userId,
+        kind: data.enabled ? "zone.turned_on" : "zone.turned_off",
+        summary: `Zone ${row.name} turned ${data.enabled ? "on" : "off"}`,
+        meta: { zone_id: data.id, enabled: data.enabled, active_clients: activeClients },
+      });
+    } catch (e) {
+      console.warn("[zones] toggle activity log failed", (e as Error).message);
+    }
+
+    // Turning a zone on lets it claim addresses added while it was off.
+    // Turning one off moves nobody: redetect leaves its properties in place.
+    const propertiesUpdated = await redetectBestEffort(supabase, orgId, userId);
+    return { ok: true, enabled: data.enabled, propertiesUpdated };
   });
 
 const polygonSchema = z

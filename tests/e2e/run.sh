@@ -57,6 +57,18 @@ echo "── 3/4  seed ───────────────────
 node tests/e2e/seed.mjs
 
 echo "── 4/4  browser ───────────────────────────────────────────────────────"
+# In CI the dev server goes on a port the OS reports free, not on 5601. The
+# config refuses to adopt a server it did not start (reuseExistingServer is
+# off under CI), so a stale holder of 5601 used to fail this step outright.
+# Nothing is killed: the holder may be a developer's own server.
+if [ -n "${CI:-}" ] && [ -z "${E2E_BASE_URL:-}" ] && [ -z "${E2E_PORT:-}" ]; then
+  E2E_PORT="$(node -e 'const s=require("net").createServer();s.listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close()})')"
+  export E2E_PORT
+  if node -e 'const s=require("net").connect(5601,"127.0.0.1");s.on("connect",()=>process.exit(0));s.on("error",()=>process.exit(1))' 2>/dev/null; then
+    echo "::warning::127.0.0.1:5601 is held by another process on this runner. The E2E dev server uses port $E2E_PORT instead. Find the holder with: lsof -iTCP:5601 -sTCP:LISTEN"
+  fi
+  echo "     dev server on 127.0.0.1:$E2E_PORT"
+fi
 # No E2E_BASE_URL, so the Playwright config starts its own dev server with the
 # local credentials in its environment and shuts it down afterwards.
 exec npx playwright test --config playwright.e2e.config.ts "$@"

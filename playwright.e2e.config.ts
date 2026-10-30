@@ -37,7 +37,13 @@
 
 import { defineConfig, devices } from "@playwright/test";
 
-const PORT = 5601;
+// 5601 unless tests/e2e/run.sh chose another. In CI it always does: the
+// runner is somebody's development machine, so 5601 can be held by an
+// orphaned dev server or another checkout. With reuse off (below) that was a
+// hard failure, "http://127.0.0.1:5601/auth is already used", on a job with
+// nothing wrong in it. A port the OS hands out free sidesteps the holder
+// without adopting it and without killing a process that may not be ours.
+const PORT = Number(process.env.E2E_PORT || 5601);
 const BASE = process.env.E2E_BASE_URL ?? `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({
