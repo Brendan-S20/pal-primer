@@ -2928,7 +2928,9 @@ export type Database = {
         Row: {
           action: Database["public"]["Enums"]["import_row_action"]
           batch_id: string
-          commit_failed_action: Database["public"]["Enums"]["import_row_action"] | null
+          commit_failed_action:
+            | Database["public"]["Enums"]["import_row_action"]
+            | null
           created_at: string
           error: string | null
           id: string
@@ -2941,7 +2943,9 @@ export type Database = {
         Insert: {
           action?: Database["public"]["Enums"]["import_row_action"]
           batch_id: string
-          commit_failed_action?: Database["public"]["Enums"]["import_row_action"] | null
+          commit_failed_action?:
+            | Database["public"]["Enums"]["import_row_action"]
+            | null
           created_at?: string
           error?: string | null
           id?: string
@@ -2954,7 +2958,9 @@ export type Database = {
         Update: {
           action?: Database["public"]["Enums"]["import_row_action"]
           batch_id?: string
-          commit_failed_action?: Database["public"]["Enums"]["import_row_action"] | null
+          commit_failed_action?:
+            | Database["public"]["Enums"]["import_row_action"]
+            | null
           created_at?: string
           error?: string | null
           id?: string
@@ -3923,6 +3929,152 @@ export type Database = {
           },
         ]
       }
+      org_texting_registrations: {
+        Row: {
+          activated_at: string | null
+          address_document_sid: string | null
+          address_sid: string | null
+          approved_at: string | null
+          business_email: string | null
+          business_end_user_sid: string | null
+          business_phone: string | null
+          business_type: string | null
+          checked_at: string | null
+          city: string | null
+          contacts: Json
+          country: string
+          created_at: string
+          customer_profile_sid: string | null
+          customer_profile_status: string | null
+          dba: string | null
+          ein_last4: string | null
+          last_error: string | null
+          legal_name: string | null
+          number_type: string
+          organization_id: string
+          phone_number: string | null
+          phone_number_sid: string | null
+          postal_code: string | null
+          privacy_url: string | null
+          region: string | null
+          rejection_alerted_at: string | null
+          rejection_code: string | null
+          rejection_reason: string | null
+          representative_end_user_sids: string[]
+          resubmit_deadline: string | null
+          status: string
+          status_changed_at: string
+          street: string | null
+          street2: string | null
+          subaccount_sid: string | null
+          submitted_at: string | null
+          terms_url: string | null
+          updated_at: string
+          updated_by: string | null
+          verification_sid: string | null
+          verification_status: string | null
+          website_url: string | null
+        }
+        Insert: {
+          activated_at?: string | null
+          address_document_sid?: string | null
+          address_sid?: string | null
+          approved_at?: string | null
+          business_email?: string | null
+          business_end_user_sid?: string | null
+          business_phone?: string | null
+          business_type?: string | null
+          checked_at?: string | null
+          city?: string | null
+          contacts?: Json
+          country?: string
+          created_at?: string
+          customer_profile_sid?: string | null
+          customer_profile_status?: string | null
+          dba?: string | null
+          ein_last4?: string | null
+          last_error?: string | null
+          legal_name?: string | null
+          number_type?: string
+          organization_id: string
+          phone_number?: string | null
+          phone_number_sid?: string | null
+          postal_code?: string | null
+          privacy_url?: string | null
+          region?: string | null
+          rejection_alerted_at?: string | null
+          rejection_code?: string | null
+          rejection_reason?: string | null
+          representative_end_user_sids?: string[]
+          resubmit_deadline?: string | null
+          status?: string
+          status_changed_at?: string
+          street?: string | null
+          street2?: string | null
+          subaccount_sid?: string | null
+          submitted_at?: string | null
+          terms_url?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          verification_sid?: string | null
+          verification_status?: string | null
+          website_url?: string | null
+        }
+        Update: {
+          activated_at?: string | null
+          address_document_sid?: string | null
+          address_sid?: string | null
+          approved_at?: string | null
+          business_email?: string | null
+          business_end_user_sid?: string | null
+          business_phone?: string | null
+          business_type?: string | null
+          checked_at?: string | null
+          city?: string | null
+          contacts?: Json
+          country?: string
+          created_at?: string
+          customer_profile_sid?: string | null
+          customer_profile_status?: string | null
+          dba?: string | null
+          ein_last4?: string | null
+          last_error?: string | null
+          legal_name?: string | null
+          number_type?: string
+          organization_id?: string
+          phone_number?: string | null
+          phone_number_sid?: string | null
+          postal_code?: string | null
+          privacy_url?: string | null
+          region?: string | null
+          rejection_alerted_at?: string | null
+          rejection_code?: string | null
+          rejection_reason?: string | null
+          representative_end_user_sids?: string[]
+          resubmit_deadline?: string | null
+          status?: string
+          status_changed_at?: string
+          street?: string | null
+          street2?: string | null
+          subaccount_sid?: string | null
+          submitted_at?: string | null
+          terms_url?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          verification_sid?: string | null
+          verification_status?: string | null
+          website_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_texting_registrations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       org_twilio_credentials: {
         Row: {
           account_sid: string
@@ -4007,8 +4159,8 @@ export type Database = {
           frequency_multipliers: Json
           google_review_url: string | null
           grace_expires_at: string | null
-          groom_setup_reviewed_at: string | null
           groom_buffer_min: number
+          groom_setup_reviewed_at: string | null
           id: string
           invoice_grace_days: number
           invoice_net_days: number
@@ -4167,8 +4319,8 @@ export type Database = {
           frequency_multipliers?: Json
           google_review_url?: string | null
           grace_expires_at?: string | null
-          groom_setup_reviewed_at?: string | null
           groom_buffer_min?: number
+          groom_setup_reviewed_at?: string | null
           id?: string
           invoice_grace_days?: number
           invoice_net_days?: number
@@ -4327,8 +4479,8 @@ export type Database = {
           frequency_multipliers?: Json
           google_review_url?: string | null
           grace_expires_at?: string | null
-          groom_setup_reviewed_at?: string | null
           groom_buffer_min?: number
+          groom_setup_reviewed_at?: string | null
           id?: string
           invoice_grace_days?: number
           invoice_net_days?: number
@@ -5311,6 +5463,30 @@ export type Database = {
           reward_percent?: number
           updated_at?: string
           volume_flag_threshold?: number
+        }
+        Relationships: []
+      }
+      platform_service_lines: {
+        Row: {
+          bookable: boolean
+          customer_requestable: boolean
+          service_line: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          bookable?: boolean
+          customer_requestable?: boolean
+          service_line: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          bookable?: boolean
+          customer_requestable?: boolean
+          service_line?: string
+          updated_at?: string
+          updated_by?: string | null
         }
         Relationships: []
       }
@@ -6821,6 +6997,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "services_public_package_id_fkey"
+            columns: ["public_package_id"]
+            isOneToOne: false
+            referencedRelation: "service_packages"
+            referencedColumns: ["id"]
+          },
         ]
       }
       session_progress: {
@@ -6887,8 +7070,8 @@ export type Database = {
           error_message: string | null
           first_cleanup_label: string | null
           first_cleanup_tier_id: string | null
-          groom_booking: Json | null
           frequency: string
+          groom_booking: Json | null
           id: string
           initial_cleanup_cents: number
           lead_id: string | null
@@ -6926,8 +7109,8 @@ export type Database = {
           error_message?: string | null
           first_cleanup_label?: string | null
           first_cleanup_tier_id?: string | null
-          groom_booking?: Json | null
           frequency: string
+          groom_booking?: Json | null
           id?: string
           initial_cleanup_cents: number
           lead_id?: string | null
@@ -6965,8 +7148,8 @@ export type Database = {
           error_message?: string | null
           first_cleanup_label?: string | null
           first_cleanup_tier_id?: string | null
-          groom_booking?: Json | null
           frequency?: string
+          groom_booking?: Json | null
           id?: string
           initial_cleanup_cents?: number
           lead_id?: string | null
@@ -7020,6 +7203,13 @@ export type Database = {
             columns: ["service_id"]
             isOneToOne: false
             referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "signup_requests_service_package_id_fkey"
+            columns: ["service_package_id"]
+            isOneToOne: false
+            referencedRelation: "service_packages"
             referencedColumns: ["id"]
           },
           {
@@ -8163,10 +8353,6 @@ export type Database = {
           skip_charge_cents: number
           skip_reason: string | null
           skip_reason_code:
-        | "pet_not_ready"
-        | "client_not_home"
-        | "no_parking"
-        | "pet_stressed"
             | Database["public"]["Enums"]["skip_reason_code"]
             | null
           skipped_at: string | null
@@ -8999,6 +9185,16 @@ export type Database = {
           reason: string
         }[]
       }
+      activate_org_texting: {
+        Args: {
+          _account_sid: string
+          _auth_token: string
+          _from: string
+          _org_id: string
+          _token_last4: string
+        }
+        Returns: undefined
+      }
       addon_frequency_step: {
         Args: { _f: Database["public"]["Enums"]["addon_frequency"] }
         Returns: string
@@ -9091,6 +9287,7 @@ export type Database = {
         }
         Returns: string
       }
+      bookable_service_lines: { Args: never; Returns: string[] }
       bootstrap_organization: {
         Args: {
           _display_name?: string
@@ -9130,10 +9327,6 @@ export type Database = {
         Args: { _name: string; _write: boolean }
         Returns: boolean
       }
-      cancel_stay: {
-        Args: { _refund_deposit?: boolean; _stay_id: string }
-        Returns: Json
-      }
       can_use_vaccine_record: {
         Args: { name: string; write: boolean }
         Returns: boolean
@@ -9145,6 +9338,10 @@ export type Database = {
       cancel_client_package: {
         Args: { _cancel_booked: boolean; _client_package_id: string }
         Returns: number
+      }
+      cancel_stay: {
+        Args: { _refund_deposit?: boolean; _stay_id: string }
+        Returns: Json
       }
       capture_routing_run_undo: { Args: { _run_id: string }; Returns: number }
       cast_roadmap_vote: {
@@ -9298,6 +9495,7 @@ export type Database = {
         Returns: string
       }
       create_franchise_link_code: { Args: never; Returns: string }
+      customer_requestable_service_lines: { Args: never; Returns: string[] }
       default_skip_billable_pct: {
         Args: { _code: Database["public"]["Enums"]["skip_reason_code"] }
         Returns: number
@@ -9686,6 +9884,7 @@ export type Database = {
         }
         Returns: string
       }
+      office_booked_service_lines: { Args: never; Returns: string[] }
       office_complete_visit: { Args: { _visit_id: string }; Returns: undefined }
       office_edit_time_entry: {
         Args: {
@@ -9747,12 +9946,12 @@ export type Database = {
       overnight_clashes: {
         Args: { _visit_ids: string[] }
         Returns: {
-          arrival: string | null
-          client_name: string | null
+          arrival: string
+          client_name: string
           night_of: string
-          sitter_name: string | null
-          visit_earliest: string | null
-          visit_latest: string | null
+          sitter_name: string
+          visit_earliest: string
+          visit_latest: string
           visit_on: string
         }[]
       }
@@ -10171,7 +10370,7 @@ export type Database = {
       property_access_codes: {
         Args: { _property_ids: string[] }
         Returns: {
-          alarm_notes: string | null
+          alarm_notes: string
           gate_code: string
           key_location: string
           key_tag: string
@@ -10495,6 +10694,14 @@ export type Database = {
       }
       seal_routing_run_undo: { Args: { _run_id: string }; Returns: number }
       seed_demo_org: { Args: { _org_id: string }; Returns: Json }
+      service_line_availability: {
+        Args: never
+        Returns: {
+          bookable: boolean
+          customer_requestable: boolean
+          service_line: string
+        }[]
+      }
       service_line_item_name: {
         Args: { _fallback?: string; _service_name: string }
         Returns: string
@@ -10539,6 +10746,14 @@ export type Database = {
       }
       set_route_windows: {
         Args: { _org_id: string; _policy: string }
+        Returns: undefined
+      }
+      set_service_line_availability: {
+        Args: {
+          _bookable: boolean
+          _customer_requestable: boolean
+          _service_line: string
+        }
         Returns: undefined
       }
       set_staff_active: {
@@ -10662,42 +10877,34 @@ export type Database = {
         Args: { _started_at?: string; _visit_id: string }
         Returns: undefined
       }
-      stay_access_codes: {
-        Args: { _stay_ids: string[] }
-        Returns: {
-          alarm_notes: string | null
-          gate_code: string | null
-          key_location: string | null
-          key_tag: string | null
-          lock_box_code: string | null
-          property_id: string
-          stay_id: string
-        }[]
-      }
-      stay_contact_gaps: {
-        Args: { _stay_id: string }
-        Returns: string[]
-      }
-      stay_sitter_clashes: {
-        Args: { _stay_id: string }
-        Returns: {
-          arrival: string | null
-          client_name: string | null
-          night_of: string
-          sitter_name: string | null
-          visit_earliest: string | null
-          visit_latest: string | null
-          visit_on: string
-        }[]
-      }
       start_visit_as: {
         Args: { _actor: string; _started_at?: string; _visit_id: string }
         Returns: undefined
       }
-      stay_windows_are_valid: { Args: { _windows: Json }; Returns: boolean }
-      stop_service_min: {
-        Args: { _property_min: number; _service_min: number; _visit_min?: number }
-        Returns: number
+      stay_access_codes: {
+        Args: { _stay_ids: string[] }
+        Returns: {
+          alarm_notes: string
+          gate_code: string
+          key_location: string
+          key_tag: string
+          lock_box_code: string
+          property_id: string
+          stay_id: string
+        }[]
+      }
+      stay_contact_gaps: { Args: { _stay_id: string }; Returns: string[] }
+      stay_sitter_clashes: {
+        Args: { _stay_id: string }
+        Returns: {
+          arrival: string
+          client_name: string
+          night_of: string
+          sitter_name: string
+          visit_earliest: string
+          visit_latest: string
+          visit_on: string
+        }[]
       }
       stay_visit_bill: {
         Args: { _visit_id: string }
@@ -10706,6 +10913,20 @@ export type Database = {
           description: string
         }[]
       }
+      stay_windows_are_valid: { Args: { _windows: Json }; Returns: boolean }
+      stop_service_min:
+        | {
+            Args: { _property_min: number; _service_min: number }
+            Returns: number
+          }
+        | {
+            Args: {
+              _property_min: number
+              _service_min: number
+              _visit_min: number
+            }
+            Returns: number
+          }
       sync_invoice_amount_paid: {
         Args: { _invoice_id: string }
         Returns: undefined
@@ -10721,6 +10942,7 @@ export type Database = {
         Returns: string
       }
       team_size_ordinal: { Args: { _n: number }; Returns: string }
+      texting_status_due: { Args: never; Returns: boolean }
       tip_staff_for_invoice: { Args: { _invoice_id: string }; Returns: string }
       training_visit_holds_session: {
         Args: {
@@ -10910,10 +11132,6 @@ export type Database = {
         | "one_time"
         | "every_n_days"
       skip_reason_code:
-        | "pet_not_ready"
-        | "client_not_home"
-        | "no_parking"
-        | "pet_stressed"
         | "client_cancelled_late"
         | "gate_locked"
         | "dog_outside"
@@ -10928,6 +11146,10 @@ export type Database = {
         | "dog_unwell"
         | "pet_hiding"
         | "client_home"
+        | "pet_not_ready"
+        | "client_not_home"
+        | "no_parking"
+        | "pet_stressed"
       staff_role: "owner" | "office_manager" | "dispatcher" | "tech"
       subscription_status: "active" | "paused" | "canceled"
       visit_status:
@@ -11128,10 +11350,6 @@ export const Constants = {
         "every_n_days",
       ],
       skip_reason_code: [
-        "pet_not_ready",
-        "client_not_home",
-        "no_parking",
-        "pet_stressed",
         "client_cancelled_late",
         "gate_locked",
         "dog_outside",
@@ -11146,6 +11364,10 @@ export const Constants = {
         "dog_unwell",
         "pet_hiding",
         "client_home",
+        "pet_not_ready",
+        "client_not_home",
+        "no_parking",
+        "pet_stressed",
       ],
       staff_role: ["owner", "office_manager", "dispatcher", "tech"],
       subscription_status: ["active", "paused", "canceled"],
