@@ -178,25 +178,37 @@ async function activeClientCounts(
   supabase: any,
   orgId: string,
 ): Promise<Record<string, number> | null> {
-  const [props, subs] = await Promise.all([
-    supabase
-      .from("properties")
-      .select("id, client_id, zone_id")
-      .eq("organization_id", orgId)
-      .not("zone_id", "is", null)
-      .is("archived_at", null),
-    supabase
-      .from("subscriptions")
-      .select("client_id, property_id")
-      .eq("organization_id", orgId)
-      .eq("status", "active"),
-  ]);
-  if (props.error || subs.error) {
-    console.error("[zones] active client count failed", props.error ?? subs.error);
+  // Paged (BUG-23): a single read stops at 1000 rows, and a short count here
+  // could be a 0 that skips the confirm.
+  const { fetchAllPages } = await import("@/lib/supabase-paging.server");
+  const { activeClientsByZone } = await import("@/lib/zone-enabled");
+  try {
+    const [props, subs] = await Promise.all([
+      fetchAllPages<{ id: string; client_id: string | null; zone_id: string | null }>((from, to) =>
+        supabase
+          .from("properties")
+          .select("id, client_id, zone_id")
+          .eq("organization_id", orgId)
+          .not("zone_id", "is", null)
+          .is("archived_at", null)
+          .order("id")
+          .range(from, to),
+      ),
+      fetchAllPages<{ client_id: string | null; property_id: string | null }>((from, to) =>
+        supabase
+          .from("subscriptions")
+          .select("id, client_id, property_id")
+          .eq("organization_id", orgId)
+          .eq("status", "active")
+          .order("id")
+          .range(from, to),
+      ),
+    ]);
+    return activeClientsByZone(props, subs);
+  } catch (e) {
+    console.error("[zones] active client count failed", e);
     return null;
   }
-  const { activeClientsByZone } = await import("@/lib/zone-enabled");
-  return activeClientsByZone(props.data ?? [], subs.data ?? []);
 }
 
 // Turn a zone on or off without touching its shape, ZIPs or pricing (#449).

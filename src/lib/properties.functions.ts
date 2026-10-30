@@ -235,7 +235,7 @@ export const updateProperty = createServerFn({ method: "POST" })
     const { data: current, error: curErr } = await supabase
       .from("properties")
       .select(
-        "organization_id, client_id, zone_override_reason, street, city, postal_code, auto_zone_id, has_units, total_units, boundary_area_sqm, do_not_enter_if_dog_out, hazard_notes, clients(account_type)",
+        "organization_id, client_id, zone_override_reason, street, city, postal_code, auto_zone_id, zone_id, has_units, total_units, boundary_area_sqm, do_not_enter_if_dog_out, hazard_notes, clients(account_type)",
       )
       .eq("id", data.propertyId)
       .single();
@@ -285,9 +285,23 @@ export const updateProperty = createServerFn({ method: "POST" })
           : null,
       accountType: data.accountType ?? ((current as any).clients?.account_type as any) ?? null,
     });
-    const zonePatch = current.zone_override_reason
-      ? { auto_zone_id: autoZoneId }
-      : { auto_zone_id: autoZoneId, zone_id: autoZoneId };
+    // A property in a zone that is turned off stays in it (#449), whatever is
+    // edited: the same rule redetectZonesForOrg follows.
+    let inOffZone = false;
+    if ((current as any).zone_id) {
+      const { data: currentZone } = await (supabase as any)
+        .from("zones")
+        .select("enabled")
+        .eq("id", (current as any).zone_id)
+        .maybeSingle();
+      inOffZone = currentZone?.enabled === false;
+    }
+    const { zonePatchAfterEdit } = await import("@/lib/zone-enabled");
+    const zonePatch = zonePatchAfterEdit({
+      autoZoneId,
+      hasOverride: !!current.zone_override_reason,
+      inOffZone,
+    });
 
     const { error } = await supabase
       .from("properties")
@@ -454,7 +468,7 @@ export const updateProperty = createServerFn({ method: "POST" })
           }
         : {},
     });
-    if (autoZoneId !== current.auto_zone_id) {
+    if ("auto_zone_id" in zonePatch && autoZoneId !== current.auto_zone_id) {
       await logActivity(supabase, {
         orgId: current.organization_id,
         clientId: current.client_id,

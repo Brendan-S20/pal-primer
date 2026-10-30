@@ -24,6 +24,7 @@ import {
   offZoneNotice,
   toggledToast,
   turnOffConfirm,
+  zonePatchAfterEdit,
   zoneStatusLabel,
 } from "@/lib/zone-enabled";
 
@@ -392,5 +393,77 @@ describe("confirmation and copy", () => {
       "supabase/migrations/20261029180000_a-zone-can-be-turned-off.sql",
     ])
       expect(read(f), f).not.toContain("—");
+  });
+});
+
+// Product review on 81697129: three gaps, each pinned here.
+describe("editing a property keeps a client in an off zone", () => {
+  it("writes no zone columns while the property sits in an off zone", () => {
+    expect(zonePatchAfterEdit({ autoZoneId: null, hasOverride: false, inOffZone: true })).toEqual(
+      {},
+    );
+    expect(
+      zonePatchAfterEdit({ autoZoneId: "z-other", hasOverride: false, inOffZone: true }),
+    ).toEqual({});
+    expect(zonePatchAfterEdit({ autoZoneId: null, hasOverride: true, inOffZone: true })).toEqual(
+      {},
+    );
+  });
+
+  it("otherwise follows detection as before", () => {
+    expect(zonePatchAfterEdit({ autoZoneId: "z1", hasOverride: false, inOffZone: false })).toEqual({
+      auto_zone_id: "z1",
+      zone_id: "z1",
+    });
+    expect(zonePatchAfterEdit({ autoZoneId: "z1", hasOverride: true, inOffZone: false })).toEqual({
+      auto_zone_id: "z1",
+    });
+  });
+
+  it("updateProperty reads the current zone and goes through that rule", () => {
+    const src = read("src/lib/properties.functions.ts");
+    const fn = src.slice(src.indexOf("export const updateProperty"));
+    expect(fn).toMatch(/auto_zone_id, zone_id, has_units/);
+    expect(fn).toMatch(/\.from\("zones"\)\s*\.select\("enabled"\)/);
+    expect(fn).toMatch(/zonePatchAfterEdit\(/);
+    expect(fn).not.toMatch(/\{ auto_zone_id: autoZoneId, zone_id: autoZoneId \}/);
+    // No "detected zone changed" entry for a property that did not change.
+    expect(fn).toMatch(/"auto_zone_id" in zonePatch && autoZoneId !== current\.auto_zone_id/);
+  });
+});
+
+describe("the active client count reads every row", () => {
+  it("pages both reads past the 1000-row cap, in a stable order", () => {
+    const src = read("src/lib/zones.functions.ts");
+    const fn = src.slice(src.indexOf("async function activeClientCounts"));
+    const body = fn.slice(0, fn.indexOf("\n}\n"));
+    expect(body.match(/fetchAllPages</g)?.length).toBe(2);
+    expect(body.match(/\.order\("id"\)\s*\.range\(from, to\)/g)?.length).toBe(2);
+  });
+});
+
+describe("a dispatcher is told why the switch is off, on screen", () => {
+  const render = async (zone: any) => {
+    const { ZoneEnabledSwitch } = await import("@/components/ZoneEnabledSwitch");
+    const qc = new QueryClient();
+    return renderToStaticMarkup(
+      createElement(
+        QueryClientProvider,
+        { client: qc },
+        createElement(ZoneEnabledSwitch, { zone }),
+      ),
+    );
+  };
+  const visibleReason = /<span[^>]*>Only an owner can turn a zone on or off\.<\/span>/;
+
+  it("shows the reason as text, not only a tooltip", async () => {
+    role = "dispatcher";
+    expect(await render({ id: "z1", name: "North", enabled: true })).toMatch(visibleReason);
+    role = "owner";
+  });
+
+  it("an owner does not see it", async () => {
+    role = "owner";
+    expect(await render({ id: "z1", name: "North", enabled: true })).not.toMatch(visibleReason);
   });
 });

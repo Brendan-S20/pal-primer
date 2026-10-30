@@ -59,7 +59,7 @@ export function ZoneEnabledSwitch({
   };
 
   return (
-    <div className={cn("flex min-h-11 items-center gap-2", className)}>
+    <div className={cn("flex min-h-11 flex-wrap items-center gap-x-2", className)}>
       <Switch
         id={switchId}
         checked={enabled}
@@ -74,6 +74,13 @@ export function ZoneEnabledSwitch({
       >
         {zoneStatusLabel(enabled)}
       </label>
+      {/* Visible, not only a tooltip: a title never shows on touch. Waits for
+          the role so an owner never sees it flash while it loads. */}
+      {role && !canToggle && (
+        <span className="text-xs text-muted-foreground">
+          Only an owner can turn a zone on or off.
+        </span>
+      )}
       {dialog}
     </div>
   );

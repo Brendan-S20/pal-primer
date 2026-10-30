@@ -52,6 +52,24 @@ export function activeClientsByZone(
   return out;
 }
 
+/**
+ * The zone columns to write after a property's address is edited.
+ * `autoZoneId` is what the matcher says now, which never names an off zone.
+ *   - In an off zone: nothing changes, so the client keeps the zone, its
+ *     schedule and its price. The same rule as redetectZonesForOrg.
+ *   - A manual override: only the detected zone is refreshed.
+ *   - Otherwise the effective zone follows the detected one.
+ */
+export function zonePatchAfterEdit(input: {
+  autoZoneId: string | null;
+  hasOverride: boolean;
+  inOffZone: boolean;
+}): { auto_zone_id?: string | null; zone_id?: string | null } {
+  if (input.inOffZone) return {};
+  if (input.hasOverride) return { auto_zone_id: input.autoZoneId };
+  return { auto_zone_id: input.autoZoneId, zone_id: input.autoZoneId };
+}
+
 const clientsWord = (n: number) => `${n} active ${n === 1 ? "client" : "clients"}`;
 
 /** Status label for the switch. */
