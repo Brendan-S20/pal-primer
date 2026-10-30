@@ -39,7 +39,7 @@ DECLARE
   _line jsonb;
   _line_id uuid;
   _addon uuid;
-  _other integer;
+  _other text;
 BEGIN
   IF jsonb_typeof(_lines) <> 'array' OR jsonb_array_length(_lines) = 0 THEN
     RAISE EXCEPTION 'An invoice needs at least one line.';
@@ -90,7 +90,8 @@ BEGIN
 
   -- The billing run could have reached one of these visits between the app's
   -- check and this insert.
-  SELECT i.number INTO _other
+  -- Labelled the way invoiceNumberLabel labels it.
+  SELECT COALESCE('INV-' || i.number, '#' || left(i.id::text, 8)) INTO _other
     FROM public.invoice_line_items li
     JOIN public.invoices i ON i.id = li.invoice_id
    WHERE li.visit_id IN (
@@ -100,7 +101,7 @@ BEGIN
      AND i.status <> 'void'
    LIMIT 1;
   IF FOUND THEN
-    RAISE EXCEPTION 'A visit on this invoice was just billed on invoice INV-%.', _other;
+    RAISE EXCEPTION 'A visit on this invoice was just billed on invoice %.', _other;
   END IF;
 
   RETURN _id;

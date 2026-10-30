@@ -1,20 +1,26 @@
--- A failed manual invoice kept its number (#606), proved against a real
--- Postgres. Run by tests/a-failed-invoice-kept-its-number.proof.test.ts,
--- which passes the migration's path as :migration. Every earlier migration is
--- assumed applied (a local stack built from main).
+-- Proof for #606: a manual invoice is saved whole or not at all, so a failed
+-- save takes no invoice number.
 --
--- One transaction, ROLLED BACK at the end with the migration inside it, so a
--- shared local stack is left exactly as it was found. Each check prints
--- "ok: ..." or raises "PROOF FAILED [...]"; ON_ERROR_STOP makes the first
--- failure a non-zero exit.
+-- create_manual_invoice (20261030090000) inserts the invoice, its lines and its
+-- add-on claims in one transaction. The invoice's number is taken from the
+-- org's counter when the invoice row goes in, so it is the transaction that
+-- hands the number back when a later step fails.
+--
+--   1. "Full groom x1 + Add-on x2" saves, $85.00, with the counter's number.
+--   2. A save that fails on a line moves no counter and leaves no invoice.
+--   3. A save that fails on an add-on claim moves no counter and leaves the
+--      add-on it claimed first pending.
+--   4. The next good save takes the very next number.
+--   5. Mutation: the sequence this replaced (insert the invoice, a line fails,
+--      delete the invoice) DOES move the counter. If it does not, the checks
+--      above prove nothing and this raises INCONCLUSIVE.
+--
+-- Everything is inside one transaction that ends in ROLLBACK. Run against a
+-- freshly reset local database:
+--   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/proofs/20261030090000-a-failed-invoice-kept-its-number.sql
 
 \set ON_ERROR_STOP on
-\set QUIET on
 SET client_min_messages TO notice;
-
--- One proof at a time (tests/the-proofs-take-turns.test.ts).
-DO $turn$ BEGIN PERFORM pg_advisory_lock(hashtext('houndstack.proof')); END $turn$;
-
 BEGIN;
 
 SET LOCAL app.allow_protected_org_write = '1';
@@ -28,25 +34,6 @@ INSERT INTO public.addon_charges (id, organization_id, client_id, description, u
    'c6060000-0000-4000-8000-0000000000a1', 'Nail trim', 1500, 1500, 'pending'),
   ('ad606000-0000-4000-8000-0000000000a2', '0a606000-0000-4000-8000-0000000000aa',
    'c6060000-0000-4000-8000-0000000000a1', 'Teeth', 900, 900, 'invoiced');
-
--- The fault itself, kept as a control: a line with quantity NULL is refused.
--- That is what a bulk insert wrote for a row that did not name quantity
--- beside a row that did.
-DO $$
-BEGIN
-  BEGIN
-    INSERT INTO public.invoices (id, organization_id, client_id, period_end, total_cents, status, issued_at)
-    VALUES ('16060000-0000-4000-8000-0000000000c0', '0a606000-0000-4000-8000-0000000000aa',
-            'c6060000-0000-4000-8000-0000000000a1', current_date, 0, 'open', now());
-    INSERT INTO public.invoice_line_items (invoice_id, description, amount_cents, quantity, unit_amount_cents)
-    VALUES ('16060000-0000-4000-8000-0000000000c0', 'Full groom', 6500, NULL, NULL);
-    RAISE EXCEPTION 'PROOF FAILED [control]: a line with quantity NULL was accepted';
-  EXCEPTION WHEN not_null_violation THEN
-    RAISE NOTICE 'ok: a line with no quantity is refused, which is the save that failed';
-  END;
-END $$;
-
-\i :migration
 
 CREATE TEMP TABLE proof_inv (k text PRIMARY KEY, v jsonb);
 INSERT INTO proof_inv VALUES ('head', jsonb_build_object(
@@ -146,5 +133,29 @@ BEGIN
   END IF;
   RAISE NOTICE 'ok: after two failed saves the next invoice is INV-%, no gap', _n;
 END $$;
+
+-- ── Mutation: the sequence this replaced burns a number ────────────────────
+SAVEPOINT mutation;
+DO $$
+DECLARE _before int; _id uuid;
+BEGIN
+  SELECT next_invoice_number INTO _before FROM public.organizations WHERE id = '0a606000-0000-4000-8000-0000000000aa';
+  INSERT INTO public.invoices (organization_id, client_id, period_end, total_cents, status, issued_at)
+  VALUES ('0a606000-0000-4000-8000-0000000000aa', 'c6060000-0000-4000-8000-0000000000a1', current_date, 8500, 'open', now())
+  RETURNING id INTO _id;
+  BEGIN
+    -- What the bulk insert wrote for the row that did not name quantity.
+    INSERT INTO public.invoice_line_items (invoice_id, description, amount_cents, quantity)
+    VALUES (_id, 'Full groom', 6500, NULL);
+    RAISE EXCEPTION 'INCONCLUSIVE: a line with quantity NULL was accepted';
+  EXCEPTION WHEN not_null_violation THEN NULL;
+  END;
+  DELETE FROM public.invoices WHERE id = _id;
+  IF (SELECT next_invoice_number FROM public.organizations WHERE id = '0a606000-0000-4000-8000-0000000000aa') <> _before + 1 THEN
+    RAISE EXCEPTION 'INCONCLUSIVE: the old insert-then-delete sequence did not move the counter';
+  END IF;
+  RAISE NOTICE 'ok: mutation: the old sequence fails on quantity NULL and skips a number';
+END $$;
+ROLLBACK TO SAVEPOINT mutation;
 
 ROLLBACK;
