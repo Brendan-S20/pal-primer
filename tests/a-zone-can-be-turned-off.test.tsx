@@ -426,6 +426,8 @@ describe("editing a property keeps a client in an off zone", () => {
     expect(fn).toMatch(/auto_zone_id, zone_id, has_units/);
     expect(fn).toMatch(/\.from\("zones"\)\s*\.select\("enabled"\)/);
     expect(fn).toMatch(/zonePatchAfterEdit\(/);
+    // A failed zones read keeps the client where they are.
+    expect(fn).toMatch(/inOffZone = !!zoneErr \|\| currentZone\?\.enabled === false;/);
     expect(fn).not.toMatch(/\{ auto_zone_id: autoZoneId, zone_id: autoZoneId \}/);
     // No "detected zone changed" entry for a property that did not change.
     expect(fn).toMatch(/"auto_zone_id" in zonePatch && autoZoneId !== current\.auto_zone_id/);

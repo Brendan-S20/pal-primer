@@ -289,12 +289,14 @@ export const updateProperty = createServerFn({ method: "POST" })
     // edited: the same rule redetectZonesForOrg follows.
     let inOffZone = false;
     if ((current as any).zone_id) {
-      const { data: currentZone } = await (supabase as any)
+      const { data: currentZone, error: zoneErr } = await (supabase as any)
         .from("zones")
         .select("enabled")
         .eq("id", (current as any).zone_id)
         .maybeSingle();
-      inOffZone = currentZone?.enabled === false;
+      // A failed read keeps the zone: leaving a client where they are is
+      // safe, moving them out of a zone that may be off is not.
+      inOffZone = !!zoneErr || currentZone?.enabled === false;
     }
     const { zonePatchAfterEdit } = await import("@/lib/zone-enabled");
     const zonePatch = zonePatchAfterEdit({
