@@ -9495,6 +9495,10 @@ export type Database = {
         Returns: string
       }
       create_franchise_link_code: { Args: never; Returns: string }
+      create_manual_invoice: {
+        Args: { _invoice: Json; _lines: Json }
+        Returns: string
+      }
       customer_requestable_service_lines: { Args: never; Returns: string[] }
       default_skip_billable_pct: {
         Args: { _code: Database["public"]["Enums"]["skip_reason_code"] }
