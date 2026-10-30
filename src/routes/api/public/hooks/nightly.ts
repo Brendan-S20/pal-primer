@@ -4,6 +4,7 @@ import { platformFeeCents } from "@/lib/platform-fee";
 import { invoiceEmailTaxData, taxShareCents } from "@/lib/sales-tax";
 import { fetchAllPages } from "@/lib/supabase-paging.server";
 import { invoiceDueCents } from "@/lib/ar";
+import { invoiceEmailDetails } from "@/lib/invoice-email-details";
 import type { EndCustomerSmsSender } from "@/lib/twilio-credentials.server";
 
 // POST /api/public/hooks/nightly?s=<CRON_SECRET>
@@ -682,7 +683,7 @@ async function autoSendScheduledInvoices(
       supabaseAdmin
         .from("invoices")
         .select(
-          "id, client_id, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, period_start, period_end, public_token, send_after, sent_at, clients(portal_token, default_payment_method_id)",
+          "id, number, due_on, client_id, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, period_start, period_end, public_token, send_after, sent_at, clients(portal_token, default_payment_method_id)",
         )
         .eq("organization_id", orgId)
         .eq("status", "open")
@@ -724,6 +725,13 @@ async function autoSendScheduledInvoices(
       return pdf ? [pdf] : [];
     };
     try {
+      // Number, due date and lines, the same as the manual send (#607).
+      const { data: lineRows, error: lErr } = await supabaseAdmin
+        .from("invoice_line_items")
+        .select("description, quantity, unit_amount_cents, amount_cents")
+        .eq("invoice_id", inv.id)
+        .order("created_at");
+      if (lErr) throw new Error(lErr.message);
       const res = await enqueueAppEmail({
         organizationId: orgId,
         clientId: inv.client_id,
@@ -735,6 +743,7 @@ async function autoSendScheduledInvoices(
           invoiceUrl,
           periodLabel: period,
           reminder: false,
+          ...invoiceEmailDetails(inv, lineRows ?? []),
           ...(cardUrl ? { cardUrl } : {}),
           ...invoiceEmailTaxData(inv),
         },

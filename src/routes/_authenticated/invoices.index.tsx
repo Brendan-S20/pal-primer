@@ -5,7 +5,7 @@ import { LoadError } from "@/components/LoadError";
 import { PullToRefresh } from "@/components/motion/PullToRefresh";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useDeferredValue, useMemo, useState, type ReactNode } from "react";
+import { useDeferredValue, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   listInvoices,
   getCollectedThisMonth,
@@ -138,6 +138,12 @@ function NewInvoiceDialog() {
   // left it Open, unsent, and waiting for somebody to find the Send button on
   // a page they had just been navigated away from.
   const [sendNow, setSendNow] = useState(true);
+  // One key per invoice this dialog is making, sent with every attempt. The
+  // server returns the invoice this key already made, so a double click, or a
+  // retry after a response that never arrived (including closing the dialog
+  // mid-save and opening it again), makes one invoice and one email (#607).
+  // A new key once an invoice is made, and when the client changes.
+  const [creationKey, setCreationKey] = useState(() => crypto.randomUUID());
 
   const clientsQ = useQuery({
     queryKey: ["clients", "picker"],
@@ -169,6 +175,7 @@ function NewInvoiceDialog() {
     setItems([...kept, ...lines.map((l) => draftFrom(l, visitId))]);
   };
   const pickClient = (id: string) => {
+    if (id !== clientId) setCreationKey(crypto.randomUUID());
     setClientId(id);
     // Lines linked to another client's work cannot go on this invoice.
     const rest = items.filter((i) => !i.from);
@@ -215,14 +222,16 @@ function NewInvoiceDialog() {
     });
   const totalCents = parsedItems.reduce((s, i) => s + i.amountCents, 0);
 
+  const submitting = useRef(false);
   const createM = useMutation({
     mutationFn: async () => {
-      const r = await createFn({ data: { clientId, items: parsedItems } });
+      const r = await createFn({ data: { clientId, items: parsedItems, creationKey } });
       if (!willEmail) return { ...r, emailed: null as null | { ok: boolean; error?: string } };
       // The invoice exists either way; a failed email must not read as a
-      // failed invoice, or the retry creates a second one.
+      // failed invoice, or the retry creates a second one. firstSend: only if
+      // this invoice has never been emailed, so a retry does not send twice.
       try {
-        await emailFn({ data: { invoiceId: r.invoiceId } });
+        await emailFn({ data: { invoiceId: r.invoiceId, firstSend: true } });
         return { ...r, emailed: { ok: true } };
       } catch (e) {
         return { ...r, emailed: { ok: false, error: (e as Error).message } };
@@ -244,9 +253,13 @@ function NewInvoiceDialog() {
       setOpen(false);
       setClientId("");
       setItems([blankLine]);
+      setCreationKey(crypto.randomUUID());
       navigate({ to: "/invoices/$invoiceId", params: { invoiceId: r.invoiceId } });
     },
     onError: (e: Error) => toast.error(e.message),
+    onSettled: () => {
+      submitting.current = false;
+    },
   });
 
   // Drop `?new` as soon as the dialog is dismissed. Left in place, a reload or
@@ -400,7 +413,13 @@ function NewInvoiceDialog() {
         <DialogFooter>
           <Button
             disabled={!clientId || parsedItems.length === 0 || badQuantity || createM.isPending}
-            onClick={() => createM.mutate()}
+            onClick={() => {
+              // isPending reaches the button a render later; a second click
+              // inside that gap would start a second request.
+              if (createM.isPending || submitting.current) return;
+              submitting.current = true;
+              createM.mutate();
+            }}
           >
             {createM.isPending
               ? willEmail

@@ -38,6 +38,9 @@ export async function insertManualInvoice(
     activityLabel?: string;
     /** The days the invoice covers. Today when not given. */
     period?: { start: string; end: string };
+    /** One per New invoice dialog. A second call with the same key returns
+     *  the invoice the first one made (#607). */
+    creationKey?: string;
   },
 ): Promise<{ invoiceId: string; totalCents: number; taxCents: number }> {
   const linked = p.items.some((i) => i.visitId || i.addonChargeId);
@@ -110,6 +113,7 @@ export async function insertManualInvoice(
       issued_at: nowIso,
       due_on: dueOn,
       notes: p.notes ?? "Manual invoice",
+      creation_key: p.creationKey ?? null,
     }),
     _lines: lines,
   });

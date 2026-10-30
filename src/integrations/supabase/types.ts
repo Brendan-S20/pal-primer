@@ -3228,6 +3228,7 @@ export type Database = {
           checkout_url: string | null
           client_id: string
           created_at: string
+          creation_key: string | null
           credit_applied_cents: number
           currency: string
           due_on: string | null
@@ -3262,6 +3263,7 @@ export type Database = {
           checkout_url?: string | null
           client_id: string
           created_at?: string
+          creation_key?: string | null
           credit_applied_cents?: number
           currency?: string
           due_on?: string | null
@@ -3296,6 +3298,7 @@ export type Database = {
           checkout_url?: string | null
           client_id?: string
           created_at?: string
+          creation_key?: string | null
           credit_applied_cents?: number
           currency?: string
           due_on?: string | null
