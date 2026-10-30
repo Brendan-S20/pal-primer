@@ -24,8 +24,7 @@ export type ManualInvoiceItem = {
 /** Insert an open invoice and its lines for a client the caller has already
  *  checked belongs to `orgId`. Shared by the New invoice dialog and by
  *  invoicing a quote's one-time charges, so both date the invoice on the
- *  org's day, apply its payment terms, and clean up after a failed line
- *  insert the same way. */
+ *  org's day, apply its payment terms, and write it all or nothing. */
 export async function insertManualInvoice(
   supabase: SupabaseClient<any>,
   p: {
@@ -79,84 +78,43 @@ export async function insertManualInvoice(
   const today = orgToday(org?.timezone || DEFAULT_ORG_TIMEZONE);
   const netDays = org?.invoice_net_days ?? 15;
   const dueOn = addDaysToDay(today, netDays);
-  const { data: inv, error: iErr } = await supabase
-    .from("invoices")
-    .insert(
-      newInvoice({
-        organization_id: p.orgId,
-        client_id: p.clientId,
-        kind: "postpaid",
-        status: "open",
-        subtotal_cents: totals.subtotalCents,
-        tax_rate_bps: totals.taxRateBps,
-        tax_cents: totals.taxCents,
-        tax_label: totals.taxLabel,
-        total_cents: total,
-        period_start: p.period?.start ?? today,
-        period_end: p.period?.end ?? today,
-        issued_at: nowIso,
-        due_on: dueOn,
-        notes: p.notes ?? "Manual invoice",
-      }),
-    )
-    .select("id")
-    .single();
-  if (iErr) throw new Error(iErr.message);
-
-  const lineRow = (i: ManualInvoiceItem) => ({
-    invoice_id: inv.id,
+  // Every row names every column. The lines used to be one bulk insert in
+  // which a row with no quantity left it out, and a bulk insert writes NULL,
+  // not the default, into a column another row names: "Full groom x1 +
+  // Add-on x2" failed on quantity NOT NULL (#606).
+  const lines = p.items.map((i) => ({
     description: i.description,
     amount_cents: i.amountCents,
-    ...(i.visitId ? { visit_id: i.visitId } : {}),
-    ...(i.quantity !== undefined
-      ? { quantity: i.quantity, unit_amount_cents: i.unitAmountCents! }
-      : {}),
+    quantity: i.quantity ?? 1,
+    unit_amount_cents: i.quantity !== undefined ? i.unitAmountCents! : null,
+    visit_id: i.visitId ?? null,
+    addon_charge_id: i.addonChargeId ?? null,
+  }));
+  // The invoice, its lines and its add-on claims in one transaction. The
+  // number is taken from the org's counter when the invoice row goes in, so
+  // anything that fails after that has to roll the counter back with it, or
+  // every failed save skips a number (#606).
+  const { data: invoiceId, error: iErr } = await supabase.rpc("create_manual_invoice", {
+    _invoice: newInvoice({
+      organization_id: p.orgId,
+      client_id: p.clientId,
+      kind: "postpaid",
+      status: "open",
+      subtotal_cents: totals.subtotalCents,
+      tax_rate_bps: totals.taxRateBps,
+      tax_cents: totals.taxCents,
+      tax_label: totals.taxLabel,
+      total_cents: total,
+      period_start: p.period?.start ?? today,
+      period_end: p.period?.end ?? today,
+      issued_at: nowIso,
+      due_on: dueOn,
+      notes: p.notes ?? "Manual invoice",
+    }),
+    _lines: lines,
   });
-  // Add-ons claimed so far, so a failure can hand them back to pending.
-  const claimed: string[] = [];
-  const undo = async (message: string): Promise<never> => {
-    if (claimed.length) {
-      await supabase
-        .from("addon_charges")
-        .update({ status: "pending", invoice_line_item_id: null })
-        .in("id", claimed);
-    }
-    // Don't leave a headless invoice behind if the lines failed.
-    await supabase.from("invoices").delete().eq("id", inv.id);
-    throw new Error(message);
-  };
+  if (iErr) throw new Error(iErr.message);
 
-  const plain = p.items.filter((i) => !i.addonChargeId);
-  if (plain.length) {
-    const { error: lErr } = await supabase.from("invoice_line_items").insert(plain.map(lineRow));
-    if (lErr) await undo(lErr.message);
-  }
-  // One add-on, one line, claimed the way the billing run claims it: only
-  // while it is still pending, so the run and this invoice cannot both bill it.
-  for (const i of p.items.filter((x) => x.addonChargeId)) {
-    const { data: li, error: aErr } = await supabase
-      .from("invoice_line_items")
-      .insert(lineRow(i))
-      .select("id")
-      .single();
-    if (aErr) await undo(aErr.message);
-    const { data: got, error: cErr } = await supabase
-      .from("addon_charges")
-      .update({ status: "invoiced", invoice_line_item_id: li!.id, updated_at: nowIso })
-      .eq("id", i.addonChargeId!)
-      .eq("client_id", p.clientId)
-      .eq("status", "pending")
-      .select("id");
-    if (cErr) await undo(cErr.message);
-    if (!got?.length) await undo("An add-on on this invoice has already been billed.");
-    claimed.push(i.addonChargeId!);
-  }
-  const visitIds = p.items.flatMap((i) => (i.visitId ? [i.visitId] : []));
-  if (visitIds.length) {
-    const { visitBilledElsewhere } = await import("@/lib/visit-invoicing.server");
-    const other = await visitBilledElsewhere(supabase, String(inv.id), visitIds);
-    if (other) await undo(`A visit on this invoice was just billed on invoice ${other}.`);
-  }
   const { logActivity } = await import("@/lib/activity.server");
   await logActivity(supabase, {
     orgId: p.orgId,
@@ -164,7 +122,7 @@ export async function insertManualInvoice(
     actorUserId: p.userId,
     ...(p.userId ? {} : { actorLabel: "Client portal" }),
     kind: "invoice.created",
-    summary: `Created ${p.activityLabel ?? "manual invoice"} ${await invoiceRef(supabase, String(inv.id))} for $${(total / 100).toFixed(2)}`,
+    summary: `Created ${p.activityLabel ?? "manual invoice"} ${await invoiceRef(supabase, String(invoiceId))} for $${(total / 100).toFixed(2)}`,
   });
-  return { invoiceId: inv.id as string, totalCents: total, taxCents: totals.taxCents };
+  return { invoiceId: invoiceId as string, totalCents: total, taxCents: totals.taxCents };
 }

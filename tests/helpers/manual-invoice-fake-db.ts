@@ -23,6 +23,18 @@ export function manualInvoiceFakeDb(state: FakeDbState) {
     maybeSingle: async () => ({ data, error: null }),
   });
   return {
+    // The invoice and its lines go in through one transaction (#606).
+    async rpc(
+      name: string,
+      args: { _invoice: Record<string, unknown>; _lines: Record<string, unknown>[] },
+    ) {
+      if (name !== "create_manual_invoice") {
+        throw new Error(`manualInvoiceFakeDb was not built to answer rpc ${name}`);
+      }
+      state.inserted.invoices.push(args._invoice);
+      state.inserted.lines.push(...args._lines);
+      return { data: "11111111-1111-4111-8111-111111111111", error: null };
+    },
     from(table: string) {
       if (table === "organizations") {
         return { select: () => ({ eq: () => single(state.org) }) };
@@ -32,21 +44,8 @@ export function manualInvoiceFakeDb(state: FakeDbState) {
       }
       if (table === "invoices") {
         return {
-          insert(row: Record<string, unknown>) {
-            state.inserted.invoices.push(row);
-            return { select: () => single({ id: "11111111-1111-4111-8111-111111111111" }) };
-          },
           // invoiceRef, for the activity summary.
           select: () => ({ eq: () => single({ number: 1042 }) }),
-          delete: () => ({ eq: async () => ({ error: null }) }),
-        };
-      }
-      if (table === "invoice_line_items") {
-        return {
-          insert: async (rows: Record<string, unknown>[]) => {
-            state.inserted.lines.push(...rows);
-            return { error: null };
-          },
         };
       }
       throw new Error(`manualInvoiceFakeDb was not built to answer ${table}`);

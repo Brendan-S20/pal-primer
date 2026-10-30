@@ -201,16 +201,3 @@ export async function checkInvoiceLinks(
     }
   }
 }
-
-/** After the lines are written: is any of these visits also on another live
- *  invoice? The billing run could have reached the same visit between the
- *  check above and the insert. Returns that invoice's label, or null. */
-export async function visitBilledElsewhere(
-  db: Db,
-  invoiceId: string,
-  visitIds: string[],
-): Promise<string | null> {
-  const links = await loadVisitLinks(db, visitIds);
-  const other = links.find((l) => l.invoice.id !== invoiceId && l.invoice.status !== "void");
-  return other ? label(other.invoice) : null;
-}
