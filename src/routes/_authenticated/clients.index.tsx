@@ -343,9 +343,15 @@ function ClientsList() {
           </div>
           <div className="mt-1 text-2xl font-semibold">{!data ? <TileValueBone /> : stats.active}</div>
         </Card>
-        <Card className="p-4">
+        <Card className="min-w-0 p-4">
           <div className="text-xs text-muted-foreground">Outstanding</div>
-          <div className="mt-1 text-2xl font-semibold">{!data ? <TileValueBone /> : money(stats.owedTotal)}</div>
+          {/* A book of thousands owes six figures: "$340,125.00" in text-2xl is
+              wider than half a 360px phone. Smaller below sm, on the same 2rem
+              line box so the bone does not move, and allowed to wrap rather
+              than push the tile past the column. */}
+          <div className="mt-1 text-lg leading-8 font-semibold [overflow-wrap:anywhere] sm:text-2xl">
+            {!data ? <TileValueBone /> : money(stats.owedTotal)}
+          </div>
           <div className="text-xs text-muted-foreground">{!data ? <Skeleton className="h-4 w-20" /> : `${stats.outstanding} clients`}</div>
         </Card>
         <Card className="p-4">

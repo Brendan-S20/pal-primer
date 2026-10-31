@@ -413,7 +413,7 @@ test.describe("skeletons", () => {
       // Registered after the stub, so it runs first: hold the clients list
       // open until the test says so. Everything else falls through.
       await context.route("**/_serverFn/**", async (route) => {
-        if (serverFnName(route.request().url()) !== "listClients") return route.fallback();
+        if (serverFnName(route.request().url()) !== "listClientsPage") return route.fallback();
         await gate;
         return route.fallback();
       });
@@ -574,7 +574,7 @@ test.describe("gestures", () => {
     await signIn(context);
     let listCalls = 0;
     page.on("request", (r) => {
-      if (r.url().includes("/_serverFn/") && serverFnName(r.url()) === "listClients") listCalls++;
+      if (r.url().includes("/_serverFn/") && serverFnName(r.url()) === "listClientsPage") listCalls++;
     });
     await openClients(page);
     await page.waitForTimeout(300);
@@ -617,7 +617,7 @@ test.describe("gestures", () => {
     await signIn(context);
     let listCalls = 0;
     page.on("request", (r) => {
-      if (r.url().includes("/_serverFn/") && serverFnName(r.url()) === "listClients") listCalls++;
+      if (r.url().includes("/_serverFn/") && serverFnName(r.url()) === "listClientsPage") listCalls++;
     });
     await openClients(page);
     await page.evaluate(() => window.scrollTo(0, 400));
