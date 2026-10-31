@@ -1932,7 +1932,7 @@ function RoutesPage() {
                     ? formatDay(coverWindow.from)
                     : `${formatDay(coverWindow.from)} to ${formatDay(coverWindow.to)}`}
                 </strong>
-                {coverWindow.source === "day" ? ", no time off is recorded" : ""}
+                {coverWindow.source === "day" ? ", no time off covers this day" : ""}
                 {coverWindow.reason ? ` (${coverWindow.reason})` : ""}
               </p>
             )}

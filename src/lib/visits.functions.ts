@@ -1026,8 +1026,8 @@ export const bulkRescheduleVisits = createServerFn({ method: "POST" })
 /** What a tech is still holding, by day, read BEFORE offering to move it.
  *
  *  With `day`, the answer is split at the Cover window (#619): the dates of
- *  the absence that covers `day` (else the next one), or `day` alone when no
- *  time off is recorded. `days`/`total` are what Cover moves by default;
+ *  the absence that covers `day`, or `day` alone when no time off covers
+ *  it. `days`/`total` are what Cover moves by default;
  *  `laterDays`/`laterTotal` stay put unless the office opts in. */
 export const getStaffUpcomingLoad = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
