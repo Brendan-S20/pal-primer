@@ -19,7 +19,7 @@ import {
 import { getEmailSendStatus, sendInvoiceEmail } from "@/lib/notifications.functions";
 import { reportQueuedSend, type QueuedSendResult } from "@/lib/send-report";
 import { formatDay } from "@/lib/format";
-import { listClients } from "@/lib/clients.functions";
+import { ClientSearchPicker, type PickedClient } from "@/components/ClientSearchPicker";
 import { getMyOrg } from "@/lib/org.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -123,7 +123,6 @@ function draftFrom(
 function NewInvoiceDialog() {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const clientsFn = useServerFn(listClients);
   const createFn = useServerFn(createManualInvoice);
   const workFn = useServerFn(listUninvoicedWork);
   const emailFn = useServerFn(sendInvoiceEmail);
@@ -147,18 +146,9 @@ function NewInvoiceDialog() {
   // A new key once an invoice is made, and when the client changes.
   const [creationKey, setCreationKey] = useState(() => crypto.randomUUID());
 
-  const clientsQ = useQuery({
-    queryKey: ["clients", "picker"],
-    queryFn: () => clientsFn(),
-    enabled: open,
-    staleTime: 60_000,
-  });
-  const clients: Array<{
-    id: string;
-    display_name: string;
-    active: boolean;
-    primary_email?: string | null;
-  }> = (clientsQ.data as any)?.clients ?? (clientsQ.data as any) ?? [];
+  // The client picked in the search picker. It searches on the server
+  // (#617): a <select> of the whole roster was empty past ~1,000 clients.
+  const [picked, setPicked] = useState<PickedClient | null>(null);
   const workQ = useQuery({
     queryKey: ["uninvoiced-work", clientId],
     queryFn: () => workFn({ data: { clientId } }),
@@ -176,14 +166,15 @@ function NewInvoiceDialog() {
     const kept = items.filter((i) => i.from || i.description.trim() || i.price.trim());
     setItems([...kept, ...lines.map((l) => draftFrom(l, visitId))]);
   };
-  const pickClient = (id: string) => {
+  const pickClient = (client: PickedClient | null) => {
+    const id = client?.id ?? "";
     if (id !== clientId) setCreationKey(crypto.randomUUID());
+    setPicked(client);
     setClientId(id);
     // Lines linked to another client's work cannot go on this invoice.
     const rest = items.filter((i) => !i.from);
     setItems(rest.length ? rest : [blankLine]);
   };
-  const picked = clients.find((c) => c.id === clientId);
   const pickedEmail = picked?.primary_email?.trim() || null;
   const willEmail = sendNow && !!pickedEmail;
 
@@ -255,6 +246,7 @@ function NewInvoiceDialog() {
       qc.invalidateQueries({ queryKey: ["visit-invoicing"] });
       setOpen(false);
       setClientId("");
+      setPicked(null);
       setItems([blankLine]);
       setCreationKey(crypto.randomUUID());
       navigate({ to: "/invoices/$invoiceId", params: { invoiceId: r.invoiceId } });
@@ -292,22 +284,15 @@ function NewInvoiceDialog() {
         </DialogHeader>
         <div className="space-y-4">
           <div>
-            <label className="text-xs font-medium text-muted-foreground">Client</label>
-            <select
-              // 40pt, and it is the first control in the dialog.
-              className="mt-1 h-10 w-full rounded-md border bg-background px-3 text-sm touch:min-h-11"
-              value={clientId}
-              onChange={(e) => pickClient(e.target.value)}
-            >
-              <option value="">Select a client…</option>
-              {clients
-                .filter((c) => c.active !== false)
-                .map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.display_name}
-                  </option>
-                ))}
-            </select>
+            <label htmlFor="new-invoice-client" className="text-xs font-medium text-muted-foreground">
+              Client
+            </label>
+            <ClientSearchPicker
+              id="new-invoice-client"
+              value={picked}
+              onChange={pickClient}
+              enabled={open}
+            />
           </div>
           {clientId && (
             <UninvoicedWorkList

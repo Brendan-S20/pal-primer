@@ -201,6 +201,23 @@ export const SURFACES: Surface[] = [
     expectsData: "Jean-Baptiste Moreau-Lachapelle",
   },
   {
+    // Added with #617: the client picker searches on the server instead of
+    // filling a <select> with the whole roster, which was empty past ~1,000
+    // clients. Measured open, with nothing typed, so its list of the first
+    // clients by name (long names and long streets) has to fit a 320px phone.
+    id: "/invoices · new invoice client picker",
+    path: "/invoices",
+    proof: (p) => p.getByText("COLLECTED THIS MONTH").first(),
+    proofLabel: "the invoice money row",
+    expectsData: "Jean-Baptiste Moreau-Lachapelle",
+    open: async (p) => {
+      await p.getByRole("button", { name: "New invoice" }).first().click();
+    },
+    opened: (p) =>
+      p.getByRole("dialog", { name: "New invoice" }).getByRole("option").first(),
+    openedLabel: "the New invoice dialog's client search results",
+  },
+  {
     // Added 2026-09-28 with Refund on the invoice. The proof is the Refund
     // button itself, which only draws for a Stripe payment with money left on
     // it — so a fixture that stopped reaching the payments list fails here

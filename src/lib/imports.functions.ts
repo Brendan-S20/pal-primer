@@ -50,6 +50,14 @@ export const IMPORT_SOURCES = [
 ] as const;
 
 export const IMPORT_ENTITIES = ["clients", "properties", "dogs", "services", "balances"] as const;
+
+/** Rows written per insert statement during a commit (#617). */
+const IMPORT_WRITE_CHUNK = 200;
+/** Per-row result updates in flight at once during a commit. */
+const IMPORT_ROW_UPDATES_AT_ONCE = 20;
+/** The most a commit spends on the 1-a-second geocoder when there is no
+ *  Geocodio key. Addresses past it are saved without a pin (#617). */
+const IMPORT_GEOCODE_BUDGET_MS = 60_000;
 export type ImportEntity = (typeof IMPORT_ENTITIES)[number];
 
 // ---------- Target fields per entity ----------
@@ -1357,6 +1365,12 @@ export const commitImport = createServerFn({ method: "POST" })
         if (toGeocode.length > 0) {
           try {
             const { geocodeAddresses } = await import("./geocode.server");
+            // Without a Geocodio key every address is one Nominatim request a
+            // second, which on its own made a 1,000-row import take about 17
+            // minutes (#617). The import spends at most IMPORT_GEOCODE_BUDGET_MS
+            // on it; an address it did not reach is saved without a pin and
+            // located later by "Geocode addresses" on the Routes page, which
+            // finds every property with no coordinates.
             const geos = await geocodeAddresses(
               toGeocode.map(({ m }) => ({
                 street: m.street,
@@ -1364,6 +1378,7 @@ export const commitImport = createServerFn({ method: "POST" })
                 region: m.region,
                 postal_code: m.postal_code,
               })),
+              { nominatimBudgetMs: IMPORT_GEOCODE_BUDGET_MS },
             );
             toGeocode.forEach(({ id }, i) => geoByRow.set(id, geos[i]));
           } catch (ge) {
@@ -1375,24 +1390,258 @@ export const commitImport = createServerFn({ method: "POST" })
         }
       }
 
+      // ── Writes, in chunks (#617) ─────────────────────────────────────────
+      //
+      // A 1,000-row client import took 19 min 47 s. Most of it was geocoding
+      // (above); the rest was five round trips per row, one after another: the
+      // client insert, the row's target_id, a fresh read of every zone, the
+      // property insert, and a skip's own update. The zones are now read once,
+      // clients and properties go in IMPORT_WRITE_CHUNK at a time, and the
+      // rows' results are written several at once: a chunk's target_ids as
+      // soon as its clients are in, the skips at the end.
+      //
+      // The duplicate check still runs row by row in file order against an
+      // index that includes the clients queued before it, so a file that names
+      // one client twice still creates it once.
+      const { matchZone } = await import("@/lib/zone-match");
+      let zoneList: any[] | null = null;
+      // A zone read that fails is not "this business has no zones" (#617).
+      // It is tried twice; if both fail, every property this import writes
+      // goes in with no zone and the result says why (zone_lookup_failed), so
+      // the page can send the owner to "Re-run zone detection" rather than
+      // leave them believing their zones matched nothing.
+      let zoneLookupFailed = false;
+      // Properties written with no zone, for whatever reason. The page says
+      // how many.
+      let unzoned = 0;
+      const readZones = () =>
+        supabase
+          .from("zones")
+          .select(
+            "id, priority, account_type, postal_prefix, zip_codes, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, enabled",
+          )
+          .eq("organization_id", orgId);
+      const zoneFor = async (input: Parameters<typeof matchZone>[1]): Promise<string | null> => {
+        if (zoneList === null && !zoneLookupFailed) {
+          let res = await readZones();
+          if (res.error) res = await readZones();
+          if (res.error) {
+            zoneLookupFailed = true;
+            console.error("import: zones could not be read", res.error.message);
+          } else zoneList = (res.data ?? []) as any[];
+        }
+        if (zoneLookupFailed) return null;
+        const z = matchZone(zoneList as any[], input);
+        return z ? (z.id as string) : null;
+      };
+
+      type NewClient = {
+        rowId: string;
+        action: string;
+        id: string;
+        m: any;
+        record: Database["public"]["Tables"]["clients"]["Insert"];
+      };
+      const newClients: NewClient[] = [];
+      const newProperties: Database["public"]["Tables"]["properties"]["Insert"][] = [];
+      const skips: { rowId: string; action: string; targetId: string }[] = [];
+      const failedClientIds = new Set<string>();
+      const failRow = async (rowId: string, action: string, reason: string) => {
+        failed += 1;
+        rowErrors.set(reason, (rowErrors.get(reason) ?? 0) + 1);
+        await markRowFailed(supabase, rowId, action, reason);
+      };
+
+      let unlinked = 0;
+      const inParallel = async (jobs: (() => Promise<void>)[]) => {
+        for (let i = 0; i < jobs.length; i += IMPORT_ROW_UPDATES_AT_ONCE) {
+          await Promise.all(jobs.slice(i, i + IMPORT_ROW_UPDATES_AT_ONCE).map((j) => j()));
+        }
+      };
+
+      const flushNewClients = async () => {
+        if (!newClients.length) return;
+        const chunk = newClients.splice(0);
+        // A request that throws (a dropped connection) is handled like one
+        // that answers with an error: the chunk is already off the queue, so
+        // letting it escape would count these rows as created and write none.
+        const insert = async (
+          records: NewClient["record"][],
+        ): Promise<{ message: string; code?: string } | null> => {
+          try {
+            const { error } = await supabase.from("clients").insert(records);
+            return error;
+          } catch (e) {
+            return { message: (e as Error)?.message ?? String(e) };
+          }
+        };
+        // The id is chosen here, so a primary-key conflict on it means this
+        // very row is already in: the chunk's statement committed and only
+        // its answer was lost. That row is inserted, not failed.
+        const alreadyIn = (e: { message: string; code?: string }) =>
+          e.code === "23505" && /clients_pkey/.test(e.message);
+        const error = await insert(chunk.map((c) => c.record));
+        let inserted = chunk;
+        if (error) {
+          // One statement fails whole. Insert this chunk's rows one at a time
+          // so only the rows at fault fail, and the rest still go in.
+          inserted = [];
+          for (const c of chunk) {
+            const oneErr = await insert([c.record]);
+            if (!oneErr || alreadyIn(oneErr)) {
+              inserted.push(c);
+              continue;
+            }
+            created -= 1;
+            failedClientIds.add(c.id);
+            await failRow(c.rowId, c.action, oneErr.message ?? String(oneErr));
+          }
+        }
+        // Each row points at its client as soon as the chunk is in, not at the
+        // end of the file: a commit that stops later leaves no client it made
+        // unclaimed by its row.
+        await inParallel(
+          inserted.map((c) => async () => {
+            const link = async () => {
+              try {
+                const { error } = await supabase
+                  .from("import_rows")
+                  .update({ target_id: c.id })
+                  .eq("id", c.rowId);
+                return error;
+              } catch (e) {
+                return { message: (e as Error)?.message ?? String(e) };
+              }
+            };
+            // Once more, then counted: the client is in either way, and a
+            // row that cannot say which client it made is reported on the
+            // result, not passed over.
+            if ((await link()) && (await link())) unlinked += 1;
+          }),
+        );
+        for (const c of inserted) {
+          const m = c.m;
+          // If the Clients row carried a service address, create a property
+          // for it (auto-geocoded) so routing/pricing/DNA work downstream —
+          // instead of silently dropping the address (finding #12).
+          if (!(m.street && m.city)) continue;
+          const geo = geoByRow.get(c.rowId) ?? null;
+          // Type-appropriate zone matching (B3): the imported property
+          // inherits the client's account type, so a commercial client
+          // lands in a commercial zone even when a residential zone
+          // covers the same ZIP.
+          const importAccountType =
+            m.account_type === "commercial" || m.account_type === "residential"
+              ? m.account_type
+              : null;
+          const importZoneId = await zoneFor({
+            postalCode: m.postal_code,
+            point:
+              geo?.latitude != null && geo?.longitude != null
+                ? { lat: geo.latitude, lng: geo.longitude }
+                : null,
+            accountType: importAccountType,
+          });
+          newProperties.push({
+            organization_id: orgId,
+            client_id: c.id,
+            street: m.street,
+            city: m.city,
+            region: m.region || null,
+            postal_code: m.postal_code || null,
+            gate_code: m.gate_code || null,
+            account_type: importAccountType,
+            address_source: "manual",
+            auto_zone_id: importZoneId,
+            zone_id: importZoneId,
+            latitude: geo?.latitude ?? null,
+            longitude: geo?.longitude ?? null,
+          });
+        }
+      };
+
+      // Addresses saved with no map pin: the geocoder found nothing, or the
+      // import's geocoding budget ran out first. The page says how many.
+      let unpinned = 0;
+      const flushNewProperties = async () => {
+        while (newProperties.length) {
+          const chunk = newProperties.splice(0, IMPORT_WRITE_CHUNK);
+          const { error } = await supabase.from("properties").insert(chunk);
+          if (!error) {
+            unpinned += chunk.filter((p) => p.latitude == null).length;
+            unzoned += chunk.filter((p) => p.zone_id == null).length;
+            continue;
+          }
+          for (const p of chunk) {
+            const { error: oneErr } = await supabase.from("properties").insert(p);
+            // Non-fatal: the client is created; a failed property shouldn't
+            // roll back the client. Logged for follow-up.
+            if (oneErr) {
+              console.error("import: property create failed", oneErr.message);
+              continue;
+            }
+            if (p.latitude == null) unpinned += 1;
+            if (p.zone_id == null) unzoned += 1;
+          }
+        }
+      };
+
+      /** The skipped rows' outcome, written IMPORT_ROW_UPDATES_AT_ONCE at a time. */
+      const writeRowResults = async () => {
+        type Job = () => Promise<void>;
+        const jobs: Job[] = [
+          ...skips.map(
+            (sk): Job =>
+              async () => {
+                // A duplicate of a row earlier in this file that then failed
+                // has nothing to point at.
+                if (failedClientIds.has(sk.targetId)) {
+                  skipped -= 1;
+                  await failRow(
+                    sk.rowId,
+                    sk.action,
+                    "The same client appears earlier in this file, and that row could not be imported.",
+                  );
+                  return;
+                }
+                const { error } = await supabase
+                  .from("import_rows")
+                  .update({ action: "skip", target_id: sk.targetId })
+                  .eq("id", sk.rowId);
+                if (error) {
+                  skipped -= 1;
+                  await failRow(sk.rowId, sk.action, error.message);
+                }
+              },
+          ),
+        ];
+        await inParallel(jobs);
+      };
+
       for (const row of rows ?? []) {
         const m = row.mapped as any;
         try {
           const duplicate = alreadyInDatabase(entity, m, row.target_id, existing);
           if (duplicate) {
-            const { error } = await supabase
-              .from("import_rows")
-              .update({ action: "skip", target_id: duplicate })
-              .eq("id", row.id);
-            if (error) throw error;
+            // Written with the others after the loop (writeRowResults).
+            skips.push({ rowId: row.id, action: row.action, targetId: duplicate });
             skipped += 1;
             continue;
           }
           if (entity === "clients") {
             if (row.action === "create") {
-              const { data: ins, error: cErr } = await supabase
-                .from("clients")
-                .insert({
+              // Queued, not written: flushNewClients inserts them a chunk at a
+              // time (#617). The id is chosen here so the duplicate index can
+              // name this client before the row exists, exactly as it used to
+              // name it after.
+              const clientId = crypto.randomUUID();
+              newClients.push({
+                rowId: row.id,
+                action: row.action,
+                id: clientId,
+                m,
+                record: {
+                  id: clientId,
                   organization_id: orgId,
                   display_name: m.display_name,
                   account_type: m.account_type,
@@ -1408,67 +1657,13 @@ export const commitImport = createServerFn({ method: "POST" })
                   // (manual send clears it) or office lifts the hold. Only set
                   // on CREATE — updates leave an existing client's flag alone.
                   comms_paused: true,
-                })
-                .select("id").single();
-              if (cErr) throw cErr;
-              await supabase.from("import_rows").update({ target_id: ins.id }).eq("id", row.id);
-              // If the Clients row carried a service address, create a property
-              // for it (auto-geocoded) so routing/pricing/DNA work downstream —
-              // instead of silently dropping the address (finding #12).
-              if (m.street && m.city) {
-                try {
-                  const { geocodeAddress } = await import("./geocode.server");
-                  const geo = geoByRow.has(row.id)
-                    ? (geoByRow.get(row.id) ?? null)
-                    : await geocodeAddress({
-                        street: m.street,
-                        city: m.city,
-                        region: m.region,
-                        postal_code: m.postal_code,
-                      });
-                  const { detectZoneId } = await import("@/lib/properties.functions");
-                  // Type-appropriate zone matching (B3): the imported property
-                  // inherits the client's account type, so a commercial client
-                  // lands in a commercial zone even when a residential zone
-                  // covers the same ZIP.
-                  const importAccountType =
-                    m.account_type === "commercial" || m.account_type === "residential"
-                      ? m.account_type
-                      : null;
-                  const importZoneId = await detectZoneId(supabase, orgId, {
-                    postalCode: m.postal_code,
-                    point:
-                      geo?.latitude != null && geo?.longitude != null
-                        ? { lat: geo.latitude, lng: geo.longitude }
-                        : null,
-                    accountType: importAccountType,
-                  });
-                  await supabase.from("properties").insert({
-                    organization_id: orgId,
-                    client_id: ins.id,
-                    street: m.street,
-                    city: m.city,
-                    region: m.region || null,
-                    postal_code: m.postal_code || null,
-                    gate_code: m.gate_code || null,
-                    account_type: importAccountType,
-                    address_source: "manual",
-                    auto_zone_id: importZoneId,
-                    zone_id: importZoneId,
-                    latitude: geo?.latitude ?? null,
-                    longitude: geo?.longitude ?? null,
-                  });
-                } catch (pe) {
-                  // Non-fatal: the client is created; a failed property/geocode
-                  // shouldn't roll back the client. Logged for follow-up.
-                  console.error("import: property create/geocode failed", (pe as Error).message);
-                }
-              }
+                },
+              });
               // Include clients created earlier in this file in the next check.
               const added = clientDuplicateIndex(
                 [
                   {
-                    id: ins.id,
+                    id: clientId,
                     display_name: m.display_name,
                     primary_email: m.primary_email,
                     primary_phone: m.primary_phone,
@@ -1483,6 +1678,7 @@ export const commitImport = createServerFn({ method: "POST" })
                 for (const [value, id] of added[key]) existing.clients[key].set(value, id);
               }
               created += 1;
+              if (newClients.length >= IMPORT_WRITE_CHUNK) await flushNewClients();
             } else if (row.action === "update" && row.target_id) {
               const { error: uErr } = await supabase.from("clients").update({
                 display_name: m.display_name,
@@ -1497,7 +1693,6 @@ export const commitImport = createServerFn({ method: "POST" })
             }
           } else if (entity === "properties") {
             if (row.action === "create" && row.target_id) {
-              const { detectZoneId } = await import("@/lib/properties.functions");
               // Type-appropriate zone matching (B3): fall back to the owning
               // client's account type so the property lands in a zone typed for
               // its account (commercial client to commercial zone).
@@ -1510,7 +1705,7 @@ export const commitImport = createServerFn({ method: "POST" })
                 ownerClient?.account_type === "commercial" || ownerClient?.account_type === "residential"
                   ? ownerClient.account_type
                   : null;
-              const propZoneId = await detectZoneId(supabase, orgId, {
+              const propZoneId = await zoneFor({
                 postalCode: m.postal_code,
                 point: null,
                 accountType: propAccountType,
@@ -1536,6 +1731,10 @@ export const commitImport = createServerFn({ method: "POST" })
               if (cErr) throw cErr;
               await supabase.from("import_rows").update({ target_id: ins.id }).eq("id", row.id);
               created += 1;
+              // No coordinates on this path: "Geocode addresses" pins it later
+              // and places it in its zone then.
+              unpinned += 1;
+              if (!propZoneId) unzoned += 1;
             }
           } else if (entity === "dogs") {
             if (row.action === "create" && row.target_id) {
@@ -1661,6 +1860,10 @@ export const commitImport = createServerFn({ method: "POST" })
         }
       }
 
+      await flushNewClients();
+      await flushNewProperties();
+      await writeRowResults();
+
       // New plans need their visits now, not at tonight's run. One pass for the
       // whole batch, as onboardClient does for one client.
       if (entity === "services" && created > 0) {
@@ -1668,7 +1871,17 @@ export const commitImport = createServerFn({ method: "POST" })
         await generateVisitHorizon(supabase, orgId);
       }
 
-      const stats = { created, updated, failed, skipped };
+      const stats = {
+        created,
+        updated,
+        failed,
+        skipped,
+        ...(unpinned ? { unpinned } : {}),
+        ...(unzoned ? { unzoned } : {}),
+        ...(zoneLookupFailed ? { zone_lookup_failed: true } : {}),
+        // Clients created whose import row could not record them (#617).
+        ...(unlinked ? { unlinked } : {}),
+      };
       const nothingWentIn = failed > 0 && !created && !updated;
       const { error: finishError } = await supabase
         .from("import_batches")

@@ -838,8 +838,12 @@ function RoutesPage() {
     mutationFn: () => geocode({ data: { limit: 100 } }),
     onSuccess: (r) => {
       toast.success(
-        `Geocoded ${r.updated} addresses${r.remaining ? ` · ${r.remaining} remaining` : ""}`,
+        `Geocoded ${r.updated} addresses${r.rezoned ? `, ${r.rezoned} placed in a zone` : ""}${r.remaining ? ` · ${r.remaining} remaining` : ""}`,
       );
+      if (r.zonesUnread)
+        toast.error(
+          `Zones could not be read, so ${r.zonesUnread} geocoded addresses kept their old zone. Re-run zone detection on the Zones page.`,
+        );
       qc.invalidateQueries({ queryKey: ["visits"] });
     },
     onError: (e: Error) => toast.error(e.message),

@@ -43,3 +43,57 @@ export async function fetchAllPages<T>(build: (from: number, to: number) => any)
     if (batch.length < PAGE) return out;
   }
 }
+
+/**
+ * fetchAllPages, but past the first page it asks for several pages at once.
+ *
+ * /clients at 5,000 clients is five full pages per table. One after another
+ * that is six round trips before anything renders; this is three (the first
+ * page, then pages 2-5 together, then the short one). A business under a
+ * thousand rows still makes exactly one request, because nothing after the
+ * first page is asked for until the first page comes back full.
+ *
+ * Same contract as fetchAllPages: `build` applies `.range(from, to)` and a
+ * stable order.
+ */
+export async function fetchAllPagesConcurrently<T>(
+  build: (from: number, to: number) => any,
+  pagesAtOnce = 4,
+): Promise<T[]> {
+  const first = await build(0, PAGE - 1);
+  if (first.error) throw new Error(first.error.message);
+  const out: T[] = [...((first.data ?? []) as T[])];
+  if (out.length < PAGE) return out;
+  for (let page = 1; ; page += pagesAtOnce) {
+    const wave = await Promise.all(
+      Array.from({ length: pagesAtOnce }, (_, k) => {
+        const from = (page + k) * PAGE;
+        return build(from, from + PAGE - 1);
+      }),
+    );
+    for (const { data, error } of wave) {
+      if (error) throw new Error(error.message);
+      const batch = (data ?? []) as T[];
+      out.push(...batch);
+      if (batch.length < PAGE) return out;
+    }
+  }
+}
+
+/**
+ * How many uuids one GET may carry in an `.in()` filter.
+ *
+ * A uuid is 36 characters and PostgREST separates them with commas, so 40 of
+ * them is about 1,500 characters: with the host, the select list and an org
+ * filter, a request still stays under 2 KB. A list of every client id went
+ * into one query string until #617, and at about a thousand clients the
+ * request was refused as "URI too long", which emptied every client picker.
+ */
+export const IDS_PER_REQUEST = 40;
+
+/** Split ids into groups small enough for one GET each. */
+export function idChunks<T>(ids: readonly T[], size = IDS_PER_REQUEST): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < ids.length; i += size) out.push(ids.slice(i, i + size));
+  return out;
+}

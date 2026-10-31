@@ -8,6 +8,7 @@ import {
 } from "./rules";
 import { installSignedInSession } from "./fixtures/session";
 import { installStubBackend, type SweepRole } from "./fixtures/stub-backend";
+import { FIRST_PAINT_MS } from "./fixtures/first-paint";
 
 /**
  * A business that does not run pet waste, measured.
@@ -78,9 +79,16 @@ async function measure(page: Page, width: number, where: string) {
  *  (OnboardingChecklist's stepVisibility); "Show all N steps" opens the rest,
  *  as a person would. Wait for the card, then open it if it is folded. The
  *  click is retried until "Show less" appears, because a click before React
- *  has attached its handler does nothing. */
+ *  has attached its handler does nothing.
+ *
+ *  The card is the first thing each dashboard test waits for, so it gets the
+ *  first-paint ceiling (fixtures/first-paint.ts), not 30s. On 2026-10-31 the
+ *  360px case ran in the first wave of eight workers against a cold dev
+ *  server and failed twice with the page still on the shell's "Loading…";
+ *  every other test in that wave took 35 to 45s, and the same case passes in
+ *  9s once the server is warm. */
 async function showAllSteps(page: Page) {
-  await expect(page.getByTestId("onboarding-checklist")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("onboarding-checklist")).toBeVisible({ timeout: FIRST_PAINT_MS });
   const more = page.getByRole("button", { name: /^Show all \d+ steps/ });
   if ((await more.count()) === 0) return;
   await expect(async () => {
@@ -100,7 +108,7 @@ const allText = (page: Page) => page.evaluate(() => document.body.textContent ??
  *  in Settings and in Settings → Services. */
 async function expectServiceLineChoices(page: Page) {
   await expect(page.getByText("Which services do you offer?").first()).toBeVisible({
-    timeout: 30_000,
+    timeout: FIRST_PAINT_MS,
   });
   const walking = page.getByRole("checkbox", { name: /^Dog walking/ });
   await expect(walking).toBeChecked();
@@ -152,7 +160,7 @@ for (const { w, h, label } of WIDTHS) {
     test(`/setup's end-of-day step never mentions a dump site @${w}px`, async ({ page }) => {
       await open(page, "owner", DOG_WALKING, "/setup?step=dump_site", w, h);
       await expect(page.getByRole("heading", { name: "Where does your day end?" })).toBeVisible({
-        timeout: 30_000,
+        timeout: FIRST_PAINT_MS,
       });
       await expect(page.locator("[data-setup-step=dump_site]")).toBeVisible();
       await expect(page.getByText(/dump site/i)).toHaveCount(0);
@@ -162,7 +170,7 @@ for (const { w, h, label } of WIDTHS) {
     test(`the new-client wizard has no Outline step @${w}px`, async ({ page }) => {
       await open(page, "owner", DOG_WALKING, "/clients/new", w, h);
       await expect(page.getByRole("heading", { name: /new client/i }).first()).toBeVisible({
-        timeout: 30_000,
+        timeout: FIRST_PAINT_MS,
       });
       await expect.poll(() => allText(page), { timeout: 15_000 }).toContain("Step 1 of 4");
       // Exact: the stepper's own label, not the org's name ("…Yard and Waste
@@ -194,7 +202,7 @@ for (const { w, h, label } of WIDTHS) {
       // to the waste log.
       await expect(
         page.getByRole("link", { name: "My schedule" }).locator("visible=true").first(),
-      ).toBeVisible({ timeout: 30_000 });
+      ).toBeVisible({ timeout: FIRST_PAINT_MS });
       await expect(page.getByRole("link", { name: "Waste log" })).toHaveCount(0);
       await measure(page, w, `/my-day as a tech (dog walking) @${w}px`);
     });
@@ -217,13 +225,13 @@ for (const { w, h, label } of WIDTHS.filter((s) => s.w === 360 || s.w === 1280))
 
     test(`/setup's end-of-day step asks for the dump site @${w}px`, async ({ page }) => {
       await open(page, "owner", PET_WASTE, "/setup?step=dump_site", w, h);
-      await expect(page.getByLabel("Dump site address")).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByLabel("Dump site address")).toBeVisible({ timeout: FIRST_PAINT_MS });
       await expect(page.getByText("Where does your day end?")).toHaveCount(0);
     });
 
     test(`has the Outline step @${w}px`, async ({ page }) => {
       await open(page, "owner", PET_WASTE, "/clients/new", w, h);
-      await expect.poll(() => allText(page), { timeout: 30_000 }).toContain("Step 1 of 5");
+      await expect.poll(() => allText(page), { timeout: FIRST_PAINT_MS }).toContain("Step 1 of 5");
       await expect(page.getByText("Outline", { exact: true }).first()).toBeAttached();
     });
 
@@ -231,7 +239,7 @@ for (const { w, h, label } of WIDTHS.filter((s) => s.w === 360 || s.w === 1280))
       await open(page, "tech", PET_WASTE, "/my-day", w, h);
       await expect(
         page.getByRole("link", { name: "Waste log" }).locator("visible=true").first(),
-      ).toBeVisible({ timeout: 30_000 });
+      ).toBeVisible({ timeout: FIRST_PAINT_MS });
     });
   });
 }

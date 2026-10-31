@@ -31,7 +31,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { listClients } from "@/lib/clients.functions";
+import { ClientSearchPicker, type PickedClient } from "@/components/ClientSearchPicker";
 import { listPropertiesForClient } from "@/lib/properties.functions";
 import { createOneOffVisit, listStaff, oneOffSetPrice } from "@/lib/visits.functions";
 import { useOrgToday } from "@/hooks/useOrgToday";
@@ -50,7 +50,6 @@ export function OneOffVisitDialog({
   onCreated?: (visitId: string) => void;
 }) {
   const qc = useQueryClient();
-  const listClientsFn = useServerFn(listClients);
   const listPropsFn = useServerFn(listPropertiesForClient);
   const listStaffFn = useServerFn(listStaff);
   const createFn = useServerFn(createOneOffVisit);
@@ -62,6 +61,9 @@ export function OneOffVisitDialog({
   const today = useOrgToday();
 
   const [clientId, setClientId] = useState(fixedClientId ?? "");
+  // Picked in the search picker, which asks the server (#617); the whole
+  // roster in a <select> was empty past ~1,000 clients.
+  const [pickedClient, setPickedClient] = useState<PickedClient | null>(null);
   const [propertyId, setPropertyId] = useState("");
   const [scheduledOn, setScheduledOn] = useState(today);
   const [price, setPrice] = useState("");
@@ -73,23 +75,13 @@ export function OneOffVisitDialog({
   useEffect(() => {
     if (!open) return;
     setClientId(fixedClientId ?? "");
+    setPickedClient(null);
     setPropertyId("");
     setScheduledOn(today);
     setPrice("");
     setStaffId("");
     setNote("");
   }, [open, fixedClientId, today]);
-
-  const { data: clientsData } = useQuery({
-    enabled: open && !fixedClientId,
-    queryKey: ["clients"],
-    queryFn: () => listClientsFn(),
-    staleTime: 60_000,
-  });
-  const clients = useMemo(
-    () => (clientsData?.clients ?? []).filter((c: any) => c.active !== false),
-    [clientsData],
-  );
 
   const { data: propsData } = useQuery({
     enabled: open && !!clientId,
@@ -188,20 +180,16 @@ export function OneOffVisitDialog({
           {!fixedClientId && (
             <div className="space-y-1">
               <Label htmlFor="oo-client" className="text-xs">Client</Label>
-              <select
+              <ClientSearchPicker
                 id="oo-client"
-                className="h-9 w-full rounded-md border bg-background px-2 text-sm"
-                value={clientId}
-                onChange={(e) => {
-                  setClientId(e.target.value);
+                value={pickedClient}
+                enabled={open}
+                onChange={(c) => {
+                  setPickedClient(c);
+                  setClientId(c?.id ?? "");
                   setPropertyId("");
                 }}
-              >
-                <option value="">Select a client…</option>
-                {clients.map((c: any) => (
-                  <option key={c.id} value={c.id}>{c.display_name}</option>
-                ))}
-              </select>
+              />
             </div>
           )}
 

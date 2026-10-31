@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import {
   CommandDialog,
   CommandEmpty,
@@ -9,7 +10,7 @@ import {
   CommandList,
   CommandSeparator,
 } from "@/components/ui/command";
-import { supabase } from "@/integrations/supabase/client";
+import { searchClients } from "@/lib/clients.functions";
 import { useMyRole, canAccess } from "@/hooks/useMyRole";
 import { useClientTexting } from "@/hooks/useClientTexting";
 import { useServiceLines } from "@/components/CommercialOnly";
@@ -86,6 +87,8 @@ export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [clients, setClients] = useState<ClientHit[]>([]);
+  const [searchFailed, setSearchFailed] = useState(false);
+  const searchFn = useServerFn(searchClients);
   const navigate = useNavigate();
   const { role } = useMyRole();
   const { petWaste } = useServiceLines();
@@ -110,24 +113,36 @@ export function CommandPalette() {
     const q = query.trim();
     if (!open || q.length < 2 || !canSearchClients) {
       setClients([]);
+      setSearchFailed(false);
       return;
     }
     let cancelled = false;
+    // On the server, by the rule the /clients search uses (#617): name,
+    // company, email, street, tags and import id with case and accents
+    // ignored, and a phone number by its digits. This used to match the
+    // display name alone, so "jose" missed "José" and a phone number or a
+    // Jobber id found nobody.
     const t = setTimeout(async () => {
-      const { data } = await supabase
-        .from("clients")
-        .select("id,display_name")
-        .ilike("display_name", `%${q}%`)
-        .limit(6);
-      if (!cancelled && data) {
-        setClients(data.map((c) => ({ id: c.id, name: c.display_name ?? "(no name)" })));
+      try {
+        const r = await searchFn({ data: { q, limit: 6 } });
+        if (!cancelled) {
+          setSearchFailed(false);
+          setClients(r.clients.map((c) => ({ id: c.id, name: c.display_name || "(no name)" })));
+        }
+      } catch {
+        // A failed search is not an empty one (#617): "No results" would tell
+        // the owner the client does not exist.
+        if (!cancelled) {
+          setClients([]);
+          setSearchFailed(true);
+        }
       }
     }, 150);
     return () => {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [query, open, canSearchClients]);
+  }, [query, open, canSearchClients, searchFn]);
 
   const go = (to: string, params?: Record<string, string>) => {
     setOpen(false);
@@ -154,6 +169,18 @@ export function CommandPalette() {
       />
       <CommandList>
         <CommandEmpty>No results.</CommandEmpty>
+        {searchFailed && (
+          <CommandGroup heading="Clients">
+            <CommandItem
+              value="client-search-failed"
+              keywords={[query]}
+              disabled
+              data-testid="client-search-failed"
+            >
+              Search failed. Check your connection and try again.
+            </CommandItem>
+          </CommandGroup>
+        )}
         {clients.length > 0 && (
           <>
             <CommandGroup heading="Clients">
@@ -161,6 +188,10 @@ export function CommandPalette() {
                 <CommandItem
                   key={c.id}
                   value={`client-${c.id}-${c.name}`}
+                  // The server already matched these, on fields the palette
+                  // cannot see (a phone number, an import id). Without the
+                  // query as a keyword cmdk's own filter hid them again.
+                  keywords={[query]}
                   onSelect={() => go("/clients/$clientId", { clientId: c.id })}
                 >
                   {c.name}
