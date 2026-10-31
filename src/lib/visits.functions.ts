@@ -183,7 +183,9 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
         propertyId: z.string().uuid(),
         /** The day the visit should happen. */
         scheduledOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-        priceCents: z.number().int().min(0).max(10_000_00),
+        /** Omitted: the set price (booking-price.server.ts). Someone without
+         *  manage_pricing may only send the set price, or nothing (#616). */
+        priceCents: z.number().int().min(0).max(10_000_00).optional(),
         /** The service booked (phase 5); omitted is the business's default. */
         serviceId: z.string().uuid().optional(),
         /** Optional: put it straight on a tech's route. */
@@ -207,11 +209,41 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const { requirePermission } = await import("@/lib/authz.server");
-    // Booking a one-off sets a price, so it is the same permission creating any
-    // other service needs. A dispatcher does not hold it — consistent with Q-1
-    // ("dispatchers ops-only, no billing"), and the UI hides the entry point
-    // rather than letting them fill a form that throws on submit.
-    const { orgId } = await requirePermission(supabase, userId, "manage_pricing");
+    const { hasPermission } = await import("@/lib/permissions");
+    // Booking is its own permission (#616): the front desk books. The price is
+    // the part that stays manage_pricing. Someone who holds it types a price,
+    // as before; anyone else books at the set price, and a different price is
+    // refused, never quietly replaced.
+    const caller = await requirePermission(supabase, userId, "booking");
+    const { orgId } = caller;
+    const { oneOffGridPriceCents, priceOverrideRefusal } =
+      await import("@/lib/booking-price.server");
+    let priceCents: number;
+    let asSetPrice = false;
+    if (hasPermission(caller.role, "manage_pricing")) {
+      if (data.priceCents != null) {
+        priceCents = data.priceCents;
+      } else {
+        const grid = await oneOffGridPriceCents(supabase, {
+          orgId,
+          propertyId: data.propertyId,
+          serviceId: data.serviceId,
+        });
+        if (grid.cents == null) throw new Error("Enter a price for this visit.");
+        priceCents = grid.cents;
+      }
+    } else {
+      const grid = await oneOffGridPriceCents(supabase, {
+        orgId,
+        propertyId: data.propertyId,
+        serviceId: data.serviceId,
+      });
+      if (grid.cents == null) throw new Error(grid.reason);
+      if (data.priceCents != null && data.priceCents !== grid.cents)
+        throw new Error(priceOverrideRefusal(grid.cents));
+      priceCents = grid.cents;
+      asSetPrice = true;
+    }
 
     // The work itself lives in one-off-visit.server.ts, because it has a
     // second caller: a customer's extra-cleanup request that the owner set to
@@ -219,7 +251,20 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
     // same code. Two ways to make the same row is how the two diverge; one
     // function with two callers is not.
     const { bookOneOffVisit } = await import("@/lib/one-off-visit.server");
-    const booked = await bookOneOffVisit(supabase, { ...data, orgId, actorUserId: userId });
+    // The subscriptions write policy is manage_pricing and stays so: a
+    // dispatcher cannot write a plan, or a price, with their own key. Their
+    // booking, at the price worked out above, is written as the service role,
+    // after bookOneOffVisit checks the client and property are this org's.
+    const db = asSetPrice
+      ? (await import("@/integrations/supabase/client.server")).supabaseAdmin
+      : supabase;
+    const booked = await bookOneOffVisit(db, {
+      ...data,
+      priceCents,
+      orgId,
+      actorUserId: userId,
+      ...(asSetPrice ? { asService: true, assignDb: supabase } : {}),
+    });
     // Booked straight onto a tech's today or tomorrow: that tech hears it.
     if (booked.assigned) {
       const { startRouteWatch } = await import("@/lib/field-notify.server");
@@ -231,6 +276,20 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
       await refreshRouteLiveActivities([{ staffId: data.staffId, day: data.scheduledOn }]);
     }
     return booked;
+  });
+
+/** The set price of a one-off at this address (#616), for the booking dialog:
+ *  a dispatcher sees it and books at it; someone who sets prices starts from it. */
+export const oneOffSetPrice = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ propertyId: z.string().uuid(), serviceId: z.string().uuid().optional() }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { requirePermission } = await import("@/lib/authz.server");
+    const { orgId } = await requirePermission(context.supabase, context.userId, "booking");
+    const { oneOffGridPriceCents } = await import("@/lib/booking-price.server");
+    return oneOffGridPriceCents(context.supabase, { orgId, ...data });
   });
 
 export const reassignVisit = createServerFn({ method: "POST" })

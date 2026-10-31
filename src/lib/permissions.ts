@@ -8,7 +8,13 @@ import type { AppRole } from "@/hooks/useMyRole";
  * sync when adding a capability or changing a role's grants.
  */
 export type Permission =
-  | "manage_pricing" // zones create/edit/delete (incl. rates)
+  | "manage_pricing" // zones create/edit/delete (incl. rates), and any price typed by hand
+  // Booking a visit or a groom for a client at the price the business already
+  // set (#616). Owner and office manager hold it with everything else; a
+  // dispatcher holds it so the front desk can book, rebook and add a one-off.
+  // It sets no price: a price that differs from the set one is still
+  // manage_pricing, and the server refuses it to anyone without that.
+  | "booking"
   | "manage_client_billing" // invoices, add-on charges/subscriptions, void, prepaid, credit
   | "view_financials" // dashboard revenue/AR KPIs, reports, analytics
   | "view_client_directory" // client names/addresses beyond the caller's own assigned work
@@ -35,6 +41,7 @@ export type Permission =
  *  it — a permission missing from one side is exactly the drift it guards. */
 export const ALL_PERMISSIONS: Permission[] = [
   "manage_pricing",
+  "booking",
   "manage_client_billing",
   "view_financials",
   "view_client_directory",
@@ -57,7 +64,7 @@ export const ROLE_PERMISSIONS: Record<AppRole, readonly Permission[]> = {
   office_manager: ALL_PERMISSIONS.filter(
     (p) => p !== "manage_org_billing" && p !== "manage_franchise",
   ),
-  dispatcher: ["view_client_directory", "record_field_addons"],
+  dispatcher: ["view_client_directory", "record_field_addons", "booking"],
   tech: ["record_field_addons"],
 };
 

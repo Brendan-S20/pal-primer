@@ -114,7 +114,8 @@ export function VisitsTab({
   const [oneOffOpen, setOneOffOpen] = useState(false);
   const [groomOpen, setGroomOpen] = useState(false);
   const { can } = usePermissions();
-  const canBookOneOff = can("manage_pricing");
+  // Booking, not pricing (#616): a dispatcher books here at the set price.
+  const canBookOneOff = can("booking");
   const { lines } = useServiceLines();
   const runsGrooming = lines.includes("mobile_grooming");
 

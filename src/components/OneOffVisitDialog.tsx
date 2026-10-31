@@ -11,6 +11,10 @@
 //
 // So this asks the four questions a one-off actually has — who, where, when,
 // how much — and derives the rest from the client and property records.
+//
+// "How much" is typed only by someone who sets prices (manage_pricing). A
+// dispatcher books (#616) at the set price, which is shown and not editable;
+// the server refuses any other price from them.
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -29,8 +33,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { listClients } from "@/lib/clients.functions";
 import { listPropertiesForClient } from "@/lib/properties.functions";
-import { createOneOffVisit, listStaff } from "@/lib/visits.functions";
+import { createOneOffVisit, listStaff, oneOffSetPrice } from "@/lib/visits.functions";
 import { useOrgToday } from "@/hooks/useOrgToday";
+import { usePermissions } from "@/hooks/useMyRole";
 
 export function OneOffVisitDialog({
   open,
@@ -49,6 +54,9 @@ export function OneOffVisitDialog({
   const listPropsFn = useServerFn(listPropertiesForClient);
   const listStaffFn = useServerFn(listStaff);
   const createFn = useServerFn(createOneOffVisit);
+  const setPriceFn = useServerFn(oneOffSetPrice);
+  const { can } = usePermissions();
+  const setsPrices = can("manage_pricing");
   // The business's today, not the device's: the server refuses a date before
   // it (20261031120000), so the picker has to agree about what day it is.
   const today = useOrgToday();
@@ -113,8 +121,22 @@ export function OneOffVisitDialog({
   });
   const techs = (staffData?.staff ?? []).filter((s: any) => s.is_field_tech);
 
-  const priceCents = Math.round(parseFloat(price || "0") * 100);
-  const priceValid = price.trim() !== "" && Number.isFinite(priceCents) && priceCents >= 0;
+  // The set price, for someone who books but does not set prices.
+  const {
+    data: listPrice,
+    isLoading: listPriceLoading,
+    error: listPriceError,
+  } = useQuery({
+    enabled: open && !setsPrices && !!propertyId,
+    queryKey: ["one-off-set-price", propertyId],
+    queryFn: () => setPriceFn({ data: { propertyId } }),
+  });
+
+  const typedCents = Math.round(parseFloat(price || "0") * 100);
+  const priceCents = setsPrices ? typedCents : (listPrice?.cents ?? null);
+  const priceValid = setsPrices
+    ? price.trim() !== "" && Number.isFinite(typedCents) && typedCents >= 0
+    : priceCents != null;
 
   const createMut = useMutation({
     mutationFn: () =>
@@ -123,7 +145,7 @@ export function OneOffVisitDialog({
           clientId,
           propertyId,
           scheduledOn,
-          priceCents,
+          priceCents: priceCents ?? undefined,
           staffId: staffId || null,
           note: note.trim() || undefined,
         },
@@ -226,17 +248,40 @@ export function OneOffVisitDialog({
             </div>
             <div className="space-y-1">
               <Label htmlFor="oo-price" className="text-xs">Price</Label>
-              <Input
-                id="oo-price"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="0.00"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-              />
+              {setsPrices ? (
+                <Input
+                  id="oo-price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                />
+              ) : (
+                <Input
+                  id="oo-price"
+                  readOnly
+                  aria-readonly
+                  className="bg-muted"
+                  value={priceCents != null ? (priceCents / 100).toFixed(2) : ""}
+                  placeholder={propertyId && listPriceLoading ? "Loading…" : "—"}
+                />
+              )}
             </div>
           </div>
+          {!setsPrices && propertyId && listPriceError && (
+            <p className="text-2xs text-destructive">
+              The set price could not be loaded: {(listPriceError as Error).message}
+            </p>
+          )}
+          {!setsPrices && propertyId && listPrice && (
+            <p className="text-2xs text-muted-foreground">
+              {listPrice.cents != null
+                ? "The business's set price. Only someone who sets prices can change it."
+                : listPrice.reason}
+            </p>
+          )}
 
           <div className="space-y-1">
             <Label htmlFor="oo-tech" className="text-xs">Assign to (optional)</Label>

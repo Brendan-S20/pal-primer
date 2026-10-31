@@ -57,6 +57,10 @@ export type BookGroomInput = {
   /** True when `db` is the service role (the booking link's webhook, #560),
    *  which has no auth.uid() for generate_visits_for_subscription to check. */
   asService?: boolean;
+  /** The signed-in booker's own client, on a service-role booking made by a
+   *  person (a dispatcher, #616). The groomer is assigned through it, because
+   *  reassign_visit checks the signed-in user. */
+  assignDb?: any;
 };
 
 export type BookGroomResult = {
@@ -385,7 +389,7 @@ export async function bookGroomAppointment(
   if (input.staffId) {
     assigned = true;
     for (const visit of visits) {
-      const { error } = await db.rpc("reassign_visit", {
+      const { error } = await (input.assignDb ?? db).rpc("reassign_visit", {
         _visit_id: visit.id,
         _staff_id: input.staffId,
       });
