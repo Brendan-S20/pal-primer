@@ -9,6 +9,11 @@
 //      SERVICE_ROLE_KEY=<local service_role JWT> SCALE_ANON_KEY=<local anon JWT> \
 //      npx vitest run tests/clients-at-scale.test.ts
 //
+// The dispatcher pass checks the other half of the claim in directoryReader:
+// the service-role read returns exactly the clients RLS gives that role, and
+// no invoice data, since the invoices policy does not let a dispatcher read
+// any. It creates (or reuses) dispatcher@scale.houndstack.test in the E2E org.
+//
 // First run, 2026-10-31, in a cloud container against the replayed
 // migrations. Read through RLS, the page hit the statement timeout, the tiles
 // took 4.3-4.8 s and a picker 3.3-29 s; read with the service role behind
@@ -90,4 +95,70 @@ describe.skipIf(!ENABLED)("/clients at 5,000 clients on a real database", () => 
       globalThis.fetch = real;
     }
   }, 120_000);
+
+  it("as a dispatcher: the same clients RLS gives, and no invoice data", async () => {
+    const url = process.env.SUPABASE_URL ?? "";
+    expect(LOCAL.test(url), `SUPABASE_URL must be a local stack, got ${url}`).toBe(true);
+    const admin = createClient(url, process.env.SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+    const owner = createClient(url, process.env.SCALE_ANON_KEY!, { auth: { persistSession: false } });
+    const { data: o } = await owner.auth.signInWithPassword({
+      email: "owner@e2e.houndstack.test",
+      password: "e2e-owner-password-1",
+    });
+    const { data: role } = await admin
+      .from("user_roles")
+      .select("organization_id")
+      .eq("user_id", o.user!.id)
+      .single();
+    const orgId = role!.organization_id as string;
+
+    const email = "dispatcher@scale.houndstack.test";
+    const password = "scale-dispatcher-password-1";
+    const { data: list } = await admin.auth.admin.listUsers({ perPage: 1000 });
+    let user = list.users.find((u) => u.email === email);
+    if (!user) {
+      const made = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+      if (made.error) throw made.error;
+      user = made.data.user!;
+    }
+    const has = await admin.from("user_roles").select("user_id").eq("user_id", user.id).maybeSingle();
+    if (!has.data) {
+      const made = await admin
+        .from("user_roles")
+        .insert({ user_id: user.id, organization_id: orgId, role: "dispatcher" });
+      if (made.error) throw new Error(`could not make the dispatcher: ${made.error.message}`);
+    }
+
+    const sb = createClient(url, process.env.SCALE_ANON_KEY!, { auth: { persistSession: false } });
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    state.supabase = sb;
+    state.userId = data.user!.id;
+
+    // What RLS gives this dispatcher, read the slow way, a page at a time.
+    const rlsIds = new Set<string>();
+    for (let from = 0; ; from += 1000) {
+      const r = await sb.from("clients").select("id").order("id").range(from, from + 999);
+      if (r.error) throw r.error;
+      for (const c of r.data ?? []) rlsIds.add(c.id);
+      if ((r.data ?? []).length < 1000) break;
+    }
+    const rlsInvoices = await sb.from("invoices").select("id").limit(1);
+    expect(rlsInvoices.data ?? []).toEqual([]);
+
+    const t = performance.now();
+    const [page, summary] = await Promise.all([listClientsPage({ data: {} }), listClientsSummary()]);
+    const ms = performance.now() - t;
+    const all = await listClientsPage({ data: { all: true } });
+    expect(new Set(all.rows.map((r: any) => r.id))).toEqual(rlsIds);
+    expect(summary.stats.total).toBe(rlsIds.size);
+    expect(page.rows).toHaveLength(50);
+    expect(ms).toBeLessThan(2_000);
+    for (const rows of [page.rows, all.rows]) {
+      expect(rows.every((r: any) => r.outstanding_cents === 0)).toBe(true);
+    }
+    expect(summary.stats).toMatchObject({ outstanding: 0, owedTotal: 0 });
+    expect(await listClientsPage({ data: { status: "outstanding" } })).toMatchObject({ matched: 0 });
+    console.log(`dispatcher: ${rlsIds.size} clients, first load ${ms.toFixed(0)} ms`);
+  }, 180_000);
 });

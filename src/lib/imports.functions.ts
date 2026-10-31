@@ -1452,6 +1452,7 @@ export const commitImport = createServerFn({ method: "POST" })
         await markRowFailed(supabase, rowId, action, reason);
       };
 
+      let unlinked = 0;
       const inParallel = async (jobs: (() => Promise<void>)[]) => {
         for (let i = 0; i < jobs.length; i += IMPORT_ROW_UPDATES_AT_ONCE) {
           await Promise.all(jobs.slice(i, i + IMPORT_ROW_UPDATES_AT_ONCE).map((j) => j()));
@@ -1464,7 +1465,9 @@ export const commitImport = createServerFn({ method: "POST" })
         // A request that throws (a dropped connection) is handled like one
         // that answers with an error: the chunk is already off the queue, so
         // letting it escape would count these rows as created and write none.
-        const insert = async (records: NewClient["record"][]) => {
+        const insert = async (
+          records: NewClient["record"][],
+        ): Promise<{ message: string; code?: string } | null> => {
           try {
             const { error } = await supabase.from("clients").insert(records);
             return error;
@@ -1472,6 +1475,11 @@ export const commitImport = createServerFn({ method: "POST" })
             return { message: (e as Error)?.message ?? String(e) };
           }
         };
+        // The id is chosen here, so a primary-key conflict on it means this
+        // very row is already in: the chunk's statement committed and only
+        // its answer was lost. That row is inserted, not failed.
+        const alreadyIn = (e: { message: string; code?: string }) =>
+          e.code === "23505" && /clients_pkey/.test(e.message);
         const error = await insert(chunk.map((c) => c.record));
         let inserted = chunk;
         if (error) {
@@ -1480,7 +1488,7 @@ export const commitImport = createServerFn({ method: "POST" })
           inserted = [];
           for (const c of chunk) {
             const oneErr = await insert([c.record]);
-            if (!oneErr) {
+            if (!oneErr || alreadyIn(oneErr)) {
               inserted.push(c);
               continue;
             }
@@ -1494,7 +1502,21 @@ export const commitImport = createServerFn({ method: "POST" })
         // unclaimed by its row.
         await inParallel(
           inserted.map((c) => async () => {
-            await supabase.from("import_rows").update({ target_id: c.id }).eq("id", c.rowId);
+            const link = async () => {
+              try {
+                const { error } = await supabase
+                  .from("import_rows")
+                  .update({ target_id: c.id })
+                  .eq("id", c.rowId);
+                return error;
+              } catch (e) {
+                return { message: (e as Error)?.message ?? String(e) };
+              }
+            };
+            // Once more, then counted: the client is in either way, and a
+            // row that cannot say which client it made is reported on the
+            // result, not passed over.
+            if ((await link()) && (await link())) unlinked += 1;
           }),
         );
         for (const c of inserted) {
@@ -1857,6 +1879,8 @@ export const commitImport = createServerFn({ method: "POST" })
         ...(unpinned ? { unpinned } : {}),
         ...(unzoned ? { unzoned } : {}),
         ...(zoneLookupFailed ? { zone_lookup_failed: true } : {}),
+        // Clients created whose import row could not record them (#617).
+        ...(unlinked ? { unlinked } : {}),
       };
       const nothingWentIn = failed > 0 && !created && !updated;
       const { error: finishError } = await supabase

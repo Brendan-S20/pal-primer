@@ -230,6 +230,13 @@ function BatchDetail() {
               use "Re-run zone detection" to place them.
             </span>
           )}
+          {Number(stats.unlinked ?? 0) > 0 && (
+            <span role="alert" className="mt-2 block font-medium text-amber-800 dark:text-amber-300">
+              {stats.unlinked} client{stats.unlinked === 1 ? " was" : "s were"} created, but this
+              page could not record which row made {stats.unlinked === 1 ? "it" : "them"}. They
+              are on your Clients list; their rows below show no client.
+            </span>
+          )}
         </div>
       )}
 

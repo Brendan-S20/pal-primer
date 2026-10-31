@@ -262,11 +262,16 @@ const AT_RISK_SCORE = 60;
 
 /** Columns of a client row on the list, and what is embedded to work out its
  *  counts and balance. Read for one page of clients at a time. */
-const CLIENT_ROW_SELECT =
+const CLIENT_ROW_SELECT_NO_INVOICES =
   "id, display_name, company, account_type, primary_email, primary_phone, active, created_at, credit_balance_cents, churn_score, comms_paused, tags, import_external_id, " +
   "properties(id, street, created_at, archived_at, dogs(id, active, species)), " +
-  "subscriptions(property_id, status, frequency, ends_on, account_type, dog_count, stay_id), " +
-  "invoices(total_cents, credit_applied_cents, amount_paid_cents, status)";
+  "subscriptions(property_id, status, frequency, ends_on, account_type, dog_count, stay_id)";
+/** The same, with the open invoices for the balance. Only for a caller whose
+ *  role the invoices policy lets read them (directoryReader's seesInvoices):
+ *  a dispatcher's request does not ask for invoices at all. */
+const CLIENT_ROW_SELECT =
+  CLIENT_ROW_SELECT_NO_INVOICES +
+  ", invoices(total_cents, credit_applied_cents, amount_paid_cents, status)";
 
 /** What a search or a balance is checked against: a client's own words and
  *  every street, nothing the list shows but does not search. */
@@ -284,6 +289,7 @@ const OWED_EMBED =
 const STREET_HIT_EMBED = ", hit:properties!inner(street, archived_at)";
 
 const CLIENT_PAGE_SELECT = CLIENT_ROW_SELECT + RUNNING_EMBED;
+const CLIENT_PAGE_SELECT_NO_INVOICES = CLIENT_ROW_SELECT_NO_INVOICES + RUNNING_EMBED;
 const MATCH_SELECT = CLIENT_MATCH_SELECT + RUNNING_EMBED;
 const MATCH_OWED_SELECT = CLIENT_MATCH_SELECT + RUNNING_EMBED + OWED_EMBED;
 const MATCH_STREET_SELECT = CLIENT_MATCH_SELECT + RUNNING_EMBED + STREET_HIT_EMBED;
@@ -469,13 +475,17 @@ export const listClientsPage = createServerFn({ method: "GET" })
         error,
         count,
       } = await applyClientFilters(
-        supabase.from("clients").select(CLIENT_PAGE_SELECT, { count: "exact" }),
+        seesInvoices
+          ? supabase
+              .from("clients")
+              .select(CLIENT_PAGE_SELECT, { count: "exact" })
+              .eq("invoices.status", "open")
+          : supabase.from("clients").select(CLIENT_PAGE_SELECT_NO_INVOICES, { count: "exact" }),
         orgId,
         data,
         today,
       )
         .is("properties.archived_at", null)
-        .eq("invoices.status", "open")
         .order("created_at", { ascending: false })
         .order("id")
         .range(offset, offset + limit - 1);
@@ -492,13 +502,13 @@ export const listClientsPage = createServerFn({ method: "GET" })
     const { idChunks } = await import("@/lib/supabase-paging.server");
     const reads = await Promise.all(
       idChunks(pageIds, 25).map((chunk) =>
-        supabase
-          .from("clients")
-          .select(CLIENT_ROW_SELECT)
+        (seesInvoices
+          ? supabase.from("clients").select(CLIENT_ROW_SELECT).eq("invoices.status", "open")
+          : supabase.from("clients").select(CLIENT_ROW_SELECT_NO_INVOICES)
+        )
           .eq("organization_id", orgId)
           .in("id", chunk)
-          .is("properties.archived_at", null)
-          .eq("invoices.status", "open"),
+          .is("properties.archived_at", null),
       ),
     );
     const got: any[] = [];

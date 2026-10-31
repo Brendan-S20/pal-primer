@@ -115,6 +115,12 @@ function backend() {
           if (failInsertFor && list.some((c) => c.display_name === failInsertFor)) {
             return { data: null, error: { message: "new row violates a check" } };
           }
+          if (list.some((c) => clientRows.some((x) => x.id === c.id))) {
+            return {
+              data: null,
+              error: { code: "23505", message: 'duplicate key value violates unique constraint "clients_pkey"' },
+            };
+          }
           clientRows.push(...list);
           return { data: null, error: null };
         }
@@ -293,5 +299,53 @@ describe("a 1,000-row client import", () => {
     const stats = await (commitImport as any)({ data: { batchId: "batch" }, context: { userId: "owner", supabase } });
     expect(stats).toMatchObject({ created: 999, failed: 0 });
     expect(clientRows).toHaveLength(999);
+  });
+
+  it("a chunk that went in but whose answer was lost is not failed on the retry", async () => {
+    // The statement commits, then the connection drops before the answer:
+    // the row-by-row retry meets its own ids already there.
+    let lost = false;
+    const supabase = backend();
+    const from = supabase.from.bind(supabase);
+    supabase.from = (table: string) => {
+      const q = from(table);
+      if (table !== "clients") return q;
+      const insert = q.insert;
+      q.insert = (v: unknown) => {
+        if (Array.isArray(v) && v.length > 1 && !lost) {
+          lost = true;
+          clientRows.push(...(v as any[]));
+          throw new Error("connection reset after commit");
+        }
+        return insert(v);
+      };
+      return q;
+    };
+    const stats = await (commitImport as any)({ data: { batchId: "batch" }, context: { userId: "owner", supabase } });
+    expect(stats).toMatchObject({ created: 999, failed: 0 });
+    expect(clientRows).toHaveLength(999);
+    expect(new Set(clientRows.map((c) => c.id)).size).toBe(999);
+    // Every created client's row points at it.
+    const linked = new Set(rowUpdates.filter((u) => u.target_id && !u.action).map((u) => u.id));
+    expect(linked.size).toBe(999);
+  });
+
+  it("a row that cannot record its client is counted on the result, not passed over", async () => {
+    const supabase = backend();
+    const from = supabase.from.bind(supabase);
+    supabase.from = (table: string) => {
+      const q = from(table);
+      if (table !== "import_rows") return q;
+      const update = q.update;
+      q.update = (v: any) => {
+        if (v && "target_id" in v && !("action" in v)) {
+          return { eq: async () => ({ error: { message: "import_rows unavailable" } }) };
+        }
+        return update(v);
+      };
+      return q;
+    };
+    const stats = await (commitImport as any)({ data: { batchId: "batch" }, context: { userId: "owner", supabase } });
+    expect(stats).toMatchObject({ created: 999, unlinked: 999 });
   });
 });

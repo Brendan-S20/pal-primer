@@ -170,11 +170,11 @@ const RELATIONS = {
 };
 
 let seen: Seen[];
-function useBook(n: number) {
+function useBook(n: number, tables: Record<string, any[]> = book(n)) {
   seen = [];
   state.supabase = createClient(SUPABASE_URL, "anon-key", {
     global: {
-      fetch: fakePostgrest(book(n), RELATIONS, seen, { latencyMs: LATENCY_MS }) as typeof fetch,
+      fetch: fakePostgrest(tables, RELATIONS, seen, { latencyMs: LATENCY_MS }) as typeof fetch,
     },
     auth: { persistSession: false, autoRefreshToken: false },
   });
@@ -352,9 +352,65 @@ describe("/clients at 1,000 and 5,000 clients", () => {
       const summary = await listClientsSummary();
       expect(summary.stats).toMatchObject({ outstanding: 0, owedTotal: 0 });
       expect(seen.some((x) => x.table === "invoices")).toBe(false);
+      // Not even embedded: no request this role makes asks for invoices.
+      for (const x of seen) {
+        expect(new URL(x.url).searchParams.get("select") ?? "", x.url).not.toMatch(/invoices/);
+      }
+      const search = await listClientsPage({ data: { q: "client 4" } });
+      expect(search.rows.every((r: any) => r.outstanding_cents === 0)).toBe(true);
+      const all = await listClientsPage({ data: { all: true } });
+      expect(all.rows.every((r: any) => r.outstanding_cents === 0)).toBe(true);
+      for (const x of seen) {
+        expect(new URL(x.url).searchParams.get("select") ?? "", x.url).not.toMatch(/invoices/);
+      }
     } finally {
       state.role = "owner";
     }
+  });
+
+  it("never returns a client of another business, on any path", async () => {
+    // A second business whose clients would match every query below, with
+    // its own properties, services and invoices.
+    const mine = book(1_000);
+    const theirs = book(1_000);
+    const other = (id: string) => `99${id.slice(2)}`;
+    for (const t of Object.values(theirs)) {
+      for (const r of t) {
+        if (r.organization_id) r.organization_id = "other-org";
+        r.id = other(String(r.id));
+        if (r.client_id) r.client_id = other(r.client_id);
+        if (r.property_id) r.property_id = other(r.property_id);
+      }
+    }
+    for (const c of theirs.clients) c.display_name = `${c.display_name} (other business)`;
+    const tables = Object.fromEntries(
+      Object.keys(mine).map((k) => [k, [...mine[k], ...theirs[k]]]),
+    );
+    useBook(1_000, tables);
+    const leaked = (rows: any[]) => rows.filter((r) => String(r.id).startsWith("99"));
+
+    const reads = [
+      (await listClientsPage({ data: {} })).rows,
+      (await listClientsPage({ data: { q: "jose" } })).rows,
+      (await listClientsPage({ data: { q: "4400 ravenswood" } })).rows,
+      (await listClientsPage({ data: { status: "outstanding" } })).rows,
+      (await listClientsPage({ data: { status: "no_plan" } })).rows,
+      (await listClientsPage({ data: { all: true } })).rows,
+      (await listClients()).clients,
+      (await searchClients({ data: {} })).clients,
+      (await searchClients({ data: { q: "jose" } })).clients,
+      (await searchClients({ data: { q: "555-0199" } })).clients,
+      (await searchClients({ data: { q: "4400 ravenswood" } })).clients,
+    ];
+    for (const rows of reads) expect(leaked(rows)).toEqual([]);
+    expect(reads[0].length).toBeGreaterThan(0);
+    expect(reads[5]).toHaveLength(1_000);
+    const summary = await listClientsSummary();
+    expect(summary.stats.total).toBe(1_000);
+    const mineOwed = rosterStats(
+      (await listClientsPage({ data: { all: true } })).rows as any[],
+    ).owedTotal;
+    expect(summary.stats.owedTotal).toBe(mineOwed);
   });
 
   it("never reads by a list of client ids", () => {
