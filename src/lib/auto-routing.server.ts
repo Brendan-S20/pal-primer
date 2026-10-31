@@ -51,6 +51,7 @@ import type { RoadLegProblem } from "@/lib/road-legs.server";
 import { DEFAULT_ORG_TIMEZONE } from "@/lib/org-day";
 import { measureDayFit } from "@/lib/route-day-fit";
 import { applyRoutePlans, planDayRoutes, type DayPlan } from "@/lib/route-plan.server";
+import { changedSincePreview } from "@/lib/route-moves";
 import { LEVELS, shouldPushWhenDone, type RunStage } from "@/lib/routing-run";
 import { visitServiceMinutes } from "@/lib/visit-service";
 
@@ -118,26 +119,30 @@ export function daysOf(from: string, to: string): string[] {
   return days;
 }
 
+/** Every day of a run, read and solved, and nothing written: what the panel
+ *  shows before Apply (#609), and the plans Apply then writes. */
+export type RoutePreview = {
+  /** Whether the plan may move work between techs. The write uses this, not
+   *  anything sent beside it, so a plan made without it is written without it. */
+  reassign: boolean;
+  plans: DayPlan[];
+  skipped: Array<{ staffId: string; day: string; reason: string }>;
+  estimatedDays: Array<{ day: string; problem: RoadLegProblem }>;
+  partlyEstimatedDays: Array<{ day: string; points: number }>;
+};
+
 /**
- * Read and solve every day, then write the whole run at once.
+ * Read and solve every day, and write nothing.
  *
- * Every day is read and solved before anything is written, and the write is
- * apply_route_plans: one transaction. A run that stops before it has changed
- * nothing; a day refused at either step is reported and the other days still
- * run, which is what a refused day has always meant.
+ * A day refused here is reported and the other days still plan, which is
+ * what a refused day has always meant.
  */
-export async function runAutoRouting(
+export async function planAutoRouting(
   supabase: SupabaseClient<Database>,
-  args: {
-    orgId: string;
-    runId: string;
-    data: AutoRouteInput;
-    progress: ReportProgress;
-    /** Who pressed Apply: the techs whose day changed are told, not them. */
-    actorUserId?: string | null;
-  },
-) {
-  const { orgId, runId, data, progress } = args;
+  args: { orgId: string; data: AutoRouteInput; progress?: ReportProgress },
+): Promise<RoutePreview> {
+  const { orgId, data } = args;
+  const progress: ReportProgress = args.progress ?? (async () => true);
   const days = daysOf(data.from, data.to);
   const dayBudget = Math.max(
     MIN_DAY_BUDGET_MS,
@@ -145,26 +150,13 @@ export async function runAutoRouting(
   );
   const honourWindows = data.windows === "honour" ? true : data.windows === "ignore" ? false : null;
 
-  let stops = 0;
-  const skipped: Array<{ staffId: string; day: string; reason: string }> = [];
+  const skipped: RoutePreview["skipped"] = [];
   // Days planned from straight-line estimates because nothing could be
   // measured, and days where only some points were measurable. Kept apart
   // because they are different sentences: one day is wrong throughout, the
   // other is wrong in places.
-  const estimatedDays: Array<{ day: string; problem: RoadLegProblem }> = [];
-  const partlyEstimatedDays: Array<{ day: string; points: number }> = [];
-  const perStaff = new Map<string, { stops: number; totalMin: number }>();
-  // What the old read-only forecast reported, now read off the write.
-  let techDays = 0;
-  let techDaysMeasured = 0;
-  let savedMin = 0;
-  let violations = 0;
-  const windowMisses: WindowMissOut[] = [];
-  const unassignable: UnassignableOut[] = [];
-  // Whether arrival windows were honoured on the days planned (the
-  // organization's setting, unless this run overrode it).
-  let windowsHonoured: boolean | null = honourWindows;
-
+  const estimatedDays: RoutePreview["estimatedDays"] = [];
+  const partlyEstimatedDays: RoutePreview["partlyEstimatedDays"] = [];
   const plans: DayPlan[] = [];
   let solved = 0;
   for (const day of days) {
@@ -215,13 +207,94 @@ export async function runAutoRouting(
       solved++;
     }
   }
+  return { reassign: data.reassign, plans, skipped, estimatedDays, partlyEstimatedDays };
+}
+
+/**
+ * Write the plans a preview produced, all days at once.
+ *
+ * Nothing is solved here. The panel showed every move in `preview` and Apply
+ * sent that preview back, so what is written is what was shown (#609). A day
+ * whose visits changed since the preview (one reassigned, pinned, cancelled)
+ * is refused and reported rather than written over: its moves were worked
+ * out against a day that no longer exists. The write is apply_route_plans,
+ * one transaction; a run that stops before it has changed nothing.
+ */
+export async function runAutoRouting(
+  supabase: SupabaseClient<Database>,
+  args: {
+    orgId: string;
+    runId: string;
+    data: AutoRouteInput;
+    preview: RoutePreview;
+    progress: ReportProgress;
+    /** Who pressed Apply: the techs whose day changed are told, not them. */
+    actorUserId?: string | null;
+  },
+) {
+  const { orgId, runId, data, progress, preview } = args;
+  const days = daysOf(data.from, data.to);
+  const reassign = preview.reassign;
+
+  let stops = 0;
+  const skipped = [...preview.skipped];
+  const estimatedDays = [...preview.estimatedDays];
+  const partlyEstimatedDays = [...preview.partlyEstimatedDays];
+  const perStaff = new Map<string, { stops: number; totalMin: number }>();
+  // What the old read-only forecast reported, now read off the write.
+  let techDays = 0;
+  let techDaysMeasured = 0;
+  let savedMin = 0;
+  let violations = 0;
+  const windowMisses: WindowMissOut[] = [];
+  const unassignable: UnassignableOut[] = [];
+  // Whether arrival windows were honoured on the days planned (the
+  // organization's setting, unless this run overrode it).
+  let windowsHonoured: boolean | null =
+    data.windows === "honour" ? true : data.windows === "ignore" ? false : null;
+
+  // ── DOES EACH DAY STILL SAY WHAT THE PREVIEW READ? ───────────────────
+  //
+  // Only days inside the run, once each, and each against its own visits.
+  if (!(await progress("saving", days.length))) throw new RunStopped();
+  const inRange = new Set(days);
+  const seen = new Set<string>();
+  const plans: DayPlan[] = [];
+  for (const plan of preview.plans) {
+    if (!inRange.has(plan.day) || seen.has(plan.day)) continue;
+    seen.add(plan.day);
+    const { data: rows, error } = await supabase
+      .from("visits")
+      .select("id, assigned_staff_id, route_pinned")
+      .eq("organization_id", orgId)
+      .eq("scheduled_on", plan.day)
+      .eq("status", "scheduled");
+    if (error) throw new Error(error.message);
+    const why = changedSincePreview(
+      plan.visitsBefore,
+      (rows ?? []).map((r) => ({
+        visitId: r.id,
+        staffId: r.assigned_staff_id ?? null,
+        pinned: Boolean(r.route_pinned),
+      })),
+      new Set(plan.before.map((b) => b.staffId)),
+    );
+    if (why) {
+      skipped.push({
+        staffId: "",
+        day: plan.day,
+        reason: `${plan.day}: ${why} after the preview, so nothing was changed on that day. Preview again.`,
+      });
+      continue;
+    }
+    plans.push(plan);
+  }
 
   // ── THE WRITE ────────────────────────────────────────────────────────
   //
   // Every solved day at once, in one transaction. Throws (and writes
   // nothing) if the run was declared abandoned meanwhile or the statement
   // ran out of time; a day apply_route_plan refuses comes back on its own.
-  if (!(await progress("saving", solved))) throw new RunStopped();
   // A plan applied to today or tomorrow rewrites those routes: each tech
   // whose stops or order changed hears it once, as a summary, and the person
   // who pressed Apply does not (field-notify.server.ts). Days further out are
@@ -244,7 +317,8 @@ export async function runAutoRouting(
   } catch (err) {
     console.error("routing undo snapshot failed", runId, (err as Error).message);
   }
-  const written = await applyRoutePlans(supabase, { runId, reassign: data.reassign, plans });
+  // Made even with no days in it: it is what stamps the run as saved.
+  const written = await applyRoutePlans(supabase, { runId, reassign, plans });
   // Only after a write that committed: a refused write changed nobody's day.
   await watch.finish();
   if (undoCaptured) {
@@ -430,7 +504,7 @@ export async function runAutoRouting(
     windowMissCount: windowMisses.length,
     // Whether a stop left out also came off its technician (the panel's
     // sentence differs: "left unassigned" against "left off the route").
-    reassign: data.reassign,
+    reassign,
     // Stops the run could not place, each with its reason. Capped like the
     // misses; the panel names a handful and counts the rest.
     unassignable: unassignable.slice(0, 50),
@@ -494,12 +568,14 @@ export async function startAndRunAutoRouting(deps: {
   orgId: string;
   runId: string;
   data: AutoRouteInput;
+  /** The plans the panel showed, which are the plans written. */
+  preview: RoutePreview;
   keepAlive: (job: Promise<unknown>) => void;
   notify: Notify;
   now?: () => number;
   run?: typeof runAutoRouting;
 }): Promise<StartOutcome> {
-  const { supabase, userId, orgId, runId, data, keepAlive, notify } = deps;
+  const { supabase, userId, orgId, runId, data, preview, keepAlive, notify } = deps;
   const now = deps.now ?? Date.now;
   const run = deps.run ?? runAutoRouting;
   // Untyped until types.ts is regenerated from a database with these
@@ -576,6 +652,7 @@ export async function startAndRunAutoRouting(deps: {
         orgId,
         runId,
         data,
+        preview,
         actorUserId: userId,
         progress: async (stage, daysDone) => {
           const { data: ok, error } = await rpc("routing_run_progress", {

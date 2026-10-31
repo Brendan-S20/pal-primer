@@ -73,7 +73,7 @@ vi.mock("@/lib/field-notify.server", () => ({
   startRouteWatch: (i: unknown) => startRouteWatch(i),
 }));
 
-const { runAutoRouting, startAndRunAutoRouting, RunStopped, REVIEW_LINK } =
+const { planAutoRouting, runAutoRouting, startAndRunAutoRouting, RunStopped, REVIEW_LINK } =
   await import("@/lib/auto-routing.server");
 
 const ROOT = join(import.meta.dirname, "..");
@@ -131,6 +131,10 @@ const plan = (day: string) => ({
   honourWindows: true,
   before: [{ staffId: "a", minutes: 30, sequenced: true }],
   solver: { ms: 1, rounds: 1, stoppedBy: "converged", stops: 1 },
+  unassigned: [],
+  visitsBefore: [],
+  moves: [],
+  reordered: 1,
 });
 const wrote = (day: string) => ({
   day,
@@ -261,36 +265,25 @@ describe("the push goes to someone who is not looking", () => {
 
 // ── The work ────────────────────────────────────────────────────────────────
 
-describe("runAutoRouting writes once, at the end", () => {
-  it("solves every day, then writes them all in one call", async () => {
-    const calls: string[] = [];
-    planDayRoutes.mockImplementation(async (_s: unknown, a: { day: string }) => {
-      calls.push(`plan ${a.day}`);
-      return plan(a.day);
-    });
-    applyRoutePlans.mockImplementation(
-      async (_s: unknown, a: { runId: string; plans: Array<{ day: string }> }) => {
-        calls.push(`write ${a.plans.map((p) => p.day).join(",")} for ${a.runId}`);
-        return a.plans.map((p) => wrote(p.day));
-      },
-    );
+// CHANGED 2026-10-31 (#609, D10): the plan and the write are two steps. The
+// panel previews every move (planAutoRouting, which writes nothing) and Apply
+// sends that preview back; runAutoRouting writes exactly those plans and
+// solves nothing.
+const preview = async (input = INPUT) =>
+  planAutoRouting(fakeSupabase(), { orgId: "org", data: input, progress: async () => true });
+
+describe("planAutoRouting plans every day and writes nothing", () => {
+  it("solves every day in order, reporting each stage", async () => {
     const stages: string[] = [];
-    const r = await runAutoRouting(fakeSupabase(), {
+    const p = await planAutoRouting(fakeSupabase(), {
       orgId: "org",
-      runId: "run-1",
       data: INPUT,
       progress: async (stage, done) => {
         stages.push(`${stage}:${done}`);
         return true;
       },
     });
-    expect(calls).toEqual([
-      "plan 2026-10-05",
-      "plan 2026-10-06",
-      "plan 2026-10-07",
-      "write 2026-10-05,2026-10-06,2026-10-07 for run-1",
-    ]);
-    expect(applyRoutePlans).toHaveBeenCalledTimes(1);
+    expect(p.plans.map((x) => x.day)).toEqual(["2026-10-05", "2026-10-06", "2026-10-07"]);
     expect(stages).toEqual([
       "road_times:0",
       "optimizing:0",
@@ -298,45 +291,104 @@ describe("runAutoRouting writes once, at the end", () => {
       "optimizing:1",
       "road_times:2",
       "optimizing:2",
-      "saving:3",
     ]);
+    expect(applyRoutePlans).not.toHaveBeenCalled();
+    expect(startRouteWatch).not.toHaveBeenCalled();
+    expect(refreshRouteLiveActivities).not.toHaveBeenCalled();
+  });
+
+  it("carries the run's reassign choice, so the write cannot use another", async () => {
+    expect((await preview({ ...INPUT, reassign: false })).reassign).toBe(false);
+    expect((await preview({ ...INPUT, reassign: true })).reassign).toBe(true);
+    expect(planDayRoutes.mock.calls.at(-1)?.[1]).toMatchObject({ reassign: true });
+  });
+
+  it("stops part-way when the heartbeat is refused", async () => {
+    let n = 0;
+    await expect(
+      planAutoRouting(fakeSupabase(), { orgId: "org", data: INPUT, progress: async () => ++n < 3 }),
+    ).rejects.toBeInstanceOf(RunStopped);
+    expect(planDayRoutes).toHaveBeenCalledTimes(1);
+  });
+
+  it("a day the planner refuses is reported and left out of the plans", async () => {
+    planDayRoutes.mockImplementation(async (_s: unknown, a: { day: string }) => {
+      if (a.day === "2026-10-06") throw new Error("None of the selected people can be routed");
+      return plan(a.day);
+    });
+    const p = await preview();
+    expect(p.plans.map((x) => x.day)).toEqual(["2026-10-05", "2026-10-07"]);
+    expect(p.skipped).toEqual([
+      {
+        staffId: "",
+        day: "2026-10-06",
+        reason: "2026-10-06: None of the selected people can be routed",
+      },
+    ]);
+  });
+});
+
+describe("runAutoRouting writes the preview once, at the end", () => {
+  it("writes every previewed day in one call, and plans nothing itself", async () => {
+    const p = await preview();
+    planDayRoutes.mockClear();
+    const calls: string[] = [];
+    applyRoutePlans.mockImplementation(
+      async (_s: unknown, a: { runId: string; plans: Array<{ day: string }> }) => {
+        calls.push(`write ${a.plans.map((x) => x.day).join(",")} for ${a.runId}`);
+        return a.plans.map((x) => wrote(x.day));
+      },
+    );
+    const stages: string[] = [];
+    const r = await runAutoRouting(fakeSupabase(), {
+      orgId: "org",
+      runId: "run-1",
+      data: INPUT,
+      preview: p,
+      progress: async (stage, done) => {
+        stages.push(`${stage}:${done}`);
+        return true;
+      },
+    });
+    expect(planDayRoutes).not.toHaveBeenCalled();
+    expect(calls).toEqual(["write 2026-10-05,2026-10-06,2026-10-07 for run-1"]);
+    // The plans written are the plans previewed, object for object.
+    expect(applyRoutePlans.mock.calls[0][1].plans).toEqual(p.plans);
+    expect(stages).toEqual(["saving:3"]);
     expect(r.stops).toBe(3);
     expect(r.forecast).toMatchObject({ daysPlanned: 3, daysMeasured: 3, savedMin: 30 });
     expect(r.skipped).toEqual([]);
   });
 
-  it("writes NOTHING when the run is stopped part-way", async () => {
-    let n = 0;
+  it("writes with the preview's reassign, not the request's", async () => {
+    const p = await preview({ ...INPUT, reassign: false });
+    await runAutoRouting(fakeSupabase(), {
+      orgId: "org",
+      runId: "run-1",
+      data: { ...INPUT, reassign: true },
+      preview: p,
+      progress: async () => true,
+    });
+    expect(applyRoutePlans.mock.calls[0][1].reassign).toBe(false);
+  });
+
+  it("writes NOTHING when it is stopped before the write", async () => {
+    const p = await preview();
     await expect(
       runAutoRouting(fakeSupabase(), {
         orgId: "org",
         runId: "run-1",
         data: INPUT,
-        // The database refuses the third heartbeat: the run was declared
-        // abandoned, or finished elsewhere.
-        progress: async () => ++n < 3,
+        preview: p,
+        progress: async (stage) => stage !== "saving",
       }),
     ).rejects.toBeInstanceOf(RunStopped);
-    expect(planDayRoutes).toHaveBeenCalledTimes(1);
     expect(applyRoutePlans).not.toHaveBeenCalled();
     // Nothing was written, so no lock screen is told anything changed.
     expect(refreshRouteLiveActivities).not.toHaveBeenCalled();
   });
 
-  it("and nothing when it is stopped at the very last step, before the write", async () => {
-    await expect(
-      runAutoRouting(fakeSupabase(), {
-        orgId: "org",
-        runId: "run-1",
-        data: INPUT,
-        progress: async (stage) => stage !== "saving",
-      }),
-    ).rejects.toBeInstanceOf(RunStopped);
-    expect(planDayRoutes).toHaveBeenCalledTimes(3);
-    expect(applyRoutePlans).not.toHaveBeenCalled();
-  });
-
-  it("a day the planner refuses is reported and left out of the write", async () => {
+  it("a day the preview could not plan is still reported", async () => {
     planDayRoutes.mockImplementation(async (_s: unknown, a: { day: string }) => {
       if (a.day === "2026-10-06") throw new Error("None of the selected people can be routed");
       return plan(a.day);
@@ -345,39 +397,35 @@ describe("runAutoRouting writes once, at the end", () => {
       orgId: "org",
       runId: "run-1",
       data: INPUT,
+      preview: await preview(),
       progress: async () => true,
     });
-    const written = applyRoutePlans.mock.calls[0][1].plans.map((p: { day: string }) => p.day);
+    const written = applyRoutePlans.mock.calls[0][1].plans.map((x: { day: string }) => x.day);
     expect(written).toEqual(["2026-10-05", "2026-10-07"]);
-    expect(r.skipped).toEqual([
-      {
-        staffId: "",
-        day: "2026-10-06",
-        reason: "2026-10-06: None of the selected people can be routed",
-      },
-    ]);
+    expect(r.skipped.map((x) => x.day)).toEqual(["2026-10-06"]);
     expect(r.stops).toBe(2);
   });
 
   it("a day the WRITE refuses is reported in the same list, and the rest stand", async () => {
     applyRoutePlans.mockImplementation(async (_s: unknown, a: { plans: Array<{ day: string }> }) =>
-      a.plans.map((p) =>
-        p.day === "2026-10-07"
+      a.plans.map((x) =>
+        x.day === "2026-10-07"
           ? {
-              day: p.day,
+              day: x.day,
               ok: false,
               error: "The day changed while it was being planned. Run auto-routing again.",
             }
-          : wrote(p.day),
+          : wrote(x.day),
       ),
     );
     const r = await runAutoRouting(fakeSupabase(), {
       orgId: "org",
       runId: "run-1",
       data: INPUT,
+      preview: await preview(),
       progress: async () => true,
     });
-    expect(r.skipped.map((s) => s.day)).toEqual(["2026-10-07"]);
+    expect(r.skipped.map((x) => x.day)).toEqual(["2026-10-07"]);
     // The lock screens of every selected tech, for the days that were
     // written and only those: the refused day did not change.
     expect(refreshRouteLiveActivities).toHaveBeenCalledTimes(1);
@@ -397,6 +445,7 @@ describe("runAutoRouting writes once, at the end", () => {
         orgId: "org",
         runId: "run-1",
         data: INPUT,
+        preview: await preview(),
         progress: async () => true,
       }),
     ).rejects.toThrow(/statement timeout/);
@@ -408,6 +457,7 @@ describe("runAutoRouting writes once, at the end", () => {
       orgId: "org",
       runId: "run-1",
       data: INPUT,
+      preview: await preview(),
       progress: async () => true,
     });
     expect(r.forecast).toBeNull();
@@ -435,6 +485,13 @@ function harness(rpcs: Rpcs) {
 }
 
 const RUN_ID = "11111111-1111-4111-8111-111111111111";
+const PREVIEW = {
+  reassign: false,
+  plans: [],
+  skipped: [],
+  estimatedDays: [],
+  partlyEstimatedDays: [],
+};
 
 describe("startAndRunAutoRouting", () => {
   it("attaches to the organization's active run instead of starting a second", async () => {
@@ -454,6 +511,7 @@ describe("startAndRunAutoRouting", () => {
       orgId: "org",
       runId: RUN_ID,
       data: INPUT,
+      preview: PREVIEW,
       keepAlive: h.keepAlive,
       notify: h.notify,
       run,
@@ -489,6 +547,7 @@ describe("startAndRunAutoRouting", () => {
       orgId: "org",
       runId: RUN_ID,
       data: INPUT,
+      preview: PREVIEW,
       keepAlive: h.keepAlive,
       notify: h.notify,
       now: () => NOW,
@@ -558,6 +617,7 @@ describe("startAndRunAutoRouting", () => {
       orgId: "org",
       runId: RUN_ID,
       data: INPUT,
+      preview: PREVIEW,
       keepAlive: h.keepAlive,
       notify: h.notify,
       now: () => NOW,
@@ -590,6 +650,7 @@ describe("startAndRunAutoRouting", () => {
       orgId: "org",
       runId: RUN_ID,
       data: INPUT,
+      preview: PREVIEW,
       keepAlive: h.keepAlive,
       notify: h.notify,
       now: () => NOW,
@@ -614,6 +675,7 @@ describe("startAndRunAutoRouting", () => {
       orgId: "org",
       runId: RUN_ID,
       data: INPUT,
+      preview: PREVIEW,
       keepAlive: h.keepAlive,
       notify: h.notify,
       now: () => NOW,
@@ -628,7 +690,9 @@ describe("startAndRunAutoRouting", () => {
     let beats = 0;
     const h = harness({
       start_routing_run: () => ({ run_id: RUN_ID, attached: false }),
-      routing_run_progress: () => ++beats < 2,
+      // The run writes a preview and solves nothing, so its one heartbeat is
+      // the one before the write (#609). Refused, it writes nothing.
+      routing_run_progress: () => ++beats < 1,
       finish_routing_run: () => ({ finished: false, watched_at: null, applied_at: null }),
     });
     const out = await startAndRunAutoRouting({
@@ -637,6 +701,7 @@ describe("startAndRunAutoRouting", () => {
       orgId: "org",
       runId: RUN_ID,
       data: INPUT,
+      preview: PREVIEW,
       keepAlive: h.keepAlive,
       notify: h.notify,
       now: () => NOW,
@@ -644,7 +709,7 @@ describe("startAndRunAutoRouting", () => {
     expect(out).toMatchObject({ status: "failed" });
     expect(applyRoutePlans).not.toHaveBeenCalled();
     const beat = h.calls.find(([fn]) => fn === "routing_run_progress")!;
-    expect(beat[1]).toMatchObject({ _id: RUN_ID, _stage: "road_times", _days_done: 0 });
+    expect(beat[1]).toMatchObject({ _id: RUN_ID, _stage: "saving", _days_done: 3 });
   });
 });
 
@@ -701,6 +766,7 @@ describe("the techs whose day changed are told, once, and not the person who pre
       orgId: "org",
       runId: "run-1",
       data: INPUT,
+      preview: await preview(),
       actorUserId: "me",
       progress: async () => true,
     });
@@ -719,6 +785,7 @@ describe("the techs whose day changed are told, once, and not the person who pre
         orgId: "org",
         runId: "run-1",
         data: INPUT,
+        preview: await preview(),
         actorUserId: "me",
         progress: async () => true,
       }),
@@ -732,6 +799,7 @@ describe("the techs whose day changed are told, once, and not the person who pre
         orgId: "org",
         runId: "run-1",
         data: INPUT,
+        preview: await preview(),
         actorUserId: "me",
         progress: async (stage) => stage !== "saving",
       }),
@@ -751,6 +819,7 @@ describe("the techs whose day changed are told, once, and not the person who pre
       orgId: "org",
       runId: RUN_ID,
       data: INPUT,
+      preview: PREVIEW,
       keepAlive: h.keepAlive,
       notify: h.notify,
       now: () => NOW,

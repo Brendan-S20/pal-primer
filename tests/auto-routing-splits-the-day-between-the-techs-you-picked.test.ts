@@ -59,7 +59,10 @@ describe("applying auto-routing hands the whole team to one planner", () => {
   // CHANGED 2026-10-04: the run moved to auto-routing.server.ts when it
   // became a background job; the server function applyOptimize is gone.
   const fn = codeOnly(read("src/lib/auto-routing.server.ts"));
-  const apply = fn.slice(fn.indexOf("export async function runAutoRouting"));
+  // CHANGED 2026-10-31 (#609): the days are planned by planAutoRouting (the
+  // preview) and written by runAutoRouting, which follows it in the file, so
+  // the slice starts at the planner and still covers the write.
+  const apply = fn.slice(fn.indexOf("export async function planAutoRouting"));
 
   it("plans each day for the selected technicians together", () => {
     // CHANGED 2026-10-02: the planner moved out of plan_day_across_staff into

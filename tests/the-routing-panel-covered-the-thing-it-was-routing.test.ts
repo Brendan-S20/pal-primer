@@ -114,13 +114,13 @@ describe("one control open at a time", () => {
 });
 
 describe("the safeguards survived the redesign", () => {
-  it("Apply is gated on the inputs it needs, now that there is no preview", () => {
-    // CHANGED 2026-08-19, when the preview STEP was removed. `!p` meant "a
-    // preview has been run and is still current" — a gate that only existed
-    // because a second press did. What Apply can still be unreachable for is
-    // the thing it could never work without: a bad range, or nobody selected.
-    expect(panel).toMatch(/disabled=\{!rangeValid \|\| techs\.length === 0 \|\| busy\}/);
-    expect(panel).not.toMatch(/previewMut/);
+  it("Apply is gated on the inputs it needs", () => {
+    // CHANGED 2026-08-19, when the preview STEP was removed, and again
+    // 2026-10-31 when it came back (#609, D10). The input gate is the same;
+    // a preview in flight now holds the button too.
+    expect(panel).toMatch(
+      /disabled=\{!rangeValid \|\| techs\.length === 0 \|\| busy \|\| previewMut\.isPending\}/,
+    );
   });
 
   // REMOVED 2026-08-19 with the preview step: "changing any input still
@@ -145,28 +145,23 @@ describe("the safeguards survived the redesign", () => {
     expect(panel).toMatch(/r\.skipped\.slice\(0, 3\)/);
   });
 
-  it("has no reassign control at all any more", () => {
-    // REPLACED 2026-08-26. This used to assert the checkbox was VISIBLE rather
-    // than collapsed behind a pill, and it kept passing after the checkbox was
-    // deleted -- because the comment left in its place quotes the label, and a
-    // match against the whole file finds the tombstone. It was also comparing
-    // against `{section === "level" &&`, which no longer exists either, so
-    // indexOf returned -1 and every index beat it. Two dead assertions, both
-    // green, over a control that was gone.
-    //
-    // So: match CODE, not comments, and assert the absence.
+  it("asks before moving work between techs, every run (D10)", () => {
+    // REPLACED 2026-10-31 (#609). From 2026-08-26 to here this asserted the
+    // control was GONE and that Apply always sent `reassign: true`, on the
+    // argument that selecting a tech was consent to rearrange their day. It
+    // was not: it moved visits assigned by hand for safety. Match CODE, not
+    // comments, for the reason the previous version of this test gave.
     const code = panel.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/^\s*\/\/.*$/gm, "");
-    expect(code).not.toMatch(/Also move work between techs/);
-    expect(code).not.toMatch(/setReassign/);
-    expect(code).not.toMatch(/<Checkbox/);
+    expect(code).toMatch(/Also move visits between techs/);
+    expect(code).toMatch(/role="switch"\s+aria-checked=\{reassign\}/);
+    // Off on every open, and not remembered anywhere.
+    expect(code).toMatch(/const \[reassign, setReassign\] = useState\(false\)/);
+    expect(code).not.toMatch(/localStorage|sessionStorage/);
+    expect(code).not.toMatch(/setReassign\(run\./);
   });
 
-  it("and always re-plans the selected people's day", () => {
-    // The consent the checkbox asked for is given by the selection itself: the
-    // planner only touches visits that are unassigned or already belong to a
-    // SELECTED technician. Verified against production -- selecting everyone
-    // except the technician holding all 21 of a day's stops returns zero rows.
-    expect(panel).toMatch(/reassign:\s*true/);
+  it("and never sends reassign: true on its own", () => {
+    expect(panel).not.toMatch(/reassign:\s*true/);
   });
 });
 
