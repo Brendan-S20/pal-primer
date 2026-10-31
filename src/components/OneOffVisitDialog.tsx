@@ -30,11 +30,7 @@ import { Label } from "@/components/ui/label";
 import { listClients } from "@/lib/clients.functions";
 import { listPropertiesForClient } from "@/lib/properties.functions";
 import { createOneOffVisit, listStaff } from "@/lib/visits.functions";
-
-function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
+import { useOrgToday } from "@/hooks/useOrgToday";
 
 export function OneOffVisitDialog({
   open,
@@ -53,10 +49,13 @@ export function OneOffVisitDialog({
   const listPropsFn = useServerFn(listPropertiesForClient);
   const listStaffFn = useServerFn(listStaff);
   const createFn = useServerFn(createOneOffVisit);
+  // The business's today, not the device's: the server refuses a date before
+  // it (20261031120000), so the picker has to agree about what day it is.
+  const today = useOrgToday();
 
   const [clientId, setClientId] = useState(fixedClientId ?? "");
   const [propertyId, setPropertyId] = useState("");
-  const [scheduledOn, setScheduledOn] = useState(todayISO());
+  const [scheduledOn, setScheduledOn] = useState(today);
   const [price, setPrice] = useState("");
   const [staffId, setStaffId] = useState("");
   const [note, setNote] = useState("");
@@ -67,11 +66,11 @@ export function OneOffVisitDialog({
     if (!open) return;
     setClientId(fixedClientId ?? "");
     setPropertyId("");
-    setScheduledOn(todayISO());
+    setScheduledOn(today);
     setPrice("");
     setStaffId("");
     setNote("");
-  }, [open, fixedClientId]);
+  }, [open, fixedClientId, today]);
 
   const { data: clientsData } = useQuery({
     enabled: open && !fixedClientId,
@@ -220,7 +219,7 @@ export function OneOffVisitDialog({
                 // we did yesterday" produced work that is never invoiced and
                 // shows on the client's history as a service failure. Book it
                 // for today and close it out instead.
-                min={todayISO()}
+                min={today}
                 value={scheduledOn}
                 onChange={(e) => setScheduledOn(e.target.value)}
               />
