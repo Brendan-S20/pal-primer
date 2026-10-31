@@ -43,7 +43,13 @@ vi.mock("@/integrations/supabase/client.server", () => ({
 
 import { invoiceIdFromSendKey, invoiceSendKey } from "@/lib/email/invoice-send-key";
 import { emailProviderConfigured } from "@/lib/email/provider.server";
-import { enqueueAppEmail } from "@/lib/email/enqueue.server";
+import { enqueueAppEmail, priorOutcome } from "@/lib/email/enqueue.server";
+import { emailStatusFromLog, FINAL_EMAIL_FAILURES } from "@/lib/email/send-status";
+import {
+  emailStatusForHandle,
+  signEmailStatusHandle,
+  verifyEmailStatusHandle,
+} from "@/lib/email/status-handle.server";
 import { notSentMessage, reportQueuedSend, waitForEmailOutcome } from "@/lib/send-report";
 
 const root = join(import.meta.dirname, "..");
@@ -108,7 +114,14 @@ describe("sent_at is the provider's acceptance, not the queue's", () => {
   it("the manual send never writes sent_at, and hands back the pay link when it cannot go", () => {
     const send = strip(read("src/lib/notifications.functions.ts"));
     const handler = send.slice(send.indexOf("export const sendInvoiceEmail"));
-    expect(handler).not.toMatch(/sent_at: /);
+    // The one write is the `sent` prior's arm: the send log already shows
+    // the provider took it, and the processor's stamp did not land.
+    expect(handler.match(/sent_at: /g)).toHaveLength(1);
+    const sentArm = handler.slice(handler.indexOf('if (res.prior === "sent")'));
+    expect(sentArm.indexOf("sent_at: ")).toBeGreaterThan(-1);
+    expect(sentArm.indexOf("sent_at: ")).toBeLessThan(
+      sentArm.indexOf('if (res.prior === "queued")'),
+    );
     expect(handler).toMatch(/ok: false,\s*reason: res\.reason[\s\S]*?link: invoiceUrl/);
   });
 
@@ -116,7 +129,7 @@ describe("sent_at is the provider's acceptance, not the queue's", () => {
     const nightly = strip(read("src/routes/api/public/hooks/nightly.ts"));
     const okBranch = nightly.slice(
       nightly.indexOf("if (res.ok) {"),
-      nightly.indexOf('} else if (res.reason === "already_sent")'),
+      nightly.indexOf('} else if (res.reason === "already_sent" && res.prior === "sent")'),
     );
     expect(okBranch).toMatch(/sent\+\+/);
     expect(okBranch).not.toMatch(/sent_at/);
@@ -146,7 +159,7 @@ describe("each label says sent only when it was, and 'not sent, copy link' when 
     const onSent = vi.fn();
     const poll = vi.fn();
     const out = await reportQueuedSend(
-      { ok: false, messageId: null, recipient: "a@b.co", link: "https://x/pay/i/t" },
+      { ok: false, statusHandle: null, recipient: "a@b.co", link: "https://x/pay/i/t" },
       { what: "Invoice", poll, onSent },
     );
     expect(out).toBe("failed");
@@ -169,7 +182,7 @@ describe("each label says sent only when it was, and 'not sent, copy link' when 
       error: null,
     }));
     const p = reportQueuedSend(
-      { ok: true, messageId: "m1", recipient: "a@b.co", link: "https://x" },
+      { ok: true, statusHandle: "h1", recipient: "a@b.co", link: "https://x" },
       { what: "Welcome email", poll, onSent },
     );
     await vi.advanceTimersByTimeAsync(3000);
@@ -186,13 +199,14 @@ describe("each label says sent only when it was, and 'not sent, copy link' when 
 
   it("queued then refused by the provider: not sent, copy link", async () => {
     vi.useFakeTimers();
-    const poll = vi.fn(async () => ({ status: "dlq", recipient: "a@b.co", error: "bad" }));
-    const p = waitForEmailOutcome(poll, "m1");
+    // The server folds dlq / bounced / suppressed / complained into "failed".
+    const poll = vi.fn(async () => ({ status: "failed", recipient: "a@b.co", error: "bad" }));
+    const p = waitForEmailOutcome(poll, "h1");
     await vi.advanceTimersByTimeAsync(3000);
     expect((await p).outcome).toBe("failed");
 
     const p2 = reportQueuedSend(
-      { ok: true, messageId: "m1", recipient: "a@b.co", link: "https://x" },
+      { ok: true, statusHandle: "h1", recipient: "a@b.co", link: "https://x" },
       { what: "Invoice", poll },
     );
     await vi.advanceTimersByTimeAsync(3000);
@@ -212,7 +226,9 @@ describe("each label says sent only when it was, and 'not sent, copy link' when 
     const page = strip(read("src/routes/_authenticated/clients.new.tsx"));
     expect(page).not.toMatch(/Welcome email sent to/);
     expect(page).toMatch(/what: "Welcome email"/);
-    expect(page).toMatch(/messageId: welcomeMessageId/);
+    expect(page).toMatch(/statusHandle: welcomeStatusHandle/);
+    // Quiet when the owner turned welcome emails off.
+    expect(page).toMatch(/if \(primaryEmail && !welcomeTurnedOff\)/);
     expect(page).toMatch(/link: welcomeLink/);
   });
 
@@ -233,7 +249,7 @@ describe("each label says sent only when it was, and 'not sent, copy link' when 
   it("the drawer says an unsent open invoice is not sent", () => {
     const drawer = read("src/components/InvoiceDrawer.tsx");
     expect(drawer).toMatch(
-      /\{open && !inv\.sent_at && !inv\.send_after && \(\s*<MetaChip>Not sent: copy the pay link<\/MetaChip>/,
+      /\{open &&\s*!inv\.sent_at &&\s*\(!inv\.send_after \|\| inv\.send_after <= today\) && \(\s*<MetaChip>Not sent: copy the pay link<\/MetaChip>/,
     );
   });
 
@@ -244,5 +260,142 @@ describe("each label says sent only when it was, and 'not sent, copy link' when 
     const panel = strip(read("src/components/client-detail/ReviewsReferralsTab.tsx"));
     expect(panel).toMatch(/channelData\?\.emailOff/);
     expect(panel).toMatch(/not emailed: email is off\. Copy the link/);
+  });
+});
+
+// The review of #635: three ways "sent" could still be said without the
+// provider having taken anything.
+describe("already sent means a `sent` row, nothing less (review blockers 1 and 2)", () => {
+  it("folds a message's log rows into sent, queued or undelivered", () => {
+    expect(priorOutcome(["pending"])).toBe("queued");
+    expect(priorOutcome(["pending", "failed"])).toBe("queued");
+    expect(priorOutcome(["pending", "failed", "dlq"])).toBe("undelivered");
+    expect(priorOutcome(["pending", "suppressed"])).toBe("undelivered");
+    expect(priorOutcome(["pending", "failed", "sent"])).toBe("sent");
+  });
+
+  it("the nightly stamps sent_at only for a message the provider took", () => {
+    const nightly = strip(read("src/routes/api/public/hooks/nightly.ts"));
+    expect(nightly).toMatch(
+      /else if \(res\.reason === "already_sent" && res\.prior === "sent"\) \{\s*await supabaseAdmin\s*\.from\("invoices"\)\s*\.update\(\{ sent_at/,
+    );
+    // No other already_sent branch, and no other stamp.
+    expect(nightly.match(/res\.reason === "already_sent"/g)).toHaveLength(1);
+  });
+
+  it("the manual send says alreadySent only for a `sent` prior; queued is polled, dead-lettered is not sent", () => {
+    const send = strip(read("src/lib/notifications.functions.ts"));
+    const branch = send.slice(send.indexOf('if (res.reason === "already_sent"'));
+    const sentArm = branch.slice(
+      branch.indexOf('if (res.prior === "sent")'),
+      branch.indexOf('if (res.prior === "queued")'),
+    );
+    expect(sentArm).toMatch(/alreadySent: true/);
+    expect(send.match(/alreadySent: true/g)).toHaveLength(2); // the sent_at check above, and this arm
+    const queuedArm = branch.slice(branch.indexOf('if (res.prior === "queued")'));
+    expect(queuedArm).toMatch(/statusHandle: await handle\(res\.messageId\)/);
+    expect(queuedArm).toMatch(/ok: false,\s*reason: res\.reason/);
+  });
+
+  it("a queued first send toasts Sending, never sent; a refused one toasts not sent", async () => {
+    vi.useFakeTimers();
+    const onSent = vi.fn();
+    const poll = vi.fn(async () => ({ status: "pending", recipient: "a@b.co", error: null }));
+    const p = reportQueuedSend(
+      { ok: true, statusHandle: "h", recipient: "a@b.co", link: "https://x" },
+      { what: "Invoice", poll, onSent },
+    );
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(await p).toBe("pending");
+    expect(onSent).not.toHaveBeenCalled();
+    expect(toastCalls.some((t) => t.kind === "success")).toBe(false);
+  });
+});
+
+describe("only a final failure is reported as not sent (review should-fix)", () => {
+  it("is exactly dlq, bounced, suppressed and complained", () => {
+    expect([...FINAL_EMAIL_FAILURES].sort()).toEqual([
+      "bounced",
+      "complained",
+      "dlq",
+      "suppressed",
+    ]);
+  });
+
+  const row = (status: string) => ({ status, recipient_email: "a@b.co", error_message: "e" });
+  it("a retryable failure is still pending", () => {
+    expect(emailStatusFromLog([row("failed"), row("pending")]).status).toBe("pending");
+    expect(emailStatusFromLog([row("failed"), row("failed"), row("pending")]).status).toBe(
+      "pending",
+    );
+  });
+  it("a final failure is failed, and sent beats everything", () => {
+    expect(emailStatusFromLog([row("dlq"), row("failed"), row("pending")]).status).toBe("failed");
+    expect(emailStatusFromLog([row("bounced"), row("sent"), row("pending")]).status).toBe("sent");
+    expect(emailStatusFromLog([]).status).toBe("pending");
+  });
+});
+
+describe("the poll reads the real status, for its own organization only (review blocker 3)", () => {
+  const ORG = "22222222-2222-4222-8222-222222222222";
+  const OTHER = "33333333-3333-4333-8333-333333333333";
+  const MSG = "44444444-4444-4444-8444-444444444444";
+  const invoice = { kind: "invoice" as const, id: ID };
+
+  beforeEach(() => {
+    process.env.SERVICE_ROLE_KEY = process.env.SERVICE_ROLE_KEY || "test-service-role-key";
+  });
+
+  it("a handle verifies only for the organization it was signed for, and not once altered", () => {
+    const h = signEmailStatusHandle(ORG, invoice, MSG);
+    expect(verifyEmailStatusHandle(ORG, h)).toEqual({ subject: invoice, messageId: MSG });
+    expect(verifyEmailStatusHandle(OTHER, h)).toBeNull();
+    expect(verifyEmailStatusHandle(ORG, h.replace(MSG, OTHER))).toBeNull();
+    expect(verifyEmailStatusHandle(ORG, h.replace("invoice.", "client."))).toBeNull();
+    expect(verifyEmailStatusHandle(ORG, MSG)).toBeNull();
+  });
+
+  it("returns the log's real answer once the handle and the subject check out", async () => {
+    const readLog = vi.fn(async () => [
+      { status: "sent", recipient_email: "a@b.co", error_message: null },
+      { status: "pending", recipient_email: "a@b.co", error_message: null },
+    ]);
+    const ownsSubject = vi.fn(async () => true);
+    const out = await emailStatusForHandle(ORG, signEmailStatusHandle(ORG, invoice, MSG), {
+      ownsSubject,
+      readLog,
+    });
+    expect(out).toEqual({ status: "sent", recipient: "a@b.co", error: null });
+    expect(ownsSubject).toHaveBeenCalledWith(invoice);
+    expect(readLog).toHaveBeenCalledWith(MSG);
+  });
+
+  it("reads nothing for another organization's handle, or a subject the caller cannot see", async () => {
+    const readLog = vi.fn(async () => []);
+    await expect(
+      emailStatusForHandle(OTHER, signEmailStatusHandle(ORG, invoice, MSG), {
+        ownsSubject: async () => true,
+        readLog,
+      }),
+    ).rejects.toThrow("Not found");
+    await expect(
+      emailStatusForHandle(ORG, signEmailStatusHandle(ORG, invoice, MSG), {
+        ownsSubject: async () => false,
+        readLog,
+      }),
+    ).rejects.toThrow("Not found");
+    expect(readLog).not.toHaveBeenCalled();
+  });
+
+  it("the server fn checks ownership with the caller's client and reads the log as the service role", () => {
+    const send = strip(read("src/lib/notifications.functions.ts"));
+    const poll = send.slice(send.indexOf("export const getEmailSendStatus"));
+    expect(poll).toMatch(/z\.object\(\{ handle: z\.string\(\)/);
+    expect(poll).not.toMatch(/messageId: z\./);
+    expect(poll).toMatch(
+      /ownsSubject: async[\s\S]*?context\.supabase[\s\S]*?\.eq\("organization_id", orgId\)/,
+    );
+    expect(poll).toMatch(/readLog: async[\s\S]*?supabaseAdmin\s*\.from\("email_send_log"\)/);
+    expect(poll.indexOf("ownsSubject")).toBeLessThan(poll.indexOf("readLog"));
   });
 });

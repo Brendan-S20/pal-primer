@@ -1241,11 +1241,12 @@ export const onboardClient = createServerFn({ method: "POST" })
 
     // welcome email (best-effort). Reported back, so the owner is told it went
     // rather than finding out from the customer. "Went" means the provider
-    // took it (#612): queued is not sent, so the page polls welcomeMessageId,
+    // took it (#612): queued is not sent, so the page polls welcomeStatusHandle,
     // and with no provider nothing is queued and the page says "not sent" and
     // hands over the portal link instead.
     let welcomeEmailed = false;
-    let welcomeMessageId: string | null = null;
+    let welcomeStatusHandle: string | null = null;
+    let welcomeTurnedOff = false;
     let welcomeLink: string | null = null;
     if (data.primaryEmail) {
       try {
@@ -1264,7 +1265,16 @@ export const onboardClient = createServerFn({ method: "POST" })
           },
         });
         welcomeEmailed = sent.ok;
-        welcomeMessageId = sent.ok ? (sent.messageId ?? null) : null;
+        // The owner turned welcome emails off: nothing to report as missing.
+        welcomeTurnedOff = sent.reason === "org_toggle_off";
+        if (sent.ok && sent.messageId) {
+          const { signEmailStatusHandle } = await import("@/lib/email/status-handle.server");
+          welcomeStatusHandle = signEmailStatusHandle(
+            orgId,
+            { kind: "client", id: clientId },
+            sent.messageId,
+          );
+        }
       } catch (e) {
         console.error("welcome email failed", e);
       }
@@ -1274,7 +1284,8 @@ export const onboardClient = createServerFn({ method: "POST" })
       id: clientId,
       firstVisitOn,
       welcomeEmailed,
-      welcomeMessageId,
+      welcomeStatusHandle,
+      welcomeTurnedOff,
       welcomeLink,
       officeNoteSaved,
       leadLinked,

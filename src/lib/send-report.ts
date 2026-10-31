@@ -12,30 +12,33 @@
 import { toast } from "sonner";
 
 export type EmailPoll = (args: {
-  data: { messageId: string };
+  data: { handle: string };
 }) => Promise<{ status: string; recipient: string | null; error: string | null }>;
 
 export type EmailOutcome = "sent" | "failed" | "pending";
 
-const FAILED = new Set(["failed", "bounced", "dlq", "suppressed", "complained"]);
+// The server folds the log into sent / failed / pending, and "failed" there is
+// only a final failure (dlq, bounced, suppressed, complained). A retryable
+// attempt reads "pending", so a Resend timeout is not reported as "did not go
+// out" and then delivered by the retry (#612 review).
 
 /** Ask the send log until the provider has answered, or give up and say
  *  "pending". Never throws: a poll that errors is asked again. */
 export async function waitForEmailOutcome(
   poll: EmailPoll,
-  messageId: string,
+  handle: string,
   { tries = 20, intervalMs = 3000 }: { tries?: number; intervalMs?: number } = {},
 ): Promise<{ outcome: EmailOutcome; recipient: string | null; error: string | null }> {
   for (let i = 0; i < tries; i++) {
     await new Promise((res) => setTimeout(res, intervalMs));
     let s: { status: string; recipient: string | null; error: string | null };
     try {
-      s = await poll({ data: { messageId } });
+      s = await poll({ data: { handle } });
     } catch {
       continue;
     }
     if (s.status === "sent") return { outcome: "sent", recipient: s.recipient, error: null };
-    if (FAILED.has(s.status)) return { outcome: "failed", recipient: s.recipient, error: s.error };
+    if (s.status === "failed") return { outcome: "failed", recipient: s.recipient, error: s.error };
   }
   return { outcome: "pending", recipient: null, error: null };
 }
@@ -69,7 +72,8 @@ export function toastNotSent(
 
 export type QueuedSendResult = {
   ok: boolean;
-  messageId?: string | null;
+  /** Signed by the send function; see email/status-handle.server.ts. */
+  statusHandle?: string | null;
   recipient?: string | null;
   link?: string | null;
   alreadySent?: boolean;
@@ -91,12 +95,12 @@ export async function reportQueuedSend(
     onSent?.();
     return "sent";
   }
-  if (!r.ok || !r.messageId) {
+  if (!r.ok || !r.statusHandle) {
     toastNotSent(what, to, r.link);
     return "failed";
   }
   const id = toast.loading(`Sending ${what.toLowerCase()} to ${to ?? "the client"}…`);
-  const res = await waitForEmailOutcome(poll, r.messageId);
+  const res = await waitForEmailOutcome(poll, r.statusHandle);
   if (res.outcome === "sent") {
     toast.success(`${what} sent to ${res.recipient ?? to ?? "the client"}`, { id });
     onSent?.();

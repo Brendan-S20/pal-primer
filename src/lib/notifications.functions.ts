@@ -6,6 +6,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { appOrigin } from "@/lib/app-origin";
 import { invoiceEmailDetails } from "@/lib/invoice-email-details";
 import { invoiceSendKey } from "@/lib/email/invoice-send-key";
+import type { EmailLogRow } from "@/lib/email/send-status";
 
 // Manually email an existing invoice to the client. With reminder: true the
 // same template renders as a payment reminder ("Reminder: …" subject), and
@@ -136,45 +137,92 @@ export const sendInvoiceEmail = createServerFn({ method: "POST" })
       manual: true,
       attachments: pdfAttachment,
     });
+    const handle = async (messageId: string) => {
+      const { signEmailStatusHandle } = await import("@/lib/email/status-handle.server");
+      return signEmailStatusHandle(orgId, { kind: "invoice", id: inv.id }, messageId);
+    };
     if (!res.ok) {
-      if (res.reason === "already_sent") {
-        return { ok: true, messageId: null, recipient: await recipient(), alreadySent: true };
+      // A first send whose earlier message exists. Only the provider having
+      // taken it is "already sent" (#612 review): one still queued is polled
+      // like a new one, and one that dead-lettered is not sent.
+      if (res.reason === "already_sent" && res.messageId) {
+        if (res.prior === "sent") {
+          await supabase
+            .from("invoices")
+            .update({ sent_at: new Date().toISOString() })
+            .eq("id", inv.id)
+            .is("sent_at", null);
+          return {
+            ok: true,
+            statusHandle: null,
+            recipient: await recipient(),
+            alreadySent: true,
+          };
+        }
+        if (res.prior === "queued") {
+          return {
+            ok: true,
+            statusHandle: await handle(res.messageId),
+            recipient: await recipient(),
+            link: invoiceUrl,
+          };
+        }
       }
       return {
         ok: false,
         reason: res.reason ?? "enqueue_failed",
-        messageId: null,
+        statusHandle: null,
         recipient: await recipient(),
         link: invoiceUrl,
       };
     }
     // The email is QUEUED here (a cron flips it to sent/failed within ~1 min).
-    // Return the log id + recipient so the UI can poll for the real outcome
-    // rather than claim "emailed" before it actually sends (finding #32).
+    // Return a handle the page can poll for the real outcome rather than
+    // claim "emailed" before it actually sends (finding #32).
     return {
       ok: true,
-      messageId: res.messageId ?? null,
+      statusHandle: res.messageId ? await handle(res.messageId) : null,
       recipient: await recipient(),
       link: invoiceUrl,
     };
   });
 
 // Poll the email pipeline's outcome for a queued message (finding #32).
+//
+// The send log is service-role only, so reading it through the caller's
+// client always came back empty and every poll said "pending" (#612 review).
+// It is read as the service role now, and only for a handle signed to the
+// caller's organization naming an invoice or client the caller can read.
 export const getEmailSendStatus = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ messageId: z.string() }).parse(d))
+  .inputValidator((d) => z.object({ handle: z.string().max(300) }).parse(d))
   .handler(async ({ data, context }) => {
-    const { data: rows, error } = await context.supabase
-      .from("email_send_log")
-      .select("status, recipient_email, error_message, created_at")
-      .eq("message_id", data.messageId)
-      .order("created_at", { ascending: false })
-      .limit(1);
-    if (error) throw new Error(error.message);
-    const row = rows?.[0];
-    return {
-      status: (row?.status ?? "pending") as string,
-      recipient: row?.recipient_email ?? null,
-      error: row?.error_message ?? null,
-    };
+    const { resolveCaller } = await import("@/lib/authz.server");
+    const { orgId } = await resolveCaller(context.supabase, context.userId);
+    const { emailStatusForHandle } = await import("@/lib/email/status-handle.server");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    return emailStatusForHandle(orgId, data.handle, {
+      // Ownership through the caller's own client: RLS and the org filter
+      // both have to agree the invoice or client is theirs.
+      ownsSubject: async (subject) => {
+        const { data: owned } = await context.supabase
+          .from(subject.kind === "invoice" ? "invoices" : "clients")
+          .select("id")
+          .eq("id", subject.id)
+          .eq("organization_id", orgId)
+          .maybeSingle();
+        return !!owned;
+      },
+      // Then, and only then, the service role: the log has no org column
+      // and no policy a signed-in user passes.
+      readLog: async (messageId) => {
+        const { data: rows, error } = await supabaseAdmin
+          .from("email_send_log")
+          .select("status, recipient_email, error_message, created_at")
+          .eq("message_id", messageId)
+          .order("created_at", { ascending: false });
+        if (error) throw new Error(error.message);
+        return (rows ?? []) as EmailLogRow[];
+      },
+    });
   });

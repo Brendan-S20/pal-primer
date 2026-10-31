@@ -764,9 +764,10 @@ async function autoSendScheduledInvoices(
         // Queued. sent_at is the queue processor's to stamp, when the
         // provider accepts it (#612).
         sent++;
-      } else if (res.reason === "already_sent") {
-        // The provider took it and the stamp did not land. The send log is
-        // the provider's answer, so stamp from it rather than ask every night.
+      } else if (res.reason === "already_sent" && res.prior === "sent") {
+        // The provider took it and the stamp did not land. Only a `sent` row
+        // in the log is the provider's answer; a message still queued, or one
+        // that dead-lettered, is not, and leaves sent_at null (#612 review).
         await supabaseAdmin
           .from("invoices")
           .update({ sent_at: new Date().toISOString() })
@@ -781,7 +782,8 @@ async function autoSendScheduledInvoices(
       console.error("invoice auto-send failed", inv.id, e);
     }
   }
-  return pausedSkipped > 0 ? `${sent} sent; ${pausedSkipped} skipped (comms hold)` : sent;
+  // Queued, not sent: sent_at follows the provider's acceptance (#612).
+  return pausedSkipped > 0 ? `${sent} queued; ${pausedSkipped} skipped (comms hold)` : sent;
 }
 
 /** `due_on` is a DATE column, so this compares calendar days, not instants. */

@@ -9,6 +9,7 @@ import { render } from "react-email";
 import { TEMPLATES } from "@/lib/email-templates/registry";
 import { appUrl } from "@/lib/app-origin";
 import { emailProviderConfigured } from "@/lib/email/provider.server";
+import { FINAL_EMAIL_FAILURES } from "@/lib/email/send-status";
 
 const SITE_NAME = "HoundStack";
 const SENDER_DOMAIN = "notify.houndstack.com";
@@ -111,6 +112,11 @@ interface EnqueueResult {
     | "already_sent"
     | "provider_off";
   messageId?: string;
+  /** With already_sent: what the earlier message became. Only `sent` means
+   *  the provider took it; `queued` is still on its way, and `undelivered`
+   *  dead-lettered, bounced or was suppressed. A caller that tells a person
+   *  "sent" reads this, not the reason (#612). */
+  prior?: "sent" | "queued" | "undelivered";
 }
 
 function hexToken(): string {
@@ -135,6 +141,15 @@ export async function messageIdForKey(templateName: string, key: string): Promis
     b.toString(16).padStart(2, "0"),
   ).join("");
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+}
+
+/** What a message's send-log rows add up to. The log is append-only, so the
+ *  `pending` row written on queueing is always there: `sent` wins, then a
+ *  final failure, and anything else is still in the queue. */
+export function priorOutcome(statuses: string[]): "sent" | "queued" | "undelivered" {
+  if (statuses.includes("sent")) return "sent";
+  if (statuses.some((s) => FINAL_EMAIL_FAILURES.has(s))) return "undelivered";
+  return "queued";
 }
 
 export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueResult> {
@@ -215,8 +230,14 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
       .from("email_send_log")
       .select("status")
       .eq("message_id", keyedMessageId);
-    if (((prior ?? []) as Array<{ status: string }>).some((r) => r.status !== "failed")) {
-      return { ok: false, reason: "already_sent", messageId: keyedMessageId };
+    const statuses = ((prior ?? []) as Array<{ status: string }>).map((r) => r.status);
+    if (statuses.some((s) => s !== "failed")) {
+      return {
+        ok: false,
+        reason: "already_sent",
+        messageId: keyedMessageId,
+        prior: priorOutcome(statuses),
+      };
     }
   }
 

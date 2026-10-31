@@ -98,8 +98,12 @@ describe("one invoice, one email", () => {
     expect(send).toMatch(/idempotencyKey: data\.reminder[\s\S]*?: invoiceSendKey\(inv\.id\)/);
     expect(send).toMatch(/oncePerKey: firstSend,/);
     expect(send).toMatch(/alreadySent: true/);
-    expect(send).toMatch(/if \(res\.reason === "already_sent"\)/);
-    expect(send).not.toMatch(/\.update\(\{ sent_at/);
+    expect(send).toMatch(/if \(res\.reason === "already_sent" && res\.messageId\)/);
+    // Only where the send log already shows the provider took it (#612).
+    expect(send.match(/\.update\(\{ sent_at/g)).toHaveLength(1);
+    expect(send.indexOf(".update({ sent_at")).toBeGreaterThan(
+      send.indexOf('if (res.prior === "sent")'),
+    );
   });
 });
 

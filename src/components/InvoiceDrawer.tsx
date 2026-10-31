@@ -274,12 +274,15 @@ export function InvoiceDrawer({
               {inv.status === "paid" && inv.paid_at && (
                 <span className="text-xs text-muted-foreground">Paid {formatDay(inv.paid_at)}</span>
               )}
-              {inGrace && <MetaChip>Scheduled to send {formatDay(inv.send_after)}</MetaChip>}
+              {inGrace && !!inv.send_after && inv.send_after > today && (
+                <MetaChip>Scheduled to send {formatDay(inv.send_after)}</MetaChip>
+              )}
               {inv.sent_at && <MetaChip>Sent {formatDay(inv.sent_at)}</MetaChip>}
               {/* sent_at is the provider's acceptance (#612), so an open
-                  invoice without it, and not held for a send date, has not
-                  reached anyone. Copy pay link is in the actions below. */}
-              {open && !inv.sent_at && !inv.send_after && (
+                  invoice without it has not reached anyone, unless it is
+                  still held for a send date that has not come. Copy pay link
+                  is in the actions below. */}
+              {open && !inv.sent_at && (!inv.send_after || inv.send_after <= today) && (
                 <MetaChip>Not sent: copy the pay link</MetaChip>
               )}
             </div>

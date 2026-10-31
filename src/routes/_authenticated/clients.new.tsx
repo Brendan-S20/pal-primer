@@ -739,7 +739,8 @@ function NewClientWizard({
       id,
       firstVisitOn,
       welcomeEmailed,
-      welcomeMessageId,
+      welcomeStatusHandle,
+      welcomeTurnedOff,
       welcomeLink,
       officeNoteSaved,
       leadLinked,
@@ -750,12 +751,13 @@ function NewClientWizard({
       if (firstCleanupInvoiced) parts.push("First cleanup invoiced.");
       toast.success(parts.join(" "), { duration: 8000 });
       // "Welcome email sent" only once the provider has taken it; with email
-      // off, "not sent" and the portal link to send by hand (#612).
-      if (primaryEmail) {
+      // off, "not sent" and the portal link to send by hand (#612). Quiet when
+      // the owner turned welcome emails off in Settings: nothing is missing.
+      if (primaryEmail && !welcomeTurnedOff) {
         void reportQueuedSend(
           {
             ok: welcomeEmailed,
-            messageId: welcomeMessageId,
+            statusHandle: welcomeStatusHandle,
             recipient: primaryEmail,
             link: welcomeLink,
           },
