@@ -241,7 +241,8 @@ export async function bookOneOffVisit(db: any, input: BookOneOffInput): Promise<
     .maybeSingle();
 
   // The generator declines a date that is blacked out, outside the org's work
-  // days, or inside a client hold — all of which are correct refusals, and
+  // days, inside a client hold, or before today (a plan does not backfill the
+  // days before it existed, 20261031120000) — all of which are correct refusals, and
   // all of which would otherwise look like the booking silently vanishing.
   if (!visit) {
     // Take the subscription back out. There is no transaction across these
@@ -256,7 +257,7 @@ export async function bookOneOffVisit(db: any, input: BookOneOffInput): Promise<
     // would be a service they never had.
     await db.from("subscriptions").delete().eq("id", sub.id);
     throw new Error(
-      `Nothing could be scheduled on ${input.scheduledOn}. It is a blackout day, outside your work days, or inside a hold on this client. The booking was not saved, so pick another date and try again.`,
+      `Nothing could be scheduled on ${input.scheduledOn}. It is in the past, a blackout day, outside your work days, or inside a hold on this client. The booking was not saved, so pick another date and try again.`,
     );
   }
 
