@@ -478,6 +478,7 @@ const es: Translations = {
     visitOf: "Visita {{n}} de {{total}}",
     dates: "Del {{from}} al {{to}}",
     checkInOut: "Llegada {{from}}, salida {{to}}",
+    stayNotes: "Notas de la estancia",
     species: {
       dog: "Perro",
       cat: "Gato",

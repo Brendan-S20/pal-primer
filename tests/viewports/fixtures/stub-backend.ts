@@ -911,8 +911,20 @@ export const BASE_STUBS: Record<string, Stub> = {
       business_email: "compliance@greatermetropolitandetroitdoodisposal.com",
       business_phone: "+13135550100",
       contacts: [
-        { first_name: "Devin", last_name: "Abernathy-Kowalczyk", title: "Owner", email: "devin@greatermetropolitandetroitdoodisposal.com", phone: "+13135550101" },
-        { first_name: "Samantha", last_name: "Okonkwo", title: "Office manager", email: "sam@greatermetropolitandetroitdoodisposal.com", phone: "+13135550102" },
+        {
+          first_name: "Devin",
+          last_name: "Abernathy-Kowalczyk",
+          title: "Owner",
+          email: "devin@greatermetropolitandetroitdoodisposal.com",
+          phone: "+13135550101",
+        },
+        {
+          first_name: "Samantha",
+          last_name: "Okonkwo",
+          title: "Office manager",
+          email: "sam@greatermetropolitandetroitdoodisposal.com",
+          phone: "+13135550102",
+        },
       ],
       ein_last4: "4567",
       phone_number: "+18445550123",
@@ -936,10 +948,8 @@ export const BASE_STUBS: Record<string, Stub> = {
     displayName: "Detroit Doo",
     termsUrl: "https://www.greatermetropolitandetroitdoodisposal.com/legal/terms-of-service",
     privacyUrl: "https://www.greatermetropolitandetroitdoodisposal.com/legal/privacy-policy",
-    lead:
-      "I agree to receive text messages from Detroit Doo at the number provided about my appointments, visit updates and billing. Consent is optional and is not a condition of purchase. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out, HELP for help.",
-    text:
-      "I agree to receive text messages from Detroit Doo at the number provided about my appointments, visit updates and billing. Consent is optional and is not a condition of purchase. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out, HELP for help. Detroit Doo Terms: https://www.greatermetropolitandetroitdoodisposal.com/legal/terms-of-service Privacy Policy: https://www.greatermetropolitandetroitdoodisposal.com/legal/privacy-policy",
+    lead: "I agree to receive text messages from Detroit Doo at the number provided about my appointments, visit updates and billing. Consent is optional and is not a condition of purchase. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out, HELP for help.",
+    text: "I agree to receive text messages from Detroit Doo at the number provided about my appointments, visit updates and billing. Consent is optional and is not a condition of purchase. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out, HELP for help. Detroit Doo Terms: https://www.greatermetropolitandetroitdoodisposal.com/legal/terms-of-service Privacy Policy: https://www.greatermetropolitandetroitdoodisposal.com/legal/privacy-policy",
   },
 
   // /settings/automation, /settings/invoicing and /settings/emails, which
@@ -1611,6 +1621,10 @@ export type StubReport = {
  */
 export type SweepRole = "owner" | "office_manager" | "dispatcher" | "tech";
 
+/** The stay notes the pet sitting fixture's visit carries (#618). */
+export const SIT_STAY_NOTES =
+  "Bartholomew: Apoquel 16 mg with breakfast, hide it in a little peanut butter. Miso: no treats, she is on a kidney diet.\nSpare key under the blue planter by the side gate if the lockbox jams. Text Dana before 9pm, not after.";
+
 /**
  * The customer's half of the product.
  *
@@ -1766,6 +1780,9 @@ export async function installStubBackend(
      *  rest of SHELL_PART_KEYS) reach the page inside getShellParts, which a
      *  route on the single function's name never sees. */
     overrides?: Record<string, Stub>;
+    /** With the pet_sitting line: reshape the day's sit visit (which night of
+     *  the stay, its status, its notes) without rebuilding the whole day. */
+    sitVisit?: (visit: Record<string, any>) => Record<string, any>;
   } = {},
 ): Promise<StubReport> {
   const report: StubReport = { unstubbed: [], blockedHosts: [], leadPosts: [] };
@@ -1914,6 +1931,9 @@ export async function installStubBackend(
             service_line: "pet_sitting",
             default_duration_min: 30,
           },
+          // The office's notes from booking (#618). Long, with a line break
+          // and a dose, because that is what a real one looks like.
+          stay_notes: SIT_STAY_NOTES,
           sit_facts: {
             visit_id: v.id,
             stay_id: "aaaaaaaa-0000-4000-8000-00000000e001",
@@ -1969,7 +1989,8 @@ export async function installStubBackend(
             ],
           },
         };
-        return { ...day, visits: [sit, ...visits.slice(1)] };
+        const shaped = options.sitVisit ? options.sitVisit(sit) : sit;
+        return { ...day, visits: [shaped, ...visits.slice(1)] };
       };
     }
   }

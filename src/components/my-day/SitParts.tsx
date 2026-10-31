@@ -24,6 +24,7 @@ import {
   Footprints,
   HeartPulse,
   LockKeyhole,
+  NotebookPen,
   PawPrint,
   PhoneCall,
   Pill,
@@ -71,6 +72,8 @@ type SitVisit = {
   sit_facts?: SitFacts | null;
   /** Whether stay_access_codes returned this stay (src/lib/sit-day.server.ts). */
   stay_codes_shown?: boolean;
+  /** The office's notes from booking the stay (src/lib/sit-day.server.ts). */
+  stay_notes?: string | null;
   care_entries?: CareEntry[] | null;
   properties?: { dogs?: unknown[] | null } | null;
 };
@@ -131,6 +134,35 @@ export function SitMeta({ visit, locale }: { visit: SitVisit; locale?: string })
           {overnight ? t("sit.checkInOut", { from, to }) : t("sit.dates", { from, to })}
         </span>
       </span>
+    </div>
+  );
+}
+
+/** The notes typed when the stay was booked (#618): meds, routines, what the
+ *  client asked for. On every night's card, for whoever is assigned that
+ *  night, in full: no clamp and no disclosure, so nothing has to be opened
+ *  to read it. */
+export function SitStayNotes({ visit }: { visit: SitVisit }) {
+  const { t } = useTranslation();
+  const notes = visit.stay_notes?.trim();
+  if (!notes) return null;
+  return (
+    <div
+      data-stay-notes={visit.sit_facts?.stay_id ?? ""}
+      className="mt-2.5 flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-sm"
+    >
+      <NotebookPen
+        className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400"
+        aria-hidden="true"
+      />
+      <div className="min-w-0 flex-1">
+        <div className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+          {t("sit.stayNotes")}
+        </div>
+        <p className="mt-0.5 min-w-0 whitespace-pre-line text-foreground [overflow-wrap:anywhere]">
+          <bdi>{notes}</bdi>
+        </p>
+      </div>
     </div>
   );
 }
