@@ -237,19 +237,30 @@ touch "$marker"
 # records the same message with this app before scenes. No app code ran, so
 # it says nothing about the app.
 #
-# Exit 0 only when that is provably what happened: the log has the message
-# AND no HoundStack process started from the failed launch request to the
-# test's tear-down. A process that started and then hung is the app, and is
+# The same fault can surface as a different message. Measured on the CI Mac
+# (7badccf, iPad Air 13-inch (M4), iOS 26.5, fourth simulator of the run):
+# the second warm-up launch was requested at 19:17:05; its process was
+# sampled at 19:19:08 still inside dyld_sim, in __mmap of the shared cache,
+# with a 336K footprint; XCUITest gave up at 19:19:43.6 with "Error getting
+# main window kAXErrorServerNotFound"; the process logged its first line at
+# 19:19:43.850, then made its web view and painted sign-in. The first
+# warm-up launch on that simulator had painted in 7 s. No app code ran
+# while the screen waited, so it says nothing about the app either.
+#
+# Exit 0 only when that is provably what happened: the log has one of those
+# messages AND no HoundStack process started from the failed launch request
+# to the test's tear-down. A process that started and then hung is the app, and is
 # never retried.
 never_started() {  # $1 xcodebuild log, $2 udid
-  grep -q "Timed out attempting to launch app" "$1" || return 1
+  grep -qE "Timed out attempting to launch app|kAXErrorServerNotFound" "$1" || return 1
   xcrun simctl spawn "$2" log show --last 30m --style compact \
     --predicate 'process == "HoundStack"' > "$1.processes.txt" 2>/dev/null < /dev/null || return 1
   python3 -I - "$1" "$1.processes.txt" <<'PY'
 import re, sys
 from datetime import datetime, timedelta
 lines = open(sys.argv[1], errors="replace").read().splitlines()
-err = next(i for i, l in enumerate(lines) if "Timed out attempting to launch app" in l)
+err = next(i for i, l in enumerate(lines)
+           if "Timed out attempting to launch app" in l or "kAXErrorServerNotFound" in l)
 start = launch = None
 for l in reversed(lines[:err]):
     m = re.search(r"t =\s+([\d.]+)s\s+Launch consulting\.thenorth\.houndstack", l)

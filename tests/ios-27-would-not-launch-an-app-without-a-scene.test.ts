@@ -133,7 +133,7 @@ describe("CI launches the app", () => {
     // A retry is only for a launch the simulator never started: the
     // message AND no HoundStack process from request to tear-down.
     const check = script.slice(script.indexOf("never_started() {"));
-    expect(check).toMatch(/grep -q "Timed out attempting to launch app"/);
+    expect(check).toMatch(/grep -qE "Timed out attempting to launch app\|kAXErrorServerNotFound"/);
     expect(check).toMatch(/sys\.exit\(0 if not started else 1\)/);
     expect(read("ios/UITests/UITests.xcodeproj/project.pbxproj")).toMatch(
       /ColdLaunch\.swift in Sources \*\/,/,
