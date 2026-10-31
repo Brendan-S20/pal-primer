@@ -376,7 +376,13 @@ describe.skipIf(!dbEnabled)("stay invoices in the database", () => {
     const crossPet = await org.admin.rpc("portal_request_stay", {
       ...args,
       _request_key: randomUUID(),
-      _input: { ...args._input, petIds: another.pets },
+      _input: {
+        ...args._input,
+        petIds: another.pets,
+        // Care is checked against the stay's pets first, so it follows the
+        // swap and the cross-client pet check is what refuses the request.
+        care: another.pets.map((petId, i) => ({ ...args._input.care[i], petId })),
+      },
     });
     expect(crossPet.error?.message).toMatch(/Every pet/);
     expect((await other.owner.client.from("stays").select("id").eq("id", stayId)).data).toEqual([]);
