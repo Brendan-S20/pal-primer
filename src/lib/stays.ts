@@ -12,6 +12,7 @@
 import { arrivalWindowsProblem, type WalkWindow } from "@/lib/subscription-form";
 import { formatServiceMoney, servicePriceCents, type ServiceDraft } from "@/lib/services";
 import { clockLabel, normalizeClock, windowLabel } from "@/lib/walk-windows";
+import { readMeds, type PetMed } from "@/lib/pets";
 
 export type StayKind = "drop_in" | "overnight";
 export type StayStatus = "requested" | "confirmed" | "canceled" | "completed";
@@ -351,6 +352,48 @@ export function stayContactGapsSentence(gaps: readonly string[] | null | undefin
   return `Missing: ${known.join(", ")}. The sitter needs ${
     known.length === 1 ? "this" : "these"
   } if a pet is sick.`;
+}
+
+// ── Care changes sent with a portal request (#611) ───────────────────────
+//
+// portal_request_stay stages them on stays.requested_care, holding only the
+// fields that differed from the pet's care. confirm_stay applies them
+// (migration 20261031130000). Until then the sitter's card is unchanged.
+
+export type RequestedCareChange = {
+  petId: string;
+  /** Present only when the client changed it. Null means they cleared it. */
+  feeding?: string | null;
+  meds?: PetMed[];
+  otherCare?: string | null;
+};
+
+export function readRequestedCare(raw: unknown): RequestedCareChange[] {
+  if (!Array.isArray(raw)) return [];
+  const out: RequestedCareChange[] = [];
+  for (const e of raw) {
+    if (!e || typeof e !== "object") continue;
+    const r = e as Record<string, unknown>;
+    if (typeof r.pet_id !== "string") continue;
+    const change: RequestedCareChange = { petId: r.pet_id as string };
+    if ("feeding" in r) change.feeding = typeof r.feeding === "string" ? r.feeding : null;
+    if ("meds" in r) change.meds = readMeds(r.meds);
+    if ("other_care" in r)
+      change.otherCare = typeof r.other_care === "string" ? r.other_care : null;
+    out.push(change);
+  }
+  return out;
+}
+
+/** "Insulin, 2 units, at 8 AM, 8 PM", for the office. */
+export function medLine(m: PetMed): string {
+  return [
+    m.name,
+    m.dose,
+    m.times.length > 0 ? `at ${m.times.map((x) => clockLabel(x)).join(", ")}` : "as needed",
+  ]
+    .filter(Boolean)
+    .join(", ");
 }
 
 // ── The deposit when a stay is canceled ──────────────────────────────────

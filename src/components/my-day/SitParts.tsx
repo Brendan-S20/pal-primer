@@ -30,6 +30,7 @@ import {
   Sparkles,
   Stethoscope,
   Undo2,
+  UserRoundPen,
   UtensilsCrossed,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -39,7 +40,7 @@ import { deleteCareEntry, recordCareEntry } from "@/lib/care-log.functions";
 import { REPORT_NOTE_MAX } from "@/lib/walk-report";
 import { stayAccessOpen, stayAccessWindow, stayDays } from "@/lib/stays";
 import { useOrgToday } from "@/hooks/useOrgToday";
-import { orgLocalTime } from "@/lib/org-day";
+import { orgLocalDay, orgLocalTime } from "@/lib/org-day";
 import { haptic } from "@/lib/haptics";
 import { newClientKey } from "@/lib/stop-facts";
 import { deleteAction, enqueueAction, listPending, type PendingAction } from "@/lib/offline/queue";
@@ -183,7 +184,7 @@ function clockLabel(time: string, locale: string | undefined): string {
 
 /** Each pet, what kind, and how it is looked after: feeding, every med with
  *  its dose and times, and anything else the office wrote down. */
-export function SitPetsCare({ pets, locale }: { pets: SitPet[]; locale?: string }) {
+export function SitPetsCare({ pets, tz, locale }: { pets: SitPet[]; tz: string; locale?: string }) {
   const { t } = useTranslation();
   if (pets.length === 0) {
     return (
@@ -204,6 +205,19 @@ export function SitPetsCare({ pets, locale }: { pets: SitPet[]; locale?: string 
             </span>
             <span className="text-xs text-muted-foreground">{speciesText(t, pet)}</span>
           </div>
+          {pet.clientUpdatedAt && (
+            <div
+              data-care-updated-by-client={pet.id}
+              className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground"
+            >
+              <UserRoundPen className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span className="min-w-0">
+                {t("sit.updatedByClient", {
+                  date: dayLabel(orgLocalDay(pet.clientUpdatedAt, tz), locale),
+                })}
+              </span>
+            </div>
+          )}
           {pet.care?.feeding && (
             <CareFact icon={UtensilsCrossed} label={t("sit.feeding")}>
               <bdi className="whitespace-pre-line">{pet.care.feeding}</bdi>

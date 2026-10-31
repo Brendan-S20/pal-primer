@@ -557,6 +557,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     codesSitterOnly: "لا يرى الرموز والمفاتيح إلا جليس هذه الإقامة.",
     vet: "الطبيب البيطري",
     noVet: "لا يوجد طبيب بيطري مسجل. اسأل المكتب.",
+    updatedByClient: "حدّثه العميل في {{date}}",
     emergencyContact: "جهة الاتصال في الطوارئ",
     noEmergencyContact: "لا توجد جهة اتصال للطوارئ مسجلة. اسأل المكتب.",
     mayApproveVet: "يمكنه الموافقة على العلاج البيطري",

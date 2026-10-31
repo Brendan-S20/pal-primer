@@ -1,7 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { Database } from "@/integrations/supabase/types";
 import { requirePermission } from "@/lib/authz.server";
+import { readRequestedCare, type RequestedCareChange } from "@/lib/stays";
 
 export const confirmStay = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -41,6 +44,35 @@ async function contactGaps(supabase: any, stayId: string): Promise<string[]> {
   return (data as string[] | null) ?? [];
 }
 
+/** Care changes the client sent with a still-requested stay (#611), with
+ *  each pet's name. Confirming applies them to the sitter's card, so the
+ *  office sees them first. RLS scopes the read to the caller's business. */
+async function requestedCareChanges(
+  supabase: SupabaseClient<Database>,
+  stayId: string,
+): Promise<Array<RequestedCareChange & { petName: string }>> {
+  const { data: stay, error } = await supabase
+    .from("stays")
+    .select("status, pet_ids, requested_care")
+    .eq("id", stayId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!stay || stay.status !== "requested") return [];
+  const onStay = new Set<string>(stay.pet_ids ?? []);
+  const changes = readRequestedCare(stay.requested_care).filter((c) => onStay.has(c.petId));
+  if (changes.length === 0) return [];
+  const { data: pets, error: petsError } = await supabase
+    .from("dogs")
+    .select("id, name")
+    .in(
+      "id",
+      changes.map((c) => c.petId),
+    );
+  if (petsError) throw new Error(petsError.message);
+  const names = new Map<string, string>((pets ?? []).map((p) => [p.id, p.name ?? ""]));
+  return changes.map((c) => ({ ...c, petName: names.get(c.petId) || "Pet" }));
+}
+
 export const getStayContactGaps = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ stayId: z.string().uuid() }).parse(d))
@@ -50,6 +82,7 @@ export const getStayContactGaps = createServerFn({ method: "GET" })
     return {
       gaps: await contactGaps(context.supabase, data.stayId),
       clash: await overnightClashWarning(context.supabase, { stayId: data.stayId }),
+      careChanges: await requestedCareChanges(context.supabase, data.stayId),
     };
   });
 

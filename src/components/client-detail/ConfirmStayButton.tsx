@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { confirmStay, getStayContactGaps } from "@/lib/stay-booking.functions";
 import { parseDollarsToCents } from "@/lib/services";
-import { stayContactGapsSentence } from "@/lib/stays";
+import { medLine, stayContactGapsSentence } from "@/lib/stays";
 
 export function ConfirmStayButton({ stayId, clientId }: { stayId: string; clientId: string }) {
   const [deposit, setDeposit] = useState("");
@@ -66,6 +66,31 @@ export function ConfirmStayButton({ stayId, clientId }: { stayId: string; client
         >
           {gapsQ.data.clash}
         </p>
+      )}
+      {(gapsQ.data?.careChanges?.length ?? 0) > 0 && (
+        <div
+          data-stay-care-changes={stayId}
+          className="basis-full rounded-md border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs"
+        >
+          <p className="font-medium">
+            The client sent care changes. Confirming puts them on the sitter's card.
+          </p>
+          <ul className="mt-1 space-y-1">
+            {gapsQ.data!.careChanges.map((c) => (
+              <li key={c.petId} className="break-words">
+                <span className="font-medium">{c.petName}:</span>
+                {"feeding" in c && <span> Feeding: {c.feeding || "(cleared)"}.</span>}
+                {c.meds && (
+                  <span>
+                    {" "}
+                    Medication: {c.meds.length > 0 ? c.meds.map(medLine).join("; ") : "(none)"}.
+                  </span>
+                )}
+                {"otherCare" in c && <span> Other care: {c.otherCare || "(cleared)"}.</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       {missing && (
         <p className="basis-full rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">

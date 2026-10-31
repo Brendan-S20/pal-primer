@@ -521,6 +521,7 @@ const es: Translations = {
     codesSitterOnly: "Solo el cuidador de la estancia ve los códigos y llaves.",
     vet: "Veterinario",
     noVet: "No hay veterinario registrado. Pregunta a la oficina.",
+    updatedByClient: "Actualizado por el cliente el {{date}}",
     emergencyContact: "Contacto de emergencia",
     noEmergencyContact: "No hay contacto de emergencia registrado. Pregunta a la oficina.",
     mayApproveVet: "Puede aprobar atención veterinaria",
