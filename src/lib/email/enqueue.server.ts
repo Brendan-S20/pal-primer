@@ -8,6 +8,7 @@ import * as React from "react";
 import { render } from "react-email";
 import { TEMPLATES } from "@/lib/email-templates/registry";
 import { appUrl } from "@/lib/app-origin";
+import { emailProviderConfigured } from "@/lib/email/provider.server";
 
 const SITE_NAME = "HoundStack";
 const SENDER_DOMAIN = "notify.houndstack.com";
@@ -90,6 +91,10 @@ interface EnqueueParams {
    *  night does not draw that PDF every night for nothing. A throw from it is
    *  caught and the email goes without the file. */
   attachments?: () => Promise<Array<{ filename: string; contentBase64: string }>>;
+  /** Refuse to queue when there is no mail provider to hand the message to
+   *  (RESEND_API_KEY unset). For a send whose caller tells a person "sent":
+   *  a message queued with no provider sits there and the label lies (#612). */
+  requireProvider?: boolean;
 }
 
 interface EnqueueResult {
@@ -103,7 +108,8 @@ interface EnqueueResult {
     | "unknown_template"
     | "render_failed"
     | "enqueue_failed"
-    | "already_sent";
+    | "already_sent"
+    | "provider_off";
   messageId?: string;
 }
 
@@ -135,6 +141,9 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const entry = TEMPLATES[params.templateName];
   if (!entry) return { ok: false, reason: "unknown_template" };
+  if (params.requireProvider && !emailProviderConfigured()) {
+    return { ok: false, reason: "provider_off" };
+  }
 
   // Org toggle
   const { data: org } = await supabaseAdmin

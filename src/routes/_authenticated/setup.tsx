@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
+import { toastNotSent } from "@/lib/send-report";
 import { CheckCircle2, Circle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -727,8 +728,12 @@ function StaffPanel({ onSaved }: { onSaved: () => void }) {
 
   const inviteMut = useMutation({
     mutationFn: () => inviteFn({ data: { email: email.trim(), role: "tech" } }),
-    onSuccess: () => {
-      toast.success("Invite sent");
+    // The Team page's honest wording (#568): "sent" only when the provider
+    // accepted it, otherwise "not sent" and the link to send by hand (#612).
+    onSuccess: (r) => {
+      const to = email.trim();
+      if (r.emailSent) toast.success(`Invite sent to ${to}`);
+      else toastNotSent("Invite", to, r.link);
       setEmail("");
       qc.invalidateQueries({ queryKey: ["org-invites"] });
       onSaved();

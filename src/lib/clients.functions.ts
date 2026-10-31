@@ -755,10 +755,18 @@ export const getClientPortalChannels = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!client) throw new Error("Client not found");
     const token = (client as any).portal_token as string | null;
-    if (!token) return { channels: [] as Array<"sms" | "email"> };
+    if (!token) return { channels: [] as Array<"sms" | "email">, emailOff: false };
     const { portalContactChannels } = await import("@/lib/portal-auth.server");
+    const { emailProviderConfigured } = await import("@/lib/email/provider.server");
     const contact = await portalContactChannels(token);
-    return { channels: (contact?.channels ?? []).map((c) => c.channel) };
+    // The portal emails a code only through the provider, and refuses to with
+    // none. So "emailed to" is not said when there is no provider: the panel
+    // says "not emailed" and points at the link instead (#612).
+    const emailOff = !emailProviderConfigured();
+    const channels = (contact?.channels ?? [])
+      .map((c) => c.channel)
+      .filter((c) => !(c === "email" && emailOff));
+    return { channels, emailOff };
   });
 
 // ---------- Internal quote (for authenticated onboarding wizard) ----------
@@ -1232,23 +1240,31 @@ export const onboardClient = createServerFn({ method: "POST" })
     }
 
     // welcome email (best-effort). Reported back, so the owner is told it went
-    // rather than finding out from the customer.
+    // rather than finding out from the customer. "Went" means the provider
+    // took it (#612): queued is not sent, so the page polls welcomeMessageId,
+    // and with no provider nothing is queued and the page says "not sent" and
+    // hands over the portal link instead.
     let welcomeEmailed = false;
+    let welcomeMessageId: string | null = null;
+    let welcomeLink: string | null = null;
     if (data.primaryEmail) {
       try {
         const { buildPortalLink } = await import("@/lib/portal-links.server");
         const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
+        welcomeLink = (await buildPortalLink(orgId, cRow.portal_token as string | null)) ?? null;
         const sent = await enqueueAppEmail({
           organizationId: orgId,
           clientId,
           templateName: "welcome",
           notifyKey: "notify_email_welcome",
           idempotencyKey: `welcome-${clientId}`,
+          requireProvider: true,
           templateData: {
-            portalUrl: await buildPortalLink(orgId, cRow.portal_token as string | null),
+            portalUrl: welcomeLink ?? undefined,
           },
         });
         welcomeEmailed = sent.ok;
+        welcomeMessageId = sent.ok ? (sent.messageId ?? null) : null;
       } catch (e) {
         console.error("welcome email failed", e);
       }
@@ -1258,6 +1274,8 @@ export const onboardClient = createServerFn({ method: "POST" })
       id: clientId,
       firstVisitOn,
       welcomeEmailed,
+      welcomeMessageId,
+      welcomeLink,
       officeNoteSaved,
       leadLinked,
       firstCleanupInvoiced,

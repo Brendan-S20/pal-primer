@@ -37,6 +37,8 @@ import { BoundarySketch, formatArea, type PolygonGeoJSON } from "@/components/Bo
 import { AddressAutocomplete, type ResolvedAddress } from "@/components/AddressAutocomplete";
 import { Check, ChevronRight, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
+import { getEmailSendStatus } from "@/lib/notifications.functions";
+import { reportQueuedSend } from "@/lib/send-report";
 import { useOrgToday } from "@/hooks/useOrgToday";
 import { formatDay } from "@/lib/format";
 import { titleHead } from "@/lib/page-title";
@@ -385,6 +387,7 @@ function NewClientWizard({
   const navigate = useNavigate();
   const qc = useQueryClient();
   const onboardFn = useServerFn(onboardClient);
+  const emailStatusFn = useServerFn(getEmailSendStatus);
   const convertedFn = useServerFn(markQuoteConverted);
   const quoteFn = useServerFn(getInternalQuote);
   const geocodeFn = useServerFn(lookupAddressPoint);
@@ -736,6 +739,8 @@ function NewClientWizard({
       id,
       firstVisitOn,
       welcomeEmailed,
+      welcomeMessageId,
+      welcomeLink,
       officeNoteSaved,
       leadLinked,
       firstCleanupInvoiced,
@@ -743,8 +748,20 @@ function NewClientWizard({
       const parts = ["Client created."];
       if (firstVisitOn) parts.push(`First visit ${formatDay(firstVisitOn)}.`);
       if (firstCleanupInvoiced) parts.push("First cleanup invoiced.");
-      if (welcomeEmailed && primaryEmail) parts.push(`Welcome email sent to ${primaryEmail}.`);
       toast.success(parts.join(" "), { duration: 8000 });
+      // "Welcome email sent" only once the provider has taken it; with email
+      // off, "not sent" and the portal link to send by hand (#612).
+      if (primaryEmail) {
+        void reportQueuedSend(
+          {
+            ok: welcomeEmailed,
+            messageId: welcomeMessageId,
+            recipient: primaryEmail,
+            link: welcomeLink,
+          },
+          { what: "Welcome email", poll: emailStatusFn },
+        );
+      }
       if (!officeNoteSaved)
         toast.error("The office note did not save. Add it from the client's Notes.");
       if (firstCleanupInvoiced === false)

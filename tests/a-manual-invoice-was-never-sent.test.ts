@@ -46,9 +46,12 @@ describe("the dialog sends what it creates", () => {
     // saying the invoice failed, and pressing the button again would create a
     // SECOND invoice. The email is caught and reported alongside success.
     const mut = dialog.slice(dialog.indexOf("mutationFn:"), dialog.indexOf("onSuccess:"));
-    expect(mut).toMatch(/try \{\s*await emailFn/);
+    expect(mut).toMatch(/try \{\s*const sent = await emailFn/);
     expect(mut).toMatch(/emailed: \{ ok: false/);
-    expect(dialog).toMatch(/Invoice created, but it was not emailed/);
+    // Reported as the provider answers: "not sent, copy link" when it could
+    // not go, "sent" only once it went (#612).
+    expect(dialog).toMatch(/toast\.success\(`Invoice created: /);
+    expect(dialog).toMatch(/reportQueuedSend\(r\.emailed,/);
   });
 
   it("defaults to sending, and cannot claim to send to a client with no address", () => {

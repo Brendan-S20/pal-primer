@@ -85,9 +85,14 @@ function PortalStatusPanel({ client, clientId }: { client: any; clientId: string
   // Describe only the channels the portal will really use. Falls back to the
   // contact-on-file wording until the deliverability check resolves.
   const channels = channelData?.channels;
+  // Email on file and no provider to send through: the code is not emailed,
+  // and the panel says so rather than "emailed to" (#612).
+  const emailNotSent = !!channelData?.emailOff && !!client.primary_email;
   const verifyDest = channels
     ? channels.length === 0
-      ? "office-read code (no deliverable phone or email on file)"
+      ? emailNotSent
+        ? "not emailed: email is off. Copy the link and send it yourself, or read them a code"
+        : "office-read code (no deliverable phone or email on file)"
       : [
           channels.includes("sms") && client.primary_phone
             ? `texted to ${formatPhone(client.primary_phone)}`
@@ -97,9 +102,10 @@ function PortalStatusPanel({ client, clientId }: { client: any; clientId: string
             : null,
         ]
           .filter(Boolean)
-          .join(" or ")
-    : client.primary_email
-      ? `emailed to ${client.primary_email}`
+          .join(" or ") + (emailNotSent ? " (not emailed: email is off)" : "")
+    : // Not "emailed to" before the check answers: it may be off.
+      client.primary_email
+      ? `to ${client.primary_email}`
       : "office-read code";
 
   return (

@@ -14,7 +14,8 @@ import { Button } from "@/components/ui/button";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { usePermissions } from "@/hooks/useMyRole";
 import { getVisitInvoicing, invoiceVisit } from "@/lib/invoices.functions";
-import { sendInvoiceEmail } from "@/lib/notifications.functions";
+import { getEmailSendStatus, sendInvoiceEmail } from "@/lib/notifications.functions";
+import { reportQueuedSend } from "@/lib/send-report";
 import { formatLineItemDescription } from "@/lib/invoice-labels";
 import { formatCents } from "@/lib/digest-alerts";
 
@@ -25,6 +26,7 @@ export function InvoiceThisVisit({ visitId }: { visitId: string }) {
   const getFn = useServerFn(getVisitInvoicing);
   const invoiceFn = useServerFn(invoiceVisit);
   const emailFn = useServerFn(sendInvoiceEmail);
+  const statusFn = useServerFn(getEmailSendStatus);
   const { confirm, dialog } = useConfirmDialog();
 
   const q = useQuery({
@@ -41,7 +43,12 @@ export function InvoiceThisVisit({ visitId }: { visitId: string }) {
           label: "Email it",
           onClick: () => {
             emailFn({ data: { invoiceId: r.invoiceId } }).then(
-              () => toast.success("Invoice emailed"),
+              (sent) =>
+                reportQueuedSend(sent, {
+                  what: "Invoice",
+                  poll: statusFn,
+                  onSent: () => qc.invalidateQueries({ queryKey: ["invoices"] }),
+                }),
               (e: Error) => toast.error(e.message),
             );
           },

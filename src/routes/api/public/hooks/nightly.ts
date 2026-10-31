@@ -5,6 +5,7 @@ import { invoiceEmailTaxData, taxShareCents } from "@/lib/sales-tax";
 import { fetchAllPages } from "@/lib/supabase-paging.server";
 import { invoiceDueCents } from "@/lib/ar";
 import { invoiceEmailDetails } from "@/lib/invoice-email-details";
+import { invoiceSendKey } from "@/lib/email/invoice-send-key";
 import type { EndCustomerSmsSender } from "@/lib/twilio-credentials.server";
 
 // POST /api/public/hooks/nightly?s=<CRON_SECRET>
@@ -661,8 +662,11 @@ async function generateRoyaltiesForParent(
 // Selects open invoices with sent_at null and send_after <= today, enqueues
 // the same "invoice-sent" email the manual "Send now" action uses (identical
 // idempotency key, so the email pipeline dedupes a manual send racing this
-// loop), then stamps sent_at so the invoice is never emailed twice. Transient
-// failures (render/enqueue) leave sent_at null and retry the next night;
+// loop). sent_at is stamped by the queue processor when the provider accepts
+// the email (#612), and the message id is derived from the invoice, so a run
+// that sees an invoice still queued does not email it twice. No provider, and
+// transient failures (render/enqueue), leave sent_at null and retry the next
+// night;
 // permanent skips (opt-out, suppression, no recipient, org toggle off) also
 // retry, but enqueueAppEmail short-circuits those cheaply without sending.
 async function autoSendScheduledInvoices(
@@ -737,7 +741,14 @@ async function autoSendScheduledInvoices(
         clientId: inv.client_id,
         templateName: "invoice-sent",
         notifyKey: "notify_email_invoice_sent",
-        idempotencyKey: `invoice-sent-${inv.id}`,
+        idempotencyKey: invoiceSendKey(inv.id),
+        // One email per invoice however many nights this runs before the
+        // provider takes it: sent_at is stamped on acceptance now (#612), so
+        // tomorrow's run sees an invoice queued tonight as still unsent.
+        oncePerKey: true,
+        // With no provider nothing is queued and sent_at stays null, so the
+        // invoice goes the first night there is one.
+        requireProvider: true,
         templateData: {
           amountCents: inv.total_cents,
           invoiceUrl,
@@ -750,12 +761,17 @@ async function autoSendScheduledInvoices(
         attachments: pdfAttachment,
       });
       if (res.ok) {
+        // Queued. sent_at is the queue processor's to stamp, when the
+        // provider accepts it (#612).
+        sent++;
+      } else if (res.reason === "already_sent") {
+        // The provider took it and the stamp did not land. The send log is
+        // the provider's answer, so stamp from it rather than ask every night.
         await supabaseAdmin
           .from("invoices")
           .update({ sent_at: new Date().toISOString() })
           .eq("id", inv.id)
           .is("sent_at", null);
-        sent++;
       } else if (res.reason === "comms_paused") {
         // Imported comms hold: leave sent_at null — the invoice auto-sends
         // once the hold is lifted (manual contact or office toggle).
