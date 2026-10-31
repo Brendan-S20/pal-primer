@@ -138,9 +138,14 @@ describe("the overdue chip and the dashboard use one calendar", () => {
 describe("the clients list counts the dogs the client page counts", () => {
   it("excludes inactive dogs and archived properties", () => {
     const src = codeOnly(read("src/lib/clients.functions.ts"));
-    expect(src).toMatch(/\.select\("id, client_id, dogs\(id, active\)"\)/);
+    expect(src).toMatch(
+      /\.select\("id, client_id, street, created_at, dogs\(id, active, species\)"\)/,
+    );
     expect(src).toMatch(/\.is\("archived_at", null\)/);
-    expect(src).toMatch(/d\?\.active !== false/);
+    // Counted through activeDogCount since #429, the helper PropertiesTab
+    // counts with, which spells the test `active !== false`.
+    expect(src).toMatch(/activeDogCount\(/);
+    expect(codeOnly(read("src/lib/pets.ts"))).toMatch(/p\.active !== false/);
   });
 
   it("uses the same test as the detail page, not an equivalent-looking one", () => {

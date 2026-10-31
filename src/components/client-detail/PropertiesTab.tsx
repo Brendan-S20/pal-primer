@@ -903,7 +903,10 @@ export function DogsSection({
         <div className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300">
           Services bill for {mismatched.join(" and ")} dog{mismatched.some((n) => n !== 1) ? "s" : ""},
           but this property has {dogCount} active dog record
-          {dogCount === 1 ? "" : "s"}. Add the dogs below or fix the service dog count.
+          {dogCount === 1 ? "" : "s"}.{" "}
+          {dogCount === 0
+            ? "Until the dogs are added below, every screen counts them from the service."
+            : "Add the dogs below or fix the service dog count."}
         </div>
       )}
       <div className="flex items-center justify-between">

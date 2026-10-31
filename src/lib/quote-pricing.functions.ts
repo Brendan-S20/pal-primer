@@ -6,7 +6,13 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
-import type { QuotePricingZone, QuoteStandardPricing, QuoteSubject } from "@/lib/quote-pricing";
+import { propertyDogTally } from "@/lib/pets";
+import type {
+  QuoteCurrentPlan,
+  QuotePricingZone,
+  QuoteStandardPricing,
+  QuoteSubject,
+} from "@/lib/quote-pricing";
 
 const ZONE_COLUMNS =
   "id, name, priority, postal_prefix, zip_codes, account_type, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, base_price_cents, per_dog_addl_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, area_max_charge_cents, commercial_base_cents, commercial_per_unit_cents, commercial_per_acre_cents, commercial_per_station_cents, enabled";
@@ -49,6 +55,7 @@ export const getQuotePricing = createServerFn({ method: "GET" })
 
     let subject: QuoteSubject | null = null;
     let subjectLabel: string | null = null;
+    let currentPlan: QuoteCurrentPlan | null = null;
 
     if (data.clientId) {
       const { data: client, error } = await (supabase as any)
@@ -73,8 +80,7 @@ export const getQuotePricing = createServerFn({ method: "GET" })
           .limit(1);
         if (pErr) throw new Error(pErr.message);
         const p = (props ?? [])[0] ?? null;
-        let dogCount: number | null = null;
-        let frequency: string | null = null;
+        let dogRecords = 0;
         if (p) {
           const { count } = await (supabase as any)
             .from("dogs")
@@ -82,21 +88,37 @@ export const getQuotePricing = createServerFn({ method: "GET" })
             .eq("property_id", p.id)
             .eq("active", true)
             .eq("species", "dog");
-          dogCount = count ?? null;
+          dogRecords = count ?? 0;
         }
         // A client already on a plan is most often quoted for a change to it,
         // so the plan's frequency is the better guess than weekly.
         const { data: subs } = await (supabase as any)
           .from("subscriptions")
-          .select("frequency, dog_count")
+          .select("property_id, account_type, frequency, dog_count, price_cents, stay_id")
           .eq("client_id", client.id)
           .eq("organization_id", orgId)
           .eq("status", "active")
-          .order("created_at", { ascending: true })
-          .limit(1);
-        const sub = (subs ?? [])[0] ?? null;
-        if (sub?.frequency) frequency = sub.frequency;
-        if (!dogCount && sub?.dog_count) dogCount = sub.dog_count;
+          .order("created_at", { ascending: true });
+        const active = ((subs ?? []) as any[]).filter((x) => !x.stay_id);
+        // The plan on the property being quoted, else the client's oldest.
+        const sub = (p && active.find((x) => x.property_id === p.id)) ?? active[0] ?? null;
+        const frequency: string | null = sub?.frequency ?? null;
+        // The same count as the Clients list, the client record and My Day
+        // (propertyDogTally, #429): the dog records, else what the plan bills.
+        const dogCount =
+          propertyDogTally(
+            dogRecords,
+            active
+              .filter((x) => x.account_type === "residential" && (!p || x.property_id === p.id))
+              .map((x) => x.dog_count),
+          ).count || null;
+        if (sub && typeof sub.price_cents === "number") {
+          currentPlan = {
+            priceCents: sub.price_cents,
+            frequency: sub.frequency ?? null,
+            dogCount: sub.account_type === "residential" ? (sub.dog_count ?? null) : null,
+          };
+        }
 
         const acct = (p?.account_type ??
           client.account_type ??
@@ -142,5 +164,6 @@ export const getQuotePricing = createServerFn({ method: "GET" })
       standard,
       subject,
       subjectLabel,
+      currentPlan,
     };
   });
