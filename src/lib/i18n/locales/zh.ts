@@ -510,6 +510,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     codesSitterOnly: "只有这次寄养的看护人能看到代码和钥匙。",
     vet: "兽医",
     noVet: "没有登记兽医。请询问办公室。",
+    updatedByClient: "客户于 {{date}} 更新",
     emergencyContact: "紧急联系人",
     noEmergencyContact: "没有登记紧急联系人。请询问办公室。",
     mayApproveVet: "可以批准兽医治疗",

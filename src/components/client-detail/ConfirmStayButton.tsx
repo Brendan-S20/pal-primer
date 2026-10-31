@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { confirmStay, getStayContactGaps } from "@/lib/stay-booking.functions";
 import { parseDollarsToCents } from "@/lib/services";
-import { stayContactGapsSentence } from "@/lib/stays";
+import { medLine, stayContactGapsSentence } from "@/lib/stays";
 
 export function ConfirmStayButton({ stayId, clientId }: { stayId: string; clientId: string }) {
   const [deposit, setDeposit] = useState("");
@@ -20,6 +20,9 @@ export function ConfirmStayButton({ stayId, clientId }: { stayId: string; client
     queryFn: () => gapsFn({ data: { stayId } }),
   });
   // Warns, never blocks: the stay can be confirmed without them.
+  // But the same read carries the client's care changes (#611), which
+  // confirming applies, so Confirm waits for it and stays off if it fails.
+  const unseen = !gapsQ.isSuccess;
   const missing = stayContactGapsSentence(gapsQ.data?.gaps);
   const qc = useQueryClient();
   const mut = useMutation({
@@ -55,10 +58,25 @@ export function ConfirmStayButton({ stayId, clientId }: { stayId: string; client
           disabled={mut.isPending}
         />
       </div>
-      <Button size="sm" disabled={mut.isPending || invalid} onClick={() => mut.mutate()}>
-        {mut.isPending ? "Confirming…" : "Confirm stay"}
+      <Button size="sm" disabled={mut.isPending || invalid || unseen} onClick={() => mut.mutate()}>
+        {mut.isPending ? "Confirming…" : gapsQ.isPending ? "Checking…" : "Confirm stay"}
       </Button>
       {invalid && <p className="text-xs text-destructive">Enter a deposit in dollars and cents.</p>}
+      {gapsQ.isError && (
+        <div
+          role="alert"
+          data-stay-check-failed={stayId}
+          className="flex basis-full flex-wrap items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs"
+        >
+          <span className="min-w-0">
+            Could not load this request's details, including any care changes from the client. Try
+            again before confirming.
+          </span>
+          <Button size="sm" variant="outline" onClick={() => gapsQ.refetch()}>
+            Try again
+          </Button>
+        </div>
+      )}
       {gapsQ.data?.clash && (
         <p
           role="alert"
@@ -66,6 +84,32 @@ export function ConfirmStayButton({ stayId, clientId }: { stayId: string; client
         >
           {gapsQ.data.clash}
         </p>
+      )}
+      {(gapsQ.data?.careChanges?.length ?? 0) > 0 && (
+        <div
+          data-stay-care-changes={stayId}
+          className="basis-full rounded-md border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs"
+        >
+          <p className="font-medium">
+            The client sent care changes. Confirming puts them on the sitter's card now, including
+            for any stay already under way.
+          </p>
+          <ul className="mt-1 space-y-1">
+            {gapsQ.data!.careChanges.map((c) => (
+              <li key={c.petId} className="break-words">
+                <span className="font-medium">{c.petName}:</span>
+                {"feeding" in c && <span> Feeding: {c.feeding || "(cleared)"}.</span>}
+                {c.meds && (
+                  <span>
+                    {" "}
+                    Medication: {c.meds.length > 0 ? c.meds.map(medLine).join("; ") : "(none)"}.
+                  </span>
+                )}
+                {"otherCare" in c && <span> Other care: {c.otherCare || "(cleared)"}.</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       {missing && (
         <p className="basis-full rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">

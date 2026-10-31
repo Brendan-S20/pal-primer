@@ -2578,7 +2578,7 @@ function VisitCard({
                   neither -- see DogsLine. */}
               {sit ? (
                 <>
-                  <SitPetsCare pets={sitPets} locale={locale} />
+                  <SitPetsCare pets={sitPets} tz={tz} locale={locale} />
                   <SitEmergencyFacts emergency={sitEmergency(visit.clients)} locale={locale} />
                 </>
               ) : (

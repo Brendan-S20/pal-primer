@@ -105,8 +105,18 @@ export type SitPet = {
   species: PetSpecies;
   speciesNote: string | null;
   care: PetCare | null;
+  /** When the care came from a client's portal edit, applied when the office
+   *  confirmed their stay request (#611). Null once the office edits it. */
+  clientUpdatedAt: string | null;
   /** The pet's vet (#411), or null when neither is on file. */
   vet: { name: string | null; phone: string | null } | null;
+};
+
+type CareRow = {
+  feeding?: string | null;
+  meds?: unknown;
+  other_care?: string | null;
+  client_updated_at?: string | null;
 };
 
 type PetRow = {
@@ -117,10 +127,7 @@ type PetRow = {
   active?: boolean | null;
   vet_clinic_name?: string | null;
   vet_clinic_phone?: string | null;
-  pet_care_instructions?:
-    | { feeding?: string | null; meds?: unknown; other_care?: string | null }
-    | { feeding?: string | null; meds?: unknown; other_care?: string | null }[]
-    | null;
+  pet_care_instructions?: CareRow | CareRow[] | null;
 };
 
 /** The pets this visit is for: the stay's pets when it names them, otherwise
@@ -150,6 +157,7 @@ export function sitPets(
               other_care: (c.other_care ?? "").trim() || null,
             }
           : null,
+        clientUpdatedAt: c?.client_updated_at ?? null,
       };
     });
 }

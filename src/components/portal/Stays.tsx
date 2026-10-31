@@ -274,7 +274,8 @@ export function PortalStayRequest() {
               </div>
             ))}
             <p className="text-xs text-muted-foreground">
-              Edits are saved for your pet's future care when you send this request.
+              Care changes are sent to the office with this request. They apply after the office
+              confirms it.
             </p>
           </fieldset>
           <div>

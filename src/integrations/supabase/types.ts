@@ -4724,6 +4724,8 @@ export type Database = {
       }
       pet_care_instructions: {
         Row: {
+          client_updated_at: string | null
+          client_updated_stay_id: string | null
           feeding: string | null
           meds: Json
           organization_id: string
@@ -4733,6 +4735,8 @@ export type Database = {
           updated_by: string | null
         }
         Insert: {
+          client_updated_at?: string | null
+          client_updated_stay_id?: string | null
           feeding?: string | null
           meds?: Json
           organization_id: string
@@ -4742,6 +4746,8 @@ export type Database = {
           updated_by?: string | null
         }
         Update: {
+          client_updated_at?: string | null
+          client_updated_stay_id?: string | null
           feeding?: string | null
           meds?: Json
           organization_id?: string
@@ -4751,6 +4757,13 @@ export type Database = {
           updated_by?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "pet_care_instructions_client_updated_stay_id_fkey"
+            columns: ["client_updated_stay_id"]
+            isOneToOne: false
+            referencedRelation: "stays"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "pet_care_instructions_organization_id_fkey"
             columns: ["organization_id"]
@@ -7556,6 +7569,7 @@ export type Database = {
           pet_ids: string[]
           portal_request_key: string | null
           property_id: string
+          requested_care: Json | null
           service_id: string
           starts_on: string
           status: string
@@ -7582,6 +7596,7 @@ export type Database = {
           pet_ids?: string[]
           portal_request_key?: string | null
           property_id: string
+          requested_care?: Json | null
           service_id: string
           starts_on: string
           status?: string
@@ -7608,6 +7623,7 @@ export type Database = {
           pet_ids?: string[]
           portal_request_key?: string | null
           property_id?: string
+          requested_care?: Json | null
           service_id?: string
           starts_on?: string
           status?: string

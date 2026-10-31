@@ -535,6 +535,7 @@ const en = {
     codesSitterOnly: "Only the stay's sitter sees the codes and keys.",
     vet: "Vet",
     noVet: "No vet on file. Ask the office.",
+    updatedByClient: "Updated by client {{date}}",
     emergencyContact: "Emergency contact",
     noEmergencyContact: "No emergency contact on file. Ask the office.",
     mayApproveVet: "May approve vet care",

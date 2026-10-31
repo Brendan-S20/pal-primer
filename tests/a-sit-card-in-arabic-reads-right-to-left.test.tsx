@@ -148,7 +148,7 @@ async function render(lng: string, careState = care()) {
       visit: { ...visit, sit_facts: facts({ kind: "overnight", visit_number: 2, visit_total: 5 }) },
       locale,
     }),
-    createElement(SitPetsCare, { pets, locale }),
+    createElement(SitPetsCare, { pets, tz: "America/Chicago", locale }),
     createElement(SitCareLog, { visit, pets, care: careState, tz: "America/Chicago", locale }),
     createElement(SitNoteField, { visitId: "s1", report }),
   ];
