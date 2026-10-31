@@ -37,6 +37,16 @@ vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => k
 import { Route as DashboardRoute } from "@/routes/_authenticated/dashboard";
 import { Route as ClientsRoute } from "@/routes/_authenticated/clients.index";
 
+// /clients reads one server-filtered page since #617. Its cache entry is the
+// first page with no filters, shaped as listClientsPage returns it.
+import { filterRoster, rosterStats, rosterTags } from "@/lib/client-roster";
+const CLIENTS_KEY = ["clients", "page", { q: "", status: "all", type: "all", tag: "all" }, 0];
+const keyOf = (key: string) => (key === "clients" ? CLIENTS_KEY : [key]);
+function pageOf(clients: any[]) {
+  const rows = filterRoster(clients, {});
+  return { rows: rows.slice(0, 50), matched: rows.length, offset: 0, stats: rosterStats(clients), tags: rosterTags(clients) };
+}
+
 let qc: QueryClient;
 beforeEach(() => {
   vi.stubGlobal("React", React);
@@ -71,7 +81,7 @@ describe("loading is not an empty account", () => {
       expect(pending).not.toContain(falseEmpty);
     }
     expect(pending).toContain("data-skeleton-region");
-    qc.setQueryData(["clients"], { clients: Array.from({ length: 112 }, (_, i) => ({ id: `c${i}`, display_name: `Test ${i}`, active: true, outstanding_cents: 100, active_subscription_count: 1 })) });
+    qc.setQueryData(CLIENTS_KEY, pageOf(Array.from({ length: 112 }, (_, i) => ({ id: `c${i}`, display_name: `Test ${i}`, active: true, outstanding_cents: 100, active_subscription_count: 1 }))));
     const loaded = render(ClientsRoute);
     expect(loaded).toContain("112 total");
     expect(loaded).toContain("112 active");
@@ -79,8 +89,8 @@ describe("loading is not an empty account", () => {
   });
 
   it("keeps known client counts visible during a background refresh", () => {
-    qc.setQueryData(["clients"], { clients: [{ id: "c1", active: true, display_name: "Test client", outstanding_cents: 1234 }] });
-    qc.getQueryCache().find({ queryKey: ["clients"] })!.setState({ fetchStatus: "fetching" });
+    qc.setQueryData(CLIENTS_KEY, pageOf([{ id: "c1", active: true, display_name: "Test client", outstanding_cents: 1234 }]));
+    qc.getQueryCache().find({ queryKey: CLIENTS_KEY })!.setState({ fetchStatus: "fetching" });
     const html = render(ClientsRoute);
     expect(html).toContain("1 total");
     expect(html).toContain("$12.34");
@@ -90,7 +100,7 @@ describe("loading is not an empty account", () => {
     ["dashboard-summary", DashboardRoute, "None scheduled"],
     ["clients", ClientsRoute, "0 total"],
   ])("keeps %s pending when the first request is paused", (key, route, empty) => {
-    qc.getQueryCache().build(qc, { queryKey: [key] }).setState({ status: "pending", fetchStatus: "paused" });
+    qc.getQueryCache().build(qc, { queryKey: keyOf(key) }).setState({ status: "pending", fetchStatus: "paused" });
     const html = render(route);
     expect(html).toContain("hs-skeleton");
     expect(html).not.toContain(empty);
@@ -100,12 +110,12 @@ describe("loading is not an empty account", () => {
     ["dashboard-summary", DashboardRoute],
     ["clients", ClientsRoute],
   ])("surfaces an initial %s failure to the error boundary", (key, route) => {
-    qc.getQueryCache().build(qc, { queryKey: [key] }).setState({ status: "error", fetchStatus: "idle", error: new Error("Read failed") });
+    qc.getQueryCache().build(qc, { queryKey: keyOf(key) }).setState({ status: "error", fetchStatus: "idle", error: new Error("Read failed") });
     expect(() => render(route)).toThrow("Read failed");
   });
 
   it("shows true zero totals once an empty client list succeeds", () => {
-    qc.setQueryData(["clients"], { clients: [] });
+    qc.setQueryData(CLIENTS_KEY, pageOf([]));
     const html = render(ClientsRoute);
     expect(html).toContain("0 total");
     expect(html).toContain("$0.00");

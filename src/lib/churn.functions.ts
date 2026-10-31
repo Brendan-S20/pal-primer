@@ -45,31 +45,29 @@ export const listAtRiskClients = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
+    // The last completed visit comes embedded, one per client, instead of a
+    // second read with up to 200 client ids in its query string (#617), which
+    // is about 7.5 KB of URL on the /clients page.
     const { data, error } = await supabase
       .from("clients")
-      .select("id, display_name, churn_score, churn_reason, churn_scored_at, last_winback_sent_at, active")
+      .select(
+        "id, display_name, churn_score, churn_reason, churn_scored_at, last_winback_sent_at, active, visits(completed_at)",
+      )
       .eq("organization_id", orgId)
       .eq("active", true)
       .gte("churn_score", 60)
+      .eq("visits.status", "completed")
+      .not("visits.completed_at", "is", null)
       .order("churn_score", { ascending: false })
+      .order("completed_at", { referencedTable: "visits", ascending: false })
+      .limit(1, { referencedTable: "visits" })
       .limit(200);
     if (error) throw new Error(error.message);
 
-    // Last completed visit per client for context
-    const ids = (data ?? []).map((c: any) => c.id);
     const lastVisitByClient = new Map<string, string>();
-    if (ids.length) {
-      const { data: vs } = await supabase
-        .from("visits")
-        .select("client_id, completed_at")
-        .eq("organization_id", orgId)
-        .in("client_id", ids)
-        .eq("status", "completed")
-        .not("completed_at", "is", null)
-        .order("completed_at", { ascending: false });
-      for (const v of vs ?? []) {
-        if (!lastVisitByClient.has(v.client_id)) lastVisitByClient.set(v.client_id, v.completed_at);
-      }
+    for (const c of (data ?? []) as any[]) {
+      const last = Array.isArray(c.visits) ? c.visits[0]?.completed_at : null;
+      if (last) lastVisitByClient.set(c.id, last);
     }
 
     const rows: ChurnScored[] = (data ?? []).map((c: any) => ({

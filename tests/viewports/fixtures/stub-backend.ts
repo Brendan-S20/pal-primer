@@ -3,6 +3,13 @@ import { SUPABASE_ORIGIN, sweepUser } from "./session";
 import * as fx from "./dataset";
 import * as pfx from "./portal-dataset";
 import { tippedCharge } from "../../../src/lib/tips";
+import {
+  CLIENTS_PAGE_SIZE,
+  filterRoster,
+  rosterStats,
+  rosterTags,
+} from "../../../src/lib/client-roster";
+import { clientMatchesQuery } from "../../../src/lib/client-search";
 import { LAUNCH_DEFAULT } from "../../support/service-line-availability";
 
 /**
@@ -49,6 +56,14 @@ function decodeSeroval(node: unknown): unknown {
   if ("t" in n && typeof n.t === "object") return decodeSeroval(n.t);
   return undefined;
 }
+
+/** The dataset's clients, then copies up to 5,000, for the paged /clients. */
+const BIG_BOOK = Array.from({ length: 5_000 }, (_, k) => {
+  const c = fx.CLIENTS[k % fx.CLIENTS.length];
+  return k < fx.CLIENTS.length
+    ? c
+    : { ...c, id: `bbbbbbbb-0000-4000-8000-${String(k).padStart(12, "0")}` };
+});
 
 function argsOf(route: Route): Record<string, any> {
   const url = new URL(route.request().url());
@@ -978,6 +993,35 @@ export const BASE_STUBS: Record<string, Stub> = {
 
   // ── Clients ─────────────────────────────────────────────────────────────
   listClients: { clients: fx.CLIENTS },
+  // /clients is paged on the server since #617, so the sweep measures it as a
+  // 5,000-client book: the dataset's awkward rows first, then copies with ids
+  // of their own. Same filters and totals as the server (lib/client-roster),
+  // so a page, the pager and "1-50 of 5,000" are what production draws.
+  listClientsPage: (a: Record<string, any>) => {
+    const matched = filterRoster(BIG_BOOK, a);
+    const offset = Number(a.offset ?? 0);
+    const limit = Number(a.limit ?? CLIENTS_PAGE_SIZE);
+    return {
+      rows: a.all ? matched : matched.slice(offset, offset + limit),
+      matched: matched.length,
+      offset: a.all ? 0 : offset,
+      stats: rosterStats(BIG_BOOK),
+      tags: rosterTags(BIG_BOOK),
+    };
+  },
+  searchClients: (a: Record<string, any>) => ({
+    clients: fx.CLIENTS.filter((c) => !a.activeOnly || c.active)
+      .filter((c) => clientMatchesQuery(c, String(a.q ?? "")))
+      .slice(0, Number(a.limit ?? 20))
+      .map((c, i) => ({
+        id: c.id,
+        display_name: c.display_name,
+        primary_email: c.primary_email,
+        primary_phone: c.primary_phone,
+        active: c.active,
+        street: fx.PROPERTIES[i]?.street ?? null,
+      })),
+  }),
   getSmsConsentCoverage: { withPhone: 198, consented: 142, optedOut: 11 },
   getClient: {
     client: {

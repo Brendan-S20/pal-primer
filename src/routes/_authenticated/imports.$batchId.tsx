@@ -206,6 +206,13 @@ function BatchDetail() {
           skipped, {stats.failed} failed. Imported clients won't receive automated messages until
           you resume communications or reach out. Lift the hold from each client's page, or select
           clients on the Clients list and use "Resume communications".
+          {Number(stats.unpinned ?? 0) > 0 && (
+            <>
+              {" "}
+              {stats.unpinned} address{stats.unpinned === 1 ? " has" : "es have"} no map pin yet.
+              The map on the Routes page offers to geocode them once they have visits on it.
+            </>
+          )}
         </div>
       )}
 

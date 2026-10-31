@@ -22,6 +22,9 @@ import { join } from "node:path";
 const root = join(import.meta.dirname, "..");
 const page = readFileSync(join(root, "src/routes/_authenticated/clients.index.tsx"), "utf8");
 const server = readFileSync(join(root, "src/lib/clients.functions.ts"), "utf8");
+// The tiles and filters are worked out on the server since #617, when the
+// list began to be paged there; the rule moved with them.
+const roster = readFileSync(join(root, "src/lib/client-roster.ts"), "utf8");
 
 describe("no service plan is its own state", () => {
   it("the server already counted it — this needed no new query", () => {
@@ -29,9 +32,8 @@ describe("no service plan is its own state", () => {
   });
 
   it("counted from active subscriptions, not from the active flag", () => {
-    expect(page).toMatch(
-      /c\.active && \(c\.active_subscription_count \?\? 0\) === 0,?\s*\n?\s*\)\.length/,
-    );
+    expect(roster).toMatch(/!!c\.active && \(c\.active_subscription_count \?\? 0\) === 0/);
+    expect(roster).toMatch(/if \(hasNoPlan\(c\)\) noPlan \+= 1/);
   });
 
   it("both views tell the same story", () => {
@@ -56,7 +58,7 @@ describe("it is findable, not just visible", () => {
   it("there is a filter for it", () => {
     expect(page).toMatch(/\| "no_plan"/);
     expect(page).toMatch(/<SelectItem value="no_plan">No service plan<\/SelectItem>/);
-    expect(page).toMatch(/status === "no_plan" &&/);
+    expect(roster).toMatch(/status === "no_plan" && !hasNoPlan\(c\)/);
   });
 
   it("the tile is a way in, not just a number", () => {

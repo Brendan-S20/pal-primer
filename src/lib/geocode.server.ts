@@ -96,7 +96,16 @@ export async function geocodeAddress(parts: AddressParts): Promise<GeocodeResult
  *  of one throttled request per address. Without a key it is the old loop over
  *  Nominatim at 1/s, unchanged. If a whole batch fails, every row in it falls
  *  back to Nominatim; if Geocodio errors on a single row, that row does. */
-export async function geocodeAddresses(list: AddressParts[]): Promise<GeocodeResult[]> {
+export async function geocodeAddresses(
+  list: AddressParts[],
+  opts: {
+    /** Stop asking Nominatim after this long; rows it did not reach come back
+     *  null, the same as an address with no match. Unset: no limit. An
+     *  import sets it (#617) because 1,000 addresses at one a second is
+     *  about 17 minutes. */
+    nominatimBudgetMs?: number;
+  } = {},
+): Promise<GeocodeResult[]> {
   const out: GeocodeResult[] = list.map(() => null);
   const addresses = list.map(joinAddress);
   const key = geocodioKey();
@@ -122,7 +131,12 @@ export async function geocodeAddresses(list: AddressParts[]): Promise<GeocodeRes
     }
   }
 
-  for (const i of viaNominatim) out[i] = await geocodeWithNominatim(addresses[i]);
+  const deadline =
+    opts.nominatimBudgetMs != null ? Date.now() + opts.nominatimBudgetMs : Infinity;
+  for (const i of viaNominatim) {
+    if (Date.now() >= deadline) break;
+    out[i] = await geocodeWithNominatim(addresses[i]);
+  }
   return out;
 }
 

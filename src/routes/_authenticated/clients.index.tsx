@@ -4,14 +4,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PullToRefresh } from "@/components/motion/PullToRefresh";
 import { RowActions } from "@/components/RowActions";
 import { AiSection, ChurnPanel } from "@/components/ai/AiPanels";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useDeferredValue, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   bulkTagClients,
   getSmsConsentCoverage,
-  listClients,
+  listClientsPage,
   updateClient,
 } from "@/lib/clients.functions";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -34,12 +34,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
-import { AlertTriangle, Download, MessageSquareOff, Search, Tag, Users } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  MessageSquareOff,
+  Search,
+  Tag,
+  Users,
+} from "lucide-react";
 import { downloadCsv } from "@/lib/csv";
 import { HelpTip } from "@/components/HelpTip";
 import { titleHead } from "@/lib/page-title";
 import { useClientTexting } from "@/hooks/useClientTexting";
 import { useMotionList } from "@/lib/motion/use-motion-list";
+import { CLIENTS_PAGE_SIZE } from "@/lib/client-roster";
 
 export const Route = createFileRoute("/_authenticated/clients/")({
   head: () => titleHead("Clients"),
@@ -97,7 +107,7 @@ function ClientsList() {
   const motionList = useMotionList<HTMLDivElement>();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const fn = useServerFn(listClients);
+  const fn = useServerFn(listClientsPage);
   const updateFn = useServerFn(updateClient);
   const { can } = usePermissions();
   const rowTexting = useClientTexting();
@@ -106,79 +116,66 @@ function ClientsList() {
   // that would only get an error.
   const canArchive = can("manage_client_billing");
   const { confirm, dialog } = useConfirmDialog();
-  const { data, isLoading } = useQuery({
-    queryKey: ["clients"],
-    queryFn: () => fn(),
-    throwOnError: (_error, query) => query.state.data === undefined,
-  });
-
   const [q, setQ] = useState("");
-  // The box shows every keystroke at once; the list catches up at a lower
-  // priority. Filtering re-renders every row (both the cards and the table,
-  // hundreds on a real account), and doing that inside the keystroke is what
-  // made typing in this box lag behind the thumb on a phone.
-  const deferredQ = useDeferredValue(q);
+  // The search runs on the server now (#617), so the box shows every
+  // keystroke at once and the request waits for a pause in the typing.
+  const [searched, setSearched] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setSearched(q.trim()), 250);
+    return () => clearTimeout(t);
+  }, [q]);
   const [status, setStatus] = useState<StatusFilter>("all");
   const [type, setType] = useState<TypeFilter>("all");
   const [tag, setTag] = useState<string>("all");
+  const [offset, setOffset] = useState(0);
+  // Back to the first page whenever what is being looked for changes.
+  useEffect(() => setOffset(0), [searched, status, type, tag]);
 
-  const clients = data?.clients ?? [];
+  // One page at a time, filtered and searched on the server (#617). The page
+  // used to receive the whole roster; past ~1,000 clients the reads behind it
+  // put every client id in a URL, were refused as "URI too long", and the page
+  // and every client picker went empty.
+  const filters = { q: searched, status, type, tag };
+  const { data, isLoading } = useQuery({
+    queryKey: ["clients", "page", filters, offset],
+    queryFn: () => fn({ data: { ...filters, offset, limit: CLIENTS_PAGE_SIZE } }),
+    placeholderData: keepPreviousData,
+    throwOnError: (_error, query) => query.state.data === undefined,
+  });
 
-  const stats = useMemo(() => {
-    const active = clients.filter((c: any) => c.active).length;
-    const outstanding = clients.filter((c: any) => c.outstanding_cents > 0).length;
-    const owedTotal = clients.reduce((sum: number, c: any) => sum + (c.outstanding_cents ?? 0), 0);
-    const atRisk = clients.filter((c: any) => (c.churn_score ?? 0) >= 60).length;
-    // A client with no service plan is never visited, never invoiced, never
-    // routed. Until now the list showed them in green as "Active", identical
-    // to somebody on a weekly route — and on this database that is 287 of
-    // them, sitting in a count of 297 that the schedule flatly contradicts.
-    // "Active" is a flag somebody set; having work is a fact. They are not the
-    // same thing and the list was only showing the flag.
-    const noPlan = clients.filter(
-      (c: any) => c.active && (c.active_subscription_count ?? 0) === 0,
-    ).length;
-    return { total: clients.length, active, outstanding, owedTotal, atRisk, noPlan };
-  }, [clients]);
-
+  const filtered = (data?.rows ?? []) as any[];
+  const matched = data?.matched ?? 0;
+  // The tiles describe the whole book, whatever the filters say.
+  const stats = data?.stats ?? {
+    total: 0,
+    active: 0,
+    outstanding: 0,
+    owedTotal: 0,
+    atRisk: 0,
+    noPlan: 0,
+  };
   // Every tag in use, for the filter: tags came in by the hundred once
   // imports carried Jobber's Tags column across, and nothing could find them.
-  const allTags = useMemo(() => {
-    const byLc = new Map<string, string>();
-    for (const c of clients as any[]) for (const t of (c.tags ?? []) as string[]) {
-      if (!byLc.has(t.toLowerCase())) byLc.set(t.toLowerCase(), t);
-    }
-    return [...byLc.values()].sort((a, b) => a.localeCompare(b));
-  }, [clients]);
+  const allTags = data?.tags ?? [];
 
-  const filtered = useMemo(() => {
-    const needle = deferredQ.trim().toLowerCase();
-    return clients.filter((c: any) => {
-      if (type !== "all" && c.account_type !== type) return false;
-      if (
-        tag !== "all" &&
-        !((c.tags ?? []) as string[]).some((t) => t.toLowerCase() === tag.toLowerCase())
-      )
-        return false;
-      if (status === "active" && !c.active) return false;
-      if (status === "inactive" && c.active) return false;
-      if (status === "outstanding" && !(c.outstanding_cents > 0)) return false;
-      if (status === "at_risk" && !((c.churn_score ?? 0) >= 60)) return false;
-      if (status === "no_plan" && !(c.active && (c.active_subscription_count ?? 0) === 0))
-        return false;
-      if (!needle) return true;
-      const hay = [c.display_name, c.primary_email, c.primary_phone, ...((c.tags ?? []) as string[])]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return hay.includes(needle);
-    });
-  }, [clients, deferredQ, status, type, tag]);
+  // Export CSV is every row the filters match, not just this page.
+  const [exporting, setExporting] = useState(false);
+  const exportAll = async () => {
+    setExporting(true);
+    try {
+      const all = await fn({ data: { ...filters, all: true } });
+      exportClientsCsv(all.rows);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // Multi-select over the currently filtered rows (desktop table). Selection
   // clears whenever a filter changes so a bulk action never hits hidden rows.
   const visibleIds = useMemo(() => filtered.map((c: any) => c.id as string), [filtered]);
-  const sel = useRowSelection(visibleIds, `${q}|${status}|${type}|${tag}`);
+  const sel = useRowSelection(visibleIds, `${searched}|${status}|${type}|${tag}|${offset}`);
   const selectedRows = useMemo(
     () => filtered.filter((c: any) => sel.isSelected(c.id)),
     [filtered, sel],
@@ -326,8 +323,8 @@ function ClientsList() {
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
-            disabled={!filtered.length}
-            onClick={() => exportClientsCsv(filtered)}
+            disabled={!matched || exporting}
+            onClick={exportAll}
           >
             <Download className="mr-1 h-4 w-4 shrink-0" /> Export CSV
           </Button>
@@ -512,9 +509,9 @@ function ClientsList() {
       ) : !filtered.length ? (
         <div className="rounded-lg border border-dashed bg-card p-10 text-center">
           <p className="text-muted-foreground">
-            {clients.length ? "No clients match those filters." : "No clients yet."}
+            {stats.total ? "No clients match those filters." : "No clients yet."}
           </p>
-          {!clients.length && (
+          {!stats.total && (
             <Link to="/clients/new" className="mt-3 inline-block">
               <Button size="sm">Create the first one</Button>
             </Link>
@@ -762,6 +759,15 @@ function ClientsList() {
               </tbody>
             </table>
           </div>
+          <ClientsPager
+            offset={data?.offset ?? offset}
+            shown={filtered.length}
+            matched={matched}
+            onPage={(next) => {
+              setOffset(next);
+              window.scrollTo({ top: 0 });
+            }}
+          />
         </>
       )}
 
@@ -781,6 +787,49 @@ function ClientsList() {
   );
 }
 
+
+/** "1-50 of 5,000" with Previous and Next. Paged on the server (#617). */
+function ClientsPager({
+  offset,
+  shown,
+  matched,
+  onPage,
+}: {
+  offset: number;
+  shown: number;
+  matched: number;
+  onPage: (offset: number) => void;
+}) {
+  if (matched <= CLIENTS_PAGE_SIZE) return null;
+  const first = offset + 1;
+  const last = offset + shown;
+  const fmt = (n: number) => n.toLocaleString("en-US");
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+      <span className="text-muted-foreground">
+        {fmt(first)}-{fmt(last)} of {fmt(matched)}
+      </span>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={offset === 0}
+          onClick={() => onPage(Math.max(0, offset - CLIENTS_PAGE_SIZE))}
+        >
+          <ChevronLeft className="me-1 h-4 w-4 shrink-0" /> Previous
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={last >= matched}
+          onClick={() => onPage(offset + CLIENTS_PAGE_SIZE)}
+        >
+          Next <ChevronRight className="ms-1 h-4 w-4 shrink-0" />
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 /**
  * How much of the book can actually be texted.

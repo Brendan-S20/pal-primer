@@ -11,150 +11,314 @@ async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   return (await resolveCaller(supabase, userId)).orgId;
 }
 
+/**
+ * Every client of a business with the counts and balances the list shows.
+ *
+ * Read ORG-WIDE, never by id list (#617). This used to read the clients, then
+ * fetch their properties, services and open invoices with
+ * `.in("client_id", ids)`: every client id in one GET query string. At about
+ * a thousand clients that URL was refused ("URI too long"), the read failed,
+ * and every screen built on it went empty, including the New invoice and
+ * One-off visit pickers. Filtering the same tables by organization_id selects
+ * the same rows with a URL of fixed length. All four reads are paged, because
+ * PostgREST stops at a thousand rows without saying so, and they run at once.
+ */
+async function loadClientRoster(supabase: any, orgId: string) {
+  const { fetchAllPagesConcurrently } = await import("@/lib/supabase-paging.server");
+  // All aggregates must succeed before the roster can report counts or balances.
+  const [clients, props, subs, invs] = await Promise.all([
+    fetchAllPagesConcurrently<any>((a, b) =>
+      supabase
+        .from("clients")
+        .select(
+          "id, display_name, account_type, primary_email, primary_phone, active, created_at, credit_balance_cents, churn_score, comms_paused, tags, import_external_id",
+        )
+        .eq("organization_id", orgId)
+        .order("created_at", { ascending: false })
+        .order("id")
+        .range(a, b),
+    ),
+    // Inactive dogs and archived properties are excluded HERE because
+    // the client detail page excludes them there — PropertiesTab
+    // counts `d.active !== false`, and the dog-mismatch warning on a
+    // service compares the billed count against that number. Marking a
+    // dog inactive is the documented alternative to deleting one, so
+    // without this filter the list keeps showing a count that no other
+    // surface agrees with: the same records, two answers.
+    fetchAllPagesConcurrently<any>((a, b) =>
+      supabase
+        .from("properties")
+        .select("id, client_id, street, created_at, dogs(id, active, species)")
+        .eq("organization_id", orgId)
+        .is("archived_at", null)
+        .order("created_at", { ascending: true })
+        .order("id")
+        .range(a, b),
+    ),
+    // ends_on is needed to tell an ended service from a running one —
+    // see the isServiceEnded note below.
+    fetchAllPagesConcurrently<any>((a, b) =>
+      supabase
+        .from("subscriptions")
+        .select(
+          "client_id, property_id, status, frequency, ends_on, account_type, dog_count, stay_id",
+        )
+        .eq("organization_id", orgId)
+        .order("id")
+        .range(a, b),
+    ),
+    fetchAllPagesConcurrently<any>((a, b) =>
+      supabase
+        .from("invoices")
+        .select("client_id, total_cents, credit_applied_cents, amount_paid_cents, status")
+        .eq("organization_id", orgId)
+        .eq("status", "open")
+        .order("id")
+        .range(a, b),
+    ),
+  ]);
+  const propsRes = { data: props };
+  const subsRes = { data: subs };
+  const invRes = { data: invs };
+  const activeSubsByClient = new Map<string, number>();
+  // Service-frequency label for the list view (punch list #15): distinct
+  // active-subscription frequencies per client.
+  const freqsByClient = new Map<string, string[]>();
+  // "Active" has to mean the same thing here as it does on the client's own
+  // Services tab, and it did not. This counted `status === 'active'` alone,
+  // while the tab uses isServiceEnded — status canceled OR ends_on passed.
+  // endSubscription only writes ends_on and leaves status 'active', so every
+  // service a tenant has ever ENDED still counted here as one they are
+  // running, and its frequency stayed in the client's chips.
+  //
+  // Latent until now: no row was in that state. Booking a one-off visit puts
+  // one there every time, because a one_time service is created with
+  // ends_on = the visit date — so from the day after each booking the client
+  // would read as having an extra active service, permanently, and be
+  // labelled "one_time" for a job finished months ago.
+  const { isServiceEnded } = await import("@/lib/subscription-form");
+  const todayISO = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 10);
+  for (const s of subsRes.data ?? []) {
+    if (!isServiceEnded(s as any, todayISO)) {
+      activeSubsByClient.set(s.client_id, (activeSubsByClient.get(s.client_id) ?? 0) + 1);
+      const f = (s as any).frequency as string | null;
+      if (f) {
+        const list = freqsByClient.get(s.client_id) ?? [];
+        if (!list.includes(f)) list.push(f);
+        freqsByClient.set(s.client_id, list);
+      }
+    }
+  }
+  // Dogs live on properties (dogs.property_id), so aggregate through the
+  // property → client relationship instead of a non-existent dogs.client_id.
+  // Counted by propertyDogTally, the rule the client record, a quote and My
+  // Day use too (#429): the dog records when a property has any, otherwise
+  // what its plan bills for. Before that this counted records alone, so a
+  // client imported with a two-dog plan and no dog names read "0 dogs" here
+  // and "2 dogs" on the quote and the tech's stop.
+  //
+  // Inactive dogs and archived properties are excluded because the client
+  // detail page excludes them: PropertiesTab counts activeDogCount, and the
+  // dog-mismatch warning compares the billed count against that number.
+  const { activeDogCount, clientDogTally, propertyDogTally } = await import("@/lib/pets");
+  const billedByProperty = new Map<string, number[]>();
+  for (const s of (subsRes.data ?? []) as any[]) {
+    // A stay's plan counts the pets on the stay, not dogs (#411).
+    if (s.account_type !== "residential" || s.stay_id || !s.property_id) continue;
+    if (isServiceEnded(s, todayISO)) continue;
+    const list = billedByProperty.get(s.property_id) ?? [];
+    list.push(s.dog_count);
+    billedByProperty.set(s.property_id, list);
+  }
+  const talliesByClient = new Map<string, ReturnType<typeof propertyDogTally>[]>();
+  // The oldest property's street, so two clients with the same name can be
+  // told apart in a picker.
+  const streetByClient = new Map<string, string>();
+  for (const p of (propsRes.data ?? []) as Array<{
+    id: string;
+    client_id: string;
+    street: string | null;
+    dogs: Array<{ active?: boolean | null; species?: string | null }> | null;
+  }>) {
+    if (!p.client_id) continue;
+    const tally = propertyDogTally(
+      activeDogCount(Array.isArray(p.dogs) ? p.dogs : []),
+      billedByProperty.get(p.id) ?? [],
+    );
+    talliesByClient.set(p.client_id, [...(talliesByClient.get(p.client_id) ?? []), tally]);
+    if (p.street && !streetByClient.has(p.client_id)) streetByClient.set(p.client_id, p.street);
+  }
+
+  // Same AR math as Dashboard "AR Open" and Reports "Outstanding" (finding #7).
+  const { outstandingByClient } = await import("@/lib/ar");
+  const balanceByClient = outstandingByClient((invRes.data ?? []) as any[]);
+
+  return clients.map((c: any) => ({
+      ...c,
+      dog_count: clientDogTally(talliesByClient.get(c.id) ?? []).count,
+      /** "plan" when the count is what a plan bills for, not dog records. */
+      dog_count_source: clientDogTally(talliesByClient.get(c.id) ?? []).source,
+      street: streetByClient.get(c.id) ?? null,
+      active_subscription_count: activeSubsByClient.get(c.id) ?? 0,
+      frequencies: freqsByClient.get(c.id) ?? [],
+      outstanding_cents: balanceByClient.get(c.id) ?? 0,
+    }));
+}
+
 export const listClients = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
     // Full roster with contact info and balances — not for field techs.
     const { orgId } = await requirePermission(supabase, userId, "view_client_directory");
-    const { data, error } = await supabase
-      .from("clients")
-      .select(
-        "id, display_name, account_type, primary_email, primary_phone, active, created_at, credit_balance_cents, churn_score, comms_paused, tags",
-      )
-      .eq("organization_id", orgId)
-      .order("created_at", { ascending: false });
-    if (error) throw new Error(error.message);
-    const clients = data ?? [];
-    const ids = clients.map((c: any) => c.id);
+    return { clients: await loadClientRoster(supabase, orgId) };
+  });
 
-    // All aggregates must succeed before the roster can report counts or balances.
-    const [propsRes, subsRes, invRes] = await Promise.all([
-      ids.length
-        ? supabase
-            // Inactive dogs and archived properties are excluded HERE because
-            // the client detail page excludes them there — PropertiesTab
-            // counts `d.active !== false`, and the dog-mismatch warning on a
-            // service compares the billed count against that number. Marking a
-            // dog inactive is the documented alternative to deleting one, so
-            // without this filter the list keeps showing a count that no other
-            // surface agrees with: the same records, two answers.
-            .from("properties")
-            .select("id, client_id, street, created_at, dogs(id, active, species)")
-            .is("archived_at", null)
-            .in("client_id", ids)
-            .order("created_at", { ascending: true })
-        : Promise.resolve({ data: [] as any[], error: null }),
-      ids.length
-        ? supabase
-            // ends_on is needed to tell an ended service from a running one —
-            // see the isServiceEnded note below.
-            .from("subscriptions")
-            .select(
-              "client_id, property_id, status, frequency, ends_on, account_type, dog_count, stay_id",
-            )
-            .in("client_id", ids)
-        : Promise.resolve({ data: [] as any[], error: null }),
-      ids.length
-        ? supabase
-            .from("invoices")
-            .select("client_id, total_cents, credit_applied_cents, amount_paid_cents, status")
-            .in("client_id", ids)
-            .eq("status", "open")
-        : Promise.resolve({ data: [] as any[], error: null }),
-    ]);
+const clientsPageSchema = z.object({
+  q: z.string().max(200).optional(),
+  status: z.enum(["all", "active", "inactive", "outstanding", "at_risk", "no_plan"]).optional(),
+  type: z.enum(["all", "residential", "commercial"]).optional(),
+  tag: z.string().max(60).optional(),
+  offset: z.number().int().min(0).optional(),
+  limit: z.number().int().min(1).max(200).optional(),
+  /** Every matching row, for Export CSV. */
+  all: z.boolean().optional(),
+});
 
-    for (const result of [propsRes, subsRes, invRes]) {
-      if (result.error) throw new Error(result.error.message);
-    }
-
-    const activeSubsByClient = new Map<string, number>();
-    // Service-frequency label for the list view (punch list #15): distinct
-    // active-subscription frequencies per client.
-    const freqsByClient = new Map<string, string[]>();
-    // "Active" has to mean the same thing here as it does on the client's own
-    // Services tab, and it did not. This counted `status === 'active'` alone,
-    // while the tab uses isServiceEnded — status canceled OR ends_on passed.
-    // endSubscription only writes ends_on and leaves status 'active', so every
-    // service a tenant has ever ENDED still counted here as one they are
-    // running, and its frequency stayed in the client's chips.
-    //
-    // Latent until now: no row was in that state. Booking a one-off visit puts
-    // one there every time, because a one_time service is created with
-    // ends_on = the visit date — so from the day after each booking the client
-    // would read as having an extra active service, permanently, and be
-    // labelled "one_time" for a job finished months ago.
-    const { isServiceEnded } = await import("@/lib/subscription-form");
-    const todayISO = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000)
-      .toISOString()
-      .slice(0, 10);
-    for (const s of subsRes.data ?? []) {
-      if (!isServiceEnded(s as any, todayISO)) {
-        activeSubsByClient.set(s.client_id, (activeSubsByClient.get(s.client_id) ?? 0) + 1);
-        const f = (s as any).frequency as string | null;
-        if (f) {
-          const list = freqsByClient.get(s.client_id) ?? [];
-          if (!list.includes(f)) list.push(f);
-          freqsByClient.set(s.client_id, list);
-        }
-      }
-    }
-    // Dogs live on properties (dogs.property_id), so aggregate through the
-    // property → client relationship instead of a non-existent dogs.client_id.
-    // Counted by propertyDogTally, the rule the client record, a quote and My
-    // Day use too (#429): the dog records when a property has any, otherwise
-    // what its plan bills for. Before that this counted records alone, so a
-    // client imported with a two-dog plan and no dog names read "0 dogs" here
-    // and "2 dogs" on the quote and the tech's stop.
-    //
-    // Inactive dogs and archived properties are excluded because the client
-    // detail page excludes them: PropertiesTab counts activeDogCount, and the
-    // dog-mismatch warning compares the billed count against that number.
-    const { activeDogCount, clientDogTally, propertyDogTally } = await import("@/lib/pets");
-    const billedByProperty = new Map<string, number[]>();
-    for (const s of (subsRes.data ?? []) as any[]) {
-      // A stay's plan counts the pets on the stay, not dogs (#411).
-      if (s.account_type !== "residential" || s.stay_id || !s.property_id) continue;
-      if (isServiceEnded(s, todayISO)) continue;
-      const list = billedByProperty.get(s.property_id) ?? [];
-      list.push(s.dog_count);
-      billedByProperty.set(s.property_id, list);
-    }
-    const talliesByClient = new Map<string, ReturnType<typeof propertyDogTally>[]>();
-    // The oldest property's street, so two clients with the same name can be
-    // told apart in a picker.
-    const streetByClient = new Map<string, string>();
-    for (const p of (propsRes.data ?? []) as Array<{
-      id: string;
-      client_id: string;
-      street: string | null;
-      dogs: Array<{ active?: boolean | null; species?: string | null }> | null;
-    }>) {
-      if (!p.client_id) continue;
-      const tally = propertyDogTally(
-        activeDogCount(Array.isArray(p.dogs) ? p.dogs : []),
-        billedByProperty.get(p.id) ?? [],
-      );
-      talliesByClient.set(p.client_id, [...(talliesByClient.get(p.client_id) ?? []), tally]);
-      if (p.street && !streetByClient.has(p.client_id)) streetByClient.set(p.client_id, p.street);
-    }
-
-    // Same AR math as Dashboard "AR Open" and Reports "Outstanding" (finding #7).
-    const { outstandingByClient } = await import("@/lib/ar");
-    const balanceByClient = outstandingByClient((invRes.data ?? []) as any[]);
-
+/**
+ * One page of /clients, filtered and searched on the server (#617).
+ *
+ * The browser used to receive the whole roster and filter it itself. It now
+ * sends its filters (a few short strings, so the GET stays small) and gets
+ * back one page, how many rows matched, the tiles over the list, and the tags
+ * in use for the tag filter. The tiles always describe the whole book.
+ */
+export const listClientsPage = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => clientsPageSchema.parse(d ?? {}))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { orgId } = await requirePermission(supabase, userId, "view_client_directory");
+    const { filterRoster, rosterStats, rosterTags, CLIENTS_PAGE_SIZE } = await import(
+      "@/lib/client-roster"
+    );
+    const roster = await loadClientRoster(supabase, orgId);
+    const matched = filterRoster(roster, data);
+    const offset = data.offset ?? 0;
+    const limit = data.limit ?? CLIENTS_PAGE_SIZE;
     return {
-      clients: clients.map((c: any) => ({
-        ...c,
-        dog_count: clientDogTally(talliesByClient.get(c.id) ?? []).count,
-        /** "plan" when the count is what a plan bills for, not dog records. */
-        dog_count_source: clientDogTally(talliesByClient.get(c.id) ?? []).source,
-        street: streetByClient.get(c.id) ?? null,
-        active_subscription_count: activeSubsByClient.get(c.id) ?? 0,
-        frequencies: freqsByClient.get(c.id) ?? [],
-        outstanding_cents: balanceByClient.get(c.id) ?? 0,
-      })),
+      rows: data.all ? matched : matched.slice(offset, offset + limit),
+      matched: matched.length,
+      offset: data.all ? 0 : offset,
+      stats: rosterStats(roster),
+      tags: rosterTags(roster),
     };
+  });
+
+const searchClientsSchema = z.object({
+  q: z.string().max(200).optional(),
+  limit: z.number().int().min(1).max(50).optional(),
+  /** Leave archived clients out (the pickers); Cmd-K finds them too. */
+  activeOnly: z.boolean().optional(),
+});
+
+/**
+ * Find clients by what a person types: the pickers and Cmd-K (#617).
+ *
+ * The pickers used to load the whole roster into a <select>, which is the
+ * read that failed at a thousand clients and left them empty; Cmd-K matched
+ * display names only, accent-sensitively. This narrows in SQL with a short
+ * filter (one word, never an id list), then applies the same rule the
+ * /clients search does (lib/client-search.ts): name, company, email, tags,
+ * street and import id without regard to case or accents, a phone number by
+ * its digits. An empty query returns the first clients by name, so a picker
+ * opened with nothing typed is never blank.
+ */
+export const searchClients = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => searchClientsSchema.parse(d ?? {}))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { orgId } = await requirePermission(supabase, userId, "view_client_directory");
+    const { clientMatchesQuery, clientSearchOrFilter, streetSearchPattern } = await import(
+      "@/lib/client-search"
+    );
+    const q = (data.q ?? "").trim();
+    const limit = data.limit ?? 20;
+    const cols =
+      "id, display_name, company, first_name, last_name, primary_email, primary_phone, import_external_id, tags, active";
+    const scoped = (select: string) => {
+      let b = supabase.from("clients").select(select).eq("organization_id", orgId);
+      if (data.activeOnly) b = b.eq("active", true);
+      return b;
+    };
+    const firstStreet = (props: any): string | null => {
+      const list = (Array.isArray(props) ? props : props ? [props] : []).filter(
+        (p: any) => !p.archived_at && p.street,
+      );
+      list.sort((a: any, b: any) => String(a.created_at).localeCompare(String(b.created_at)));
+      return list[0]?.street ?? null;
+    };
+    const shape = (c: any) => ({
+      id: c.id as string,
+      display_name: (c.display_name as string | null) ?? "",
+      primary_email: (c.primary_email as string | null) ?? null,
+      primary_phone: (c.primary_phone as string | null) ?? null,
+      active: c.active !== false,
+      street: firstStreet(c.properties),
+    });
+
+    if (!q) {
+      const { data: rows, error } = await scoped(
+        `${cols}, properties(street, archived_at, created_at)`,
+      )
+        .order("display_name")
+        .limit(limit);
+      if (error) throw new Error(error.message);
+      return { clients: (rows ?? []).map(shape) };
+    }
+
+    const or = clientSearchOrFilter(q);
+    const street = streetSearchPattern(q);
+    // Wider than `limit`: the SQL filter is a superset, and clientMatchesQuery
+    // has the last word.
+    const wide = Math.max(limit * 4, 60);
+    const [byClient, byStreet] = await Promise.all([
+      or
+        ? scoped(`${cols}, properties(street, archived_at, created_at)`)
+            .or(or)
+            .order("display_name")
+            .limit(wide)
+        : Promise.resolve({ data: [], error: null }),
+      street
+        ? scoped(`${cols}, properties!inner(street, archived_at, created_at)`)
+            .ilike("properties.street", street)
+            .is("properties.archived_at", null)
+            .order("display_name")
+            .limit(wide)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (byClient.error) throw new Error(byClient.error.message);
+    if (byStreet.error) throw new Error(byStreet.error.message);
+
+    const byId = new Map<string, any>();
+    for (const c of [...(byClient.data ?? []), ...(byStreet.data ?? [])] as any[]) {
+      const seen = byId.get(c.id);
+      const streets = (Array.isArray(c.properties) ? c.properties : [])
+        .filter((p: any) => !p.archived_at)
+        .map((p: any) => p.street);
+      if (seen) {
+        seen.streets.push(...streets);
+        if (!seen.properties?.length) seen.properties = c.properties;
+      } else byId.set(c.id, { ...c, streets });
+    }
+    const hits = [...byId.values()]
+      .filter((c) => clientMatchesQuery(c, q))
+      .sort((a, b) => String(a.display_name ?? "").localeCompare(String(b.display_name ?? "")))
+      .slice(0, limit);
+    return { clients: hits.map(shape) };
   });
 
 const createClientSchema = z.object({
@@ -1607,16 +1771,23 @@ export const bulkTagClients = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     // The same gate as editing tags on one client.
     const { orgId } = await requirePermission(supabase, userId, "view_client_directory");
-    const { data: rows, error } = await supabase
-      .from("clients")
-      .select("id, tags")
-      .eq("organization_id", orgId)
-      .in("id", data.ids);
-    if (error) throw new Error(error.message);
+    // Up to 500 ids, read 40 at a time: all of them in one GET was a query
+    // string of about 19 KB (#617).
+    const { idChunks } = await import("@/lib/supabase-paging.server");
+    const reads = await Promise.all(
+      idChunks(data.ids).map((ids) =>
+        supabase.from("clients").select("id, tags").eq("organization_id", orgId).in("id", ids),
+      ),
+    );
+    const rows: Array<{ id: string; tags: string[] | null }> = [];
+    for (const r of reads) {
+      if (r.error) throw new Error(r.error.message);
+      rows.push(...((r.data ?? []) as Array<{ id: string; tags: string[] | null }>));
+    }
     const want = data.tag;
     const lc = want.toLowerCase();
     let changed = 0;
-    const work = (rows ?? []).flatMap((r: { id: string; tags: string[] | null }) => {
+    const work = rows.flatMap((r) => {
       const tags = r.tags ?? [];
       const has = tags.some((t) => t.toLowerCase() === lc);
       if (data.action === "add" && has) return [];
