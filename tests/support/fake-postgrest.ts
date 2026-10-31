@@ -15,6 +15,10 @@ export type Seen = {
   url: string;
   method: string;
   table: string;
+  /** When the request was sent and when it was answered (performance.now()),
+   *  so a test can count round trips rather than time a slow machine. */
+  startedAt?: number;
+  endedAt?: number;
   rows: number;
   /** A write's body, parsed. */
   body?: any;
@@ -221,10 +225,11 @@ export function fakePostgrest(
     const url = new URL(String(input instanceof Request ? input.url : input));
     const method = (init?.method ?? "GET").toUpperCase();
     const table = url.pathname.split("/").pop()!;
+    const startedAt = performance.now();
     if (opts.latencyMs) await new Promise((r) => setTimeout(r, opts.latencyMs));
     if (method !== "GET" && method !== "HEAD") {
       const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
-      seen.push({ url: url.toString(), method, table, rows: 0, body });
+      seen.push({ url: url.toString(), method, table, rows: 0, body, startedAt, endedAt: performance.now() });
       return new Response(null, { status: 204 });
     }
     const nodes = parseSelect(url.searchParams.get("select") ?? "*");
@@ -282,7 +287,7 @@ export function fakePostgrest(
     const offset = Number(url.searchParams.get("offset") ?? 0);
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 1000), 1000);
     const body = rows.slice(offset, offset + limit);
-    seen.push({ url: url.toString(), method, table, rows: body.length });
+    seen.push({ url: url.toString(), method, table, rows: body.length, startedAt, endedAt: performance.now() });
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     const prefer = new Headers(init?.headers).get("Prefer") ?? "";
     if (prefer.includes("count=exact")) {
@@ -295,4 +300,25 @@ export function fakePostgrest(
       headers,
     });
   };
+}
+
+/**
+ * Round trips: the longest chain of requests where each one was sent only
+ * after the one before it was answered. Requests sent side by side are one
+ * round trip. Unlike a stopwatch, this does not depend on how fast the
+ * machine running the test is.
+ */
+export function roundTrips(seen: Seen[]): number {
+  const reqs = seen
+    .filter((r) => r.startedAt != null && r.endedAt != null)
+    .sort((a, b) => a.startedAt! - b.startedAt!);
+  const depth: number[] = [];
+  reqs.forEach((r, i) => {
+    let d = 1;
+    for (let j = 0; j < i; j++) {
+      if (reqs[j].endedAt! <= r.startedAt!) d = Math.max(d, depth[j] + 1);
+    }
+    depth.push(d);
+  });
+  return Math.max(0, ...depth);
 }

@@ -38,24 +38,26 @@ function invoiceReadPolicies(): Map<string, Policy> {
     for (const st of statements(stripLineComments(readMigration(f)))) {
       const flat = st.replace(/\s+/g, " ").trim();
       const create = flat.match(
-        /^CREATE POLICY "([^"]+)" ON (?:public\.)?invoices\b(.*)$/i,
+        /^CREATE POLICY (?:"([^"]+)"|(\w+)) ON (?:public\.)?invoices\b(.*)$/i,
       );
       if (create) {
-        const rest = create[2];
+        const name = create[1] ?? create[2];
+        const rest = create[3];
         const cmd = (rest.match(/\bFOR (SELECT|INSERT|UPDATE|DELETE|ALL)\b/i)?.[1] ?? "ALL").toUpperCase();
         const permissive = !/\bAS RESTRICTIVE\b/i.test(rest);
         const using = rest.match(/\bUSING \((.*)\)(?: WITH CHECK|$)/i)?.[1] ?? "";
-        live.set(create[1], { cmd, permissive, using });
+        live.set(name, { cmd, permissive, using });
         continue;
       }
-      const alter = flat.match(/^ALTER POLICY "([^"]+)" ON (?:public\.)?invoices\b(.*)$/i);
-      if (alter && live.has(alter[1])) {
-        const using = alter[2].match(/\bUSING \((.*)\)(?: WITH CHECK|$)/i)?.[1];
-        if (using != null) live.set(alter[1], { ...live.get(alter[1])!, using });
+      const alter = flat.match(/^ALTER POLICY (?:"([^"]+)"|(\w+)) ON (?:public\.)?invoices\b(.*)$/i);
+      const altered = alter ? (alter[1] ?? alter[2]) : null;
+      if (alter && altered && live.has(altered)) {
+        const using = alter[3].match(/\bUSING \((.*)\)(?: WITH CHECK|$)/i)?.[1];
+        if (using != null) live.set(altered, { ...live.get(altered)!, using });
         continue;
       }
-      const drop = flat.match(/^DROP POLICY (?:IF EXISTS )?"([^"]+)" ON (?:public\.)?invoices\b/i);
-      if (drop) live.delete(drop[1]);
+      const drop = flat.match(/^DROP POLICY (?:IF EXISTS )?(?:"([^"]+)"|(\w+)) ON (?:public\.)?invoices\b/i);
+      if (drop) live.delete(drop[1] ?? drop[2]);
     }
   }
   return live;
@@ -107,9 +109,9 @@ describe("the service role is reached only through the directory gate", () => {
     // Every function or server function the file defines, by its own name.
     const starts = [
       ...src.matchAll(
-        /^(?:export const (\w+) = createServerFn|async function (\w+)|function (\w+)|let (\w+))/gm,
+        /^(?:export const (\w+) = createServerFn|(?:export )?async function (\w+)|(?:export )?function (\w+)|let (\w+)|(?:export )?const (\w+) = (?:async )?(?:\([^)]*\)|\w+) =>)/gm,
       ),
-    ].map((m) => ({ name: m[1] ?? m[2] ?? m[3] ?? m[4], at: m.index! }));
+    ].map((m) => ({ name: m[1] ?? m[2] ?? m[3] ?? m[4] ?? m[5], at: m.index! }));
     const owners = new Set<string>();
     for (const m of src.matchAll(/supabaseAdmin|integrations\/supabase\/client\.server/g)) {
       const owner = starts.filter((s) => s.at < m.index!).pop();

@@ -59,7 +59,7 @@ vi.mock("@/integrations/supabase/client.server", () => ({
 const state = vi.hoisted(() => ({ supabase: null as any, role: "owner" }));
 
 import { listClients, listClientsPage, listClientsSummary, searchClients } from "@/lib/clients.functions";
-import { fakePostgrest, type Seen } from "./support/fake-postgrest";
+import { fakePostgrest, roundTrips, type Seen } from "./support/fake-postgrest";
 import {
   accentPattern,
   clientMatchesQuery,
@@ -203,11 +203,13 @@ describe("/clients at 1,000 and 5,000 clients", () => {
     expect(page.rows).toHaveLength(50);
     expect(page.matched).toBe(n);
     expect(summary.stats.total).toBe(n);
-    // The page is one request; the tiles are four counts, the open invoices
-    // and the tags, side by side: two round trips of 60 ms, three when the
-    // tags run past a thousand rows. The rest is this fake's own CPU.
+    // The page, the four counts, the open invoices and the tags all go out
+    // side by side: one round trip, and a second only when the tags run past
+    // a thousand rows. Counted, not timed: a wall-clock ceiling near the
+    // fake's latency failed on a loaded CI runner (609 ms against 480) with
+    // the same requests, because it also measured this fake's own CPU.
     expect(took).toBeLessThan(2_000);
-    expect(took).toBeLessThan(LATENCY_MS * 8);
+    expect(roundTrips(seen)).toBe(n > 1_000 ? 2 : 1);
     expect(seen.filter((r) => r.url.includes("limit=50"))).toHaveLength(1);
     expect(tablesRead()).toEqual(["clients", "invoices"]);
   });
