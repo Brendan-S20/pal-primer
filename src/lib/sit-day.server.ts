@@ -42,6 +42,7 @@ export async function withSitDay<
     sit_facts?: SitFacts | null;
     care_entries?: CareEntry[];
     stay_codes_shown?: boolean;
+    stay_notes?: string | null;
   })[]
 > {
   const ids = visits.filter((v) => isSitVisit(v as any)).map((v) => v.id);
@@ -92,11 +93,24 @@ export async function withSitDay<
   }
 
   const codes = new Map<string, StayCodes>();
+  const notes = new Map<string, string>();
   const stayIds = [...new Set([...facts.values()].map((f) => f.stay_id))];
   if (stayIds.length > 0) {
-    const { data, error } = await supabase.rpc("stay_access_codes", { _stay_ids: stayIds });
-    if (error) console.warn("stay access codes could not be loaded");
-    for (const r of data ?? []) codes.set(r.stay_id, r);
+    // The office's notes from booking (meds, routines, quirks) go on every
+    // night's card (#618). Read as the caller: the stays SELECT policy admits
+    // anyone with a visit at the stay's property, so the stay's sitter and a
+    // sitter covering one night read the same row, and nobody else does.
+    const [codesRes, notesRes] = await Promise.all([
+      supabase.rpc("stay_access_codes", { _stay_ids: stayIds }),
+      supabase.from("stays").select("id, notes").in("id", stayIds),
+    ]);
+    if (codesRes.error) console.warn("stay access codes could not be loaded");
+    for (const r of codesRes.data ?? []) codes.set(r.stay_id, r);
+    if (notesRes.error) console.warn("stay notes could not be loaded");
+    for (const r of notesRes.data ?? []) {
+      const text = r.notes?.trim();
+      if (text) notes.set(r.id, text);
+    }
   }
 
   return visits.map((v) => {
@@ -120,6 +134,7 @@ export async function withSitDay<
       sit_facts: f,
       care_entries: entries.get(v.id) ?? [],
       stay_codes_shown: !!c,
+      stay_notes: f ? (notes.get(f.stay_id) ?? null) : null,
     };
   });
 }

@@ -467,6 +467,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     visitOf: "第 {{n}} 次，共 {{total}} 次",
     dates: "{{from}} 至 {{to}}",
     checkInOut: "入住 {{from}}，退房 {{to}}",
+    stayNotes: "住宿备注",
     species: {
       dog: "狗",
       cat: "猫",

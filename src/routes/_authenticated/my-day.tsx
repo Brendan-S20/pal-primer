@@ -156,6 +156,7 @@ import {
   SitMeta,
   SitNoteField,
   SitPetsCare,
+  SitStayNotes,
   isSitVisit,
   sitEmergency,
   sitStepLabel,
@@ -2529,6 +2530,10 @@ function VisitCard({
           )}
           {walk && <WalkMeta visit={visit} dayVisits={dayVisits} />}
           {sit && <SitMeta visit={visit} locale={locale} />}
+          {/* The stay's notes from booking, before anything else about the
+              night, and outside the collapse so a folded card still shows
+              them (#618). */}
+          {sit && <SitStayNotes visit={visit} />}
 
           {!collapsed && (
             <>

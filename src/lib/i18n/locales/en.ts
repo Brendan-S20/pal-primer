@@ -492,6 +492,7 @@ const en = {
     visitOf: "Visit {{n}} of {{total}}",
     dates: "{{from}} to {{to}}",
     checkInOut: "Check-in {{from}}, check-out {{to}}",
+    stayNotes: "Stay notes",
     species: {
       dog: "Dog",
       cat: "Cat",

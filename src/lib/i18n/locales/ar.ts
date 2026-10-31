@@ -514,6 +514,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     visitOf: "الزيارة {{n}} من {{total}}",
     dates: "من {{from}} إلى {{to}}",
     checkInOut: "الوصول {{from}}، المغادرة {{to}}",
+    stayNotes: "ملاحظات الإقامة",
     species: {
       dog: "كلب",
       cat: "قطة",
