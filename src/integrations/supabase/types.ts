@@ -8349,6 +8349,7 @@ export type Database = {
           property_id: string
           report_note: string | null
           rescheduled_from: string | null
+          route_pinned: boolean
           scheduled_on: string
           sequence: number | null
           service_id: string | null
@@ -8404,6 +8405,7 @@ export type Database = {
           property_id: string
           report_note?: string | null
           rescheduled_from?: string | null
+          route_pinned?: boolean
           scheduled_on: string
           sequence?: number | null
           service_id?: string | null
@@ -8459,6 +8461,7 @@ export type Database = {
           property_id?: string
           report_note?: string | null
           rescheduled_from?: string | null
+          route_pinned?: boolean
           scheduled_on?: string
           sequence?: number | null
           service_id?: string | null

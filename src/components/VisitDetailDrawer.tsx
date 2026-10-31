@@ -28,6 +28,7 @@ import {
   deleteVisitPhotoFromOffice,
   reassignVisit,
   rescheduleVisitFromOffice,
+  setVisitRoutePinned,
   listStaff,
 } from "@/lib/visits.functions";
 import { formatDay } from "@/lib/format";
@@ -37,6 +38,7 @@ import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
 import { Input } from "@/components/ui/input";
 import {
   Navigation,
+  Check,
   CheckCircle2,
   SkipForward,
   Phone,
@@ -284,6 +286,23 @@ export function VisitDetailDrawer({
     qc.invalidateQueries({ queryKey: ["visit-detail", visitId] });
     qc.invalidateQueries({ queryKey: ["visits"] });
   };
+
+  // Pinned to its tech: auto-routing never moves it to someone else, even on
+  // a run allowed to move work between techs (#609). Sent at once, since it
+  // tells nobody anything and is undone by the same switch.
+  const doPin = useServerFn(setVisitRoutePinned);
+  const pinMut = useMutation({
+    mutationFn: (pinned: boolean) => doPin({ data: { visitId: visitId!, pinned } }),
+    onSuccess: (r) => {
+      toast.success(
+        r.pinned
+          ? "Pinned. Auto-routing will keep this visit with its tech."
+          : "Unpinned. Auto-routing may move this visit when you allow it.",
+      );
+      invalidate();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const completeMut = useMutation({
     mutationFn: () => doComplete({ data: { visitId: visitId! } }),
@@ -598,6 +617,34 @@ export function VisitDetailDrawer({
                     </option>
                   ))}
                 </select>
+                {/* Only with a tech to keep it on. A real switch, not a
+                    hover hint: the reason a visit is pinned (the walker a
+                    dog tolerates, the tech with the key) is exactly what a
+                    dispatcher on a phone needs to set. */}
+                {v?.assigned_staff_id && pendingStaff === undefined && (
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={Boolean(v.route_pinned)}
+                    disabled={pinMut.isPending}
+                    onClick={() => pinMut.mutate(!v.route_pinned)}
+                    className="flex w-full items-start gap-2 rounded-md border px-2 py-1.5 text-start text-xs hover:bg-muted touch:min-h-11"
+                  >
+                    <span
+                      aria-hidden
+                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border ${v.route_pinned ? "border-primary bg-primary text-primary-foreground" : ""}`}
+                    >
+                      {v.route_pinned && <Check className="h-3 w-3 shrink-0" />}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block font-medium">Keep with this tech</span>
+                      <span className="block text-muted-foreground">
+                        Auto-routing never moves a pinned visit to someone else. It still puts it in
+                        order on their route.
+                      </span>
+                    </span>
+                  </button>
+                )}
                 {canActFromOffice && (
                   <form
                     className="space-y-1 pt-2"

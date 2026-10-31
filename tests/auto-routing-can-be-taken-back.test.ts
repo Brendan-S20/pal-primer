@@ -64,22 +64,18 @@ describe("the wiring", () => {
     expect(seal).toBeGreaterThan(write);
   });
 
-  it("offers Undo after a run is announced, live or on review, and brings back no preview", () => {
+  it("offers Undo after a run is announced, live or on review, and Apply writes the preview", () => {
     const src = read("src/components/routes/AutoRoutingPanel.tsx");
     expect(src.match(/void offerUndo\(/g)?.length).toBe(2);
     expect(src).toMatch(/label: "Undo"/);
-    // No step before the write: Apply starts the run directly, and the run
-    // is started with the same input it always had, with nothing asking for
-    // a dry run first. The word "preview" is allowed in the file; its header
-    // explains why the preview went.
-    expect(src).toMatch(/onClick=\{\(\) => applyMut\.mutate\(\)\}/);
-    const apply = src.slice(
-      src.indexOf("const applyMut = useMutation"),
-      src.indexOf("onSuccess: (out)"),
-    );
-    expect(apply).not.toMatch(/\b(?:previewRoutingRun|dryRun)\s*\(|\bpreview\s*:\s*true/);
+    // CHANGED 2026-10-31 (#609, D10): Preview comes first and Apply sends
+    // that preview. Undo stays as the way back from a run that was shown.
+    expect(src).toMatch(/preview \? applyMut\.mutate\(\) : previewMut\.mutate\(\)/);
+    const at = src.indexOf("const applyMut = useMutation");
+    const apply = src.slice(at, src.indexOf("onSuccess: (out)", at));
+    expect(apply).toMatch(/if \(!preview\) throw/);
     expect(apply).toMatch(
-      /startFn\(\{\s*data: \{ runId, staffIds: chosen, from, to, level: LEVEL, reassign: true, windows \},?\s*\}\)/,
+      /startFn\(\{\s*data: \{ runId, staffIds: chosen, from, to, level: LEVEL, windows, preview \},?\s*\}\)/,
     );
   });
 

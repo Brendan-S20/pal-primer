@@ -22,7 +22,13 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/integrations/supabase/types";
-import { planDay, type RouteDayInputs, type UnassignedVisit } from "@/lib/route-inputs";
+import {
+  holdPinnedVisits,
+  planDay,
+  type RouteDayInputs,
+  type UnassignedVisit,
+} from "@/lib/route-inputs";
+import { routeMoves, type RouteMove, type VisitBefore } from "@/lib/route-moves";
 import { readWalkGroupAssignments } from "@/lib/walk-group-routing.server";
 
 export type DaySummaryRow = {
@@ -56,6 +62,13 @@ export type DayPlan = {
   /** Each technician's route before this run, from route_cost_current. */
   before: Array<{ staffId: string; minutes: number; sequenced: boolean }>;
   solver: { ms: number; rounds: number; stoppedBy: string; stops: number };
+  /** Every visit in play as the plan read it: its technician and its pin.
+   *  The write checks the day still says this before it writes (#609). */
+  visitsBefore: VisitBefore[];
+  /** What the plan changes about who has which visit, for the preview. */
+  moves: RouteMove[];
+  /** Visits that keep their technician and only get a new place in the order. */
+  reordered: number;
 };
 
 /** One day as apply_route_plans wrote it, or why it refused that day. */
@@ -83,11 +96,10 @@ export async function planDayRoutes(
     _reassign: args.reassign,
   });
   if (inErr) throw new Error(inErr.message);
-  const inp = await readWalkGroupAssignments(
-    supabase,
-    args.orgId,
-    inputs as unknown as RouteDayInputs,
-  );
+  const read = inputs as unknown as RouteDayInputs;
+  // A pinned visit stays with its technician even when this run may move
+  // work (#609). Then group walks, which pin their members to the walker.
+  const inp = await readWalkGroupAssignments(supabase, args.orgId, holdPinnedVisits(read));
   const honourWindows = args.honourWindows ?? inp.org.route_windows !== "ignore";
 
   // planDay solves each group walk as one stop and returns its members
@@ -98,6 +110,25 @@ export async function planDayRoutes(
     day: args.day,
     honourWindows,
     solver: { timeLimitMs: args.timeLimitMs, rounds: args.rounds },
+  });
+
+  // What the plan changes, measured against the day as it was read: before
+  // the group walks above put their members on the walker, so a member that
+  // goes to its walker is shown as the move it is.
+  const visitsBefore: VisitBefore[] = read.visits.map((v) => ({
+    visitId: v.id,
+    staffId: v.assigned_staff_id ?? null,
+    pinned: Boolean(v.pinned),
+  }));
+  const { moves, reordered } = routeMoves({
+    day: args.day,
+    before: visitsBefore,
+    names: new Map(
+      read.visits.map((v) => [v.id, { client: v.client ?? null, service: v.service ?? null }]),
+    ),
+    routes: plan.routes,
+    unassigned: plan.unassigned.map((u) => u.visit_id),
+    reassign: args.reassign,
   });
 
   return {
@@ -116,6 +147,9 @@ export async function planDayRoutes(
       stoppedBy: plan.solution.stoppedBy,
       stops: inp.visits.length,
     },
+    visitsBefore,
+    moves,
+    reordered,
   };
 }
 
