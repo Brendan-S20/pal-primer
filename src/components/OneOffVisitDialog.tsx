@@ -122,7 +122,11 @@ export function OneOffVisitDialog({
   const techs = (staffData?.staff ?? []).filter((s: any) => s.is_field_tech);
 
   // The set price, for someone who books but does not set prices.
-  const { data: listPrice, isLoading: listPriceLoading } = useQuery({
+  const {
+    data: listPrice,
+    isLoading: listPriceLoading,
+    error: listPriceError,
+  } = useQuery({
     enabled: open && !setsPrices && !!propertyId,
     queryKey: ["one-off-set-price", propertyId],
     queryFn: () => setPriceFn({ data: { propertyId } }),
@@ -266,6 +270,11 @@ export function OneOffVisitDialog({
               )}
             </div>
           </div>
+          {!setsPrices && propertyId && listPriceError && (
+            <p className="text-2xs text-destructive">
+              The set price could not be loaded: {(listPriceError as Error).message}
+            </p>
+          )}
           {!setsPrices && propertyId && listPrice && (
             <p className="text-2xs text-muted-foreground">
               {listPrice.cents != null

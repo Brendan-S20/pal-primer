@@ -299,7 +299,7 @@ describe("the screens and the words", () => {
   it("the Roles help page says what a dispatcher can actually do", () => {
     const help = read("src/lib/help-content.ts");
     expect(help).toContain(
-      "A dispatcher books visits, grooms and one-off visits at the prices the business has set; only an owner or office manager can change a price.",
+      "A dispatcher books one-off visits and grooms at the prices the business has set; only an owner or office manager can change a price.",
     );
   });
 
