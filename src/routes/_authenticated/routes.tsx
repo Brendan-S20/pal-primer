@@ -388,12 +388,11 @@ function RoutesPage() {
   }, [autorouteParam, navigate]);
   const [detailVisitId, setDetailVisitId] = useState<string | null>(null);
   const [oneOffOpen, setOneOffOpen] = useState(false);
-  // Booking a one-off sets a price, so it takes manage_pricing — the same gate
-  // createSubscription uses. A dispatcher does not hold it, and the server
-  // refuses regardless; hiding the button keeps it from being a form that
-  // throws only after it has been filled in.
+  // Booking a one-off takes the booking permission (#616), which a dispatcher
+  // holds. The price stays manage_pricing: without it the dialog books at the
+  // set price, and the server refuses any other.
   const { can: canDo, role } = usePermissions();
-  const canBookOneOff = canDo("manage_pricing");
+  const canBookOneOff = canDo("booking");
   // "You shouldn't have to go to settings to say who's a tech." Naming the
   // crew is the same permission as editing the crew — `setStaffRouting` takes
   // `manage_users` and will refuse regardless, so a dispatcher gets no switch

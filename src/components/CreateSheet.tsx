@@ -145,11 +145,10 @@ export function CreateSheet({
   const creates = actions.filter((a) => a.creates);
   const jumps = actions.filter((a) => !a.creates);
   const [oneOff, setOneOff] = useState(false);
-  // Booking a one-off sets a price, so it needs manage_pricing — the same
-  // permission createSubscription requires. A dispatcher does not hold it, and
-  // showing them a form that throws on submit is the failure this whole pass
-  // has been about.
-  const canBookOneOff = can("manage_pricing");
+  // Booking a one-off takes the booking permission (#616), which a dispatcher
+  // holds. Without manage_pricing the dialog books at the set price, and the
+  // server refuses any other.
+  const canBookOneOff = can("booking");
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>

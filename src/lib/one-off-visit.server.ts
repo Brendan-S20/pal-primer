@@ -13,6 +13,11 @@
 //   * the AI receptionist's book_visit (receptionist-booking.ts) -- the same
 //     request, made by text, on the same switch and at the same price. Also
 //     the service role; it says so with actorLabel and bookedVia.
+//   * createOneOffVisit for a dispatcher (#616), who books but does not set
+//     prices. The subscriptions write policy is manage_pricing, so the plan is
+//     written as the service role, at the set price createOneOffVisit worked
+//     out itself (booking-price.server.ts). The person is still named on the
+//     timeline, and assigns through their own client (assignDb).
 //
 // Every comment below was written about createOneOffVisit and still applies;
 // see there for why a one-off is a `one_time` subscription at all.
@@ -34,9 +39,13 @@ export type BookOneOffInput = {
   serviceId?: string | null;
   staffId?: string | null;
   note?: string;
-  /** True only for the service-role paths: the portal's auto-accept, and
-   *  the AI receptionist. */
+  /** True only for the service-role paths: the portal's auto-accept, the AI
+   *  receptionist, and a dispatcher's booking at the set price (#616). */
   asService?: boolean;
+  /** The signed-in booker's own client, on a service-role booking made by a
+   *  person (a dispatcher, #616). reassign_visit checks the signed-in user,
+   *  so assigning a tech goes through this rather than the service role. */
+  assignDb?: any;
   /** Who the timeline names on a service-role booking. Default "Customer
    *  portal". */
   actorLabel?: string;
@@ -274,11 +283,11 @@ export async function bookOneOffVisit(db: any, input: BookOneOffInput): Promise<
   // have been in anyway had the caller not picked one — and says so.
   let assigned = false;
   let assignWarning: string | null = null;
-  if (input.staffId && input.asService) {
+  if (input.staffId && input.asService && !input.assignDb) {
     // reassign_visit checks the signed-in user; the service role is nobody.
     assignWarning = "Booked automatically, so nobody was assigned.";
   } else if (input.staffId) {
-    const { error: rErr } = await (db as any).rpc("reassign_visit", {
+    const { error: rErr } = await (input.assignDb ?? db).rpc("reassign_visit", {
       _visit_id: visit.id,
       _staff_id: input.staffId,
     });
@@ -293,7 +302,10 @@ export async function bookOneOffVisit(db: any, input: BookOneOffInput): Promise<
       clientId: input.clientId,
       propertyId: input.propertyId,
       actorUserId: input.actorUserId,
-      ...(input.asService ? { actorLabel: input.actorLabel ?? "Customer portal" } : {}),
+      // A dispatcher's booking is the service role too, but a person made it.
+      ...(input.asService && !input.actorUserId
+        ? { actorLabel: input.actorLabel ?? "Customer portal" }
+        : {}),
       kind: "visit.created",
       summary: `Booked a one-off visit on ${visit.scheduled_on}${
         input.note ? ` — ${input.note}` : ""

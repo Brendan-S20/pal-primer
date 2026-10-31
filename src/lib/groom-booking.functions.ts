@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
+import { hasPermission } from "@/lib/permissions";
 import { bookGroomAppointment } from "@/lib/groom-booking.server";
 import { COAT_TYPES, petSize, type CoatType, type PetSize } from "@/lib/groom";
 import { vaccineStatus } from "@/lib/vaccines";
@@ -32,11 +33,31 @@ export const bookGroom = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => bookSchema.parse(d))
   .handler(async ({ data, context }) => {
-    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_pricing");
-    return bookGroomAppointment(context.supabase, {
+    // Booking, not pricing (#616): a groom takes no price from the caller.
+    // bookGroomAppointment prices it from the business's own groom grid
+    // (service, size rules, add-ons), so the front desk books at that price
+    // and there is nothing for it to override.
+    const caller = await requirePermission(context.supabase, context.userId, "booking");
+    if (hasPermission(caller.role, "manage_pricing")) {
+      return bookGroomAppointment(context.supabase, {
+        ...data,
+        orgId: caller.orgId,
+        actorUserId: context.userId,
+      });
+    }
+    // The subscriptions write policy is manage_pricing and stays so, so a
+    // dispatcher's groom is written as the service role, the way the booking
+    // link's webhook writes one (#560), after bookGroomAppointment has checked
+    // the client, address, service and pets are this organization's. The
+    // groomer is assigned through the dispatcher's own client, because
+    // reassign_visit checks the signed-in user.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    return bookGroomAppointment(supabaseAdmin, {
       ...data,
-      orgId,
+      orgId: caller.orgId,
       actorUserId: context.userId,
+      asService: true,
+      assignDb: context.supabase,
     });
   });
 
@@ -53,7 +74,7 @@ export const groomDayBookings = createServerFn({ method: "GET" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const { orgId } = await requirePermission(supabase, userId, "manage_pricing");
+    const { orgId } = await requirePermission(supabase, userId, "booking");
     let q = supabase
       .from("visits")
       .select("start_time, duration_min, groom_summary")
@@ -78,13 +99,13 @@ function coatOf(value: unknown): CoatType | null {
     : null;
 }
 
-/** What the book-a-groom dialog needs. Office only, same permission as booking. */
+/** What the book-a-groom dialog needs. The same permission as booking. */
 export const groomBookingOptions = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const { orgId } = await requirePermission(supabase, userId, "manage_pricing");
+    const { orgId } = await requirePermission(supabase, userId, "booking");
     const { data: client, error: cErr } = await supabase
       .from("clients")
       .select("id, organization_id")
