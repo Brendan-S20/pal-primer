@@ -460,6 +460,10 @@ const es: Translations = {
     no: "No",
     noteForClient: "Nota para el cliente",
     noteForClientPlaceholder: "Buen paseo, olió cada árbol",
+    emptyReportTitle: "¿Terminar el paseo sin informe?",
+    emptyReportBody: "Pipí, popó y la nota para el cliente están vacíos. El cliente no recibe nada sobre este paseo.",
+    endAnyway: "Terminar igual",
+    addReport: "Llenar informe",
     codesNotLoaded:
       "Los códigos guardados están ocultos o no se pudieron cargar. Se quedan como están a menos que escribas otros nuevos.",
   },

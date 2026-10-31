@@ -33,6 +33,7 @@ import { syncQueue, type SyncCallers } from "./sync";
 import { signOutAndClearDevice } from "./read-cache";
 import { resolveOfflineUserId } from "./action-owner";
 import { withDeadline } from "./run-or-queue";
+import { clearAllWalkDrafts } from "./walk-drafts";
 
 /** A whole flush, not one action.
  *
@@ -80,6 +81,7 @@ export async function flushThenClearAndSignOut(opts: {
   if (!userId) {
     // No session and nothing remembered: there is no queue that could belong to
     // anyone here, so there is nothing to flush and nothing to consent to.
+    await clearDrafts();
     await signOutAndClearDevice();
     return { signedOut: true, synced: 0, discarded: 0, lost: 0, flushSkipped: true };
   }
@@ -129,6 +131,7 @@ export async function flushThenClearAndSignOut(opts: {
 
   // Actions AND the photo blobs they point at. This is the part that never ran.
   await clearQueueForUser(userId);
+  await clearDrafts();
   await signOutAndClearDevice();
   return { signedOut: true, synced, discarded: remaining, lost, flushSkipped };
 }
@@ -145,5 +148,17 @@ async function ownerOrNull(): Promise<string | null> {
     return await resolveOfflineUserId();
   } catch {
     return null;
+  }
+}
+
+/** Walk reports still being typed (#610), every one on the device, so the next
+ *  person to sign in never sees them. A draft is not queued work: nothing has
+ *  been recorded yet, so there is nothing to flush or ask about first. A store
+ *  that cannot be opened must not strand someone on a signed-in tablet. */
+async function clearDrafts(): Promise<void> {
+  try {
+    await clearAllWalkDrafts();
+  } catch {
+    // Nothing to clear, or no IndexedDB here at all.
   }
 }
