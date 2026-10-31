@@ -137,6 +137,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     dashboard: "العودة إلى لوحة التحكم",
   },
   common: {
+    notSaved: "لم يتم الحفظ. حاول مرة أخرى.",
     loading: "جارٍ التحميل…",
     save: "حفظ",
     cancel: "إلغاء",
@@ -627,6 +628,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     sendOnMyWay: "إرسال «أنا في الطريق»",
   },
   skip: {
+    notSaved: "لم يتم حفظ التخطي. اختر سببًا وحاول مرة أخرى.",
     reason: "السبب",
     detailsPlaceholder: "التفاصيل (ماذا حدث، صور، إلخ)",
     confirm: "تأكيد التخطي",

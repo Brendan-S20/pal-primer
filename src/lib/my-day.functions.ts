@@ -9,6 +9,7 @@ import {
   parseAnswers,
 } from "@/lib/visit-checklist";
 import { z } from "zod";
+import { FIELD_SKIP_REASON_CODES } from "@/lib/skip-rules.functions";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
@@ -797,35 +798,19 @@ export const completeVisit = createServerFn({ method: "POST" })
     return { ok: true, notificationSummary: { sent: sentClientNotices, pending: noticesPending } };
   });
 
+/** What skipVisit accepts. The reason codes are FIELD_SKIP_REASON_CODES, the
+ *  same list the pickers are built from (#608). */
+export const skipVisitInput = z.object({
+  visitId: z.string().uuid(),
+  reason: z.string().min(1).max(500),
+  code: z.enum(FIELD_SKIP_REASON_CODES).default("other"),
+  /** When the tech actually skipped, for a REPLAYED action. */
+  skippedAt: z.string().datetime().optional(),
+});
+
 export const skipVisit = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z
-      .object({
-        visitId: z.string().uuid(),
-        reason: z.string().min(1).max(500),
-        code: z
-          .enum([
-            "client_cancelled_late",
-            "gate_locked",
-            "dog_outside",
-            "weather",
-            "our_fault",
-            "access_blocked",
-            "unsafe_conditions",
-            "other",
-            "key_failed",
-            "no_one_home",
-            "dog_unwell",
-            "pet_hiding",
-            "client_home",
-          ])
-          .default("other"),
-        /** When the tech actually skipped, for a REPLAYED action. */
-        skippedAt: z.string().datetime().optional(),
-      })
-      .parse(d),
-  )
+  .inputValidator((d) => skipVisitInput.parse(d))
   .handler(async ({ data, context }) => {
     const { error } = await context.supabase.rpc("skip_visit", {
       _visit_id: data.visitId,

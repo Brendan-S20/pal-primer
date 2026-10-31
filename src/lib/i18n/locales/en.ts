@@ -129,6 +129,7 @@ const en = {
     dashboard: "Back to dashboard",
   },
   common: {
+    notSaved: "That did not save. Try again.",
     loading: "Loading…",
     save: "Save",
     cancel: "Cancel",
@@ -602,6 +603,7 @@ const en = {
     sendOnMyWay: "Send “on my way”",
   },
   skip: {
+    notSaved: "This skip did not save. Pick a reason and try again.",
     reason: "Reason",
     detailsPlaceholder: "Details (what happened, photos, etc.)",
     confirm: "Confirm skip",
