@@ -756,13 +756,31 @@ function RoutesPage() {
    *  it. Never silent — moving somebody's whole schedule on a checkbox is a
    *  surprise, not a safeguard. */
   const [coverFor, setCoverFor] = useState<{ id: string; name: string } | null>(null);
+  /** Off by default (#619): Cover moves the away dates only. Work after the
+   *  last away day stays with the tech unless this is ticked. */
+  const [coverLater, setCoverLater] = useState(false);
+  const openCover = (who: { id: string; name: string }) => {
+    setCoverLater(false);
+    setCoverFor(who);
+  };
   const coverQuery = useQuery({
-    queryKey: ["staff-load", coverFor?.id],
-    queryFn: () => loadFn({ data: { staffId: coverFor!.id } }),
+    queryKey: ["staff-load", coverFor?.id, day, orgTodayIso],
+    queryFn: () => loadFn({ data: { staffId: coverFor!.id, day, today: orgTodayIso } }),
     enabled: Boolean(coverFor),
   });
+  const coverWindow = coverQuery.data?.window ?? null;
+  const coverMoveTotal =
+    (coverQuery.data?.total ?? 0) + (coverLater ? (coverQuery.data?.laterTotal ?? 0) : 0);
   const redistributeMut = useMutation({
-    mutationFn: () => redistributeFn({ data: { staffId: coverFor!.id } }),
+    mutationFn: () =>
+      redistributeFn({
+        data: {
+          staffId: coverFor!.id,
+          from: coverWindow?.from,
+          to: coverWindow?.to,
+          includeLater: coverLater,
+        },
+      }),
     onSuccess: (r: any) => {
       if (r.left > 0) {
         toast.warning(
@@ -1725,7 +1743,7 @@ function RoutesPage() {
                         onHover={setHoveredVisitId}
                         laneAction={
                           <button
-                            onClick={() => setCoverFor({ id: s.id, name: s.display_name })}
+                            onClick={() => openCover({ id: s.id, name: s.display_name })}
                             // 18px from `py-0.5` around a 3xs line. Moving a
                             // whole lane's work because someone called in sick is
                             // not a control to aim at.
@@ -1906,37 +1924,74 @@ function RoutesPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-lg border bg-card p-5 shadow-xl">
             <h2 className="text-base font-semibold">{coverFor.name} is out</h2>
+            {coverWindow && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                {coverWindow.source === "time_off" ? "Time off " : "Just "}
+                <strong className="text-foreground">
+                  {coverWindow.from === coverWindow.to
+                    ? formatDay(coverWindow.from)
+                    : `${formatDay(coverWindow.from)} to ${formatDay(coverWindow.to)}`}
+                </strong>
+                {coverWindow.source === "day" ? ", no time off is recorded" : ""}
+                {coverWindow.reason ? ` (${coverWindow.reason})` : ""}
+              </p>
+            )}
             {coverQuery.isLoading ? (
               <p className="mt-3 text-sm text-muted-foreground">
                 Checking what they&apos;re holding…
               </p>
-            ) : (coverQuery.data?.total ?? 0) === 0 ? (
+            ) : (coverQuery.data?.total ?? 0) + (coverQuery.data?.laterTotal ?? 0) === 0 ? (
               <p className="mt-3 text-sm text-muted-foreground">
                 They have no upcoming work. Nothing to move.
               </p>
             ) : (
               <>
                 <p className="mt-3 text-sm">
-                  They still have{" "}
-                  <strong>
-                    {coverQuery.data?.total} visit{coverQuery.data?.total === 1 ? "" : "s"}
-                  </strong>{" "}
-                  across {coverQuery.data?.days?.length} day
-                  {coverQuery.data?.days?.length === 1 ? "" : "s"}, starting{" "}
-                  {coverQuery.data?.days?.[0]?.scheduled_on}.
+                  {(coverQuery.data?.total ?? 0) === 0 ? (
+                    "They have no visits on those dates."
+                  ) : (
+                    <>
+                      They have{" "}
+                      <strong>
+                        {coverQuery.data?.total} visit{coverQuery.data?.total === 1 ? "" : "s"}
+                      </strong>{" "}
+                      on those dates.
+                    </>
+                  )}
                 </p>
-                <div className="mt-3 max-h-40 overflow-y-auto rounded border">
-                  <table className="w-full text-xs">
-                    <tbody>
-                      {(coverQuery.data?.days ?? []).map((d: any) => (
-                        <tr key={d.scheduled_on} className="border-b last:border-0">
-                          <td className="px-2 py-1">{d.scheduled_on}</td>
-                          <td className="px-2 py-1 text-right tabular-nums">{d.visits}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                {(coverQuery.data?.days?.length ?? 0) > 0 && (
+                  <div className="mt-3 max-h-40 overflow-y-auto rounded border">
+                    <table className="w-full text-xs">
+                      <tbody>
+                        {(coverQuery.data?.days ?? []).map((d) => (
+                          <tr key={d.scheduled_on} className="border-b last:border-0">
+                            <td className="px-2 py-1">{formatDay(d.scheduled_on)}</td>
+                            <td className="px-2 py-1 text-right tabular-nums">{d.visits}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {(coverQuery.data?.laterTotal ?? 0) > 0 && (
+                  <label className="mt-3 flex min-h-11 cursor-pointer items-start gap-3 rounded border p-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4 shrink-0"
+                      checked={coverLater}
+                      onChange={(e) => setCoverLater(e.target.checked)}
+                    />
+                    <span className="min-w-0">
+                      Also move later work
+                      <span className="block text-xs text-muted-foreground">
+                        {coverQuery.data?.laterTotal} more visit
+                        {coverQuery.data?.laterTotal === 1 ? "" : "s"} after{" "}
+                        {coverWindow ? formatDay(coverWindow.to) : "these dates"}. Left unticked,
+                        they stay with {coverFor.name}.
+                      </span>
+                    </span>
+                  </label>
+                )}
                 <p className="mt-3 text-xs text-muted-foreground">
                   Moving spreads it round-robin across the technicians who are available, day by
                   day, and clears the stop order so it can be optimised again. Completed visits stay
@@ -1951,9 +2006,11 @@ function RoutesPage() {
               <Button
                 size="sm"
                 onClick={() => redistributeMut.mutate()}
-                disabled={redistributeMut.isPending || (coverQuery.data?.total ?? 0) === 0}
+                disabled={redistributeMut.isPending || coverMoveTotal === 0}
               >
-                {redistributeMut.isPending ? "Moving…" : "Move their work"}
+                {redistributeMut.isPending
+                  ? "Moving…"
+                  : `Move ${coverMoveTotal} visit${coverMoveTotal === 1 ? "" : "s"}`}
               </Button>
             </div>
           </div>
