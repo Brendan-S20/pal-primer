@@ -1023,50 +1023,187 @@ export const bulkRescheduleVisits = createServerFn({ method: "POST" })
     };
   });
 
-/** What a tech is still holding, by day — read BEFORE offering to move it. */
+/** What a tech is still holding, by day, read BEFORE offering to move it.
+ *
+ *  With `day`, the answer is split at the Cover window (#619): the dates of
+ *  the absence that covers `day`, or `day` alone when no time off covers
+ *  it. `days`/`total` are what Cover moves by default;
+ *  `laterDays`/`laterTotal` stay put unless the office opts in. */
 export const getStaffUpcomingLoad = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ staffId: z.string().uuid() }).parse(d))
+  .inputValidator((d) =>
+    z
+      .object({
+        staffId: z.string().uuid(),
+        day: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
+        today: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
-    const { data: rows, error } = await (context.supabase as any).rpc("staff_upcoming_load", {
-      _staff_id: data.staffId,
-    });
-    if (error) throw new Error(error.message);
-    const days = (rows ?? []) as Array<{ scheduled_on: string; visits: number }>;
-    return { days, total: days.reduce((s, d) => s + (d.visits ?? 0), 0) };
+    const load = async (from: string | null) => {
+      const { data: rows, error } = await (context.supabase as any).rpc("staff_upcoming_load", {
+        _staff_id: data.staffId,
+        _from: from,
+      });
+      if (error) throw new Error(error.message);
+      return (rows ?? []) as Array<{ scheduled_on: string; visits: number }>;
+    };
+    if (!data.day) {
+      const all = await load(null);
+      return {
+        window: null,
+        days: all,
+        total: all.reduce((s, d) => s + (d.visits ?? 0), 0),
+        laterDays: [] as typeof all,
+        laterTotal: 0,
+      };
+    }
+    const today = data.today ?? data.day;
+    const start = data.day < today ? today : data.day;
+    const { pickCoverWindow, splitLoad } = await import("@/lib/cover-window");
+    const { data: off, error: offError } = await context.supabase
+      .from("staff_time_off")
+      .select("starts_on, ends_on, reason")
+      .eq("staff_id", data.staffId)
+      .lte("starts_on", start)
+      .gte("ends_on", start);
+    if (offError) throw new Error(offError.message);
+    const window = pickCoverWindow(off ?? [], data.day, today);
+    // Read from the window's first day, the org's today at the earliest,
+    // not the database's current_date, so the count and the move agree.
+    const all = await load(window.from);
+    const split = splitLoad(all, window);
+    return {
+      window,
+      days: split.inside,
+      total: split.insideTotal,
+      laterDays: split.later,
+      laterTotal: split.laterTotal,
+    };
   });
 
+/** Cover: hand an out tech's work to the rest of the crew.
+ *
+ *  With `from`/`to` and no `includeLater`, only visits inside those dates
+ *  move (#619); everything after `to` stays with this tech. `includeLater`
+ *  moves everything from `from` onward, which is what Cover always did. */
 export const redistributeStaffWork = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ staffId: z.string().uuid() }).parse(d))
+  .inputValidator((d) =>
+    z
+      .object({
+        staffId: z.string().uuid(),
+        from: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
+        to: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
+        includeLater: z.boolean().optional(),
+      })
+      .refine(
+        (v) => !v.to || Boolean(v.from && v.from <= v.to),
+        "Pick a start date on or before the end",
+      )
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
-    // Everything this tech holds today and tomorrow goes to someone else:
-    // the snapshot of their two days is followed to wherever it lands.
+    const windowed = Boolean(data.to) && !data.includeLater;
     const { startRouteWatch } = await import("@/lib/field-notify.server");
     const watch = await startRouteWatch({ actorUserId: context.userId, staffIds: [data.staffId] });
-    const { data: n, error } = await (context.supabase as any).rpc("redistribute_staff_work", {
-      _staff_id: data.staffId,
-    });
-    if (error) throw new Error(error.message);
-    // A groom with a fixed time that no other tech has room for stays with
-    // this tech (20261024100600). Same window as the move, so what is left
-    // is exactly what the office still has to place by hand.
-    const { data: rest } = await (context.supabase as any).rpc("staff_upcoming_load", {
-      _staff_id: data.staffId,
-    });
-    const left = ((rest ?? []) as Array<{ visits: number }>).reduce(
-      (s, d) => s + Number(d.visits ?? 0),
-      0,
-    );
-    await watch.finish();
-    // The work went to whoever had room, which this call does not say, so
-    // every live route in the business is rebuilt; an unchanged one is not
-    // pushed.
     const { data: staffRow } = await context.supabase
       .from("staff")
       .select("organization_id")
       .eq("id", data.staffId)
       .maybeSingle();
+    let n = 0;
+    if (windowed) {
+      // Only the away dates. Same order and same fallbacks as
+      // redistribute_staff_work, one visit at a time through
+      // bulk_reassign_visits, so a groom clash (23P01) or a tech who is off
+      // that day (23514) passes the visit to the next tech instead of
+      // failing the whole Cover.
+      if (!staffRow?.organization_id) throw new Error("staff not found");
+      const { data: crew, error: crewError } = await context.supabase
+        .from("staff")
+        .select("id")
+        .eq("organization_id", staffRow.organization_id)
+        .eq("active", true)
+        .eq("is_field_tech", true)
+        .eq("routing_available", true)
+        .neq("id", data.staffId)
+        .order("display_name");
+      if (crewError) throw new Error(crewError.message);
+      const others = (crew ?? []).map((r) => r.id as string);
+      if (others.length === 0) {
+        throw new Error(
+          "Nobody else is available to take this work. Add or free up another technician first.",
+        );
+      }
+      const { data: held, error: heldError } = await context.supabase
+        .from("visits")
+        .select("id, scheduled_on")
+        .eq("assigned_staff_id", data.staffId)
+        .gte("scheduled_on", data.from!)
+        .lte("scheduled_on", data.to!)
+        .not("status", "in", "(completed,skipped)")
+        .order("scheduled_on")
+        .order("sequence", { ascending: true, nullsFirst: false })
+        .order("id");
+      if (heldError) throw new Error(heldError.message);
+      const { spreadVisits } = await import("@/lib/cover-window");
+      const moved = await spreadVisits(
+        (held ?? []) as Array<{ id: string; scheduled_on: string }>,
+        others,
+        async (visitId, staffId) => {
+          const { data: c, error: e } = await context.supabase.rpc("bulk_reassign_visits", {
+            _visit_ids: [visitId],
+            _staff_id: staffId,
+          });
+          if (e) {
+            // 23P01: the groom guard (zz_visits_groom_no_overlap), that tech
+            // already has a groom then. 23514: the time-off guard
+            // (visits_respect_time_off), that tech is off that day. Either
+            // way the next tech is asked; anything else fails the Cover.
+            if (e.code === "23P01" || e.code === "23514") return "refused";
+            throw new Error(e.message);
+          }
+          return Number(c ?? 0) > 0 ? "ok" : "refused";
+        },
+      );
+      n = moved.length;
+    } else {
+      const { data: count, error } = await (context.supabase as any).rpc(
+        "redistribute_staff_work",
+        { _staff_id: data.staffId, _from: data.from ?? null },
+      );
+      if (error) throw new Error(error.message);
+      n = (count as number) ?? 0;
+    }
+    // A groom with a fixed time that no other tech has room for stays with
+    // this tech (20261024100600). Same window as the move, so what is left
+    // is exactly what the office still has to place by hand.
+    const { data: restAll } = await (context.supabase as any).rpc("staff_upcoming_load", {
+      _staff_id: data.staffId,
+      _from: data.from ?? null,
+    });
+    const rest = ((restAll ?? []) as Array<{ scheduled_on: string; visits: number }>).filter(
+      (d) => !windowed || d.scheduled_on <= data.to!,
+    );
+    const left = rest.reduce((s, d) => s + Number(d.visits ?? 0), 0);
+    await watch.finish();
+    // The work went to whoever had room, which this call does not say, so
+    // every live route in the business is rebuilt; an unchanged one is not
+    // pushed.
     if (staffRow?.organization_id) {
       const { refreshOrgRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
       await refreshOrgRouteLiveActivities(staffRow.organization_id);
@@ -1077,7 +1214,7 @@ export const redistributeStaffWork = createServerFn({ method: "POST" })
       .eq("assigned_staff_id", data.staffId)
       .in(
         "scheduled_on",
-        ((rest ?? []) as Array<{ scheduled_on: string }>).map((d) => d.scheduled_on),
+        rest.map((d) => d.scheduled_on),
       )
       .not("status", "in", "(completed,skipped)");
     if (remainingError) throw new Error(remainingError.message);
@@ -1101,7 +1238,7 @@ export const redistributeStaffWork = createServerFn({ method: "POST" })
           .join(":")}`,
       });
     }
-    return { moved: (n as number) ?? 0, left, leftAppointments };
+    return { moved: n, left, leftAppointments };
   });
 
 // ── Auto-routing moved out of this file on 2026-10-04 ─────────────────────
