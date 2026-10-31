@@ -134,7 +134,8 @@ describe("the manual invoice form", () => {
   it("sends a line of one as only a total, and refuses a quantity it cannot read", () => {
     const page = read("src/routes/_authenticated/invoices.index.tsx");
     expect(page).toMatch(
-      /l\.quantity === 1\s*\?\s*\{ description: l\.description, amountCents: l\.amountCents \}/,
+      // A linked line (#605) carries its visit or add-on beside the total.
+      /l\.quantity === 1\s*\?\s*\{ description: l\.description, amountCents: l\.amountCents(, \.\.\.link)? \}/,
     );
     expect(page).toMatch(/badQuantity \|\| createM\.isPending/);
   });

@@ -13,13 +13,18 @@ export type ManualInvoiceItem = {
   amountCents: number;
   quantity?: number;
   unitAmountCents?: number;
+  /** The visit this line bills. Written as invoice_line_items.visit_id, which
+   *  is what keeps the billing run from billing the visit again (#605). */
+  visitId?: string;
+  /** The pending add-on charge this line bills. It is marked invoiced against
+   *  the line, so the billing run no longer picks it up. */
+  addonChargeId?: string;
 };
 
 /** Insert an open invoice and its lines for a client the caller has already
  *  checked belongs to `orgId`. Shared by the New invoice dialog and by
  *  invoicing a quote's one-time charges, so both date the invoice on the
- *  org's day, apply its payment terms, and clean up after a failed line
- *  insert the same way. */
+ *  org's day, apply its payment terms, and write it all or nothing. */
 export async function insertManualInvoice(
   supabase: SupabaseClient<any>,
   p: {
@@ -31,8 +36,18 @@ export async function insertManualInvoice(
     notes?: string;
     /** What the activity log calls it: "manual invoice", "invoice for Q-1001". */
     activityLabel?: string;
+    /** The days the invoice covers. Today when not given. */
+    period?: { start: string; end: string };
+    /** One per New invoice dialog. A second call with the same key returns
+     *  the invoice the first one made (#607). */
+    creationKey?: string;
   },
 ): Promise<{ invoiceId: string; totalCents: number; taxCents: number }> {
+  const linked = p.items.some((i) => i.visitId || i.addonChargeId);
+  if (linked) {
+    const { checkInvoiceLinks } = await import("@/lib/visit-invoicing.server");
+    await checkInvoiceLinks(supabase, p.orgId, p.clientId, p.items);
+  }
   const subtotal = p.items.reduce((s, i) => s + i.amountCents, 0);
   const nowIso = new Date().toISOString();
   // Due date = issued date + the org's payment terms. (A DB trigger also
@@ -66,45 +81,44 @@ export async function insertManualInvoice(
   const today = orgToday(org?.timezone || DEFAULT_ORG_TIMEZONE);
   const netDays = org?.invoice_net_days ?? 15;
   const dueOn = addDaysToDay(today, netDays);
-  const { data: inv, error: iErr } = await supabase
-    .from("invoices")
-    .insert(
-      newInvoice({
-        organization_id: p.orgId,
-        client_id: p.clientId,
-        kind: "postpaid",
-        status: "open",
-        subtotal_cents: totals.subtotalCents,
-        tax_rate_bps: totals.taxRateBps,
-        tax_cents: totals.taxCents,
-        tax_label: totals.taxLabel,
-        total_cents: total,
-        period_start: today,
-        period_end: today,
-        issued_at: nowIso,
-        due_on: dueOn,
-        notes: p.notes ?? "Manual invoice",
-      }),
-    )
-    .select("id")
-    .single();
+  // Every row names every column. The lines used to be one bulk insert in
+  // which a row with no quantity left it out, and a bulk insert writes NULL,
+  // not the default, into a column another row names: "Full groom x1 +
+  // Add-on x2" failed on quantity NOT NULL (#606).
+  const lines = p.items.map((i) => ({
+    description: i.description,
+    amount_cents: i.amountCents,
+    quantity: i.quantity ?? 1,
+    unit_amount_cents: i.quantity !== undefined ? i.unitAmountCents! : null,
+    visit_id: i.visitId ?? null,
+    addon_charge_id: i.addonChargeId ?? null,
+  }));
+  // The invoice, its lines and its add-on claims in one transaction. The
+  // number is taken from the org's counter when the invoice row goes in, so
+  // anything that fails after that has to roll the counter back with it, or
+  // every failed save skips a number (#606).
+  const { data: invoiceId, error: iErr } = await supabase.rpc("create_manual_invoice", {
+    _invoice: newInvoice({
+      organization_id: p.orgId,
+      client_id: p.clientId,
+      kind: "postpaid",
+      status: "open",
+      subtotal_cents: totals.subtotalCents,
+      tax_rate_bps: totals.taxRateBps,
+      tax_cents: totals.taxCents,
+      tax_label: totals.taxLabel,
+      total_cents: total,
+      period_start: p.period?.start ?? today,
+      period_end: p.period?.end ?? today,
+      issued_at: nowIso,
+      due_on: dueOn,
+      notes: p.notes ?? "Manual invoice",
+      creation_key: p.creationKey ?? null,
+    }),
+    _lines: lines,
+  });
   if (iErr) throw new Error(iErr.message);
 
-  const { error: lErr } = await supabase.from("invoice_line_items").insert(
-    p.items.map((i) => ({
-      invoice_id: inv.id,
-      description: i.description,
-      amount_cents: i.amountCents,
-      ...(i.quantity !== undefined
-        ? { quantity: i.quantity, unit_amount_cents: i.unitAmountCents! }
-        : {}),
-    })),
-  );
-  if (lErr) {
-    // Don't leave a headless invoice behind if the lines failed.
-    await supabase.from("invoices").delete().eq("id", inv.id);
-    throw new Error(lErr.message);
-  }
   const { logActivity } = await import("@/lib/activity.server");
   await logActivity(supabase, {
     orgId: p.orgId,
@@ -112,7 +126,7 @@ export async function insertManualInvoice(
     actorUserId: p.userId,
     ...(p.userId ? {} : { actorLabel: "Client portal" }),
     kind: "invoice.created",
-    summary: `Created ${p.activityLabel ?? "manual invoice"} ${await invoiceRef(supabase, String(inv.id))} for $${(total / 100).toFixed(2)}`,
+    summary: `Created ${p.activityLabel ?? "manual invoice"} ${await invoiceRef(supabase, String(invoiceId))} for $${(total / 100).toFixed(2)}`,
   });
-  return { invoiceId: inv.id as string, totalCents: total, taxCents: totals.taxCents };
+  return { invoiceId: invoiceId as string, totalCents: total, taxCents: totals.taxCents };
 }

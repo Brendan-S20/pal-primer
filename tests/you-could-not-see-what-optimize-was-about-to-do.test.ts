@@ -341,7 +341,7 @@ describe("the guards still apply, and refusals are visible", () => {
     expect(ui).toMatch(/r\.skipped\.slice\(0, 3\)/);
   });
 
-  it("Apply is guarded by its inputs, now that there is no preview to gate it", () => {
+  it("Apply is guarded by its inputs", () => {
     // CHANGED 2026-08-19 — QA: "Also remove the preview, let's just have
     // apply." This used to read
     //
@@ -356,8 +356,13 @@ describe("the guards still apply, and refusals are visible", () => {
       join(import.meta.dirname, "..", "src/components/routes/AutoRoutingPanel.tsx"),
       "utf8",
     );
-    expect(ui).toMatch(/disabled=\{!rangeValid \|\| techs\.length === 0 \|\| busy\}/);
-    expect(ui, "the preview gate is back").not.toMatch(/previewMut/);
+    //
+    // CHANGED 2026-10-31 (#609, D10): the preview came back, as a step of the
+    // same button (Preview, then Apply). The input gate is unchanged, and a
+    // preview in flight holds the button too.
+    expect(ui).toMatch(
+      /disabled=\{!rangeValid \|\| techs\.length === 0 \|\| busy \|\| previewMut\.isPending\}/,
+    );
   });
   it("costs the drive from the last stop to where the day ends", () => {
     // Before 20260831150000 the planner resolved a START and then planned an

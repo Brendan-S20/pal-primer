@@ -72,6 +72,9 @@ export type RouteDayInputs = {
     pref: string;
     assigned_staff_id: string | null;
     fixed: boolean;
+    /** visits.route_pinned (20261031090000): kept with its technician by
+     *  auto-routing, even on a run that may move work between techs. */
+    pinned?: boolean;
     group_walker_id?: string | null;
     /** The group walk this visit belongs to, with the group's own window as
      *  HH:MM. Members of one group are planned as a single stop. */
@@ -126,6 +129,19 @@ export function pinWalkGroupVisits(
       }
       return out;
     }),
+  };
+}
+
+/** A pinned visit stays with its technician, reassign or not (#609).
+ *  route_day_inputs already marks it fixed; this holds the same rule here so
+ *  the solver keeps it even against a database read that has not learnt it. */
+export function holdPinnedVisits(inputs: RouteDayInputs): RouteDayInputs {
+  if (!inputs.visits.some((v) => v.pinned && v.assigned_staff_id && !v.fixed)) return inputs;
+  return {
+    ...inputs,
+    visits: inputs.visits.map((v) =>
+      v.pinned && v.assigned_staff_id && !v.fixed ? { ...v, fixed: true } : v,
+    ),
   };
 }
 

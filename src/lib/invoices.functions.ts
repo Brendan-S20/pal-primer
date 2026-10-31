@@ -214,13 +214,25 @@ const manualInvoiceSchema = z.object({
       z
         .object({
           description: z.string().min(1).max(300),
-          amountCents: z.number().int().min(1).max(10_000_000),
+          amountCents: z.number().int().min(0).max(10_000_000),
+          // The visit or the pending add-on this line bills (#605). Linking is
+          // what keeps the billing run from billing the same work again.
+          visitId: z.string().uuid().optional(),
+          addonChargeId: z.string().uuid().optional(),
           // Both or neither: a line is either only a total, or "3 × $15.00"
           // whose total is the product. The database refuses a mismatch
           // (invoice_line_items_total_is_quantity_times_unit); refusing it here
           // says which line, before anything is written.
           quantity: z.number().positive().max(QUANTITY_MAX).optional(),
           unitAmountCents: z.number().int().min(0).max(10_000_000).optional(),
+        })
+        // A $0 line only when it names a visit: a skip the business does not
+        // charge for is still work the invoice covers.
+        .refine((i) => i.amountCents >= 1 || i.visitId !== undefined, {
+          message: "A line needs an amount",
+        })
+        .refine((i) => !(i.visitId && i.addonChargeId), {
+          message: "A line bills a visit or an add-on, not both",
         })
         .refine((i) => (i.quantity === undefined) === (i.unitAmountCents === undefined), {
           message: "A line with a quantity needs a unit price, and the other way round",
@@ -236,6 +248,9 @@ const manualInvoiceSchema = z.object({
     .min(1)
     .max(25),
   notes: z.string().max(500).optional(),
+  // Minted once each time the dialog opens and sent with every attempt, so a
+  // double click or a retry after a lost response makes one invoice (#607).
+  creationKey: z.string().uuid().optional(),
 });
 
 export const createManualInvoice = createServerFn({ method: "POST" })
@@ -253,6 +268,24 @@ export const createManualInvoice = createServerFn({ method: "POST" })
     if (cErr) throw new Error(cErr.message);
     if (client.organization_id !== orgId) throw new Error("Client not found");
 
+    // This dialog already made its invoice: answer with that one, and log
+    // nothing. Two requests that both get past here are settled by the
+    // unique constraint inside create_manual_invoice, which returns the
+    // first one's id to the second.
+    if (data.creationKey) {
+      const { data: made, error: mErr } = await supabase
+        .from("invoices")
+        .select("id, client_id, total_cents, tax_cents")
+        .eq("organization_id", orgId)
+        .eq("creation_key", data.creationKey)
+        .maybeSingle();
+      if (mErr) throw new Error(mErr.message);
+      if (made) {
+        if (made.client_id !== data.clientId) throw new Error("This invoice was already created");
+        return { invoiceId: made.id, totalCents: made.total_cents, taxCents: made.tax_cents };
+      }
+    }
+
     const { insertManualInvoice } = await import("@/lib/manual-invoice.server");
     return insertManualInvoice(supabase, {
       orgId,
@@ -260,6 +293,66 @@ export const createManualInvoice = createServerFn({ method: "POST" })
       clientId: data.clientId,
       items: data.items,
       notes: data.notes,
+      creationKey: data.creationKey,
+    });
+  });
+
+/** The client's work no live invoice covers yet: billable visits and pending
+ *  add-ons. The New invoice dialog lists it so the office can say which work
+ *  an invoice is for (#605). */
+export const listUninvoicedWork = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ clientId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { orgId } = await requirePermission(supabase, context.userId, "manage_client_billing");
+    const { uninvoicedWork } = await import("@/lib/visit-invoicing.server");
+    return uninvoicedWork(supabase, orgId, data.clientId);
+  });
+
+/** What "Invoice this visit" would do for one visit, or the invoice it is
+ *  already on, or why it cannot be invoiced. */
+export const getVisitInvoicing = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ visitId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { orgId } = await requirePermission(supabase, context.userId, "manage_client_billing");
+    const { visitInvoicing } = await import("@/lib/visit-invoicing.server");
+    return visitInvoicing(supabase, orgId, data.visitId);
+  });
+
+/** Invoice this visit (#605, decision D2: invoice at completion). One open
+ *  invoice for the visit and its pending add-ons, each line linked, so the
+ *  billing run and Generate from visits leave it alone. */
+export const invoiceVisit = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ visitId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { orgId } = await requirePermission(supabase, context.userId, "manage_client_billing");
+    const { visitInvoicing } = await import("@/lib/visit-invoicing.server");
+    const state = await visitInvoicing(supabase, orgId, data.visitId);
+    if (state.state === "invoiced") {
+      throw new Error(`This visit is already on invoice ${state.invoiceLabel}.`);
+    }
+    if (state.state === "blocked") throw new Error(state.reason);
+    const { data: v, error } = await supabase
+      .from("visits")
+      .select("client_id, scheduled_on")
+      .eq("id", data.visitId)
+      .eq("organization_id", orgId)
+      .single();
+    if (error) throw new Error(error.message);
+    const { insertManualInvoice } = await import("@/lib/manual-invoice.server");
+    return insertManualInvoice(supabase, {
+      orgId,
+      userId: context.userId,
+      clientId: v.client_id,
+      items: state.lines,
+      notes: `Visit on ${v.scheduled_on}`,
+      activityLabel: `invoice for the visit on ${v.scheduled_on}`,
+      period: { start: v.scheduled_on, end: v.scheduled_on },
     });
   });
 
@@ -534,7 +627,11 @@ export const createInvoicePaymentIntent = createServerFn({ method: "POST" })
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
     const { stayInvoicePaymentTypes } = await import("@/lib/stay-payment.server");
-    const paymentMethodTypes = await stayInvoicePaymentTypes(invoice.id, invoice.organization_id, INVOICE_PM_TYPES);
+    const paymentMethodTypes = await stayInvoicePaymentTypes(
+      invoice.id,
+      invoice.organization_id,
+      INVOICE_PM_TYPES,
+    );
     // Charge the OPEN amount: total net of applied credit (B7) and of any
     // partial payment already recorded.
     const dueCents = invoiceDueCents(invoice);
@@ -1427,7 +1524,11 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
     if (invoice.status === "paid") throw new Error("Invoice already paid");
     if (invoice.status === "void") throw new Error("Invoice is voided");
     const { stayInvoicePaymentTypes } = await import("@/lib/stay-payment.server");
-    const paymentMethodTypes = await stayInvoicePaymentTypes(invoice.id, invoice.organization_id, INVOICE_PM_TYPES);
+    const paymentMethodTypes = await stayInvoicePaymentTypes(
+      invoice.id,
+      invoice.organization_id,
+      INVOICE_PM_TYPES,
+    );
     // Charge the OPEN amount: total net of applied credit (B7) and of any
     // partial payment already recorded.
     const dueCents = invoiceDueCents(invoice);

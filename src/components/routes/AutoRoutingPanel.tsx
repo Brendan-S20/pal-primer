@@ -68,9 +68,33 @@
  * same object -- which the server now keeps on the run. If the card is open
  * when the run finishes, they appear then, as before. If it was dismissed,
  * the header says "Routes ready, review", and opening the card replays them
- * once and marks the run seen. There is still no preview and no confirm step:
- * the run writes the routes, all of its days in one transaction, and a run
- * that is cut off before that write has changed nothing.
+ * once and marks the run seen. The run writes the routes, all of its days in
+ * one transaction, and a run that is cut off before that write has changed
+ * nothing.
+ *
+ * ── AND NOTHING MOVES WITHOUT BEING SHOWN FIRST (2026-10-31, #609) ────────
+ *
+ * Decision D10. Apply used to ask for reassignment on every run, so it could
+ * move a visit that was assigned by hand for a reason the planner cannot see:
+ * the one walker a dog tolerates, the tech who holds the key. Three things
+ * changed, and only these three:
+ *
+ *   * Current assignments are kept by default. A run gives out unassigned
+ *     visits and puts every route in order; it moves a visit from one tech
+ *     to another only when "Also move visits between techs" is switched on
+ *     for that run. The switch starts off every time the card opens and is
+ *     never remembered.
+ *   * A visit pinned to its tech (the visit drawer, visits.route_pinned) is
+ *     never moved, even with the switch on. The planner and the database
+ *     write both refuse to.
+ *   * Preview comes first. It plans every day and writes nothing, and the card
+ *     lists every visit that would change hands or come off its route. Apply
+ *     sends that preview back and the server writes exactly it; a day that
+ *     changed in between is refused, not re-planned. Changing any input
+ *     clears the preview, so Apply never writes a plan for other inputs.
+ *
+ * The run itself (background, header pill, toasts, Undo) is unchanged; it now
+ * starts from a preview instead of from a fresh plan.
  */
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -85,11 +109,13 @@ import { getDispatchSettings } from "@/lib/visits.functions";
 import {
   getRoutingRunUndo,
   markRoutingRunSeen,
+  previewRoutingRun,
   startRoutingRun,
   undoRoutingRun,
 } from "@/lib/routing-runs.functions";
 import { undoSummaryLine, undoToastMs, undoUnavailableLine } from "@/lib/routing-undo";
-import type { AutoRouteResult } from "@/lib/auto-routing.server";
+import type { AutoRouteResult, RoutePreview } from "@/lib/auto-routing.server";
+import type { RouteMove } from "@/lib/route-moves";
 import type { RoadLegProblem } from "@/lib/road-legs.server";
 import {
   failureKind,
@@ -246,6 +272,87 @@ function Pill({
   );
 }
 
+/** One line per move: who has the visit now, and who would have it. */
+const moveLine = (m: RouteMove, fullName: (id: string | null) => string | null) => {
+  const from = fullName(m.fromStaffId) ?? "Unassigned";
+  if (m.kind === "assigned") return `Unassigned, goes to ${fullName(m.toStaffId)}`;
+  if (m.kind === "reassigned") return `${from}, goes to ${fullName(m.toStaffId)}`;
+  if (m.kind === "unassigned") return `${from}, taken off and left unassigned`;
+  return `${from} keeps it, but it is left off the route`;
+};
+
+/**
+ * What Apply will change, listed before it changes it (D10, #609).
+ *
+ * Every move is listed, none summarised away: a visit changing hands is the
+ * thing the dispatcher is being asked about. The list scrolls inside the card
+ * so a long one cannot push Apply off the screen. Visits that keep their tech
+ * and only get a new place in the order are counted, not listed. The day
+ * never changes, and the arrival times are worked out by the write itself,
+ * so the card says that rather than guessing a time.
+ */
+function PreviewList({
+  preview,
+  reassign,
+  fullName,
+}: {
+  preview: RoutePreview;
+  reassign: boolean;
+  fullName: (id: string | null) => string | null;
+}) {
+  const moves = preview.plans.flatMap((p) => p.moves);
+  const reordered = preview.plans.reduce((n, p) => n + p.reordered, 0);
+  const multiDay = new Set(preview.plans.map((p) => p.day)).size > 1;
+  const headline =
+    moves.length === 0
+      ? "No visit changes tech."
+      : moves.length === 1
+        ? "1 visit changes."
+        : `${moves.length} visits change.`;
+  return (
+    <section aria-label="Preview" className="space-y-1.5 rounded-md border p-2">
+      <p className="text-2xs font-medium text-foreground">
+        {headline}{" "}
+        <span className="font-normal text-muted-foreground">
+          {reordered === 1
+            ? "1 visit keeps its tech and gets a new place in the order."
+            : `${reordered} visits keep their tech and get a new place in the order.`}
+        </span>
+      </p>
+      {moves.length > 0 && (
+        <ul className="max-h-48 space-y-1 overflow-y-auto">
+          {moves.map((m) => (
+            <li key={`${m.day}:${m.visitId}`} className="min-w-0 rounded border px-2 py-1 text-2xs">
+              <p className="truncate font-medium text-foreground">
+                <bdi>{m.client ?? "A client"}</bdi>
+                {m.service ? (
+                  <span className="font-normal text-muted-foreground"> · {m.service}</span>
+                ) : null}
+                {multiDay ? (
+                  <span className="font-normal text-muted-foreground"> · {shortDay(m.day)}</span>
+                ) : null}
+              </p>
+              <p className="text-muted-foreground">{moveLine(m, fullName)}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+      {preview.skipped.length > 0 && (
+        <p className="text-2xs text-muted-foreground">
+          {preview.skipped.length === 1
+            ? "1 day could not be planned and will not change."
+            : `${preview.skipped.length} days could not be planned and will not change.`}
+        </p>
+      )}
+      <p className="text-2xs leading-relaxed text-muted-foreground">
+        No visit changes day. Arrival times are worked out for each route when you apply.
+        {reassign ? "" : " Nobody loses a visit they already have."} Apply makes exactly these
+        changes; if the day changes first, that day is left alone.
+      </p>
+    </section>
+  );
+}
+
 export function AutoRoutingPanel({
   day,
   staff,
@@ -261,6 +368,7 @@ export function AutoRoutingPanel({
   onReviewDay?: (day: string) => void;
 }) {
   const qc = useQueryClient();
+  const previewFn = useServerFn(previewRoutingRun);
   const startFn = useServerFn(startRoutingRun);
   const seenFn = useServerFn(markRoutingRunSeen);
   const undoStateFn = useServerFn(getRoutingRunUndo);
@@ -292,6 +400,9 @@ export function AutoRoutingPanel({
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [section, setSection] = useState<Section>(null);
   const [windows, setWindows] = useState<WindowsChoice>("org");
+  // Off every time the card opens, and never stored anywhere (D10): moving
+  // work between techs is a choice made for one run, after seeing it.
+  const [reassign, setReassign] = useState(false);
 
   // The organization's own choice, so the pill can say what "as set" means.
   // Same query key as Settings -> Scheduling and the board, so it is usually
@@ -309,6 +420,33 @@ export function AutoRoutingPanel({
   const effectiveWindows = windows === "org" ? orgWindows : windows;
 
   const chosen = picked.size ? [...picked] : techs.map((s: any) => s.id);
+
+  // ── THE PREVIEW ─────────────────────────────────────────────────────────
+  //
+  // Kept with the inputs it was made from. Any change to them (days, people,
+  // windows, the reassign switch) means the preview describes a different
+  // run, so it stops counting and Apply goes back to Preview.
+  const inputsKey = JSON.stringify([from, to, [...chosen].sort(), windows, reassign]);
+  const [shownPreview, setShownPreview] = useState<{ key: string; preview: RoutePreview } | null>(
+    null,
+  );
+  const preview = shownPreview?.key === inputsKey ? shownPreview.preview : null;
+  const previewMut = useMutation({
+    mutationFn: async () => {
+      const key = inputsKey;
+      const out = await previewFn({
+        data: { staffIds: chosen, from, to, level: LEVEL, reassign, windows },
+      });
+      return { key, preview: out as RoutePreview };
+    },
+    onSuccess: (out) => {
+      setSection(null);
+      setShownPreview(out);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const fullName = (id: string | null) =>
+    id ? String(staff.find((s) => s.id === id)?.display_name ?? "Another tech") : null;
 
   // First names only: the toast lists every technician in the run, and three
   // full names is already wider than a phone.
@@ -363,6 +501,9 @@ export function AutoRoutingPanel({
 
   const applyMut = useMutation({
     mutationFn: async () => {
+      // Apply writes the preview on screen and nothing else. No preview, no
+      // write: the button says Preview until there is one.
+      if (!preview) throw new Error("Preview the changes first.");
       // The id is chosen here so the card can watch the run's row before the
       // request comes back -- which, if the app is closed, it never does.
       const runId = crypto.randomUUID();
@@ -370,7 +511,7 @@ export function AutoRoutingPanel({
       setTimeout(() => void qc.invalidateQueries({ queryKey: ROUTING_RUNS_KEY }), 400);
       try {
         return await startFn({
-          data: { runId, staffIds: chosen, from, to, level: LEVEL, reassign: true, windows },
+          data: { runId, staffIds: chosen, from, to, level: LEVEL, windows, preview },
         });
       } finally {
         routingUi.started(runId);
@@ -378,6 +519,8 @@ export function AutoRoutingPanel({
     },
     onSuccess: (out) => {
       void qc.invalidateQueries({ queryKey: ROUTING_RUNS_KEY });
+      // Written (or attached to another run): either way this preview is spent.
+      setShownPreview(null);
       if (out.attached) {
         // One active run per organization. A second press watches the first
         // rather than starting a planner over the same visits.
@@ -455,12 +598,13 @@ export function AutoRoutingPanel({
     onClose();
   }
 
-  // ── UNDO, IN PLACE OF A PREVIEW (#435) ──────────────────────────────────
+  // ── UNDO, AS WELL AS THE PREVIEW (#435, #609) ───────────────────────────
   //
-  // The owner asked for the preview to go (2026-08-19), and it stays gone.
-  // What Apply lacked was any way back: it rewrites every selected tech's
-  // days. So once a run has saved, one line says what it changed, with Undo
-  // beside it, which puts back each visit's tech, order and arrival times.
+  // The preview went on 2026-08-19 and came back on 2026-10-31 (D10), so the
+  // dispatcher now sees every move before Apply. Undo stays: it is the way
+  // back from a run that was shown and still turned out wrong. Once a run has
+  // saved, one line says what it changed, with Undo beside it, which puts
+  // back each visit's tech, order and arrival times.
   // The server keeps the offer for 15 minutes and withdraws it the moment
   // anything it would overwrite moves (20261015140000); the toast lasts a
   // minute. Called after the card closes, so it does not hold the card open.
@@ -505,9 +649,9 @@ export function AutoRoutingPanel({
         // stops" is what a run that touched nothing would otherwise say. The
         // measurement is the only thing that can tell the two apart.
         toast.info("Nothing to route in that range.", {
-          // There is no checkbox to blame any more, so this says the only two
-          // things that can now be true. It used to name the reassign control,
-          // which was the usual cause and is gone.
+          // Keeping assignments does not cause this: a kept visit is still
+          // put in order. Only a range with no scheduled stops for the people
+          // picked does.
           description: "Those days have no scheduled stops for the people you picked.",
           duration: 8000,
         });
@@ -870,28 +1014,42 @@ export function AutoRoutingPanel({
           </div>
         )}
 
-        {/* ── THE CHECKBOX THAT USED TO BE HERE ─────────────────────────────
-            "Also move work between techs", default off. It was the only
-            control that could move a stop from one person to another, so it
-            was shown rather than hidden, and it was off so that nobody had
-            work taken away by surprise.
+        {/* ── MOVING WORK BETWEEN TECHS IS ASKED FOR, PER RUN (D10, #609) ──
+            This control was here once, default off, and was removed on
+            2026-08-26 on the argument that selecting a tech was consent to
+            have their whole day rearranged. It was not: it let Apply move a
+            visit that was assigned by hand for a reason the planner cannot
+            see. So it is back, off by default, off again every time the card
+            opens, and never stored. Off still does useful work: unassigned
+            visits are given out and every route is put in order; only who
+            already has what stays. A visit pinned in the visit drawer stays
+            with its tech even when this is on. */}
+        <button
+          role="switch"
+          aria-checked={reassign}
+          onClick={() => setReassign(!reassign)}
+          disabled={busy || previewMut.isPending}
+          className={`flex w-full items-start gap-2 rounded-md border px-2 py-1.5 text-start text-2xs touch:min-h-11 ${reassign ? "border-primary bg-primary/10" : "hover:bg-muted"}`}
+        >
+          <span
+            aria-hidden
+            className={`mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border ${reassign ? "border-primary bg-primary text-primary-foreground" : ""}`}
+          >
+            {reassign && <Check className="h-3 w-3 shrink-0" />}
+          </span>
+          <span className="min-w-0">
+            <span className="block font-medium text-foreground">
+              Also move visits between techs
+            </span>
+            <span className="block text-muted-foreground">
+              {reassign
+                ? "This run only. Visits pinned to a tech still stay put."
+                : "Off: everyone keeps the visits they have. Unassigned visits are given out and each route is put in order."}
+            </span>
+          </span>
+        </button>
 
-            Off was also why the feature appeared broken. With reassign off the
-            planner considers ONLY unassigned visits, and a day the recurring
-            schedule has already filled has none -- so Apply returned nothing,
-            every time, and explained itself afterwards in a toast.
-
-            It is gone because the consent it was asking for is already given
-            higher up: WHO YOU SELECT IS THE CONSENT. The planner only ever
-            touches visits that are unassigned or already belong to a SELECTED
-            technician; somebody left out keeps their day. Proven against
-            production rather than read off the comment -- selecting everyone
-            except the technician holding all 21 of the day's stops returns
-            zero rows, and his stops are untouched.
-
-            So the panel is now what it says on the tin: who, which days,
-            Apply. If you do not want somebody's day rearranged, do not tick
-            them. */}
+        {preview && <PreviewList preview={preview} reassign={reassign} fullName={fullName} />}
       </div>
 
       {busy && (
@@ -935,15 +1093,14 @@ export function AutoRoutingPanel({
         <Button variant="ghost" size="sm" onClick={onClose}>
           {busy ? "Run in background" : "Cancel"}
         </Button>
-        {/* One button. The guard that used to live on Apply — "a preview
-            exists" — was really a guard on the INPUTS, so that is what it is
-            now: a range that runs forwards, and somebody to route. Both are
-            visible in the pills above, which is where a disabled Apply sends
-            you anyway. */}
+        {/* Preview first, then Apply (D10, #609). The button is Preview
+            until a preview for exactly these inputs is on the card, and Apply
+            sends that preview. The input gate is the one it always was: a
+            range that runs forwards, and somebody to route. */}
         <Button
           size="sm"
-          onClick={() => applyMut.mutate()}
-          disabled={!rangeValid || techs.length === 0 || busy}
+          onClick={() => (preview ? applyMut.mutate() : previewMut.mutate())}
+          disabled={!rangeValid || techs.length === 0 || busy || previewMut.isPending}
           title={
             techs.length === 0
               ? "Nobody runs routes yet"
@@ -952,7 +1109,13 @@ export function AutoRoutingPanel({
                 : undefined
           }
         >
-          {busy ? "Planning…" : "Apply"}
+          {busy
+            ? "Planning…"
+            : previewMut.isPending
+              ? "Previewing…"
+              : preview
+                ? "Apply"
+                : "Preview"}
         </Button>
       </div>
     </div>

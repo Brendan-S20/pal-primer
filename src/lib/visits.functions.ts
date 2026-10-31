@@ -64,7 +64,7 @@ export const getVisitDetail = createServerFn({ method: "GET" })
     const { data: v, error } = await supabase
       .from("visits")
       .select(
-        `id, scheduled_on, status, sequence, assigned_staff_id,
+        `id, scheduled_on, status, sequence, assigned_staff_id, route_pinned,
          started_at, completed_at, skip_reason, skip_reason_code, skip_billable, client_package_id,
          weather_flagged, weather_note, tech_note, completion_photo_waived_reason, visit_checklist,
          duration_min, groom_summary,
@@ -325,6 +325,35 @@ export const reorderRoute = createServerFn({ method: "POST" })
     const { refreshRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
     await refreshRouteLiveActivities([{ staffId: data.staffId, day: data.day }]);
     return { updated: (count as number) ?? 0 };
+  });
+
+/**
+ * Pin a visit to its technician, or let it go again (#609, D10).
+ *
+ * A pinned visit is never moved to another tech by auto-routing, even on a
+ * run where the dispatcher allowed moving work between techs: route_day_inputs
+ * holds it on its tech and apply_route_plan refuses a plan that moves it
+ * (20261031090000). It is still put in order on its tech's route, and a
+ * person can still reassign it by hand. Office roles only: the drawer that
+ * shows the switch is office-only, and this says so too rather than leaving
+ * it to the policy that lets a tech edit their own visits.
+ */
+export const setVisitRoutePinned = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ visitId: z.string().uuid(), pinned: z.boolean() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { orgId, role } = await resolveCaller(context.supabase, context.userId);
+    if (role === "tech") throw new Error("Only the office can pin a visit to a tech.");
+    const { data: row, error } = await context.supabase
+      .from("visits")
+      .update({ route_pinned: data.pinned })
+      .eq("id", data.visitId)
+      .eq("organization_id", orgId)
+      .select("id, route_pinned")
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!row) throw new Error("That visit could not be found.");
+    return { pinned: row.route_pinned };
   });
 
 export const getDispatchSettings = createServerFn({ method: "GET" })

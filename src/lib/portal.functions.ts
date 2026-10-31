@@ -302,6 +302,9 @@ async function loadPortalClient(token: string, _session: PortalSession) {
     pet_waste: petWaste,
     mobile_grooming: serviceLinesOrDefault(lines?.service_lines).includes("mobile_grooming"),
     groom_requests: customerCanRequestService("mobile_grooming", availability),
+    // The portal's tab bar shows Training to a client of a business that
+    // trains (#603). The page itself still decides what it draws.
+    training: serviceLinesOrDefault(lines?.service_lines).includes("training"),
   };
 }
 

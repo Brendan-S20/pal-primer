@@ -26,6 +26,9 @@ vi.mock("@/lib/visits.functions", () => ({
   reopenVisitFromOffice: vi.fn(),
   markVisitMissedFromOffice: vi.fn(),
 }));
+// Invoice this visit (#605) has its own server functions; this file is about
+// Reopen and Mark missed.
+vi.mock("@/components/InvoiceThisVisit", () => ({ InvoiceThisVisit: () => null }));
 vi.mock("@/components/ConfirmDialog", () => ({
   useConfirmDialog: () => ({ confirm: vi.fn(), dialog: null }),
 }));

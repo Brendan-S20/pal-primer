@@ -3228,6 +3228,7 @@ export type Database = {
           checkout_url: string | null
           client_id: string
           created_at: string
+          creation_key: string | null
           credit_applied_cents: number
           currency: string
           due_on: string | null
@@ -3262,6 +3263,7 @@ export type Database = {
           checkout_url?: string | null
           client_id: string
           created_at?: string
+          creation_key?: string | null
           credit_applied_cents?: number
           currency?: string
           due_on?: string | null
@@ -3296,6 +3298,7 @@ export type Database = {
           checkout_url?: string | null
           client_id?: string
           created_at?: string
+          creation_key?: string | null
           credit_applied_cents?: number
           currency?: string
           due_on?: string | null
@@ -8346,6 +8349,7 @@ export type Database = {
           property_id: string
           report_note: string | null
           rescheduled_from: string | null
+          route_pinned: boolean
           scheduled_on: string
           sequence: number | null
           service_id: string | null
@@ -8401,6 +8405,7 @@ export type Database = {
           property_id: string
           report_note?: string | null
           rescheduled_from?: string | null
+          route_pinned?: boolean
           scheduled_on: string
           sequence?: number | null
           service_id?: string | null
@@ -8456,6 +8461,7 @@ export type Database = {
           property_id?: string
           report_note?: string | null
           rescheduled_from?: string | null
+          route_pinned?: boolean
           scheduled_on?: string
           sequence?: number | null
           service_id?: string | null
@@ -9495,6 +9501,10 @@ export type Database = {
         Returns: string
       }
       create_franchise_link_code: { Args: never; Returns: string }
+      create_manual_invoice: {
+        Args: { _invoice: Json; _lines: Json }
+        Returns: string
+      }
       customer_requestable_service_lines: { Args: never; Returns: string[] }
       default_skip_billable_pct: {
         Args: { _code: Database["public"]["Enums"]["skip_reason_code"] }

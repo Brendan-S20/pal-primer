@@ -309,8 +309,8 @@ export function EditClientDrawer({
             <option value="yearly">Yearly</option>
           </select>
           <p className="mt-1 text-xs text-muted-foreground">
-            Invoices for completed visits generate automatically at the end of each cycle, then send
-            after your grace period in{" "}
+            Invoice a visit when it is done, from the visit. Completed visits not yet invoiced are
+            billed at the end of each cycle, then sent after your grace period in{" "}
             <Link to="/settings/invoicing" className="text-primary underline">
               Settings &gt; Invoicing
             </Link>
@@ -384,7 +384,9 @@ export function EditClientDrawer({
                 Properties tab.
               </p>
               {vetLimitInvalid && (
-                <p className="mt-1 text-xs text-destructive">Enter an amount in dollars and cents.</p>
+                <p className="mt-1 text-xs text-destructive">
+                  Enter an amount in dollars and cents.
+                </p>
               )}
             </div>
           </fieldset>

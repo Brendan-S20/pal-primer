@@ -1,6 +1,7 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import {
   CalendarDays,
+  GraduationCap,
   Home,
   Receipt,
   MapPin as MapPinIcon,
@@ -74,9 +75,10 @@ function PortalLayout() {
 function PortalShell() {
   const { token, slug, clientQ, contextQ, verified } = usePortalCtx();
   const pathname = useRouterState({ select: (r) => r.location.pathname });
-  // Which of the six tabs is open, by the same matching the tab bar uses.
+  // Which tab is open, by the same matching the tab bar uses.
   const base = `/portal/${slug}/${token}`;
-  const section = TABS.find((t) => {
+  const training = (clientQ.data as { training?: boolean } | undefined)?.training === true;
+  const section = tabsFor(training).find((t) => {
     const target = t.to.replace("$slug", slug).replace("$token", token);
     return t.end ? pathname === target : pathname === target || pathname.startsWith(target + "/");
   });
@@ -321,7 +323,7 @@ function PortalShell() {
       </div>
 
       {/* Sticky bottom tab bar */}
-      <BottomTabs token={token} slug={slug} isCommercial={isCommercial} />
+      <BottomTabs token={token} slug={slug} isCommercial={isCommercial} training={training} />
     </div>
   );
 }
@@ -340,37 +342,58 @@ const TABS = [
   { to: "/portal/$slug/$token/account", label: "Account", icon: User, end: false },
 ] as const;
 
+const TRAINING_TAB = {
+  to: "/portal/$slug/$token/training",
+  label: "Training",
+  icon: GraduationCap,
+  end: false,
+} as const;
+
+type Tab = (typeof TABS)[number] | typeof TRAINING_TAB;
+
+/** Training sits beside Visits, for a business that trains (#603). Before
+ *  that the page was reachable only by its URL. */
+function tabsFor(training: boolean): readonly Tab[] {
+  return training ? [TABS[0], TABS[1], TRAINING_TAB, ...TABS.slice(2)] : TABS;
+}
+
 function BottomTabs({
   token,
   slug,
   isCommercial,
+  training,
 }: {
   token: string;
   slug: string;
   isCommercial: boolean;
+  training: boolean;
 }) {
   const pathname = useRouterState({ select: (r) => r.location.pathname });
+  const tabs = tabsFor(training);
   return (
     <nav
       aria-label="Portal sections"
       className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/80"
     >
       <div className="mx-auto max-w-3xl">
-        <ul className="grid grid-cols-6">
-          {TABS.map((t) => {
+        {/* Seven tabs at 320px are 45.7px each, so the seventh drops the
+            side padding: "Requests" at 10px is about 44px wide. The label
+            truncates rather than widening its column if a font runs wider. */}
+        <ul className={`grid ${training ? "grid-cols-7" : "grid-cols-6"}`}>
+          {tabs.map((t) => {
             const target = t.to.replace("$slug", slug).replace("$token", token);
-            // Training is reached from Visits (lessons are visits), so Visits
-            // stays lit there: there is no room for a seventh tab at 320px.
+            // With no Training tab (a business that does not train), a
+            // lesson is still a visit, so Visits stays lit on the page.
             const base = `/portal/${slug}/${token}`;
             const active = t.end
               ? pathname === target
               : pathname === target ||
                 pathname.startsWith(target + "/") ||
-                (t.label === "Visits" && pathname.startsWith(`${base}/training`));
+                (!training && t.label === "Visits" && pathname.startsWith(`${base}/training`));
             const Icon = t.icon;
             const label = t.label === "Property" && isCommercial ? "Property" : t.label;
             return (
-              <li key={t.to}>
+              <li key={t.to} className="min-w-0">
                 {/* G3: preload="render" fetches every tab's code-split chunk as
                     soon as the tab bar mounts, so the first tap swaps content
                     immediately instead of waiting on a chunk download (the
@@ -379,12 +402,12 @@ function BottomTabs({
                   to={t.to}
                   params={{ slug, token }}
                   preload="render"
-                  className={`flex flex-col items-center gap-0.5 px-1 py-2 text-3xs font-medium transition-colors ${
-                    active ? "text-primary" : "text-muted-foreground hover:text-foreground"
-                  }`}
+                  className={`flex min-w-0 flex-col items-center gap-0.5 py-2 text-3xs font-medium transition-colors ${
+                    training ? "px-0" : "px-1"
+                  } ${active ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
                 >
-                  <Icon className="h-5 w-5" />
-                  <span>{label}</span>
+                  <Icon className="h-5 w-5 shrink-0" />
+                  <span className="max-w-full truncate">{label}</span>
                 </Link>
               </li>
             );

@@ -128,6 +128,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     dashboard: "返回控制面板",
   },
   common: {
+    notSaved: "未能保存，请重试。",
     loading: "加载中…",
     save: "保存",
     cancel: "取消",
@@ -571,6 +572,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     sendOnMyWay: "发送“我在路上”",
   },
   skip: {
+    notSaved: "未能保存跳过记录。请选择原因后重试。",
     reason: "原因",
     detailsPlaceholder: "详情（发生了什么、照片等）",
     confirm: "确认跳过",

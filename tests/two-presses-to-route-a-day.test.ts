@@ -2,6 +2,12 @@
 //
 // Owner QA, 2026-08-19: "Also remove the preview, let's just have apply."
 //
+// CHANGED 2026-10-31 (#609, decision D10): the preview is back, for a reason
+// the one above did not weigh. Apply moved visits that were assigned by hand
+// for safety, with nothing shown first. So Preview lists every move and Apply
+// writes that preview. What this file pinned about the MEASUREMENT still
+// holds and is unchanged below; the "one button" block now pins the two.
+//
 // The panel made Preview mandatory. It ran the read-only planner, printed a
 // headline in a box on the card, and only then did Apply become pressable —
 // the safeguard being that nothing rearranges a day somebody has not first
@@ -77,24 +83,23 @@ const applyBlock = () => {
   return src.slice(at);
 };
 
-describe("the dispatcher presses one button", () => {
-  it("the card has no Preview control and no preview mutation", () => {
+describe("the dispatcher previews, then applies (D10)", () => {
+  it("the card does not bring back the old SQL preview", () => {
     const ui = panel();
-    expect(ui, "a Preview button is back").not.toMatch(/>\s*Preview/);
-    expect(ui, "the preview mutation is back").not.toMatch(/previewMut/);
     expect(ui, "the panel imports the deleted server function").not.toMatch(/previewOptimize/);
   });
 
-  it("Apply is the only thing that runs the planner from this card", () => {
-    const mutates = panel().match(/\w+Mut\.mutate\(\)/g) ?? [];
-    expect(mutates).toEqual(["applyMut.mutate()"]);
+  it("Preview and Apply are the only things that run the planner from this card", () => {
+    const mutates = panel().match(/\w+Mut\.mutate\([^)]*\)/g) ?? [];
+    expect(mutates.sort()).toEqual(["applyMut.mutate()", "previewMut.mutate()"]);
+    // One button: Preview until a preview for these inputs is on the card.
+    expect(panel()).toMatch(/preview \? applyMut\.mutate\(\) : previewMut\.mutate\(\)/);
   });
 
-  it("and it is pressable without one, guarded by the inputs instead", () => {
-    // The old gate was `!p` — no preview, no Apply. What it protected against
-    // was a run the planner would refuse anyway: a backwards range, or nobody
-    // to route. Those are the conditions, so those are the gate.
-    expect(panel()).toMatch(/disabled=\{!rangeValid \|\| techs\.length === 0 \|\| busy\}/);
+  it("and it is guarded by the inputs, as it was", () => {
+    expect(panel()).toMatch(
+      /disabled=\{!rangeValid \|\| techs\.length === 0 \|\| busy \|\| previewMut\.isPending\}/,
+    );
   });
 
   it("what the box used to say, the toast says", () => {
@@ -145,18 +150,23 @@ describe("the measurement survived the step", () => {
     expect(readAt).toBeGreaterThan(-1);
     expect(readAt).toBeLessThan(solvedAt);
     expect(solvedAt).toBeLessThan(wroteAt);
-    const apply = applyBlock();
-    expect(apply).toMatch(/await planDayRoutes\(/);
-    const loopAt = apply.indexOf("for (const day of days)");
-    const planAt = apply.indexOf("await planDayRoutes(");
-    const writeAt = apply.indexOf("await applyRoutePlans(");
+    // CHANGED 2026-10-31 (#609): the days are read and solved by
+    // planAutoRouting, which is the preview and writes nothing; the run
+    // writes that preview and solves nothing. Still one write, after every
+    // day is solved, because nothing is written until the preview exists.
+    const src = codeOnly(read("src/lib/auto-routing.server.ts"));
+    const planBlock = src.slice(
+      src.indexOf("export async function planAutoRouting"),
+      src.indexOf("export async function runAutoRouting"),
+    );
+    const loopAt = planBlock.indexOf("for (const day of days)");
+    const planAt = planBlock.indexOf("await planDayRoutes(");
     expect(loopAt).toBeGreaterThan(-1);
     expect(loopAt).toBeLessThan(planAt);
-    expect(planAt).toBeLessThan(writeAt);
-    // Exactly one write, and it is outside the day loop: the loop's body
-    // ends (its `continue` and `solved++`) before the write is reached.
+    expect(planBlock).not.toMatch(/applyRoutePlans\(/);
+    const apply = applyBlock();
+    expect(apply).not.toMatch(/planDayRoutes\(/);
     expect(apply.match(/applyRoutePlans\(/g)).toHaveLength(1);
-    expect(apply.slice(planAt, writeAt)).toMatch(/solved\+\+;\s*\}\s*\}/);
   });
 
   it("the read writes nothing that outlives the call", () => {

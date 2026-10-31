@@ -34,7 +34,9 @@ describe("the dialog sends what it creates", () => {
   it("emails the invoice after creating it, when asked to", () => {
     const mut = dialog.slice(dialog.indexOf("mutationFn:"), dialog.indexOf("onSuccess:"));
     expect(mut).toMatch(/await createFn\(/);
-    expect(mut).toMatch(/await emailFn\(\{ data: \{ invoiceId: r\.invoiceId \} \}\)/);
+    expect(mut).toMatch(
+      /await emailFn\(\{ data: \{ invoiceId: r\.invoiceId, firstSend: true \} \}\)/,
+    );
     // Created first, then emailed: never an email for an invoice that failed.
     expect(mut.indexOf("createFn(")).toBeLessThan(mut.indexOf("emailFn("));
   });

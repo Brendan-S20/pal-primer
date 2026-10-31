@@ -6,7 +6,7 @@
 // The whole loop, in a browser, on the stubbed backend, with a run that does
 // not finish until the test says so:
 //
-//   press Apply → the card says what stage it is at and offers "Run in
+//   press Preview, then Apply → the card says what stage it is at and offers "Run in
 //   background" → dismiss it → go to another page → the header says
 //   "Planning routes…" there → the run finishes → the header turns into
 //   "Routes ready, review" and a toast says so → tap it → back on /routes,
@@ -41,6 +41,7 @@ function scriptedRun() {
     seen: false,
     seenCalls: 0,
     startCalls: 0,
+    previewCalls: 0,
   };
   let release!: () => void;
   const finished = new Promise<void>((r) => (release = r));
@@ -59,6 +60,36 @@ function scriptedRun() {
     windowsHonoured: true,
     windowMisses: [],
     windowMissCount: 0,
+  };
+
+  const PREVIEW = {
+    reassign: false,
+    plans: [
+      {
+        day: "2026-10-05",
+        routes: [{ staff_id: TECH_IDS[0], visit_ids: ["preview-visit-1", "preview-visit-2"] }],
+        unassigned: [],
+        honourWindows: true,
+        before: [],
+        solver: { ms: 1, rounds: 1, stoppedBy: "converged", stops: 2 },
+        visitsBefore: [],
+        moves: [
+          {
+            day: "2026-10-05",
+            visitId: "preview-visit-1",
+            client: `${fx.LONG_STAFF_NAME} and the Household Next Door`,
+            service: "Weekly cleanup",
+            kind: "assigned",
+            fromStaffId: null,
+            toStaffId: TECH_IDS[0],
+          },
+        ],
+        reordered: 1,
+      },
+    ],
+    skipped: [],
+    estimatedDays: [],
+    partlyEstimatedDays: [],
   };
 
   const row = () => {
@@ -109,6 +140,14 @@ function scriptedRun() {
           body: JSON.stringify({ result }),
         });
 
+      // Preview first (#609, D10): the card lists every move before Apply.
+      // A long client name, so the list has to truncate rather than widen
+      // the card. Visit ids are not uuids, so the run id stays the only
+      // uuid in Apply's payload that is not a technician's.
+      if (name === "previewRoutingRun") {
+        state.previewCalls++;
+        return reply(PREVIEW);
+      }
       if (name === "startRoutingRun") {
         state.startCalls++;
         // The browser chose the id; it is the only uuid in the payload that
@@ -194,6 +233,16 @@ for (const { w, h, touch, label } of [
       await open.click();
       const card = page.getByRole("dialog", { name: "Auto-routing" });
       await expect(card).toBeVisible();
+      // Preview, then Apply (#609, D10). The move is listed before anything
+      // is written, and the list fits the card at every width.
+      await expect(card.getByRole("button", { name: "Apply", exact: true })).toHaveCount(0);
+      await card.getByRole("button", { name: "Preview", exact: true }).click();
+      const previewList = card.getByRole("region", { name: "Preview" });
+      await expect(previewList).toContainText("1 visit changes.");
+      await expect(previewList).toContainText("Unassigned, goes to");
+      await noSidewaysScroll(page, "/routes, card previewing");
+      expect(run.state.previewCalls).toBe(1);
+      expect(run.state.startCalls).toBe(0);
       await card.getByRole("button", { name: "Apply", exact: true }).click();
 
       // Running: the card says where it is, and Cancel has become the way out.

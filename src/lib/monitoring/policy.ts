@@ -350,7 +350,7 @@ const NETWORK_NOISE: RegExp[] = [
 
 /** The standard-schema validator in TanStack Start throws
  *  `new Error(JSON.stringify(issues))`: a JSON array of `{ message, path }`. */
-function isValidationIssues(message: string): boolean {
+export function isValidationIssues(message: string): boolean {
   if (!message.startsWith("[")) return false;
   try {
     const parsed = JSON.parse(message);
