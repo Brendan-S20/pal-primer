@@ -25,7 +25,8 @@ import {
   sendQuote,
   withdrawQuote,
 } from "@/lib/quotes.functions";
-import { sendInvoiceEmail } from "@/lib/notifications.functions";
+import { getEmailSendStatus, sendInvoiceEmail } from "@/lib/notifications.functions";
+import { reportQueuedSend } from "@/lib/send-report";
 import {
   convertTarget,
   formatQuoteDay,
@@ -57,6 +58,7 @@ function QuoteDetailPage() {
   const invoiceFn = useServerFn(invoiceQuoteOneTimeCharges);
   const depositFn = useServerFn(createQuoteDepositInvoice);
   const sendInvoiceFn = useServerFn(sendInvoiceEmail);
+  const statusFn = useServerFn(getEmailSendStatus);
   const pdfFn = useServerFn(downloadQuotePdf);
 
   const q = useQuery({
@@ -103,10 +105,7 @@ function QuoteDetailPage() {
   });
   const sendDepositM = useMutation({
     mutationFn: (invoiceId: string) => sendInvoiceFn({ data: { invoiceId } }),
-    onSuccess: (r) =>
-      toast.success(
-        r.recipient ? `Deposit invoice emailed to ${r.recipient}` : "Deposit invoice emailed",
-      ),
+    onSuccess: (r) => reportQueuedSend(r, { what: "Deposit invoice", poll: statusFn }),
     onError: (e) => toast.error((e as Error).message),
   });
   const withdrawM = useMutation({

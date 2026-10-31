@@ -7,7 +7,10 @@
 //
 // The fix: the dialog sends one creation key with every attempt, the database
 // holds it unique per organization, create_manual_invoice returns the invoice
-// a key already made, and the dialog's email claims sent_at before it queues.
+// a key already made, and the dialog's email queues under a message id derived
+// from the invoice, which the queue processor and Resend each send once.
+// (It used to claim sent_at before queueing; #612 moved sent_at to the
+// provider's acceptance, see tests/sent-means-the-provider-took-it.test.ts.)
 // The real-Postgres half is tests/integration/a-double-click-made-two-invoices.db.test.ts.
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
@@ -91,13 +94,16 @@ describe("one invoice, one email", () => {
     expect(page).toMatch(/emailFn\(\{ data: \{ invoiceId: r\.invoiceId, firstSend: true \} \}\)/);
   });
 
-  it("a first send claims sent_at before it queues, and gives it back if the email fails", () => {
-    const claim = send.indexOf('.is("sent_at" as any, null)\n        .select("id")');
-    expect(claim).toBeGreaterThan(-1);
-    expect(claim).toBeLessThan(send.indexOf("await enqueueAppEmail("));
+  it("a first send is once per invoice, and never stamps sent_at on queueing", () => {
+    expect(send).toMatch(/idempotencyKey: data\.reminder[\s\S]*?: invoiceSendKey\(inv\.id\)/);
+    expect(send).toMatch(/oncePerKey: firstSend,/);
     expect(send).toMatch(/alreadySent: true/);
-    expect(send).toMatch(/if \(!res\.ok\) \{\s*await releaseClaim\(\);/);
-    expect(send).toMatch(/\.catch\(async \(e\) => \{\s*await releaseClaim\(\);/);
+    expect(send).toMatch(/if \(res\.reason === "already_sent" && res\.messageId\)/);
+    // Only where the send log already shows the provider took it (#612).
+    expect(send.match(/\.update\(\{ sent_at/g)).toHaveLength(1);
+    expect(send.indexOf(".update({ sent_at")).toBeGreaterThan(
+      send.indexOf('if (res.prior === "sent")'),
+    );
   });
 });
 

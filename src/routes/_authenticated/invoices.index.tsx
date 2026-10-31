@@ -16,7 +16,8 @@ import {
   bulkMarkInvoicesPaid,
   voidInvoice,
 } from "@/lib/invoices.functions";
-import { sendInvoiceEmail } from "@/lib/notifications.functions";
+import { getEmailSendStatus, sendInvoiceEmail } from "@/lib/notifications.functions";
+import { reportQueuedSend, type QueuedSendResult } from "@/lib/send-report";
 import { formatDay } from "@/lib/format";
 import { listClients } from "@/lib/clients.functions";
 import { getMyOrg } from "@/lib/org.functions";
@@ -126,6 +127,7 @@ function NewInvoiceDialog() {
   const createFn = useServerFn(createManualInvoice);
   const workFn = useServerFn(listUninvoicedWork);
   const emailFn = useServerFn(sendInvoiceEmail);
+  const statusFn = useServerFn(getEmailSendStatus);
   const openedFromLink = Route.useSearch().new === true;
   const [open, setOpen] = useState(openedFromLink);
   const [clientId, setClientId] = useState("");
@@ -226,26 +228,27 @@ function NewInvoiceDialog() {
   const createM = useMutation({
     mutationFn: async () => {
       const r = await createFn({ data: { clientId, items: parsedItems, creationKey } });
-      if (!willEmail) return { ...r, emailed: null as null | { ok: boolean; error?: string } };
+      if (!willEmail) return { ...r, emailed: null as null | QueuedSendResult };
       // The invoice exists either way; a failed email must not read as a
       // failed invoice, or the retry creates a second one. firstSend: only if
       // this invoice has never been emailed, so a retry does not send twice.
       try {
-        await emailFn({ data: { invoiceId: r.invoiceId, firstSend: true } });
-        return { ...r, emailed: { ok: true } };
-      } catch (e) {
-        return { ...r, emailed: { ok: false, error: (e as Error).message } };
+        const sent = await emailFn({ data: { invoiceId: r.invoiceId, firstSend: true } });
+        return { ...r, emailed: sent as QueuedSendResult };
+      } catch {
+        return { ...r, emailed: { ok: false, recipient: pickedEmail } as QueuedSendResult };
       }
     },
     onSuccess: (r) => {
-      if (r.emailed?.ok) {
-        toast.success(`Invoice created and emailed to ${pickedEmail}: ${fmtCents(r.totalCents)}`);
-      } else if (r.emailed) {
-        toast.warning(
-          `Invoice created, but it was not emailed (${r.emailed.error}). Send it from the invoice.`,
-        );
-      } else {
-        toast.success(`Invoice created: ${fmtCents(r.totalCents)}`);
+      toast.success(`Invoice created: ${fmtCents(r.totalCents)}`);
+      // "Sent" once the provider has taken it, "not sent, copy link" if it
+      // could not go (#612). Not "created and emailed" on queueing.
+      if (r.emailed) {
+        void reportQueuedSend(r.emailed, {
+          what: "Invoice",
+          poll: statusFn,
+          onSent: () => qc.invalidateQueries({ queryKey: ["invoices"] }),
+        });
       }
       qc.invalidateQueries({ queryKey: ["invoices"] });
       qc.invalidateQueries({ queryKey: ["uninvoiced-work"] });
@@ -593,6 +596,7 @@ function InvoicesPage() {
   const paidBulk = useServerFn(bulkMarkInvoicesPaid);
   const voidOne = useServerFn(voidInvoice);
   const emailFn = useServerFn(sendInvoiceEmail);
+  const statusFn = useServerFn(getEmailSendStatus);
   const qc = useQueryClient();
 
   const [through, setThrough] = useState(() => new Date().toISOString().slice(0, 10));
@@ -764,13 +768,21 @@ function InvoicesPage() {
       const results = await Promise.allSettled(
         ids.map((invoiceId) => emailFn({ data: { invoiceId, reminder: false } })),
       );
-      const ok = results.filter((r) => r.status === "fulfilled").length;
+      // Queued is not sent (#612): a row reads Sent once the provider has
+      // taken its email, and one that could not be queued says so.
+      const ok = results.filter((r) => r.status === "fulfilled" && r.value.ok).length;
       return { ok, failed: results.length - ok };
     },
     onSuccess: (r) => {
       if (r.failed)
-        toast.error(`Sent ${r.ok} of ${r.ok + r.failed} invoice emails, ${r.failed} failed`);
-      else toast.success(`Queued ${r.ok} invoice email${r.ok === 1 ? "" : "s"}`);
+        toast.warning(
+          `${r.failed} of ${r.ok + r.failed} invoices not sent: the email did not go out. Copy each one's pay link and send it yourself.`,
+          { duration: 15000 },
+        );
+      if (r.ok)
+        toast.success(
+          `Queued ${r.ok} invoice email${r.ok === 1 ? "" : "s"}. Each shows as Sent once the email provider takes it.`,
+        );
       sel.clear();
       qc.invalidateQueries({ queryKey: ["invoices"] });
     },
@@ -789,13 +801,14 @@ function InvoicesPage() {
   // sendInvoiceEmail, bulkMarkInvoicesPaid (with one id), voidInvoice.
   const rowEmailM = useMutation({
     mutationFn: (v: { invoiceId: string; reminder: boolean }) => emailFn({ data: v }),
-    onSuccess: (r: any, v) => {
-      toast.success(
-        `${v.reminder ? "Reminder" : "Invoice"} queued for ${r.recipient ?? "the client"}`,
-      );
-      // A first send stamps sent_at — refresh so the row chips update.
-      if (!v.reminder) qc.invalidateQueries({ queryKey: ["invoices"] });
-    },
+    // The queue processor stamps sent_at when the provider takes the email
+    // (#612), so the row's Sent chip is refreshed then, not on queueing.
+    onSuccess: (r, v) =>
+      reportQueuedSend(r, {
+        what: v.reminder ? "Reminder" : "Invoice",
+        poll: statusFn,
+        onSent: () => qc.invalidateQueries({ queryKey: ["invoices"] }),
+      }),
     onError: (e: Error) => toast.error(e.message),
   });
   const rowPaidM = useMutation({

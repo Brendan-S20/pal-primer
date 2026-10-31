@@ -15,6 +15,7 @@ import { getMyOrg } from "@/lib/org.functions";
 import { getQuickBooksStatus, syncInvoice } from "@/lib/accounting.functions";
 import { hasPermission } from "@/lib/permissions";
 import { sendInvoiceEmail, getEmailSendStatus } from "@/lib/notifications.functions";
+import { reportQueuedSend } from "@/lib/send-report";
 import { describePaymentSplit, formatDay, formatDateTime, surchargeSplit } from "@/lib/format";
 import { formatLineItemDescription, invoiceNumberLabel } from "@/lib/invoice-labels";
 import { Button } from "@/components/ui/button";
@@ -155,41 +156,14 @@ function InvoiceDetail() {
   const statusFn = useServerFn(getEmailSendStatus);
   const emailM = useMutation({
     mutationFn: async () => emailFn({ data: { invoiceId } }),
-    onSuccess: async (r) => {
-      // The send is queued; poll email_send_log for the real outcome so we
-      // confirm "Emailed to X" (or surface a failure) rather than claiming
-      // success on enqueue (finding #32).
-      const to = r.recipient ?? "the client";
-      if (!r.messageId) {
-        toast.success(`Invoice queued for ${to}`);
-        return;
-      }
-      const id = toast.loading(`Sending invoice to ${to}…`);
-      for (let i = 0; i < 20; i++) {
-        await new Promise((res) => setTimeout(res, 3000));
-        let s: { status: string; recipient: string | null; error: string | null };
-        try {
-          s = await statusFn({ data: { messageId: r.messageId } });
-        } catch {
-          continue;
-        }
-        if (s.status === "sent") {
-          const at = new Date().toLocaleString("en-US", {
-            month: "short",
-            day: "numeric",
-            hour: "numeric",
-            minute: "2-digit",
-          });
-          toast.success(`Emailed to ${s.recipient ?? to} · ${at}`, { id });
-          return;
-        }
-        if (s.status === "failed" || s.status === "bounced" || s.status === "dlq") {
-          toast.error(`Couldn't email the invoice${s.error ? `: ${s.error}` : ""}`, { id });
-          return;
-        }
-      }
-      toast.message(`Invoice queued for ${to}. Check back shortly`, { id });
-    },
+    // "Sent" only once the provider has taken it; "not sent, copy link"
+    // when it could not be queued at all (findings #32, #612).
+    onSuccess: (r) =>
+      reportQueuedSend(r, {
+        what: "Invoice",
+        poll: statusFn,
+        onSent: () => qc.invalidateQueries({ queryKey: ["invoice", invoiceId] }),
+      }),
     onError: (e: Error) => toast.error(e.message),
   });
 

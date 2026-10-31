@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { appUrl } from "@/lib/app-origin";
 import { resolveSupabaseUrl } from "@/lib/supabase-url";
 import { resendAttachments } from "@/lib/email/attachments";
+import { invoiceIdFromSendKey } from "@/lib/email/invoice-send-key";
 
 const MAX_RETRIES = 5;
 const DEFAULT_BATCH_SIZE = 10;
@@ -388,6 +389,24 @@ export const Route = createFileRoute("/email/queue/process")({
                 status: "sent",
                 metadata: { provider: "resend", provider_message_id: result.providerMessageId },
               });
+
+              // An invoice is "Sent" from here, the moment the provider took
+              // it, and not from when it was queued (#612). Only the first
+              // stamp counts: a resend does not move the date.
+              const sentInvoiceId = invoiceIdFromSendKey(payload.idempotency_key);
+              if (sentInvoiceId) {
+                const { error: stampError } = await supabase
+                  .from("invoices")
+                  .update({ sent_at: new Date().toISOString() })
+                  .eq("id", sentInvoiceId)
+                  .is("sent_at", null);
+                if (stampError) {
+                  console.error("Failed to stamp invoice sent_at", {
+                    invoice_id: sentInvoiceId,
+                    error: stampError,
+                  });
+                }
+              }
 
               // Delete from queue
               const { error: delError } = await supabase.rpc("delete_email", {

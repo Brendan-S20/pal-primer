@@ -43,7 +43,8 @@ import { bulkMarkInvoicesPaid, getInvoiceDetail, voidInvoice } from "@/lib/invoi
 import { showsTaxLine, taxLineLabel } from "@/lib/sales-tax";
 import { useRecordPaymentDialog, type RecordPaymentAnswer } from "@/components/RecordPaymentDialog";
 import { describeManualPayment } from "@/lib/manual-payments";
-import { sendInvoiceEmail } from "@/lib/notifications.functions";
+import { getEmailSendStatus, sendInvoiceEmail } from "@/lib/notifications.functions";
+import { reportQueuedSend } from "@/lib/send-report";
 
 // Re-exported so existing imports (invoices index, client billing tab) keep
 // working; the implementation now lives in the shared domain lib (I3).
@@ -78,6 +79,7 @@ export function InvoiceDrawer({
   const voidFn = useServerFn(voidInvoice);
   const paidFn = useServerFn(bulkMarkInvoicesPaid);
   const emailFn = useServerFn(sendInvoiceEmail);
+  const statusFn = useServerFn(getEmailSendStatus);
   const pdfFn = useServerFn(downloadInvoicePdf);
   const [copied, setCopied] = useState(false);
   // B2: "Take payment" swaps the drawer body to the embedded payment view
@@ -152,14 +154,15 @@ export function InvoiceDrawer({
 
   const emailMut = useMutation({
     mutationFn: (reminder: boolean) => emailFn({ data: { invoiceId: invoiceId!, reminder } }),
-    onSuccess: (r: any, reminder) => {
-      toast.success(
-        `${reminder ? "Reminder" : "Invoice"} queued for ${r.recipient ?? "the client"}`,
-      );
-      // A first send stamps sent_at (takes the invoice out of the grace
-      // window's auto-send loop) - refresh so the chips update.
-      if (!reminder) refresh();
-    },
+    // The queue processor stamps sent_at when the provider takes the email
+    // (#612): the Sent chip is refreshed then, and with email off the drawer
+    // says "not sent" and offers the pay link instead.
+    onSuccess: (r, reminder) =>
+      reportQueuedSend(r, {
+        what: reminder ? "Reminder" : "Invoice",
+        poll: statusFn,
+        onSent: refresh,
+      }),
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -271,8 +274,17 @@ export function InvoiceDrawer({
               {inv.status === "paid" && inv.paid_at && (
                 <span className="text-xs text-muted-foreground">Paid {formatDay(inv.paid_at)}</span>
               )}
-              {inGrace && <MetaChip>Scheduled to send {formatDay(inv.send_after)}</MetaChip>}
+              {inGrace && !!inv.send_after && inv.send_after > today && (
+                <MetaChip>Scheduled to send {formatDay(inv.send_after)}</MetaChip>
+              )}
               {inv.sent_at && <MetaChip>Sent {formatDay(inv.sent_at)}</MetaChip>}
+              {/* sent_at is the provider's acceptance (#612), so an open
+                  invoice without it has not reached anyone, unless it is
+                  still held for a send date that has not come. Copy pay link
+                  is in the actions below. */}
+              {open && !inv.sent_at && (!inv.send_after || inv.send_after <= today) && (
+                <MetaChip>Not sent: copy the pay link</MetaChip>
+              )}
             </div>
 
             {client?.display_name && (
