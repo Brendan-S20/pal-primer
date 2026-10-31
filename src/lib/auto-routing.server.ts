@@ -277,6 +277,7 @@ export async function runAutoRouting(
         staffId: r.assigned_staff_id ?? null,
         pinned: Boolean(r.route_pinned),
       })),
+      new Set(plan.before.map((b) => b.staffId)),
     );
     if (why) {
       skipped.push({

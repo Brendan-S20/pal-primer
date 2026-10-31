@@ -640,7 +640,7 @@ export function VisitDetailDrawer({
                       <span className="block font-medium">Keep with this tech</span>
                       <span className="block text-muted-foreground">
                         Auto-routing never moves a pinned visit to someone else. It still puts it in
-                        order on their route.
+                        order on their route. If you reassign it by hand, the pin goes with it.
                       </span>
                     </span>
                   </button>

@@ -79,10 +79,16 @@ export function routeMoves(args: {
 
 /** Why a day's visits no longer match what the preview read, or null when
  *  they still do. Checked just before the write, so Apply never moves a
- *  visit the preview did not show. */
+ *  visit the preview did not show.
+ *
+ *  `now` is every scheduled visit on the day. `runTechs` is who the run
+ *  could route that day: a visit that is new since the preview counts only
+ *  when it would have been in play (unassigned, or on one of them), the
+ *  same set route_day_inputs reads. */
 export function changedSincePreview(
   previewed: ReadonlyArray<VisitBefore>,
   now: ReadonlyArray<VisitBefore>,
+  runTechs: ReadonlySet<string> = new Set(),
 ): string | null {
   const current = new Map(now.map((v) => [v.visitId, v]));
   for (const v of previewed) {
@@ -90,6 +96,11 @@ export function changedSincePreview(
     if (!c) return "a visit was cancelled, moved or completed";
     if (c.staffId !== v.staffId) return "a visit was reassigned";
     if (c.pinned !== v.pinned) return "a visit was pinned or unpinned";
+  }
+  const seen = new Set(previewed.map((v) => v.visitId));
+  for (const c of now) {
+    if (seen.has(c.visitId)) continue;
+    if (c.staffId == null || runTechs.has(c.staffId)) return "a visit was added";
   }
   return null;
 }

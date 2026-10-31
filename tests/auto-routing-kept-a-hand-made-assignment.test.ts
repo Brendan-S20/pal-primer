@@ -254,6 +254,13 @@ describe("Apply writes the preview, and refuses a day that changed", () => {
     const pinned = seen.map((v) => (v.visitId === "dog" ? { ...v, pinned: true } : v));
     expect(changedSincePreview(seen, pinned)).toMatch(/pinned/);
     expect(changedSincePreview(seen, seen.slice(1))).toMatch(/cancelled/);
+    // A visit added since, in play for this run: unassigned, or on a run tech.
+    const added = { visitId: "new", staffId: null, pinned: false };
+    expect(changedSincePreview(seen, [...seen, added])).toMatch(/added/);
+    const onAna = { ...added, staffId: "ana" };
+    expect(changedSincePreview(seen, [...seen, onAna], new Set(["ana"]))).toMatch(/added/);
+    // On somebody the run does not route: not this run's business.
+    expect(changedSincePreview(seen, [...seen, onAna], new Set(["ben"]))).toBeNull();
   });
 
   it("the run leaves that day out of the write and says why", async () => {
