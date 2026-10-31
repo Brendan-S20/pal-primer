@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { bookGroom, groomBookingOptions, groomDayBookings } from "@/lib/groom-booking.functions";
 import type { GroomBookingPrefill } from "@/lib/groom-request";
+import { useOrgToday } from "@/hooks/useOrgToday";
 import {
   COAT_LABEL,
   groomClashes,
@@ -45,11 +46,6 @@ import {
   type VaccineRule,
   type VaccineState,
 } from "@/lib/vaccines";
-
-function todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 function money(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
@@ -78,12 +74,15 @@ export function BookGroomDialog({
   const optionsFn = useServerFn(groomBookingOptions);
   const bookFn = useServerFn(bookGroom);
   const dayFn = useServerFn(groomDayBookings);
+  // The business's today, not the device's: the server refuses a date before
+  // it (20261031120000), so the picker has to agree about what day it is.
+  const today = useOrgToday();
 
   const [propertyId, setPropertyId] = useState("");
   const [serviceId, setServiceId] = useState("");
   const [petIds, setPetIds] = useState<string[]>([]);
   const [addonQty, setAddonQty] = useState<Record<string, string>>({});
-  const [scheduledOn, setScheduledOn] = useState(todayISO());
+  const [scheduledOn, setScheduledOn] = useState(today);
   const [startTime, setStartTime] = useState("");
   const [everyWeeks, setEveryWeeks] = useState<"" | "4" | "6" | "8">("");
   const [staffId, setStaffId] = useState("");
@@ -102,14 +101,14 @@ export function BookGroomDialog({
         (prefill?.addons ?? []).map((a) => [a.addonServiceId, String(a.quantity)]),
       ),
     );
-    setScheduledOn(prefill?.scheduledOn ?? todayISO());
+    setScheduledOn(prefill?.scheduledOn ?? today);
     setStartTime(prefill?.startTime ?? "");
     setEveryWeeks("");
     setStaffId("");
     setParkingNotes("");
     setAcknowledgeWarning(false);
     parkingFilled.current = false;
-  }, [open, clientId, prefill]);
+  }, [open, clientId, prefill, today]);
 
   const { data, isLoading, error } = useQuery({
     enabled: open,
@@ -416,6 +415,7 @@ export function BookGroomDialog({
                   id="groom-date"
                   type="date"
                   className="h-11"
+                  min={today}
                   value={scheduledOn}
                   onChange={(e) => setScheduledOn(e.target.value)}
                 />

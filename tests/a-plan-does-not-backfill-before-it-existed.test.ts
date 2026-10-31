@@ -18,6 +18,8 @@
 //   * every date on or after a plan's created day is the date it was before;
 //   * a future plan, and a plan that existed since its start, generate as before;
 //   * a Missed visit already on the books is untouched;
+//   * a plan entered at 23:30 in Detroit, already the next day in UTC, keeps
+//     its local created day as the floor;
 //   * the demo seed still has completed and missed history,
 //
 // and then ROLLS BACK. When no database is reachable it says so and skips.
@@ -118,8 +120,8 @@ describe.skipIf(!reachable)("a plan entered late, in a real database", () => {
     const out = `${r.stdout}\n${r.stderr}`;
     expect(r.status, out).toBe(0);
     expect(out).not.toMatch(/PROOF FAILED/);
-    // Five groups, each announcing itself only when it passed.
-    expect(out.match(/NOTICE:\s+ok: /g)?.length, out).toBe(5);
+    // Six groups, each announcing itself only when it passed.
+    expect(out.match(/NOTICE:\s+ok: /g)?.length, out).toBe(6);
     expect(out).toMatch(/ALL BACKFILL PROOFS PASSED/);
 
     const left = spawnSync(

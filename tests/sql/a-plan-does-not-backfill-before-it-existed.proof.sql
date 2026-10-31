@@ -209,7 +209,48 @@ BEGIN
   RAISE NOTICE 'ok: an existing Missed visit before the plan''s created day is untouched';
 END $$;
 
--- ── 5. The demo seed still builds its history ───────────────────────────
+-- ── 5. The floor is the business's local day, not the UTC day ──────────
+-- A Detroit business, open every day. A daily plan that started 30 days ago
+-- was entered at 23:30 Detroit time yesterday, which is already today in
+-- UTC. Its first visit is yesterday: the floor is the local created day.
+SET LOCAL app.allow_protected_org_write = '1';
+INSERT INTO public.organizations (id, name, timezone, work_days) VALUES
+  ('06310000-0000-4000-8000-0000000000dd', 'Backfill Detroit Proof', 'America/Detroit', '{0,1,2,3,4,5,6}');
+SET LOCAL app.allow_protected_org_write = '';
+INSERT INTO public.clients (id, organization_id, account_type, display_name) VALUES
+  ('c6310000-0000-4000-8000-0000000000d0', '06310000-0000-4000-8000-0000000000dd', 'residential', 'Backfill Detroit Client');
+INSERT INTO public.properties (id, organization_id, client_id, street, city, postal_code, latitude, longitude) VALUES
+  ('e6310000-0000-4000-8000-0000000000d0', '06310000-0000-4000-8000-0000000000dd',
+   'c6310000-0000-4000-8000-0000000000d0', '31 Backfill Ave', 'Detroit', '48201', 42.33, -83.05);
+
+DO $$
+DECLARE
+  _today date := (now() AT TIME ZONE 'America/Detroit')::date;
+  _created timestamptz := ((now() AT TIME ZONE 'America/Detroit')::date - 1 + time '23:30') AT TIME ZONE 'America/Detroit';
+  _first date;
+BEGIN
+  -- The case only means something when 23:30 local is the next day in UTC.
+  IF (_created AT TIME ZONE 'UTC')::date <> _today THEN
+    RAISE EXCEPTION 'PROOF FAILED [timezone]: 23:30 Detroit yesterday is % in UTC, expected %', _created AT TIME ZONE 'UTC', _today;
+  END IF;
+
+  INSERT INTO public.subscriptions (id, organization_id, client_id, property_id, account_type, frequency,
+                                    price_cents, dog_count, started_on, interval_days, created_at)
+  VALUES ('d6310000-0000-4000-8000-0000000000d1', '06310000-0000-4000-8000-0000000000dd',
+          'c6310000-0000-4000-8000-0000000000d0', 'e6310000-0000-4000-8000-0000000000d0',
+          'residential', 'every_n_days', 2500, 1, _today - 30, 1, _created);
+  PERFORM public.generate_visits_core('06310000-0000-4000-8000-0000000000dd', _today + 7,
+                                      'd6310000-0000-4000-8000-0000000000d1');
+
+  SELECT min(scheduled_on) INTO _first FROM public.visits
+   WHERE subscription_id = 'd6310000-0000-4000-8000-0000000000d1';
+  IF _first IS DISTINCT FROM _today - 1 THEN
+    RAISE EXCEPTION 'PROOF FAILED [timezone]: a plan entered at 23:30 Detroit time yesterday starts on %, expected % (the local created day)', _first, _today - 1;
+  END IF;
+  RAISE NOTICE 'ok: a plan entered at 23:30 in Detroit keeps its local created day as the floor, not the UTC day';
+END $$;
+
+-- ── 6. The demo seed still builds its history ───────────────────────────
 INSERT INTO auth.users (id, email) VALUES
   ('a0000000-0000-4000-8000-00000000b631', 'owner@backfill.proof.invalid');
 SET LOCAL app.allow_protected_org_write = '1';
