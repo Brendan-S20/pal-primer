@@ -376,7 +376,7 @@ export async function bookGroomAppointment(
   if (!first) {
     await db.from("subscriptions").delete().eq("id", sub.id).eq("organization_id", input.orgId);
     throw new Error(
-      `Nothing could be scheduled on ${input.scheduledOn}. It is a blackout day, outside your work days, or inside a hold on this client. The booking was not saved, so pick another date and try again.`,
+      `Nothing could be scheduled on ${input.scheduledOn}. It is in the past, a blackout day, outside your work days, or inside a hold on this client. The booking was not saved, so pick another date and try again.`,
     );
   }
 
