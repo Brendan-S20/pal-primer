@@ -22,16 +22,16 @@ export type CoverWindow = {
 };
 
 /**
- * The absence that covers `day`, else the next one after it, clipped so it
- * never starts before `today` (a visit already in the past is not Cover's to
- * move). With no absence on record the window is `day` alone.
+ * The absence that covers `day`, clipped so it never starts before `today`
+ * (a visit already in the past is not Cover's to move). With no absence
+ * covering `day`, the window is `day` alone: a same-day sick call must not
+ * be offered next month's leave instead, which would hide today's visits.
  */
 export function pickCoverWindow(rows: TimeOffRow[], day: string, today: string): CoverWindow {
   const start = day < today ? today : day;
-  const sorted = [...rows]
-    .filter((r) => r.ends_on >= start)
-    .sort((a, b) => (a.starts_on < b.starts_on ? -1 : a.starts_on > b.starts_on ? 1 : 0));
-  const hit = sorted.find((r) => r.starts_on <= day && r.ends_on >= day) ?? sorted[0];
+  const hit = [...rows]
+    .sort((a, b) => (a.starts_on < b.starts_on ? -1 : a.starts_on > b.starts_on ? 1 : 0))
+    .find((r) => r.starts_on <= start && r.ends_on >= start);
   if (!hit) return { from: start, to: start, source: "day", reason: null };
   return {
     from: hit.starts_on < today ? today : hit.starts_on,

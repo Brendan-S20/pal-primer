@@ -30,9 +30,21 @@ describe("the Cover window", () => {
     });
   });
 
-  it("is the next time off when the day on screen is before it", () => {
-    const w = pickCoverWindow(off, "2026-10-31", "2026-10-31");
-    expect([w.from, w.to, w.source]).toEqual(["2026-11-03", "2026-11-06", "time_off"]);
+  it("is the day on screen, not next month's leave, when no absence covers it", () => {
+    // A same-day sick call with leave on record for later must not be
+    // offered the later dates, which would hide today's visits.
+    const later = [{ starts_on: "2026-12-01", ends_on: "2026-12-05" }];
+    expect(pickCoverWindow(later, "2026-11-04", "2026-11-04")).toEqual({
+      from: "2026-11-04",
+      to: "2026-11-04",
+      source: "day",
+      reason: null,
+    });
+  });
+
+  it("is the whole absence from any day inside it", () => {
+    const w = pickCoverWindow(off, "2026-11-05", "2026-10-31");
+    expect([w.from, w.to]).toEqual(["2026-11-03", "2026-11-06"]);
   });
 
   it("never starts before today", () => {

@@ -784,7 +784,7 @@ function RoutesPage() {
     onSuccess: (r: any) => {
       if (r.left > 0) {
         toast.warning(
-          `Moved ${r.moved}. Left ${r.left} with ${coverFor!.name}, because no other groomer has room at ${r.left === 1 ? "that groom's start time" : "those grooms' start times"}. ${(r.leftAppointments ?? []).map((v: { client: string; day: string; startTime: string | null }) => `${v.client}, ${v.day} ${v.startTime ?? ""}`).join("; ")}`,
+          `Moved ${r.moved}. Left ${r.left} with ${coverFor!.name}, because nobody else could take ${r.left === 1 ? "it" : "them"}: another tech already has a groom at that time, or is off that day. ${(r.leftAppointments ?? []).map((v: { client: string; day: string; startTime: string | null }) => `${v.client}, ${v.day} ${v.startTime ?? ""}`).join("; ")}`,
           { duration: 9000 },
         );
       } else {

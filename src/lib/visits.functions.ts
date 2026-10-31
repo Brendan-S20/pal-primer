@@ -1047,12 +1047,16 @@ export const getStaffUpcomingLoad = createServerFn({ method: "GET" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const { data: rows, error } = await (context.supabase as any).rpc("staff_upcoming_load", {
-      _staff_id: data.staffId,
-    });
-    if (error) throw new Error(error.message);
-    const all = (rows ?? []) as Array<{ scheduled_on: string; visits: number }>;
+    const load = async (from: string | null) => {
+      const { data: rows, error } = await (context.supabase as any).rpc("staff_upcoming_load", {
+        _staff_id: data.staffId,
+        _from: from,
+      });
+      if (error) throw new Error(error.message);
+      return (rows ?? []) as Array<{ scheduled_on: string; visits: number }>;
+    };
     if (!data.day) {
+      const all = await load(null);
       return {
         window: null,
         days: all,
@@ -1062,15 +1066,19 @@ export const getStaffUpcomingLoad = createServerFn({ method: "GET" })
       };
     }
     const today = data.today ?? data.day;
+    const start = data.day < today ? today : data.day;
     const { pickCoverWindow, splitLoad } = await import("@/lib/cover-window");
     const { data: off, error: offError } = await context.supabase
       .from("staff_time_off")
       .select("starts_on, ends_on, reason")
       .eq("staff_id", data.staffId)
-      .gte("ends_on", data.day < today ? today : data.day)
-      .order("starts_on");
+      .lte("starts_on", start)
+      .gte("ends_on", start);
     if (offError) throw new Error(offError.message);
     const window = pickCoverWindow(off ?? [], data.day, today);
+    // Read from the window's first day, the org's today at the earliest,
+    // not the database's current_date, so the count and the move agree.
+    const all = await load(window.from);
     const split = splitLoad(all, window);
     return {
       window,
@@ -1162,6 +1170,10 @@ export const redistributeStaffWork = createServerFn({ method: "POST" })
             _staff_id: staffId,
           });
           if (e) {
+            // 23P01: the groom guard (zz_visits_groom_no_overlap), that tech
+            // already has a groom then. 23514: the time-off guard
+            // (visits_respect_time_off), that tech is off that day. Either
+            // way the next tech is asked; anything else fails the Cover.
             if (e.code === "23P01" || e.code === "23514") return "refused";
             throw new Error(e.message);
           }
