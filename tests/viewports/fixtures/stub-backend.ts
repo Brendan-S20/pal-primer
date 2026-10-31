@@ -911,20 +911,8 @@ export const BASE_STUBS: Record<string, Stub> = {
       business_email: "compliance@greatermetropolitandetroitdoodisposal.com",
       business_phone: "+13135550100",
       contacts: [
-        {
-          first_name: "Devin",
-          last_name: "Abernathy-Kowalczyk",
-          title: "Owner",
-          email: "devin@greatermetropolitandetroitdoodisposal.com",
-          phone: "+13135550101",
-        },
-        {
-          first_name: "Samantha",
-          last_name: "Okonkwo",
-          title: "Office manager",
-          email: "sam@greatermetropolitandetroitdoodisposal.com",
-          phone: "+13135550102",
-        },
+        { first_name: "Devin", last_name: "Abernathy-Kowalczyk", title: "Owner", email: "devin@greatermetropolitandetroitdoodisposal.com", phone: "+13135550101" },
+        { first_name: "Samantha", last_name: "Okonkwo", title: "Office manager", email: "sam@greatermetropolitandetroitdoodisposal.com", phone: "+13135550102" },
       ],
       ein_last4: "4567",
       phone_number: "+18445550123",
@@ -948,8 +936,10 @@ export const BASE_STUBS: Record<string, Stub> = {
     displayName: "Detroit Doo",
     termsUrl: "https://www.greatermetropolitandetroitdoodisposal.com/legal/terms-of-service",
     privacyUrl: "https://www.greatermetropolitandetroitdoodisposal.com/legal/privacy-policy",
-    lead: "I agree to receive text messages from Detroit Doo at the number provided about my appointments, visit updates and billing. Consent is optional and is not a condition of purchase. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out, HELP for help.",
-    text: "I agree to receive text messages from Detroit Doo at the number provided about my appointments, visit updates and billing. Consent is optional and is not a condition of purchase. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out, HELP for help. Detroit Doo Terms: https://www.greatermetropolitandetroitdoodisposal.com/legal/terms-of-service Privacy Policy: https://www.greatermetropolitandetroitdoodisposal.com/legal/privacy-policy",
+    lead:
+      "I agree to receive text messages from Detroit Doo at the number provided about my appointments, visit updates and billing. Consent is optional and is not a condition of purchase. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out, HELP for help.",
+    text:
+      "I agree to receive text messages from Detroit Doo at the number provided about my appointments, visit updates and billing. Consent is optional and is not a condition of purchase. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out, HELP for help. Detroit Doo Terms: https://www.greatermetropolitandetroitdoodisposal.com/legal/terms-of-service Privacy Policy: https://www.greatermetropolitandetroitdoodisposal.com/legal/privacy-policy",
   },
 
   // /settings/automation, /settings/invoicing and /settings/emails, which

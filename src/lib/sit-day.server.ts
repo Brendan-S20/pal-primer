@@ -102,12 +102,12 @@ export async function withSitDay<
     // sitter covering one night read the same row, and nobody else does.
     const [codesRes, notesRes] = await Promise.all([
       supabase.rpc("stay_access_codes", { _stay_ids: stayIds }),
-      (supabase as any).from("stays").select("id, notes").in("id", stayIds),
+      supabase.from("stays").select("id, notes").in("id", stayIds),
     ]);
     if (codesRes.error) console.warn("stay access codes could not be loaded");
     for (const r of codesRes.data ?? []) codes.set(r.stay_id, r);
     if (notesRes.error) console.warn("stay notes could not be loaded");
-    for (const r of (notesRes.data ?? []) as Array<{ id: string; notes: string | null }>) {
+    for (const r of notesRes.data ?? []) {
       const text = r.notes?.trim();
       if (text) notes.set(r.id, text);
     }
