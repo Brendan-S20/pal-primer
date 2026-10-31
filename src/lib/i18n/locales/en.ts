@@ -473,6 +473,10 @@ const en = {
     no: "No",
     noteForClient: "Note for the client",
     noteForClientPlaceholder: "Happy walk, sniffed every tree",
+    emptyReportTitle: "End the walk with no report?",
+    emptyReportBody: "Pee, poo and the note for the client are all empty. The client gets nothing about this walk.",
+    endAnyway: "End anyway",
+    addReport: "Fill in report",
     /** Property drawer, when property_access_codes did not return the row. */
     codesNotLoaded:
       "The saved codes are hidden or could not be loaded. They stay as they are unless you type new ones.",

@@ -7,7 +7,7 @@
 // A tech screen (tests/support/tech-screens.ts): every word through t(), and
 // sides spelled logically for Arabic.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { DoorOpen, Footprints, KeyRound, Timer, Users } from "lucide-react";
@@ -20,6 +20,7 @@ import { enqueueAction } from "@/lib/offline/queue";
 import { runOrQueue } from "@/lib/offline/run-or-queue";
 import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { resolveOfflineUserId } from "@/lib/offline/action-owner";
+import { createWalkDraftKeeper, type WalkDraftKeeper } from "@/lib/offline/walk-drafts";
 import { isAccessMethod, type AccessMethod } from "@/lib/walk-access";
 import {
   groupWalkMates,
@@ -179,12 +180,64 @@ export type WalkReportState = {
 };
 
 /** The walk report a walker fills in before ending the walk. Pee and poo start
- *  unset: "not recorded" is a different answer from "no". */
+ *  unset: "not recorded" is a different answer from "no".
+ *
+ *  Kept on the device per visit as it is typed (#610), so Client info, a
+ *  reload or the app being killed does not empty it. The saved draft is read
+ *  back on mount; a field the walker touched before it arrived keeps what they
+ *  typed. Cleared once End walk has recorded the report, and on reset. */
 export function useWalkReport(visitId: string): WalkReportState {
-  const [pee, setPee] = useState<boolean | null>(null);
-  const [poo, setPoo] = useState<boolean | null>(null);
-  const [note, setNote] = useState("");
+  const [pee, setPeeState] = useState<boolean | null>(null);
+  const [poo, setPooState] = useState<boolean | null>(null);
+  const [note, setNoteState] = useState("");
+  const [hydrated, setHydrated] = useState(false);
+  const touched = useRef({ pee: false, poo: false, note: false });
+  const keeper = useRef<WalkDraftKeeper | null>(null);
   const reportFn = useServerFn(recordWalkReport);
+
+  useEffect(() => {
+    const k = createWalkDraftKeeper(visitId);
+    keeper.current = k;
+    touched.current = { pee: false, poo: false, note: false };
+    setHydrated(false);
+    setPeeState(null);
+    setPooState(null);
+    setNoteState("");
+    let live = true;
+    void k.load().then((d) => {
+      if (!live) return;
+      if (d) {
+        if (!touched.current.pee) setPeeState(d.pee);
+        if (!touched.current.poo) setPooState(d.poo);
+        if (!touched.current.note) setNoteState(d.note);
+      }
+      setHydrated(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, [visitId]);
+
+  // Every change, written straight away: a note typed just before Client info
+  // or a kill is the one that matters. Nothing is written until the saved
+  // draft has been read, so an empty first render never overwrites it.
+  useEffect(() => {
+    if (!hydrated) return;
+    void keeper.current?.save({ pee, poo, note });
+  }, [hydrated, pee, poo, note]);
+
+  const setPee = useCallback((v: boolean | null) => {
+    touched.current.pee = true;
+    setPeeState(v);
+  }, []);
+  const setPoo = useCallback((v: boolean | null) => {
+    touched.current.poo = true;
+    setPooState(v);
+  }, []);
+  const setNote = useCallback((v: string) => {
+    touched.current.note = true;
+    setNoteState(v);
+  }, []);
 
   const send = useCallback(async () => {
     const reportNote = cleanReportNote(note);
@@ -206,13 +259,16 @@ export function useWalkReport(visitId: string): WalkReportState {
         });
       },
     });
+    // Recorded, live or queued: the draft has done its job.
+    await keeper.current?.clear();
     return { queued: r.queued, sent: true };
   }, [note, pee, poo, reportFn, visitId]);
 
   const reset = useCallback(() => {
-    setPee(null);
-    setPoo(null);
-    setNote("");
+    setPeeState(null);
+    setPooState(null);
+    setNoteState("");
+    void keeper.current?.clear();
   }, []);
 
   return { pee, poo, note, setPee, setPoo, setNote, send, reset };

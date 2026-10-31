@@ -497,6 +497,10 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     no: "لا",
     noteForClient: "ملاحظة للعميل",
     noteForClientPlaceholder: "نزهة سعيدة، شمّ كل شجرة",
+    emptyReportTitle: "إنهاء النزهة بلا تقرير؟",
+    emptyReportBody: "التبول والتبرز والملاحظة للعميل كلها فارغة. لن يصل العميل أي شيء عن هذه النزهة.",
+    endAnyway: "إنهاء على أي حال",
+    addReport: "املأ التقرير",
     codesNotLoaded: "الرموز المحفوظة مخفية أو تعذّر تحميلها. ستبقى كما هي ما لم تكتب رموزًا جديدة.",
   },
   sit: {

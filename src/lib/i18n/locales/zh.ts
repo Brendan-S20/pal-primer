@@ -450,6 +450,10 @@ const zh: TranslationsWithPlurals<"other"> = {
     no: "否",
     noteForClient: "给客户的备注",
     noteForClientPlaceholder: "遛得很开心，每棵树都闻了闻",
+    emptyReportTitle: "不填报告就结束遛狗？",
+    emptyReportBody: "小便、大便和给客户的备注都是空的。客户不会收到这次遛狗的任何信息。",
+    endAnyway: "仍然结束",
+    addReport: "填写报告",
     codesNotLoaded: "已保存的代码被隐藏或无法加载。除非你输入新的代码，否则它们保持不变。",
   },
   sit: {

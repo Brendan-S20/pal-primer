@@ -61,6 +61,8 @@ import { useQueuedLifecycle } from "@/lib/offline/useQueuedLifecycle";
 import { dayAtAGlance } from "@/lib/my-day-progress";
 import { withQueuedLifecycle, type LifecycleKind } from "@/lib/offline/queued-visit-state";
 import { resolveOfflineUserId } from "@/lib/offline/action-owner";
+import { confirmEndWithEmptyReport } from "@/lib/offline/walk-drafts";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
 import {
   describeReadFreshness,
   READ_REFRESH_GRACE_MS,
@@ -1752,6 +1754,8 @@ function VisitCard({
   // stop, pet waste included, keeps its card exactly as it was.
   const walk = isWalkVisit(visit);
   const walkReport = useWalkReport(visit.id);
+  // End walk with nothing in the report asks first (#610). It never refuses.
+  const { confirm: confirmEndWalk, dialog: endWalkDialog } = useConfirmDialog();
   // A pet sitting visit reads as a sit (components/my-day/SitParts.tsx): the
   // stay, the pets' care, the care log. Its note for the client is the walk
   // report's note.
@@ -2214,7 +2218,7 @@ function VisitCard({
     });
   };
 
-  const tapStep = () => {
+  const tapStep = async () => {
     if (!step) return;
     if (!canPerformVisit) {
       toast.error(
@@ -2222,6 +2226,21 @@ function VisitCard({
       );
       return;
     }
+    // End walk with nothing in the report asks first (#610). Cancel leaves the
+    // walk open to fill it in; End anyway goes on. It never refuses.
+    if (
+      step === "complete" &&
+      walk &&
+      !(await confirmEndWithEmptyReport(walkReport, () =>
+        confirmEndWalk({
+          title: t("walk.emptyReportTitle"),
+          description: t("walk.emptyReportBody"),
+          confirmLabel: t("walk.endAnyway"),
+          cancelLabel: t("walk.addReport"),
+        }),
+      ))
+    )
+      return;
     void runVisitStep(step, {
       start: () => start.mutate(),
       photo: () => {
@@ -2917,6 +2936,7 @@ function VisitCard({
           {walk && underWay && canPerformVisit && (
             <WalkReportFields visitId={visit.id} report={walkReport} />
           )}
+          {walk && endWalkDialog}
 
           {sit && underWay && canPerformVisit && (
             <>

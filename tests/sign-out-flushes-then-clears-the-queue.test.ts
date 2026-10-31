@@ -52,6 +52,10 @@ vi.mock("@/lib/offline/action-owner", () => ({
   }),
 }));
 
+// Walk report drafts (#610): every one on the device goes at sign-out.
+const clearAllWalkDrafts = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock("@/lib/offline/walk-drafts", () => ({ clearAllWalkDrafts }));
+
 const { flushThenClearAndSignOut } = await import("@/lib/offline/sign-out");
 const { syncQueue } = await import("@/lib/offline/sync");
 const { clearQueueForUser } = await import("@/lib/offline/queue");
@@ -132,6 +136,35 @@ describe("sign-out with queued field work", () => {
     const out = await flushThenClearAndSignOut({ callers: CALLERS });
     expect(out.signedOut).toBe(false);
     expect(clearQueueForUser).not.toHaveBeenCalled();
+  });
+});
+
+describe("sign-out and walk report drafts (#610)", () => {
+  it("clears every draft on the device before ending the session", async () => {
+    pendingCounts = [0, 0];
+    const out = await flushThenClearAndSignOut({ callers: CALLERS });
+    expect(out.signedOut).toBe(true);
+    expect(clearAllWalkDrafts).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears drafts on a device that cannot say who is signed in", async () => {
+    owner = null;
+    await flushThenClearAndSignOut({ callers: CALLERS });
+    expect(clearAllWalkDrafts).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps drafts when the tech chose to stay signed in", async () => {
+    pendingCounts = [4, 4];
+    await flushThenClearAndSignOut({ callers: CALLERS, confirmDiscard: () => false });
+    expect(clearAllWalkDrafts).not.toHaveBeenCalled();
+  });
+
+  it("still signs out when the draft store cannot be cleared", async () => {
+    pendingCounts = [0, 0];
+    clearAllWalkDrafts.mockRejectedValueOnce(new Error("no IndexedDB"));
+    const out = await flushThenClearAndSignOut({ callers: CALLERS });
+    expect(out.signedOut).toBe(true);
+    expect(listeners.signOutAndClearDevice).toHaveBeenCalled();
   });
 });
 
