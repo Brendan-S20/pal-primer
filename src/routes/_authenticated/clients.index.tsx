@@ -12,6 +12,7 @@ import {
   bulkTagClients,
   getSmsConsentCoverage,
   listClientsPage,
+  listClientsSummary,
   updateClient,
 } from "@/lib/clients.functions";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -108,6 +109,7 @@ function ClientsList() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const fn = useServerFn(listClientsPage);
+  const summaryFn = useServerFn(listClientsSummary);
   const updateFn = useServerFn(updateClient);
   const { can } = usePermissions();
   const rowTexting = useClientTexting();
@@ -119,34 +121,63 @@ function ClientsList() {
   const [q, setQ] = useState("");
   // The search runs on the server now (#617), so the box shows every
   // keystroke at once and the request waits for a pause in the typing.
-  const [searched, setSearched] = useState("");
+  // What is being looked for and which page of it, as one value. A filter
+  // change puts the page back to the first in the SAME update: as two state
+  // updates (the filter, then an effect resetting the page) the old page of
+  // the new filter was fetched first, and then the first page again.
+  const [view, setView] = useState({
+    searched: "",
+    status: "all" as StatusFilter,
+    type: "all" as TypeFilter,
+    tag: "all",
+    offset: 0,
+  });
+  const { searched, status, type, tag, offset } = view;
+  const setFilter = (patch: Partial<Omit<typeof view, "offset">>) =>
+    setView((v) => ({ ...v, ...patch, offset: 0 }));
+  const setStatus = (status: StatusFilter) => setFilter({ status });
+  const setType = (type: TypeFilter) => setFilter({ type });
+  const setTag = (tag: string) => setFilter({ tag });
+  const setOffset = (offset: number) => setView((v) => ({ ...v, offset }));
   useEffect(() => {
-    const t = setTimeout(() => setSearched(q.trim()), 250);
+    const t = setTimeout(() => {
+      const next = q.trim();
+      setView((v) => (v.searched === next ? v : { ...v, searched: next, offset: 0 }));
+    }, 250);
     return () => clearTimeout(t);
   }, [q]);
-  const [status, setStatus] = useState<StatusFilter>("all");
-  const [type, setType] = useState<TypeFilter>("all");
-  const [tag, setTag] = useState<string>("all");
-  const [offset, setOffset] = useState(0);
-  // Back to the first page whenever what is being looked for changes.
-  useEffect(() => setOffset(0), [searched, status, type, tag]);
 
   // One page at a time, filtered and searched on the server (#617). The page
   // used to receive the whole roster; past ~1,000 clients the reads behind it
   // put every client id in a URL, were refused as "URI too long", and the page
   // and every client picker went empty.
-  const filters = { q: searched, status, type, tag };
+  //
+  // The tiles and the tag list are the whole book. They are asked for once,
+  // not with every page, filter and keystroke: that was the full-book read
+  // the page did each time until the second round of #617.
+  const summaryQ = useQuery({
+    queryKey: ["clients", "summary"],
+    queryFn: () => summaryFn(),
+    staleTime: 60_000,
+    throwOnError: (_error, query) => query.state.data === undefined,
+  });
+  const summary = summaryQ.data;
+  const tagSpellings =
+    tag !== "all" ? summary?.tagSpellings?.[tag.toLowerCase()] : undefined;
+  const filters = { q: searched, status, type, tag, tagSpellings };
   const { data, isLoading } = useQuery({
-    queryKey: ["clients", "page", filters, offset],
+    queryKey: ["clients", "page", { q: searched, status, type, tag }, offset],
     queryFn: () => fn({ data: { ...filters, offset, limit: CLIENTS_PAGE_SIZE } }),
     placeholderData: keepPreviousData,
+    // A tag filter waits for the spellings it is sent with.
+    enabled: tag === "all" || !!summary,
     throwOnError: (_error, query) => query.state.data === undefined,
   });
 
   const filtered = (data?.rows ?? []) as any[];
   const matched = data?.matched ?? 0;
   // The tiles describe the whole book, whatever the filters say.
-  const stats = data?.stats ?? {
+  const stats = summary?.stats ?? {
     total: 0,
     active: 0,
     outstanding: 0,
@@ -156,7 +187,7 @@ function ClientsList() {
   };
   // Every tag in use, for the filter: tags came in by the hundred once
   // imports carried Jobber's Tags column across, and nothing could find them.
-  const allTags = data?.tags ?? [];
+  const allTags: string[] = summary?.tags ?? [];
 
   // Export CSV is every row the filters match, not just this page.
   const [exporting, setExporting] = useState(false);
@@ -317,7 +348,7 @@ function ClientsList() {
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold">Clients</h1>
           <div className="text-sm text-muted-foreground">
-            {!data ? <Skeleton className="h-5 w-36" /> : `${stats.total} total · ${stats.active} active`}
+            {!summary ? <Skeleton className="h-5 w-36" /> : `${stats.total} total · ${stats.active} active`}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -341,7 +372,7 @@ function ClientsList() {
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Users className="h-4 w-4 shrink-0" /> Active
           </div>
-          <div className="mt-1 text-2xl font-semibold">{!data ? <TileValueBone /> : stats.active}</div>
+          <div className="mt-1 text-2xl font-semibold">{!summary ? <TileValueBone /> : stats.active}</div>
         </Card>
         <Card className="min-w-0 p-4">
           <div className="text-xs text-muted-foreground">Outstanding</div>
@@ -350,15 +381,15 @@ function ClientsList() {
               line box so the bone does not move, and allowed to wrap rather
               than push the tile past the column. */}
           <div className="mt-1 text-lg leading-8 font-semibold [overflow-wrap:anywhere] sm:text-2xl">
-            {!data ? <TileValueBone /> : money(stats.owedTotal)}
+            {!summary ? <TileValueBone /> : money(stats.owedTotal)}
           </div>
-          <div className="text-xs text-muted-foreground">{!data ? <Skeleton className="h-4 w-20" /> : `${stats.outstanding} clients`}</div>
+          <div className="text-xs text-muted-foreground">{!summary ? <Skeleton className="h-4 w-20" /> : `${stats.outstanding} clients`}</div>
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <AlertTriangle className="h-4 w-4 shrink-0" /> At churn risk
           </div>
-          <div className="mt-1 text-2xl font-semibold">{!data ? <TileValueBone /> : stats.atRisk}</div>
+          <div className="mt-1 text-2xl font-semibold">{!summary ? <TileValueBone /> : stats.atRisk}</div>
         </Card>
         {/* Replaces the "Inactive" tile. Inactive was already derivable from
             Active and the total, and it is the less useful of the two: an
@@ -379,10 +410,10 @@ function ClientsList() {
           <div
             className={`mt-1 text-2xl font-semibold ${stats.noPlan > 0 ? "text-amber-600" : ""}`}
           >
-            {!data ? <TileValueBone /> : stats.noPlan}
+            {!summary ? <TileValueBone /> : stats.noPlan}
           </div>
           <div className="text-xs text-muted-foreground">
-            {!data ? <Skeleton className="h-4 w-20" /> : `${stats.total - stats.active} archived`}
+            {!summary ? <Skeleton className="h-4 w-20" /> : `${stats.total - stats.active} archived`}
           </div>
         </Card>
       </div>
@@ -393,7 +424,7 @@ function ClientsList() {
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search name, email or phone…"
+            placeholder="Search name, company, email, phone or street…"
             className="pl-8"
           />
         </div>
@@ -423,7 +454,7 @@ function ClientsList() {
         {/* While the list loads nobody knows yet whether there are tags, and
             on a phone this filter is a row of its own: hold its place, so the
             list does not drop 52px when the clients arrive. */}
-        {isLoading ? (
+        {summaryQ.isLoading ? (
           <Skeleton aria-hidden="true" className="h-9 w-44 touch:h-11" />
         ) : allTags.length > 0 && (
           <Select value={tag} onValueChange={setTag}>

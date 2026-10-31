@@ -37,14 +37,18 @@ vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => k
 import { Route as DashboardRoute } from "@/routes/_authenticated/dashboard";
 import { Route as ClientsRoute } from "@/routes/_authenticated/clients.index";
 
-// /clients reads one server-filtered page since #617. Its cache entry is the
-// first page with no filters, shaped as listClientsPage returns it.
+// /clients reads one server-filtered page since #617, and the tiles over it
+// come from a separate whole-book summary asked for once. Two cache entries:
+// the first page with no filters, shaped as listClientsPage returns it, and
+// the summary, shaped as listClientsSummary returns it.
 import { filterRoster, rosterStats, rosterTags } from "@/lib/client-roster";
 const CLIENTS_KEY = ["clients", "page", { q: "", status: "all", type: "all", tag: "all" }, 0];
+const SUMMARY_KEY = ["clients", "summary"];
 const keyOf = (key: string) => (key === "clients" ? CLIENTS_KEY : [key]);
-function pageOf(clients: any[]) {
+function setClients(clients: any[]) {
   const rows = filterRoster(clients, {});
-  return { rows: rows.slice(0, 50), matched: rows.length, offset: 0, stats: rosterStats(clients), tags: rosterTags(clients) };
+  qc.setQueryData(CLIENTS_KEY, { rows: rows.slice(0, 50), matched: rows.length, offset: 0 });
+  qc.setQueryData(SUMMARY_KEY, { stats: rosterStats(clients), tags: rosterTags(clients), tagSpellings: {} });
 }
 
 let qc: QueryClient;
@@ -81,7 +85,7 @@ describe("loading is not an empty account", () => {
       expect(pending).not.toContain(falseEmpty);
     }
     expect(pending).toContain("data-skeleton-region");
-    qc.setQueryData(CLIENTS_KEY, pageOf(Array.from({ length: 112 }, (_, i) => ({ id: `c${i}`, display_name: `Test ${i}`, active: true, outstanding_cents: 100, active_subscription_count: 1 }))));
+    setClients(Array.from({ length: 112 }, (_, i) => ({ id: `c${i}`, display_name: `Test ${i}`, active: true, outstanding_cents: 100, active_subscription_count: 1 })));
     const loaded = render(ClientsRoute);
     expect(loaded).toContain("112 total");
     expect(loaded).toContain("112 active");
@@ -89,8 +93,9 @@ describe("loading is not an empty account", () => {
   });
 
   it("keeps known client counts visible during a background refresh", () => {
-    qc.setQueryData(CLIENTS_KEY, pageOf([{ id: "c1", active: true, display_name: "Test client", outstanding_cents: 1234 }]));
-    qc.getQueryCache().find({ queryKey: CLIENTS_KEY })!.setState({ fetchStatus: "fetching" });
+    setClients([{ id: "c1", active: true, display_name: "Test client", outstanding_cents: 1234 }]);
+    qc.getQueryCache().find({ queryKey: CLIENTS_KEY, exact: true })!.setState({ fetchStatus: "fetching" });
+    qc.getQueryCache().find({ queryKey: SUMMARY_KEY, exact: true })!.setState({ fetchStatus: "fetching" });
     const html = render(ClientsRoute);
     expect(html).toContain("1 total");
     expect(html).toContain("$12.34");
@@ -115,7 +120,7 @@ describe("loading is not an empty account", () => {
   });
 
   it("shows true zero totals once an empty client list succeeds", () => {
-    qc.setQueryData(CLIENTS_KEY, pageOf([]));
+    setClients([]);
     const html = render(ClientsRoute);
     expect(html).toContain("0 total");
     expect(html).toContain("$0.00");

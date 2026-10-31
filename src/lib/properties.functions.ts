@@ -490,14 +490,16 @@ export const backfillPropertyGeocodes = createServerFn({ method: "POST" })
     z.object({ limit: z.number().int().min(1).max(200).optional() }).parse(d ?? {}),
   )
   .handler(async ({ data, context }) => {
-    const { supabase } = context;
+    const { supabase, userId } = context;
     const { data: rows, error } = await supabase
       .from("properties")
-      .select("id, street, city, region, postal_code")
+      .select(
+        "id, organization_id, client_id, street, city, region, postal_code, account_type, auto_zone_id, zone_id, zone_override_reason, clients(account_type)",
+      )
       .is("latitude", null)
       .limit(data.limit ?? 50);
     if (error) throw new Error(error.message);
-    if (!rows || rows.length === 0) return { updated: 0, remaining: 0 };
+    if (!rows || rows.length === 0) return { updated: 0, rezoned: 0, remaining: 0 };
 
     // One call for the whole page: a single Geocodio batch request when a key
     // is configured, the old 1/s Nominatim loop when it is not.
@@ -510,21 +512,90 @@ export const backfillPropertyGeocodes = createServerFn({ method: "POST" })
         postal_code: r.postal_code,
       })),
     );
+
+    // A pin is also a zone (#617). An import that ran out of geocoding time
+    // saved these addresses with no coordinates, so only a ZIP-code zone could
+    // match them; a radius or a drawn boundary could not. Without this they
+    // stayed zoneless after this backfill found their pin, forever. The zone
+    // follows the pin by the same rule as an address edit: a manual override
+    // keeps its zone and only the detected one is refreshed, and a property in
+    // a zone that is turned off stays where it is (#449).
+    const orgIds = [...new Set(rows.map((r) => r.organization_id as string))];
+    const zonesByOrg = new Map<string, any[] | null>();
+    await Promise.all(
+      orgIds.map(async (orgId) => {
+        const { data: zs, error: zErr } = await supabase
+          .from("zones")
+          .select(
+            "id, priority, account_type, postal_prefix, zip_codes, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, enabled",
+          )
+          .eq("organization_id", orgId);
+        // Unread zones leave the zone alone (null), rather than read as "no
+        // zones" and take every property out of the one it is in.
+        zonesByOrg.set(orgId, zErr ? null : ((zs ?? []) as any[]));
+      }),
+    );
+    const { matchZone } = await import("@/lib/zone-match");
+    const { zonePatchAfterEdit } = await import("@/lib/zone-enabled");
+
     let updated = 0;
+    let rezoned = 0;
+    let zonesUnread = 0;
     for (const [i, r] of rows.entries()) {
       const geo = geos[i];
       if (!geo) continue;
+      const zones = zonesByOrg.get(r.organization_id as string) ?? null;
+      let zonePatch: { auto_zone_id?: string | null; zone_id?: string | null } = {};
+      if (zones === null) zonesUnread += 1;
+      else {
+        const match = matchZone(zones, {
+          postalCode: r.postal_code,
+          point: { lat: geo.latitude, lng: geo.longitude },
+          accountType: ((r as any).account_type ?? (r as any).clients?.account_type ?? null) as any,
+        });
+        const autoZoneId = match ? (match.id as string) : null;
+        const offIds = new Set(zones.filter((z) => z.enabled === false).map((z) => z.id));
+        zonePatch = zonePatchAfterEdit({
+          autoZoneId,
+          hasOverride: !!r.zone_override_reason,
+          inOffZone: !!r.zone_id && offIds.has(r.zone_id),
+        });
+      }
       const { error: uErr } = await supabase
         .from("properties")
-        .update({ latitude: geo.latitude, longitude: geo.longitude })
+        .update({ latitude: geo.latitude, longitude: geo.longitude, ...zonePatch })
         .eq("id", r.id);
-      if (!uErr) updated += 1;
+      if (uErr) continue;
+      updated += 1;
+      if ("zone_id" in zonePatch && zonePatch.zone_id !== r.zone_id) {
+        rezoned += 1;
+        // Best-effort, as in redetectZonesForOrg: never fail the pin over a log.
+        try {
+          const { logActivity } = await import("@/lib/activity.server");
+          await logActivity(supabase, {
+            orgId: r.organization_id as string,
+            clientId: (r.client_id as string | null) ?? null,
+            propertyId: r.id as string,
+            actorUserId: userId,
+            kind: "property.zone_reassigned",
+            summary: `Service zone detected from the map pin for ${r.street}`,
+            meta: { from_zone_id: r.zone_id ?? null, to_zone_id: zonePatch.zone_id ?? null },
+          });
+        } catch (e) {
+          console.warn("[geocode] zone activity log failed", (e as Error).message);
+        }
+      }
     }
     const { count } = await supabase
       .from("properties")
       .select("id", { count: "exact", head: true })
       .is("latitude", null);
-    return { updated, remaining: count ?? 0 };
+    return {
+      updated,
+      rezoned,
+      remaining: count ?? 0,
+      ...(zonesUnread ? { zonesUnread } : {}),
+    };
   });
 
 export const listPropertiesForClient = createServerFn({ method: "GET" })

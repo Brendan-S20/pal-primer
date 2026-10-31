@@ -16,7 +16,7 @@
 // that answers like PostgREST, so the URLs measured are the URLs production
 // sends, not a reconstruction of them.
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
@@ -47,14 +47,15 @@ vi.mock("@/lib/authz.server", () => ({
 
 const state = vi.hoisted(() => ({ supabase: null as any }));
 
-import { listClients, listClientsPage, searchClients } from "@/lib/clients.functions";
+import { listClients, listClientsPage, listClientsSummary, searchClients } from "@/lib/clients.functions";
+import { fakePostgrest, type Seen } from "./support/fake-postgrest";
 import {
   accentPattern,
   clientMatchesQuery,
   clientSearchOrFilter,
   fold,
 } from "@/lib/client-search";
-import { filterRoster, rosterStats } from "@/lib/client-roster";
+import { filterRoster, rosterStats, rosterTags } from "@/lib/client-roster";
 import { fetchAllPagesConcurrently, idChunks } from "@/lib/supabase-paging.server";
 
 const root = join(import.meta.dirname, "..");
@@ -63,13 +64,17 @@ const read = (rel: string) => readFileSync(join(root, rel), "utf8");
 // ── A PostgREST that holds a book of N clients ────────────────────────────
 
 const LATENCY_MS = 60;
-type Seen = { url: string; method: string };
+/** A real Supabase project URL is this long (a 20-character project ref).
+ *  The URL limit is about the whole request line, so the host counts. */
+const SUPABASE_URL = "https://abcdefghijklmnopqrst.supabase.co";
+const TODAY = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
 
 function book(n: number) {
   const clients = Array.from({ length: n }, (_, i) => ({
     id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    organization_id: "org",
     display_name: i === 7 ? "José Núñez" : `Client ${i}`,
-    company: null,
+    company: i === 9 ? "Ravenswood Property Group" : null,
     first_name: null,
     last_name: null,
     account_type: i % 4 === 1 ? "commercial" : "residential",
@@ -81,158 +86,260 @@ function book(n: number) {
     credit_balance_cents: 0,
     churn_score: i % 7 === 0 ? 75 : 10,
     comms_paused: false,
-    tags: i % 2 ? ["Weekly"] : [],
+    // Two spellings of one tag, as an import and a person typing make them.
+    tags: i % 2 ? [i % 6 === 1 ? "weekly" : "Weekly"] : [],
   }));
-  const properties = clients.map((c, i) => ({
-    id: `10000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
-    client_id: c.id,
-    street: i === 7 ? "4400 N Ravenswood Ave" : `${100 + i} Oak Street`,
-    created_at: c.created_at,
-    archived_at: null,
-    dogs: [{ id: `d${i}`, active: true, species: "dog" }],
-  }));
-  const subscriptions = clients
-    .filter((_, i) => i % 3)
-    .map((c, i) => ({
+  const properties = clients.flatMap((c, i) => [
+    {
+      id: `10000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+      organization_id: "org",
       client_id: c.id,
-      property_id: properties[i].id,
-      status: "active",
-      frequency: "weekly",
-      ends_on: null,
-      account_type: "residential",
-      dog_count: 1,
-      stay_id: null,
-    }));
-  const invoices = clients
-    .filter((_, i) => i % 5 === 0)
-    .map((c) => ({
-      client_id: c.id,
-      total_cents: 5000,
-      credit_applied_cents: 0,
-      amount_paid_cents: 0,
-      status: "open",
-    }));
-  return { clients, properties, subscriptions, invoices } as Record<string, any[]>;
+      street: i === 7 ? "4400 N Ravenswood Ave" : `${100 + i} Oak Street`,
+      created_at: c.created_at,
+      archived_at: null,
+    },
+    // A second address on some, so a search by it has to find the client.
+    ...(i % 50 === 3
+      ? [
+          {
+            id: `11000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+            organization_id: "org",
+            client_id: c.id,
+            street: `${i} Second Lot Road`,
+            created_at: new Date(2026, 5, 1).toISOString(),
+            archived_at: null,
+          },
+        ]
+      : []),
+  ]);
+  const dogs = properties
+    .filter((p) => p.id.startsWith("1000"))
+    .map((p, i) => ({ id: `d${i}`, property_id: p.id, active: true, species: "dog" }));
+  const subscriptions = clients.flatMap((c, i) =>
+    i % 3
+      ? [
+          {
+            id: `s${i}`,
+            organization_id: "org",
+            client_id: c.id,
+            property_id: properties.find((p) => p.client_id === c.id)!.id,
+            // Ended two ways, which "No service plan" has to agree on.
+            status: i % 11 === 0 ? "canceled" : "active",
+            frequency: "weekly",
+            ends_on: i % 13 === 0 ? "2020-01-01" : i % 17 === 0 ? "2999-01-01" : null,
+            account_type: "residential",
+            dog_count: 1,
+            stay_id: null,
+          },
+        ]
+      : [],
+  );
+  const invoices = clients.flatMap((c, i) =>
+    i % 5 === 0
+      ? [
+          {
+            id: `i${i}`,
+            organization_id: "org",
+            client_id: c.id,
+            total_cents: 5000,
+            credit_applied_cents: 0,
+            // Open, but paid in full: not a balance.
+            amount_paid_cents: i % 25 === 0 ? 5000 : 0,
+            status: "open",
+          },
+        ]
+      : [],
+  );
+  return { clients, properties, dogs, subscriptions, invoices } as Record<string, any[]>;
 }
 
-function fakePostgrest(tables: Record<string, any[]>, seen: Seen[]) {
-  return async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = new URL(String(input instanceof Request ? input.url : input));
-    seen.push({ url: url.toString(), method: init?.method ?? "GET" });
-    await new Promise((r) => setTimeout(r, LATENCY_MS));
-    const table = url.pathname.split("/").pop()!;
-    let rows = tables[table] ?? [];
-    // Enough of PostgREST's filtering for these tests to mean something: a
-    // search must narrow, and paging must page.
-    const or = url.searchParams.get("or");
-    if (or) {
-      const terms = or.replace(/^\(|\)$/g, "").split(",");
-      rows = rows.filter((r) =>
-        terms.some((t) => {
-          const [col, op, ...rest] = t.split(".");
-          const v = rest.join(".");
-          const cell = r[col];
-          if (cell == null) return false;
-          if (op === "imatch") return new RegExp(v, "i").test(String(cell));
-          const rx = new RegExp(
-            "^" + v.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/_/g, ".") + "$",
-            op === "ilike" ? "i" : "",
-          );
-          return rx.test(String(cell));
-        }),
-      );
-    }
-    if (url.searchParams.get("active") === "eq.true") rows = rows.filter((r) => r.active);
-    const street = url.searchParams.get("properties.street");
-    if (street) {
-      const needle = street.replace(/^ilike\./, "").replace(/[%*]/g, "").toLowerCase();
-      const ids = new Set(
-        tables.properties
-          .filter((p) => String(p.street).toLowerCase().includes(needle))
-          .map((p) => p.client_id),
-      );
-      rows = rows
-        .filter((r) => ids.has(r.id))
-        .map((r) => ({ ...r, properties: tables.properties.filter((p) => p.client_id === r.id) }));
-    } else if ((url.searchParams.get("select") ?? "").includes("properties(")) {
-      const byClient = new Map<string, any[]>();
-      for (const p of tables.properties) {
-        byClient.set(p.client_id, [...(byClient.get(p.client_id) ?? []), p]);
-      }
-      rows = rows.map((r) => ({ ...r, properties: byClient.get(r.id) ?? [] }));
-    }
-    const offset = Number(url.searchParams.get("offset") ?? 0);
-    const limit = Math.min(Number(url.searchParams.get("limit") ?? 1000), 1000);
-    const body = rows.slice(offset, offset + limit);
-    return new Response(JSON.stringify(body), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  };
-}
+const RELATIONS = {
+  clients: { properties: "client_id", subscriptions: "client_id", invoices: "client_id" },
+  properties: { dogs: "property_id" },
+};
 
 let seen: Seen[];
 function useBook(n: number) {
   seen = [];
-  state.supabase = createClient("https://db.example.test", "anon-key", {
-    global: { fetch: fakePostgrest(book(n), seen) as typeof fetch },
+  state.supabase = createClient(SUPABASE_URL, "anon-key", {
+    global: {
+      fetch: fakePostgrest(book(n), RELATIONS, seen, { latencyMs: LATENCY_MS }) as typeof fetch,
+    },
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
 
 const longestUrl = () => Math.max(...seen.map((s) => s.url.length));
+const rowsRead = () => seen.reduce((n, s) => n + s.rows, 0);
+const tablesRead = () => [...new Set(seen.map((s) => s.table))].sort();
+
+/** What the browser does on opening /clients: the page and the tiles, at once. */
+async function firstLoad() {
+  const [page, summary] = await Promise.all([listClientsPage({ data: {} }), listClientsSummary()]);
+  return { page, summary };
+}
+
+const timings: string[] = [];
 
 describe("/clients at 1,000 and 5,000 clients", () => {
-  it.each([1_000, 5_000])("answers one page in under 2 s at %i clients", async (n) => {
+  it.each([1_000, 5_000])("opens in under 2 s at %i clients", async (n) => {
     useBook(n);
     const started = Date.now();
-    const page = await listClientsPage({ data: {} });
+    const { page, summary } = await firstLoad();
     const took = Date.now() - started;
+    timings.push(`first load at ${n}: ${took} ms, ${seen.length} requests, ${rowsRead()} rows`);
     expect(page.rows).toHaveLength(50);
-    expect(page.stats.total).toBe(n);
     expect(page.matched).toBe(n);
-    // Every request takes 60 ms here. One after another, 5,000 clients is six
-    // pages of each of four tables; side by side and several pages at once
-    // it is three round trips.
+    expect(summary.stats.total).toBe(n);
+    // The page is one request; the tiles are four counts, the open invoices
+    // and the tags, side by side: two round trips of 60 ms, three when the
+    // tags run past a thousand rows. The rest is this fake's own CPU.
     expect(took).toBeLessThan(2_000);
-    expect(took).toBeLessThan(LATENCY_MS * 6);
+    expect(took).toBeLessThan(LATENCY_MS * 8);
+    expect(seen.filter((r) => r.url.includes("limit=50"))).toHaveLength(1);
+    expect(tablesRead()).toEqual(["clients", "invoices"]);
   });
 
-  it.each([1_000, 5_000])("sends no URL over 2 KB at %i clients", async (n) => {
+  it("a page turn is ONE request for 50 rows, not the book again", async () => {
+    useBook(5_000);
+    const started = Date.now();
+    const page = await listClientsPage({ data: { offset: 50 } });
+    timings.push(`page 2 at 5000: ${Date.now() - started} ms, ${seen.length} request, ${rowsRead()} rows`);
+    expect(page.rows).toHaveLength(50);
+    expect(page.matched).toBe(5_000);
+    expect(seen).toHaveLength(1);
+    expect(seen[0].table).toBe("clients");
+    expect(seen[0].url).toContain("offset=50");
+    expect(seen[0].url).toContain("limit=50");
+    expect(rowsRead()).toBe(50);
+  });
+
+  it.each([
+    ["active", { status: "active" }],
+    ["inactive", { status: "inactive" }],
+    ["at churn risk", { status: "at_risk" }],
+    ["no service plan", { status: "no_plan" }],
+    ["commercial", { type: "commercial" }],
+    ["a tag", { tag: "Weekly", tagSpellings: ["Weekly", "weekly"] }],
+  ] as const)("the %s filter is ONE request for one page", async (_label, f) => {
+    useBook(5_000);
+    const page = await listClientsPage({ data: { ...f } });
+    expect(seen).toHaveLength(1);
+    expect(tablesRead()).toEqual(["clients"]);
+    expect(rowsRead()).toBeLessThanOrEqual(50);
+    expect(page.rows.length).toBeGreaterThan(0);
+  });
+
+  it("a search reads the clients it could match, not the book", async () => {
+    useBook(5_000);
+    const started = Date.now();
+    const page = await listClientsPage({ data: { q: "José" } });
+    timings.push(`search "José" at 5000: ${Date.now() - started} ms, ${seen.length} requests, ${rowsRead()} rows`);
+    expect(page.rows.map((r: any) => r.display_name)).toEqual(["José Núñez"]);
+    expect(tablesRead()).toEqual(["clients"]);
+    expect(rowsRead()).toBeLessThan(50);
+    // Two round trips: the candidates (by name and by street, side by side),
+    // then the page's rows.
+    expect(seen).toHaveLength(3);
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  it("'Has balance' reads the clients with an open invoice, not the book", async () => {
+    useBook(5_000);
+    const page = await listClientsPage({ data: { status: "outstanding" } });
+    // Every fifth client has an open invoice; one in five of those is paid.
+    expect(page.matched).toBe(800);
+    expect(tablesRead()).toEqual(["clients"]);
+    // The 1,000 with an open invoice, then the page's 50.
+    expect(rowsRead()).toBeLessThanOrEqual(1_000 + 50);
+  });
+
+  it("agrees with the whole-book roster on every filter, count and row", async () => {
+    useBook(1_000);
+    const { clients: roster } = await listClients();
+    const cases: Array<Record<string, unknown>> = [
+      {},
+      { status: "active" },
+      { status: "inactive" },
+      { status: "outstanding" },
+      { status: "at_risk" },
+      { status: "no_plan" },
+      { type: "commercial" },
+      { tag: "weekly", tagSpellings: ["Weekly", "weekly"] },
+      { q: "oak 12" },
+      { q: "second lot" },
+      { q: "ravenswood" },
+      { q: "555-0199" },
+      { status: "no_plan", type: "residential", q: "oak" },
+    ];
+    for (const f of cases) {
+      const want = filterRoster(roster, f as any);
+      for (const offset of [0, 50]) {
+        const got = await listClientsPage({ data: { ...f, offset } });
+        expect(got.matched, JSON.stringify(f)).toBe(want.length);
+        const slice = want.slice(offset, offset + 50);
+        expect(got.rows.map((r: any) => r.id), JSON.stringify(f)).toEqual(slice.map((r: any) => r.id));
+        const { streets: _s, ...first } = (slice[0] ?? {}) as any;
+        if (slice.length) expect(got.rows[0], JSON.stringify(f)).toEqual(first);
+      }
+    }
+  });
+
+  it("the tiles count the whole book, the same as the roster", async () => {
+    useBook(1_000);
+    const { clients: roster } = await listClients();
+    const summary = await listClientsSummary();
+    expect(summary.stats).toEqual(rosterStats(roster));
+    expect(summary.tags).toEqual(rosterTags(roster));
+    expect(summary.tagSpellings.weekly.sort()).toEqual(["Weekly", "weekly"]);
+  });
+
+  it.each([1_000, 5_000])("sends no URL over 2 KB at %i clients, on a real project's host", async (n) => {
     useBook(n);
     await listClientsPage({ data: { q: "José", status: "active", type: "residential" } });
+    await listClientsPage({ data: { q: "aeiouaeiouaeiouaeiouaeiou ".repeat(7).slice(0, 200), status: "outstanding" } });
+    await listClientsPage({ data: { status: "no_plan", tag: "Weekly", tagSpellings: ["Weekly", "weekly"] } });
+    await listClientsSummary();
     await listClients();
+    expect(seen.every((s) => s.url.startsWith(SUPABASE_URL))).toBe(true);
     expect(longestUrl()).toBeLessThan(2_048);
   });
 
   it("reads every row past PostgREST's thousand, and counts them right", async () => {
     useBook(5_000);
+    const started = Date.now();
     const { clients } = await listClients();
+    // What every page turn, filter and keystroke used to cost.
+    timings.push(`whole book at 5000 (each page before this change): ${Date.now() - started} ms, ${seen.length} requests, ${rowsRead()} rows`);
     expect(clients).toHaveLength(5_000);
     expect(new Set(clients.map((c: any) => c.id)).size).toBe(5_000);
     const c7 = clients.find((c: any) => c.display_name === "José Núñez");
-    expect(c7).toMatchObject({ active_subscription_count: 1, dog_count: 1, street: "4400 N Ravenswood Ave" });
+    expect(c7).toMatchObject({ dog_count: 1, street: "4400 N Ravenswood Ave" });
     const c0 = clients.find((c: any) => c.display_name === "Client 0");
-    expect(c0.outstanding_cents).toBe(5000);
+    expect(c0.outstanding_cents).toBe(0);
+    const c5 = clients.find((c: any) => c.display_name === "Client 5");
+    expect(c5.outstanding_cents).toBe(5000);
   });
 
-  it("filters and searches on the server, and pages what it found", async () => {
+  it("export still gets every matching row", async () => {
     useBook(1_000);
-    const atRisk = await listClientsPage({ data: { status: "at_risk", limit: 10, offset: 10 } });
-    expect(atRisk.matched).toBe(Math.ceil(1_000 / 7));
-    expect(atRisk.rows).toHaveLength(10);
-    expect(atRisk.offset).toBe(10);
-    const byPhone = await listClientsPage({ data: { q: "555 0199" } });
-    expect(byPhone.rows.map((r: any) => r.display_name)).toEqual(["José Núñez"]);
     const everything = await listClientsPage({ data: { all: true } });
     expect(everything.rows).toHaveLength(1_000);
+    const atRisk = await listClientsPage({ data: { status: "at_risk", all: true } });
+    expect(atRisk.matched).toBe(Math.ceil(1_000 / 7));
   });
 
   it("never reads by a list of client ids", () => {
     const src = read("src/lib/clients.functions.ts");
-    const roster = src.slice(src.indexOf("async function loadClientRoster"), src.indexOf("export const listClients"));
+    const roster = src.slice(src.indexOf("async function loadClientRoster"), src.indexOf("function rosterToday"));
     expect(roster).not.toMatch(/\.in\(\s*"client_id"/);
     expect(roster.match(/\.eq\("organization_id", orgId\)/g)).toHaveLength(4);
+  });
+
+  afterAll(() => {
+    // The numbers the PR quotes: a fake database at 60 ms a request, which
+    // shows the SHAPE (how many round trips, how many rows), not a live time.
+    console.log(["/clients against 60 ms per request:", ...timings].join("\n  "));
   });
 });
 
@@ -258,6 +365,19 @@ describe("the pickers and Cmd-K search on the server", () => {
     expect(longestUrl()).toBeLessThan(2_048);
   });
 
+  it("does not stop at a first batch of near misses", async () => {
+    useBook(5_000);
+    // "street" (the longest word, so the one the database filters on) is on
+    // every address. "4999" is on one: client 4899's, far down the list by
+    // name. A fixed first batch of 80 never reached it.
+    const started = Date.now();
+    const r = await searchClients({ data: { q: "street 4999", limit: 6 } });
+    expect(r.clients.map((c: any) => c.street)).toContain("4999 Oak Street");
+    // Batches that double: a handful of round trips, not one per 80 rows.
+    expect(seen.length).toBeLessThanOrEqual(12);
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
   it("keeps the longest possible query under 2 KB", async () => {
     useBook(1_000);
     await searchClients({ data: { q: "aeiouaeiouaeiouaeiouaeiou ".repeat(7).slice(0, 200) } });
@@ -275,6 +395,21 @@ describe("the pickers and Cmd-K search on the server", () => {
     expect(palette).toMatch(/searchFn\(\{ data: \{ q, limit: 6 \} \}\)/);
     expect(palette).not.toMatch(/\.ilike\("display_name"/);
     expect(read("src/components/ClientSearchPicker.tsx")).toContain("useServerFn(searchClients)");
+  });
+
+  it("Cmd-K says a search failed rather than that nothing matched", () => {
+    const palette = read("src/components/CommandPalette.tsx");
+    const failure = palette.slice(palette.indexOf("} catch {"), palette.indexOf("}, 150);"));
+    // The catch records the failure; it does not just empty the list, which
+    // drew "No results." for a client that exists.
+    expect(failure).toMatch(/setSearchFailed\(true\)/);
+    // A typed query clears it, and a success clears it.
+    expect(palette.match(/setSearchFailed\(false\)/g)?.length).toBeGreaterThanOrEqual(2);
+    // The row is drawn with the query as a keyword, so cmdk's own filter
+    // keeps it on screen whatever was typed.
+    const row = palette.slice(palette.indexOf("{searchFailed && ("));
+    expect(row).toMatch(/keywords=\{\[query\]\}/);
+    expect(row.slice(0, 600)).toContain("Search failed");
   });
 });
 

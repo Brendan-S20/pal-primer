@@ -31,7 +31,7 @@ async function loadClientRoster(supabase: any, orgId: string) {
       supabase
         .from("clients")
         .select(
-          "id, display_name, account_type, primary_email, primary_phone, active, created_at, credit_balance_cents, churn_score, comms_paused, tags, import_external_id",
+          "id, display_name, company, account_type, primary_email, primary_phone, active, created_at, credit_balance_cents, churn_score, comms_paused, tags, import_external_id",
         )
         .eq("organization_id", orgId)
         .order("created_at", { ascending: false })
@@ -77,6 +77,22 @@ async function loadClientRoster(supabase: any, orgId: string) {
         .range(a, b),
     ),
   ]);
+  return decorateClients(clients, props, subs, invs);
+}
+
+/** The today a service's ends_on is compared against, as the list has always
+ *  worked it out. */
+function rosterToday(): string {
+  return new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+}
+
+/**
+ * The counts and balances the list shows, worked out from a business's
+ * clients and their properties, services and open invoices. Shared by the
+ * whole-roster read and the one-page read (#617), so a row says the same
+ * thing whichever way it was loaded.
+ */
+async function decorateClients(clients: any[], props: any[], subs: any[], invs: any[]) {
   const propsRes = { data: props };
   const subsRes = { data: subs };
   const invRes = { data: invs };
@@ -97,9 +113,7 @@ async function loadClientRoster(supabase: any, orgId: string) {
   // would read as having an extra active service, permanently, and be
   // labelled "one_time" for a job finished months ago.
   const { isServiceEnded } = await import("@/lib/subscription-form");
-  const todayISO = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000)
-    .toISOString()
-    .slice(0, 10);
+  const todayISO = rosterToday();
   for (const s of subsRes.data ?? []) {
     if (!isServiceEnded(s as any, todayISO)) {
       activeSubsByClient.set(s.client_id, (activeSubsByClient.get(s.client_id) ?? 0) + 1);
@@ -136,6 +150,8 @@ async function loadClientRoster(supabase: any, orgId: string) {
   // The oldest property's street, so two clients with the same name can be
   // told apart in a picker.
   const streetByClient = new Map<string, string>();
+  // Every street, so the /clients search finds a client by any of them.
+  const streetsByClient = new Map<string, string[]>();
   for (const p of (propsRes.data ?? []) as Array<{
     id: string;
     client_id: string;
@@ -149,6 +165,8 @@ async function loadClientRoster(supabase: any, orgId: string) {
     );
     talliesByClient.set(p.client_id, [...(talliesByClient.get(p.client_id) ?? []), tally]);
     if (p.street && !streetByClient.has(p.client_id)) streetByClient.set(p.client_id, p.street);
+    if (p.street)
+      streetsByClient.set(p.client_id, [...(streetsByClient.get(p.client_id) ?? []), p.street]);
   }
 
   // Same AR math as Dashboard "AR Open" and Reports "Outstanding" (finding #7).
@@ -156,15 +174,16 @@ async function loadClientRoster(supabase: any, orgId: string) {
   const balanceByClient = outstandingByClient((invRes.data ?? []) as any[]);
 
   return clients.map((c: any) => ({
-      ...c,
-      dog_count: clientDogTally(talliesByClient.get(c.id) ?? []).count,
-      /** "plan" when the count is what a plan bills for, not dog records. */
-      dog_count_source: clientDogTally(talliesByClient.get(c.id) ?? []).source,
-      street: streetByClient.get(c.id) ?? null,
-      active_subscription_count: activeSubsByClient.get(c.id) ?? 0,
-      frequencies: freqsByClient.get(c.id) ?? [],
-      outstanding_cents: balanceByClient.get(c.id) ?? 0,
-    }));
+    ...c,
+    dog_count: clientDogTally(talliesByClient.get(c.id) ?? []).count,
+    /** "plan" when the count is what a plan bills for, not dog records. */
+    dog_count_source: clientDogTally(talliesByClient.get(c.id) ?? []).source,
+    street: streetByClient.get(c.id) ?? null,
+    streets: streetsByClient.get(c.id) ?? [],
+    active_subscription_count: activeSubsByClient.get(c.id) ?? 0,
+    frequencies: freqsByClient.get(c.id) ?? [],
+    outstanding_cents: balanceByClient.get(c.id) ?? 0,
+  }));
 }
 
 export const listClients = createServerFn({ method: "GET" })
@@ -181,19 +200,196 @@ const clientsPageSchema = z.object({
   status: z.enum(["all", "active", "inactive", "outstanding", "at_risk", "no_plan"]).optional(),
   type: z.enum(["all", "residential", "commercial"]).optional(),
   tag: z.string().max(60).optional(),
+  /** Every spelling of `tag` in use ("VIP", "vip"), from listClientsSummary.
+   *  Tags are matched without regard to case, and Postgres arrays are not. */
+  tagSpellings: z.array(z.string().max(60)).max(20).optional(),
   offset: z.number().int().min(0).optional(),
   limit: z.number().int().min(1).max(200).optional(),
   /** Every matching row, for Export CSV. */
   all: z.boolean().optional(),
 });
 
+/** The tile filters: an at-risk client scores this or more. Same number as
+ *  isAtRisk in lib/client-roster.ts. */
+const AT_RISK_SCORE = 60;
+
+/** Columns of a client row on the list, and what is embedded to work out its
+ *  counts and balance. Read for one page of clients at a time. */
+const CLIENT_ROW_SELECT =
+  "id, display_name, company, account_type, primary_email, primary_phone, active, created_at, credit_balance_cents, churn_score, comms_paused, tags, import_external_id, " +
+  "properties(id, street, created_at, archived_at, dogs(id, active, species)), " +
+  "subscriptions(property_id, status, frequency, ends_on, account_type, dog_count, stay_id), " +
+  "invoices(total_cents, credit_applied_cents, amount_paid_cents, status)";
+
+/** What a search or a balance is checked against: a client's own words and
+ *  every street, nothing the list shows but does not search. */
+const CLIENT_MATCH_SELECT =
+  "id, created_at, display_name, company, first_name, last_name, primary_email, primary_phone, import_external_id, tags, active, churn_score, properties(street, archived_at)";
+
+/** A client's services that have not ended, for the "No service plan"
+ *  anti-join. On every clients select that applyClientFilters narrows, and
+ *  cut to one row when that filter is off. */
+const RUNNING_EMBED = ", running:subscriptions(id)";
+/** The open invoices of a client with any, for "Has balance". */
+const OWED_EMBED =
+  ", owed:invoices!inner(client_id, total_cents, credit_applied_cents, amount_paid_cents, status)";
+/** The properties whose street a search matched. */
+const STREET_HIT_EMBED = ", hit:properties!inner(street, archived_at)";
+
+const CLIENT_PAGE_SELECT = CLIENT_ROW_SELECT + RUNNING_EMBED;
+const MATCH_SELECT = CLIENT_MATCH_SELECT + RUNNING_EMBED;
+const MATCH_OWED_SELECT = CLIENT_MATCH_SELECT + RUNNING_EMBED + OWED_EMBED;
+const MATCH_STREET_SELECT = CLIENT_MATCH_SELECT + RUNNING_EMBED + STREET_HIT_EMBED;
+const MATCH_OWED_STREET_SELECT =
+  CLIENT_MATCH_SELECT + RUNNING_EMBED + OWED_EMBED + STREET_HIT_EMBED;
+
 /**
- * One page of /clients, filtered and searched on the server (#617).
+ * Every filter the database can apply itself, on a clients query that
+ * selected RUNNING_EMBED (#617).
  *
- * The browser used to receive the whole roster and filter it itself. It now
- * sends its filters (a few short strings, so the GET stays small) and gets
- * back one page, how many rows matched, the tiles over the list, and the tags
- * in use for the tag filter. The tiles always describe the whole book.
+ * "No service plan" is an anti-join: the `running` embed holds a client's
+ * services that have not ended (isServiceEnded: canceled, or ends_on today or
+ * before), and `running=is.null` keeps the clients with none. So the filter,
+ * the count and the page all come from Postgres, with no service read into
+ * this Worker. A balance cannot be filtered the same way (it is a sum over
+ * three columns), and neither can the accent-blind search, so those two are
+ * narrowed by the caller and finished in matchingClientIds.
+ */
+function applyClientFilters(
+  b: any,
+  orgId: string,
+  f: z.infer<typeof clientsPageSchema>,
+  today: string,
+) {
+  const status = f.status ?? "all";
+  b = b.eq("organization_id", orgId);
+  if (f.type && f.type !== "all") b = b.eq("account_type", f.type);
+  if (f.tag && f.tag !== "all") {
+    const spellings = [...new Set([f.tag, ...(f.tagSpellings ?? [])])];
+    b = b.overlaps("tags", spellings);
+  }
+  if (status === "active") b = b.eq("active", true);
+  if (status === "inactive") b = b.eq("active", false);
+  if (status === "at_risk") b = b.gte("churn_score", AT_RISK_SCORE);
+  if (status === "no_plan") {
+    b = b
+      .eq("active", true)
+      .neq("running.status", "canceled")
+      .or(`ends_on.is.null,ends_on.gt.${today}`, { referencedTable: "running" })
+      .is("running", null);
+  } else {
+    b = b.limit(1, { referencedTable: "running" });
+  }
+  return b;
+}
+
+/** Turn embedded rows back into the flat lists decorateClients reads. */
+async function decorateEmbedded(rows: any[]) {
+  const props: any[] = [];
+  const subs: any[] = [];
+  const invs: any[] = [];
+  const clients = rows.map((r) => {
+    const { properties, subscriptions, invoices, running: _running, ...c } = r;
+    const live = ((properties ?? []) as any[])
+      .filter((p) => !p.archived_at)
+      .sort((x, y) => String(x.created_at).localeCompare(String(y.created_at)));
+    for (const p of live) props.push({ ...p, client_id: c.id });
+    for (const s of (subscriptions ?? []) as any[]) subs.push({ ...s, client_id: c.id });
+    for (const i of (invoices ?? []) as any[]) {
+      if (i.status === "open") invs.push({ ...i, client_id: c.id });
+    }
+    return c;
+  });
+  return decorateClients(clients, props, subs, invs);
+}
+
+/** Newest first, as the list has always been ordered. */
+const byNewest = (x: any, y: any) =>
+  String(y.created_at).localeCompare(String(x.created_at)) ||
+  String(x.id).localeCompare(String(y.id));
+
+/**
+ * The clients a search or the balance filter keeps, in list order: ids only,
+ * then the caller reads the one page it shows. The SQL narrowing is a
+ * superset (one anchor word, an open invoice), read to the end so nothing
+ * past a first batch is missed, and clientMatchesQuery and the balance have
+ * the last word.
+ */
+async function matchingClientIds(
+  supabase: any,
+  orgId: string,
+  f: z.infer<typeof clientsPageSchema>,
+  today: string,
+): Promise<string[]> {
+  const { fetchAllPagesConcurrently } = await import("@/lib/supabase-paging.server");
+  const { clientMatchesQuery, clientSearchOrFilter, streetSearchPattern } =
+    await import("@/lib/client-search");
+  const { outstandingByClient } = await import("@/lib/ar");
+  const q = (f.q ?? "").trim();
+  const owing = f.status === "outstanding";
+  // One call site per select, so every select here can be read off the
+  // source (tests/an-embed-names-its-foreign-key.test.ts).
+  const base = (street: boolean) =>
+    owing
+      ? street
+        ? supabase.from("clients").select(MATCH_OWED_STREET_SELECT)
+        : supabase.from("clients").select(MATCH_OWED_SELECT)
+      : street
+        ? supabase.from("clients").select(MATCH_STREET_SELECT)
+        : supabase.from("clients").select(MATCH_SELECT);
+  const read = (street: boolean, narrow: (b: any) => any) =>
+    fetchAllPagesConcurrently<any>((from, to) => {
+      let b = applyClientFilters(base(street), orgId, f, today);
+      if (owing) b = b.eq("owed.status", "open");
+      return narrow(b).order("created_at", { ascending: false }).order("id").range(from, to);
+    });
+
+  let candidates: any[];
+  if (!q) candidates = await read(false, (b) => b);
+  else {
+    const or = clientSearchOrFilter(q);
+    const street = streetSearchPattern(q);
+    const [byClient, byStreet] = await Promise.all([
+      or ? read(false, (b) => b.or(or)) : Promise.resolve([]),
+      street
+        ? read(true, (b) => b.ilike("hit.street", street).is("hit.archived_at", null))
+        : Promise.resolve([]),
+    ]);
+    const byId = new Map<string, any>();
+    for (const c of [...byClient, ...byStreet]) if (!byId.has(c.id)) byId.set(c.id, c);
+    candidates = [...byId.values()];
+  }
+
+  return candidates
+    .filter((c) => {
+      if (owing && !((outstandingByClient(c.owed ?? []).get(c.id) ?? 0) > 0)) return false;
+      if (!q) return true;
+      const streets = ((c.properties ?? []) as any[])
+        .filter((p) => !p.archived_at)
+        .map((p) => p.street);
+      return clientMatchesQuery({ ...c, streets }, q);
+    })
+    .sort(byNewest)
+    .map((c) => c.id as string);
+}
+
+/**
+ * One page of /clients, filtered and searched in the database (#617).
+ *
+ * The first version of this read the whole book (every client, property,
+ * service and open invoice: about twenty requests at 5,000 clients) on every
+ * page turn, filter and keystroke, then sliced 50 rows off it. Now:
+ *
+ *   * no search, any filter but "Has balance": ONE request. Postgres filters,
+ *     counts and pages, and embeds the page's own properties, services and
+ *     invoices for the counts on each row.
+ *   * a search, or "Has balance": the matching ids first (a narrow read of
+ *     the clients that can match, not the book), then one request per 25 of
+ *     the page's ids for its rows.
+ *
+ * The tiles and the tag list are the whole book and do not change when the
+ * page does, so they are listClientsSummary, which the page asks for once.
+ * Export CSV (`all`) is the one caller that wants every row, and gets them.
  */
 export const listClientsPage = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -201,19 +397,139 @@ export const listClientsPage = createServerFn({ method: "GET" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const { orgId } = await requirePermission(supabase, userId, "view_client_directory");
-    const { filterRoster, rosterStats, rosterTags, CLIENTS_PAGE_SIZE } = await import(
-      "@/lib/client-roster"
-    );
-    const roster = await loadClientRoster(supabase, orgId);
-    const matched = filterRoster(roster, data);
+    const { filterRoster, CLIENTS_PAGE_SIZE } = await import("@/lib/client-roster");
     const offset = data.offset ?? 0;
     const limit = data.limit ?? CLIENTS_PAGE_SIZE;
+    const today = rosterToday();
+    const lean = (rows: any[]) => rows.map(({ streets: _s, ...r }) => r);
+
+    if (data.all) {
+      const matched = filterRoster(await loadClientRoster(supabase, orgId), data);
+      return { rows: lean(matched), matched: matched.length, offset: 0 };
+    }
+
+    const q = (data.q ?? "").trim();
+    if (!q && data.status !== "outstanding") {
+      const {
+        data: rows,
+        error,
+        count,
+      } = await applyClientFilters(
+        supabase.from("clients").select(CLIENT_PAGE_SELECT, { count: "exact" }),
+        orgId,
+        data,
+        today,
+      )
+        .is("properties.archived_at", null)
+        .eq("invoices.status", "open")
+        .order("created_at", { ascending: false })
+        .order("id")
+        .range(offset, offset + limit - 1);
+      if (error) throw new Error(error.message);
+      return {
+        rows: lean(await decorateEmbedded(rows ?? [])),
+        matched: count ?? 0,
+        offset,
+      };
+    }
+
+    const ids = await matchingClientIds(supabase, orgId, data, today);
+    const pageIds = ids.slice(offset, offset + limit);
+    const { idChunks } = await import("@/lib/supabase-paging.server");
+    const reads = await Promise.all(
+      idChunks(pageIds, 25).map((chunk) =>
+        supabase
+          .from("clients")
+          .select(CLIENT_ROW_SELECT)
+          .eq("organization_id", orgId)
+          .in("id", chunk)
+          .is("properties.archived_at", null)
+          .eq("invoices.status", "open"),
+      ),
+    );
+    const got: any[] = [];
+    for (const r of reads) {
+      if (r.error) throw new Error(r.error.message);
+      got.push(...(r.data ?? []));
+    }
+    const rows = await decorateEmbedded(got);
+    const at = new Map(pageIds.map((id, i) => [id, i]));
+    rows.sort((x: any, y: any) => (at.get(x.id) ?? 0) - (at.get(y.id) ?? 0));
+    return { rows: lean(rows), matched: ids.length, offset };
+  });
+
+/**
+ * The tiles over /clients and the tags in use: the whole book, so they are
+ * asked for once per visit rather than with every page (#617). Counts come
+ * from Postgres (`count=exact` with no rows); only the open invoices, for the
+ * amount owed, and the tags, for the tag filter, are read.
+ */
+export const listClientsSummary = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { orgId } = await requirePermission(supabase, userId, "view_client_directory");
+    const { fetchAllPagesConcurrently } = await import("@/lib/supabase-paging.server");
+    const { outstandingByClient } = await import("@/lib/ar");
+    const today = rosterToday();
+    const head = async (status: z.infer<typeof clientsPageSchema>["status"]) => {
+      const { count, error } = await applyClientFilters(
+        supabase.from("clients").select("id, running:subscriptions(id)", { count: "exact" }),
+        orgId,
+        { status },
+        today,
+      ).range(0, 0);
+      if (error) throw new Error(error.message);
+      return count ?? 0;
+    };
+    const [total, active, atRisk, noPlan, invs, tagged] = await Promise.all([
+      head("all"),
+      head("active"),
+      head("at_risk"),
+      head("no_plan"),
+      fetchAllPagesConcurrently<any>((a, b) =>
+        supabase
+          .from("invoices")
+          .select("client_id, total_cents, credit_applied_cents, amount_paid_cents, status")
+          .eq("organization_id", orgId)
+          .eq("status", "open")
+          .order("id")
+          .range(a, b),
+      ),
+      fetchAllPagesConcurrently<{ tags: string[] | null }>((a, b) =>
+        supabase
+          .from("clients")
+          .select("tags")
+          .eq("organization_id", orgId)
+          .filter("tags", "neq", "{}")
+          // The list's own order, so a tag is spelled as the list first shows it.
+          .order("created_at", { ascending: false })
+          .order("id")
+          .range(a, b),
+      ),
+    ]);
+    const owed = outstandingByClient(invs as any[]);
+    let owedTotal = 0;
+    for (const v of owed.values()) owedTotal += v;
+    // Every tag in use, spelled as it was first seen, and every spelling of
+    // it, which the page sends back when it filters by that tag.
+    const spellings = new Map<string, Set<string>>();
+    for (const c of tagged) {
+      for (const t of c.tags ?? []) {
+        const lc = t.toLowerCase();
+        if (!spellings.has(lc)) spellings.set(lc, new Set());
+        spellings.get(lc)!.add(t);
+      }
+    }
+    const tags = [...spellings.values()]
+      .map((set) => [...set][0])
+      .sort((x, y) => x.localeCompare(y));
     return {
-      rows: data.all ? matched : matched.slice(offset, offset + limit),
-      matched: matched.length,
-      offset: data.all ? 0 : offset,
-      stats: rosterStats(roster),
-      tags: rosterTags(roster),
+      stats: { total, active, outstanding: owed.size, owedTotal, atRisk, noPlan },
+      tags,
+      tagSpellings: Object.fromEntries(
+        [...spellings.entries()].map(([lc, set]) => [lc, [...set].slice(0, 20)]),
+      ) as Record<string, string[]>,
     };
   });
 
@@ -242,9 +558,8 @@ export const searchClients = createServerFn({ method: "GET" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const { orgId } = await requirePermission(supabase, userId, "view_client_directory");
-    const { clientMatchesQuery, clientSearchOrFilter, streetSearchPattern } = await import(
-      "@/lib/client-search"
-    );
+    const { clientMatchesQuery, clientSearchOrFilter, streetSearchPattern } =
+      await import("@/lib/client-search");
     const q = (data.q ?? "").trim();
     const limit = data.limit ?? 20;
     const cols =
@@ -282,40 +597,67 @@ export const searchClients = createServerFn({ method: "GET" })
 
     const or = clientSearchOrFilter(q);
     const street = streetSearchPattern(q);
-    // Wider than `limit`: the SQL filter is a superset, and clientMatchesQuery
-    // has the last word.
-    const wide = Math.max(limit * 4, 60);
-    const [byClient, byStreet] = await Promise.all([
-      or
-        ? scoped(`${cols}, properties(street, archived_at, created_at)`)
-            .or(or)
-            .order("display_name")
-            .limit(wide)
-        : Promise.resolve({ data: [], error: null }),
-      street
-        ? scoped(`${cols}, properties!inner(street, archived_at, created_at)`)
-            .ilike("properties.street", street)
-            .is("properties.archived_at", null)
-            .order("display_name")
-            .limit(wide)
-        : Promise.resolve({ data: [], error: null }),
-    ]);
-    if (byClient.error) throw new Error(byClient.error.message);
-    if (byStreet.error) throw new Error(byStreet.error.message);
-
+    // The SQL filter is a superset built from one word, and clientMatchesQuery
+    // has the last word. So candidates are read a batch at a time until there
+    // are `limit` real matches or nothing is left: a fixed first batch could
+    // be all near misses ("oak" for "oak 4400") and hide every real match
+    // behind it.
+    // The first batch is small, so the usual search is one round trip; each
+    // one after it is twice the size, up to PostgREST's thousand, so a long
+    // tail of near misses is a few round trips rather than dozens.
+    const firstBatch = Math.max(limit * 4, 60);
+    const MAX_CANDIDATES = 5_000;
     const byId = new Map<string, any>();
-    for (const c of [...(byClient.data ?? []), ...(byStreet.data ?? [])] as any[]) {
-      const seen = byId.get(c.id);
-      const streets = (Array.isArray(c.properties) ? c.properties : [])
-        .filter((p: any) => !p.archived_at)
-        .map((p: any) => p.street);
-      if (seen) {
-        seen.streets.push(...streets);
-        if (!seen.properties?.length) seen.properties = c.properties;
-      } else byId.set(c.id, { ...c, streets });
+    const hitIds = new Set<string>();
+    const sources = [
+      or
+        ? (from: number, size: number) =>
+            scoped(`${cols}, properties(street, archived_at, created_at)`)
+              .or(or)
+              .order("display_name")
+              .order("id")
+              .range(from, from + size - 1)
+        : null,
+      street
+        ? (from: number, size: number) =>
+            scoped(
+              `${cols}, properties(street, archived_at, created_at), hit:properties!inner(street, archived_at)`,
+            )
+              .ilike("hit.street", street)
+              .is("hit.archived_at", null)
+              .order("display_name")
+              .order("id")
+              .range(from, from + size - 1)
+        : null,
+    ];
+    const done = sources.map((s) => !s);
+    for (
+      let from = 0, size = firstBatch;
+      done.includes(false) && from < MAX_CANDIDATES;
+      from += size, size = Math.min(size * 2, 1_000)
+    ) {
+      const results = await Promise.all(
+        sources.map((s, k) => (done[k] || !s ? Promise.resolve(null) : s(from, size))),
+      );
+      results.forEach((r, k) => {
+        if (!r) return;
+        if (r.error) throw new Error(r.error.message);
+        const rows = (r.data ?? []) as any[];
+        if (rows.length < size) done[k] = true;
+        for (const c of rows) {
+          if (byId.has(c.id)) continue;
+          const streets = (Array.isArray(c.properties) ? c.properties : [])
+            .filter((p: any) => !p.archived_at)
+            .map((p: any) => p.street);
+          const entry = { ...c, streets };
+          byId.set(c.id, entry);
+          if (clientMatchesQuery(entry, q)) hitIds.add(c.id);
+        }
+      });
+      if (hitIds.size >= limit) break;
     }
-    const hits = [...byId.values()]
-      .filter((c) => clientMatchesQuery(c, q))
+    const hits = [...hitIds]
+      .map((id) => byId.get(id))
       .sort((a, b) => String(a.display_name ?? "").localeCompare(String(b.display_name ?? "")))
       .slice(0, limit);
     return { clients: hits.map(shape) };
@@ -434,9 +776,7 @@ export const getFieldClientInfo = createServerFn({ method: "GET" })
       if (!assigned?.length) throw new Error("Not authorized");
       ownVisitLines = assigned.map((v: { services?: unknown }) => {
         const s = (Array.isArray(v.services) ? v.services[0] : v.services) as
-          | { service_line?: string | null }
-          | null
-          | undefined;
+          { service_line?: string | null } | null | undefined;
         return s?.service_line ?? null;
       });
     }
@@ -1718,9 +2058,8 @@ export const recordClientSmsConsent = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!who) throw new Error("That client is not in your organization.");
 
-    const { orgClientSmsConsentWording, sendOptInConfirmation } = await import(
-      "@/lib/client-sms-consent.server"
-    );
+    const { orgClientSmsConsentWording, sendOptInConfirmation } =
+      await import("@/lib/client-sms-consent.server");
     const { text } = await orgClientSmsConsentWording(orgId);
     // 'staff' — recorded on the client's behalf by someone in the office (a
     // verbal yes, read from the script on the client page), which an audit

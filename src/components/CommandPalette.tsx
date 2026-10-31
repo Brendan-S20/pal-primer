@@ -87,6 +87,7 @@ export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [clients, setClients] = useState<ClientHit[]>([]);
+  const [searchFailed, setSearchFailed] = useState(false);
   const searchFn = useServerFn(searchClients);
   const navigate = useNavigate();
   const { role } = useMyRole();
@@ -112,6 +113,7 @@ export function CommandPalette() {
     const q = query.trim();
     if (!open || q.length < 2 || !canSearchClients) {
       setClients([]);
+      setSearchFailed(false);
       return;
     }
     let cancelled = false;
@@ -124,10 +126,16 @@ export function CommandPalette() {
       try {
         const r = await searchFn({ data: { q, limit: 6 } });
         if (!cancelled) {
+          setSearchFailed(false);
           setClients(r.clients.map((c) => ({ id: c.id, name: c.display_name || "(no name)" })));
         }
       } catch {
-        if (!cancelled) setClients([]);
+        // A failed search is not an empty one (#617): "No results" would tell
+        // the owner the client does not exist.
+        if (!cancelled) {
+          setClients([]);
+          setSearchFailed(true);
+        }
       }
     }, 150);
     return () => {
@@ -161,6 +169,18 @@ export function CommandPalette() {
       />
       <CommandList>
         <CommandEmpty>No results.</CommandEmpty>
+        {searchFailed && (
+          <CommandGroup heading="Clients">
+            <CommandItem
+              value="client-search-failed"
+              keywords={[query]}
+              disabled
+              data-testid="client-search-failed"
+            >
+              Search failed. Check your connection and try again.
+            </CommandItem>
+          </CommandGroup>
+        )}
         {clients.length > 0 && (
           <>
             <CommandGroup heading="Clients">

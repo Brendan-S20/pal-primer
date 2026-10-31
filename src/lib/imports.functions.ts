@@ -1404,16 +1404,32 @@ export const commitImport = createServerFn({ method: "POST" })
       // one client twice still creates it once.
       const { matchZone } = await import("@/lib/zone-match");
       let zoneList: any[] | null = null;
+      // A zone read that fails is not "this business has no zones" (#617).
+      // It is tried twice; if both fail, every property this import writes
+      // goes in with no zone and the result says why (zone_lookup_failed), so
+      // the page can send the owner to "Re-run zone detection" rather than
+      // leave them believing their zones matched nothing.
+      let zoneLookupFailed = false;
+      // Properties written with no zone, for whatever reason. The page says
+      // how many.
+      let unzoned = 0;
+      const readZones = () =>
+        supabase
+          .from("zones")
+          .select(
+            "id, priority, account_type, postal_prefix, zip_codes, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, enabled",
+          )
+          .eq("organization_id", orgId);
       const zoneFor = async (input: Parameters<typeof matchZone>[1]): Promise<string | null> => {
-        if (zoneList === null) {
-          const { data: zs, error: zErr } = await supabase
-            .from("zones")
-            .select(
-              "id, priority, account_type, postal_prefix, zip_codes, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, enabled",
-            )
-            .eq("organization_id", orgId);
-          zoneList = zErr ? [] : ((zs ?? []) as any[]);
+        if (zoneList === null && !zoneLookupFailed) {
+          let res = await readZones();
+          if (res.error) res = await readZones();
+          if (res.error) {
+            zoneLookupFailed = true;
+            console.error("import: zones could not be read", res.error.message);
+          } else zoneList = (res.data ?? []) as any[];
         }
+        if (zoneLookupFailed) return null;
         const z = matchZone(zoneList as any[], input);
         return z ? (z.id as string) : null;
       };
@@ -1507,14 +1523,19 @@ export const commitImport = createServerFn({ method: "POST" })
           const { error } = await supabase.from("properties").insert(chunk);
           if (!error) {
             unpinned += chunk.filter((p) => p.latitude == null).length;
+            unzoned += chunk.filter((p) => p.zone_id == null).length;
             continue;
           }
           for (const p of chunk) {
             const { error: oneErr } = await supabase.from("properties").insert(p);
             // Non-fatal: the client is created; a failed property shouldn't
             // roll back the client. Logged for follow-up.
-            if (oneErr) console.error("import: property create failed", oneErr.message);
-            else if (p.latitude == null) unpinned += 1;
+            if (oneErr) {
+              console.error("import: property create failed", oneErr.message);
+              continue;
+            }
+            if (p.latitude == null) unpinned += 1;
+            if (p.zone_id == null) unzoned += 1;
           }
         }
       };
@@ -1672,6 +1693,10 @@ export const commitImport = createServerFn({ method: "POST" })
               if (cErr) throw cErr;
               await supabase.from("import_rows").update({ target_id: ins.id }).eq("id", row.id);
               created += 1;
+              // No coordinates on this path: "Geocode addresses" pins it later
+              // and places it in its zone then.
+              unpinned += 1;
+              if (!propZoneId) unzoned += 1;
             }
           } else if (entity === "dogs") {
             if (row.action === "create" && row.target_id) {
@@ -1808,7 +1833,15 @@ export const commitImport = createServerFn({ method: "POST" })
         await generateVisitHorizon(supabase, orgId);
       }
 
-      const stats = { created, updated, failed, skipped, ...(unpinned ? { unpinned } : {}) };
+      const stats = {
+        created,
+        updated,
+        failed,
+        skipped,
+        ...(unpinned ? { unpinned } : {}),
+        ...(unzoned ? { unzoned } : {}),
+        ...(zoneLookupFailed ? { zone_lookup_failed: true } : {}),
+      };
       const nothingWentIn = failed > 0 && !created && !updated;
       const { error: finishError } = await supabase
         .from("import_batches")

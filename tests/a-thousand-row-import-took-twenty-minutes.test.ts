@@ -50,6 +50,7 @@ let clientRows: Record<string, unknown>[];
 let propertyRows: Record<string, unknown>[];
 let rowUpdates: Record<string, unknown>[];
 let failInsertFor: string | null;
+let zonesFail: boolean;
 let maxInFlight: number;
 let inFlight: number;
 
@@ -105,6 +106,9 @@ function backend() {
             return { data: null, error: null };
           }
           return { data: rows.slice(from, from + 1000), error: null };
+        }
+        if (table === "zones" && zonesFail) {
+          return { data: null, error: { message: "canceling statement due to statement timeout" } };
         }
         if (table === "clients" && op === "insert") {
           const list = Array.isArray(payload) ? payload : [payload];
@@ -174,6 +178,7 @@ beforeEach(() => {
   propertyRows = [];
   rowUpdates = [];
   failInsertFor = null;
+  zonesFail = false;
   maxInFlight = 0;
   inFlight = 0;
   geocodeCalls.length = 0;
@@ -235,5 +240,28 @@ describe("a 1,000-row client import", () => {
     expect(clientRows.some((c) => c.display_name === "Client 1")).toBe(true);
     const failedRows = rowUpdates.filter((u) => u.action === "error").map((u) => u.id);
     expect(failedRows.sort()).toEqual(["row-0", "row-999"]);
+  });
+
+  it("a zone read that fails is said, not taken for 'no zones'", async () => {
+    zonesFail = true;
+    const stats = await commit();
+    // Asked twice, then the import goes on without zones and says so.
+    expect(requests.filter((r) => r.table === "zones")).toHaveLength(2);
+    expect(stats).toMatchObject({ created: 999, zone_lookup_failed: true, unzoned: 999 });
+    expect((batch.stats as Record<string, unknown>).zone_lookup_failed).toBe(true);
+    expect(propertyRows.every((p) => p.zone_id === null)).toBe(true);
+  });
+
+  it("a business with no zones is told its properties have none, without a failure", async () => {
+    const stats = await commit();
+    expect(stats).toMatchObject({ unzoned: 999, unpinned: 500 });
+    expect(stats).not.toHaveProperty("zone_lookup_failed");
+  });
+
+  it("every client it writes carries the batch, so a crashed import cannot be committed twice", async () => {
+    // retryRefusal refuses a re-run once any client with this
+    // import_batch_id exists; the chunked insert must still set it.
+    await commit();
+    expect(clientRows.every((c) => c.import_batch_id === "batch")).toBe(true);
   });
 });

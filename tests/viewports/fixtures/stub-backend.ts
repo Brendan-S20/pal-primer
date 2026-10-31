@@ -1005,9 +1005,18 @@ export const BASE_STUBS: Record<string, Stub> = {
       rows: a.all ? matched : matched.slice(offset, offset + limit),
       matched: matched.length,
       offset: a.all ? 0 : offset,
-      stats: rosterStats(BIG_BOOK),
-      tags: rosterTags(BIG_BOOK),
     };
+  },
+  // The tiles and the tag list, asked for once per visit (#617).
+  listClientsSummary: () => {
+    const tagSpellings: Record<string, string[]> = {};
+    for (const c of BIG_BOOK) {
+      for (const t of (c.tags ?? []) as string[]) {
+        const list = (tagSpellings[t.toLowerCase()] ??= []);
+        if (!list.includes(t)) list.push(t);
+      }
+    }
+    return { stats: rosterStats(BIG_BOOK), tags: rosterTags(BIG_BOOK), tagSpellings };
   },
   searchClients: (a: Record<string, any>) => ({
     clients: fx.CLIENTS.filter((c) => !a.activeOnly || c.active)

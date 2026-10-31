@@ -210,8 +210,25 @@ function BatchDetail() {
             <>
               {" "}
               {stats.unpinned} address{stats.unpinned === 1 ? " has" : "es have"} no map pin yet.
-              The map on the Routes page offers to geocode them once they have visits on it.
+              The map on the Routes page offers to geocode them once they have visits on it, and
+              each one is placed in its service zone when its pin is found.
             </>
+          )}
+          {Number(stats.unzoned ?? 0) > 0 && !Boolean(stats.zone_lookup_failed) && (
+            <>
+              {" "}
+              {stats.unzoned} propert{stats.unzoned === 1 ? "y has" : "ies have"} no service zone
+              yet, so {stats.unzoned === 1 ? "it is" : "they are"} not priced or routed by zone
+              until a zone covers {stats.unzoned === 1 ? "it" : "them"}.
+            </>
+          )}
+          {Boolean(stats.zone_lookup_failed) && (
+            <span role="alert" className="mt-2 block font-medium text-amber-800 dark:text-amber-300">
+              Your service zones could not be read during this import, so{" "}
+              {Number(stats.unzoned ?? 0)} imported propert
+              {Number(stats.unzoned ?? 0) === 1 ? "y has" : "ies have"} no zone. Open Zones and
+              use "Re-run zone detection" to place them.
+            </span>
           )}
         </div>
       )}
