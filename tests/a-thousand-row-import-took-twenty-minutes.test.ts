@@ -264,4 +264,34 @@ describe("a 1,000-row client import", () => {
     await commit();
     expect(clientRows.every((c) => c.import_batch_id === "batch")).toBe(true);
   });
+  it("points a chunk's rows at their clients before the next chunk goes in", async () => {
+    await commit();
+    const order = requests.map((r) => `${r.table}:${r.op}`);
+    const firstInsert = order.indexOf("clients:insert");
+    const secondInsert = order.indexOf("clients:insert", firstInsert + 1);
+    const between = order.slice(firstInsert + 1, secondInsert).filter((x) => x === "import_rows:update");
+    expect(between).toHaveLength(200);
+  });
+
+  it("a chunk whose request throws is retried row by row, not lost", async () => {
+    let thrown = false;
+    const supabase = backend();
+    const from = supabase.from.bind(supabase);
+    supabase.from = (table: string) => {
+      const q = from(table);
+      if (table !== "clients") return q;
+      const insert = q.insert;
+      q.insert = (v: unknown) => {
+        if (Array.isArray(v) && v.length > 1 && !thrown) {
+          thrown = true;
+          throw new Error("connection reset");
+        }
+        return insert(v);
+      };
+      return q;
+    };
+    const stats = await (commitImport as any)({ data: { batchId: "batch" }, context: { userId: "owner", supabase } });
+    expect(stats).toMatchObject({ created: 999, failed: 0 });
+    expect(clientRows).toHaveLength(999);
+  });
 });

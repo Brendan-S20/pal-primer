@@ -12,6 +12,51 @@ async function resolveOrgId(supabase: any, userId: string): Promise<string> {
 }
 
 /**
+ * The caller's organization and a client to read its directory with: the
+ * service role, once the caller has passed the directory gate (#617 review).
+ *
+ * WHY, measured on a real database (every migration replayed, 5,000 clients,
+ * signed in as the owner): read through RLS, the first page of /clients hit
+ * the authenticated role's statement timeout, the tiles took 4.3-4.8 s and a
+ * picker 3-29 s. Every row of clients, properties and dogs runs its policy's
+ * has_permission(auth.uid(), organization_id, ...) again, about 1.5-2 ms a
+ * row, and a count, an order by name or an anti-join pays it for every
+ * client in the book. Read this way, the same requests take 0.2-0.6 s and a
+ * search 20-40 ms (tests/clients-at-scale.test.ts reproduces both).
+ *
+ * WHY IT IS THE SAME ANSWER. For a caller who passes `requirePermission(...,
+ * "view_client_directory")` those policies return every row of the caller's
+ * organization. The gate reads the caller's role through RLS, so an
+ * unfinished two-step sign-in, a turned-off account or an expired
+ * impersonation is refused there as it would have been row by row, and the
+ * role map it checks is the one has_permission encodes (the TS/SQL parity
+ * test pins them together). Every read made with `db` is filtered by
+ * `orgId`. The one table whose policy asks for more than the directory is
+ * invoices, which needs billing or financials: `seesInvoices` is false for
+ * any other role, and callers then read no invoices, exactly as RLS gave
+ * that role none, so its balances read zero.
+ */
+let serviceRoleModule: Promise<typeof import("@/integrations/supabase/client.server")> | null =
+  null;
+async function directoryReader(supabase: unknown, userId: string) {
+  // Imported once and shared: every directory read in this file uses the one
+  // module instance, whichever function asked first.
+  serviceRoleModule ??= import("@/integrations/supabase/client.server");
+  const [caller, { supabaseAdmin }] = await Promise.all([
+    requirePermission(supabase, userId, "view_client_directory"),
+    serviceRoleModule,
+  ]);
+  const { hasPermission } = await import("@/lib/permissions");
+  return {
+    orgId: caller.orgId,
+    db: supabaseAdmin as any,
+    seesInvoices:
+      hasPermission(caller.role, "manage_client_billing") ||
+      hasPermission(caller.role, "view_financials"),
+  };
+}
+
+/**
  * Every client of a business with the counts and balances the list shows.
  *
  * Read ORG-WIDE, never by id list (#617). This used to read the clients, then
@@ -23,7 +68,7 @@ async function resolveOrgId(supabase: any, userId: string): Promise<string> {
  * the same rows with a URL of fixed length. All four reads are paged, because
  * PostgREST stops at a thousand rows without saying so, and they run at once.
  */
-async function loadClientRoster(supabase: any, orgId: string) {
+async function loadClientRoster(supabase: any, orgId: string, seesInvoices: boolean) {
   const { fetchAllPagesConcurrently } = await import("@/lib/supabase-paging.server");
   // All aggregates must succeed before the roster can report counts or balances.
   const [clients, props, subs, invs] = await Promise.all([
@@ -67,15 +112,17 @@ async function loadClientRoster(supabase: any, orgId: string) {
         .order("id")
         .range(a, b),
     ),
-    fetchAllPagesConcurrently<any>((a, b) =>
-      supabase
-        .from("invoices")
-        .select("client_id, total_cents, credit_applied_cents, amount_paid_cents, status")
-        .eq("organization_id", orgId)
-        .eq("status", "open")
-        .order("id")
-        .range(a, b),
-    ),
+    seesInvoices
+      ? fetchAllPagesConcurrently<any>((a, b) =>
+          supabase
+            .from("invoices")
+            .select("client_id, total_cents, credit_applied_cents, amount_paid_cents, status")
+            .eq("organization_id", orgId)
+            .eq("status", "open")
+            .order("id")
+            .range(a, b),
+        )
+      : Promise.resolve([] as any[]),
   ]);
   return decorateClients(clients, props, subs, invs);
 }
@@ -191,8 +238,8 @@ export const listClients = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
     // Full roster with contact info and balances — not for field techs.
-    const { orgId } = await requirePermission(supabase, userId, "view_client_directory");
-    return { clients: await loadClientRoster(supabase, orgId) };
+    const { orgId, db, seesInvoices } = await directoryReader(supabase, userId);
+    return { clients: await loadClientRoster(db, orgId, seesInvoices) };
   });
 
 const clientsPageSchema = z.object({
@@ -284,7 +331,7 @@ function applyClientFilters(
 }
 
 /** Turn embedded rows back into the flat lists decorateClients reads. */
-async function decorateEmbedded(rows: any[]) {
+async function decorateEmbedded(rows: any[], seesInvoices: boolean) {
   const props: any[] = [];
   const subs: any[] = [];
   const invs: any[] = [];
@@ -295,7 +342,7 @@ async function decorateEmbedded(rows: any[]) {
       .sort((x, y) => String(x.created_at).localeCompare(String(y.created_at)));
     for (const p of live) props.push({ ...p, client_id: c.id });
     for (const s of (subscriptions ?? []) as any[]) subs.push({ ...s, client_id: c.id });
-    for (const i of (invoices ?? []) as any[]) {
+    for (const i of (seesInvoices ? (invoices ?? []) : []) as any[]) {
       if (i.status === "open") invs.push({ ...i, client_id: c.id });
     }
     return c;
@@ -395,8 +442,11 @@ export const listClientsPage = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => clientsPageSchema.parse(d ?? {}))
   .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const { orgId } = await requirePermission(supabase, userId, "view_client_directory");
+    const {
+      orgId,
+      db: supabase,
+      seesInvoices,
+    } = await directoryReader(context.supabase, context.userId);
     const { filterRoster, CLIENTS_PAGE_SIZE } = await import("@/lib/client-roster");
     const offset = data.offset ?? 0;
     const limit = data.limit ?? CLIENTS_PAGE_SIZE;
@@ -404,9 +454,13 @@ export const listClientsPage = createServerFn({ method: "GET" })
     const lean = (rows: any[]) => rows.map(({ streets: _s, ...r }) => r);
 
     if (data.all) {
-      const matched = filterRoster(await loadClientRoster(supabase, orgId), data);
+      const matched = filterRoster(await loadClientRoster(supabase, orgId, seesInvoices), data);
       return { rows: lean(matched), matched: matched.length, offset: 0 };
     }
+
+    // "Has balance" reads invoices; a role that cannot see them had no
+    // balances under RLS, so nobody matched, and nobody does here.
+    if (data.status === "outstanding" && !seesInvoices) return { rows: [], matched: 0, offset };
 
     const q = (data.q ?? "").trim();
     if (!q && data.status !== "outstanding") {
@@ -427,7 +481,7 @@ export const listClientsPage = createServerFn({ method: "GET" })
         .range(offset, offset + limit - 1);
       if (error) throw new Error(error.message);
       return {
-        rows: lean(await decorateEmbedded(rows ?? [])),
+        rows: lean(await decorateEmbedded(rows ?? [], seesInvoices)),
         matched: count ?? 0,
         offset,
       };
@@ -452,7 +506,7 @@ export const listClientsPage = createServerFn({ method: "GET" })
       if (r.error) throw new Error(r.error.message);
       got.push(...(r.data ?? []));
     }
-    const rows = await decorateEmbedded(got);
+    const rows = await decorateEmbedded(got, seesInvoices);
     const at = new Map(pageIds.map((id, i) => [id, i]));
     rows.sort((x: any, y: any) => (at.get(x.id) ?? 0) - (at.get(y.id) ?? 0));
     return { rows: lean(rows), matched: ids.length, offset };
@@ -467,8 +521,11 @@ export const listClientsPage = createServerFn({ method: "GET" })
 export const listClientsSummary = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { supabase, userId } = context;
-    const { orgId } = await requirePermission(supabase, userId, "view_client_directory");
+    const {
+      orgId,
+      db: supabase,
+      seesInvoices,
+    } = await directoryReader(context.supabase, context.userId);
     const { fetchAllPagesConcurrently } = await import("@/lib/supabase-paging.server");
     const { outstandingByClient } = await import("@/lib/ar");
     const today = rosterToday();
@@ -487,15 +544,17 @@ export const listClientsSummary = createServerFn({ method: "GET" })
       head("active"),
       head("at_risk"),
       head("no_plan"),
-      fetchAllPagesConcurrently<any>((a, b) =>
-        supabase
-          .from("invoices")
-          .select("client_id, total_cents, credit_applied_cents, amount_paid_cents, status")
-          .eq("organization_id", orgId)
-          .eq("status", "open")
-          .order("id")
-          .range(a, b),
-      ),
+      !seesInvoices
+        ? Promise.resolve([] as any[])
+        : fetchAllPagesConcurrently<any>((a, b) =>
+            supabase
+              .from("invoices")
+              .select("client_id, total_cents, credit_applied_cents, amount_paid_cents, status")
+              .eq("organization_id", orgId)
+              .eq("status", "open")
+              .order("id")
+              .range(a, b),
+          ),
       fetchAllPagesConcurrently<{ tags: string[] | null }>((a, b) =>
         supabase
           .from("clients")
@@ -556,8 +615,7 @@ export const searchClients = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => searchClientsSchema.parse(d ?? {}))
   .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const { orgId } = await requirePermission(supabase, userId, "view_client_directory");
+    const { orgId, db: supabase } = await directoryReader(context.supabase, context.userId);
     const { clientMatchesQuery, clientSearchOrFilter, streetSearchPattern } =
       await import("@/lib/client-search");
     const q = (data.q ?? "").trim();
@@ -592,7 +650,7 @@ export const searchClients = createServerFn({ method: "GET" })
         .order("display_name")
         .limit(limit);
       if (error) throw new Error(error.message);
-      return { clients: (rows ?? []).map(shape) };
+      return { clients: ((rows ?? []) as any[]).map(shape) };
     }
 
     const or = clientSearchOrFilter(q);
@@ -660,7 +718,7 @@ export const searchClients = createServerFn({ method: "GET" })
       .map((id) => byId.get(id))
       .sort((a, b) => String(a.display_name ?? "").localeCompare(String(b.display_name ?? "")))
       .slice(0, limit);
-    return { clients: hits.map(shape) };
+    return { clients: (hits as any[]).map(shape) };
   });
 
 const createClientSchema = z.object({

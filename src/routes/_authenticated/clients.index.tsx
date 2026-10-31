@@ -207,17 +207,41 @@ function ClientsList() {
   // clears whenever a filter changes so a bulk action never hits hidden rows.
   const visibleIds = useMemo(() => filtered.map((c: any) => c.id as string), [filtered]);
   const sel = useRowSelection(visibleIds, `${searched}|${status}|${type}|${tag}|${offset}`);
-  const selectedRows = useMemo(
+  const pageSelection = useMemo(
     () => filtered.filter((c: any) => sel.isSelected(c.id)),
     [filtered, sel],
   );
+  // "Select all N matching" (#617 review, S2): the header box ticks one page
+  // of 50, and with paging that is all it can tick. This is every client the
+  // filters match, read when asked for, and dropped when a filter changes.
+  const [allMatching, setAllMatching] = useState<any[] | null>(null);
+  useEffect(() => setAllMatching(null), [searched, status, type, tag]);
+  const selectedRows: any[] = allMatching ?? pageSelection;
+  const selectedIds = useMemo(() => selectedRows.map((c: any) => c.id as string), [selectedRows]);
+  const selectedCount = selectedRows.length;
+  const clearSelection = () => {
+    setAllMatching(null);
+    sel.clear();
+  };
+  const [selectingAll, setSelectingAll] = useState(false);
+  const selectAllMatching = async () => {
+    setSelectingAll(true);
+    try {
+      const all = await fn({ data: { ...filters, all: true } });
+      setAllMatching(all.rows);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSelectingAll(false);
+    }
+  };
 
   // Bulk archive loops the existing per-client updateClient fn (same
   // permission gate + per-client activity log as the edit drawer).
   const archiveM = useMutation({
     mutationFn: async (ids: string[]) => {
-      const results = await Promise.allSettled(
-        ids.map((id) => updateFn({ data: { clientId: id, active: false } })),
+      const results = await settleInBatches(ids, (id) =>
+        updateFn({ data: { clientId: id, active: false } }),
       );
       const ok = results.filter((r) => r.status === "fulfilled").length;
       return { ok, failed: results.length - ok };
@@ -225,7 +249,7 @@ function ClientsList() {
     onSuccess: (r) => {
       if (r.failed) toast.error(`Archived ${r.ok} of ${r.ok + r.failed} clients, ${r.failed} failed`);
       else toast.success(`Archived ${r.ok} client${r.ok === 1 ? "" : "s"}`);
-      sel.clear();
+      clearSelection();
       qc.invalidateQueries({ queryKey: ["clients"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -235,8 +259,8 @@ function ClientsList() {
   // updateClient fn (and activity log) as the client-header toggle.
   const resumeCommsM = useMutation({
     mutationFn: async (ids: string[]) => {
-      const results = await Promise.allSettled(
-        ids.map((id) => updateFn({ data: { clientId: id, commsPaused: false } })),
+      const results = await settleInBatches(ids, (id) =>
+        updateFn({ data: { clientId: id, commsPaused: false } }),
       );
       const ok = results.filter((r) => r.status === "fulfilled").length;
       return { ok, failed: results.length - ok };
@@ -245,7 +269,7 @@ function ClientsList() {
       if (r.failed)
         toast.error(`Resumed communications for ${r.ok} of ${r.ok + r.failed} clients, ${r.failed} failed`);
       else toast.success(`Resumed communications for ${r.ok} client${r.ok === 1 ? "" : "s"}`);
-      sel.clear();
+      clearSelection();
       qc.invalidateQueries({ queryKey: ["clients"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -266,9 +290,18 @@ function ClientsList() {
     }
     return [...byLc.values()].sort((a, b) => a.localeCompare(b));
   }, [selectedRows]);
+  // bulkTagClients takes 500 ids a call; "all matching" can be thousands.
+  const tagSelected = async (v: { action: "add" | "remove"; tag: string }) => {
+    let changed = 0;
+    for (let i = 0; i < selectedIds.length; i += 500) {
+      const r = await tagFn({ data: { ids: selectedIds.slice(i, i + 500), tag: v.tag, action: v.action } });
+      changed += r.changed;
+    }
+    return { changed };
+  };
   const tagM = useMutation({
     mutationFn: (v: { action: "add" | "remove"; tag: string }) =>
-      tagFn({ data: { ids: sel.selectedIds, tag: v.tag, action: v.action } }),
+      tagSelected(v),
     onSuccess: (r, v) => {
       toast.success(
         v.action === "add"
@@ -289,7 +322,7 @@ function ClientsList() {
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>
-              {tagAction === "remove" ? "Remove a tag" : "Add a tag"} ({sel.count} selected)
+              {tagAction === "remove" ? "Remove a tag" : "Add a tag"} ({selectedCount} selected)
             </DialogTitle>
           </DialogHeader>
           <form
@@ -474,9 +507,30 @@ function ClientsList() {
       </div>
 
       {/* Bulk action bar — appears once rows are checked in the table */}
-      {sel.count > 0 && (
+      {selectedCount > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-accent/40 px-4 py-2 text-sm shadow-sm">
-          <span className="font-medium">{sel.count} selected</span>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="font-medium">
+              {allMatching
+                ? `All ${selectedCount.toLocaleString("en-US")} matching selected`
+                : `${selectedCount} selected`}
+            </span>
+            {/* Past one page, say so and offer the rest, rather than act on
+                50 of 5,000 without a word. */}
+            {!allMatching && sel.allSelected && matched > filtered.length && (
+              <Button
+                size="sm"
+                variant="link"
+                className="h-auto px-0"
+                disabled={selectingAll}
+                onClick={selectAllMatching}
+              >
+                {selectingAll
+                  ? "Selecting…"
+                  : `Select all ${matched.toLocaleString("en-US")} matching`}
+              </Button>
+            )}
+          </div>
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
@@ -521,20 +575,20 @@ function ClientsList() {
                 onClick={async () => {
                   if (
                     await confirm({
-                      title: `Archive ${sel.count} client${sel.count === 1 ? "" : "s"}?`,
+                      title: `Archive ${selectedCount} client${selectedCount === 1 ? "" : "s"}?`,
                       description:
                         "They are marked inactive. You can reactivate a client anytime from their page.",
                       destructive: true,
                       confirmLabel: "Archive",
                     })
                   )
-                    archiveM.mutate(sel.selectedIds);
+                    archiveM.mutate(selectedIds);
                 }}
               >
                 {archiveM.isPending ? "Archiving…" : "Archive"}
               </Button>
             )}
-            <Button size="sm" variant="ghost" onClick={sel.clear}>
+            <Button size="sm" variant="ghost" onClick={clearSelection}>
               Clear
             </Button>
           </div>
@@ -654,8 +708,11 @@ function ClientsList() {
                 <tr>
                   <th className="w-10 px-4 py-2">
                     <Checkbox
-                      checked={sel.allSelected}
-                      onCheckedChange={sel.toggleAll}
+                      checked={allMatching ? true : sel.allSelected}
+                      onCheckedChange={() => {
+                        setAllMatching(null);
+                        sel.toggleAll();
+                      }}
                       aria-label="Select all clients"
                     />
                   </th>
@@ -677,8 +734,19 @@ function ClientsList() {
                   <tr key={c.id} className="border-t hover:bg-muted/30">
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <Checkbox
-                        checked={sel.isSelected(c.id)}
-                        onCheckedChange={(next) => sel.toggle(c.id, !!next)}
+                        checked={allMatching ? true : sel.isSelected(c.id)}
+                        onCheckedChange={(next) => {
+                          // Unticking a row ends "all matching": the bar goes
+                          // back to what is ticked on this page.
+                          if (allMatching) {
+                            setAllMatching(null);
+                            if (!next) {
+                              sel.toggle(c.id, false);
+                              return;
+                            }
+                          }
+                          sel.toggle(c.id, !!next);
+                        }}
                         aria-label={`Select ${c.display_name}`}
                       />
                     </td>
@@ -824,6 +892,19 @@ function ClientsList() {
   );
 }
 
+
+/** Run `fn` over every id, 20 at a time. "All matching" can be thousands of
+ *  clients, and thousands of requests at once is a burst nothing should get. */
+async function settleInBatches<T>(
+  ids: string[],
+  fn: (id: string) => Promise<T>,
+): Promise<PromiseSettledResult<T>[]> {
+  const out: PromiseSettledResult<T>[] = [];
+  for (let i = 0; i < ids.length; i += 20) {
+    out.push(...(await Promise.allSettled(ids.slice(i, i + 20).map(fn))));
+  }
+  return out;
+}
 
 /** "1-50 of 5,000" with Previous and Next. Paged on the server (#617). */
 function ClientsPager({

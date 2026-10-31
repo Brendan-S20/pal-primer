@@ -1397,7 +1397,8 @@ export const commitImport = createServerFn({ method: "POST" })
       // client insert, the row's target_id, a fresh read of every zone, the
       // property insert, and a skip's own update. The zones are now read once,
       // clients and properties go in IMPORT_WRITE_CHUNK at a time, and the
-      // per-row results are written together, several at once, at the end.
+      // rows' results are written several at once: a chunk's target_ids as
+      // soon as its clients are in, the skips at the end.
       //
       // The duplicate check still runs row by row in file order against an
       // index that includes the clients queued before it, so a file that names
@@ -1443,7 +1444,6 @@ export const commitImport = createServerFn({ method: "POST" })
       };
       const newClients: NewClient[] = [];
       const newProperties: Database["public"]["Tables"]["properties"]["Insert"][] = [];
-      const targetIds: { rowId: string; targetId: string }[] = [];
       const skips: { rowId: string; action: string; targetId: string }[] = [];
       const failedClientIds = new Set<string>();
       const failRow = async (rowId: string, action: string, reason: string) => {
@@ -1452,17 +1452,34 @@ export const commitImport = createServerFn({ method: "POST" })
         await markRowFailed(supabase, rowId, action, reason);
       };
 
+      const inParallel = async (jobs: (() => Promise<void>)[]) => {
+        for (let i = 0; i < jobs.length; i += IMPORT_ROW_UPDATES_AT_ONCE) {
+          await Promise.all(jobs.slice(i, i + IMPORT_ROW_UPDATES_AT_ONCE).map((j) => j()));
+        }
+      };
+
       const flushNewClients = async () => {
         if (!newClients.length) return;
         const chunk = newClients.splice(0);
-        const { error } = await supabase.from("clients").insert(chunk.map((c) => c.record));
+        // A request that throws (a dropped connection) is handled like one
+        // that answers with an error: the chunk is already off the queue, so
+        // letting it escape would count these rows as created and write none.
+        const insert = async (records: NewClient["record"][]) => {
+          try {
+            const { error } = await supabase.from("clients").insert(records);
+            return error;
+          } catch (e) {
+            return { message: (e as Error)?.message ?? String(e) };
+          }
+        };
+        const error = await insert(chunk.map((c) => c.record));
         let inserted = chunk;
         if (error) {
           // One statement fails whole. Insert this chunk's rows one at a time
           // so only the rows at fault fail, and the rest still go in.
           inserted = [];
           for (const c of chunk) {
-            const { error: oneErr } = await supabase.from("clients").insert(c.record);
+            const oneErr = await insert([c.record]);
             if (!oneErr) {
               inserted.push(c);
               continue;
@@ -1472,8 +1489,15 @@ export const commitImport = createServerFn({ method: "POST" })
             await failRow(c.rowId, c.action, oneErr.message ?? String(oneErr));
           }
         }
+        // Each row points at its client as soon as the chunk is in, not at the
+        // end of the file: a commit that stops later leaves no client it made
+        // unclaimed by its row.
+        await inParallel(
+          inserted.map((c) => async () => {
+            await supabase.from("import_rows").update({ target_id: c.id }).eq("id", c.rowId);
+          }),
+        );
         for (const c of inserted) {
-          targetIds.push({ rowId: c.rowId, targetId: c.id });
           const m = c.m;
           // If the Clients row carried a service address, create a property
           // for it (auto-geocoded) so routing/pricing/DNA work downstream —
@@ -1540,16 +1564,10 @@ export const commitImport = createServerFn({ method: "POST" })
         }
       };
 
-      /** Each row's outcome, written IMPORT_ROW_UPDATES_AT_ONCE at a time. */
+      /** The skipped rows' outcome, written IMPORT_ROW_UPDATES_AT_ONCE at a time. */
       const writeRowResults = async () => {
         type Job = () => Promise<void>;
         const jobs: Job[] = [
-          ...targetIds.map(
-            (t): Job =>
-              async () => {
-                await supabase.from("import_rows").update({ target_id: t.targetId }).eq("id", t.rowId);
-              },
-          ),
           ...skips.map(
             (sk): Job =>
               async () => {
@@ -1575,9 +1593,7 @@ export const commitImport = createServerFn({ method: "POST" })
               },
           ),
         ];
-        for (let i = 0; i < jobs.length; i += IMPORT_ROW_UPDATES_AT_ONCE) {
-          await Promise.all(jobs.slice(i, i + IMPORT_ROW_UPDATES_AT_ONCE).map((j) => j()));
-        }
+        await inParallel(jobs);
       };
 
       for (const row of rows ?? []) {

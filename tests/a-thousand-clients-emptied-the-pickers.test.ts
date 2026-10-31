@@ -41,11 +41,22 @@ vi.mock("@tanstack/react-start", () => ({
 }));
 vi.mock("@/integrations/supabase/auth-middleware", () => ({ requireSupabaseAuth: {} }));
 vi.mock("@/lib/authz.server", () => ({
-  resolveCaller: async () => ({ orgId: "org", role: "owner" }),
-  requirePermission: async () => ({ orgId: "org", role: "owner" }),
+  resolveCaller: async () => ({ orgId: "org", role: state.role }),
+  requirePermission: async () => ({ orgId: "org", role: state.role }),
+}));
+// The directory is read with the service role once the gate above has passed
+// (directoryReader in clients.functions.ts says why that is RLS's own
+// answer). Here the user's client and the service role are the same fake.
+vi.mock("@/integrations/supabase/client.server", () => ({
+  // A plain value, as the other mocks of this module are, forwarding to
+  // whichever fake the test set up last.
+  supabaseAdmin: new Proxy(
+    {},
+    { get: (_t, key) => (state.supabase as any)[key as any] },
+  ),
 }));
 
-const state = vi.hoisted(() => ({ supabase: null as any }));
+const state = vi.hoisted(() => ({ supabase: null as any, role: "owner" }));
 
 import { listClients, listClientsPage, listClientsSummary, searchClients } from "@/lib/clients.functions";
 import { fakePostgrest, type Seen } from "./support/fake-postgrest";
@@ -182,6 +193,7 @@ async function firstLoad() {
 const timings: string[] = [];
 
 describe("/clients at 1,000 and 5,000 clients", () => {
+
   it.each([1_000, 5_000])("opens in under 2 s at %i clients", async (n) => {
     useBook(n);
     const started = Date.now();
@@ -327,6 +339,22 @@ describe("/clients at 1,000 and 5,000 clients", () => {
     expect(everything.rows).toHaveLength(1_000);
     const atRisk = await listClientsPage({ data: { status: "at_risk", all: true } });
     expect(atRisk.matched).toBe(Math.ceil(1_000 / 7));
+  });
+
+  it("a dispatcher reads no invoices and sees no balances, as RLS gave it none", async () => {
+    useBook(1_000);
+    state.role = "dispatcher";
+    try {
+      const owing = await listClientsPage({ data: { status: "outstanding" } });
+      expect(owing).toMatchObject({ rows: [], matched: 0 });
+      const page = await listClientsPage({ data: {} });
+      expect(page.rows.every((r: any) => r.outstanding_cents === 0)).toBe(true);
+      const summary = await listClientsSummary();
+      expect(summary.stats).toMatchObject({ outstanding: 0, owedTotal: 0 });
+      expect(seen.some((x) => x.table === "invoices")).toBe(false);
+    } finally {
+      state.role = "owner";
+    }
   });
 
   it("never reads by a list of client ids", () => {
