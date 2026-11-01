@@ -20,8 +20,28 @@ export const checkEmailAccount = createServerFn({ method: "POST" })
       _email: data.email,
     });
     if (error) throw new Error("Couldn't check that email. Try again.");
-    return { exists: !!exists };
+    if (exists) return { exists: true, pendingInvite: false };
+
+    // A new address with a pending teammate invitation joins that business;
+    // Get started must not ask it for a business name (#651). A yes/no only:
+    // which business invited it is not said to an anonymous caller.
+    const { data: invites, error: invErr } = await (supabaseAdmin as any)
+      .from("org_invites")
+      .select("id")
+      .ilike("email", likeExactly(data.email))
+      .eq("status", "pending")
+      .gt("expires_at", new Date().toISOString())
+      .limit(1);
+    // A failed lookup is "no", and Get started's own accept after sign-up is
+    // still the backstop that joins rather than builds.
+    return { exists: false, pendingInvite: !invErr && (invites?.length ?? 0) > 0 };
   });
+
+/** An ILIKE pattern that matches `value` and nothing else: `_` is common in
+ *  email addresses and is a wildcard to LIKE. */
+export function likeExactly(value: string): string {
+  return value.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
 
 // Frictionless signup: create the user auto-confirmed so they can sign in
 // immediately — email verification is tracked as our own to-do (and gates

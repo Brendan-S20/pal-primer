@@ -11,6 +11,8 @@ import {
   rememberInviteToken,
 } from "@/lib/ensure-workspace";
 import { checkEmailAccount } from "@/lib/auth-entry.functions";
+import { lookupInviteByToken } from "@/lib/platform-onboarding.functions";
+import { handOffSignupEmail } from "@/lib/signup-email";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -162,6 +164,26 @@ function AuthPage() {
     rememberInviteToken();
     setInviteToken(pendingInviteToken());
   }, []);
+
+  // The invitation already knows who it was sent to. Asking the person to
+  // type it again is a chance to type it wrong, and the accept refuses any
+  // other address (#651).
+  const lookupInviteFn = useServerFn(lookupInviteByToken);
+  useEffect(() => {
+    if (!inviteToken) return;
+    let cancelled = false;
+    lookupInviteFn({ data: { token: inviteToken } })
+      .then((r) => {
+        if (cancelled || !r.ok || r.kind !== "staff" || !r.email) return;
+        setEmail((typed) => (typed.trim() ? typed : r.email!));
+      })
+      .catch(() => {
+        // A failed lookup leaves the box empty, as it was. Never fatal.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteToken, lookupInviteFn]);
 
   useEffect(() => {
     // If already signed in (incl. returning from an OAuth redirect), ensure
@@ -418,9 +440,12 @@ function AuthPage() {
       } else {
         // The invitation goes with them. Without it /get-started asks for a
         // business name and builds a new one, and the invite stays pending.
+        // The address does not ride in the URL (#651): it is handed over in
+        // this tab's sessionStorage.
+        handOffSignupEmail(email);
         navigate({
           to: "/get-started",
-          search: { email: email.trim(), ...(inviteToken ? { invite: inviteToken } : {}) } as never,
+          search: { ...(inviteToken ? { invite: inviteToken } : {}) } as never,
         });
       }
     } catch (err) {

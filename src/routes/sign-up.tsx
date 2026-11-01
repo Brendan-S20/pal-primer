@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { stashSignupAttribution } from "@/lib/signup-attribution";
+import { handOffSignupEmail } from "@/lib/signup-email";
 import { PublicShell } from "@/components/PublicShell";
 import { APP_NAME } from "@/lib/scoop";
 import { pageTitle } from "@/lib/page-title";
@@ -34,10 +35,13 @@ function SignUpRedirect() {
 
   useEffect(() => {
     stashSignupAttribution(search as Record<string, unknown>);
+    // A marketing link may carry ?email=. It is handed on in this tab's
+    // sessionStorage, not in the next URL (#651).
+    handOffSignupEmail(search.email);
     navigate({
       to: "/get-started",
       search: {
-        email: search.email,
+        email: undefined,
         invite: undefined,
         ref: undefined,
         utm_source: undefined,

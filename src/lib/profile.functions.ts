@@ -81,17 +81,19 @@ export const updateMyProfile = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const { error } = await supabase
-      .from("staff")
-      .update({
-        display_name: data.displayName,
-        phone: data.phone?.trim() ? data.phone.trim() : null,
-      })
-      // Scoped to the caller's own row. No id crosses the wire, so there is
-      // nothing to tamper with.
-      .eq("user_id", userId);
+    const { supabase } = context;
+    // Not `.from("staff").update(...)`. The only UPDATE policy on staff asks
+    // for manage_users, so a tech's update matched no row, PostgREST said
+    // nothing was wrong, and the page said "Profile saved" over a name that
+    // never changed (#651, F-26). update_my_staff_profile writes the caller's
+    // own row (auth.uid(); no id crosses the wire) and raises when there is
+    // no row to write, so success here means the name is stored.
+    const { data: savedId, error } = await supabase.rpc("update_my_staff_profile", {
+      _display_name: data.displayName,
+      _phone: data.phone?.trim() ? data.phone.trim() : undefined,
+    });
     if (error) throw new Error(error.message);
+    if (!savedId) throw new Error("Your profile was not saved. Try again.");
     return { ok: true };
   });
 
