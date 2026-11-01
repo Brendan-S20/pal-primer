@@ -236,11 +236,15 @@ export function VisitDetailDrawer({
   // Who is holding the change, so a replay after a reload or a killed app is
   // sent only for the same person (lib/undo-window.ts, #652). Read from the
   // stored session, which answers locally.
-  const holderId = useRef<string | null>(null);
+  // Kept as the answer itself once it is in, and as the pending lookup until
+  // then, so a pick made before it answers is still written to the device.
+  const holder = useRef<string | Promise<string | null> | null>(null);
   useEffect(() => {
-    void supabase.auth.getSession().then(({ data }) => {
-      holderId.current = data.session?.user?.id ?? null;
-    });
+    const lookup = supabase.auth.getSession().then(
+      ({ data }) => (holder.current = data.session?.user?.id ?? null),
+      () => (holder.current = null),
+    );
+    holder.current = lookup;
   }, []);
   const reassignTo = (staffId: string | null, name: string | null) => {
     const vid = visitId!;
@@ -266,10 +270,10 @@ export function VisitDetailDrawer({
     // window still sends it on the next start (#652). `ifStillFrom` makes
     // that replay a no-op if the first send already landed or somebody has
     // moved the visit since.
-    const durable = holderId.current
+    const durable = holder.current
       ? {
           kind: REASSIGN_HELD_KIND,
-          userId: holderId.current,
+          userId: holder.current,
           payload: { visitId: vid, staffId, ifStillFrom: v?.assigned_staff_id ?? null },
         }
       : undefined;

@@ -172,13 +172,27 @@ export function holdForUndo(
     ms = UNDO_WINDOW_MS,
     onError,
     durable,
-  }: { ms?: number; onError?: (e: unknown) => void; durable?: DurableRecord } = {},
+  }: {
+    ms?: number;
+    onError?: (e: unknown) => void;
+    /** `userId` may still be on its way (the session lookup). The record is
+     *  then written when it answers, if the change is still waiting. */
+    durable?: Omit<DurableRecord, "userId"> & { userId: string | PromiseLike<string | null> };
+  } = {},
 ): HeldChange {
   let state: "waiting" | "sent" | "undone" = "waiting";
   let settle!: (v: boolean) => void;
   const done = new Promise<boolean>((r) => (settle = r));
   const id = newId();
-  if (durable) putRecord({ ...durable, id, sendAt: Date.now() + ms });
+  const sendAt = Date.now() + ms;
+  if (durable) {
+    const { userId, ...rest } = durable;
+    const write = (uid: string | null) => {
+      if (uid && state === "waiting") putRecord({ ...rest, userId: uid, id, sendAt });
+    };
+    if (typeof userId === "string") write(userId);
+    else Promise.resolve(userId).then(write, () => {});
+  }
 
   const fire = () => {
     if (state !== "waiting") return;

@@ -103,6 +103,21 @@ describe("a held reassign and the page going away", () => {
     expect(reassign).toHaveBeenCalledTimes(1);
   });
 
+  it("a pick made before the user is known is still written once the lookup answers", async () => {
+    const first = await load();
+    let answer!: (id: string | null) => void;
+    const lookup = new Promise<string | null>((r) => (answer = r));
+    first.holdForUndo(async () => {}, { durable: { ...durable(), userId: lookup } });
+    answer(USER);
+    await vi.advanceTimersByTimeAsync(500);
+
+    const next = await load();
+    const reassign = vi.fn(async () => ({}));
+    const replay = next.replayHeldChanges(USER, { reassign });
+    await vi.advanceTimersByTimeAsync(5_000);
+    await expect(replay).resolves.toBe(1);
+  });
+
   it("killed long after the window: sent at once on the next start", async () => {
     const first = await load();
     first.holdForUndo(async () => {}, { durable: durable() });
