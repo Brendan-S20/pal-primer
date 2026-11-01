@@ -63,6 +63,10 @@ export const APP_LINK_PATH_PREFIXES: readonly string[] = [
   "/imports",
   "/inbox",
   "/inventory",
+  // A team invitation. Opens the app so a new tech who already installed it
+  // accepts there and is signed in where they will work. /invite/$token
+  // handles a missing session itself (#621).
+  "/invite",
   "/invoices",
   "/leads",
   "/messages",
@@ -129,7 +133,6 @@ export const STAYS_IN_BROWSER: Readonly<Record<string, string>> = {
   "/reset-password": "the recovery session lands in the browser that asked for it",
   "/no-workspace": "part of the web sign-in flow",
   "/access-off": "where the app sends a person whose access was turned off; never a shared link",
-  "/invite": "a new team member accepts on the web, usually before installing anything",
   "/pay": "a customer's invoice payment link",
   "/portal": "the customer portal",
   "/q": "a customer's quote acceptance link",

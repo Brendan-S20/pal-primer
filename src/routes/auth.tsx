@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -24,6 +24,7 @@ import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
 import { rememberLandingPath, readLandingPath } from "@/lib/offline/read-cache";
 import { pageTitle } from "@/lib/page-title";
 import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
+import { takeDeepLink } from "@/lib/pending-deep-link";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -98,6 +99,18 @@ async function landingPathForUser(userId: string): Promise<string> {
 
 function AuthPage() {
   const navigate = useNavigate();
+  const router = useRouter();
+
+  /** Land a signed-in person on their role's page, unless a link opened the
+   *  app: then go where the link points. On a cold start the link arrives
+   *  while this page is still working out who is signed in, and is held for
+   *  exactly this moment (lib/pending-deep-link.ts, #621). Native only in
+   *  practice: nothing holds a link on the web. */
+  const land = (to: string) => {
+    const link = takeDeepLink();
+    if (link) router.history.push(link);
+    else navigate({ to });
+  };
   const queryClient = useQueryClient();
 
   /** A brand-new organization is invisible to the route guard for a minute.
@@ -174,8 +187,8 @@ function AuthPage() {
           console.error("bootstrap on landing failed", err);
         }
         if (isNewOrg === NEEDS_ORG_NAME) return navigate({ to: "/no-workspace" });
-        const to = isNewOrg ? "/onboarding" : await landingPathForUser(data.user.id);
-        navigate({ to });
+        if (isNewOrg) return navigate({ to: "/onboarding" });
+        land(await landingPathForUser(data.user.id));
       });
       return;
     }
@@ -216,8 +229,9 @@ function AuthPage() {
       }
       if (cancelled) return;
       if (isNewOrg === NEEDS_ORG_NAME) return navigate({ to: "/no-workspace" });
-      const to = isNewOrg ? "/onboarding" : await landingPathForUser(identity.userId);
-      if (!cancelled) navigate({ to });
+      if (isNewOrg) return navigate({ to: "/onboarding" });
+      const to = await landingPathForUser(identity.userId);
+      if (!cancelled) land(to);
     })();
     return () => {
       cancelled = true;
@@ -246,12 +260,8 @@ function AuthPage() {
     }
     setLoading(false);
     if (isNewOrg === NEEDS_ORG_NAME) return navigate({ to: "/no-workspace" });
-    const to = isNewOrg
-      ? "/onboarding"
-      : data.user
-        ? await landingPathForUser(data.user.id)
-        : "/dashboard";
-    navigate({ to });
+    if (isNewOrg) return navigate({ to: "/onboarding" });
+    land(data.user ? await landingPathForUser(data.user.id) : "/dashboard");
   };
 
   // The other half of the native flow: the system browser hands back to
@@ -298,8 +308,8 @@ function AuthPage() {
       console.error("bootstrap after native sign-in failed", err);
     }
     if (isNewOrg === NEEDS_ORG_NAME) return navigate({ to: "/no-workspace" });
-    const to = isNewOrg ? "/onboarding" : await landingPathForUser(data.user.id);
-    navigate({ to });
+    if (isNewOrg) return navigate({ to: "/onboarding" });
+    land(await landingPathForUser(data.user.id));
   };
 
   const oauthSignIn = async (provider: "google" | "apple" | "facebook") => {
