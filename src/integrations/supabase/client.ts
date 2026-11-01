@@ -8,14 +8,23 @@ import type { Database } from './types';
 // reads process.env.SUPABASE_URL), the browser on the live one. Guarded by
 // import.meta.env.DEV, which is statically false in every production build,
 // so the override is compiled out and no build environment can repoint the
-// shipped app; the literals below are what production ships, always.
+// shipped web app; the literals below are what production ships, always.
 // tests/the-browser-client-can-be-pointed-at-a-local-database.test.ts pins
 // this shape.
+//
+// A NATIVE build can be pointed elsewhere at build time (#623):
+// HS_NATIVE_SUPABASE_URL / HS_NATIVE_SUPABASE_PUBLISHABLE_KEY are defined by
+// vite.config.ts from NATIVE_SUPABASE_URL / NATIVE_SUPABASE_PUBLISHABLE_KEY,
+// for the native build only. They are not VITE_ names, so nothing in the
+// environment can set them for the web build; there they are undefined and
+// fall through to the literals.
 const SUPABASE_URL =
   (import.meta.env.DEV && import.meta.env.VITE_SUPABASE_URL) ||
+  import.meta.env.HS_NATIVE_SUPABASE_URL ||
   "https://api.houndstack.com";
 const SUPABASE_PUBLISHABLE_KEY =
   (import.meta.env.DEV && import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY) ||
+  import.meta.env.HS_NATIVE_SUPABASE_PUBLISHABLE_KEY ||
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzeHpyYnh1YmxxcmNmbnhmd2N1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1OTY2NTcsImV4cCI6MjA5OTE3MjY1N30.5Ns35iCAqIFOTIHRKOCkdreUl9HUTmW1xvZn8X8S_G8";
 
 // Import the supabase client like this:

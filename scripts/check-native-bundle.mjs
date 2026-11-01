@@ -30,6 +30,7 @@
 // bootable index.html in it. A scan that measured nothing must not be green.
 
 import { toPosix } from "./posix-path.mjs";
+import { findProdHosts } from "./native-prod-hosts.mjs";
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
 
@@ -239,6 +240,16 @@ for (const f of walk(SRC).filter((f) => /\.(ts|tsx)$/.test(f))) {
         "    Customer invoice and portal payment paths are deliberately NOT matched\n" +
         "    here: those are real-world services and stay.",
     );
+  }
+}
+
+// ── 5. a staging bundle names no production host (#623) ─────────────────
+if (process.env.NATIVE_TARGET === "staging") {
+  const hits = findProdHosts(BUNDLE, ROOT);
+  if (hits.length) {
+    fail.push(`staging bundle names production:\n      ${hits.join("\n      ")}`);
+  } else {
+    note.push("staging bundle: no houndstack.com host, no production Supabase ref");
   }
 }
 

@@ -414,7 +414,11 @@ Postgres, real RLS, real sign-in through the two-stage form.
   credentials`. Since 2026-09-19 the client honors `VITE_SUPABASE_URL` /
   `VITE_SUPABASE_PUBLISHABLE_KEY` — but only behind `import.meta.env.DEV`, so
   the override is compiled out of every production build and no build
-  environment can repoint the shipped app. Three things guard the fix,
+  environment can repoint the shipped web app. A native build can be pointed
+  at another project on purpose with `NATIVE_SUPABASE_URL` /
+  `NATIVE_SUPABASE_PUBLISHABLE_KEY` (non-`VITE_` defines, native only), and
+  `npm run build:native:staging` fails if its bundle names any
+  houndstack.com host (#623). Three things guard the fix,
   because the file says of itself "automatically generated" and the Lovable
   agent edits it: `tests/the-browser-client-can-be-pointed-at-a-local-database.test.ts`
   pins the shape and fails loudly on a regeneration that drops it; the E2E

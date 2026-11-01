@@ -196,6 +196,11 @@ jobs:
       #   * The Supabase URL and publishable key are literals in
       #     src/integrations/supabase/client.ts; the VITE_SUPABASE_* override
       #     is behind import.meta.env.DEV and compiled out of this build.
+      #     NATIVE_SUPABASE_URL / NATIVE_SUPABASE_PUBLISHABLE_KEY override
+      #     them for a native build; this job sets neither, so it ships
+      #     production. A staging binary is `npm run build:native:staging`
+      #     (#623), which refuses to build without staging values and fails
+      #     if the bundle names any houndstack.com host.
       #   * NATIVE_API_ORIGIN defaults to https://app.houndstack.com
       #     (vite.config.ts).
       #   * The Sentry release is derived from GITHUB_SHA (vite.config.ts), and
