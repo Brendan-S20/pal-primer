@@ -159,6 +159,100 @@ const NATIVE_API_ORIGIN = NATIVE_BUILD
   ? process.env.NATIVE_API_ORIGIN || "https://app.houndstack.com"
   : "";
 
+// ── WHICH SUPABASE A NATIVE BUILD TALKS TO (#623) ─────────────────────────
+//
+// src/integrations/supabase/client.ts reads VITE_SUPABASE_URL only in `vite
+// dev`, so until this setting existed every native build, staging included,
+// signed in to and wrote to the production project. These two sit beside
+// NATIVE_API_ORIGIN and work the same way: read at build time, baked in, and
+// defined for the native build only, so the hosted build is untouched.
+//
+//   NATIVE_SUPABASE_URL                Supabase URL the binary uses
+//   NATIVE_SUPABASE_PUBLISHABLE_KEY    its anon key (set both or neither)
+//   NATIVE_TARGET                      "production" (default) or "staging"
+//
+// The defined names are NOT VITE_-prefixed on purpose. Vite copies every
+// VITE_* variable in the environment into import.meta.env, so a VITE_ name
+// would let any build environment, Lovable's included, repoint the web app.
+// A plain name exists only where this define puts it.
+//
+// A staging build must name all three backends itself, and none may be a
+// production host: a staging binary that quietly fell back to production is
+// the exact fault this closes. scripts/native-prod-hosts.mjs then checks the
+// built bundle, because a config that says staging and a bundle that says
+// staging are two different claims.
+const PROD_SUPABASE_REF = "vsxzrbxublqrcfnxfwcu";
+const NATIVE_TARGET = NATIVE_BUILD ? process.env.NATIVE_TARGET || "production" : "";
+const NATIVE_STAGING = NATIVE_TARGET === "staging";
+const NATIVE_SUPABASE_URL = NATIVE_BUILD ? (process.env.NATIVE_SUPABASE_URL || "").trim() : "";
+const NATIVE_SUPABASE_PUBLISHABLE_KEY = NATIVE_BUILD
+  ? (process.env.NATIVE_SUPABASE_PUBLISHABLE_KEY || "").trim()
+  : "";
+
+function isProdHost(value: string): boolean {
+  let host: string;
+  try {
+    host = new URL(value).hostname.toLowerCase();
+  } catch {
+    throw new Error(`[native build] ${JSON.stringify(value)} is not a URL`);
+  }
+  return (
+    host === "houndstack.com" ||
+    host.endsWith(".houndstack.com") ||
+    host.includes(PROD_SUPABASE_REF)
+  );
+}
+
+function keyIsForProd(key: string): boolean {
+  try {
+    const payload = JSON.parse(Buffer.from(key.split(".")[1] ?? "", "base64url").toString("utf8"));
+    return payload?.ref === PROD_SUPABASE_REF;
+  } catch {
+    return false;
+  }
+}
+
+if (NATIVE_BUILD) {
+  const problems: string[] = [];
+  if (NATIVE_TARGET !== "production" && NATIVE_TARGET !== "staging") {
+    problems.push(
+      `NATIVE_TARGET must be "production" or "staging", got ${JSON.stringify(NATIVE_TARGET)}`,
+    );
+  }
+  if (Boolean(NATIVE_SUPABASE_URL) !== Boolean(NATIVE_SUPABASE_PUBLISHABLE_KEY)) {
+    problems.push(
+      "set NATIVE_SUPABASE_URL and NATIVE_SUPABASE_PUBLISHABLE_KEY together: a URL with the other project's key cannot sign anyone in",
+    );
+  }
+  if (NATIVE_STAGING) {
+    const origin = (process.env.NATIVE_API_ORIGIN || "").trim();
+    if (!origin) problems.push("a staging build needs NATIVE_API_ORIGIN (the staging web app)");
+    else if (isProdHost(origin)) problems.push(`NATIVE_API_ORIGIN is a production host: ${origin}`);
+    if (!NATIVE_SUPABASE_URL) problems.push("a staging build needs NATIVE_SUPABASE_URL");
+    else if (isProdHost(NATIVE_SUPABASE_URL)) {
+      problems.push(`NATIVE_SUPABASE_URL is a production host: ${NATIVE_SUPABASE_URL}`);
+    }
+    if (!NATIVE_SUPABASE_PUBLISHABLE_KEY)
+      problems.push("a staging build needs NATIVE_SUPABASE_PUBLISHABLE_KEY");
+    else if (keyIsForProd(NATIVE_SUPABASE_PUBLISHABLE_KEY)) {
+      problems.push("NATIVE_SUPABASE_PUBLISHABLE_KEY is the production project's key");
+    }
+  }
+  if (problems.length) {
+    throw new Error(`[native build] refusing to build:\n  - ${problems.join("\n  - ")}`);
+  }
+}
+
+// In a staging build the app's own origin is the staging web app, so the
+// places in src/ that name the production one (app-origin, the deep-link
+// host, the page's og:url, the footer) are pointed there at compile time.
+// Email addresses are left alone: a mailbox is not a host the app connects
+// to. api.houndstack.com is deliberately NOT rewritten: the Supabase URL has
+// to come from NATIVE_SUPABASE_URL above, and if it ever survives into the
+// bundle the post-build scan fails rather than this hiding it.
+const STAGING_APP_ORIGIN = NATIVE_STAGING ? NATIVE_API_ORIGIN.replace(/\/+$/, "") : "";
+const PROD_HOST_IN_SOURCE = /(?<![@\w-])(https?:\/\/)?((?:[a-z0-9-]+\.)*)houndstack\.com\b/gi;
+
 // ── WHICH BUILD AN ERROR CAME FROM ────────────────────────────────────────
 //
 // Error monitoring (src/lib/monitoring) labels every event with this, so an
@@ -377,6 +471,12 @@ export default defineConfig({
       ...(NATIVE_BUILD
         ? {
             "import.meta.env.VITE_NATIVE_API_ORIGIN": JSON.stringify(NATIVE_API_ORIGIN),
+            // See NATIVE_SUPABASE_URL above. "" means "use the literal in
+            // client.ts", which is production.
+            "import.meta.env.HS_NATIVE_SUPABASE_URL": JSON.stringify(NATIVE_SUPABASE_URL),
+            "import.meta.env.HS_NATIVE_SUPABASE_PUBLISHABLE_KEY": JSON.stringify(
+              NATIVE_SUPABASE_PUBLISHABLE_KEY,
+            ),
             // "This bundle is the one inside the app binary."
             //
             // A SEPARATE key from the origin above, deliberately. The origin
@@ -476,6 +576,25 @@ export default defineConfig({
                       "src/components/billing/PlanPicker.native-stub.tsx",
                     )
                   : null;
+              },
+            },
+          ]
+        : []),
+      // See STAGING_APP_ORIGIN above. Staging native builds only.
+      ...(NATIVE_STAGING
+        ? [
+            {
+              name: "houndstack:staging-build-names-no-production-host",
+              enforce: "pre" as const,
+              transform(code: string, id: string) {
+                if (!/[\\/]src[\\/][^?]*\.(tsx?|jsx?)(\?|$)/.test(id)) return null;
+                if (!code.includes("houndstack.com")) return null;
+                const stagingHost = new URL(STAGING_APP_ORIGIN).host;
+                const out = code.replace(PROD_HOST_IN_SOURCE, (m, scheme, sub) => {
+                  if (/^api\./i.test(sub)) return m;
+                  return scheme ? STAGING_APP_ORIGIN : stagingHost;
+                });
+                return out === code ? null : { code: out, map: null };
               },
             },
           ]

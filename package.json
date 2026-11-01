@@ -9,6 +9,7 @@
     "build:dev": "vite build --mode development",
     "postinstall": "node scripts/patch-native-plugins.mjs",
     "build:native": "node scripts/build-native.mjs",
+    "build:native:staging": "node scripts/build-native.mjs --staging",
     "cap:sync": "npm run build:native && npx cap sync ios",
     "check:native-bundle": "node scripts/check-native-bundle.mjs",
     "cap:ios": "npm run cap:sync && npx cap open ios",
