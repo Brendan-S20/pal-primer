@@ -180,7 +180,7 @@ describe("size rule server functions", () => {
 
 describe("add-on appointment facts", () => {
   const addon = { code: "teeth", name: "Teeth brushing", unit_price_cents: 1500 };
-  it("writes zero and null explicitly and leaves omitted fields alone on existing rows", async () => {
+  it("writes zero and a line explicitly and leaves omitted fields alone on existing rows", async () => {
     let calls = fake();
     await upsertAddonService({
       data: { ...addon, id, durationMin: 10, serviceLine: "mobile_grooming" },
@@ -189,10 +189,10 @@ describe("add-on appointment facts", () => {
       calls.find((c) => c.table === "addon_services" && c.op === "update")?.args[0],
     ).toMatchObject({ duration_min: 10, service_line: "mobile_grooming" });
     calls = fake();
-    await upsertAddonService({ data: { ...addon, id, durationMin: 0, serviceLine: null } });
+    await upsertAddonService({ data: { ...addon, id, durationMin: 0, serviceLine: "pet_waste" } });
     expect(
       calls.find((c) => c.table === "addon_services" && c.op === "update")?.args[0],
-    ).toMatchObject({ duration_min: 0, service_line: null });
+    ).toMatchObject({ duration_min: 0, service_line: "pet_waste" });
     calls = fake();
     await upsertAddonService({ data: { ...addon, id } });
     const row = calls.find((c) => c.table === "addon_services" && c.op === "update")?.args[0];
@@ -204,6 +204,8 @@ describe("add-on appointment facts", () => {
     { durationMin: 481 },
     { durationMin: 1.5 },
     { serviceLine: "groom" },
+    // No line is not "any service" (#640).
+    { serviceLine: null },
   ])("refuses invalid appointment facts: %j", async (patch) => {
     await expect(upsertAddonService({ data: { ...addon, ...patch } } as any)).rejects.toThrow();
   });

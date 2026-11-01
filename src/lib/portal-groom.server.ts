@@ -141,7 +141,7 @@ export async function loadPortalGroom(db: Db, session: PortalSession) {
       price_cents: r.price_cents,
     })),
     addons: (addons.data ?? [])
-      .filter((a) => !a.service_line || a.service_line === "mobile_grooming")
+      .filter((a) => a.service_line === "mobile_grooming")
       .map((a) => ({
         id: a.id,
         name: a.name,

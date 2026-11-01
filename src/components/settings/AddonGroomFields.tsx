@@ -40,7 +40,6 @@ export function AddonGroomFields({
           value={serviceLine}
           onChange={(e) => onChange({ serviceLine: e.target.value as ServiceLine | "" })}
         >
-          <option value="">Any service line</option>
           {SERVICE_LINES.map((line) => (
             <option key={line} value={line}>
               {SERVICE_LINE_LABEL[line]}

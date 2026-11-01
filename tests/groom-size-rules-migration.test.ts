@@ -101,7 +101,8 @@ describe("existing writes carry the new facts without changing other paths", () 
   it("addon updates only write new fields when supplied and retain the billing permission", () => {
     const code = source("src/lib/addons.functions.ts");
     expect(code).toContain("durationMin: z.number().int().min(0).max(480).optional()");
-    expect(code).toContain("serviceLine: z.enum(SERVICE_LINES).nullable().optional()");
+    // Not nullable since #640: an add-on names its line.
+    expect(code).toContain("serviceLine: z.enum(SERVICE_LINES).optional()");
     expect(code).toContain(
       "if (data.durationMin !== undefined) payload.duration_min = data.durationMin",
     );

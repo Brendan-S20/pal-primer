@@ -43,7 +43,8 @@ export const upsertAddonService = createServerFn({ method: "POST" })
         unit_price_cents: z.number().int().min(0),
         default_frequency: z.enum(FREQ).optional().nullable(),
         durationMin: z.number().int().min(0).max(480).optional(),
-        serviceLine: z.enum(SERVICE_LINES).nullable().optional(),
+        // Every add-on names its line (#640); there is no "any service".
+        serviceLine: z.enum(SERVICE_LINES).optional(),
         taxable: z.boolean().optional(),
         active: z.boolean().optional(),
       })

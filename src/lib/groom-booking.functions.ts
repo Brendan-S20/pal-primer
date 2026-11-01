@@ -219,9 +219,9 @@ export const groomBookingOptions = createServerFn({ method: "GET" })
           })),
         };
       }),
-      addons: (addons.data ?? []).filter(
-        (a) => !a.service_line || a.service_line === "mobile_grooming",
-      ),
+      // An add-on with no line is not "any service" (#640): only the ones the
+      // business marked for grooming are offered on a groom.
+      addons: (addons.data ?? []).filter((a) => a.service_line === "mobile_grooming"),
       staff: (staff.data ?? []).filter((s) => s.is_field_tech),
     };
   });
