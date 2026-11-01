@@ -20,6 +20,7 @@ import {
   ONBOARDING_STEP_IDS,
   type OnboardingStep,
   type OnboardingStepId,
+  type PricePart,
 } from "@/lib/onboarding.functions";
 import { getOrgBranding, updateOrgBranding } from "@/lib/org.functions";
 import { countryFromAddress } from "@/lib/distance-unit";
@@ -148,12 +149,14 @@ function SetupPage() {
   };
 
   // A step's own form saved: refresh the list, then move on to the next step
-  // still open (not merely the next one, which may already be done).
+  // still open (not merely the next one, which may already be done). A step
+  // with parts is done when the server says every part is, never because one
+  // form on it saved.
   const saved = async () => {
     await qc.invalidateQueries({ queryKey: ["onboarding-status"] });
     const fresh = qc.getQueryData<typeof data>(["onboarding-status"]);
     const list = stepsFor(fresh?.steps ?? steps, role).map((s) =>
-      s.id === current.id ? { ...s, done: true } : s,
+      s.id === current.id && !s.parts ? { ...s, done: true } : s,
     );
     const next = nextOpenStep(list, current.id);
     if (next) goTo(next);
@@ -310,6 +313,7 @@ function StepPanel({ step, onSaved }: { step: OnboardingStep; onSaved: () => voi
 
 function PricingPanel({ step, onSaved }: { step: OnboardingStep; onSaved: () => void }) {
   const { lines } = useServiceLines();
+  if (step.parts) return <PricesPanel step={step} parts={step.parts} onSaved={onSaved} />;
   return lines.includes("mobile_grooming") ? (
     <Button asChild className="min-h-11">
       <Link to="/settings/services">Review grooming prices, vaccines and buffer</Link>
@@ -471,7 +475,7 @@ function BusinessPanel({ onSaved }: { onSaved: () => void }) {
         </select>
       </div>
       <Button type="submit" disabled={m.isPending} data-setup-action="save">
-        {m.isPending ? "Saving…" : "Save and continue"}
+        {m.isPending ? "Saving…" : saveLabel}
       </Button>
     </form>
   );
@@ -500,7 +504,97 @@ function TrainingPriceNote({ done }: { done: boolean }) {
   );
 }
 
-function ServiceAreaPanel({ step, onSaved }: { step: OnboardingStep; onSaved: () => void }) {
+/** For a business that runs more than one service line (#639): one row per
+ *  thing to price, each saying whether it is done and where to do it. The
+ *  service area, when the business has one to set, is the form below the
+ *  rows, the same one a one-line business gets. */
+function PricesPanel({
+  step,
+  parts,
+  onSaved,
+}: {
+  step: OnboardingStep;
+  parts: PricePart[];
+  onSaved: () => void;
+}) {
+  const area = parts.find((p) => p.id === "area");
+  const rest = parts.filter((p) => p.id !== "area");
+  const othersOpen = rest.some((p) => !p.done);
+  const qc = useQueryClient();
+  // Saving the area finishes one part, not the step. Refresh the parts and
+  // stay here while walks, stays, grooms or lessons are still open; move on
+  // only once the server says every part is done.
+  const areaSaved = async () => {
+    await qc.invalidateQueries({ queryKey: ["onboarding-status"] });
+    const fresh = qc.getQueryData<{ steps: OnboardingStep[] }>(["onboarding-status"]);
+    const now = fresh?.steps.find((s) => s.id === step.id);
+    if (now?.parts?.every((p) => p.done)) onSaved();
+  };
+  return (
+    <div className="space-y-4">
+      <ul className="divide-y rounded-md border" data-setup-price-parts>
+        {parts.map((part) => (
+          <li
+            key={part.id}
+            className="flex flex-wrap items-start justify-between gap-3 p-3"
+            data-setup-price-part={part.id}
+          >
+            <div className="flex min-w-0 flex-1 basis-60 items-start gap-2">
+              {part.done ? (
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
+              ) : (
+                <Circle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+              )}
+              <div className="min-w-0">
+                <p className="text-sm font-medium">
+                  {part.label}
+                  <span className="sr-only">{part.done ? ", done" : ", not done"}</span>
+                </p>
+                <p className="text-sm text-muted-foreground">{part.description}</p>
+              </div>
+            </div>
+            {part.id !== "area" && (
+              <Button
+                asChild
+                size="sm"
+                variant={part.done ? "outline" : "default"}
+                className="shrink-0"
+              >
+                <Link to={part.to}>{part.cta}</Link>
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {rest.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Each button opens Settings, Services. Come back here with the setup bar at the top of the
+          page.
+        </p>
+      )}
+      {area && (
+        <div className="space-y-3">
+          <h3 className="text-sm font-medium">{area.label}</h3>
+          <ServiceAreaPanel
+            step={{ ...step, done: area.done, training: undefined }}
+            onSaved={areaSaved}
+            saveLabel={othersOpen ? "Save area" : undefined}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ServiceAreaPanel({
+  step,
+  onSaved,
+  saveLabel = "Save and continue",
+}: {
+  step: OnboardingStep;
+  onSaved: () => void;
+  saveLabel?: string;
+}) {
   // A training business's step is done when the area AND the lesson price
   // are; the form below is about the area alone.
   const training = step.training;
@@ -669,7 +763,7 @@ function ServiceAreaPanel({ step, onSaved }: { step: OnboardingStep; onSaved: ()
         later.
       </p>
       <Button type="submit" disabled={m.isPending} data-setup-action="save">
-        {m.isPending ? "Saving…" : "Save and continue"}
+        {m.isPending ? "Saving…" : saveLabel}
       </Button>
     </form>
   );
@@ -901,7 +995,7 @@ function DumpSitePanel({ done, onSaved }: { done: boolean; onSaved: () => void }
         .
       </p>
       <Button type="submit" disabled={m.isPending} data-setup-action="save">
-        {m.isPending ? "Saving…" : "Save and continue"}
+        {m.isPending ? "Saving…" : saveLabel}
       </Button>
     </form>
   );
