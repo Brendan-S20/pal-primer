@@ -475,7 +475,7 @@ function BusinessPanel({ onSaved }: { onSaved: () => void }) {
         </select>
       </div>
       <Button type="submit" disabled={m.isPending} data-setup-action="save">
-        {m.isPending ? "Saving…" : saveLabel}
+        {m.isPending ? "Saving…" : "Save and continue"}
       </Button>
     </form>
   );
@@ -995,7 +995,7 @@ function DumpSitePanel({ done, onSaved }: { done: boolean; onSaved: () => void }
         .
       </p>
       <Button type="submit" disabled={m.isPending} data-setup-action="save">
-        {m.isPending ? "Saving…" : saveLabel}
+        {m.isPending ? "Saving…" : "Save and continue"}
       </Button>
     </form>
   );
