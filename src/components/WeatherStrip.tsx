@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { CloudRain, Loader2, Wind } from "lucide-react";
+import { notBeforeToday } from "@/lib/booking-dates";
+import { useOrgToday } from "@/hooks/useOrgToday";
 
 /** Does this forecast day carry PRECIPITATION risk — rain or snow — as
  *  opposed to some other kind of risk?
@@ -98,6 +100,8 @@ type Analysis = {
 };
 
 export function WeatherStrip({ day }: { day: string }) {
+  // A viewed day in the past does not make the past a place to move to (#654).
+  const today = useOrgToday();
   const qc = useQueryClient();
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState(() => nextDayISO(day));
@@ -202,7 +206,7 @@ export function WeatherStrip({ day }: { day: string }) {
               <Input
                 type="date"
                 value={rescheduleDate}
-                min={day}
+                min={notBeforeToday(day, today)}
                 onChange={(e) => setRescheduleDate(e.target.value)}
                 className="h-8 w-[150px]"
               />

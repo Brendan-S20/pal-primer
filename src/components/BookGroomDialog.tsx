@@ -46,6 +46,7 @@ import {
   type VaccineRule,
   type VaccineState,
 } from "@/lib/vaccines";
+import { notBeforeToday } from "@/lib/booking-dates";
 
 function money(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
@@ -101,7 +102,8 @@ export function BookGroomDialog({
         (prefill?.addons ?? []).map((a) => [a.addonServiceId, String(a.quantity)]),
       ),
     );
-    setScheduledOn(prefill?.scheduledOn ?? today);
+    // A prefill from a past request opens on today, not on a refused day (#654).
+    setScheduledOn(notBeforeToday(prefill?.scheduledOn, today));
     setStartTime(prefill?.startTime ?? "");
     setEveryWeeks("");
     setStaffId("");

@@ -17,6 +17,7 @@
 import type { TFunction } from "i18next";
 import { formatClock } from "@/lib/format";
 import { orgLocalTime } from "@/lib/org-day";
+import { visitEta } from "@/lib/visit-eta";
 
 /** The content state, as RouteActivityAttributes.ContentState decodes it. */
 export type RouteActivityState = {
@@ -58,6 +59,10 @@ export type RouteActivityState = {
 export type RouteActivityVisit = {
   id: string;
   status: string;
+  scheduled_on?: string | null;
+  /** A booked appointment's start (`time`); beats the ETA (#654). */
+  start_time?: string | null;
+  duration_min?: number | null;
   eta_start?: string | null;
   eta_end?: string | null;
   properties?: {
@@ -133,9 +138,10 @@ export function stopDestination(
 export function stopWindow(v: RouteActivityVisit | undefined, ctx: RouteActivityContext): string | null {
   if (!v) return null;
   const t = ctx.t as (key: string, opts?: Record<string, unknown>) => string;
-  if (v.eta_start) {
-    const start = orgLocalTime(v.eta_start, ctx.tz, ctx.locale);
-    const end = v.eta_end ? orgLocalTime(v.eta_end, ctx.tz, ctx.locale) : "";
+  const eta = visitEta(v, ctx.tz);
+  if (eta.start) {
+    const start = orgLocalTime(eta.start, ctx.tz, ctx.locale);
+    const end = eta.end ? orgLocalTime(eta.end, ctx.tz, ctx.locale) : "";
     if (start && end) return t("liveActivity.window", { start, end });
     if (start) return start;
   }

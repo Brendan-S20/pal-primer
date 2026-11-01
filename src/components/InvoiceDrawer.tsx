@@ -51,7 +51,7 @@ import { reportQueuedSend } from "@/lib/send-report";
 export { isInvoiceOverdue } from "@/lib/overdue";
 import { isInvoiceOverdue } from "@/lib/overdue";
 import { invoiceDueCents, isPartiallyPaid } from "@/lib/ar";
-import { useOrgToday } from "@/hooks/useOrgToday";
+import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
 import { appUrl } from "@/lib/app-origin";
 
 function fmtCents(c: number | null | undefined, currency = "usd") {
@@ -186,6 +186,8 @@ export function InvoiceDrawer({
   const open = inv?.status === "open";
   // The org's today — see src/hooks/useOrgToday.ts.
   const today = useOrgToday();
+  // Payment and send times on the business's clock, not the device's (#654).
+  const tz = useOrgTimezone();
   const overdue = inv ? isInvoiceOverdue(inv.status, inv.due_on, today) : false;
   // Grace window (full auto billing): auto-generated invoice, not yet emailed.
   const inGrace = open && !inv?.sent_at && !!inv?.send_after;
@@ -262,7 +264,7 @@ export function InvoiceDrawer({
               <span className="text-xs text-muted-foreground">
                 {inv.period_start
                   ? `${formatDay(inv.period_start)} to ${formatDay(inv.period_end)}`
-                  : formatDateTime(inv.created_at)}
+                  : formatDateTime(inv.created_at, tz)}
               </span>
               {inv.due_on && inv.status !== "paid" && inv.status !== "void" && (
                 <span
@@ -272,12 +274,14 @@ export function InvoiceDrawer({
                 </span>
               )}
               {inv.status === "paid" && inv.paid_at && (
-                <span className="text-xs text-muted-foreground">Paid {formatDay(inv.paid_at)}</span>
+                <span className="text-xs text-muted-foreground">
+                  Paid {formatDay(inv.paid_at, undefined, tz)}
+                </span>
               )}
               {inGrace && !!inv.send_after && inv.send_after > today && (
                 <MetaChip>Scheduled to send {formatDay(inv.send_after)}</MetaChip>
               )}
-              {inv.sent_at && <MetaChip>Sent {formatDay(inv.sent_at)}</MetaChip>}
+              {inv.sent_at && <MetaChip>Sent {formatDay(inv.sent_at, undefined, tz)}</MetaChip>}
               {/* sent_at is the provider's acceptance (#612), so an open
                   invoice without it has not reached anyone, unless it is
                   still held for a send date that has not come. Copy pay link
@@ -449,7 +453,7 @@ export function InvoiceDrawer({
                     <li key={p.id} className="py-1.5">
                       <div className="flex items-center justify-between gap-2">
                         <span className="min-w-0 text-muted-foreground">
-                          {formatDateTime(p.paid_at ?? p.created_at)}
+                          {formatDateTime(p.paid_at ?? p.created_at, tz)}
                           {describeManualPayment(p.method, p.reference) && (
                             <span className="block truncate text-2xs">
                               {describeManualPayment(p.method, p.reference)}

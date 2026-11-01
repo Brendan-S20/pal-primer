@@ -12,6 +12,7 @@ import { skipReasonText } from "@/lib/skip-reason-text";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
 import { orgLocalTime } from "@/lib/org-day";
+import { visitEta } from "@/lib/visit-eta";
 import { formatDistance } from "@/lib/measures";
 import { useDistanceUnit } from "@/hooks/useDistanceUnit";
 import { supabase } from "@/integrations/supabase/client";
@@ -78,6 +79,8 @@ import { BUSINESS_REASONS } from "@/lib/training-packages";
 import { useServiceLines } from "@/components/CommercialOnly";
 import { isYardVisit } from "@/lib/walk-concerns";
 import { canOfficeComplete } from "@/lib/visit-lifecycle";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { earlyCompleteConfirm, isFutureVisit } from "@/lib/booking-dates";
 
 const MISSED_REASON_LABELS: Record<(typeof BUSINESS_REASONS)[number], string> = {
   our_fault: "Our fault",
@@ -197,6 +200,7 @@ export function VisitDetailDrawer({
   });
   const doReschedule = useServerFn(rescheduleVisitFromOffice);
   const orgToday = useOrgToday();
+  const { confirm: confirmEarly, dialog: earlyDialog } = useConfirmDialog();
   const [moveTo, setMoveTo] = useState("");
   useEffect(() => setMoveTo(""), [visitId]);
   const rescheduleMut = useMutation({
@@ -335,7 +339,8 @@ export function VisitDetailDrawer({
   });
 
   const completeMut = useMutation({
-    mutationFn: () => doComplete({ data: { visitId: visitId! } }),
+    mutationFn: (confirmedEarly: boolean) =>
+      doComplete({ data: { visitId: visitId!, confirmedEarly } }),
     onSuccess: () => {
       toast.success("Visit completed");
       invalidate();
@@ -396,6 +401,7 @@ export function VisitDetailDrawer({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
+      {earlyDialog}
       {/* Safe area, top and bottom. Measured on an iPhone 17 Pro 2026-08-25:
           Close occupied y 8-52 and the title y 24-52 against a 54pt status
           bar, so the clock printed through the client name and the battery
@@ -559,9 +565,14 @@ export function VisitDetailDrawer({
             )}
             {v?.id && <LessonSessionUse visit={v} />}
 
-            {(v.eta_start || v.travel_min != null) && (
+            {(visitEta(v, tz).start || v.travel_min != null) && (
               <section className="rounded-md border p-2 text-xs">
-                {v.eta_start && <div>ETA {orgLocalTime(v.eta_start, tz)}</div>}
+                {visitEta(v, tz).start && (
+                  <div>
+                    ETA {orgLocalTime(visitEta(v, tz).start, tz)}
+                    {visitEta(v, tz).end ? `–${orgLocalTime(visitEta(v, tz).end, tz)}` : ""}
+                  </div>
+                )}
                 {v.travel_km != null && (
                   <div>
                     Drive {formatDistance(v.travel_km, distanceUnit)} ·{" "}
@@ -742,7 +753,16 @@ export function VisitDetailDrawer({
                             the drawer on every touch device. */}
                         <Button
                           size="sm"
-                          onClick={() => completeMut.mutate()}
+                          onClick={async () => {
+                            // A visit on a later day takes a confirm (#654).
+                            const early = isFutureVisit(v.scheduled_on, orgToday);
+                            if (
+                              early &&
+                              !(await confirmEarly(earlyCompleteConfirm(formatDay(v.scheduled_on))))
+                            )
+                              return;
+                            completeMut.mutate(early);
+                          }}
                           disabled={completeMut.isPending}
                           className="touch:min-h-11"
                         >

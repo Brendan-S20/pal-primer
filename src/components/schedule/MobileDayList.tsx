@@ -18,6 +18,7 @@ import { useMemo } from "react";
 import { ChevronRight, CloudRain } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { orgLocalTime } from "@/lib/org-day";
+import { visitEta } from "@/lib/visit-eta";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
 import { visitStayDates } from "@/lib/stays";
 import { skipReasonText } from "@/lib/skip-reason-text";
@@ -42,9 +43,10 @@ function fmtWindowTime(hhmm: string): string {
  *  on the ORG's clock; the windows below are `time` columns — wall clock with
  *  no zone — and stay as they are. */
 function timeLabel(v: Visit, tz: string): string | null {
-  if (v?.eta_start) {
-    const start = orgLocalTime(v.eta_start, tz);
-    const end = v?.eta_end ? orgLocalTime(v.eta_end, tz) : "";
+  const eta = visitEta(v, tz);
+  if (eta.start) {
+    const start = orgLocalTime(eta.start, tz);
+    const end = eta.end ? orgLocalTime(eta.end, tz) : "";
     if (start) return end ? `ETA ${start}–${end}` : `ETA ${start}`;
   }
   const sub = v?.subscriptions;

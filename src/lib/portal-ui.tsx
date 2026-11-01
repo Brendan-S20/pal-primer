@@ -3,7 +3,7 @@
  * React Query caches by key so switching tabs is instant. */
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { DEFAULT_ORG_TIMEZONE, orgLocalTime } from "@/lib/org-day";
+import { DEFAULT_ORG_TIMEZONE, orgLocalTime, orgToday } from "@/lib/org-day";
 import { cadenceLabel, frequencyLabel } from "@/lib/frequency-request";
 import { stationDisplayName } from "@/lib/dna-linkage";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -88,6 +88,7 @@ import {
   portalRequestVacationHold,
   portalRedeemPromo,
 } from "@/lib/portal.functions";
+import { shiftDay } from "@/lib/booking-dates";
 
 /* ────────────────────────── formatting helpers ───────────────────────── */
 
@@ -1103,8 +1104,12 @@ function VisitRow({
   const [skipOpen, setSkipOpen] = useState(false);
   const [reschedOpen, setReschedOpen] = useState(false);
   const [reason, setReason] = useState("");
-  const minDate = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-  const maxDate = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
+  // Tomorrow on the BUSINESS's calendar, which is what portal_reschedule_visit
+  // refuses against. The device's UTC day offered a day the server then
+  // refused, every evening west of Greenwich (#654).
+  const orgDay = orgToday(tz);
+  const minDate = shiftDay(orgDay, 1);
+  const maxDate = shiftDay(orgDay, 60);
   const [newDate, setNewDate] = useState(minDate);
 
   // The deadline is the server's. It used to be derived here — the visit date
@@ -1135,8 +1140,8 @@ function VisitRow({
           <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-2">
             {v.eta_start && (
               <span className="inline-flex items-center gap-1">
-                <Clock className="h-3 w-3 shrink-0" /> arriving {orgLocalTime(v.eta_start, tz)}–
-                {orgLocalTime(v.eta_end, tz)}
+                <Clock className="h-3 w-3 shrink-0" /> arriving {orgLocalTime(v.eta_start, tz)}
+                {v.eta_end ? `–${orgLocalTime(v.eta_end, tz)}` : ""}
               </span>
             )}
             {/* A walk not routed yet shows its plan's window (#410). */}
@@ -1369,7 +1374,8 @@ export function VacationHoldCard({
   pending: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const min = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  // Tomorrow on the business's calendar, as the reschedule picker above.
+  const min = shiftDay(orgToday(usePortalTimezone()), 1);
   const [start, setStart] = useState(min);
   const [end, setEnd] = useState(min);
   const [reason, setReason] = useState("");

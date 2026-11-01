@@ -19,7 +19,7 @@ import { RowActions, type RowAction } from "@/components/RowActions";
 import { MetaChip, StatusChip } from "@/components/client-detail/primitives";
 import { invoiceDueCents, isPartiallyPaid } from "@/lib/ar";
 import { isInvoiceOverdue } from "@/lib/overdue";
-import { useOrgToday } from "@/hooks/useOrgToday";
+import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
 import { formatDay } from "@/lib/format";
 import { invoiceKindLabel, invoiceNumberLabel } from "@/lib/invoice-labels";
 import { appUrl } from "@/lib/app-origin";
@@ -161,6 +161,7 @@ export function InvoiceRow({
   // the real setting, so the two disagreed about the same invoice for an hour
   // a night on any org east of Central.
   const today = useOrgToday();
+  const tz = useOrgTimezone();
   const overdue = isInvoiceOverdue(invoice.status, invoice.due_on, today);
   // Only the non-default kind (a prepaid top-up) is worth a chip; a plain
   // "Service" invoice needs no label. Either way the enum is never shown raw.
@@ -267,7 +268,7 @@ export function InvoiceRow({
           )}
           {invoice.sent_at && (
             <MetaChip className="whitespace-nowrap max-xl:hidden">
-              Sent {formatDay(invoice.sent_at)}
+              Sent {formatDay(invoice.sent_at, undefined, tz)}
             </MetaChip>
           )}
         </span>
@@ -310,6 +311,7 @@ export function InvoiceCard({
   // the real setting, so the two disagreed about the same invoice for an hour
   // a night on any org east of Central.
   const today = useOrgToday();
+  const tz = useOrgTimezone();
   const overdue = isInvoiceOverdue(invoice.status, invoice.due_on, today);
   const showKind = invoice.kind === "prepaid_topup";
   const menuActions = useInvoiceMenuActions(invoice, actions);
@@ -387,7 +389,9 @@ export function InvoiceCard({
             {invoice.status === "open" && !invoice.sent_at && invoice.send_after && (
               <MetaChip>Scheduled to send {formatDay(invoice.send_after)}</MetaChip>
             )}
-            {invoice.sent_at && <MetaChip>Sent {formatDay(invoice.sent_at)}</MetaChip>}
+            {invoice.sent_at && (
+              <MetaChip>Sent {formatDay(invoice.sent_at, undefined, tz)}</MetaChip>
+            )}
           </div>
         </div>
         <RowActions

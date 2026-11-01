@@ -20,6 +20,7 @@ import { formatDateTime } from "@/lib/format";
 import { importStatusLabel } from "@/lib/import-status";
 import { titleHead } from "@/lib/page-title";
 import { useServiceLines } from "@/components/CommercialOnly";
+import { useOrgTimezone } from "@/hooks/useOrgToday";
 
 export const Route = createFileRoute("/_authenticated/imports/")({
   head: () => titleHead("Import data"),
@@ -187,6 +188,8 @@ function ImportStatusBadge({ status }: { status: string }) {
 }
 
 function ImportsPage() {
+  // The business's clock, like every other time on a staff screen (#654).
+  const tz = useOrgTimezone();
   const listFn = useServerFn(listImportBatches);
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["import-batches"],
@@ -230,7 +233,7 @@ function ImportsPage() {
                 {data.batches.map((b: any) => (
                   <tr key={b.id} className="border-t">
                     <td className="px-4 py-3 text-muted-foreground">
-                      {formatDateTime(b.created_at)}
+                      {formatDateTime(b.created_at, tz)}
                     </td>
                     <td className="px-4 py-3">{SOURCE_LABELS[b.source] ?? b.source}</td>
                     <td className="px-4 py-3 text-muted-foreground">{b.filename ?? "-"}</td>

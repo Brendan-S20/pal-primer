@@ -3,7 +3,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import type { PortalSession } from "@/lib/portal-auth.server";
 import { liveServiceOrFilter } from "@/lib/subscription-form";
-import { orgToday } from "@/lib/org-day";
+import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
+import { visitEta } from "@/lib/visit-eta";
 import { appUrl } from "@/lib/app-origin";
 import { platformFeeCents } from "@/lib/platform-fee";
 import { taxShareCents } from "@/lib/sales-tax";
@@ -316,13 +317,65 @@ export const portalListUpcomingVisits = createServerFn({ method: "GET" })
     return loadPortalUpcomingVisits(data.token, session);
   });
 
-async function loadPortalUpcomingVisits(token: string, _session: PortalSession) {
+async function loadPortalUpcomingVisits(token: string, session: PortalSession) {
   const sb = await admin();
   const { data: rows, error } = await sb.rpc("portal_list_upcoming_visits", {
     _token: token,
   });
   if (error) throw new Error(error.message);
-  return rows ?? [];
+  const list = rows ?? [];
+  // A booked appointment (a groom at 09:00) shows its booked window, not the
+  // route planner's estimate, which does not read start_time (#654, F-13).
+  // Read here rather than by changing the RPC's return type: same rows, same
+  // client, two more columns.
+  const ids = list.map((r) => r.visit_id).filter(Boolean);
+  if (ids.length === 0) return list;
+  // Best effort: a failed read leaves the planner's ETA, never an empty list.
+  try {
+    const [{ data: booked }, { data: org }] = await Promise.all([
+      sb
+        .from("visits")
+        .select("id, scheduled_on, start_time, duration_min")
+        .in("id", ids)
+        .eq("client_id", session.clientId)
+        .not("start_time", "is", null),
+      sb.from("organizations").select("timezone").eq("id", session.organizationId).maybeSingle(),
+    ]);
+    return withBookedEta(list, booked ?? [], org?.timezone ?? null);
+  } catch {
+    return list;
+  }
+}
+
+/** Exported for the test. Replaces eta_start / eta_end with the booked window
+ *  for every row that has a booked start; every other row is returned as is. */
+export function withBookedEta<
+  R extends {
+    visit_id: string;
+    scheduled_on: string;
+    eta_start: string | null;
+    eta_end: string | null;
+  },
+>(
+  rows: R[],
+  booked: Array<{
+    id: string;
+    scheduled_on: string;
+    start_time: string | null;
+    duration_min: number | null;
+  }>,
+  tz: string | null,
+): R[] {
+  const byId = new Map(booked.map((b) => [b.id, b]));
+  return rows.map((r) => {
+    const b = byId.get(r.visit_id);
+    if (!b) return r;
+    const eta = visitEta(
+      { ...b, eta_start: r.eta_start, eta_end: r.eta_end },
+      tz || DEFAULT_ORG_TIMEZONE,
+    );
+    return eta.booked ? { ...r, eta_start: eta.start, eta_end: eta.end } : r;
+  });
 }
 
 export const portalListInvoices = createServerFn({ method: "GET" })
@@ -359,6 +412,15 @@ async function loadPortalInvoices(token: string, session: PortalSession) {
   // summary with the same shared helper the staff surfaces use.
   const { isInvoiceOverdue, summarizeOpenInvoices } = await import("@/lib/overdue");
   const { invoiceOutstandingCents } = await import("@/lib/ar");
+  // The business's today. Without it both calls below used the Chicago
+  // default, so an org on Eastern or Pacific time read overdue on a different
+  // day here than on its own dashboard (#654, R2-40).
+  const { data: tzRow } = await sb
+    .from("organizations")
+    .select("timezone")
+    .eq("id", session.organizationId)
+    .maybeSingle();
+  const today = orgToday(tzRow?.timezone || DEFAULT_ORG_TIMEZONE);
   const { data: dueRows, error: dueErr } = await sb
     .from("invoices")
     // tax_*: the sales tax inside total_cents, drawn as "includes $X sales
@@ -417,10 +479,10 @@ async function loadPortalInvoices(token: string, session: PortalSession) {
         credit_applied_cents,
         amount_paid_cents,
       }),
-      overdue: isInvoiceOverdue(r.status, due_on),
+      overdue: isInvoiceOverdue(r.status, due_on, today),
     };
   });
-  const summary = summarizeOpenInvoices(invoices);
+  const summary = summarizeOpenInvoices(invoices, today);
   return {
     invoices,
     openCount: summary.openCount,

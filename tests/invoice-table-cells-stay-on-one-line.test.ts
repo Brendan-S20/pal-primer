@@ -90,7 +90,7 @@ describe("the invoice row keeps its number, period and due date on one line", ()
 
     it("the sent chip stays hidden below xl with no stand-in", () => {
       expect(row).toMatch(
-        /<MetaChip className="[^"]*\bmax-xl:hidden\b[^"]*">\s*Sent \{formatDay\(invoice\.sent_at\)\}/,
+        /<MetaChip className="[^"]*\bmax-xl:hidden\b[^"]*">\s*Sent \{formatDay\(invoice\.sent_at, undefined, tz\)\}/,
       );
       expect(row.match(/<Clock\b/g)).toHaveLength(1);
     });

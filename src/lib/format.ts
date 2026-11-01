@@ -10,17 +10,24 @@ export function formatPhone(raw: string | null | undefined): string {
   return `(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}`;
 }
 
-/** "Mon, Jul 20" (adds the year when it isn't the current one). */
-export function formatDay(iso: string | null | undefined, locale?: string): string {
+/** "Mon, Jul 20" (adds the year when it isn't the current one).
+ *
+ *  `tz` matters only for an INSTANT (paid_at, sent_at): it picks the day on
+ *  the business's calendar instead of the device's, so a payment taken at
+ *  8 PM in Chicago does not read as the next day on a phone in New York
+ *  (#654, R2-22). A DATE-only string is a calendar day already and ignores it. */
+export function formatDay(iso: string | null | undefined, locale?: string, tz?: string): string {
   if (!iso) return "";
   // Date-only strings are parsed as UTC by Date; anchor to noon local so the
   // rendered weekday can't slip a day in western timezones.
-  const d = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T12:00:00`) : new Date(iso);
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(iso);
+  const d = dateOnly ? new Date(`${iso}T12:00:00`) : new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   const sameYear = d.getFullYear() === new Date().getFullYear();
   // `locale` is the interface language's (lib/i18n `intlLocaleFor`); without
   // one this is the device's, as it always was.
   return d.toLocaleDateString(locale ?? [], {
+    ...(tz && !dateOnly ? { timeZone: tz } : {}),
     weekday: "short",
     month: "short",
     day: "numeric",

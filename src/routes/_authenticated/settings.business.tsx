@@ -19,7 +19,8 @@ import { getMyOrg } from "@/lib/org.functions";
 import { CountryCard } from "@/components/settings/CountryCard";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { getDispatchSettings, updateDispatchSettings } from "@/lib/visits.functions";
-import { US_TIMEZONES, DEFAULT_TIMEZONE } from "@/lib/route-window";
+import { DEFAULT_TIMEZONE } from "@/lib/route-window";
+import { timezoneOptions } from "@/lib/org-timezone";
 import {
   getMyOrgFeatures,
   setCommercialAccounts,
@@ -138,7 +139,7 @@ function TimeZoneCard() {
           onChange={(e) => m.mutate(e.target.value)}
           className="mt-1 h-10 w-full max-w-sm rounded-md border bg-background px-3 text-sm disabled:opacity-60"
         >
-          {US_TIMEZONES.map((tz) => (
+          {timezoneOptions(current ?? DEFAULT_TIMEZONE).map((tz) => (
             <option key={tz.value} value={tz.value}>
               {tz.label}
             </option>

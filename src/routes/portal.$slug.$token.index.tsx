@@ -58,8 +58,8 @@ function PortalHome() {
             <div className="mt-1 text-sm text-muted-foreground flex flex-wrap gap-x-3">
               {nextVisit.eta_start && (
                 <span>
-                  Arriving {orgLocalTime(nextVisit.eta_start, tz)}–
-                  {orgLocalTime(nextVisit.eta_end, tz)}
+                  Arriving {orgLocalTime(nextVisit.eta_start, tz)}
+                  {nextVisit.eta_end ? `–${orgLocalTime(nextVisit.eta_end, tz)}` : ""}
                 </span>
               )}
               {relativeFromToday(nextVisit.scheduled_on) && (

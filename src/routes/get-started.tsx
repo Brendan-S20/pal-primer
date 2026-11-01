@@ -26,6 +26,7 @@ import { SMS_CONSENT_TEXT, SmsOptInFields, SmsOptInHeading } from "@/components/
 import { APP_NAME } from "@/lib/scoop";
 import { isValidOrgName } from "@/lib/dna-linkage";
 import { pageTitle } from "@/lib/page-title";
+import { deviceTimezone } from "@/lib/org-timezone";
 import { handOffSignupEmail, takeSignupEmail } from "@/lib/signup-email";
 
 // The Get-started walkthrough (Brendan's re-review): account creation is a
@@ -299,6 +300,9 @@ function NewBusinessPage() {
           refCode: attribution.ref,
           utm: attribution.utm,
           promoCode: promoCode.trim() || undefined,
+          // The phone's or browser's zone. Without it the org kept the
+          // column default, Central, on every signup (#654).
+          timezone: deviceTimezone(),
         },
       });
       clearSignupAttribution();

@@ -2,7 +2,7 @@
 // autopay recovery, add-on services, and the inline prepay control. Moved
 // verbatim from the route file during the client-detail refactor (Stage 2).
 import { useState } from "react";
-import { useOrgToday } from "@/hooks/useOrgToday";
+import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -106,6 +106,8 @@ export function BillingPanel({ clientId }: { clientId: string }) {
   // tomorrow from early evening on — an invoice generated at 7pm quietly
   // included a visit that had not happened yet.
   const orgToday = useOrgToday();
+  // Payment rows on the business's calendar, not the device's (#654).
+  const tz = useOrgTimezone();
   const genMut = useMutation({
     mutationFn: () => {
       return genFn({ data: { clientId, through: orgToday } });
@@ -267,7 +269,7 @@ export function BillingPanel({ clientId }: { clientId: string }) {
               <li key={p.id} className="flex items-center justify-between py-2">
                 <span>
                   <span className="text-muted-foreground">
-                    {formatDay(p.paid_at ?? p.created_at)}
+                    {formatDay(p.paid_at ?? p.created_at, undefined, tz)}
                   </span>
                   {p.invoice_id && (
                     <Link

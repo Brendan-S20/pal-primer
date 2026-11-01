@@ -27,6 +27,7 @@ import {
 } from "@/lib/groom-pets";
 import type { VaccineRecord, VaccineRule } from "@/lib/vaccines";
 import { stampVisitAccess } from "@/lib/property-access";
+import { visitEta } from "@/lib/visit-eta";
 
 export const getMyDay = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -1088,14 +1089,15 @@ export const getMyUpcomingDays = createServerFn({ method: "GET" })
       .eq("id", staffRow.organization_id)
       .maybeSingle();
     const { DEFAULT_TIMEZONE } = await import("@/lib/route-window");
-    const today = orgToday(org?.timezone || DEFAULT_TIMEZONE);
+    const tz = org?.timezone || DEFAULT_TIMEZONE;
+    const today = orgToday(tz);
     const until = new Date(`${today}T00:00:00Z`);
     until.setUTCDate(until.getUTCDate() + horizon - 1);
     const lastDay = until.toISOString().slice(0, 10);
 
     const { data: visits, error } = await supabase
       .from("visits")
-      .select("scheduled_on, status, eta_start, eta_end, zones(name)")
+      .select("scheduled_on, status, start_time, duration_min, eta_start, eta_end, zones(name)")
       .eq("assigned_staff_id", staffRow.id)
       .gte("scheduled_on", today)
       .lte("scheduled_on", lastDay)
@@ -1119,8 +1121,13 @@ export const getMyUpcomingDays = createServerFn({ method: "GET" })
       if (zone && !day.zones.includes(zone)) day.zones.push(zone);
       // Bare clock strings are not comparable across days, and eta_* are
       // timestamptz — compare the instants, keep the ISO string.
-      if (v.eta_start && (!day.firstEta || v.eta_start < day.firstEta)) day.firstEta = v.eta_start;
-      if (v.eta_end && (!day.lastEta || v.eta_end > day.lastEta)) day.lastEta = v.eta_end;
+      // A booked start (a groom) is the time, not the planner's guess (#654).
+      // Compared as instants: visitEta's ISO form and Postgres's differ as text.
+      const eta = visitEta(v, tz);
+      const at = (x: string | null) => (x ? Date.parse(x) : NaN);
+      if (eta.start && (!day.firstEta || at(eta.start) < at(day.firstEta)))
+        day.firstEta = eta.start;
+      if (eta.end && (!day.lastEta || at(eta.end) > at(day.lastEta))) day.lastEta = eta.end;
     }
 
     return {
