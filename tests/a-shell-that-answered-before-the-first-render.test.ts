@@ -52,7 +52,7 @@ vi.mock("@/lib/account-lock.functions", () => ({
   getAccountLock: async () => ({ locked: false }),
 }));
 vi.mock("@/lib/offline/identity", () => ({
-  resolveIdentity: async () => ({ ok: true, userId: "u-1", user: { id: "u-1" } }),
+  resolveIdentity: async () => ({ ok: true, userId: "u-1", user: { id: "u-1" }, verified: true }),
 }));
 vi.mock("@/lib/mfa", () => ({ needsSecondStep: async () => false }));
 vi.mock("@/lib/offline/read-cache", () => ({
@@ -68,11 +68,7 @@ vi.mock("@/lib/monitoring/client", () => ({
 import { isRedirect } from "@tanstack/react-router";
 import { QueryClient } from "@tanstack/react-query";
 import { Route } from "@/routes/_authenticated/route";
-import {
-  markAppMounted,
-  resetAppMountedForTests,
-  settleAfterFirstCommit,
-} from "@/lib/app-mounted";
+import { markAppMounted, resetAppMountedForTests, settleAfterFirstCommit } from "@/lib/app-mounted";
 
 /** Let every queued microtask and timer run, so "has not settled" means it
  *  is waiting on something, not that it has not had its turn yet. */

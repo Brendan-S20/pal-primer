@@ -1,4 +1,5 @@
 import { CONNECTIVITY_CHANGE } from "./connectivity";
+import { API_RETURNED } from "./api-recovery";
 
 // When My Day replays the queue on its own, without being asked.
 //
@@ -78,9 +79,14 @@ export function startAutoSync(
   };
   target.addEventListener(CONNECTIVITY_CHANGE, onConnectivity);
 
+  // The API came back while the device stayed online (#622). No `online`
+  // event and no connectivity change marks that, so api-recovery.ts says it.
+  target.addEventListener(API_RETURNED, onOnline);
+
   return () => {
     target.clearTimeout(timer);
     target.removeEventListener("online", onOnline);
     target.removeEventListener(CONNECTIVITY_CHANGE, onConnectivity);
+    target.removeEventListener(API_RETURNED, onOnline);
   };
 }

@@ -83,11 +83,11 @@ async function lookupLandingPath(userId: string): Promise<string> {
 // `navigate()` was never reached and the sign-in form stayed up. Same shape as
 // the bug in lib/offline/action-owner.ts: code only ever reached when offline,
 // quietly depending on being online.
-async function landingPathForUser(userId: string): Promise<string> {
+async function landingPathForUser(userId: string, reachable = true): Promise<string> {
   if (!IS_NATIVE_BUNDLE) return lookupLandingPath(userId);
 
   const remembered = readLandingPath();
-  if (isDefinitelyOffline()) return remembered ?? "/dashboard";
+  if (isDefinitelyOffline() || !reachable) return remembered ?? "/dashboard";
   try {
     const path = await withDeadline(lookupLandingPath(userId), LANDING_DEADLINE_MS, "landing path");
     rememberLandingPath(path);
@@ -215,8 +215,14 @@ function AuthPage() {
       // Bootstrap is a write and needs a live user object and a network; both
       // are absent on the offline path, and skipping it is right there — an
       // existing org has nothing to bootstrap.
+      //
+      // Also skipped when the identity came from the device (#622): the
+      // network is up but the API did not answer. Every lookup in there would
+      // fail, and a failed "does this person have a role?" reads as "no",
+      // which sent a tech to the name-your-business screen, or left this form
+      // up while a request hung.
       let isNewOrg: boolean | typeof NEEDS_ORG_NAME = false;
-      if (identity.user && !isDefinitelyOffline()) {
+      if (identity.user && identity.verified && !isDefinitelyOffline()) {
         try {
           isNewOrg = await ensureBootstrapped(identity.user as any, { requireOrgName: true });
           if (isNewOrg === true) forgetWorkspaceCache();
@@ -231,7 +237,7 @@ function AuthPage() {
       if (cancelled) return;
       if (isNewOrg === NEEDS_ORG_NAME) return navigate({ to: "/no-workspace" });
       if (isNewOrg) return navigate({ to: "/onboarding" });
-      const to = await landingPathForUser(identity.userId);
+      const to = await landingPathForUser(identity.userId, identity.verified);
       if (!cancelled) land(to);
     })();
     return () => {
