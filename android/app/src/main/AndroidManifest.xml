@@ -68,6 +68,7 @@
                 <data android:pathPrefix="/imports" />
                 <data android:pathPrefix="/inbox" />
                 <data android:pathPrefix="/inventory" />
+                <data android:pathPrefix="/invite" />
                 <data android:pathPrefix="/invoices" />
                 <data android:pathPrefix="/leads" />
                 <data android:pathPrefix="/messages" />

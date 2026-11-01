@@ -307,6 +307,10 @@ function RootComponent() {
   // Android App Links in the same effect, for the same reason: a tapped
   // https://app.houndstack.com/<staff page> link arrives here whether or not
   // anyone is signed in, and the _authenticated guard takes it from there.
+  //
+  // Not pushed on arrival: on a cold start it is held until the router has
+  // settled and /auth knows who is signed in, or it loses to the launch's own
+  // redirect to the role landing (#621). See lib/pending-deep-link.ts.
   useEffect(() => {
     let removed = false;
     const removers: Array<() => void> = [];
@@ -317,7 +321,32 @@ function RootComponent() {
     import("../lib/native")
       .then(async (m) => {
         keep(await m.initBackButton());
-        keep(await m.initAppLinks((path) => router.history.push(path)));
+        const { routeDeepLink, forgetDeepLink } = await import("../lib/pending-deep-link");
+        if (IS_NATIVE_BUNDLE) {
+          // A held link is the tapper's, not the next account's.
+          const { supabase } = await import("../integrations/supabase/client");
+          const { data: auth } = supabase.auth.onAuthStateChange((event) => {
+            if (event === "SIGNED_OUT") forgetDeepLink();
+          });
+          keep(() => auth.subscription.unsubscribe());
+        }
+        const idle = () =>
+          new Promise<void>((resolve) => {
+            if (router.state.status === "idle") return resolve();
+            const off = router.subscribe("onResolved", () => {
+              off();
+              resolve();
+            });
+          });
+        keep(
+          await m.initAppLinks((path) => {
+            void routeDeepLink(path, {
+              pathname: () => router.state.location.pathname,
+              idle,
+              push: (to) => router.history.push(to),
+            });
+          }),
+        );
       })
       .catch(() => {});
     return () => {

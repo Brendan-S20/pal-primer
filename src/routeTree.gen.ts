@@ -87,6 +87,7 @@ import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 import { Route as AuthenticatedAiToolsRouteImport } from './routes/_authenticated/ai-tools'
 import { Route as DotwellKnownAssetlinksDotjsonRouteImport } from './routes/[.]well-known.assetlinks[.]json'
+import { Route as DotwellKnownAppleAppSiteAssociationRouteImport } from './routes/[.]well-known.apple-app-site-association'
 import { Route as PortalSlugIndexRouteImport } from './routes/portal.$slug.index'
 import { Route as PlatformTenantsIndexRouteImport } from './routes/platform.tenants.index'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings.index'
@@ -562,6 +563,12 @@ const DotwellKnownAssetlinksDotjsonRoute =
     path: '/.well-known/assetlinks.json',
     getParentRoute: () => rootRouteImport,
   } as any)
+const DotwellKnownAppleAppSiteAssociationRoute =
+  DotwellKnownAppleAppSiteAssociationRouteImport.update({
+    id: '/.well-known/apple-app-site-association',
+    path: '/.well-known/apple-app-site-association',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const PortalSlugIndexRoute = PortalSlugIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -1027,6 +1034,7 @@ export interface FileRoutesByFullPath {
   '/sign-up': typeof SignUpRoute
   '/two-step': typeof TwoStepRoute
   '/unsubscribe': typeof UnsubscribeRoute
+  '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
   '/.well-known/assetlinks.json': typeof DotwellKnownAssetlinksDotjsonRoute
   '/ai-tools': typeof AuthenticatedAiToolsRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
@@ -1185,6 +1193,7 @@ export interface FileRoutesByTo {
   '/sign-up': typeof SignUpRoute
   '/two-step': typeof TwoStepRoute
   '/unsubscribe': typeof UnsubscribeRoute
+  '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
   '/.well-known/assetlinks.json': typeof DotwellKnownAssetlinksDotjsonRoute
   '/ai-tools': typeof AuthenticatedAiToolsRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
@@ -1338,6 +1347,7 @@ export interface FileRoutesById {
   '/sign-up': typeof SignUpRoute
   '/two-step': typeof TwoStepRoute
   '/unsubscribe': typeof UnsubscribeRoute
+  '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
   '/.well-known/assetlinks.json': typeof DotwellKnownAssetlinksDotjsonRoute
   '/_authenticated/ai-tools': typeof AuthenticatedAiToolsRoute
   '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
@@ -1499,6 +1509,7 @@ export interface FileRouteTypes {
     | '/sign-up'
     | '/two-step'
     | '/unsubscribe'
+    | '/.well-known/apple-app-site-association'
     | '/.well-known/assetlinks.json'
     | '/ai-tools'
     | '/analytics'
@@ -1657,6 +1668,7 @@ export interface FileRouteTypes {
     | '/sign-up'
     | '/two-step'
     | '/unsubscribe'
+    | '/.well-known/apple-app-site-association'
     | '/.well-known/assetlinks.json'
     | '/ai-tools'
     | '/analytics'
@@ -1809,6 +1821,7 @@ export interface FileRouteTypes {
     | '/sign-up'
     | '/two-step'
     | '/unsubscribe'
+    | '/.well-known/apple-app-site-association'
     | '/.well-known/assetlinks.json'
     | '/_authenticated/ai-tools'
     | '/_authenticated/analytics'
@@ -1970,6 +1983,7 @@ export interface RootRouteChildren {
   SignUpRoute: typeof SignUpRoute
   TwoStepRoute: typeof TwoStepRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
+  DotwellKnownAppleAppSiteAssociationRoute: typeof DotwellKnownAppleAppSiteAssociationRoute
   DotwellKnownAssetlinksDotjsonRoute: typeof DotwellKnownAssetlinksDotjsonRoute
   EmailSuppressionRoute: typeof EmailSuppressionRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
@@ -2556,6 +2570,13 @@ declare module '@tanstack/react-router' {
       path: '/.well-known/assetlinks.json'
       fullPath: '/.well-known/assetlinks.json'
       preLoaderRoute: typeof DotwellKnownAssetlinksDotjsonRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/.well-known/apple-app-site-association': {
+      id: '/.well-known/apple-app-site-association'
+      path: '/.well-known/apple-app-site-association'
+      fullPath: '/.well-known/apple-app-site-association'
+      preLoaderRoute: typeof DotwellKnownAppleAppSiteAssociationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/portal/$slug/': {
@@ -3456,6 +3477,8 @@ const rootRouteChildren: RootRouteChildren = {
   SignUpRoute: SignUpRoute,
   TwoStepRoute: TwoStepRoute,
   UnsubscribeRoute: UnsubscribeRoute,
+  DotwellKnownAppleAppSiteAssociationRoute:
+    DotwellKnownAppleAppSiteAssociationRoute,
   DotwellKnownAssetlinksDotjsonRoute: DotwellKnownAssetlinksDotjsonRoute,
   EmailSuppressionRoute: EmailSuppressionRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
