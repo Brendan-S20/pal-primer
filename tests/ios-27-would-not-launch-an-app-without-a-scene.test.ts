@@ -133,13 +133,26 @@ describe("CI launches the app", () => {
     // A retry is only for a launch the simulator never started: the
     // message AND no HoundStack process from request to tear-down.
     const check = script.slice(script.indexOf("never_started() {"));
-    expect(check).toMatch(/grep -q "Timed out attempting to launch app"/);
+    expect(check).toMatch(/grep -qE "Timed out attempting to launch app\|kAXErrorServerNotFound"/);
     expect(check).toMatch(/sys\.exit\(0 if not started else 1\)/);
     expect(read("ios/UITests/UITests.xcodeproj/project.pbxproj")).toMatch(
       /ColdLaunch\.swift in Sources \*\/,/,
     );
     // Says so when the newest runtime is not the one #570 was about.
     expect(script).toMatch(/This run did not exercise iOS 27/);
+  });
+
+  it("launches on iOS 26.x too, on a phone and an iPad (#620)", () => {
+    const script = read("scripts/ios-launch-smoke.sh");
+    // The picker adds the newest 26.x runtime's iPhone and iPad.
+    expect(script).toMatch(/r26 = next\(\(r for r in rts if r\["version"\]\.split\("\."\)\[0\] == "26"\)/);
+    expect(script).toMatch(/take\(r26, .*phones26/);
+    expect(script).toMatch(/take\(r26, .*pads26/);
+    // And a run without both fails rather than reading green.
+    expect(script).toMatch(/This run did not exercise iOS 26 on both an iPhone and an iPad/);
+    expect(script).toMatch(/\[ -z "\$\{NO_IOS26:-\}" \] \|\| failed=1/);
+    // The same device on two runtimes must not share a result file.
+    expect(script).toMatch(/slug=\$\(echo "\$name-iOS-\$runtime_version"/);
   });
 });
 

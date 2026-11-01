@@ -1,6 +1,7 @@
 #!/bin/bash
 #
-# Does the iOS app launch, on the newest Xcode and iOS this Mac has?
+# Does the iOS app launch, on the newest Xcode and iOS this Mac has, and on
+# the newest iOS 26.x runtime it has?
 #
 # ── WHY ───────────────────────────────────────────────────────────────────
 #
@@ -12,9 +13,9 @@
 #
 # This builds the app for the simulator, makes a fresh iPhone on the newest
 # iOS runtime installed and a fresh iPad on the newest runtime that offers
-# one (section 2 says why those can differ), and runs
-# ios/UITests/.../ColdLaunch.swift on
-# each: five cold launches to the sign-in form, then a link from cold and a
+# one (section 2 says why those can differ), plus a fresh iPhone and iPad on
+# the newest iOS 26.x runtime installed (#620), and runs
+# ios/UITests/.../ColdLaunch.swift on each: five cold launches to the sign-in form, then a link from cold and a
 # link while running. A fresh simulator has no session, which is what makes
 # this runnable here at all.
 #
@@ -25,7 +26,10 @@
 # summary, because "launches on iOS 26" and "launches on iOS 27" must not
 # read the same. The iPad can be one minor version behind the phones when
 # the newest runtime ships without iPads; the summary names each device's
-# runtime. It does not exercise a physical device, push tap routing (needs a
+# runtime. iOS 26.x is checked on its own because a pass on 27 says nothing
+# about 26: #620 reported a black screen on iOS 26.5 while 27 launched. If no
+# iOS 26.x runtime offering an iPhone and an iPad is installed, the run
+# fails. It does not exercise a physical device, push tap routing (needs a
 # session), or the folded and unfolded postures of a foldable, which simctl
 # cannot set.
 #
@@ -100,6 +104,12 @@ say "- Xcode: \`$(xcodebuild -version | tr '\n' ' ')\` ($XCODE)"
 # offers 29 iPads. One iPad, because an iPad launch is a different window
 # size from the first frame. No runtime with an iPad still fails the run.
 #
+# Then the newest iOS 26.x runtime, phone and iPad both (#620: a black
+# screen 3/3 on an iPhone 17e and an iPad Air on iOS 26.5). Preferred: the
+# iPhone 17e and an iPad Air, the two devices #620 names, then the newest
+# iPhone and the first iPad that runtime offers. Users stay on 26 after 27
+# ships, and the App Store reviewer may too.
+#
 # Every device type each runtime offers goes into device-types.txt, with
 # counts in the summary, so "the runtime had none" and "the picker missed
 # it" read differently. Types come from `simctl list devicetypes` (which
@@ -135,6 +145,14 @@ for rt in rts:
     if pads:
         take(rt, next((t for t in pads if t["name"].startswith("iPad (")), pads[0]))
         break
+r26 = next((r for r in rts if r["version"].split(".")[0] == "26"), None)
+if r26:
+    phones26 = [t for t in types_of(r26) if t.get("productFamily") == "iPhone"]
+    pads26 = [t for t in types_of(r26) if t.get("productFamily") == "iPad"]
+    if phones26:
+        take(r26, next((t for t in phones26 if t["name"] == "iPhone 17e"), phones26[-1]))
+    if pads26:
+        take(r26, next((t for t in pads26 if t["name"].startswith("iPad Air")), pads26[0]))
 print("NEWEST\t" + newest["identifier"] + "\t" + newest["version"])
 for rt, t in chosen:
     print(rt["identifier"] + "\t" + rt["version"] + "\t" + t["identifier"] + "\t" + t["name"])
@@ -155,6 +173,17 @@ if ! echo "$DEVICE_LINES" | cut -f4 | grep -q '^iPad'; then
   say "> **No iOS runtime on this Mac offers an iPad.** Install one (Xcode > Settings > Components)."
   echo "::error::No installed iOS simulator runtime offers an iPad device type; #570 needs an iPad launch."
   NO_IPAD=1
+fi
+
+# #620's acceptance names iOS 26.x, phone and iPad. A run without both on a
+# 26.x runtime is not a pass.
+IOS26_LINES=$(echo "$DEVICE_LINES" | awk -F'\t' '$2 ~ /^26\./' || true)
+if ! echo "$IOS26_LINES" | cut -f4 | grep -q '^iPhone' \
+   || ! echo "$IOS26_LINES" | cut -f4 | grep -q '^iPad'; then
+  say ""
+  say "> **This run did not exercise iOS 26 on both an iPhone and an iPad.** Install an iOS 26.x simulator runtime (Xcode > Settings > Components)."
+  echo "::error::No installed iOS 26.x simulator runtime gave both an iPhone and an iPad; #620 needs a launch on each."
+  NO_IOS26=1
 fi
 
 IOS_MAJOR="${IOS_VERSION%%.*}"
@@ -208,19 +237,30 @@ touch "$marker"
 # records the same message with this app before scenes. No app code ran, so
 # it says nothing about the app.
 #
-# Exit 0 only when that is provably what happened: the log has the message
-# AND no HoundStack process started from the failed launch request to the
-# test's tear-down. A process that started and then hung is the app, and is
+# The same fault can surface as a different message. Measured on the CI Mac
+# (7badccf, iPad Air 13-inch (M4), iOS 26.5, fourth simulator of the run):
+# the second warm-up launch was requested at 19:17:05; its process was
+# sampled at 19:19:08 still inside dyld_sim, in __mmap of the shared cache,
+# with a 336K footprint; XCUITest gave up at 19:19:43.6 with "Error getting
+# main window kAXErrorServerNotFound"; the process logged its first line at
+# 19:19:43.850, then made its web view and painted sign-in. The first
+# warm-up launch on that simulator had painted in 7 s. No app code ran
+# while the screen waited, so it says nothing about the app either.
+#
+# Exit 0 only when that is provably what happened: the log has one of those
+# messages AND no HoundStack process started from the failed launch request
+# to the test's tear-down. A process that started and then hung is the app, and is
 # never retried.
 never_started() {  # $1 xcodebuild log, $2 udid
-  grep -q "Timed out attempting to launch app" "$1" || return 1
+  grep -qE "Timed out attempting to launch app|kAXErrorServerNotFound" "$1" || return 1
   xcrun simctl spawn "$2" log show --last 30m --style compact \
     --predicate 'process == "HoundStack"' > "$1.processes.txt" 2>/dev/null < /dev/null || return 1
   python3 -I - "$1" "$1.processes.txt" <<'PY'
 import re, sys
 from datetime import datetime, timedelta
 lines = open(sys.argv[1], errors="replace").read().splitlines()
-err = next(i for i, l in enumerate(lines) if "Timed out attempting to launch app" in l)
+err = next(i for i, l in enumerate(lines)
+           if "Timed out attempting to launch app" in l or "kAXErrorServerNotFound" in l)
 start = launch = None
 for l in reversed(lines[:err]):
     m = re.search(r"t =\s+([\d.]+)s\s+Launch consulting\.thenorth\.houndstack", l)
@@ -306,9 +346,10 @@ say_later() { notes="$notes$1"$'\n'; }
 # every device after the first to them.
 while IFS=$'\t' read -r runtime runtime_version type name <&3; do
   [ -n "$type" ] || continue
-  slug=$(echo "$name" | tr -c 'A-Za-z0-9\n' '-')
+  # The runtime is in the name: the same device can run on 27 and on 26.
+  slug=$(echo "$name-iOS-$runtime_version" | tr -c 'A-Za-z0-9\n' '-')
   echo "--- $name (iOS $runtime_version)"
-  udid=$(xcrun simctl create "HS launch smoke $name" "$type" "$runtime")
+  udid=$(xcrun simctl create "HS launch smoke $name iOS $runtime_version" "$type" "$runtime")
   xcrun simctl boot "$udid"
   xcrun simctl bootstatus "$udid" -b > /dev/null
   xcrun simctl install "$udid" "$APP"
@@ -363,8 +404,10 @@ if [ -n "$crashes" ]; then
 fi
 
 # Measured what it could, then fails: a gate for #570 that never ran iOS 27,
-# or never ran an iPad, must not read green.
+# or never ran an iPad, or a gate for #620 that never ran iOS 26 on a phone
+# and an iPad, must not read green.
 [ -z "${NO_IPAD:-}" ] || failed=1
+[ -z "${NO_IOS26:-}" ] || failed=1
 [ -z "${OLD_RUNTIME:-}" ] || failed=1
 
 [ -z "${GITHUB_STEP_SUMMARY:-}" ] || cat "$SUMMARY" >> "$GITHUB_STEP_SUMMARY"

@@ -552,11 +552,13 @@ fails on that.
 
 `.github/workflows/ios-launch.yml` runs `scripts/ios-launch-smoke.sh` on a
 macOS runner: the newest installed Xcode, a fresh iPhone and iPad on the
-newest iOS runtime, and `ios/UITests/HoundStackUITests/ColdLaunch.swift` on
+newest iOS runtime, a fresh iPhone and iPad on the newest iOS 26.x runtime
+(#620), and `ios/UITests/HoundStackUITests/ColdLaunch.swift` on
 each (five cold launches to the sign-in form, a link from cold, a link while
 running). It needs no session, which is why it can run unattended. When the
 newest runtime is older than iOS 27 the summary says the run did not exercise
-iOS 27. It cannot prove a physical device, a foldable's folded and unfolded
+iOS 27, and when no iOS 26.x runtime offers both an iPhone and an iPad the run
+fails. It cannot prove a physical device, a foldable's folded and unfolded
 postures, or that a push tap routes (that needs a signed-in session). To run
 it on a Mac:
 

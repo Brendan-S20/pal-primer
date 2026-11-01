@@ -5,7 +5,8 @@ name: iOS launch
 # Builds the iOS app for the simulator with the newest Xcode on the runner and
 # launches it: five cold launches to the sign-in form on a fresh iPhone on the
 # newest iOS runtime and a fresh iPad on the newest runtime that offers one,
-# then a link from cold and a link while running. scripts/ios-launch-smoke.sh
+# plus a fresh iPhone and iPad on the newest iOS 26.x runtime, then a link
+# from cold and a link while running. scripts/ios-launch-smoke.sh
 # is the implementation and says what it does and does not prove.
 #
 # ── WHY ─────────────────────────────────────────────────────────────────────
@@ -13,6 +14,10 @@ name: iOS launch
 # #570: the app crashed on every launch on iOS 27.1, built with Xcode 27.1,
 # because it had not adopted the scene lifecycle. Nothing here launched the
 # binary, so nothing here could see it. Xcode Cloud archives and stops.
+#
+# #620: a black screen on iOS 26.5 (iPhone 17e and iPad Air) was reported
+# while this job, which ran only the newest runtime, stayed green. So it now
+# launches on the newest iOS 26.x runtime as well.
 #
 # ── WHEN ────────────────────────────────────────────────────────────────────
 #
@@ -29,8 +34,9 @@ name: iOS launch
 # the same hosted-allocation failure ci.yml records for `verify`.
 # IOS_LAUNCH_RUNNER_JSON (a repository variable, JSON) moves it without a
 # commit, e.g. '"macos-26"' if hosted macOS comes back. The job fails if the
-# newest runtime is older than iOS 27, or if no installed runtime offers an
-# iPad.
+# newest runtime is older than iOS 27, if no installed runtime offers an
+# iPad, or if no iOS 26.x runtime offers both an iPhone and an iPad. The
+# timeout is for four devices: two took 35 minutes on 2026-10-31.
 
 on:
   pull_request:
@@ -66,7 +72,7 @@ jobs:
   launch:
     name: The app launches on the newest Xcode
     runs-on: ${{ fromJSON(vars.IOS_LAUNCH_RUNNER_JSON || '["self-hosted","macOS"]') }}
-    timeout-minutes: 60
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
 
