@@ -216,7 +216,7 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
     // refused, never quietly replaced.
     const caller = await requirePermission(supabase, userId, "booking");
     const { orgId } = caller;
-    const { oneOffGridPriceCents, priceOverrideRefusal } =
+    const { ENTER_A_ONE_OFF_PRICE, oneOffGridPriceCents, priceOverrideRefusal } =
       await import("@/lib/booking-price.server");
     let priceCents: number;
     let asSetPrice = false;
@@ -229,7 +229,7 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
           propertyId: data.propertyId,
           serviceId: data.serviceId,
         });
-        if (grid.cents == null) throw new Error("Enter a price for this visit.");
+        if (grid.cents == null) throw new Error(ENTER_A_ONE_OFF_PRICE);
         priceCents = grid.cents;
       }
     } else {

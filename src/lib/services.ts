@@ -369,6 +369,19 @@ export function isZonePriced(s: Pick<ServiceDraft, "service_line">): boolean {
 }
 
 /**
+ * Where a one-off pet-waste visit's price is set (#641). Not on Settings ->
+ * Services: a pet-waste service is priced by zone for plans, and a one-off
+ * reads organizations.one_off_price_cents, which only the Client portal card
+ * (PortalBookingCard, setPortalBookingSettings) writes. The dispatcher's
+ * One-off dialog, the Services form and the server's refusals all name the
+ * same place, so they say it with the same words and link to the same field.
+ */
+export const ONE_OFF_PRICE_SETTING = "Settings → Client portal → Price of an extra visit";
+export const ONE_OFF_PRICE_SETTING_PATH = "/settings/client-portal" as const;
+/** The price input's id on that page; the link scrolls to it. */
+export const ONE_OFF_PRICE_SETTING_HASH = "one-off-price";
+
+/**
  * What one visit of this service costs, in cents, or null when the service
  * has no price of its own (pet waste priced by zone, or not set yet).
  *
@@ -421,9 +434,10 @@ export function servicePriceCents(
 export function servicePriceLabel(
   s: Pick<ServiceDraft, "service_line" | "price_unit" | "base_price_cents" | "extra_pet_cents">,
 ): string {
-  if (s.base_price_cents === null) {
-    return s.service_line === "pet_waste" ? "Priced by your zones" : "No price yet";
-  }
+  // Pet waste is priced by zone for a plan and by the Client portal's extra
+  // visit price for a one-off, whatever base price an older form saved (#641).
+  if (s.service_line === "pet_waste") return "Priced by your zones";
+  if (s.base_price_cents === null) return "No price yet";
   const per = PER[s.price_unit];
   const base = `${formatServiceMoney(s.base_price_cents)} per ${per}`;
   return s.extra_pet_cents > 0
