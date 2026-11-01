@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/format";
 import { importStatusLabel } from "@/lib/import-status";
 import { titleHead } from "@/lib/page-title";
+import { useOrgTimezone } from "@/hooks/useOrgToday";
 
 export const Route = createFileRoute("/_authenticated/imports/$batchId")({
   head: () => titleHead("Import"),
@@ -17,6 +18,7 @@ export const Route = createFileRoute("/_authenticated/imports/$batchId")({
 });
 
 function BatchDetail() {
+  const tz = useOrgTimezone();
   const { batchId } = Route.useParams();
   const navigate = useNavigate();
   const getFn = useServerFn(getImportBatch);
@@ -138,7 +140,7 @@ function BatchDetail() {
             {batch.source} · {batch.filename ?? "import"}
           </h1>
           <p className="text-sm text-muted-foreground">
-            Created {formatDateTime(batch.created_at)}
+            Created {formatDateTime(batch.created_at, tz)}
           </p>
         </div>
         <ImportStatusBadge status={blocked ?? batch.status} />

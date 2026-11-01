@@ -12,6 +12,7 @@ import { ReportsNav } from "@/components/ReportsNav";
 import { RevenueByServiceCard } from "@/components/reports/RevenueByServiceCard";
 import { officeSkipReason } from "@/lib/skip-rules.functions";
 import { useIntlLocale } from "@/lib/i18n";
+import { useOrgToday } from "@/hooks/useOrgToday";
 import {
   REPORT_PRESETS,
   formatReportDay,
@@ -34,7 +35,12 @@ export const Route = createFileRoute("/_authenticated/reports")({
 });
 
 function ReportsPage() {
-  const initial = presetRange("last30");
+  // The business's today, not the device's: the AR aging "as of" day is the
+  // range's end, and a laptop in another zone aged every invoice a day off
+  // the dashboard and the portal (#654, R2-40).
+  const orgDay = useOrgToday();
+  const todayDate = new Date(`${orgDay}T12:00:00`);
+  const initial = presetRange("last30", todayDate);
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
   const [applied, setApplied] = useState<ReportRange>(initial);
@@ -42,7 +48,7 @@ function ReportsPage() {
   const router = useRouter();
   const locale = useIntlLocale();
   const day = (d: string) => formatReportDay(d, locale);
-  const chosen = matchingPreset(applied);
+  const chosen = matchingPreset(applied, todayDate);
   const apply = (r: ReportRange) => {
     setFrom(r.from);
     setTo(r.to);
@@ -76,7 +82,7 @@ function ReportsPage() {
                 variant={chosen === p.id ? "default" : "outline"}
                 aria-pressed={chosen === p.id}
                 className="touch:min-h-11"
-                onClick={() => apply(presetRange(p.id))}
+                onClick={() => apply(presetRange(p.id, todayDate))}
               >
                 {p.label}
               </Button>

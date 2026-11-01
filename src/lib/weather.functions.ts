@@ -460,6 +460,8 @@ export const rescheduleVisits = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
+    const { refusePastDay } = await import("@/lib/booking-dates.server");
+    await refusePastDay(supabase, orgId, data.newDate);
     let moved = 0;
     const errors: string[] = [];
     const moves: { visitId: string; from: string; to: string }[] = [];

@@ -10,7 +10,8 @@ import { DateField, TimeField } from "@/components/fields";
 import { PetCareFields } from "@/components/PetCareFields";
 import { PortalVisitReport } from "@/components/portal/VisitReport";
 import { portalListStays, portalRequestStay } from "@/lib/portal-stays.functions";
-import { money, usePortalCtx } from "@/lib/portal-ui";
+import { money, usePortalCtx, usePortalTimezone } from "@/lib/portal-ui";
+import { orgToday } from "@/lib/org-day";
 import {
   DEFAULT_DROP_IN_WINDOW,
   DEFAULT_OVERNIGHT_ARRIVAL,
@@ -46,6 +47,8 @@ export function PortalStayRequest() {
   const [serviceChoice, setService] = useState("");
   const [propertyChoice, setProperty] = useState("");
   const [startsOn, setStart] = useState("");
+  // A stay does not start on a day that is already over (#654).
+  const portalToday = orgToday(usePortalTimezone());
   const [endsOn, setEnd] = useState("");
   const [windows, setWindows] = useState([DEFAULT_DROP_IN_WINDOW]);
   const [arrival, setArrival] = useState(DEFAULT_OVERNIGHT_ARRIVAL);
@@ -175,6 +178,7 @@ export function PortalStayRequest() {
               label={kind === "overnight" ? "Check-in" : "First day"}
               value={startsOn}
               onChange={setStart}
+              minISO={portalToday}
             />
             <DateField
               label={kind === "overnight" ? "Check-out" : "Last day"}

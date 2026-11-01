@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate, useRouterState } from "@tanstack/re
 import { warnLessonClashes } from "@/components/training/lessonClashWarning";
 import { humanizeRole } from "@/lib/humanize";
 import { orgLocalTime } from "@/lib/org-day";
+import { visitEta } from "@/lib/visit-eta";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -87,6 +88,7 @@ import { GripVertical } from "lucide-react";
 import { titleHead } from "@/lib/page-title";
 import { visitStayDates } from "@/lib/stays";
 import { skipReasonText } from "@/lib/skip-reason-text";
+import { earlyCompleteConfirm, isFutureVisit } from "@/lib/booking-dates";
 
 export const Route = createFileRoute("/_authenticated/routes")({
   head: () => titleHead("Schedule"),
@@ -412,7 +414,8 @@ function RoutesPage() {
   const qc = useQueryClient();
 
   const completeMut = useMutation({
-    mutationFn: (visitId: string) => doComplete({ data: { visitId } }),
+    mutationFn: ({ visitId, confirmedEarly }: { visitId: string; confirmedEarly: boolean }) =>
+      doComplete({ data: { visitId, confirmedEarly } }),
     onSuccess: () => {
       toast.success("Visit marked complete");
       setLocalColumns(null);
@@ -704,6 +707,14 @@ function RoutesPage() {
   const bulkAssignFn = useServerFn(bulkAssignVisits);
   const bulkRescheduleFn = useServerFn(bulkRescheduleVisits);
   const { confirm: confirmMove, dialog: moveDialog } = useConfirmDialog();
+  // A stop on a later day is completed only after a confirm (#654, F-23).
+  const completeVisit = async (visitId: string) => {
+    const v = visits.find((x) => x.id === visitId) as { scheduled_on?: string } | undefined;
+    const early = isFutureVisit(v?.scheduled_on, orgTodayIso);
+    if (early && !(await confirmMove(earlyCompleteConfirm(formatDay(v?.scheduled_on ?? "")))))
+      return;
+    completeMut.mutate({ visitId, confirmedEarly: early });
+  };
   const loadFn = useServerFn(getStaffUpcomingLoad);
   const redistributeFn = useServerFn(redistributeStaffWork);
 
@@ -1707,8 +1718,10 @@ function RoutesPage() {
                     collapsed={unassignedCollapsed}
                     dropHint={activeId !== null}
                     layout={boardLayout}
-                    onComplete={(id) => completeMut.mutate(id)}
-                    completingId={completeMut.isPending ? (completeMut.variables as string) : null}
+                    onComplete={completeVisit}
+                    completingId={
+                      completeMut.isPending ? (completeMut.variables?.visitId ?? null) : null
+                    }
                     onOpen={setDetailVisitId}
                     selectedIds={selected}
                     onToggleSelect={toggleSelect}
@@ -1730,9 +1743,9 @@ function RoutesPage() {
                         offToday={away}
                         items={columns[s.id] ?? []}
                         layout={boardLayout}
-                        onComplete={(id) => completeMut.mutate(id)}
+                        onComplete={completeVisit}
                         completingId={
-                          completeMut.isPending ? (completeMut.variables as string) : null
+                          completeMut.isPending ? (completeMut.variables?.visitId ?? null) : null
                         }
                         onOpen={setDetailVisitId}
                         selectedIds={selected}
@@ -1784,9 +1797,9 @@ function RoutesPage() {
                       }
                       items={columns[s.id] ?? []}
                       layout={boardLayout}
-                      onComplete={(id) => completeMut.mutate(id)}
+                      onComplete={completeVisit}
                       completingId={
-                        completeMut.isPending ? (completeMut.variables as string) : null
+                        completeMut.isPending ? (completeMut.variables?.visitId ?? null) : null
                       }
                       onOpen={setDetailVisitId}
                       selectedIds={selected}
@@ -2559,9 +2572,11 @@ function VisitCardView({
               </div>
             );
           })()}
-          {(visit.eta_start || visit.travel_min != null) && (
+          {(visitEta(visit, tz).start || visit.travel_min != null) && (
             <div className="mt-1 flex flex-wrap items-center gap-2 text-3xs text-muted-foreground">
-              {visit.eta_start && <span>ETA {orgLocalTime(visit.eta_start, tz)}</span>}
+              {visitEta(visit, tz).start && (
+                <span>ETA {orgLocalTime(visitEta(visit, tz).start, tz)}</span>
+              )}
               {visit.travel_km != null && (
                 <span>· {formatDistance(visit.travel_km, distanceUnit)}</span>
               )}

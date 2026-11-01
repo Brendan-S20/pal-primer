@@ -36,7 +36,7 @@ export const listVisitsForDay = createServerFn({ method: "GET" })
     let q = supabase
       .from("visits")
       .select(
-        "id, scheduled_on, status, sequence, assigned_staff_id, zone_id, property_id, client_id, subscription_id, eta_start, eta_end, travel_km, travel_min, window_violated, weather_flagged, weather_note, skip_reason, skip_reason_code, clients(display_name), properties(street, city, postal_code, latitude, longitude, earliest_service_time, latest_service_time, service_duration_min), zones(name, postal_prefix), staff(display_name), subscriptions(price_cents, account_type, frequency, weekdays, preferred_time_of_day, earliest_time, latest_time, stay_id, stays(kind, starts_on, ends_on)), service_id, services(name, service_line, default_duration_min)",
+        "id, scheduled_on, status, sequence, assigned_staff_id, zone_id, property_id, client_id, subscription_id, start_time, duration_min, eta_start, eta_end, travel_km, travel_min, window_violated, weather_flagged, weather_note, skip_reason, skip_reason_code, clients(display_name), properties(street, city, postal_code, latitude, longitude, earliest_service_time, latest_service_time, service_duration_min), zones(name, postal_prefix), staff(display_name), subscriptions(price_cents, account_type, frequency, weekdays, preferred_time_of_day, earliest_time, latest_time, stay_id, stays(kind, starts_on, ends_on)), service_id, services(name, service_line, default_duration_min)",
       )
       .eq("organization_id", orgId);
     q =
@@ -67,7 +67,7 @@ export const getVisitDetail = createServerFn({ method: "GET" })
         `id, scheduled_on, status, sequence, assigned_staff_id, route_pinned,
          started_at, completed_at, skip_reason, skip_reason_code, skip_billable, client_package_id,
          weather_flagged, weather_note, tech_note, completion_photo_waived_reason, visit_checklist,
-         duration_min, groom_summary,
+         duration_min, groom_summary, start_time,
          eta_start, eta_end, travel_km, travel_min, window_violated,
          client_id, property_id,
          clients(id, display_name, primary_phone, primary_email, credit_balance_cents),
@@ -216,6 +216,9 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
     // refused, never quietly replaced.
     const caller = await requirePermission(supabase, userId, "booking");
     const { orgId } = caller;
+    // Not on a day that is already over, on the business's calendar (#654).
+    const { refusePastDay } = await import("@/lib/booking-dates.server");
+    await refusePastDay(supabase, orgId, data.scheduledOn);
     const { ENTER_A_ONE_OFF_PRICE, oneOffGridPriceCents, priceOverrideRefusal } =
       await import("@/lib/booking-price.server");
     let priceCents: number;
@@ -616,7 +619,15 @@ async function loadVisitForOfficeAction(supabase: any, userId: string, visitId: 
  * correction flow afterwards if the real times differ. */
 export const completeVisitFromOffice = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ visitId: z.string().uuid() }).parse(d))
+  .inputValidator((d) =>
+    z
+      .object({
+        visitId: z.string().uuid(),
+        /** The person confirmed a visit on a later day was done early (#654). */
+        confirmedEarly: z.boolean().optional(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
@@ -624,6 +635,14 @@ export const completeVisitFromOffice = createServerFn({ method: "POST" })
     // because nobody closed it, not because it was proved undone (#455).
     if (!canOfficeComplete(v.status))
       throw new Error("Only scheduled, in-progress, or missed visits can be completed");
+    // A visit on a later day is completed only on purpose: one stray tap on
+    // next Tuesday's stop billed it a week early (#654, F-23).
+    if (!data.confirmedEarly) {
+      const { orgTodayFor } = await import("@/lib/booking-dates.server");
+      const { FUTURE_COMPLETE_REFUSAL, isFutureVisit } = await import("@/lib/booking-dates");
+      if (isFutureVisit(v.scheduled_on, await orgTodayFor(supabase, v.organization_id)))
+        throw new Error(FUTURE_COMPLETE_REFUSAL);
+    }
     // The office closing a stop takes it off the tech's work for the day:
     // "I did the Smiths myself" is a stop they no longer drive to, and they
     // hear it as one that came off. The lock screen already followed (#337).
@@ -672,6 +691,8 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
     if (v.status !== "scheduled") throw new Error("Only scheduled visits can be rescheduled");
+    const { refusePastDay } = await import("@/lib/booking-dates.server");
+    await refusePastDay(supabase, v.organization_id, data.newDate);
     // A groom keeps its start time and groomer; the new day must have room.
     const { refuseGroomMoveClash, groomWriteError } = await import("@/lib/groom-clash.server");
     const move = { visitIds: [data.visitId], toDate: data.newDate };
@@ -1016,6 +1037,12 @@ export const bulkRescheduleVisits = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    const { refusePastDay } = await import("@/lib/booking-dates.server");
+    await refusePastDay(
+      context.supabase,
+      await resolveOrgId(context.supabase, context.userId),
+      data.toDate,
+    );
     // Grooms keep their start time and groomer; the new day must have room.
     const { refuseGroomMoveClash, groomWriteError } = await import("@/lib/groom-clash.server");
     const move = { visitIds: data.visitIds, toDate: data.toDate };

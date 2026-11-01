@@ -38,12 +38,15 @@ import { MetaChip, StatusChip } from "@/components/client-detail/primitives";
 import { RowActions } from "@/components/RowActions";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { visitEta } from "@/lib/visit-eta";
+import { earlyCompleteConfirm, isFutureVisit } from "@/lib/booking-dates";
 import { CompletedVisitActions } from "@/components/CompletedVisitActions";
 import {
   ClientCalledAtField,
   clientCalledAtIso,
   nowAsCalledAt,
 } from "@/components/training/ClientCalledAtField";
+import { orgToday } from "@/lib/org-day";
 
 /** A skip's reason as words: a code through the office's labels, free text
  *  (from before reasons were codes) as it was typed. */
@@ -54,8 +57,9 @@ function skipReasonText(v: { skip_reason_code?: string | null; skip_reason?: str
 function fmtWindow(v: any, tz: string): string {
   // ETAs are instants and read on the ORG's clock; the service/property
   // windows below are `time` columns (wall clock, no zone) and stay as-is.
-  if (v.eta_start && v.eta_end)
-    return `${formatTime(v.eta_start, tz)} - ${formatTime(v.eta_end, tz)}`;
+  // A booked start (a groom at 09:00) beats the planner's estimate (#654).
+  const eta = visitEta(v, tz);
+  if (eta.start && eta.end) return `${formatTime(eta.start, tz)} - ${formatTime(eta.end, tz)}`;
   // The arrival window lives on the service (UX round 4); the property
   // window is a legacy fallback for rows whose service has none.
   const sub = v.subscriptions;
@@ -932,7 +936,9 @@ function VisitCalendar({ visits, onOpen }: { visits: any[]; onOpen: (v: any) => 
                             )}
                           >
                             {v.properties?.street ??
-                              (v.eta_start ? formatTime(v.eta_start, tz) : "Visit")}
+                              (visitEta(v, tz).start
+                                ? formatTime(visitEta(v, tz).start, tz)
+                                : "Visit")}
                           </button>
                         ))}
                         {hiddenCount > 0 && (
@@ -1047,7 +1053,8 @@ function VisitDetailDrawer({
   };
 
   const completeMut = useMutation({
-    mutationFn: () => completeFn({ data: { visitId: v.id } }),
+    mutationFn: (confirmedEarly: boolean) =>
+      completeFn({ data: { visitId: v.id, confirmedEarly } }),
     onSuccess: () => afterAction("Visit marked completed"),
     onError: (e) => toast.error((e as Error).message),
   });
@@ -1206,15 +1213,21 @@ function VisitDetailDrawer({
                   size="sm"
                   disabled={completeMut.isPending}
                   onClick={async () => {
+                    // A visit on a later day says so in the confirm (#654).
+                    const early = isFutureVisit(v.scheduled_on, orgToday(tz));
                     if (
-                      await confirm({
-                        title: "Mark this visit completed?",
-                        description:
-                          "It's recorded as completed now; adjust the exact times afterward with Correct timestamps if needed. Completed visits are billable.",
-                        confirmLabel: "Mark completed",
-                      })
+                      await confirm(
+                        early
+                          ? earlyCompleteConfirm(formatDay(v.scheduled_on))
+                          : {
+                              title: "Mark this visit completed?",
+                              description:
+                                "It's recorded as completed now; adjust the exact times afterward with Correct timestamps if needed. Completed visits are billable.",
+                              confirmLabel: "Mark completed",
+                            },
+                      )
                     )
-                      completeMut.mutate();
+                      completeMut.mutate(early);
                   }}
                 >
                   {completeMut.isPending ? "Completing…" : "Mark completed"}
@@ -1270,6 +1283,7 @@ function VisitDetailDrawer({
                     type="date"
                     className="w-44"
                     value={newDate}
+                    min={orgToday(tz)}
                     onChange={(e) => setNewDate(e.target.value)}
                     required
                   />

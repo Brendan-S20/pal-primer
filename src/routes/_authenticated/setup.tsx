@@ -31,7 +31,7 @@ import { createZone, geocodePostal } from "@/lib/zones.functions";
 import { createOrgInvite, listStaffAddresses, setStaffRouting } from "@/lib/users.functions";
 import { upsertFacility } from "@/lib/stations.functions";
 import { getStripeConnectStatus } from "@/lib/stripe-connect.functions";
-import { US_TIMEZONES, DEFAULT_TIMEZONE } from "@/lib/route-window";
+import { deviceTimezone, suggestSetupTimezone, timezoneOptions } from "@/lib/org-timezone";
 import {
   closeSetupGuide,
   nextOpenStep,
@@ -354,7 +354,10 @@ function BusinessPanel({ onSaved }: { onSaved: () => void }) {
   const phoneVal = phone ?? b?.contact_phone ?? "";
   const addressVal = address ?? b?.contact_address ?? "";
   const savedTz = (dispatchQ.data?.settings as { timezone?: string | null } | undefined)?.timezone;
-  const tzVal = tz ?? savedTz ?? DEFAULT_TIMEZONE;
+  // The device's zone, or the address's, unless somebody already chose one
+  // (#654: this read `savedTz ?? Chicago`, and savedTz was the column default).
+  const tzVal =
+    tz ?? suggestSetupTimezone({ saved: savedTz, device: deviceTimezone(), address: addressVal });
   const linesVal = lines ?? savedLines;
   const linesChanged =
     lines !== null &&
@@ -467,7 +470,7 @@ function BusinessPanel({ onSaved }: { onSaved: () => void }) {
           onChange={(e) => setTz(e.target.value)}
           className="h-10 w-full rounded-md border bg-background px-3 text-sm touch:min-h-11"
         >
-          {US_TIMEZONES.map((t) => (
+          {timezoneOptions(tzVal).map((t) => (
             <option key={t.value} value={t.value}>
               {t.label}
             </option>

@@ -219,7 +219,7 @@ async function loadRoute(
       .select(
         // city, postal_code and the coordinates are where the card's
         // Navigate button sends the maps app (stopDestination).
-        "id, status, sequence, eta_start, eta_end, properties(label, street, city, postal_code, latitude, longitude, earliest_service_time, latest_service_time)",
+        "id, status, sequence, scheduled_on, start_time, duration_min, eta_start, eta_end, properties(label, street, city, postal_code, latitude, longitude, earliest_service_time, latest_service_time)",
       )
       .eq("assigned_staff_id", staff.id)
       .eq("scheduled_on", date)

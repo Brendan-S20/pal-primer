@@ -56,6 +56,7 @@ import { Fragment, useState } from "react";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { TechAvatar } from "@/components/schedule/TechAvatar";
 import { orgLocalMinutes } from "@/lib/org-day";
+import { visitEta } from "@/lib/visit-eta";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
 import { servicesVary, type VisitServiceRef } from "@/lib/visit-service";
 import { formatWeekdaySet } from "@/lib/weekday-set";
@@ -93,6 +94,10 @@ export type CalendarVisit = {
   service_id?: string | null;
   services?: VisitServiceRef;
   eta_start?: string | null;
+  eta_end?: string | null;
+  /** A booked appointment's start (`time`), which beats the ETA (#654). */
+  start_time?: string | null;
+  duration_min?: number | null;
 };
 
 /** What kind of work this visit is.
@@ -206,12 +211,13 @@ function prettyStatus(status: string) {
  *  Null is not "midnight" — it is the whole point of the Anytime group below,
  *  and sorting it as 0 would put every un-timed visit at the top of the day. */
 function startMinutes(v: CalendarVisit, tz: string): number | null {
-  if (v.eta_start) {
+  const etaStart = visitEta(v, tz).start;
+  if (etaStart) {
     // On the ORG's clock, not the device's — this is the sort key and the
     // row bucket for the whole grid, so a device in another timezone used to
     // move visits between rows, not just mislabel them. The window fallback
     // below is a `time` column (wall clock, no zone) and needs no conversion.
-    const mins = orgLocalMinutes(v.eta_start, tz);
+    const mins = orgLocalMinutes(etaStart, tz);
     if (mins != null) return mins;
   }
   const raw = v.subscriptions?.earliest_time ?? v.properties?.earliest_service_time ?? null;

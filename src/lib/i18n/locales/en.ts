@@ -584,6 +584,10 @@ const en = {
       "You're not authorized to complete visits. Dispatchers can schedule, but field staff must complete the visit.",
     notAuthorizedCompleteTitle:
       "Only field staff (owner, office manager, or tech) can complete a visit",
+    earlyCompleteTitle: "Complete this visit early?",
+    earlyCompleteBody:
+      "This visit is scheduled for {{day}}. Completing it now marks it done today.",
+    earlyCompleteConfirm: "Complete early",
     needCompletionPhotoTitle: "Add a completion photo first",
     needChecklistTitle: "Check off the required checklist items first",
     checklist: "Checklist",

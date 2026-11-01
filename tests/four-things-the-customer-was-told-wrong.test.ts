@@ -76,7 +76,11 @@ describe("the vacation hold stops claiming visits were skipped", () => {
     // The deleted form had no minimum. A hold backdated a week is a request
     // nobody can honour, accepted without comment.
     const card = ui.slice(ui.indexOf("export function VacationHoldCard("));
-    expect(card.slice(0, 3000)).toMatch(/const min = new Date\(Date\.now\(\) \+ 86400000\)/);
+    // Tomorrow on the business's calendar (#654), not the device's UTC day,
+    // which offered a day the server then refused every evening.
+    expect(card.slice(0, 3000)).toMatch(
+      /const min = shiftDay\(orgToday\(usePortalTimezone\(\)\), 1\)/,
+    );
     expect(card.slice(0, 3000)).toMatch(/<Input type="date" min=\{min\}/);
   });
 

@@ -65,6 +65,13 @@ vi.mock("@tanstack/react-start", () => ({
   },
 }));
 vi.mock("@/integrations/supabase/auth-middleware", () => ({ requireSupabaseAuth: {} }));
+// The past-day refusal (#654) is tested on its own in
+// a-past-day-is-not-bookable-and-an-early-finish-is-confirmed.test.ts. Here it
+// would read the stub client and date-stamp this file's fixed days.
+vi.mock("@/lib/booking-dates.server", () => ({
+  refusePastDay: async () => {},
+  orgTodayFor: async () => "2000-01-01",
+}));
 vi.mock("@/integrations/supabase/client.server", () => ({ supabaseAdmin: makeClient(true) }));
 vi.mock("@/lib/authz.server", () => ({
   resolveCaller: async () => ({ orgId: ORG, role: "owner" }),

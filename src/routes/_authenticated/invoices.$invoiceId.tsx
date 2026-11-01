@@ -25,6 +25,8 @@ import { DownloadPdfButton } from "@/components/DownloadPdfButton";
 import { downloadInvoicePdf } from "@/lib/document-pdf.functions";
 import { toast } from "sonner";
 import { pageTitle, titleHead, useDocumentTitle } from "@/lib/page-title";
+import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
+import { isInvoiceOverdue } from "@/lib/overdue";
 
 export const Route = createFileRoute("/_authenticated/invoices/$invoiceId")({
   head: () => titleHead("Invoice"),
@@ -189,8 +191,13 @@ function InvoiceDetail() {
   const shortId = invoiceNumberLabel(invoice as { id: string; number?: number | null });
   const subtotalCents = (invoice as any).subtotal_cents as number | null | undefined;
   const dueOn = (invoice as any).due_on as string | null | undefined;
-  const overdue =
-    invoice.status === "open" && !!dueOn && dueOn < new Date().toISOString().slice(0, 10);
+  // The business's today, not the device's UTC day: "Overdue since" read a day
+  // early every evening west of Greenwich, while the list and dashboard
+  // (useOrgToday) did not (#654, R2-40).
+  const tz =
+    (orgQ.data?.organization as { timezone?: string | null } | undefined)?.timezone ||
+    DEFAULT_ORG_TIMEZONE;
+  const overdue = isInvoiceOverdue(invoice.status, dueOn, orgToday(tz));
   const period =
     invoice.period_start && invoice.period_end && invoice.period_start !== invoice.period_end
       ? `${formatDay(invoice.period_start)} to ${formatDay(invoice.period_end)}`
@@ -221,7 +228,7 @@ function InvoiceDetail() {
               {invoice.issued_at && (
                 <p>
                   <span className="text-muted-foreground">Issued</span>{" "}
-                  {formatDay(String(invoice.issued_at))}
+                  {formatDay(String(invoice.issued_at), undefined, tz)}
                 </p>
               )}
               {dueOn && invoice.status !== "paid" && invoice.status !== "void" && (
@@ -349,7 +356,7 @@ function InvoiceDetail() {
                 )}
               {invoice.status === "paid" && invoice.paid_at && (
                 <p className="text-right text-xs text-muted-foreground">
-                  Paid {formatDay(String(invoice.paid_at))}
+                  Paid {formatDay(String(invoice.paid_at), undefined, tz)}
                 </p>
               )}
               {invoice.status === "void" && (
@@ -486,7 +493,7 @@ function InvoiceDetail() {
                 {payments.map((p) => (
                   <tr key={p.id}>
                     <td className="px-4 py-2">
-                      {formatDateTime(p.paid_at ?? p.created_at) || (p.paid_at ?? p.created_at)}
+                      {formatDateTime(p.paid_at ?? p.created_at, tz) || (p.paid_at ?? p.created_at)}
                     </td>
                     <td className="px-4 py-2 align-top tabular-nums">
                       {/* What the card was charged — base + any surcharge,

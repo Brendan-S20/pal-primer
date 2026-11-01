@@ -38,6 +38,9 @@ export const bookGroom = createServerFn({ method: "POST" })
     // (service, size rules, add-ons), so the front desk books at that price
     // and there is nothing for it to override.
     const caller = await requirePermission(context.supabase, context.userId, "booking");
+    // Not on a day that is already over, on the business's calendar (#654).
+    const { refusePastDay } = await import("@/lib/booking-dates.server");
+    await refusePastDay(context.supabase, caller.orgId, data.scheduledOn);
     if (hasPermission(caller.role, "manage_pricing")) {
       return bookGroomAppointment(context.supabase, {
         ...data,

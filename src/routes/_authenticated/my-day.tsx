@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { humanizeRole } from "@/lib/humanize";
 import { daysBetweenOrgDays, orgLocalDay, orgLocalDayTime, orgLocalTime } from "@/lib/org-day";
+import { visitEta } from "@/lib/visit-eta";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
 import { useOrgFieldRules } from "@/hooks/useOrgFieldRules";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -193,6 +194,7 @@ import { PullToRefresh } from "@/components/motion/PullToRefresh";
 import { showCompletionCheck } from "@/lib/motion/completion-check";
 import { useMotionList } from "@/lib/motion/use-motion-list";
 import { readableError } from "@/lib/readable-error";
+import { isFutureVisit } from "@/lib/booking-dates";
 
 export const Route = createFileRoute("/_authenticated/my-day")({
   head: () => titleHead("My day"),
@@ -1650,9 +1652,11 @@ function fmtWindowTime(hhmm: string, locale?: string): string {
  *  instants, rendered on the ORG's clock; the window fallback is a `time`
  *  column and stays timezone-free. */
 function visitWindowLabel(visit: any, tz: string, t: TFunction, locale?: string): string | null {
-  if (visit?.eta_start) {
-    const start = orgLocalTime(visit.eta_start, tz, locale);
-    const end = visit?.eta_end ? orgLocalTime(visit.eta_end, tz, locale) : "";
+  // A booked start (a groom at 09:00) beats the route planner's estimate (#654).
+  const eta = visitEta(visit, tz);
+  if (eta.start) {
+    const start = orgLocalTime(eta.start, tz, locale);
+    const end = eta.end ? orgLocalTime(eta.end, tz, locale) : "";
     if (start) return end ? t("when.etaRange", { start, end }) : t("when.eta", { start });
   }
   const p = visit?.properties;
@@ -2240,6 +2244,21 @@ function VisitCard({
           cancelLabel: t("walk.addReport"),
         }),
       ))
+    )
+      return;
+    // A stop on a later day asks first (#654, F-23). Completing ahead is
+    // allowed, a tech who got ahead; one stray tap is not.
+    if (
+      step === "complete" &&
+      isFutureVisit(visit.scheduled_on, orgToday) &&
+      !(await confirmEndWalk({
+        title: t("visit.earlyCompleteTitle"),
+        description: t("visit.earlyCompleteBody", {
+          day: formatDay(visit.scheduled_on, locale, tz),
+        }),
+        confirmLabel: t("visit.earlyCompleteConfirm"),
+        cancelLabel: t("common.cancel"),
+      }))
     )
       return;
     void runVisitStep(step, {

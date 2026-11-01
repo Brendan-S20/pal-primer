@@ -605,6 +605,9 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     notAuthorizedComplete:
       "ليست لديك صلاحية إنهاء الزيارات. يجدول المنسّقون الزيارات، لكن فريق الميدان هو من ينهيها.",
     notAuthorizedCompleteTitle: "لا ينهي الزيارة إلا فريق الميدان (المالك أو مدير المكتب أو الفني)",
+    earlyCompleteTitle: "إنهاء هذه الزيارة قبل موعدها؟",
+    earlyCompleteBody: "هذه الزيارة مجدولة يوم {{day}}. إنهاؤها الآن يسجّلها منجزة اليوم.",
+    earlyCompleteConfirm: "إنهاء مبكرًا",
     needCompletionPhotoTitle: "أضف صورة الإنجاز أولًا",
     needChecklistTitle: "حدّد بنود قائمة التحقق الإلزامية أولًا",
     checklist: "قائمة التحقق",

@@ -571,6 +571,10 @@ const es: Translations = {
       "No tienes permiso para completar visitas. Los despachadores programan, pero el personal de campo completa la visita.",
     notAuthorizedCompleteTitle:
       "Solo el personal de campo (dueño, gerente de oficina o técnico) puede completar una visita",
+    earlyCompleteTitle: "¿Completar esta visita antes de tiempo?",
+    earlyCompleteBody:
+      "Esta visita está programada para el {{day}}. Si la completas ahora, queda hecha hoy.",
+    earlyCompleteConfirm: "Completar antes",
     needCompletionPhotoTitle: "Primero toma una foto del trabajo terminado",
     needChecklistTitle: "Primero marca los puntos obligatorios de la lista",
     checklist: "Lista",
