@@ -149,12 +149,14 @@ function SetupPage() {
   };
 
   // A step's own form saved: refresh the list, then move on to the next step
-  // still open (not merely the next one, which may already be done).
+  // still open (not merely the next one, which may already be done). A step
+  // with parts is done when the server says every part is, never because one
+  // form on it saved.
   const saved = async () => {
     await qc.invalidateQueries({ queryKey: ["onboarding-status"] });
     const fresh = qc.getQueryData<typeof data>(["onboarding-status"]);
     const list = stepsFor(fresh?.steps ?? steps, role).map((s) =>
-      s.id === current.id ? { ...s, done: true } : s,
+      s.id === current.id && !s.parts ? { ...s, done: true } : s,
     );
     const next = nextOpenStep(list, current.id);
     if (next) goTo(next);
@@ -473,7 +475,7 @@ function BusinessPanel({ onSaved }: { onSaved: () => void }) {
         </select>
       </div>
       <Button type="submit" disabled={m.isPending} data-setup-action="save">
-        {m.isPending ? "Saving…" : "Save and continue"}
+        {m.isPending ? "Saving…" : saveLabel}
       </Button>
     </form>
   );
@@ -515,16 +517,18 @@ function PricesPanel({
   parts: PricePart[];
   onSaved: () => void;
 }) {
-  const qc = useQueryClient();
   const area = parts.find((p) => p.id === "area");
   const rest = parts.filter((p) => p.id !== "area");
-  // Saving the area finishes one part, not the step. The guide's onSaved
-  // marks the whole step done and moves on, so it is called only when the
-  // area was the last part open; otherwise the list is refreshed and the
-  // owner stays here with the other parts still to price (#639).
+  const othersOpen = rest.some((p) => !p.done);
+  const qc = useQueryClient();
+  // Saving the area finishes one part, not the step. Refresh the parts and
+  // stay here while walks, stays, grooms or lessons are still open; move on
+  // only once the server says every part is done.
   const areaSaved = async () => {
-    if (rest.every((p) => p.done)) return onSaved();
     await qc.invalidateQueries({ queryKey: ["onboarding-status"] });
+    const fresh = qc.getQueryData<{ steps: OnboardingStep[] }>(["onboarding-status"]);
+    const now = fresh?.steps.find((s) => s.id === step.id);
+    if (now?.parts?.every((p) => p.done)) onSaved();
   };
   return (
     <div className="space-y-4">
@@ -574,6 +578,7 @@ function PricesPanel({
           <ServiceAreaPanel
             step={{ ...step, done: area.done, training: undefined }}
             onSaved={areaSaved}
+            saveLabel={othersOpen ? "Save area" : undefined}
           />
         </div>
       )}
@@ -581,7 +586,15 @@ function PricesPanel({
   );
 }
 
-function ServiceAreaPanel({ step, onSaved }: { step: OnboardingStep; onSaved: () => void }) {
+function ServiceAreaPanel({
+  step,
+  onSaved,
+  saveLabel = "Save and continue",
+}: {
+  step: OnboardingStep;
+  onSaved: () => void;
+  saveLabel?: string;
+}) {
   // A training business's step is done when the area AND the lesson price
   // are; the form below is about the area alone.
   const training = step.training;
@@ -750,7 +763,7 @@ function ServiceAreaPanel({ step, onSaved }: { step: OnboardingStep; onSaved: ()
         later.
       </p>
       <Button type="submit" disabled={m.isPending} data-setup-action="save">
-        {m.isPending ? "Saving…" : "Save and continue"}
+        {m.isPending ? "Saving…" : saveLabel}
       </Button>
     </form>
   );
@@ -982,7 +995,7 @@ function DumpSitePanel({ done, onSaved }: { done: boolean; onSaved: () => void }
         .
       </p>
       <Button type="submit" disabled={m.isPending} data-setup-action="save">
-        {m.isPending ? "Saving…" : "Save and continue"}
+        {m.isPending ? "Saving…" : saveLabel}
       </Button>
     </form>
   );

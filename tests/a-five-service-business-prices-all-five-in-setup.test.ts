@@ -5,6 +5,7 @@
 // with more than one line now gets one step with a part per line; a
 // business with one line still gets the step for that line alone.
 
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@tanstack/react-start", () => {
@@ -116,6 +117,44 @@ describe("the price step at a business with all five lines", () => {
   });
 });
 
+describe("the walks part", () => {
+  it("prices walks, not drop-ins, which are sitting", async () => {
+    const step = await priceStep(ALL_FIVE);
+    const walks = step.parts!.find((p) => p.id === "walks")!;
+    expect(walks.description).not.toMatch(/drop-in/i);
+    expect(step.parts!.find((p) => p.id === "stays")!.description).toMatch(/Drop-in/);
+  });
+});
+
+// Review of #666: saving the area form ran Setup's own onSaved, which marked
+// the whole price step done and jumped to the next step while walks, stays,
+// grooms and lessons were still open.
+describe("saving the area on a step with parts", () => {
+  const src = readFileSync("src/routes/_authenticated/setup.tsx", "utf8");
+  const panel = src.slice(
+    src.indexOf("function PricesPanel("),
+    src.indexOf("function ServiceAreaPanel("),
+  );
+
+  it("does not hand the area form the advancing onSaved", () => {
+    expect(panel).toMatch(/<ServiceAreaPanel[\s\S]*?onSaved=\{areaSaved\}/);
+    expect(panel).not.toMatch(/onSaved=\{onSaved\}/);
+  });
+
+  it("moves on only when the refreshed step has every part done", () => {
+    expect(panel).toMatch(/invalidateQueries\(\{ queryKey: \["onboarding-status"\] \}\)/);
+    expect(panel).toMatch(/parts\?\.every\(\(p\) => p\.done\)\) onSaved\(\)/);
+  });
+
+  it("says Save area, not Save and continue, while other parts are open", () => {
+    expect(panel).toMatch(/saveLabel=\{othersOpen \? "Save area" : undefined\}/);
+  });
+
+  it("never forces a step with parts to done on Setup's side", () => {
+    expect(src).toMatch(/s\.id === current\.id && !s\.parts \? \{ \.\.\.s, done: true \} : s/);
+  });
+});
+
 describe("two lines without pet waste or training", () => {
   it("asks for walks and stays and no service area", async () => {
     const step = await priceStep(["dog_walking", "pet_sitting"]);
@@ -137,25 +176,5 @@ describe("a business with one line keeps the step for that line", () => {
     expect(step.label).toBe(label);
     expect(step.to).toBe(to);
     expect(step.parts).toBeUndefined();
-  });
-});
-
-describe("saving the area on a multi-line step", () => {
-  it("does not hand the guide's advancing onSaved straight to the area form", async () => {
-    // The guide's onSaved marks the whole step done and moves to the next
-    // one. On a step with parts, the area is one part of five: saving it
-    // must leave the owner on the step until the other parts are done.
-    const { readFileSync } = await import("node:fs");
-    const { resolve } = await import("node:path");
-    const src = readFileSync(resolve(__dirname, "../src/routes/_authenticated/setup.tsx"), "utf8");
-    const panel = src.slice(
-      src.indexOf("function PricesPanel("),
-      src.indexOf("function ServiceAreaPanel("),
-    );
-    expect(panel).toMatch(
-      /const areaSaved = async \(\) => \{\s*if \(rest\.every\(\(p\) => p\.done\)\) return onSaved\(\);/,
-    );
-    expect(panel).toMatch(/<ServiceAreaPanel[\s\S]*?onSaved=\{areaSaved\}/);
-    expect(panel).not.toMatch(/<ServiceAreaPanel[\s\S]*?onSaved=\{onSaved\}/);
   });
 });
