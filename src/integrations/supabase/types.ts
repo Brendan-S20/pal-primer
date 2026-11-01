@@ -10990,6 +10990,10 @@ export type Database = {
         Args: { _child_org_id: string }
         Returns: undefined
       }
+      update_my_staff_profile: {
+        Args: { _display_name: string; _phone?: string }
+        Returns: string
+      }
       update_org_deepclean_settings: {
         Args: {
           _charge_cents: number

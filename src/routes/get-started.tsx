@@ -9,7 +9,11 @@ import {
 } from "@/lib/signup-attribution";
 import { supabase } from "@/integrations/supabase/client";
 import { bootstrapOrganization, recordSmsConsent, validateSignupCode } from "@/lib/org.functions";
-import { registerAccount, sendEmailVerification } from "@/lib/auth-entry.functions";
+import {
+  checkEmailAccount,
+  registerAccount,
+  sendEmailVerification,
+} from "@/lib/auth-entry.functions";
 import { lookupInviteByToken } from "@/lib/platform-onboarding.functions";
 import { acceptPendingInvite, rememberInviteToken } from "@/lib/ensure-workspace";
 import { humanizeRole } from "@/lib/humanize";
@@ -22,13 +26,16 @@ import { SMS_CONSENT_TEXT, SmsOptInFields, SmsOptInHeading } from "@/components/
 import { APP_NAME } from "@/lib/scoop";
 import { isValidOrgName } from "@/lib/dna-linkage";
 import { pageTitle } from "@/lib/page-title";
+import { handOffSignupEmail, takeSignupEmail } from "@/lib/signup-email";
 
 // The Get-started walkthrough (Brendan's re-review): account creation is a
 // guided path, not a tab on the sign-in card. Steps: account → business →
 // texting consent (Twilio/TCPA compliance) → then straight into /onboarding
 // for the plan picker + embedded payment, one continuous flow.
 export const Route = createFileRoute("/get-started")({
-  // The identifier-first /auth screen hands new emails over via ?email=…
+  // ?email= is still read so an old link works, but it is moved into
+  // sessionStorage and taken off the URL on arrival (#651). /auth and
+  // /sign-up hand the address over in sessionStorage to begin with.
   // ref/utm_* also land here directly when a marketing link skips /sign-up.
   validateSearch: (s: Record<string, unknown>) => ({
     email: typeof s.email === "string" ? s.email : undefined,
@@ -65,18 +72,36 @@ const STEPS = ["Your account", "Your business", "Finish"] as const;
 
 function GetStartedPage() {
   const search = Route.useSearch();
-  return search.invite ? <JoinTeamPage token={search.invite} email={search.email} /> : <NewBusinessPage />;
+  const navigate = useNavigate();
+  // An address in the URL is in history, in referrers and in analytics. Take
+  // it off before anything else (#651); the page reads it from the hand-off.
+  useEffect(() => {
+    if (!search.email) return;
+    handOffSignupEmail(search.email);
+    navigate({ to: "/get-started", search: { ...search, email: undefined }, replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search.email]);
+  if (search.email) return null;
+  return search.invite ? <JoinTeamPage token={search.invite} /> : <NewBusinessPage />;
 }
 
 function NewBusinessPage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
-  const { email: emailFromAuth } = search;
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // This address has a pending teammate invitation (#651). Then the page is a
+  // join: it asks for a name, never for a business, and never says
+  // "workspace". Decided on step 0, before the business step can be seen.
+  const [invited, setInvited] = useState(false);
+  const [checking, setChecking] = useState(false);
 
-  const [email, setEmail] = useState(emailFromAuth ?? "");
+  const [email, setEmail] = useState("");
+  useEffect(() => {
+    const handed = takeSignupEmail();
+    if (handed) setEmail((typed) => typed || handed);
+  }, []);
   const [password, setPassword] = useState("");
   const [orgName, setOrgName] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -123,6 +148,115 @@ function NewBusinessPage() {
   }, []);
 
   const step0Valid = /.+@.+\..+/.test(email) && password.length >= 8;
+
+  const continueFromAccount = async () => {
+    setError(null);
+    setChecking(true);
+    try {
+      const r = await checkEmailAccount({ data: { email: email.trim() } });
+      if (r.exists) {
+        setError("That email already has an account. Sign in instead.");
+        return;
+      }
+      if (r.pendingInvite) {
+        setInvited(true);
+        return;
+      }
+    } catch {
+      // The check is a courtesy. finish() still joins a pending invitation
+      // before it would build anything.
+    } finally {
+      setChecking(false);
+    }
+    setStep(1);
+  };
+
+  const join = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      await registerAccount({
+        data: { email: email.trim(), password, displayName: displayName.trim() },
+      });
+      const { error: signInErr } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (signInErr) throw signInErr;
+      if (!(await acceptPendingInvite(null))) {
+        throw new Error(
+          "Your account is created, but the invitation could not be used. Open the link in the invitation email, or ask for a new one.",
+        );
+      }
+      clearSignupAttribution();
+      navigate({ to: "/auth" });
+    } catch (err) {
+      setBusy(false);
+      setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
+    }
+  };
+
+  if (invited) {
+    return (
+      <PublicShell tagline="Join your team on HoundStack." className="max-w-lg">
+        <div className="rounded-xl border bg-card p-(--card-pad) shadow-sm">
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (displayName.trim()) join();
+            }}
+          >
+            <div className="min-w-0">
+              <h1 className="text-lg font-semibold">You have been invited</h1>
+              <p className="text-sm text-muted-foreground">
+                <span className="break-words">{email.trim()}</span> has an invitation to join a
+                team. Add your name to finish.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gs-name">Your name</Label>
+              <Input
+                id="gs-name"
+                required
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Jane Doe"
+                maxLength={80}
+              />
+              <p className="text-xs text-muted-foreground">
+                This is how your team and customers will see you.
+              </p>
+            </div>
+            {error && (
+              <p className="text-sm text-destructive">
+                {error}{" "}
+                <Link to="/auth" className="underline">
+                  Sign in instead
+                </Link>
+              </p>
+            )}
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setInvited(false);
+                  setError(null);
+                }}
+                disabled={busy}
+              >
+                Back
+              </Button>
+              <Button type="submit" className="flex-1" disabled={!displayName.trim() || busy}>
+                {busy ? "Joining…" : "Create account and join"}
+              </Button>
+            </div>
+          </form>
+        </div>
+      </PublicShell>
+    );
+  }
   const step1Valid = isValidOrgName(orgName) && displayName.trim().length > 0;
 
   const finish = async () => {
@@ -207,6 +341,9 @@ function NewBusinessPage() {
 
   return (
     <PublicShell tagline="Set up your workspace in about two minutes." className="max-w-lg">
+      {/* Not on step 0: whether there is a business step at all is only
+            known once the address has been checked (#651). */}
+      {step > 0 && (
         <div className="flex items-center gap-2">
           {STEPS.map((label, i) => (
             <div key={label} className="flex flex-1 items-center gap-2">
@@ -228,163 +365,165 @@ function NewBusinessPage() {
             </div>
           ))}
         </div>
+      )}
 
-        <div className="rounded-xl border bg-card p-(--card-pad) shadow-sm">
-          {step === 0 && (
-            <form
-              className="space-y-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (step0Valid) setStep(1);
-              }}
-            >
-              <div>
-                <h1 className="text-lg font-semibold">Create your account</h1>
-                <p className="text-sm text-muted-foreground">You'll use this to sign in.</p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="gs-email">Work email</Label>
-                <Input
-                  id="gs-email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@yourbusiness.com"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="gs-pass">Password</Label>
-                <Input
-                  id="gs-pass"
-                  type="password"
-                  required
-                  minLength={8}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="At least 8 characters"
-                />
-              </div>
-              <Button type="submit" className="w-full" disabled={!step0Valid}>
+      <div className="rounded-xl border bg-card p-(--card-pad) shadow-sm">
+        {step === 0 && (
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (step0Valid && !checking) void continueFromAccount();
+            }}
+          >
+            <div>
+              <h1 className="text-lg font-semibold">Create your account</h1>
+              <p className="text-sm text-muted-foreground">You'll use this to sign in.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gs-email">Work email</Label>
+              <Input
+                id="gs-email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@yourbusiness.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gs-pass">Password</Label>
+              <Input
+                id="gs-pass"
+                type="password"
+                required
+                minLength={8}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="At least 8 characters"
+              />
+            </div>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <Button type="submit" className="w-full" disabled={!step0Valid || checking}>
+              {checking ? "Checking…" : "Continue"}
+            </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              Already have an account?{" "}
+              <Link to="/auth" className="underline">
+                Sign in
+              </Link>
+            </p>
+          </form>
+        )}
+
+        {step === 1 && (
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (step1Valid) setStep(2);
+            }}
+          >
+            <div>
+              <h1 className="text-lg font-semibold">About your business</h1>
+              <p className="text-sm text-muted-foreground">
+                This names your workspace. You can change it later.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gs-org">Business name</Label>
+              <Input
+                id="gs-org"
+                required
+                value={orgName}
+                onChange={(e) => setOrgName(e.target.value)}
+                placeholder="Acme Pet Waste Removal"
+              />
+              {orgName.trim().length > 0 && !isValidOrgName(orgName) && (
+                <p className="text-xs text-destructive">
+                  Enter your real business name (not blank or a placeholder like "Test").
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gs-name">Your name</Label>
+              <Input
+                id="gs-name"
+                required
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Jane Doe"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gs-promo">
+                Promo or referral code{" "}
+                <span className="font-normal text-muted-foreground">(optional)</span>
+              </Label>
+              <Input
+                id="gs-promo"
+                value={promoCode}
+                onChange={(e) => {
+                  setPromoCode(e.target.value);
+                  setPromoStatus(null);
+                }}
+                onBlur={() => checkPromo(promoCode)}
+                placeholder="e.g. LAUNCH20"
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+              {promoChecking ? (
+                <p className="text-xs text-muted-foreground">Checking code…</p>
+              ) : promoStatus && promoCode.trim() ? (
+                promoStatus.valid ? (
+                  <p className="text-xs text-emerald-600">✓ {promoStatus.message}</p>
+                ) : (
+                  <p className="text-xs text-amber-600">{promoStatus.message}</p>
+                )
+              ) : null}
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => setStep(0)}>
+                Back
+              </Button>
+              <Button type="submit" className="flex-1" disabled={!step1Valid}>
                 Continue
               </Button>
-              <p className="text-center text-xs text-muted-foreground">
-                Already have an account?{" "}
-                <Link to="/auth" className="underline">
-                  Sign in
-                </Link>
-              </p>
-            </form>
-          )}
+            </div>
+          </form>
+        )}
 
-          {step === 1 && (
-            <form
-              className="space-y-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (step1Valid) setStep(2);
-              }}
-            >
-              <div>
-                <h1 className="text-lg font-semibold">About your business</h1>
-                <p className="text-sm text-muted-foreground">
-                  This names your workspace. You can change it later.
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="gs-org">Business name</Label>
-                <Input
-                  id="gs-org"
-                  required
-                  value={orgName}
-                  onChange={(e) => setOrgName(e.target.value)}
-                  placeholder="Acme Pet Waste Removal"
-                />
-                {orgName.trim().length > 0 && !isValidOrgName(orgName) && (
-                  <p className="text-xs text-destructive">
-                    Enter your real business name (not blank or a placeholder like "Test").
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="gs-name">Your name</Label>
-                <Input
-                  id="gs-name"
-                  required
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="Jane Doe"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="gs-promo">
-                  Promo or referral code{" "}
-                  <span className="font-normal text-muted-foreground">(optional)</span>
-                </Label>
-                <Input
-                  id="gs-promo"
-                  value={promoCode}
-                  onChange={(e) => {
-                    setPromoCode(e.target.value);
-                    setPromoStatus(null);
-                  }}
-                  onBlur={() => checkPromo(promoCode)}
-                  placeholder="e.g. LAUNCH20"
-                  autoCapitalize="characters"
-                  autoCorrect="off"
-                  spellCheck={false}
-                />
-                {promoChecking ? (
-                  <p className="text-xs text-muted-foreground">Checking code…</p>
-                ) : promoStatus && promoCode.trim() ? (
-                  promoStatus.valid ? (
-                    <p className="text-xs text-emerald-600">✓ {promoStatus.message}</p>
-                  ) : (
-                    <p className="text-xs text-amber-600">{promoStatus.message}</p>
-                  )
-                ) : null}
-              </div>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={() => setStep(0)}>
-                  Back
-                </Button>
-                <Button type="submit" className="flex-1" disabled={!step1Valid}>
-                  Continue
-                </Button>
-              </div>
-            </form>
-          )}
-
-          {step === 2 && (
-            <form
-              className="space-y-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                finish();
-              }}
-            >
-              <SmsOptInHeading />
-              <SmsOptInFields
-                phone={phone}
-                onPhoneChange={setPhone}
-                smsConsent={smsConsent}
-                onSmsConsentChange={setSmsConsent}
-              />
-              {error && <p className="text-sm text-destructive">{error}</p>}
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={() => setStep(1)} disabled={busy}>
-                  Back
-                </Button>
-                <Button type="submit" className="flex-1" disabled={busy}>
-                  {busy ? "Creating your workspace…" : "Create my workspace"}
-                </Button>
-              </div>
-              <p className="text-center text-xs text-muted-foreground">
-                Next: pick a plan (or start on the free trial).
-              </p>
-            </form>
-          )}
-        </div>
+        {step === 2 && (
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              finish();
+            }}
+          >
+            <SmsOptInHeading />
+            <SmsOptInFields
+              phone={phone}
+              onPhoneChange={setPhone}
+              smsConsent={smsConsent}
+              onSmsConsentChange={setSmsConsent}
+            />
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => setStep(1)} disabled={busy}>
+                Back
+              </Button>
+              <Button type="submit" className="flex-1" disabled={busy}>
+                {busy ? "Creating your workspace…" : "Create my workspace"}
+              </Button>
+            </div>
+            <p className="text-center text-xs text-muted-foreground">
+              Next: pick a plan (or start on the free trial).
+            </p>
+          </form>
+        )}
+      </div>
     </PublicShell>
   );
 }
@@ -398,7 +537,7 @@ function NewBusinessPage() {
  * they create an account with the invited address and join the business that
  * invited them, with the role it chose. No organization is created.
  */
-function JoinTeamPage({ token, email: emailFromAuth }: { token: string; email?: string }) {
+function JoinTeamPage({ token }: { token: string }) {
   const navigate = useNavigate();
   const q = useQuery({
     queryKey: ["invite", token],
@@ -407,7 +546,8 @@ function JoinTeamPage({ token, email: emailFromAuth }: { token: string; email?: 
   });
   const invite = q.data?.ok && q.data.kind === "staff" ? q.data : null;
 
-  const [email, setEmail] = useState(emailFromAuth ?? "");
+  // Prefilled from the invitation itself, not from the URL (#651).
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -417,11 +557,15 @@ function JoinTeamPage({ token, email: emailFromAuth }: { token: string; email?: 
     rememberInviteToken(token);
   }, [token]);
   useEffect(() => {
-    if (invite?.email && !emailFromAuth) setEmail(invite.email);
-  }, [invite?.email, emailFromAuth]);
+    // The hand-off from /auth is the same address (the invitation's); drain
+    // it so it does not linger in the tab.
+    takeSignupEmail();
+  }, []);
+  useEffect(() => {
+    if (invite?.email) setEmail((typed) => typed || invite.email!);
+  }, [invite?.email]);
 
-  const emailMatches =
-    !!invite?.email && email.trim().toLowerCase() === invite.email.toLowerCase();
+  const emailMatches = !!invite?.email && email.trim().toLowerCase() === invite.email.toLowerCase();
   const valid = emailMatches && password.length >= 8 && displayName.trim().length > 0;
 
   const join = async () => {
@@ -499,7 +643,8 @@ function JoinTeamPage({ token, email: emailFromAuth }: { token: string; email?: 
               />
               {email.trim().length > 0 && !emailMatches && (
                 <p className="text-xs text-destructive">
-                  This invitation was sent to <span className="break-words">{invite.email}</span>. Use that address.
+                  This invitation was sent to <span className="break-words">{invite.email}</span>.
+                  Use that address.
                 </p>
               )}
             </div>
@@ -511,6 +656,7 @@ function JoinTeamPage({ token, email: emailFromAuth }: { token: string; email?: 
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="Jane Doe"
+                maxLength={80}
               />
             </div>
             <div className="space-y-2">

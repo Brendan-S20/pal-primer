@@ -41,34 +41,32 @@ export const getMyProfile = createServerFn({ method: "GET" })
   .handler(async ({ context }) => loadMyProfile(context));
 
 /** getMyProfile's answer, also asked by getShellContext. */
-export const loadMyProfile = createServerOnlyFn(
-  async (context: AuthedContext) => {
-    const { supabase, userId } = context;
-    const staff = await myStaffRow(supabase, userId);
+export const loadMyProfile = createServerOnlyFn(async (context: AuthedContext) => {
+  const { supabase, userId } = context;
+  const staff = await myStaffRow(supabase, userId);
 
-    // The address you actually sign in with, which is not necessarily the one
-    // on the staff row — see the note at the top of the file.
-    const { data: auth } = await supabase.auth.getUser();
-    const authEmail: string | null = auth?.user?.email ?? null;
+  // The address you actually sign in with, which is not necessarily the one
+  // on the staff row — see the note at the top of the file.
+  const { data: auth } = await supabase.auth.getUser();
+  const authEmail: string | null = auth?.user?.email ?? null;
 
-    // A confirmed email change lands in Auth and nowhere else. Reconciling it
-    // here means the staff row heals on the next page load instead of staying
-    // wrong until somebody edits it by hand.
-    if (staff && authEmail && staff.email !== authEmail) {
-      await supabase.from("staff").update({ email: authEmail }).eq("user_id", userId);
-      staff.email = authEmail;
-    }
+  // A confirmed email change lands in Auth and nowhere else. Reconciling it
+  // here means the staff row heals on the next page load instead of staying
+  // wrong until somebody edits it by hand.
+  if (staff && authEmail && staff.email !== authEmail) {
+    await supabase.from("staff").update({ email: authEmail }).eq("user_id", userId);
+    staff.email = authEmail;
+  }
 
-    return {
-      staff,
-      authEmail,
-      // Surfaced so the page can say "unconfirmed" rather than implying the
-      // change already took effect.
-      emailConfirmed: Boolean(auth?.user?.email_confirmed_at),
-      pendingEmail: (auth?.user as any)?.new_email ?? null,
-    };
-  },
-);
+  return {
+    staff,
+    authEmail,
+    // Surfaced so the page can say "unconfirmed" rather than implying the
+    // change already took effect.
+    emailConfirmed: Boolean(auth?.user?.email_confirmed_at),
+    pendingEmail: (auth?.user as any)?.new_email ?? null,
+  };
+});
 
 export const updateMyProfile = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -81,17 +79,19 @@ export const updateMyProfile = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const { error } = await supabase
-      .from("staff")
-      .update({
-        display_name: data.displayName,
-        phone: data.phone?.trim() ? data.phone.trim() : null,
-      })
-      // Scoped to the caller's own row. No id crosses the wire, so there is
-      // nothing to tamper with.
-      .eq("user_id", userId);
+    const { supabase } = context;
+    // Not `.from("staff").update(...)`. The only UPDATE policy on staff asks
+    // for manage_users, so a tech's update matched no row, PostgREST said
+    // nothing was wrong, and the page said "Profile saved" over a name that
+    // never changed (#651, F-26). update_my_staff_profile writes the caller's
+    // own row (auth.uid(); no id crosses the wire) and raises when there is
+    // no row to write, so success here means the name is stored.
+    const { data: savedId, error } = await supabase.rpc("update_my_staff_profile", {
+      _display_name: data.displayName,
+      _phone: data.phone?.trim() ? data.phone.trim() : undefined,
+    });
     if (error) throw new Error(error.message);
+    if (!savedId) throw new Error("Your profile was not saved. Try again.");
     return { ok: true };
   });
 
