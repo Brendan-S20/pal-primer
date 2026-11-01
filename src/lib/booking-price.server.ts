@@ -13,12 +13,15 @@
 // Null when there is no set price: the business never set a one-off price,
 // or the service has none. Somebody who sets prices books that one.
 
-import { isZonePriced, servicePriceCents } from "@/lib/services";
+import { ONE_OFF_PRICE_SETTING, isZonePriced, servicePriceCents } from "@/lib/services";
 
 export type OneOffGridPrice = { cents: number; reason: null } | { cents: null; reason: string };
 
-export const NO_ONE_OFF_PRICE =
-  "This business has no one-off price set yet, so somebody who sets prices has to book this visit.";
+// Names the field that fixes it (#641): Business defaults and the Services
+// pet-waste price look like the one-off price and are not.
+export const NO_ONE_OFF_PRICE = `This business has no one-off price set yet. It is set in ${ONE_OFF_PRICE_SETTING}. Until then, somebody who sets prices has to book this visit.`;
+/** Someone who sets prices left the price blank and there is no set price. */
+export const ENTER_A_ONE_OFF_PRICE = `Enter a price for this visit, or set one for every extra visit in ${ONE_OFF_PRICE_SETTING}.`;
 export const NO_SERVICE_PRICE =
   "This service has no price yet, so somebody who sets prices has to book this visit.";
 

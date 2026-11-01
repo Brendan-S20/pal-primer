@@ -10,6 +10,11 @@
 // walks, sits or grooms offers those from the same card at each service's
 // own price (Settings -> Services), and the card says so to that business
 // only; a pet-waste business reads the card it always has.
+//
+// It is also the one place a one-off's set price lives (#641), so the
+// One-off dialog and Settings -> Services link here, to #one-off-price. The
+// card draws only once its settings load, after the router has already tried
+// the hash, so it scrolls to the field itself.
 
 import { RECEPTIONIST_LAUNCHED } from "@/lib/receptionist-launch";
 import { useEffect, useState } from "react";
@@ -23,6 +28,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { getPortalBookingSettings, setPortalBookingSettings } from "@/lib/portal-booking.functions";
 import { useServiceLines } from "@/components/CommercialOnly";
+import { ONE_OFF_PRICE_SETTING_HASH } from "@/lib/services";
 
 export function PortalBookingCard() {
   const qc = useQueryClient();
@@ -39,6 +45,14 @@ export function PortalBookingCard() {
     setPrice(q.data.priceCents == null ? "" : (q.data.priceCents / 100).toFixed(2));
     setAutoAccept(q.data.autoAccept);
   }, [q.data]);
+
+  const canEdit = !!q.data?.canEdit;
+  useEffect(() => {
+    if (!canEdit || window.location.hash !== `#${ONE_OFF_PRICE_SETTING_HASH}`) return;
+    const el = document.getElementById(ONE_OFF_PRICE_SETTING_HASH);
+    el?.scrollIntoView({ block: "center" });
+    el?.focus({ preventScroll: true });
+  }, [canEdit]);
 
   const trimmed = price.trim();
   const priceCents = trimmed === "" ? null : Math.round(parseFloat(trimmed) * 100);
@@ -68,11 +82,11 @@ export function PortalBookingCard() {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="max-w-xs">
-          <Label htmlFor="one-off-price" className="text-xs">
+          <Label htmlFor={ONE_OFF_PRICE_SETTING_HASH} className="text-xs">
             {otherServices ? "Price of an extra pet waste visit" : "Price of an extra visit"}
           </Label>
           <Input
-            id="one-off-price"
+            id={ONE_OFF_PRICE_SETTING_HASH}
             className="mt-1"
             type="number"
             inputMode="decimal"

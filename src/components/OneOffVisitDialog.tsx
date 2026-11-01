@@ -15,10 +15,17 @@
 // "How much" is typed only by someone who sets prices (manage_pricing). A
 // dispatcher books (#616) at the set price, which is shown and not editable;
 // the server refuses any other price from them.
+//
+// With no set price, the dialog names where it is set (#641): Settings ->
+// Client portal -> Price of an extra visit, the one field that writes
+// organizations.one_off_price_cents. Business defaults and the Services
+// pet-waste price look like it and are not. Someone who can change settings
+// gets a link to the field.
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -36,6 +43,11 @@ import { listPropertiesForClient } from "@/lib/properties.functions";
 import { createOneOffVisit, listStaff, oneOffSetPrice } from "@/lib/visits.functions";
 import { useOrgToday } from "@/hooks/useOrgToday";
 import { usePermissions } from "@/hooks/useMyRole";
+import {
+  ONE_OFF_PRICE_SETTING,
+  ONE_OFF_PRICE_SETTING_HASH,
+  ONE_OFF_PRICE_SETTING_PATH,
+} from "@/lib/services";
 
 export function OneOffVisitDialog({
   open,
@@ -56,6 +68,7 @@ export function OneOffVisitDialog({
   const setPriceFn = useServerFn(oneOffSetPrice);
   const { can } = usePermissions();
   const setsPrices = can("manage_pricing");
+  const changesSettings = can("manage_settings");
   // The business's today, not the device's: the server refuses a date before
   // it (20261031120000), so the picker has to agree about what day it is.
   const today = useOrgToday();
@@ -113,13 +126,15 @@ export function OneOffVisitDialog({
   });
   const techs = (staffData?.staff ?? []).filter((s: any) => s.is_field_tech);
 
-  // The set price, for someone who books but does not set prices.
+  // The set price, for someone who books but does not set prices; and for
+  // someone who sets prices and can change settings, only to say where the
+  // missing one is set (they still type the price here).
   const {
     data: listPrice,
     isLoading: listPriceLoading,
     error: listPriceError,
   } = useQuery({
-    enabled: open && !setsPrices && !!propertyId,
+    enabled: open && (!setsPrices || changesSettings) && !!propertyId,
     queryKey: ["one-off-set-price", propertyId],
     queryFn: () => setPriceFn({ data: { propertyId } }),
   });
@@ -269,6 +284,22 @@ export function OneOffVisitDialog({
                 ? "The business's set price. Only someone who sets prices can change it."
                 : listPrice.reason}
             </p>
+          )}
+          {setsPrices && propertyId && listPrice && listPrice.cents == null && (
+            <p className="text-2xs text-muted-foreground">
+              No extra-visit price is set, so type one. To set it once for every extra visit, use{" "}
+              {ONE_OFF_PRICE_SETTING}.
+            </p>
+          )}
+          {changesSettings && propertyId && listPrice && listPrice.cents == null && (
+            <Link
+              to={ONE_OFF_PRICE_SETTING_PATH}
+              hash={ONE_OFF_PRICE_SETTING_HASH}
+              onClick={() => onOpenChange(false)}
+              className="inline-flex min-h-9 items-center text-xs font-medium text-primary underline touch:min-h-11"
+            >
+              Set the extra-visit price
+            </Link>
           )}
 
           <div className="space-y-1">

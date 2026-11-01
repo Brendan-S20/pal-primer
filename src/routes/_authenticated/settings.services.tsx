@@ -15,7 +15,7 @@
 // plans and visits point at it.
 
 import { ServiceSizeRulesEditor } from "@/components/settings/ServiceSizeRulesEditor";
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
@@ -28,6 +28,9 @@ import {
   updateService,
 } from "@/lib/services.functions";
 import {
+  ONE_OFF_PRICE_SETTING,
+  ONE_OFF_PRICE_SETTING_HASH,
+  ONE_OFF_PRICE_SETTING_PATH,
   PRICE_UNIT_LABEL,
   centsToDollarInput,
   defaultServiceLine,
@@ -408,6 +411,7 @@ function ServiceForm({
   const units = priceUnitsFor(form.service_line);
   const minutesRequired = durationRequired(form.service_line) && form.price_unit !== "night";
   const per = form.price_unit;
+  const petWaste = form.service_line === "pet_waste";
 
   return (
     <form
@@ -508,26 +512,53 @@ function ServiceForm({
       </fieldset>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <Label htmlFor="service-price">Price per {per} ($)</Label>
-          <Input
-            id="service-price"
-            inputMode="decimal"
-            placeholder={form.service_line === "pet_waste" ? "Set by your zones" : "0.00"}
-            value={form.price}
-            onChange={(e) => setForm({ ...form, price: e.target.value })}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="service-extra">Each extra pet, per {per} ($)</Label>
-          <Input
-            id="service-extra"
-            inputMode="decimal"
-            placeholder="0.00"
-            value={form.extraPet}
-            onChange={(e) => setForm({ ...form, extraPet: e.target.value })}
-          />
-        </div>
+        {petWaste ? (
+          // Nothing reads a pet-waste service's own price (#641): a plan is
+          // priced by its zone, and a one-off by the Client portal's extra
+          // visit price (booking-price.server.ts, isZonePriced). So the form
+          // does not ask for one. Whatever an older form saved is left as it
+          // was and sent back unchanged.
+          <div className="space-y-1.5 sm:col-span-2" id="service-price-note">
+            <p className="text-sm font-medium">Price per {per}</p>
+            <p className="text-sm text-muted-foreground">
+              Pet waste is not priced here. A plan is priced by its zone in{" "}
+              <Link to="/zones" className="font-medium text-primary underline">
+                Zones &amp; pricing
+              </Link>
+              . A one-off visit uses {ONE_OFF_PRICE_SETTING}.
+            </p>
+            <Link
+              to={ONE_OFF_PRICE_SETTING_PATH}
+              hash={ONE_OFF_PRICE_SETTING_HASH}
+              className="inline-flex min-h-9 items-center text-sm font-medium text-primary underline touch:min-h-11"
+            >
+              Set the extra-visit price
+            </Link>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-1.5">
+              <Label htmlFor="service-price">Price per {per} ($)</Label>
+              <Input
+                id="service-price"
+                inputMode="decimal"
+                placeholder="0.00"
+                value={form.price}
+                onChange={(e) => setForm({ ...form, price: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="service-extra">Each extra pet, per {per} ($)</Label>
+              <Input
+                id="service-extra"
+                inputMode="decimal"
+                placeholder="0.00"
+                value={form.extraPet}
+                onChange={(e) => setForm({ ...form, extraPet: e.target.value })}
+              />
+            </div>
+          </>
+        )}
         <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor="service-minutes">
             Usually takes (minutes){minutesRequired ? "" : ", optional"}
