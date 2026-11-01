@@ -166,7 +166,7 @@ export async function bookGroomAppointment(
     name: string;
     unit_price_cents: number;
     duration_min: number | null;
-    service_line: string | null;
+    service_line: string;
     active: boolean;
   }> = [];
   if (wanted.size > 0) {
@@ -180,7 +180,7 @@ export async function bookGroomAppointment(
     if (addonRows.length !== wanted.size) throw new Error("That add-on is not on this groom.");
     for (const row of addonRows) {
       if (!row.active) throw new Error("That add-on is not on this groom.");
-      if (row.service_line && row.service_line !== "mobile_grooming")
+      if (row.service_line !== "mobile_grooming")
         throw new Error("That add-on is not on this groom.");
     }
   }

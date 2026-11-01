@@ -79,7 +79,8 @@ describe("grooming owner fields", () => {
     );
     expect(html).toContain("Minutes");
     expect(html).toContain("Offered with");
-    expect(html).toContain("Any service line");
+    // No "any service" choice since #640: an add-on names its line.
+    expect(html).not.toContain("Any service line");
   });
   it("wires both pet editors to the organization's service lines and the matrix to the service line", () => {
     for (const file of [

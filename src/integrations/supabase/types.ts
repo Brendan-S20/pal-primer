@@ -494,7 +494,7 @@ export type Database = {
           kind: Database["public"]["Enums"]["addon_kind"]
           name: string
           organization_id: string
-          service_line: string | null
+          service_line: string
           taxable: boolean
           unit_price_cents: number
           updated_at: string
@@ -513,7 +513,7 @@ export type Database = {
           kind?: Database["public"]["Enums"]["addon_kind"]
           name: string
           organization_id: string
-          service_line?: string | null
+          service_line?: string
           taxable?: boolean
           unit_price_cents?: number
           updated_at?: string
@@ -532,7 +532,7 @@ export type Database = {
           kind?: Database["public"]["Enums"]["addon_kind"]
           name?: string
           organization_id?: string
-          service_line?: string | null
+          service_line?: string
           taxable?: boolean
           unit_price_cents?: number
           updated_at?: string

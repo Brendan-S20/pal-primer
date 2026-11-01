@@ -52,6 +52,9 @@ function AddonsCatalog() {
   const { lines } = useServiceLines();
   const example = addOnExampleFor(lines);
   const grooming = lines.includes("mobile_grooming");
+  // A new add-on names a line (#640). Until the owner picks one it is the
+  // business's first line, which is what the picker shows selected.
+  const firstLine = lines[0] ?? "pet_waste";
 
   const upsertMut = useMutation({
     mutationFn: (v: any) => upsert({ data: v }),
@@ -96,7 +99,7 @@ function AddonsCatalog() {
             upsertMut.mutate({
               ...rest,
               ...(grooming
-                ? { durationMin: Number(durationMin || "0"), serviceLine: serviceLine || null }
+                ? { durationMin: Number(durationMin || "0"), serviceLine: serviceLine || firstLine }
                 : {}),
               unit_price_cents: Math.max(0, Math.round(parseFloat(price || "0") * 100) || 0),
               default_frequency: draft.default_frequency || null,
@@ -165,7 +168,7 @@ function AddonsCatalog() {
           <AddonGroomFields
             grooming={grooming}
             durationMin={draft.durationMin}
-            serviceLine={draft.serviceLine}
+            serviceLine={draft.serviceLine || firstLine}
             onChange={(patch) => setDraft({ ...draft, ...patch })}
           />
           <div className="sm:col-span-2 flex items-end">
@@ -247,11 +250,11 @@ function CatalogGroomFields({
 }: {
   service: any;
   saving: boolean;
-  onSave: (patch: { durationMin: number; serviceLine: string | null }) => void;
+  onSave: (patch: { durationMin: number; serviceLine: string }) => void;
 }) {
   const [fields, setFields] = useState({
     durationMin: String(service.duration_min ?? 0),
-    serviceLine: service.service_line ?? "",
+    serviceLine: service.service_line ?? "pet_waste",
   });
   return (
     <form
@@ -260,7 +263,7 @@ function CatalogGroomFields({
         e.preventDefault();
         onSave({
           durationMin: Number(fields.durationMin || "0"),
-          serviceLine: fields.serviceLine || null,
+          serviceLine: fields.serviceLine || "pet_waste",
         });
       }}
     >

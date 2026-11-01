@@ -186,8 +186,7 @@ export function OneOffVisitDialog({
         <DialogHeader>
           <DialogTitle>Book a one-off visit</DialogTitle>
           <DialogDescription>
-            A single visit on one date: an emergency call-out, a make-up after a skip, or a
-            one-time clean. It bills like any other visit.
+            A single visit on one date, billed like any other visit.
           </DialogDescription>
         </DialogHeader>
 
