@@ -26,7 +26,7 @@ vi.setConfig({ testTimeout: 300_000 });
 
 const ROOT = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
-const MIGRATION = join(ROOT, "supabase/migrations/20261101100000_an-invited-name-is-kept.sql");
+const MIGRATION = join(ROOT, "supabase/migrations/20261101160000_an-invited-name-is-kept.sql");
 const PROOF = join(ROOT, "tests/sql/an-invited-name-is-kept.proof.sql");
 
 // ── Server functions, run with a fake client ─────────────────────────────────
