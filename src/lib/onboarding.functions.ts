@@ -1,7 +1,7 @@
 import { createServerFn, createServerOnlyFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { AuthedContext } from "@/lib/server-fn-context";
-import { runsPetWaste, serviceLinesOrDefault } from "@/lib/service-lines";
+import { OFFERED_SERVICE_LINES, runsPetWaste, serviceLinesOrDefault } from "@/lib/service-lines";
 
 export type OnboardingStepId = "business" | "zones" | "clients" | "staff" | "dump_site" | "payouts";
 
@@ -29,6 +29,33 @@ export type OnboardingStep = {
    *  package is priced and a skill list exists (`done`). The step is done
    *  when both are. */
   training?: { areaDone: boolean; done: boolean };
+  /** Only on the price step, and only for a business that runs more than one
+   *  service line: one part per thing to price, in the order /setup draws
+   *  them. The step is done when every part is. A one-line business never
+   *  has parts; its step is about its own line (#639). */
+  parts?: PricePart[];
+};
+
+export type PricePartId = "area" | "walks" | "stays" | "grooms" | "lessons";
+
+export type PricePart = {
+  id: PricePartId;
+  label: string;
+  description: string;
+  done: boolean;
+  /** Where the part is finished. The area part is also finished inline on
+   *  /setup; the rest are on Settings, Services. */
+  to: "/zones" | "/settings/services";
+  cta: string;
+};
+
+/** How the multi-line step's description names each part. */
+const PART_NOUN: Record<PricePartId, (petWaste: boolean) => string> = {
+  area: (petWaste) => (petWaste ? "pet waste zones" : "your service area"),
+  walks: () => "walks",
+  stays: () => "stays",
+  grooms: () => "grooms",
+  lessons: () => "lessons",
 };
 
 /** The checklist and the setup guide are ONE list. The guide at /setup walks
@@ -350,62 +377,156 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
     },
   ];
 
-  if (grooming && !runsTraining) {
-    Object.assign(
-      steps.find((step) => step.id === "zones")!,
-      {
-        label: "Review your grooming prices, vaccines and buffer",
-        description:
-          "Review the starter size grid, required vaccines and setup, cleanup and travel minutes in Settings, Services.",
-        done: !!groomingSetup?.data?.groom_setup_reviewed_at,
-        cta: "Review grooming setup",
-        gate: "/settings/services",
-      },
-    );
-  }
+  // ── ONE PRICE STEP FOR EVERY LINE THE BUSINESS RUNS ─────────────────
+  //
+  // Each line is priced in a different place: a pet-waste plan from a
+  // zone's per-visit price, a walk or a stay from its own service, a groom
+  // from the size grid, a lesson package from service_packages. Until #639
+  // the step below was overwritten once per line, in order, so the last
+  // line to run won: a business with all five read "Price your sitting
+  // services" and was never asked about walks, grooms, lessons or its
+  // pet-waste area. The guide stays at six steps
+  // (tests/every-setup-step-has-somewhere-to-go.test.ts), so a business
+  // with more than one line gets ONE step that names each line, with a
+  // part per line, done when every part is. A business with one line gets
+  // the step for that line alone, exactly as before.
+  const walks = orgLines.includes("dog_walking")
+    ? (
+        await supabase
+          .from("services")
+          .select("base_price_cents")
+          .eq("organization_id", orgId)
+          .eq("service_line", "dog_walking")
+          .eq("active", true)
+      ).data
+    : null;
+  const stays = sitting
+    ? (
+        await supabase
+          .from("services")
+          .select("created_at, updated_at")
+          .eq("organization_id", orgId)
+          .eq("service_line", "pet_sitting")
+          .eq("active", true)
+      ).data
+    : null;
+  // Signup seeds the walks with blank prices; done means one has a price.
+  const walksDone = (walks ?? []).some((w) => (w.base_price_cents ?? 0) > 0);
+  // Signup seeds the stays with starter prices; done means one was saved.
+  const staysDone = (stays ?? []).some((s) => s.updated_at !== s.created_at);
+  const groomDone = !!groomingSetup?.data?.groom_setup_reviewed_at;
 
-  // A walking business prices each walk on Settings, Services; a zone's
-  // per-visit price is what a pet-waste plan is quoted from, so asking a
-  // walker for one sends them to a number no walk ever reads. Signup
-  // seeds the walks with blank prices, and done means one has a price.
-  if (orgLines.includes("dog_walking") && !petWaste && !grooming && !runsTraining && !sitting) {
-    const { data: walks } = await supabase
-      .from("services")
-      .select("base_price_cents")
-      .eq("organization_id", orgId)
-      .eq("service_line", "dog_walking")
-      .eq("active", true);
-    Object.assign(
-      steps.find((step) => step.id === "zones")!,
-      {
-        label: "Price your walks",
-        description:
-          "Set what a 30-minute walk, a 60-minute walk and a drop-in cost. New clients are quoted these prices. Your service area is on Zones.",
-        done: (walks ?? []).some((w) => (w.base_price_cents ?? 0) > 0),
-        to: "/settings/services",
-        cta: "Price walks",
-        gate: "/settings/services",
-      },
-    );
+  const parts: PricePart[] = [];
+  // The service area is asked of a pet-waste business, whose plans are
+  // quoted from it, and of a training business, whose step has asked for
+  // it since #476.
+  if (petWaste || runsTraining) {
+    parts.push({
+      id: "area",
+      label: petWaste ? "Pet waste service area" : "Service area",
+      description: petWaste
+        ? "Where you work and what you charge per visit. New pet waste clients in the area are quoted this price."
+        : "Where you work and what you charge per visit.",
+      done: areaDone,
+      to: "/zones",
+      cta: "Set area price",
+    });
   }
+  if (orgLines.includes("dog_walking")) {
+    parts.push({
+      id: "walks",
+      label: "Walks",
+      description: "What a 30-minute walk, a 60-minute walk and a drop-in cost.",
+      done: walksDone,
+      to: "/settings/services",
+      cta: "Price walks",
+    });
+  }
+  if (sitting) {
+    parts.push({
+      id: "stays",
+      label: "Sitting",
+      description:
+        "Drop-in, Overnight stay and House sit prices, holiday dates and the deposit refund window.",
+      done: staysDone,
+      to: "/settings/services",
+      cta: "Review sitting prices",
+    });
+  }
+  if (grooming) {
+    parts.push({
+      id: "grooms",
+      label: "Grooming",
+      description: "The size grid, required vaccines, and setup, cleanup and travel minutes.",
+      done: groomDone,
+      to: "/settings/services",
+      cta: "Review grooming setup",
+    });
+  }
+  if (training) {
+    parts.push({
+      id: "lessons",
+      label: "Training",
+      description: "Price your lesson package, turn it on, and add the skills a trainer scores.",
+      done: training.done,
+      to: "/settings/services",
+      cta: "Price lessons",
+    });
+  }
+  const linesRun = OFFERED_SERVICE_LINES.filter((l) => orgLines.includes(l));
+  const zonesStep = steps.find((step) => step.id === "zones")!;
 
-    if (sitting) {
-      const { data: services } = await supabase
-        .from("services")
-        .select("created_at, updated_at")
-        .eq("organization_id", orgId)
-        .eq("service_line", "pet_sitting")
-        .eq("active", true);
-      Object.assign(steps.find((step) => step.id === "zones")!, {
-        label: "Price your sitting services",
-        description:
-          "Review Drop-in, Overnight stay and House sit prices, holiday dates and the deposit refund window before booking your first stay.",
-        done: (services ?? []).some((s) => s.updated_at !== s.created_at),
-        to: "/settings/services",
-        cta: "Review sitting services",
-        gate: "/settings/services",
-      });
-    }
+  if (linesRun.length > 1) {
+    const names = parts.map((p) => PART_NOUN[p.id](petWaste));
+    const list =
+      names.length > 1
+        ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`
+        : names[0];
+    // `training` and `alt` belong to the one-line step; the parts carry both.
+    delete zonesStep.training;
+    delete zonesStep.alt;
+    Object.assign(zonesStep, {
+      label: "Price your services",
+      description: `You run ${linesRun.length} services. Set a price for each: ${list}. New clients are quoted these prices.`,
+      done: parts.every((p) => p.done),
+      to: "/setup",
+      cta: "Set your prices",
+      gate: parts.some((p) => p.id === "area") ? "/zones" : "/settings/services",
+      parts,
+    });
+  } else if (grooming) {
+    Object.assign(zonesStep, {
+      label: "Review your grooming prices, vaccines and buffer",
+      description:
+        "Review the starter size grid, required vaccines and setup, cleanup and travel minutes in Settings, Services.",
+      done: groomDone,
+      cta: "Review grooming setup",
+      gate: "/settings/services",
+    });
+  } else if (orgLines.includes("dog_walking")) {
+    // A walking business prices each walk on Settings, Services; a zone's
+    // per-visit price is what a pet-waste plan is quoted from, so asking a
+    // walker for one sends them to a number no walk ever reads.
+    Object.assign(zonesStep, {
+      label: "Price your walks",
+      description:
+        "Set what a 30-minute walk, a 60-minute walk and a drop-in cost. New clients are quoted these prices. Your service area is on Zones.",
+      done: walksDone,
+      to: "/settings/services",
+      cta: "Price walks",
+      gate: "/settings/services",
+    });
+  } else if (sitting) {
+    Object.assign(zonesStep, {
+      label: "Price your sitting services",
+      description:
+        "Review Drop-in, Overnight stay and House sit prices, holiday dates and the deposit refund window before booking your first stay.",
+      done: staysDone,
+      to: "/settings/services",
+      cta: "Review sitting services",
+      gate: "/settings/services",
+    });
+  }
 
   const completed = steps.filter((s) => s.done).length;
   return {

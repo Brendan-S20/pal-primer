@@ -20,6 +20,7 @@ import {
   ONBOARDING_STEP_IDS,
   type OnboardingStep,
   type OnboardingStepId,
+  type PricePart,
 } from "@/lib/onboarding.functions";
 import { getOrgBranding, updateOrgBranding } from "@/lib/org.functions";
 import { countryFromAddress } from "@/lib/distance-unit";
@@ -310,6 +311,7 @@ function StepPanel({ step, onSaved }: { step: OnboardingStep; onSaved: () => voi
 
 function PricingPanel({ step, onSaved }: { step: OnboardingStep; onSaved: () => void }) {
   const { lines } = useServiceLines();
+  if (step.parts) return <PricesPanel step={step} parts={step.parts} onSaved={onSaved} />;
   return lines.includes("mobile_grooming") ? (
     <Button asChild className="min-h-11">
       <Link to="/settings/services">Review grooming prices, vaccines and buffer</Link>
@@ -495,6 +497,76 @@ function TrainingPriceNote({ done }: { done: boolean }) {
         <Button asChild variant="outline" data-setup-action="price-lessons">
           <Link to="/settings/services">Price lessons</Link>
         </Button>
+      )}
+    </div>
+  );
+}
+
+/** For a business that runs more than one service line (#639): one row per
+ *  thing to price, each saying whether it is done and where to do it. The
+ *  service area, when the business has one to set, is the form below the
+ *  rows, the same one a one-line business gets. */
+function PricesPanel({
+  step,
+  parts,
+  onSaved,
+}: {
+  step: OnboardingStep;
+  parts: PricePart[];
+  onSaved: () => void;
+}) {
+  const area = parts.find((p) => p.id === "area");
+  const rest = parts.filter((p) => p.id !== "area");
+  return (
+    <div className="space-y-4">
+      <ul className="divide-y rounded-md border" data-setup-price-parts>
+        {parts.map((part) => (
+          <li
+            key={part.id}
+            className="flex flex-wrap items-start justify-between gap-3 p-3"
+            data-setup-price-part={part.id}
+          >
+            <div className="flex min-w-0 flex-1 basis-60 items-start gap-2">
+              {part.done ? (
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
+              ) : (
+                <Circle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+              )}
+              <div className="min-w-0">
+                <p className="text-sm font-medium">
+                  {part.label}
+                  <span className="sr-only">{part.done ? ", done" : ", not done"}</span>
+                </p>
+                <p className="text-sm text-muted-foreground">{part.description}</p>
+              </div>
+            </div>
+            {part.id !== "area" && (
+              <Button
+                asChild
+                size="sm"
+                variant={part.done ? "outline" : "default"}
+                className="shrink-0"
+              >
+                <Link to={part.to}>{part.cta}</Link>
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {rest.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Each button opens Settings, Services. Come back here with the setup bar at the top of the
+          page.
+        </p>
+      )}
+      {area && (
+        <div className="space-y-3">
+          <h3 className="text-sm font-medium">{area.label}</h3>
+          <ServiceAreaPanel
+            step={{ ...step, done: area.done, training: undefined }}
+            onSaved={onSaved}
+          />
+        </div>
       )}
     </div>
   );
