@@ -436,7 +436,7 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
     parts.push({
       id: "walks",
       label: "Walks",
-      description: "What a 30-minute walk, a 60-minute walk and a drop-in cost.",
+      description: "What a 30-minute walk and a 60-minute walk cost.",
       done: walksDone,
       to: "/settings/services",
       cta: "Price walks",

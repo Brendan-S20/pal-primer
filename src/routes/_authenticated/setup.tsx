@@ -515,8 +515,17 @@ function PricesPanel({
   parts: PricePart[];
   onSaved: () => void;
 }) {
+  const qc = useQueryClient();
   const area = parts.find((p) => p.id === "area");
   const rest = parts.filter((p) => p.id !== "area");
+  // Saving the area finishes one part, not the step. The guide's onSaved
+  // marks the whole step done and moves on, so it is called only when the
+  // area was the last part open; otherwise the list is refreshed and the
+  // owner stays here with the other parts still to price (#639).
+  const areaSaved = async () => {
+    if (rest.every((p) => p.done)) return onSaved();
+    await qc.invalidateQueries({ queryKey: ["onboarding-status"] });
+  };
   return (
     <div className="space-y-4">
       <ul className="divide-y rounded-md border" data-setup-price-parts>
@@ -564,7 +573,7 @@ function PricesPanel({
           <h3 className="text-sm font-medium">{area.label}</h3>
           <ServiceAreaPanel
             step={{ ...step, done: area.done, training: undefined }}
-            onSaved={onSaved}
+            onSaved={areaSaved}
           />
         </div>
       )}

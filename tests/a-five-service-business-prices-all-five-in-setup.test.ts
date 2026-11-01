@@ -139,3 +139,23 @@ describe("a business with one line keeps the step for that line", () => {
     expect(step.parts).toBeUndefined();
   });
 });
+
+describe("saving the area on a multi-line step", () => {
+  it("does not hand the guide's advancing onSaved straight to the area form", async () => {
+    // The guide's onSaved marks the whole step done and moves to the next
+    // one. On a step with parts, the area is one part of five: saving it
+    // must leave the owner on the step until the other parts are done.
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const src = readFileSync(resolve(__dirname, "../src/routes/_authenticated/setup.tsx"), "utf8");
+    const panel = src.slice(
+      src.indexOf("function PricesPanel("),
+      src.indexOf("function ServiceAreaPanel("),
+    );
+    expect(panel).toMatch(
+      /const areaSaved = async \(\) => \{\s*if \(rest\.every\(\(p\) => p\.done\)\) return onSaved\(\);/,
+    );
+    expect(panel).toMatch(/<ServiceAreaPanel[\s\S]*?onSaved=\{areaSaved\}/);
+    expect(panel).not.toMatch(/<ServiceAreaPanel[\s\S]*?onSaved=\{onSaved\}/);
+  });
+});
