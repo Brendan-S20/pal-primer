@@ -12,7 +12,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   __resetDeepLinkForTests,
+  DEEP_LINK_TTL_MS,
+  forgetDeepLink,
   holdDeepLink,
+  markLanded,
   needsSession,
   peekDeepLink,
   routeDeepLink,
@@ -96,6 +99,31 @@ describe("routeDeepLink", () => {
     expect(takeDeepLink()).toBeNull();
   });
 
+  it("pushes a link that arrives after /auth has already landed", async () => {
+    // land() has navigated, but the router still reads /auth: nobody is
+    // left to take a held link.
+    markLanded();
+    const { e, push } = env("/auth");
+    await routeDeepLink("/routes", e);
+    expect(push).toHaveBeenCalledWith("/routes");
+  });
+
+  it("sign-out forgets the held link and the landing", async () => {
+    markLanded();
+    holdDeepLink("/clients/a");
+    forgetDeepLink();
+    expect(peekDeepLink()).toBeNull();
+    const { e, push } = env("/auth");
+    await routeDeepLink("/routes", e);
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("drops a link held longer than the TTL", () => {
+    holdDeepLink("/clients/a", 1_000);
+    expect(peekDeepLink(1_000 + DEEP_LINK_TTL_MS)).toBe("/clients/a");
+    expect(takeDeepLink(1_000 + DEEP_LINK_TTL_MS + 1)).toBeNull();
+  });
+
   it("only an invitation is a page that needs no session", () => {
     expect(needsSession("/invite/tok")).toBe(false);
     expect(needsSession("/my-day")).toBe(true);
@@ -130,6 +158,71 @@ describe("the wiring", () => {
     expect(appLinkTarget("https://app.houndstack.com/invite/tok")).toBe("/invite/tok");
     expect(read("android/app/src/main/AndroidManifest.xml")).toContain(
       '<data android:pathPrefix="/invite" />',
+    );
+  });
+
+  it("sign-out clears the held link, inside the app only", () => {
+    const src = read("src/routes/__root.tsx");
+    expect(src).toMatch(/if \(event === "SIGNED_OUT"\) forgetDeepLink\(\);/);
+    expect(read("src/routes/auth.tsx")).toMatch(/markLanded\(\);\s*const link = takeDeepLink\(\);/);
+  });
+});
+
+describe("an invitation link opens the iPhone app", () => {
+  it("the entitlement names the domain", async () => {
+    const { ASSOCIATED_DOMAIN } = await import("@/lib/ios-universal-links");
+    const ent = read("ios/App/App/App.entitlements");
+    expect(ent).toContain("<key>com.apple.developer.associated-domains</key>");
+    expect(ent).toContain(`<string>${ASSOCIATED_DOMAIN}</string>`);
+    expect(ASSOCIATED_DOMAIN).toBe("applinks:app.houndstack.com");
+  });
+
+  it("the association file names this app, and only /invite", async () => {
+    const { appleAppSiteAssociationBody, APPLE_TEAM_ID, IOS_BUNDLE_ID } =
+      await import("@/lib/ios-universal-links");
+    const pbx = read("ios/App/App.xcodeproj/project.pbxproj");
+    expect(pbx).toContain(`DEVELOPMENT_TEAM = ${APPLE_TEAM_ID};`);
+    expect(pbx).toContain(`PRODUCT_BUNDLE_IDENTIFIER = ${IOS_BUNDLE_ID};`);
+    const body = JSON.parse(appleAppSiteAssociationBody());
+    expect(body).toEqual({
+      applinks: {
+        details: [
+          {
+            appIDs: ["6NB6QXT2TU.consulting.thenorth.houndstack"],
+            components: [{ "/": "/invite/*" }],
+          },
+        ],
+      },
+    });
+  });
+
+  it("every iOS path is one the app routes (appLinkTarget), and none is a customer page", async () => {
+    const { UNIVERSAL_LINK_PATHS } = await import("@/lib/ios-universal-links");
+    const { appLinkTarget, STAYS_IN_BROWSER } = await import("@/lib/android-app-links");
+    for (const p of UNIVERSAL_LINK_PATHS) {
+      const sample = p.replace("*", "tok");
+      expect(appLinkTarget(`https://app.houndstack.com${sample}`), p).toBe(sample);
+      for (const stays of Object.keys(STAYS_IN_BROWSER)) {
+        expect(sample.startsWith(stays + "/") || sample === stays, `${p} vs ${stays}`).toBe(false);
+      }
+    }
+  });
+
+  it("is served at /.well-known/apple-app-site-association", () => {
+    const route = read("src/routes/[.]well-known.apple-app-site-association.ts");
+    expect(route).toContain('createFileRoute("/.well-known/apple-app-site-association")');
+    expect(route).toContain('"Content-Type": "application/json"');
+    expect(read("src/routeTree.gen.ts")).toContain(
+      "path: '/.well-known/apple-app-site-association'",
+    );
+  });
+
+  it("SceneDelegate hands a Universal Link to Capacitor on cold and warm launch", () => {
+    const d = read("ios/App/App/SceneDelegate.swift");
+    expect(d).toContain("for activity in connectionOptions.userActivities");
+    expect(d).toContain("func scene(_ scene: UIScene, continue userActivity: NSUserActivity)");
+    expect(d).toContain(
+      "ApplicationDelegateProxy.shared.application(UIApplication.shared, continue: userActivity",
     );
   });
 });

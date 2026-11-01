@@ -321,7 +321,15 @@ function RootComponent() {
     import("../lib/native")
       .then(async (m) => {
         keep(await m.initBackButton());
-        const { routeDeepLink } = await import("../lib/pending-deep-link");
+        const { routeDeepLink, forgetDeepLink } = await import("../lib/pending-deep-link");
+        if (IS_NATIVE_BUNDLE) {
+          // A held link is the tapper's, not the next account's.
+          const { supabase } = await import("../integrations/supabase/client");
+          const { data: auth } = supabase.auth.onAuthStateChange((event) => {
+            if (event === "SIGNED_OUT") forgetDeepLink();
+          });
+          keep(() => auth.subscription.unsubscribe());
+        }
         const idle = () =>
           new Promise<void>((resolve) => {
             if (router.state.status === "idle") return resolve();

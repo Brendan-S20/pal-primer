@@ -21,26 +21,48 @@
 // A page that does not need a session (an invitation) never waits for /auth:
 // it is pushed once the router is idle, signed in or not.
 
-let held: string | null = null;
+/** A link older than this is not what the person is doing now. It covers a
+ *  link held through onboarding or a long wait on the sign-in form, which a
+ *  much later landing would otherwise deliver out of nowhere. */
+export const DEEP_LINK_TTL_MS = 10 * 60_000;
+
+let held: { path: string; at: number } | null = null;
+/** /auth has already sent this session on. A link arriving after that, while
+ *  the router still reads /auth, has nobody left to take it, so it is pushed. */
+let landed = false;
 
 /** Hold a link until something can deliver it. A bare `/` is "open the
  *  app", not a target, so it is not held. A later link replaces an earlier
  *  one: the last tap is the one the person meant. */
-export function holdDeepLink(path: string): void {
+export function holdDeepLink(path: string, now = Date.now()): void {
   if (!path || path === "/") return;
-  held = path;
+  held = { path, at: now };
 }
 
-/** The held link, cleared, or null when there is none. */
-export function takeDeepLink(): string | null {
-  const path = held;
+/** The held link, left in place, or null when there is none or it is stale. */
+export function peekDeepLink(now = Date.now()): string | null {
+  if (held && now - held.at > DEEP_LINK_TTL_MS) held = null;
+  return held?.path ?? null;
+}
+
+/** The held link, cleared, or null when there is none or it is stale. */
+export function takeDeepLink(now = Date.now()): string | null {
+  const path = peekDeepLink(now);
   held = null;
   return path;
 }
 
-/** The held link, left in place. */
-export function peekDeepLink(): string | null {
-  return held;
+/** /auth calls this when it sends a signed-in person on. */
+export function markLanded(): void {
+  landed = true;
+}
+
+/** Sign-out: a held link belongs to the person who tapped it, not to the
+ *  next account that signs in on this phone, and the next landing is a new
+ *  one. */
+export function forgetDeepLink(): void {
+  held = null;
+  landed = false;
 }
 
 /** Pages a link may open without anyone signed in. Each handles a missing
@@ -74,12 +96,12 @@ export async function routeDeepLink(path: string, env: DeepLinkEnv): Promise<voi
   await env.idle();
   const next = peekDeepLink();
   if (!next) return; // /auth took it while the router settled
-  if (needsSession(next) && LANDING_PATHS.includes(env.pathname())) return;
+  if (!landed && needsSession(next) && LANDING_PATHS.includes(env.pathname())) return;
   takeDeepLink();
   env.push(next);
 }
 
 /** Tests only. */
 export function __resetDeepLinkForTests(): void {
-  held = null;
+  forgetDeepLink();
 }

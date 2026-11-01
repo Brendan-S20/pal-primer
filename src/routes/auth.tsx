@@ -24,7 +24,7 @@ import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
 import { rememberLandingPath, readLandingPath } from "@/lib/offline/read-cache";
 import { pageTitle } from "@/lib/page-title";
 import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
-import { takeDeepLink } from "@/lib/pending-deep-link";
+import { markLanded, takeDeepLink } from "@/lib/pending-deep-link";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -107,6 +107,7 @@ function AuthPage() {
    *  exactly this moment (lib/pending-deep-link.ts, #621). Native only in
    *  practice: nothing holds a link on the web. */
   const land = (to: string) => {
+    markLanded();
     const link = takeDeepLink();
     if (link) router.history.push(link);
     else navigate({ to });
