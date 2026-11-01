@@ -8,10 +8,12 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import { useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { clearPersistedReadCaches, ensureReadCachePersistence } from "@/lib/offline/read-cache";
 import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
 import { QueueSyncProvider } from "@/components/QueueSync";
-import { resolveIdentity } from "@/lib/offline/identity";
+import { probeIdentity, resolveIdentity } from "@/lib/offline/identity";
+import { API_RETURNED, startApiRecovery } from "@/lib/offline/api-recovery";
 import { settleAfterFirstCommit } from "@/lib/app-mounted";
 import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { IS_NATIVE_BUNDLE, nativeTopBarStyle } from "@/lib/native-build";
@@ -125,23 +127,36 @@ export const Route = createFileRoute("/_authenticated")({
       // The one-request answer, when there is one, fills that same entry (and
       // the shell's others). Without it (offline, a failed request, or this
       // user's shell already loaded on this page) this is the path it was.
-      const shell = shellRequest ? await shellRequest : null;
+      //
+      // An identity from the device (`verified: false`) means the API did not
+      // answer: offline, or up-network-down-API (#622). Nothing below then
+      // waits on a request. The saved copy is drawn, and ApiRecovery in the
+      // shell re-runs this once the API answers again.
+      const reachable = online && identity.verified;
+      const shell = shellRequest && reachable ? await shellRequest : null;
       const fromShell = shell && shell.userId === identity.userId ? shell.answer : null;
       if (fromShell) seedShellContext(context.queryClient, identity.userId, fromShell);
       let org: Awaited<ReturnType<typeof getMyOrg>> | undefined = fromShell?.org;
       if (!fromShell) {
         try {
-          org = await context.queryClient.ensureQueryData({
-            queryKey: ["my-org"],
-            queryFn: () => getMyOrg(),
-            staleTime: 60_000,
-          });
+          org = reachable
+            ? await context.queryClient.ensureQueryData({
+                queryKey: ["my-org"],
+                queryFn: () => getMyOrg(),
+                staleTime: 60_000,
+              })
+            : context.queryClient.getQueryData<NonNullable<typeof org>>(["my-org"]);
+          if (org === undefined) throw new Error("no saved workspace");
         } catch (e) {
-          if (online) throw e;
-          // Offline with nothing cached: bouncing to /auth would strand a tech on
-          // a sign-in form they cannot submit, so say what is actually wrong.
+          if (reachable) throw e;
+          // Offline (or the API is down) with nothing cached: bouncing to /auth
+          // would strand a tech on a sign-in form they cannot use, and the raw
+          // fetch error ("TypeError: Load failed" on iOS) says nothing. Say
+          // what is actually wrong.
           throw new Error(
-            "You're offline and this device has no saved copy of your workspace yet. Reconnect once to download your day.",
+            online
+              ? "HoundStack is not answering right now and this device has no saved copy of your workspace yet. Try again in a minute."
+              : "You're offline and this device has no saved copy of your workspace yet. Reconnect once to download your day.",
           );
         }
       }
@@ -177,6 +192,8 @@ export const Route = createFileRoute("/_authenticated")({
       let lock: Awaited<ReturnType<typeof getAccountLock>> | null = null;
       if (fromShell) {
         lock = fromShell.lock;
+      } else if (!reachable) {
+        lock = context.queryClient.getQueryData<NonNullable<typeof lock>>(["account-lock"]) ?? null;
       } else {
         try {
           lock = await context.queryClient.fetchQuery({
@@ -192,7 +209,13 @@ export const Route = createFileRoute("/_authenticated")({
         throw redirect({ to: "/settings/billing" });
       }
 
-      return { userId: identity.userId, user: identity.user, organization: org.organization, lock };
+      return {
+        userId: identity.userId,
+        user: identity.user,
+        organization: org.organization,
+        lock,
+        identityVerified: identity.verified,
+      };
     }),
   component: SignedInApp,
   // Client-only route: this is also what the server sends for a signed-in
@@ -227,7 +250,33 @@ function SignedInApp() {
   );
 }
 
+/** #622: drawn from a saved copy because the API did not answer, the shell
+ *  keeps asking, and once it answers re-runs the beforeLoad above and refetches
+ *  what is on screen. No reload, and no password prompt. A refusal from the
+ *  server is the one answer that ends on /auth. See lib/offline/api-recovery.ts. */
+function useApiRecovery() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const { identityVerified } = Route.useRouteContext();
+  useEffect(() => {
+    if (identityVerified) return;
+    return startApiRecovery({
+      probe: probeIdentity,
+      isOffline: isDefinitelyOffline,
+      target: window,
+      doc: document,
+      onAnswer: (result) => {
+        void router.invalidate();
+        if (result !== "verified") return;
+        void queryClient.invalidateQueries();
+        window.dispatchEvent(new Event(API_RETURNED));
+      },
+    });
+  }, [identityVerified, router, queryClient]);
+}
+
 function AppShell() {
+  useApiRecovery();
   const redirecting = useMatches({
     select: (matches) => matches.some((match) => match.staticData.clientRedirect),
   });

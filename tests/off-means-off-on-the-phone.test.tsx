@@ -19,7 +19,12 @@ const getPlatformContext = vi.fn();
 vi.mock("@/lib/org.functions", () => ({ getMyOrg: () => getMyOrg() }));
 vi.mock("@/lib/platform.functions", () => ({ getPlatformContext: () => getPlatformContext() }));
 vi.mock("@/lib/offline/identity", () => ({
-  resolveIdentity: async () => ({ ok: true, userId: "u-tech", user: { id: "u-tech" } }),
+  resolveIdentity: async () => ({
+    ok: true,
+    userId: "u-tech",
+    user: { id: "u-tech" },
+    verified: true,
+  }),
 }));
 vi.mock("@/lib/mfa", () => ({ needsSecondStep: async () => false }));
 vi.mock("@/lib/offline/read-cache", () => ({

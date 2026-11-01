@@ -51,7 +51,13 @@ import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
  *  the tech's day every time they open the app in a dead zone, which is the
  *  case this whole feature exists for. */
 export type IdentityResult =
-  | { ok: true; userId: string; user: User | null }
+  /** `verified` is true when the auth server said yes (now, or within
+   *  IDENTITY_REUSE_MS). False means the answer came from the device because
+   *  the server could not be asked: offline, timed out, or the API is down
+   *  while the network is up (#622). The shell reads that as "the API is not
+   *  answering": it draws from the saved copy and keeps asking until it does
+   *  (lib/offline/api-recovery.ts). */
+  | { ok: true; userId: string; user: User | null; verified: boolean }
   /** True only when the auth server actually answered and the answer was no. */
   | { ok: false; rejected: boolean };
 
@@ -142,7 +148,7 @@ export async function resolveIdentity(): Promise<IdentityResult> {
   // The reuse just below is the exception, made on purpose for both builds:
   // see IDENTITY_REUSE_MS.
   if (verified && Date.now() - verified.at < IDENTITY_REUSE_MS) {
-    return { ok: true, userId: verified.userId, user: verified.user };
+    return { ok: true, userId: verified.userId, user: verified.user, verified: true };
   }
 
   const online = IS_NATIVE_BUNDLE
@@ -158,7 +164,7 @@ export async function resolveIdentity(): Promise<IdentityResult> {
     if (data?.user) {
       verified = { userId: data.user.id, user: data.user, at: Date.now() };
       watchSignedInUser();
-      return { ok: true, userId: data.user.id, user: data.user };
+      return { ok: true, userId: data.user.id, user: data.user, verified: true };
     }
     authError = error;
   } catch (e) {
@@ -184,7 +190,7 @@ export async function resolveIdentity(): Promise<IdentityResult> {
       ? withDeadline(getSession, SESSION_DEADLINE_MS, "auth.getSession")
       : getSession);
     if (data.session?.user) {
-      return { ok: true, userId: data.session.user.id, user: data.session.user };
+      return { ok: true, userId: data.session.user.id, user: data.session.user, verified: false };
     }
   } catch {
     /* fall through to the pointer below */
@@ -195,5 +201,18 @@ export async function resolveIdentity(): Promise<IdentityResult> {
   // The pointer is written only on a verified sign-in and deleted on sign-out,
   // so it can only name a user whose session is still on this device.
   const lastUser = readLastUser();
-  return lastUser ? { ok: true, userId: lastUser, user: null } : { ok: false, rejected: false };
+  return lastUser
+    ? { ok: true, userId: lastUser, user: null, verified: false }
+    : { ok: false, rejected: false };
+}
+
+/**
+ * One question to the auth server for lib/offline/api-recovery.ts: is the API
+ * answering again, and if so, is this session still good? "unreachable" is
+ * every answer that came from the device rather than the server.
+ */
+export async function probeIdentity(): Promise<"verified" | "rejected" | "unreachable"> {
+  const identity = await resolveIdentity();
+  if (identity.ok) return identity.verified ? "verified" : "unreachable";
+  return identity.rejected ? "rejected" : "unreachable";
 }

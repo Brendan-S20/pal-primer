@@ -428,14 +428,22 @@ export function formatCacheAge(ageMs: number): string {
  * failure as "not signed in" and redirected to /auth — which is exactly the
  * screen a tech in a dead zone can do nothing with. Getting this wrong in the
  * other direction is worse, so a response that actually came back from the auth
- * server (any 4xx) is always treated as a real rejection.
+ * server (any 4xx) is always treated as a real rejection. A 5xx is not one: the
+ * network is up but the API is not, which for this purpose is the same as
+ * offline.
  */
 export function isOfflineAuthFailure(error: unknown, args: { online: boolean }): boolean {
   if (!error) return false;
   const err = error as { status?: unknown; name?: unknown; message?: unknown };
 
-  if (typeof err.status === "number" && err.status >= 400) return false;
+  // supabase-js names a 502/503/504 an AuthRetryableFetchError and keeps the
+  // status on it, so this goes first: a gateway saying the API is down is not
+  // the auth server saying no (#622).
   if (err.name === "AuthRetryableFetchError") return true;
+  // Only a 4xx is a verdict on the session. A 5xx means the API is down or
+  // broken, and signing a tech out for that (and wiping their saved day with
+  // it) is the failure #622 was filed for.
+  if (typeof err.status === "number" && err.status >= 400) return err.status >= 500;
 
   const message = typeof err.message === "string" ? err.message : "";
   if (/failed to fetch|networkerror|network request failed|load failed|timeout/i.test(message)) {
