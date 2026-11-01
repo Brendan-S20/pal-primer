@@ -2,7 +2,12 @@ import i18n from "@/lib/i18n";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
-import { holdForUndo, UNDO_WINDOW_MS, type HeldChange } from "@/lib/undo-window";
+import {
+  holdForUndo,
+  REASSIGN_HELD_KIND,
+  UNDO_WINDOW_MS,
+  type HeldChange,
+} from "@/lib/undo-window";
 import { skipReasonText } from "@/lib/skip-reason-text";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
@@ -228,6 +233,19 @@ export function VisitDetailDrawer({
   const [pendingStaff, setPendingStaff] = useState<string | null | undefined>(undefined);
   const held = useRef<{ change: HeldChange; toastId: string | number } | null>(null);
   useEffect(() => setPendingStaff(undefined), [visitId]);
+  // Who is holding the change, so a replay after a reload or a killed app is
+  // sent only for the same person (lib/undo-window.ts, #652). Read from the
+  // stored session, which answers locally.
+  // Kept as the answer itself once it is in, and as the pending lookup until
+  // then, so a pick made before it answers is still written to the device.
+  const holder = useRef<string | Promise<string | null> | null>(null);
+  useEffect(() => {
+    const lookup = supabase.auth.getSession().then(
+      ({ data }) => (holder.current = data.session?.user?.id ?? null),
+      () => (holder.current = null),
+    );
+    holder.current = lookup;
+  }, []);
   const reassignTo = (staffId: string | null, name: string | null) => {
     const vid = visitId!;
     // A second pick inside the window replaces the first: the latest choice
@@ -248,7 +266,19 @@ export function VisitDetailDrawer({
         if (r.clash) toast.warning(r.clash);
         return r;
       });
+    // Written to the device as well, so a reload or a killed app inside the
+    // window still sends it on the next start (#652). `ifStillFrom` makes
+    // that replay a no-op if the first send already landed or somebody has
+    // moved the visit since.
+    const durable = holder.current
+      ? {
+          kind: REASSIGN_HELD_KIND,
+          userId: holder.current,
+          payload: { visitId: vid, staffId, ifStillFrom: v?.assigned_staff_id ?? null },
+        }
+      : undefined;
     const change = holdForUndo(send, {
+      durable,
       onError: (e) => toast.error(e instanceof Error ? e.message : "Could not reassign the visit"),
     });
     const toastId = toast(name ? `Reassigned to ${name}` : "Visit unassigned", {

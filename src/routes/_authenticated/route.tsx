@@ -18,6 +18,7 @@ import { settleAfterFirstCommit } from "@/lib/app-mounted";
 import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { IS_NATIVE_BUNDLE, nativeTopBarStyle } from "@/lib/native-build";
 import { getMyOrg } from "@/lib/org.functions";
+import { REASSIGN_HELD_KIND, replayHeldChanges } from "@/lib/undo-window";
 import { getAccountLock } from "@/lib/account-lock.functions";
 import { seedShellContext, startShellContext } from "@/lib/shell-context";
 import { pathOpenWhenLocked } from "@/lib/account-lock";
@@ -298,6 +299,25 @@ function WorkspaceShell() {
   // The App Store / Google Play rating request, after a positive moment and
   // only on a calm screen. Nothing on the web. See lib/rating-prompt.ts.
   useRatingPrompt(userId);
+  // A reassign held for Undo when the last page was reloaded or the app was
+  // killed is sent now (lib/undo-window.ts, #652).
+  const qcShell = useQueryClient();
+  useEffect(() => {
+    if (!userId) return;
+    void replayHeldChanges(userId, {
+      [REASSIGN_HELD_KIND]: async (p) => {
+        const { reassignVisit } = await import("@/lib/visits.functions");
+        // reassignVisit's validator checks the shape again on the server.
+        return reassignVisit({
+          data: p as { visitId: string; staffId: string | null; ifStillFrom: string | null },
+        });
+      },
+    })
+      .then((sent) => {
+        if (sent) void qcShell.invalidateQueries({ queryKey: ["visits"] });
+      })
+      .catch(() => {});
+  }, [userId, qcShell]);
 
   // Native Capacitor bootstrap — theme-coherent status bar; no-ops on web.
   // Also registers APNs/FCM device tokens with our backend and routes push

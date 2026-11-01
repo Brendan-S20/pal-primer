@@ -295,9 +295,35 @@ export const oneOffSetPrice = createServerFn({ method: "GET" })
 export const reassignVisit = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
-    z.object({ visitId: z.string().uuid(), staffId: z.string().uuid().nullable() }).parse(d),
+    z
+      .object({
+        visitId: z.string().uuid(),
+        staffId: z.string().uuid().nullable(),
+        // Sent by a replay of a held reassign (lib/undo-window.ts, #652): the
+        // tech the visit had when the dispatcher picked. If it has anybody
+        // else now, the first send already landed or somebody has moved it
+        // since, and either way this one is left alone and nobody is told.
+        ifStillFrom: z.string().uuid().nullable().optional(),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
+    if (data.ifStillFrom !== undefined) {
+      const { data: now, error } = await context.supabase
+        .from("visits")
+        .select("assigned_staff_id")
+        .eq("id", data.visitId)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!now || (now.assigned_staff_id ?? null) !== data.ifStillFrom) {
+        return {
+          ok: true,
+          skipped: true,
+          clash: null as string | null,
+          lessonClashes: [] as never[],
+        };
+      }
+    }
     // A groom refuses a groomer who already has a groom at that time, as
     // booking does. The board's drag between lanes lands here.
     const { refuseGroomMoveClash, groomWriteError } = await import("@/lib/groom-clash.server");
@@ -351,6 +377,7 @@ export const reassignVisit = createServerFn({ method: "POST" })
     const lessonClashes = await lessonClashesAfterMove(context.supabase as any, [data.visitId]);
     return {
       ok: true,
+      skipped: false,
       clash: await overnightClashWarning(context.supabase, { visitIds: [data.visitId] }),
       lessonClashes,
     };
