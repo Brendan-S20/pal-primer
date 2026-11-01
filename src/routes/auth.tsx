@@ -280,7 +280,7 @@ function AuthPage() {
     if (data.user) {
       try {
         isNewOrg = await ensureBootstrapped(data.user as any, { requireOrgName: true });
-          if (isNewOrg === true) forgetWorkspaceCache();
+        if (isNewOrg === true) forgetWorkspaceCache();
       } catch (err) {
         setLoading(false);
         if (err instanceof InviteRefusedError) return refuseInvite(err);
@@ -559,17 +559,17 @@ function AuthPage() {
             → Authentication → URL Configuration → Redirect URLs. Supabase
             silently redirects to the site URL instead when it is not, which
             arrives as a sign-in that returns no session. */}
-          <>
-            <div className="relative my-5">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t" />
-              </div>
-              <div className="relative flex justify-center">
-                <span className="bg-card px-2 text-xs text-muted-foreground">or continue with</span>
-              </div>
+        <>
+          <div className="relative my-5">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t" />
             </div>
-            <div className="space-y-2">
-              {/* ── LIVE ON THE WEB, 2026-08-26 ──────────────────────────
+            <div className="relative flex justify-center">
+              <span className="bg-card px-2 text-xs text-muted-foreground">or continue with</span>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {/* ── LIVE ON THE WEB, 2026-08-26 ──────────────────────────
                 Off for one day before this, and the reason is worth keeping.
                 It was enabled on 2026-08-25 and a live audit the same day found
                 it ejecting buyers out of the product entirely:
@@ -601,16 +601,16 @@ function AuthPage() {
                 It also gates on REACHABILITY rather than configuration: a
                 provider switched on behind a disabled button is a warning, and
                 a button somebody can press that does not work is a failure. */}
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full justify-center gap-2"
-                onClick={() => oauthSignIn("google")}
-                disabled={loading}
-              >
-                <GoogleIcon /> Google
-              </Button>
-              {/* ── APPLE AND FACEBOOK, LIVE 2026-08-26 ──────────────────
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full justify-center gap-2"
+              onClick={() => oauthSignIn("google")}
+              disabled={loading}
+            >
+              <GoogleIcon /> Google
+            </Button>
+            {/* ── APPLE AND FACEBOOK, LIVE 2026-08-26 ──────────────────
                 Both verified by following the redirect to the provider and
                 reading what came back, not by trusting a toggle:
 
@@ -635,28 +635,28 @@ function AuthPage() {
                 Development or Live. In Development it works for anyone with a
                 role on the app and fails for every real buyer, and the two are
                 indistinguishable to an unauthenticated request. */}
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="justify-center gap-2"
-                  onClick={() => oauthSignIn("apple")}
-                  disabled={loading}
-                >
-                  <AppleIcon /> Apple
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="justify-center gap-2"
-                  onClick={() => oauthSignIn("facebook")}
-                  disabled={loading}
-                >
-                  <FacebookIcon /> Facebook
-                </Button>
-              </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="justify-center gap-2"
+                onClick={() => oauthSignIn("apple")}
+                disabled={loading}
+              >
+                <AppleIcon /> Apple
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="justify-center gap-2"
+                onClick={() => oauthSignIn("facebook")}
+                disabled={loading}
+              >
+                <FacebookIcon /> Facebook
+              </Button>
             </div>
-          </>
+          </div>
+        </>
       </div>
 
       {alert && (

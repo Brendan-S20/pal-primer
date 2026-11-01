@@ -100,10 +100,12 @@ BEGIN
   END IF;
 
   -- The name the person typed. The prefix is the last resort, not the rule.
+  -- Capped at 80, the same cap /profile and update_my_staff_profile use, so a
+  -- name that was accepted here can always be saved again there.
   _name := left(nullif(btrim(coalesce(
              nullif(btrim(_meta ->> 'display_name'), ''),
              nullif(btrim(_meta ->> 'full_name'), ''),
-             nullif(btrim(_meta ->> 'name'), ''))), ''), 120);
+             nullif(btrim(_meta ->> 'name'), ''))), ''), 80);
   _name := coalesce(_name, split_part(_email, '@', 1));
 
   INSERT INTO public.user_roles(user_id, organization_id, role)
@@ -159,12 +161,18 @@ BEGIN
     RAISE EXCEPTION 'A phone number can be at most 40 characters' USING ERRCODE = 'check_violation';
   END IF;
 
-  UPDATE public.staff
-     SET display_name = _name,
-         phone = _tel
-   WHERE user_id = _uid
-     AND active
-  RETURNING id INTO _id;
+  -- A CTE rather than RETURNING ... INTO: a person with active rows in two
+  -- businesses would make INTO raise "query returned more than one row".
+  -- Their name is theirs in both.
+  WITH changed AS (
+    UPDATE public.staff
+       SET display_name = _name,
+           phone = _tel
+     WHERE user_id = _uid
+       AND active
+    RETURNING id
+  )
+  SELECT id INTO _id FROM changed LIMIT 1;
 
   IF _id IS NULL THEN
     RAISE EXCEPTION 'No staff record for this account' USING ERRCODE = 'no_data_found';

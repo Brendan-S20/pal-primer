@@ -48,16 +48,18 @@ export function likeExactly(value: string): string {
 // Stripe Express) instead of blocking the front door.
 export const registerAccount = createServerFn({ method: "POST" })
   .inputValidator((d) =>
-    z.object({
-      email: z.string().trim().email().max(255),
-      password: z.string().min(8).max(200),
-      // Absent for an invited teammate, who joins a business instead of
-      // naming one.
-      orgName: z.string().trim().min(1).max(120).optional(),
-      displayName: z.string().trim().min(1).max(120),
-      phone: z.string().trim().max(40).optional(),
-      smsConsent: z.boolean().optional(),
-    }).parse(d),
+    z
+      .object({
+        email: z.string().trim().email().max(255),
+        password: z.string().min(8).max(200),
+        // Absent for an invited teammate, who joins a business instead of
+        // naming one.
+        orgName: z.string().trim().min(1).max(120).optional(),
+        displayName: z.string().trim().min(1).max(120),
+        phone: z.string().trim().max(40).optional(),
+        smsConsent: z.boolean().optional(),
+      })
+      .parse(d),
   )
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -138,4 +140,3 @@ export const sendEmailVerification = createServerFn({ method: "POST" })
     if (qErr) throw new Error("Couldn't queue the verification email. Try again.");
     return { ok: true };
   });
-

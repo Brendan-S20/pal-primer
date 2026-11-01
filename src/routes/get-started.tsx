@@ -222,12 +222,20 @@ function NewBusinessPage() {
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="Jane Doe"
+                maxLength={80}
               />
               <p className="text-xs text-muted-foreground">
                 This is how your team and customers will see you.
               </p>
             </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && (
+              <p className="text-sm text-destructive">
+                {error}{" "}
+                <Link to="/auth" className="underline">
+                  Sign in instead
+                </Link>
+              </p>
+            )}
             <div className="flex gap-2">
               <Button
                 type="button"
@@ -333,9 +341,9 @@ function NewBusinessPage() {
 
   return (
     <PublicShell tagline="Set up your workspace in about two minutes." className="max-w-lg">
-        {/* Not on step 0: whether there is a business step at all is only
+      {/* Not on step 0: whether there is a business step at all is only
             known once the address has been checked (#651). */}
-        {step > 0 && (
+      {step > 0 && (
         <div className="flex items-center gap-2">
           {STEPS.map((label, i) => (
             <div key={label} className="flex flex-1 items-center gap-2">
@@ -357,165 +365,165 @@ function NewBusinessPage() {
             </div>
           ))}
         </div>
+      )}
+
+      <div className="rounded-xl border bg-card p-(--card-pad) shadow-sm">
+        {step === 0 && (
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (step0Valid && !checking) void continueFromAccount();
+            }}
+          >
+            <div>
+              <h1 className="text-lg font-semibold">Create your account</h1>
+              <p className="text-sm text-muted-foreground">You'll use this to sign in.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gs-email">Work email</Label>
+              <Input
+                id="gs-email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@yourbusiness.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gs-pass">Password</Label>
+              <Input
+                id="gs-pass"
+                type="password"
+                required
+                minLength={8}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="At least 8 characters"
+              />
+            </div>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <Button type="submit" className="w-full" disabled={!step0Valid || checking}>
+              {checking ? "Checking…" : "Continue"}
+            </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              Already have an account?{" "}
+              <Link to="/auth" className="underline">
+                Sign in
+              </Link>
+            </p>
+          </form>
         )}
 
-        <div className="rounded-xl border bg-card p-(--card-pad) shadow-sm">
-          {step === 0 && (
-            <form
-              className="space-y-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (step0Valid && !checking) void continueFromAccount();
-              }}
-            >
-              <div>
-                <h1 className="text-lg font-semibold">Create your account</h1>
-                <p className="text-sm text-muted-foreground">You'll use this to sign in.</p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="gs-email">Work email</Label>
-                <Input
-                  id="gs-email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@yourbusiness.com"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="gs-pass">Password</Label>
-                <Input
-                  id="gs-pass"
-                  type="password"
-                  required
-                  minLength={8}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="At least 8 characters"
-                />
-              </div>
-              {error && <p className="text-sm text-destructive">{error}</p>}
-              <Button type="submit" className="w-full" disabled={!step0Valid || checking}>
-                {checking ? "Checking…" : "Continue"}
-              </Button>
-              <p className="text-center text-xs text-muted-foreground">
-                Already have an account?{" "}
-                <Link to="/auth" className="underline">
-                  Sign in
-                </Link>
+        {step === 1 && (
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (step1Valid) setStep(2);
+            }}
+          >
+            <div>
+              <h1 className="text-lg font-semibold">About your business</h1>
+              <p className="text-sm text-muted-foreground">
+                This names your workspace. You can change it later.
               </p>
-            </form>
-          )}
-
-          {step === 1 && (
-            <form
-              className="space-y-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (step1Valid) setStep(2);
-              }}
-            >
-              <div>
-                <h1 className="text-lg font-semibold">About your business</h1>
-                <p className="text-sm text-muted-foreground">
-                  This names your workspace. You can change it later.
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="gs-org">Business name</Label>
-                <Input
-                  id="gs-org"
-                  required
-                  value={orgName}
-                  onChange={(e) => setOrgName(e.target.value)}
-                  placeholder="Acme Pet Waste Removal"
-                />
-                {orgName.trim().length > 0 && !isValidOrgName(orgName) && (
-                  <p className="text-xs text-destructive">
-                    Enter your real business name (not blank or a placeholder like "Test").
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="gs-name">Your name</Label>
-                <Input
-                  id="gs-name"
-                  required
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="Jane Doe"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="gs-promo">
-                  Promo or referral code{" "}
-                  <span className="font-normal text-muted-foreground">(optional)</span>
-                </Label>
-                <Input
-                  id="gs-promo"
-                  value={promoCode}
-                  onChange={(e) => {
-                    setPromoCode(e.target.value);
-                    setPromoStatus(null);
-                  }}
-                  onBlur={() => checkPromo(promoCode)}
-                  placeholder="e.g. LAUNCH20"
-                  autoCapitalize="characters"
-                  autoCorrect="off"
-                  spellCheck={false}
-                />
-                {promoChecking ? (
-                  <p className="text-xs text-muted-foreground">Checking code…</p>
-                ) : promoStatus && promoCode.trim() ? (
-                  promoStatus.valid ? (
-                    <p className="text-xs text-emerald-600">✓ {promoStatus.message}</p>
-                  ) : (
-                    <p className="text-xs text-amber-600">{promoStatus.message}</p>
-                  )
-                ) : null}
-              </div>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={() => setStep(0)}>
-                  Back
-                </Button>
-                <Button type="submit" className="flex-1" disabled={!step1Valid}>
-                  Continue
-                </Button>
-              </div>
-            </form>
-          )}
-
-          {step === 2 && (
-            <form
-              className="space-y-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                finish();
-              }}
-            >
-              <SmsOptInHeading />
-              <SmsOptInFields
-                phone={phone}
-                onPhoneChange={setPhone}
-                smsConsent={smsConsent}
-                onSmsConsentChange={setSmsConsent}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gs-org">Business name</Label>
+              <Input
+                id="gs-org"
+                required
+                value={orgName}
+                onChange={(e) => setOrgName(e.target.value)}
+                placeholder="Acme Pet Waste Removal"
               />
-              {error && <p className="text-sm text-destructive">{error}</p>}
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={() => setStep(1)} disabled={busy}>
-                  Back
-                </Button>
-                <Button type="submit" className="flex-1" disabled={busy}>
-                  {busy ? "Creating your workspace…" : "Create my workspace"}
-                </Button>
-              </div>
-              <p className="text-center text-xs text-muted-foreground">
-                Next: pick a plan (or start on the free trial).
-              </p>
-            </form>
-          )}
-        </div>
+              {orgName.trim().length > 0 && !isValidOrgName(orgName) && (
+                <p className="text-xs text-destructive">
+                  Enter your real business name (not blank or a placeholder like "Test").
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gs-name">Your name</Label>
+              <Input
+                id="gs-name"
+                required
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Jane Doe"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gs-promo">
+                Promo or referral code{" "}
+                <span className="font-normal text-muted-foreground">(optional)</span>
+              </Label>
+              <Input
+                id="gs-promo"
+                value={promoCode}
+                onChange={(e) => {
+                  setPromoCode(e.target.value);
+                  setPromoStatus(null);
+                }}
+                onBlur={() => checkPromo(promoCode)}
+                placeholder="e.g. LAUNCH20"
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+              {promoChecking ? (
+                <p className="text-xs text-muted-foreground">Checking code…</p>
+              ) : promoStatus && promoCode.trim() ? (
+                promoStatus.valid ? (
+                  <p className="text-xs text-emerald-600">✓ {promoStatus.message}</p>
+                ) : (
+                  <p className="text-xs text-amber-600">{promoStatus.message}</p>
+                )
+              ) : null}
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => setStep(0)}>
+                Back
+              </Button>
+              <Button type="submit" className="flex-1" disabled={!step1Valid}>
+                Continue
+              </Button>
+            </div>
+          </form>
+        )}
+
+        {step === 2 && (
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              finish();
+            }}
+          >
+            <SmsOptInHeading />
+            <SmsOptInFields
+              phone={phone}
+              onPhoneChange={setPhone}
+              smsConsent={smsConsent}
+              onSmsConsentChange={setSmsConsent}
+            />
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => setStep(1)} disabled={busy}>
+                Back
+              </Button>
+              <Button type="submit" className="flex-1" disabled={busy}>
+                {busy ? "Creating your workspace…" : "Create my workspace"}
+              </Button>
+            </div>
+            <p className="text-center text-xs text-muted-foreground">
+              Next: pick a plan (or start on the free trial).
+            </p>
+          </form>
+        )}
+      </div>
     </PublicShell>
   );
 }
@@ -557,8 +565,7 @@ function JoinTeamPage({ token }: { token: string }) {
     if (invite?.email) setEmail((typed) => typed || invite.email!);
   }, [invite?.email]);
 
-  const emailMatches =
-    !!invite?.email && email.trim().toLowerCase() === invite.email.toLowerCase();
+  const emailMatches = !!invite?.email && email.trim().toLowerCase() === invite.email.toLowerCase();
   const valid = emailMatches && password.length >= 8 && displayName.trim().length > 0;
 
   const join = async () => {
@@ -636,7 +643,8 @@ function JoinTeamPage({ token }: { token: string }) {
               />
               {email.trim().length > 0 && !emailMatches && (
                 <p className="text-xs text-destructive">
-                  This invitation was sent to <span className="break-words">{invite.email}</span>. Use that address.
+                  This invitation was sent to <span className="break-words">{invite.email}</span>.
+                  Use that address.
                 </p>
               )}
             </div>
@@ -648,6 +656,7 @@ function JoinTeamPage({ token }: { token: string }) {
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="Jane Doe"
+                maxLength={80}
               />
             </div>
             <div className="space-y-2">

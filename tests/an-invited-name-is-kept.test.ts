@@ -31,9 +31,12 @@ const PROOF = join(ROOT, "tests/sql/an-invited-name-is-kept.proof.sql");
 
 // ── Server functions, run with a fake client ─────────────────────────────────
 
+/** A server function as the mock below builds it: called with `{ data }`. */
+type CallServerFn = (args: { data: unknown }) => Promise<unknown>;
+
 const state = vi.hoisted(() => ({
-  userDb: null as any,
-  adminDb: null as any,
+  userDb: null as unknown,
+  adminDb: null as unknown,
 }));
 
 vi.mock("@tanstack/react-start", () => {
@@ -88,7 +91,9 @@ describe("a tech's rename is saved, or the page says it was not (F-26)", () => {
     state.userDb = db;
     const { updateMyProfile } = await import("@/lib/profile.functions");
     await expect(
-      (updateMyProfile as any)({ data: { displayName: "  Maria Lopez ", phone: "" } }),
+      (updateMyProfile as unknown as CallServerFn)({
+        data: { displayName: "  Maria Lopez ", phone: "" },
+      }),
     ).resolves.toEqual({ ok: true });
     expect(calls.rlsUpdates).toBe(0);
     expect(calls.rpc).toEqual([
@@ -104,7 +109,7 @@ describe("a tech's rename is saved, or the page says it was not (F-26)", () => {
     state.userDb = db;
     const { updateMyProfile } = await import("@/lib/profile.functions");
     await expect(
-      (updateMyProfile as any)({ data: { displayName: "Maria", phone: null } }),
+      (updateMyProfile as unknown as CallServerFn)({ data: { displayName: "Maria", phone: null } }),
     ).rejects.toThrow("No staff record for this account");
   });
 
@@ -119,7 +124,7 @@ describe("a tech's rename is saved, or the page says it was not (F-26)", () => {
 describe("an address with a pending invitation is told so (sign-up never asks for a business)", () => {
   function adminWith(opts: { exists: boolean; invites: unknown[] }) {
     const seen: Record<string, unknown> = {};
-    const chain: any = {
+    const chain: Record<string, (...args: string[]) => unknown> = {
       select: () => chain,
       ilike: (col: string, v: string) => ((seen.ilike = [col, v]), chain),
       eq: (col: string, v: string) => ((seen[`eq:${col}`] = v), chain),
@@ -143,7 +148,7 @@ describe("an address with a pending invitation is told so (sign-up never asks fo
     state.adminDb = a.db;
     const { checkEmailAccount } = await import("@/lib/auth-entry.functions");
     await expect(
-      (checkEmailAccount as any)({ data: { email: "tech1_walk@x.test" } }),
+      (checkEmailAccount as unknown as CallServerFn)({ data: { email: "tech1_walk@x.test" } }),
     ).resolves.toEqual({ exists: false, pendingInvite: true });
     expect(a.seen.table).toBe("org_invites");
     expect(a.seen["eq:status"]).toBe("pending");
@@ -154,7 +159,9 @@ describe("an address with a pending invitation is told so (sign-up never asks fo
   it("says no invitation when there is none", async () => {
     state.adminDb = adminWith({ exists: false, invites: [] }).db;
     const { checkEmailAccount } = await import("@/lib/auth-entry.functions");
-    await expect((checkEmailAccount as any)({ data: { email: "owner@x.test" } })).resolves.toEqual({
+    await expect(
+      (checkEmailAccount as unknown as CallServerFn)({ data: { email: "owner@x.test" } }),
+    ).resolves.toEqual({
       exists: false,
       pendingInvite: false,
     });

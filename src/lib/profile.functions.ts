@@ -41,34 +41,32 @@ export const getMyProfile = createServerFn({ method: "GET" })
   .handler(async ({ context }) => loadMyProfile(context));
 
 /** getMyProfile's answer, also asked by getShellContext. */
-export const loadMyProfile = createServerOnlyFn(
-  async (context: AuthedContext) => {
-    const { supabase, userId } = context;
-    const staff = await myStaffRow(supabase, userId);
+export const loadMyProfile = createServerOnlyFn(async (context: AuthedContext) => {
+  const { supabase, userId } = context;
+  const staff = await myStaffRow(supabase, userId);
 
-    // The address you actually sign in with, which is not necessarily the one
-    // on the staff row — see the note at the top of the file.
-    const { data: auth } = await supabase.auth.getUser();
-    const authEmail: string | null = auth?.user?.email ?? null;
+  // The address you actually sign in with, which is not necessarily the one
+  // on the staff row — see the note at the top of the file.
+  const { data: auth } = await supabase.auth.getUser();
+  const authEmail: string | null = auth?.user?.email ?? null;
 
-    // A confirmed email change lands in Auth and nowhere else. Reconciling it
-    // here means the staff row heals on the next page load instead of staying
-    // wrong until somebody edits it by hand.
-    if (staff && authEmail && staff.email !== authEmail) {
-      await supabase.from("staff").update({ email: authEmail }).eq("user_id", userId);
-      staff.email = authEmail;
-    }
+  // A confirmed email change lands in Auth and nowhere else. Reconciling it
+  // here means the staff row heals on the next page load instead of staying
+  // wrong until somebody edits it by hand.
+  if (staff && authEmail && staff.email !== authEmail) {
+    await supabase.from("staff").update({ email: authEmail }).eq("user_id", userId);
+    staff.email = authEmail;
+  }
 
-    return {
-      staff,
-      authEmail,
-      // Surfaced so the page can say "unconfirmed" rather than implying the
-      // change already took effect.
-      emailConfirmed: Boolean(auth?.user?.email_confirmed_at),
-      pendingEmail: (auth?.user as any)?.new_email ?? null,
-    };
-  },
-);
+  return {
+    staff,
+    authEmail,
+    // Surfaced so the page can say "unconfirmed" rather than implying the
+    // change already took effect.
+    emailConfirmed: Boolean(auth?.user?.email_confirmed_at),
+    pendingEmail: (auth?.user as any)?.new_email ?? null,
+  };
+});
 
 export const updateMyProfile = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
