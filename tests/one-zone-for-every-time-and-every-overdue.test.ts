@@ -55,6 +55,8 @@ describe("overdue is decided on the business's today everywhere", () => {
     const src = read("src/routes/_authenticated/reports.tsx");
     expect(src).toMatch(/useOrgToday\(\)/);
     expect(src).toMatch(/presetRange\("last30", todayDate\)/);
+    // And an untouched default moves when the business's today loads.
+    expect(src).toMatch(/if \(orgDay === seededDay\) return;/);
   });
   it("dashboard (already right; pinned so the three stay together)", () => {
     expect(read("src/lib/dashboard.functions.ts")).toMatch(/const today = orgToday\(\(orgRow/);

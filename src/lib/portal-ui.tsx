@@ -1140,8 +1140,8 @@ function VisitRow({
           <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-2">
             {v.eta_start && (
               <span className="inline-flex items-center gap-1">
-                <Clock className="h-3 w-3 shrink-0" /> arriving {orgLocalTime(v.eta_start, tz)}–
-                {orgLocalTime(v.eta_end, tz)}
+                <Clock className="h-3 w-3 shrink-0" /> arriving {orgLocalTime(v.eta_start, tz)}
+                {v.eta_end ? `–${orgLocalTime(v.eta_end, tz)}` : ""}
               </span>
             )}
             {/* A walk not routed yet shows its plan's window (#410). */}

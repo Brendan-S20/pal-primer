@@ -1,7 +1,7 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useSuspenseQuery, queryOptions } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getReports } from "@/lib/reports.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -55,6 +55,18 @@ function ReportsPage() {
     setApplied(r);
     router.invalidate();
   };
+  // The first render can run before the business's zone has loaded, on the
+  // default zone's today. When the real today arrives and the range is still
+  // the untouched default, move it, so a cold load near midnight is not a day
+  // off. A range somebody chose is left alone.
+  const [seededDay, setSeededDay] = useState(orgDay);
+  useEffect(() => {
+    if (orgDay === seededDay) return;
+    setSeededDay(orgDay);
+    if (matchingPreset(applied, new Date(`${seededDay}T12:00:00`)) === "last30")
+      apply(presetRange("last30", todayDate));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgDay]);
 
   const opts = queryOptions({
     queryKey: reportsKey(applied.from, applied.to),

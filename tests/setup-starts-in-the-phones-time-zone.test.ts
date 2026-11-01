@@ -83,4 +83,11 @@ describe("the call sites", () => {
     expect(src).not.toMatch(/savedTz \?\? DEFAULT_TIMEZONE/);
     expect(src).toContain("timezoneOptions(tzVal)");
   });
+  it("a reopened setup keeps the stored zone, Chicago included, and does not rewrite it", () => {
+    const src = read("src/routes/_authenticated/setup.tsx");
+    expect(src).toContain("<BusinessPanel onSaved={onSaved} alreadyDone={step.done} />");
+    expect(src).toMatch(/alreadyDone\s*\?\s*\(savedTz \?\? DEFAULT_ORG_TIMEZONE\)/);
+    expect(src).toContain("const writeTz = tz !== null || !alreadyDone;");
+    expect(src).toContain("if (writeTz) await saveDispatchFn({ data: { timezone: tzVal } });");
+  });
 });

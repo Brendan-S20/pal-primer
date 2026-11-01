@@ -32,6 +32,7 @@ import { createOrgInvite, listStaffAddresses, setStaffRouting } from "@/lib/user
 import { upsertFacility } from "@/lib/stations.functions";
 import { getStripeConnectStatus } from "@/lib/stripe-connect.functions";
 import { deviceTimezone, suggestSetupTimezone, timezoneOptions } from "@/lib/org-timezone";
+import { DEFAULT_ORG_TIMEZONE } from "@/lib/org-day";
 import {
   closeSetupGuide,
   nextOpenStep,
@@ -297,7 +298,7 @@ function StepPanel({ step, onSaved }: { step: OnboardingStep; onSaved: () => voi
     );
   switch (step.id) {
     case "business":
-      return <BusinessPanel onSaved={onSaved} />;
+      return <BusinessPanel onSaved={onSaved} alreadyDone={step.done} />;
     case "zones":
       return <PricingPanel step={step} onSaved={onSaved} />;
     case "clients":
@@ -327,7 +328,7 @@ const fieldClass = "space-y-1.5";
 
 // ── 1. The business ────────────────────────────────────────────────────────
 
-function BusinessPanel({ onSaved }: { onSaved: () => void }) {
+function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyDone: boolean }) {
   const qc = useQueryClient();
   const brandingFn = useServerFn(getOrgBranding);
   const saveBrandingFn = useServerFn(updateOrgBranding);
@@ -356,8 +357,14 @@ function BusinessPanel({ onSaved }: { onSaved: () => void }) {
   const savedTz = (dispatchQ.data?.settings as { timezone?: string | null } | undefined)?.timezone;
   // The device's zone, or the address's, unless somebody already chose one
   // (#654: this read `savedTz ?? Chicago`, and savedTz was the column default).
+  // Once this step is done the stored zone is a choice, Chicago included, so a
+  // reopened setup on a phone in Detroit shows it and does not rewrite it.
   const tzVal =
-    tz ?? suggestSetupTimezone({ saved: savedTz, device: deviceTimezone(), address: addressVal });
+    tz ??
+    (alreadyDone
+      ? (savedTz ?? DEFAULT_ORG_TIMEZONE)
+      : suggestSetupTimezone({ saved: savedTz, device: deviceTimezone(), address: addressVal }));
+  const writeTz = tz !== null || !alreadyDone;
   const linesVal = lines ?? savedLines;
   const linesChanged =
     lines !== null &&
@@ -381,7 +388,7 @@ function BusinessPanel({ onSaved }: { onSaved: () => void }) {
           country,
         },
       });
-      await saveDispatchFn({ data: { timezone: tzVal } });
+      if (writeTz) await saveDispatchFn({ data: { timezone: tzVal } });
     },
     onSuccess: () => {
       toast.success("Business details saved");

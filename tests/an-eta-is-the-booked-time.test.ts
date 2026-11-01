@@ -144,3 +144,19 @@ describe("every surface that draws a visit's time asks visitEta", () => {
     );
   });
 });
+
+describe("loose ends from review", () => {
+  it("a booked window with no end draws no dangling dash in the portal", () => {
+    expect(read("src/lib/portal-ui.tsx")).toContain(
+      'v.eta_end ? `–${orgLocalTime(v.eta_end, tz)}` : ""',
+    );
+    expect(read("src/routes/portal.$slug.$token.index.tsx")).toContain(
+      'nextVisit.eta_end ? `–${orgLocalTime(nextVisit.eta_end, tz)}` : ""',
+    );
+  });
+  it("the tech's week summary reads the booked time too", () => {
+    const src = read("src/lib/my-day.functions.ts");
+    expect(src).toMatch(/start_time, duration_min, eta_start, eta_end, zones\(name\)/);
+    expect(src).toMatch(/const eta = visitEta\(v, tz\);/);
+  });
+});

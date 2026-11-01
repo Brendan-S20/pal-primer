@@ -51,7 +51,7 @@ export function shiftDay(day: string, n: number): string {
 export function earlyCompleteConfirm(dayLabel: string) {
   return {
     title: "Complete this visit early?",
-    description: `This visit is scheduled for ${dayLabel}. Completing it now marks it done and billable today.`,
+    description: `This visit is scheduled for ${dayLabel}. Completing it now marks it done today.`,
     confirmLabel: "Complete early",
   };
 }
