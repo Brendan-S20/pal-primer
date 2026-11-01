@@ -8,6 +8,7 @@ import { useIntlLocale } from "@/lib/i18n";
 import { orgLocalDayTime } from "@/lib/org-day";
 import { formatDay } from "@/lib/format";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
+import { deferredAfterOpenChange } from "@/lib/close-out-defer";
 import {
   listVisitsAwaitingCloseOut,
   confirmOpenVisit,
@@ -34,6 +35,12 @@ import { Label } from "@/components/ui/label";
 //
 // "Still working" is a real answer, not a nag-dismissal: it changes nothing and
 // the prompt returns next time, which is correct for a genuinely open job.
+//
+// The dialog's X and Escape give the same answer (#638). They used to be wired
+// to a no-op, so the overlay sat over My Day with no way past it: the tech
+// could not read the day or reach the account menu to sign out. Closing now
+// defers the visit for this session exactly like "Still working". It records
+// nothing on the visit; it only stops asking until the next load.
 
 /** datetime-local wants "YYYY-MM-DDTHH:MM" in LOCAL time, with no zone. */
 function toLocalInputValue(d: Date): string {
@@ -130,7 +137,12 @@ export function CloseOutOpenVisits() {
   };
 
   return (
-    <Dialog open onOpenChange={() => undefined}>
+    <Dialog
+      open
+      onOpenChange={(open) =>
+        setDeferred((d) => deferredAfterOpenChange(open, m.isPending, visit.id, d))
+      }
+    >
       <DialogContent className="sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -185,7 +197,7 @@ export function CloseOutOpenVisits() {
           <Button
             variant="ghost"
             disabled={m.isPending}
-            onClick={() => setDeferred((d) => [...d, visit.id])}
+            onClick={() => setDeferred((d) => deferredAfterOpenChange(false, false, visit.id, d))}
             className="w-full"
           >
             {t("closeOut.stillWorking")}
