@@ -246,7 +246,7 @@ export const resendOrgInvite = createServerFn({ method: "POST" })
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_users");
     const { data: invite, error } = await (context.supabase as any)
       .from("org_invites")
-      .select("email, role, status, token")
+      .select("email, role, status, token, expires_at")
       .eq("id", data.id)
       .eq("organization_id", orgId)
       .maybeSingle();
@@ -255,12 +255,17 @@ export const resendOrgInvite = createServerFn({ method: "POST" })
     if (invite.status !== "pending") throw new Error("Only pending invites can be resent");
     await requireDemoInviteAddress(context.supabase, orgId, invite.email as string);
 
-    // Push the expiry out so a resent invite isn't immediately stale.
-    await (context.supabase as any)
+    // Renew to a full lifetime, the same 14 days a new invite gets, and never
+    // earlier than it already had: this used to set now + 7 days, so pressing
+    // Resend on a day-old invite took a week off it (gaps-r2-10).
+    const { resentInviteExpiry } = await import("@/lib/invite-copy");
+    const expiresAt = resentInviteExpiry(invite.expires_at as string | null);
+    const { error: renewError } = await (context.supabase as any)
       .from("org_invites")
-      .update({ expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() })
+      .update({ expires_at: expiresAt })
       .eq("id", data.id)
       .eq("organization_id", orgId);
+    if (renewError) throw new Error(renewError.message);
 
     const { data: org } = await context.supabase
       .from("organizations")
@@ -276,7 +281,7 @@ export const resendOrgInvite = createServerFn({ method: "POST" })
       invite.role as string,
       invite.token as string,
     );
-    return { ok: true, emailSent, link: await inviteLink(invite.token as string) };
+    return { ok: true, emailSent, expiresAt, link: await inviteLink(invite.token as string) };
   });
 
 export const listOrgInvites = createServerFn({ method: "GET" })
