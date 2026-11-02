@@ -26,6 +26,8 @@ import { getOrgBranding, updateOrgBranding } from "@/lib/org.functions";
 import { countryFromAddress } from "@/lib/distance-unit";
 import { setServiceLines } from "@/lib/org-features.functions";
 import type { ServiceLine } from "@/lib/service-lines";
+import { preselectedServiceLines, requestedServiceLine } from "@/lib/signup-service";
+import { useServiceLineAvailability } from "@/hooks/useServiceLineAvailability";
 import { getDispatchSettings, updateDispatchSettings } from "@/lib/visits.functions";
 import { createZone, geocodePostal } from "@/lib/zones.functions";
 import { createOrgInvite, listStaffAddresses, setStaffRouting } from "@/lib/users.functions";
@@ -65,11 +67,16 @@ const STEP_IDS = ONBOARDING_STEP_IDS as readonly string[];
 
 export const Route = createFileRoute("/_authenticated/setup")({
   head: () => titleHead("Set up your business"),
-  validateSearch: (s: Record<string, unknown>): { step?: OnboardingStepId } => ({
+  validateSearch: (
+    s: Record<string, unknown>,
+  ): { step?: OnboardingStepId; service?: ServiceLine } => ({
     step:
       typeof s.step === "string" && STEP_IDS.includes(s.step)
         ? (s.step as OnboardingStepId)
         : undefined,
+    // The line a visitor came for (site-r2-03). Only an offered id survives;
+    // step 1 preselects it in place of the bare pet-waste default.
+    service: requestedServiceLine(s.service),
   }),
   component: SetupPage,
 });
@@ -339,6 +346,8 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
   const saveLinesFn = useServerFn(setServiceLines);
   const { can } = usePermissions();
   const { lines: savedLines, known: linesKnown } = useServiceLines();
+  const { service: requestedLine } = Route.useSearch();
+  const availability = useServiceLineAvailability();
 
   // null until the owner touches it: the rows show what is stored (pet waste
   // removal for a new business, the column's default), and only a CHANGE is
@@ -365,10 +374,18 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
       ? (savedTz ?? DEFAULT_ORG_TIMEZONE)
       : suggestSetupTimezone({ saved: savedTz, device: deviceTimezone(), address: addressVal }));
   const writeTz = tz !== null || !alreadyDone;
-  const linesVal = lines ?? savedLines;
+  // A visitor who came for one line (?service=, site-r2-03) sees that line
+  // ticked instead of the bare pet-waste default. Only once the stored answer
+  // is actually known and before this step is done, so it can never write over
+  // a real answer whose read failed, or over one already chosen.
+  const mayPreselect = linesKnown && !alreadyDone;
+  const startingLines = mayPreselect
+    ? preselectedServiceLines(savedLines, requestedLine, availability)
+    : savedLines;
+  const linesVal = lines ?? startingLines;
   const linesChanged =
-    lines !== null &&
-    (lines.length !== savedLines.length || lines.some((l) => !savedLines.includes(l)));
+    (lines !== null || mayPreselect) &&
+    (linesVal.length !== savedLines.length || linesVal.some((l) => !savedLines.includes(l)));
 
   const m = useMutation({
     mutationFn: async () => {

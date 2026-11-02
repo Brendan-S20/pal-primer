@@ -240,6 +240,50 @@ async function ensureDefaultServicesForLines(
   }
 }
 
+/** A brand-new business starts on the line its owner came for (site-r2-03 /
+ *  F-06): signup from /services/dog-training stores `{training}`, not the
+ *  column default `{pet_waste}`.
+ *
+ *  Called by bootstrapOrganization only for a caller who belonged to no
+ *  business before the call. It writes only while the org still holds the
+ *  bare default -- an answer anybody chose is never replaced by a link -- and
+ *  only a line the platform switch says is bookable, the same launch gate
+ *  setServiceLines applies. Same write path as setServiceLines (updateOwnOrg
+ *  as the owner, then the idempotent service seeds), so nothing is widened.
+ *  Returns the lines it stored, or null when it left the org alone. */
+export const startNewOrgOnRequestedLine = createServerOnlyFn(
+  async (
+    supabase: AuthedContext["supabase"],
+    orgId: string,
+    line: ServiceLine,
+  ): Promise<ServiceLine[] | null> => {
+    if (line === "pet_waste" || serviceLinesProblem([line])) return null;
+    const { data: org, error } = await supabase
+      .from("organizations")
+      .select("service_lines")
+      .eq("id", orgId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    const current = org?.service_lines;
+    const onlyDefault =
+      Array.isArray(current) && current.length === 1 && current[0] === "pet_waste";
+    if (!onlyDefault) return null;
+    const { loadServiceLineAvailability } = await import("@/lib/service-line-availability.server");
+    if (serviceLinesAdditionProblem(["pet_waste"], [line], await loadServiceLineAvailability())) {
+      return null;
+    }
+    const lines: ServiceLine[] = [line];
+    const { updateOwnOrg } = await import("@/lib/org-write.server");
+    await updateOwnOrg(supabase, orgId, { service_lines: lines });
+    await ensureDefaultServicesForLines(supabase, orgId, lines);
+    if (line === "training") {
+      await seedTrainingPackage(supabase, orgId);
+      await seedTrainingSkills(supabase, orgId);
+    }
+    return lines;
+  },
+);
+
 /** What the business runs. Written the way the photo rule and the checklist
  *  are -- manage_settings, then a plain update through updateOwnOrg under the
  *  "Settings managers update own org" policy -- so nothing is widened; the
