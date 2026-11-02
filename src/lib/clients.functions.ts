@@ -1376,6 +1376,10 @@ const internalQuoteSchema = z.object({
   boundaryAreaSqm: z.number().positive().max(1_000_000).optional(),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
+  // A commercial account is priced by its units and waste stations, not its
+  // dogs (computeCommercialZonePrice). Ignored for residential.
+  unitCount: z.coerce.number().int().min(0).max(100_000).optional(),
+  stationCount: z.coerce.number().int().min(0).max(1_000).optional(),
 });
 
 export const getInternalQuote = createServerFn({ method: "POST" })
@@ -1394,7 +1398,7 @@ export const getInternalQuote = createServerFn({ method: "POST" })
     const { data: zones, error: zErr } = await supabase
       .from("zones")
       .select(
-        "id, name, priority, account_type, postal_prefix, zip_codes, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, area_max_charge_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, enabled",
+        "id, name, priority, account_type, postal_prefix, zip_codes, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, area_max_charge_cents, commercial_base_cents, commercial_per_unit_cents, commercial_per_acre_cents, commercial_per_station_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, enabled",
       )
       .eq("organization_id", orgId);
     if (zErr) throw new Error(zErr.message);
@@ -1413,6 +1417,49 @@ export const getInternalQuote = createServerFn({ method: "POST" })
     const { perVisitMultiplier } = await import("@/lib/frequency-multipliers");
     const mult = perVisitMultiplier(org.frequency_multipliers as any, data.frequency);
     const mode = (z.pricing_mode ?? "flat") as "flat" | "per_sqft" | "per_acre";
+
+    // A commercial account (an HOA, a park) is priced from the zone's
+    // commercial rates: base + per unit + per acre + per station, then the
+    // frequency multiplier. The wizard used to ask for a quote only for a
+    // residential account, so a commercial plan was saved with no zone and a
+    // price somebody typed (#658, R2-21).
+    if (data.accountType === "commercial") {
+      const { computeCommercialZonePrice, zoneHasCommercialPricing } =
+        await import("@/lib/pricing");
+      const rated = zoneHasCommercialPricing(z as any);
+      const price = rated
+        ? computeCommercialZonePrice(z as any, {
+            unitCount: data.unitCount ?? 0,
+            stationCount: data.stationCount ?? 0,
+            boundaryAreaSqm: data.boundaryAreaSqm,
+            multiplier: mult,
+          })
+        : null;
+      return {
+        available: true as const,
+        quote: {
+          zoneId: z.id as string,
+          zoneName: z.name as string,
+          pricingMode: "commercial" as const,
+          areaBasisCents: price?.acreageCents ?? null,
+          basePriceCents: price?.perVisitCents ?? null,
+          perDogAddlCents: 0,
+          // null: the zone has no commercial rates, so the office sets the
+          // price; the zone is still the plan's.
+          recurringPriceCents: price?.recurringCents ?? null,
+          initialCleanupCents: z.initial_cleanup_cents ?? 0,
+          currency: org.currency as string,
+          commercial: price
+            ? {
+                baseCents: price.baseCents,
+                unitCents: price.unitCents,
+                acreageCents: price.acreageCents,
+                stationCents: price.stationCents,
+              }
+            : null,
+        },
+      };
+    }
 
     const { computeZoneVisitPrice } = await import("@/lib/pricing");
     const price = computeZoneVisitPrice(
@@ -1439,6 +1486,7 @@ export const getInternalQuote = createServerFn({ method: "POST" })
         recurringPriceCents: price.recurringCents,
         initialCleanupCents: z.initial_cleanup_cents ?? 0,
         currency: org.currency as string,
+        commercial: null,
       },
     };
   });
@@ -1490,6 +1538,10 @@ const onboardSchema = z.object({
     })
     .optional(),
   boundaryAreaSqm: z.number().positive().max(1_000_000).optional(),
+  // A commercial property's waste stations, created as "Station 1".."Station
+  // n" so the tech's stop shows them and the plan's per-station price has
+  // something to count (#658, F-14). Ignored for residential.
+  stationCount: z.number().int().min(0).max(200).optional(),
   // dogs
   dogs: z
     .array(
@@ -1647,6 +1699,10 @@ export const onboardClient = createServerFn({ method: "POST" })
     });
 
     const hz = data.hazards ?? {};
+    const commercialUnits =
+      data.accountType === "commercial" && data.subscription?.unitCount
+        ? data.subscription.unitCount
+        : null;
     const { data: pRow, error: pErr } = await supabase
       .from("properties")
       .insert({
@@ -1679,6 +1735,13 @@ export const onboardClient = createServerFn({ method: "POST" })
         longitude,
         boundary: (data.boundary as any) ?? null,
         boundary_area_sqm: data.boundaryAreaSqm ?? null,
+        // The property's own account type, which the tech's stop reads to
+        // show the stations (my-day hasStations). It was left NULL here, so a
+        // commercial client added through the wizard showed none (#658, F-14).
+        account_type: data.accountType,
+        // The property's total units are the one count a later edit reprices
+        // a commercial plan from (updateProperty); the plan's is the same.
+        ...(commercialUnits != null ? { has_units: true, total_units: commercialUnits } : {}),
       })
       .select("id")
       .single();
@@ -1687,6 +1750,27 @@ export const onboardClient = createServerFn({ method: "POST" })
       throw new Error(pErr.message);
     }
     const propertyId = pRow.id as string;
+
+    // 2b) a commercial property's waste stations. Only the stations: a
+    // service log is written when a tech services one, never here.
+    const stationCount = data.accountType === "commercial" ? (data.stationCount ?? 0) : 0;
+    if (stationCount > 0) {
+      const { error: wsErr } = await supabase.from("waste_stations").insert(
+        Array.from({ length: stationCount }, (_, i) => ({
+          organization_id: orgId,
+          client_id: clientId,
+          property_id: propertyId,
+          label: `Station ${i + 1}`,
+          station_number: i + 1,
+          sort_order: i + 1,
+          active: true,
+        })) as any,
+      );
+      if (wsErr) {
+        await undoClient();
+        throw new Error(wsErr.message);
+      }
+    }
 
     // 3) dogs
     if (data.dogs?.length) {
@@ -1741,7 +1825,10 @@ export const onboardClient = createServerFn({ method: "POST" })
           price_cents: s.priceCents,
           dog_count: isRes ? (s.dogCount ?? data.dogs?.length ?? 1) : null,
           unit_count: !isRes ? (s.unitCount ?? 1) : null,
-          zone_id: s.zoneId ?? null,
+          // The zone the wizard quoted from; for a commercial plan with no
+          // quote, the zone the property is in, so the plan is not saved
+          // zoneless and flagged "No pricing zone recorded" (#658, R2-21).
+          zone_id: s.zoneId ?? (!isRes ? autoZoneId : null),
           billing_cadence: s.billingCadence ?? "postpaid",
           preferred_weekdays: !weekdays && s.preferredWeekdays?.length ? s.preferredWeekdays : null,
           ...(s.startedOn ? { started_on: s.startedOn } : {}),

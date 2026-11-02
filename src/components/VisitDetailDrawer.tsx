@@ -1,4 +1,5 @@
 import i18n from "@/lib/i18n";
+import { completeFromOffice, useOfficeCompleteOverride } from "@/components/OfficeCompleteOverride";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
@@ -358,10 +359,17 @@ export function VisitDetailDrawer({
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // No photo or checklist: the office says why, or the visit stays open (#658).
+  const { askWhy, dialog: overrideDialog } = useOfficeCompleteOverride();
   const completeMut = useMutation({
     mutationFn: (confirmedEarly: boolean) =>
-      doComplete({ data: { visitId: visitId!, confirmedEarly } }),
-    onSuccess: () => {
+      completeFromOffice(
+        (overrideReason) =>
+          doComplete({ data: { visitId: visitId!, confirmedEarly, overrideReason } }),
+        askWhy,
+      ),
+    onSuccess: (done) => {
+      if (!done) return;
       toast.success("Visit completed");
       invalidate();
       onOpenChange(false);
@@ -422,6 +430,7 @@ export function VisitDetailDrawer({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       {earlyDialog}
+      {overrideDialog}
       {/* Safe area, top and bottom. Measured on an iPhone 17 Pro 2026-08-25:
           Close occupied y 8-52 and the title y 24-52 against a 54pt status
           bar, so the clock printed through the client name and the battery

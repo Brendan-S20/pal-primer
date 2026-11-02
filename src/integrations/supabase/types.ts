@@ -9911,7 +9911,10 @@ export type Database = {
         Returns: string
       }
       office_booked_service_lines: { Args: never; Returns: string[] }
-      office_complete_visit: { Args: { _visit_id: string }; Returns: undefined }
+      office_complete_visit: {
+        Args: { _override_reason?: string; _visit_id: string }
+        Returns: undefined
+      }
       office_edit_time_entry: {
         Args: {
           _clock_in: string
@@ -10558,10 +10561,6 @@ export type Database = {
           _reference?: string
         }
         Returns: Json
-      }
-      record_visit_station_service: {
-        Args: { _visit_id: string }
-        Returns: number
       }
       record_walk_report: {
         Args: {

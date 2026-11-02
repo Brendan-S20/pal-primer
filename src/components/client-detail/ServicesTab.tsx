@@ -98,6 +98,13 @@ import { StaysSection } from "@/components/client-detail/StaysSection";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 
+/** True when a click landed on a real control (a button, link or field)
+ *  inside `row`, rather than on the row itself. */
+function insideAControl(target: EventTarget, row: Element): boolean {
+  const hit = target instanceof Element ? target.closest("button, a, input, select, textarea") : null;
+  return !!hit && hit !== row && row.contains(hit);
+}
+
 export function ServicesTab({
   clientId,
   client,
@@ -272,6 +279,7 @@ export function ServicesTab({
           intervalDays: v.sub.interval_days ?? undefined,
           priceCents: v.sub.price_cents,
           dogCount: v.count,
+          unitCount: v.sub.unit_count ?? undefined,
           zoneId: v.sub.zone_id ?? undefined,
           billingCadence: v.sub.billing_cadence ?? undefined,
           startedOn: v.sub.started_on ?? undefined,
@@ -306,6 +314,10 @@ export function ServicesTab({
           intervalDays: v.sub.interval_days ?? undefined,
           priceCents: v.sub.price_cents,
           dogCount: v.sub.dog_count ?? undefined,
+          // A commercial plan carries units, not dogs: without this the
+          // update wrote unit_count NULL and the database refused it with
+          // subscriptions_account_shape_chk (#658, R2-20).
+          unitCount: v.sub.unit_count ?? undefined,
           zoneId: v.zoneId ?? undefined,
           billingCadence: v.sub.billing_cadence ?? undefined,
           startedOn: v.sub.started_on ?? undefined,
@@ -422,8 +434,17 @@ export function ServicesTab({
                     className="min-w-0 flex-1 basis-full cursor-pointer @3xl:basis-72"
                     role="button"
                     tabIndex={0}
-                    onClick={() => setDetailSub(s)}
+                    // The row opens the plan's drawer; a button inside it
+                    // ("Use <zone>", "Use 3 dogs", "Generate schedule") does
+                    // its own thing and nothing more. Its click used to bubble
+                    // here, so "Use <zone>" opened the drawer over its own
+                    // result (#658, R2-20); its Enter key was swallowed.
+                    onClick={(e) => {
+                      if (insideAControl(e.target, e.currentTarget)) return;
+                      setDetailSub(s);
+                    }}
                     onKeyDown={(e) => {
+                      if (e.target !== e.currentTarget) return;
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
                         setDetailSub(s);

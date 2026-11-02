@@ -4,7 +4,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
 import { resolveCaller } from "@/lib/authz.server";
-import { canOfficeComplete } from "@/lib/visit-lifecycle";
+import { canOfficeComplete, officeCompleteOverrideAsk } from "@/lib/visit-lifecycle";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   // Through the shared gate, so a person whose access is turned off is
@@ -638,6 +638,10 @@ export const completeVisitFromOffice = createServerFn({ method: "POST" })
         visitId: z.string().uuid(),
         /** The person confirmed a visit on a later day was done early (#654). */
         confirmedEarly: z.boolean().optional(),
+        /** Why the office is completing a visit with no completion photo, or
+         *  with required checklist items nobody checked (#658, F-15). Asked
+         *  only when the database says one is missing. */
+        overrideReason: z.string().trim().min(1).max(250).optional(),
       })
       .parse(d),
   )
@@ -669,8 +673,15 @@ export const completeVisitFromOffice = createServerFn({ method: "POST" })
     const pushRoutes = await watchRouteLiveActivities([data.visitId]);
     const { error } = await (supabase as any).rpc("office_complete_visit", {
       _visit_id: data.visitId,
+      ...(data.overrideReason ? { _override_reason: data.overrideReason } : {}),
     });
-    if (error) throw new Error(error.message);
+    if (error) {
+      // No photo, or a required checklist item unchecked: the same gate the
+      // tech's Complete has. Not an error to the person; a question (#658).
+      const ask = officeCompleteOverrideAsk(error.message);
+      if (ask && !data.overrideReason) return { ok: false as const, needsOverride: ask };
+      throw new Error(error.message);
+    }
     await watch.finish();
     await pushRoutes();
     const { logActivity } = await import("@/lib/activity.server");
@@ -680,12 +691,15 @@ export const completeVisitFromOffice = createServerFn({ method: "POST" })
       propertyId: v.property_id,
       actorUserId: userId,
       kind: "visit.completed",
-      summary: `Marked the visit on ${v.scheduled_on} completed from the office`,
+      summary: data.overrideReason
+        ? `Marked the visit on ${v.scheduled_on} completed from the office without its photo or checklist: ${data.overrideReason}`
+        : `Marked the visit on ${v.scheduled_on} completed from the office`,
+      ...(data.overrideReason ? { meta: { override_reason: data.overrideReason } } : {}),
     });
     // A lesson that leaves one session on its package. Never throws.
     const { afterLessonSessionChange } = await import("@/lib/training-portal.server");
     await afterLessonSessionChange(data.visitId);
-    return { ok: true };
+    return { ok: true as const };
   });
 
 /** Move a scheduled visit to a new date. Wraps the reschedule_visit RPC
