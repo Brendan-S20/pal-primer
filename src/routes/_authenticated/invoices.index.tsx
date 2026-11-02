@@ -85,6 +85,11 @@ function fmtCents(c: number, currency = "usd") {
 }
 
 const STATUSES = ["draft", "open", "paid", "void", "uncollectible"] as const;
+
+/** A date filter that stays inside its wrapper on iOS WebKit, whose
+ *  `type="date"` control otherwise keeps an intrinsic width wider than the
+ *  box it is in (native-r2-10). */
+const DATE_FILTER_INPUT = "min-w-0 appearance-none";
 type StatusKey = (typeof STATUSES)[number] | "all";
 
 function statusLabel(s: StatusKey) {
@@ -1136,22 +1141,34 @@ function InvoicesPage() {
             ))}
           </div>
         </div>
-        <div>
+        {/* A width of their own (native-r2-10). Bare wrappers were sized by
+            their labels while iOS WebKit's date control kept a wider
+            intrinsic width, so on an iPad "Period from" ran under "Period to"
+            and "Period to" out past the card. 10rem holds "Oct 30, 2026";
+            two of them still wrap on a 320px phone rather than overflow. */}
+        <div className="w-40 shrink-0">
           <label htmlFor="invoices-from" className="text-xs text-muted-foreground">
             Period from
           </label>
           <Input
             id="invoices-from"
             type="date"
+            className={DATE_FILTER_INPUT}
             value={from}
             onChange={(e) => setFrom(e.target.value)}
           />
         </div>
-        <div>
+        <div className="w-40 shrink-0">
           <label htmlFor="invoices-to" className="text-xs text-muted-foreground">
             Period to
           </label>
-          <Input id="invoices-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          <Input
+            id="invoices-to"
+            type="date"
+            className={DATE_FILTER_INPUT}
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+          />
         </div>
         {filtersActive && (
           <Button variant="ghost" size="sm" onClick={resetFilters}>

@@ -508,7 +508,11 @@ function AuthPage() {
                 id="si-email"
                 type="email"
                 required
-                autoFocus
+                // Not in the app (R2-56): on a cold launch the keyboard came up
+                // over the splash, and on a signed-in launch it flashed over
+                // the dashboard on the way through. A tap brings it up. The web
+                // app keeps the focus: there it costs nothing.
+                autoFocus={!IS_NATIVE_BUNDLE}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@yourbusiness.com"
