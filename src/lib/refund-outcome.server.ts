@@ -5,7 +5,10 @@
 // recorded, whether it was made from the invoice (refunds.server.ts) or in
 // Stripe's own panel.
 //
-// The database client is passed in so a test can hand it a fake. Both writes
+// The client is the webhook's SERVICE-ROLE `supabaseAdmin`, passed in so a
+// test can hand it a fake, and named for what it must be: `payments` has no
+// UPDATE policy, so the caller's RLS client would update zero rows and report
+// success (tests/payments-and-connect-are-platform-owned.test.ts). Both writes
 // are best-effort and log rather than throw: the reversal ledger and the
 // payment's status are the facts that have to land, and these follow them.
 
@@ -27,14 +30,14 @@ import {
  * figure is current and may lower it (a refund that failed).
  */
 export async function recordRefundOnPayment(
-  db: any,
+  supabaseAdmin: any,
   pay: RefundablePayment & { id: string },
   amountRefundedCents: number,
   opts: { authoritative?: boolean } = {},
 ): Promise<number> {
   const share = invoicedShareRefunded(amountRefundedCents, pay);
   try {
-    let q = db.from("payments").update({ refunded_cents: share }).eq("id", pay.id);
+    let q = supabaseAdmin.from("payments").update({ refunded_cents: share }).eq("id", pay.id);
     if (!opts.authoritative) q = q.lt("refunded_cents", share);
     const { error } = await q;
     if (error) console.error("payment refunded_cents write failed", { paymentId: pay.id }, error);
@@ -58,12 +61,12 @@ export async function recordRefundOnPayment(
  * payment belongs to.
  */
 export async function recordRefundOnSignup(
-  db: any,
+  supabaseAdmin: any,
   where: { organizationId: string; paymentIntentId: string },
   ev: { refundId: string | null; amountRefundedCents: number; at: string; authoritative?: boolean },
 ): Promise<Partial<SignupRefundRow> | null> {
   try {
-    const { data: sr, error } = await db
+    const { data: sr, error } = await supabaseAdmin
       .from("signup_requests")
       .select("id, status, refunded_at, stripe_refund_id, refunded_amount_cents")
       .eq("organization_id", where.organizationId)
@@ -77,7 +80,10 @@ export async function recordRefundOnSignup(
     }
     const patch = signupRefundPatch(sr ?? null, ev);
     if (!patch || !sr?.id) return null;
-    const { error: upErr } = await db.from("signup_requests").update(patch).eq("id", sr.id);
+    const { error: upErr } = await supabaseAdmin
+      .from("signup_requests")
+      .update(patch)
+      .eq("id", sr.id);
     if (upErr) {
       console.error("signup refund write failed", { signupRequestId: sr.id }, upErr);
       return null;
