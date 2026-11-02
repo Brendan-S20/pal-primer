@@ -165,6 +165,9 @@ describe("the wiring", () => {
     expect(wizard).toMatch(/bookGroom:\s*true/);
     expect(client).toMatch(/setPendingGroom\(/);
     expect(visits).toMatch(/startFrom=\{groomStart\}/);
+    // Without booking, the owner of the screen is told rather than left on
+    // an empty Visits tab.
+    expect(visits).toMatch(/Ask someone who can book to schedule the groom/);
     expect(dialog).toMatch(/startFrom\?\.serviceId/);
     expect(dialog).toMatch(/notBeforeToday\(startFrom\.scheduledOn, today\)/);
   });

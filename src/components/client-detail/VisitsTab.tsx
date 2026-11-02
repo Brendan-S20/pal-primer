@@ -124,10 +124,10 @@ export function VisitsTab({
   // see it.
   const [oneOffOpen, setOneOffOpen] = useState(false);
   const [groomOpen, setGroomOpen] = useState(false);
-  const { can } = usePermissions();
+  const { can, loading: roleLoading } = usePermissions();
   // Booking, not pricing (#616): a dispatcher books here at the set price.
   const canBookOneOff = can("booking");
-  const { lines } = useServiceLines();
+  const { lines, known: linesKnown } = useServiceLines();
   const runsGrooming = lines.includes("mobile_grooming");
   // Held for the dialog's whole open life, then dropped, so a later "Book a
   // groom" from the button opens blank as it always has.
@@ -136,11 +136,21 @@ export function VisitsTab({
     scheduledOn: string | null;
   } | null>(null);
   useEffect(() => {
-    if (!pendingGroom || !runsGrooming || !canBookOneOff) return;
+    if (!pendingGroom || roleLoading || !linesKnown) return;
+    onPendingGroomConsumed?.();
+    // Somebody who may add clients but not book (or a business whose lines
+    // no longer include grooming) is told, rather than landing on an empty
+    // Visits tab with a client that has no plan and no groom.
+    if (!runsGrooming || !canBookOneOff) {
+      toast.warning(
+        "The client was created without a plan. Ask someone who can book to schedule the groom.",
+        { duration: 10000 },
+      );
+      return;
+    }
     setGroomStart(pendingGroom);
     setGroomOpen(true);
-    onPendingGroomConsumed?.();
-  }, [pendingGroom, runsGrooming, canBookOneOff]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pendingGroom, roleLoading, linesKnown, runsGrooming, canBookOneOff]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Vacation hold banner (QA round 8): an active or upcoming hold explains
   // why no visits exist in a range. Managed from the header's ••• menu.
@@ -771,7 +781,9 @@ function VisitTable({
                     />
                   )}
                   {v.status === "skipped" && (v.skip_reason_code || v.skip_reason) && (
-                    <span className="ml-1 text-xs text-muted-foreground">{skipReasonText(v)}</span>
+                    <span className="ml-1 text-xs text-muted-foreground">
+                      {skipReasonText(v)}
+                    </span>
                   )}
                   {v.is_deepclean && <MetaChip className="ml-1">Deep clean</MetaChip>}
                 </td>

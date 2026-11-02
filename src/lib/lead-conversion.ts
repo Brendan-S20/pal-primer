@@ -24,13 +24,7 @@
 // field is kept in the office note rather than dropped.
 
 /** The frequencies the wizard's Plan step offers, in its own spelling. */
-export const WIZARD_FREQUENCIES = [
-  "weekly",
-  "biweekly",
-  "twice_weekly",
-  "monthly",
-  "one_time",
-] as const;
+export const WIZARD_FREQUENCIES = ["weekly", "biweekly", "twice_weekly", "monthly", "one_time"] as const;
 export type WizardFrequency = (typeof WIZARD_FREQUENCIES)[number];
 
 /** onboardClient accepts at most this many dogs. */
