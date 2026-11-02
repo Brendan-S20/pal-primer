@@ -667,25 +667,19 @@ export async function initBackButton(): Promise<() => void> {
  *
  * Cold start is covered by the same listener: Capacitor's App plugin retains
  * the launch URL event until a listener attaches, so this must not ALSO read
- * getLaunchUrl(), or a cold-start link would navigate twice.
+ * getLaunchUrl(), or a cold-start link would navigate twice. But Capacitor
+ * hands a retained event to the FIRST listener only, so nothing else in the
+ * app may add its own appUrlOpen listener: everything subscribes through
+ * lib/app-url-open.ts, which keeps a cold-start link for the subscriber of
+ * its kind (#621).
  *
- * Anything that is not one of our https links is ignored, in particular the
- * custom-scheme OAuth hand-back, which src/routes/auth.tsx owns.
+ * Anything that is not one of our https links is ignored here, in particular
+ * the custom-scheme OAuth hand-back, which src/routes/auth.tsx owns.
  */
 export async function initAppLinks(onNavigate: (path: string) => void): Promise<() => void> {
   if (!isNative()) return () => {};
-  const [{ App }, { appLinkTarget }, { liveActivityLinkTarget }] = await Promise.all([
-    import("@capacitor/app"),
-    import("@/lib/android-app-links"),
-    import("@/lib/live-activity-links"),
-  ]);
-  const handle = await App.addListener("appUrlOpen", ({ url }) => {
-    const path = appLinkTarget(url) ?? liveActivityLinkTarget(url);
-    if (path) onNavigate(path);
-  });
-  return () => {
-    void handle.remove();
-  };
+  const { onAppUrl } = await import("@/lib/app-url-open");
+  return onAppUrl("path", onNavigate);
 }
 
 /**

@@ -20,6 +20,12 @@
 //
 // A page that does not need a session (an invitation) never waits for /auth:
 // it is pushed once the router is idle, signed in or not.
+//
+// None of that helped on a real phone until the link reached the root at all:
+// Capacitor hands a cold-start link to the first appUrlOpen listener only, and
+// /auth's OAuth listener used to be first and drop it. See lib/app-url-open.ts.
+
+import { takeWaitingAppUrl } from "@/lib/app-url-open";
 
 /** A link older than this is not what the person is doing now. It covers a
  *  link held through onboarding or a long wait on the sign-in form, which a
@@ -55,6 +61,19 @@ export function takeDeepLink(now = Date.now()): string | null {
 /** /auth calls this when it sends a signed-in person on. */
 export function markLanded(): void {
   landed = true;
+}
+
+/**
+ * /auth is sending a signed-in person on: the link they tapped, if there is
+ * one, or null for their role landing. Two places a link can be waiting:
+ * held here by the root, or still in lib/app-url-open.ts because it reached
+ * the app's one appUrlOpen listener before the root subscribed. On a cold
+ * start the second is the usual case, since /auth subscribes (for the OAuth
+ * hand-back) several imports ahead of the root (#621).
+ */
+export function takeLinkForLanding(now = Date.now()): string | null {
+  markLanded();
+  return takeDeepLink(now) ?? takeWaitingAppUrl("path");
 }
 
 /** Sign-out: a held link belongs to the person who tapped it, not to the

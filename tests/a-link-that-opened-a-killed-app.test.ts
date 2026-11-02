@@ -141,7 +141,7 @@ describe("the wiring", () => {
   it("every role landing on /auth goes through land(), which takes the held link", () => {
     const src = read("src/routes/auth.tsx");
     expect(src).toMatch(
-      /const link = takeDeepLink\(\);\s*if \(link\) router\.history\.push\(link\);/,
+      /const link = takeLinkForLanding\(\);\s*if \(link\) router\.history\.push\(link\);/,
     );
     // Three ways a session arrives: a cold start on either build (one path
     // since #661), password, native OAuth / Apple. Each lands through land().
@@ -164,7 +164,9 @@ describe("the wiring", () => {
   it("sign-out clears the held link, inside the app only", () => {
     const src = read("src/routes/__root.tsx");
     expect(src).toMatch(/if \(event === "SIGNED_OUT"\) forgetDeepLink\(\);/);
-    expect(read("src/routes/auth.tsx")).toMatch(/markLanded\(\);\s*const link = takeDeepLink\(\);/);
+    expect(read("src/lib/pending-deep-link.ts")).toMatch(
+      /markLanded\(\);\s*return takeDeepLink\(now\) \?\? takeWaitingAppUrl\("path"\);/,
+    );
   });
 });
 
