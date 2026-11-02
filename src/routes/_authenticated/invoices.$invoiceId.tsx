@@ -20,6 +20,7 @@ import { describePaymentSplit, formatDay, formatDateTime, surchargeSplit } from 
 import { formatLineItemDescription, invoiceNumberLabel } from "@/lib/invoice-labels";
 import { Button } from "@/components/ui/button";
 import { StatusChip, SectionLabel } from "@/components/client-detail/primitives";
+import { invoiceRefundState, invoiceStatusChip } from "@/lib/refund-outcome";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { DownloadPdfButton } from "@/components/DownloadPdfButton";
 import { downloadInvoicePdf } from "@/lib/document-pdf.functions";
@@ -248,7 +249,15 @@ function InvoiceDetail() {
             <p className="mt-0.5 font-mono text-sm text-muted-foreground">{shortId}</p>
           </div>
           <div className="flex flex-col items-start gap-2 text-sm sm:items-end">
-            <InvoiceChip status={invoice.status} />
+            {(() => {
+              // Refunded money reads as refunded, not Paid (#674).
+              const chip = invoiceStatusChip(invoice);
+              return chip.label ? (
+                <StatusChip status={chip.status} label={chip.label} />
+              ) : (
+                <InvoiceChip status={invoice.status} />
+              );
+            })()}
             <div className="space-y-0.5 sm:text-right">
               {invoice.issued_at && (
                 <p>
@@ -341,7 +350,9 @@ function InvoiceDetail() {
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-2 text-sm font-medium">
                   Total
-                  {invoice.status === "paid" && <InvoiceChip status="paid" label="PAID" />}
+                  {invoice.status === "paid" && !invoiceRefundState(invoice) && (
+                    <InvoiceChip status="paid" label="PAID" />
+                  )}
                 </span>
                 <span className="text-xl font-semibold tabular-nums">
                   {fmtCents(invoice.total_cents, invoice.currency)}
@@ -364,6 +375,14 @@ function InvoiceDetail() {
                   <span>Paid</span>
                   <span className="tabular-nums">
                     -{fmtCents(invoice.amount_paid_cents ?? 0, invoice.currency)}
+                  </span>
+                </div>
+              )}
+              {(invoice.amount_refunded_cents ?? 0) > 0 && (
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>Refunded</span>
+                  <span className="tabular-nums">
+                    {fmtCents(invoice.amount_refunded_cents ?? 0, invoice.currency)}
                   </span>
                 </div>
               )}
