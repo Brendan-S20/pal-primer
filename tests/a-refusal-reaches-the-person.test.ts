@@ -10,12 +10,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const toasts = vi.hoisted(() => [] as Array<{ kind: string; message: string; opts?: any }>);
+type ToastOpts = { description?: string; duration?: number };
+const toasts = vi.hoisted(() => [] as Array<{ kind: string; message: string; opts?: ToastOpts }>);
 vi.mock("sonner", () => ({
   toast: {
-    error: (message: string, opts?: any) => toasts.push({ kind: "error", message, opts }),
-    warning: (message: string, opts?: any) => toasts.push({ kind: "warning", message, opts }),
-    success: (message: string, opts?: any) => toasts.push({ kind: "success", message, opts }),
+    error: (message: string, opts?: ToastOpts) => toasts.push({ kind: "error", message, opts }),
+    warning: (message: string, opts?: ToastOpts) => toasts.push({ kind: "warning", message, opts }),
+    success: (message: string, opts?: ToastOpts) => toasts.push({ kind: "success", message, opts }),
   },
 }));
 
@@ -33,9 +34,9 @@ beforeEach(() => {
 
 describe("serverErrorMessage", () => {
   it("shows the product's own sentence as it is", () => {
-    expect(serverErrorMessage(new Error("That client is not in your organization"), { fallback: "x" })).toBe(
-      "That client is not in your organization",
-    );
+    expect(
+      serverErrorMessage(new Error("That client is not in your organization"), { fallback: "x" }),
+    ).toBe("That client is not in your organization");
   });
 
   it("drops a P0001 prefix and keeps the RAISE text (invite accept)", () => {
@@ -63,24 +64,35 @@ describe("serverErrorMessage", () => {
   });
 
   it("uses the fallback for an empty message or a validator's issue list", () => {
-    expect(serverErrorMessage(new Error(""), { fallback: "Could not save." })).toBe("Could not save.");
+    expect(serverErrorMessage(new Error(""), { fallback: "Could not save." })).toBe(
+      "Could not save.",
+    );
     const issues = JSON.stringify([{ code: "invalid_type", path: ["x"], message: "Required" }]);
-    expect(serverErrorMessage(new Error(issues), { fallback: "Could not save." })).toBe("Could not save.");
+    expect(serverErrorMessage(new Error(issues), { fallback: "Could not save." })).toBe(
+      "Could not save.",
+    );
   });
 });
 
 describe("toastServerError", () => {
   it("is an error toast with the readable message", () => {
     toastServerError(new Error("P0001: Already a member of another business"), { fallback: "x" });
-    expect(toasts).toEqual([{ kind: "error", message: "Already a member of another business", opts: undefined }]);
+    expect(toasts).toEqual([
+      { kind: "error", message: "Already a member of another business", opts: undefined },
+    ]);
   });
 });
 
 describe("toastServerOutcome", () => {
   it("result.error is an error, and the caller is told it failed", () => {
-    const kind = toastServerOutcome({ error: "That day is not a work day" }, { success: "Booked.", fallback: "x" });
+    const kind = toastServerOutcome(
+      { error: "That day is not a work day" },
+      { success: "Booked.", fallback: "x" },
+    );
     expect(kind).toBe("error");
-    expect(toasts).toEqual([{ kind: "error", message: "That day is not a work day", opts: undefined }]);
+    expect(toasts).toEqual([
+      { kind: "error", message: "That day is not a work day", opts: undefined },
+    ]);
   });
 
   it("result.error as an object is read too", () => {
@@ -97,7 +109,7 @@ describe("toastServerOutcome", () => {
     expect(toasts).toHaveLength(1);
     expect(toasts[0].kind).toBe("warning");
     expect(toasts[0].message).toBe("Visit booked for Mon, Nov 9, but not assigned to Ana.");
-    expect(toasts[0].opts.description).toBe("Ana is off on that day");
+    expect(toasts[0].opts?.description).toBe("Ana is off on that day");
   });
 
   it("a caller's warning and the server's are said together", () => {
@@ -105,11 +117,13 @@ describe("toastServerOutcome", () => {
       { assignWarning: "Ana is off." },
       { success: "Booked.", warnings: ["It moved.", null, false, ""], fallback: "x" },
     );
-    expect(toasts[0].opts.description).toBe("It moved. Ana is off.");
+    expect(toasts[0].opts?.description).toBe("It moved. Ana is off.");
   });
 
   it("nothing to say is a plain success", () => {
-    expect(toastServerOutcome({ assignWarning: null }, { success: "Booked.", fallback: "x" })).toBe("success");
+    expect(toastServerOutcome({ assignWarning: null }, { success: "Booked.", fallback: "x" })).toBe(
+      "success",
+    );
     expect(toasts).toEqual([{ kind: "success", message: "Booked.", opts: undefined }]);
   });
 });
@@ -126,7 +140,11 @@ describe("the one-off dialog's toast", () => {
     });
     toastServerOutcome({ assignWarning: null }, { ...copy, fallback: "x" });
     expect(toasts).toEqual([
-      { kind: "success", message: `Visit booked for ${formatDay(MON)} with Ana Ruiz.`, opts: undefined },
+      {
+        kind: "success",
+        message: `Visit booked for ${formatDay(MON)} with Ana Ruiz.`,
+        opts: undefined,
+      },
     ]);
   });
 
@@ -145,7 +163,7 @@ describe("the one-off dialog's toast", () => {
     const copy = oneOffBookedCopy({ requestedOn: SAT, result, assigneeName: "Ana Ruiz" });
     expect(toastServerOutcome(result, { ...copy, fallback: "x" })).toBe("warning");
     expect(toasts[0].message).toBe(`Visit booked for ${formatDay(MON)} with Ana Ruiz.`);
-    expect(toasts[0].opts.description).toContain(`${formatDay(SAT)} is not open for booking`);
+    expect(toasts[0].opts?.description).toContain(`${formatDay(SAT)} is not open for booking`);
   });
 
   it("an away tech's refusal is a warning naming who was not assigned, and why", () => {
@@ -156,8 +174,10 @@ describe("the one-off dialog's toast", () => {
     };
     const copy = oneOffBookedCopy({ requestedOn: MON, result, assigneeName: "Ana Ruiz" });
     expect(toastServerOutcome(result, { ...copy, fallback: "x" })).toBe("warning");
-    expect(toasts[0].message).toBe(`Visit booked for ${formatDay(MON)}, but not assigned to Ana Ruiz.`);
-    expect(toasts[0].opts.description).toBe("Ana Ruiz is off on 2099-11-09");
+    expect(toasts[0].message).toBe(
+      `Visit booked for ${formatDay(MON)}, but not assigned to Ana Ruiz.`,
+    );
+    expect(toasts[0].opts?.description).toBe("Ana Ruiz is off on 2099-11-09");
   });
 });
 
@@ -169,7 +189,7 @@ describe("the four call sites go through the helper", () => {
     expect(src).toMatch(/toastServerOutcome\(r,/);
     expect(src).toMatch(/=== "error"\) return;/);
     expect(src).toMatch(/onError: \(e: unknown\) => toastServerError\(/);
-    expect(src).toMatch(/oneOffBookedCopy\(\{ requestedOn: scheduledOn/);
+    expect(src).toMatch(/oneOffBookedCopy\(\{\s*requestedOn: scheduledOn,/);
     expect(src).not.toMatch(/toast\.(success|warning|error)\(/);
   });
 

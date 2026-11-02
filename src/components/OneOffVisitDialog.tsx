@@ -165,8 +165,12 @@ export function OneOffVisitDialog({
       // and failing the whole booking over it used to invite a second booking
       // (and a second bill). Say what actually happened (#662): the day it
       // landed on, whose route it is on, and why not when it is on nobody's.
-      const assignee = techs.find((s: any) => s.id === staffId)?.display_name ?? null;
-      const copy = oneOffBookedCopy({ requestedOn: scheduledOn, result: r, assigneeName: assignee });
+      const assignee = techs.find((s: { id: string }) => s.id === staffId)?.display_name ?? null;
+      const copy = oneOffBookedCopy({
+        requestedOn: scheduledOn,
+        result: r,
+        assigneeName: assignee,
+      });
       if (toastServerOutcome(r, { ...copy, fallback: BOOK_FAILED }) === "error") return;
       // The board, the mobile day list and the client's own tabs all read these.
       qc.invalidateQueries({ queryKey: ["visits"] });
