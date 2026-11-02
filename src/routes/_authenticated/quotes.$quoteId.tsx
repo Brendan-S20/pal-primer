@@ -15,7 +15,7 @@ import { QuoteEditor, type QuoteEditorValues } from "@/components/quotes/QuoteEd
 import { QuoteStatusBadge } from "@/components/quotes/QuoteStatusBadge";
 import { DownloadPdfButton } from "@/components/DownloadPdfButton";
 import { downloadQuotePdf } from "@/lib/document-pdf.functions";
-import { appUrl } from "@/lib/app-origin";
+import { linkUrl } from "@/lib/app-origin";
 import {
   createQuoteDepositInvoice,
   deleteQuoteDraft,
@@ -255,8 +255,10 @@ function QuoteDetailPage() {
     }
   };
   const copyLink = () => {
-    if (!quote.publicUrl) return;
-    navigator.clipboard.writeText(quote.publicUrl).then(
+    if (!quote.publicUrl || !quote.publicToken) return;
+    // linkUrl(), not the server's publicUrl: the server answers from its own
+    // environment, which is the production host unless APP_ORIGIN is set there.
+    navigator.clipboard.writeText(linkUrl(`/q/${quote.publicToken}`)).then(
       () => toast.success("Quote link copied"),
       () => toast.error("Copy failed"),
     );
@@ -436,12 +438,7 @@ function QuoteDetailPage() {
               <Copy className="mr-1 h-4 w-4 shrink-0" /> Copy link
             </Button>
           )}
-          <DownloadPdfButton
-            load={() => pdfFn({ data: { quoteId: quote.id } })}
-            nativeUrl={
-              quote.publicToken ? appUrl(`/api/public/quote-pdf?token=${quote.publicToken}`) : null
-            }
-          />
+          <DownloadPdfButton load={() => pdfFn({ data: { quoteId: quote.id } })} />
           {quote.status === "sent" && (
             <Button
               type="button"

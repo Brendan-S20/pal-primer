@@ -22,7 +22,7 @@ import { isInvoiceOverdue } from "@/lib/overdue";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
 import { formatDay } from "@/lib/format";
 import { invoiceKindLabel, invoiceNumberLabel } from "@/lib/invoice-labels";
-import { appUrl } from "@/lib/app-origin";
+import { linkUrl } from "@/lib/app-origin";
 
 export type InvoiceRowData = {
   id: string;
@@ -118,10 +118,9 @@ function useInvoiceMenuActions(invoice: InvoiceRowData, actions: RowAction[]): R
           {
             label: "Copy pay link",
             onSelect: () => {
-              // appUrl(), not window.location.origin — same reason as the
-              // drawer's copy: the link is for a customer, so it has to name
-              // the host the product lives at, not the one staff are on.
-              const url = appUrl(`/pay/i/${invoice.public_token}`);
+              // linkUrl(), not a raw window.location.origin: same reason as
+              // the drawer's copy. See src/lib/app-origin.ts (#660).
+              const url = linkUrl(`/pay/i/${invoice.public_token}`);
               navigator.clipboard.writeText(url).then(
                 () => toast.success("Pay link copied to clipboard"),
                 () => toast.error("Copy failed"),

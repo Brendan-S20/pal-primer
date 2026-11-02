@@ -25,7 +25,7 @@ import { Switch } from "@/components/ui/switch";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { useMyRole } from "@/hooks/useMyRole";
 import { isValidOrgName } from "@/lib/dna-linkage";
-import { appOrigin } from "@/lib/app-origin";
+import { linkOrigin } from "@/lib/app-origin";
 import {
   getOrgBranding,
   updateOrgBranding,
@@ -72,7 +72,7 @@ export function PortalAddressCard() {
   // onboarding.tsx was: it prefers the page origin whenever a browser exists,
   // and inside the binary a browser DOES exist with an origin no customer can
   // open. The fallback was already the right answer for every platform.
-  const base = appOrigin();
+  const base = linkOrigin();
 
   return (
     <Card>

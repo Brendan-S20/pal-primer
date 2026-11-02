@@ -53,7 +53,7 @@ import { isInvoiceOverdue } from "@/lib/overdue";
 import { toastSaveError } from "@/lib/stale-write-toast";
 import { invoiceDueCents, isPartiallyPaid } from "@/lib/ar";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
-import { appUrl } from "@/lib/app-origin";
+import { linkUrl } from "@/lib/app-origin";
 
 function fmtCents(c: number | null | undefined, currency = "usd") {
   return new Intl.NumberFormat("en-US", {
@@ -187,11 +187,12 @@ export function InvoiceDrawer({
 
   const copyPayLink = () => {
     if (!inv) return;
-    // appUrl(), not window.location.origin: this link goes to a CUSTOMER, and
-    // the origin the staffer happens to be on is not necessarily the host the
-    // product lives at — a Lovable preview URL would produce a pay link that
-    // works today and 404s next week. See src/lib/app-origin.ts.
-    const url = appUrl(`/pay/i/${inv.public_token}`);
+    // linkUrl(), not a raw window.location.origin: this link goes to a
+    // CUSTOMER. linkUrl names the host this build runs on (#660), except a
+    // Lovable preview, which would give a pay link that 404s next week, and a
+    // native bundle, whose own origin nobody else can open. See
+    // src/lib/app-origin.ts.
+    const url = linkUrl(`/pay/i/${inv.public_token}`);
     navigator.clipboard.writeText(url).then(
       () => {
         setCopied(true);
@@ -364,15 +365,7 @@ export function InvoiceDrawer({
               )}
               {/* Every status, not only open: a paid invoice's PDF is the
                   receipt a bookkeeper asks for. */}
-              <DownloadPdfButton
-                size="sm"
-                load={() => pdfFn({ data: { invoiceId: inv.id } })}
-                nativeUrl={
-                  inv.public_token
-                    ? appUrl(`/api/public/invoice-pdf?token=${inv.public_token}`)
-                    : null
-                }
-              />
+              <DownloadPdfButton size="sm" load={() => pdfFn({ data: { invoiceId: inv.id } })} />
               {open && (
                 <Button
                   size="sm"

@@ -1,4 +1,4 @@
-import { appUrl } from "@/lib/app-origin";
+import { linkUrl } from "@/lib/app-origin";
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -63,10 +63,10 @@ const STATUS_TONE: Record<string, "default" | "secondary" | "destructive" | "out
 
 function inviteUrl(token: string) {
   if (typeof window === "undefined") return `/invite/${token}`;
-  // appUrl(): an invite link emailed to somebody outside this device. From
+  // linkUrl(): an invite link emailed to somebody outside this device. From
   // the native binary the page origin is `capacitor://localhost`, which would
   // make every invite sent from the app unopenable.
-  return appUrl(`/invite/${token}`);
+  return linkUrl(`/invite/${token}`);
 }
 
 function InvitesPage() {

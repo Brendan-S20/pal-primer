@@ -2,7 +2,7 @@
 // numbers that matter, with Message / Edit Client / More Actions. Status is
 // DERIVED from service states (QA follow-up 4.2) so a manual flag can't
 // contradict reality; missing contact info renders as warning chips.
-import { appUrl } from "@/lib/app-origin";
+import { linkUrl } from "@/lib/app-origin";
 import { lazy, Suspense, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -33,6 +33,7 @@ import {
 } from "@/lib/clients.functions";
 import { usePermissions } from "@/hooks/useMyRole";
 import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
+import { PortalPreviewSheet } from "@/components/client-detail/PortalPreviewSheet";
 import { pauseSubscription } from "@/lib/subscriptions.functions";
 import { isServiceEnded } from "@/lib/subscription-form";
 import { getMyOrg } from "@/lib/org.functions";
@@ -185,15 +186,19 @@ export function ClientHeader({
   });
 
   const slug = (orgData?.organization as any)?.portal_slug as string | undefined;
-  // appUrl(), never window.location.origin. This address is READ ALOUD to a
+  // linkUrl(), never a raw window.location.origin. This address is READ ALOUD to a
   // customer and pasted into their browser, and inside the iOS binary the page
   // origin is `capacitor://localhost` — so the app was showing staff
   // `capacitor://localhost/portal/...`, which is not a link anybody can open.
   // InvoiceRow and InvoiceDrawer already said exactly this; this call site and
   // four others did not get the message.
-  const portalUrl = client.portal_token
-    ? appUrl(slug ? `/portal/${slug}/${client.portal_token}` : `/portal/${client.portal_token}`)
+  const portalPath = client.portal_token
+    ? slug
+      ? `/portal/${slug}/${client.portal_token}`
+      : `/portal/${client.portal_token}`
     : null;
+  const portalUrl = portalPath ? linkUrl(portalPath) : null;
+  const [portalSheet, setPortalSheet] = useState<{ src: string; preview: boolean } | null>(null);
 
   const derivedStatus = deriveClientStatus(client, subscriptions, todayIso);
   const navProperty = properties.find((p: any) => !p.archived_at) ?? null;
@@ -381,35 +386,35 @@ export function ClientHeader({
                   Pause automated communications
                 </DropdownMenuItem>
               )}
-              {portalUrl && (
+              {portalPath && portalUrl && (
                 <>
-                  {/* Native: the preview's session cookie lives in this WebView and
-                      the portal opens in the system browser, which has none of it,
-                      so the phone keeps the plain link. */}
+                  {/* The portal opens in a sheet inside the app, never a new
+                      window or the system browser (#660). Web: a read-only
+                      preview session is set on this origin first, and the
+                      frame loads the portal from this origin, so it sends that
+                      session. Native: the session cookie cannot cross to the
+                      API origin, so the phone shows the portal as a customer
+                      first sees it, from the host this build talks to. */}
                   {!IS_NATIVE_BUNDLE && can("manage_client_billing") ? (
                     <DropdownMenuItem
                       onClick={() => {
-                        // Opened before the await: Safari blocks a window opened
-                        // after one, as a popup nobody asked for.
-                        const w = window.open("", "_blank");
                         previewFn({ data: { clientId } }).then(
-                          () => {
-                            if (w) {
-                              w.opener = null;
-                              w.location.href = portalUrl;
-                            } else window.location.href = portalUrl;
-                          },
-                          (e: Error) => {
-                            w?.close();
-                            toast.error(e.message || "Couldn't open the preview.");
-                          },
+                          () => setPortalSheet({ src: portalPath, preview: true }),
+                          (e: Error) => toast.error(e.message || "Couldn't open the preview."),
                         );
                       }}
                     >
                       Preview portal
                     </DropdownMenuItem>
                   ) : (
-                    <DropdownMenuItem onClick={() => window.open(portalUrl, "_blank", "noopener")}>
+                    <DropdownMenuItem
+                      onClick={() =>
+                        setPortalSheet({
+                          src: IS_NATIVE_BUNDLE ? portalUrl : portalPath,
+                          preview: false,
+                        })
+                      }
+                    >
                       Open portal
                     </DropdownMenuItem>
                   )}
@@ -495,6 +500,21 @@ export function ClientHeader({
           </dd>
         </div>
       </dl>
+
+      <PortalPreviewSheet
+        src={portalSheet?.src ?? null}
+        open={portalSheet != null}
+        onOpenChange={(o) => {
+          if (!o) setPortalSheet(null);
+        }}
+        title={portalSheet?.preview ? "Portal preview" : "Client portal"}
+        description={
+          portalSheet?.preview
+            ? "What this client sees. Read only: nothing here can be changed."
+            : "The portal as this client first sees it, before signing in."
+        }
+        newTab={!IS_NATIVE_BUNDLE}
+      />
 
       {holdDrawerEverOpened.current && (
         <Suspense fallback={null}>
