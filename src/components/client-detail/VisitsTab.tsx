@@ -49,6 +49,8 @@ import {
 } from "@/components/training/ClientCalledAtField";
 import { orgToday } from "@/lib/org-day";
 import { toastSaveError } from "@/lib/stale-write-toast";
+import { visitBookedCents } from "@/lib/booked-value";
+import { visitServiceLabel } from "@/lib/subscription-form";
 
 /** A skip's reason as words: a code through the office's labels, free text
  *  (from before reasons were codes) as it was typed. */
@@ -791,9 +793,7 @@ function VisitTable({
                   {v.is_deepclean && <MetaChip className="ml-1">Deep clean</MetaChip>}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">
-                  {service
-                    ? `${service.frequency === "one_time" ? "One time" : "Recurring"} service`
-                    : "-"}
+                  {visitServiceLabel(service)}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">
                   {v.properties?.street ?? "-"}
@@ -1245,7 +1245,7 @@ function VisitDetailDrawer({
           {service && (
             <div className="flex items-center justify-between">
               <dt className="text-muted-foreground">Service</dt>
-              <dd>${(service.price_cents / 100).toFixed(2)} /visit</dd>
+              <dd>${(visitBookedCents(service) / 100).toFixed(2)} /visit</dd>
             </div>
           )}
           {(v.skip_reason_code || v.skip_reason) && (
