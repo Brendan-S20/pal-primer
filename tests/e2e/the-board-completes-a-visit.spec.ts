@@ -7,6 +7,15 @@
 // more DOM. There is deliberately NO confirm dialog on the button (a
 // dispatcher clearing a day clicks it dozens of times), so the toast is the
 // only acknowledgement and the spec treats it that way.
+//
+// Since #658 the office Complete asks what the tech's does: when the business
+// requires a completion photo (the seeded org does) or the visit's line has
+// required checklist items, the database refuses until the office says why,
+// and the board asks in a dialog. That is not a confirm: it only appears when
+// proof is missing. The spec answers it the way a dispatcher would and then
+// checks the reason landed on the visit. This spec went unrun on main from
+// #658 until #683, because the database job stopped at the embed check
+// before it reached the E2E step.
 
 import { expect, test } from "@playwright/test";
 
@@ -76,7 +85,23 @@ test("Complete on a board card flips the visit in Postgres and logs the action",
   const offeredBefore = await completeButtons.count();
 
   await completeButtons.first().click();
-  await expect(page.getByText("Visit marked complete")).toBeVisible({ timeout: 20_000 });
+
+  // Either it completes at once, or the business wants proof the board
+  // cannot give and asks why (#658). Whichever comes first decides.
+  const askWhy = page.getByRole("alertdialog", { name: "Complete without the tech's proof?" });
+  const toast = page.getByText("Visit marked complete");
+  await expect(askWhy.or(toast).first()).toBeVisible({ timeout: 20_000 });
+  const REASON = "E2E: client confirmed by phone";
+  const askedWhy = await askWhy.isVisible();
+  if (askedWhy) {
+    // The button stays disabled until there is a reason: an override with
+    // nothing written is not one.
+    const anyway = askWhy.getByRole("button", { name: "Complete anyway" });
+    await expect(anyway).toBeDisabled();
+    await askWhy.getByLabel("Why").fill(REASON);
+    await anyway.click();
+  }
+  await expect(toast).toBeVisible({ timeout: 20_000 });
 
   // The card stopped offering it — completion is not re-clickable.
   await expect
@@ -88,7 +113,7 @@ test("Complete on a board card flips the visit in Postgres and logs the action",
   const today = await businessToday(orgId);
   const { data: fresh } = await db
     .from("visits")
-    .select("completed_at")
+    .select("completed_at, completion_photo_waived_reason")
     .eq("organization_id", orgId)
     .eq("scheduled_on", today)
     .eq("status", "completed")
@@ -96,6 +121,17 @@ test("Complete on a board card flips the visit in Postgres and logs the action",
     .limit(1)
     .single();
   expect(fresh?.completed_at).toBeTruthy();
+  // The reason the office gave is what the owner reads later, on the visit.
+  // Recorded there when it was the photo that was missing; a checklist-only
+  // gap goes to the checklist answers instead, so only assert what applies.
+  const { data: org } = await db
+    .from("organizations")
+    .select("require_completion_photo")
+    .eq("id", orgId)
+    .single();
+  if (askedWhy && org?.require_completion_photo) {
+    expect(fresh?.completion_photo_waived_reason).toBe(REASON);
+  }
 
   // And the paper trail an owner audits by.
   const { count: logged } = await db
