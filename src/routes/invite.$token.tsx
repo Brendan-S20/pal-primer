@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { pageTitle } from "@/lib/page-title";
+import { toastServerError } from "@/lib/server-outcome";
 
 export const Route = createFileRoute("/invite/$token")({
   head: () => ({ meta: [
@@ -80,7 +81,10 @@ function InvitePage() {
       }
       navigate({ to: "/dashboard" });
     },
-    onError: (e) => toast.error((e as Error).message),
+    // accept_org_invite_for_current_user refuses with a RAISE (P0001) that
+    // says why; that sentence is what the person reads (#662).
+    onError: (e) =>
+      toastServerError(e, { fallback: "This invitation could not be used. Ask for a new one." }),
   });
 
   return (
