@@ -12,6 +12,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { LineQuantity } from "@/components/LineQuantity";
 import { toast } from "sonner";
+import { toastSaveError } from "@/lib/stale-write-toast";
 import {
   ArrowLeft,
   CreditCard,
@@ -102,18 +103,27 @@ export function InvoiceDrawer({
     qc.invalidateQueries({ queryKey: ["invoice-detail", invoiceId] });
     onChanged?.();
   };
+  // The invoice as this drawer shows it (#655): a payment or a void is
+  // refused when somebody changed the invoice after it was drawn.
+  const loadedUpdatedAt = (): string | undefined =>
+    (inv as { updated_at?: string } | undefined)?.updated_at ?? undefined;
+  const reload = async () => {
+    await refetch();
+    onChanged?.();
+  };
 
   const voidMut = useMutation({
-    mutationFn: () => voidFn({ data: { id: invoiceId! } }),
+    mutationFn: () => voidFn({ data: { id: invoiceId!, expectedUpdatedAt: loadedUpdatedAt() } }),
     onSuccess: () => {
       toast.success("Invoice voided");
       refresh();
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toastSaveError(e, reload),
   });
 
   const recordMut = useMutation({
-    mutationFn: (how: RecordPaymentAnswer) => paidFn({ data: { ids: [invoiceId!], ...how } }),
+    mutationFn: (how: RecordPaymentAnswer) =>
+      paidFn({ data: { ids: [invoiceId!], ...how, expectedUpdatedAt: loadedUpdatedAt() } }),
     onSuccess: (r) => {
       if (!r.ok) {
         toast.error(
@@ -136,7 +146,7 @@ export function InvoiceDrawer({
       qc.invalidateQueries({ queryKey: ["billing-summary"] });
       refresh();
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toastSaveError(e, reload),
   });
 
   const creditCents = inv?.credit_applied_cents ?? 0;

@@ -69,7 +69,7 @@ export const getVisitDetail = createServerFn({ method: "GET" })
          weather_flagged, weather_note, tech_note, completion_photo_waived_reason, visit_checklist,
          duration_min, groom_summary, start_time,
          eta_start, eta_end, travel_km, travel_min, window_violated,
-         client_id, property_id,
+         client_id, property_id, updated_at,
          clients(id, display_name, primary_phone, primary_email, credit_balance_cents),
          properties(id, street, city, region, postal_code, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, latitude, longitude),
          zones(name),
@@ -549,6 +549,9 @@ export const correctVisitTimestamps = createServerFn({ method: "POST" })
         startedAt: z.string().datetime({ offset: true }).nullable(),
         completedAt: z.string().datetime({ offset: true }).nullable(),
         reason: z.string().min(1).max(300),
+        // The updated_at the screen loaded with (#655): refused if the visit
+        // has changed since, instead of acting on what is no longer there.
+        expectedUpdatedAt: z.string().min(1).max(64).optional(),
       })
       .refine((v) => !v.startedAt || !v.completedAt || v.completedAt >= v.startedAt, {
         message: "Completion can't be before the start",
@@ -559,6 +562,8 @@ export const correctVisitTimestamps = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { requirePermission } = await import("@/lib/authz.server");
     await requirePermission(supabase, userId, "manage_client_billing");
+    const { refuseStaleWrite } = await import("@/lib/stale-write.server");
+    await refuseStaleWrite(supabase, "visit", data.visitId, data.expectedUpdatedAt);
 
     const { data: before, error: bErr } = await supabase
       .from("visits")
@@ -567,11 +572,18 @@ export const correctVisitTimestamps = createServerFn({ method: "POST" })
       .single();
     if (bErr) throw new Error(bErr.message);
 
-    const { error } = await supabase
+    let write = supabase
       .from("visits")
       .update({ started_at: data.startedAt, completed_at: data.completedAt })
       .eq("id", data.visitId);
+    if (data.expectedUpdatedAt !== undefined)
+      write = write.eq("updated_at", data.expectedUpdatedAt);
+    const { data: written, error } = await write.select("id");
     if (error) throw new Error(error.message);
+    if (data.expectedUpdatedAt !== undefined && !written?.length) {
+      const { staleWriteMessage } = await import("@/lib/stale-write");
+      throw new Error(staleWriteMessage("visit"));
+    }
 
     const { logActivity } = await import("@/lib/activity.server");
     await logActivity(supabase, {
@@ -625,12 +637,17 @@ export const completeVisitFromOffice = createServerFn({ method: "POST" })
         visitId: z.string().uuid(),
         /** The person confirmed a visit on a later day was done early (#654). */
         confirmedEarly: z.boolean().optional(),
+        // The updated_at the screen loaded with (#655): refused if the visit
+        // has changed since, instead of acting on what is no longer there.
+        expectedUpdatedAt: z.string().min(1).max(64).optional(),
       })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
+    const { refuseStaleWrite } = await import("@/lib/stale-write.server");
+    await refuseStaleWrite(supabase, "visit", data.visitId, data.expectedUpdatedAt);
     // A missed visit can be completed too: it was marked missed overnight
     // because nobody closed it, not because it was proved undone (#455).
     if (!canOfficeComplete(v.status))
@@ -684,12 +701,17 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
       .object({
         visitId: z.string().uuid(),
         newDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        // The updated_at the screen loaded with (#655): refused if the visit
+        // has changed since, instead of acting on what is no longer there.
+        expectedUpdatedAt: z.string().min(1).max(64).optional(),
       })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
+    const { refuseStaleWrite } = await import("@/lib/stale-write.server");
+    await refuseStaleWrite(supabase, "visit", data.visitId, data.expectedUpdatedAt);
     if (v.status !== "scheduled") throw new Error("Only scheduled visits can be rescheduled");
     const { refusePastDay } = await import("@/lib/booking-dates.server");
     await refusePastDay(supabase, v.organization_id, data.newDate);
@@ -788,12 +810,17 @@ export const cancelVisitFromOffice = createServerFn({ method: "POST" })
         // A bulk cancel sends false and emails once for the whole set
         // afterwards (notifyCanceledWalks), one email per client.
         notifyClient: z.boolean().default(true),
+        // The updated_at the screen loaded with (#655): refused if the visit
+        // has changed since, instead of acting on what is no longer there.
+        expectedUpdatedAt: z.string().min(1).max(64).optional(),
       })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
+    const { refuseStaleWrite } = await import("@/lib/stale-write.server");
+    await refuseStaleWrite(supabase, "visit", data.visitId, data.expectedUpdatedAt);
     if (v.status !== "scheduled") throw new Error("Only scheduled visits can be canceled");
     const { startRouteWatch } = await import("@/lib/field-notify.server");
     const watch = await startRouteWatch({

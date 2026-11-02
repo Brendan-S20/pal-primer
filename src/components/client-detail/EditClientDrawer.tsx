@@ -6,6 +6,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
+import { toastSaveError } from "@/lib/stale-write-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -66,6 +67,13 @@ export function EditClientDrawer({
   const wasOpen = useRef(false);
   const seededClientId = useRef<string | null>(null);
   const edited = useRef(false);
+  // The updated_at of the row the form was filled from (#655). Taken when
+  // the form is seeded, not read live: the client query refetches while the
+  // drawer is open, and a stamp that followed it would vouch for a form that
+  // still shows the old values.
+  const loadedUpdatedAt = useRef<string | undefined>(undefined);
+  // Bumped by Reload after a refused save, to fill the form again.
+  const [reseed, setReseed] = useState(0);
   useEffect(() => {
     if (!open) {
       wasOpen.current = false;
@@ -82,11 +90,21 @@ export function EditClientDrawer({
     if (shouldSeed) {
       setForm(initial);
       seededClientId.current = loadedClientId;
+      loadedUpdatedAt.current = client?.updated_at ?? undefined;
       edited.current = false;
     }
 
     wasOpen.current = open;
-  }, [open, initial, client?.id]);
+    // `client` itself is read only for its stamp, which belongs to `initial`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initial, client?.id, reseed]);
+
+  const reload = async () => {
+    await qc.refetchQueries({ queryKey: ["client", clientId] });
+    seededClientId.current = null;
+    edited.current = false;
+    setReseed((n) => n + 1);
+  };
 
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
   const { enabled: commercialEnabled } = useCommercialAccounts();
@@ -152,6 +170,7 @@ export function EditClientDrawer({
             ? { emergencyContactMayApproveVet: form.emergencyMayApproveVet }
             : {}),
           ...(form.vetLimit !== initial.vetLimit ? { vetTreatmentLimitCents: vetLimitCents } : {}),
+          expectedUpdatedAt: loadedUpdatedAt.current,
         },
       }),
     onSuccess: () => {
@@ -160,7 +179,7 @@ export function EditClientDrawer({
       qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
       onClose();
     },
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e) => toastSaveError(e, reload),
   });
 
   return (

@@ -58,6 +58,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { toastSaveError } from "@/lib/stale-write-toast";
 import { Link } from "@tanstack/react-router";
 import { PHOTO_KIND_OPTIONS, photoKindLabel, defaultPhotoKind, type PhotoKind } from "@/lib/photo-kinds";
 import { parseAnswers } from "@/lib/visit-checklist";
@@ -204,7 +205,10 @@ export function VisitDetailDrawer({
   const [moveTo, setMoveTo] = useState("");
   useEffect(() => setMoveTo(""), [visitId]);
   const rescheduleMut = useMutation({
-    mutationFn: () => doReschedule({ data: { visitId: visitId!, newDate: moveTo } }),
+    mutationFn: () =>
+      doReschedule({
+        data: { visitId: visitId!, newDate: moveTo, expectedUpdatedAt: loadedUpdatedAt() },
+      }),
     onSuccess: (r) => {
       const who = r.techName ?? "The tech";
       if (r.tech === "kept") {
@@ -225,7 +229,7 @@ export function VisitDetailDrawer({
       setMoveTo("");
       invalidate();
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toastSaveError(e, reload),
   });
   // Reassigning used to apply the moment the native select changed, with no
   // undo, and reassignVisit tells the tech losing the stop and the tech
@@ -320,6 +324,15 @@ export function VisitDetailDrawer({
     qc.invalidateQueries({ queryKey: ["visit-detail", visitId] });
     qc.invalidateQueries({ queryKey: ["visits"] });
   };
+  // The visit as this drawer shows it (#655): a move, completion or cancel is
+  // refused when somebody changed the visit after it was drawn. Reload draws
+  // it again.
+  const loadedUpdatedAt = (): string | undefined =>
+    (data?.visit as { updated_at?: string } | undefined)?.updated_at ?? undefined;
+  const reload = async () => {
+    await qc.refetchQueries({ queryKey: ["visit-detail", visitId] });
+    qc.invalidateQueries({ queryKey: ["visits"] });
+  };
 
   // Pinned to its tech: auto-routing never moves it to someone else, even on
   // a run allowed to move work between techs (#609). Sent at once, since it
@@ -340,13 +353,15 @@ export function VisitDetailDrawer({
 
   const completeMut = useMutation({
     mutationFn: (confirmedEarly: boolean) =>
-      doComplete({ data: { visitId: visitId!, confirmedEarly } }),
+      doComplete({
+        data: { visitId: visitId!, confirmedEarly, expectedUpdatedAt: loadedUpdatedAt() },
+      }),
     onSuccess: () => {
       toast.success("Visit completed");
       invalidate();
       onOpenChange(false);
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toastSaveError(e, reload),
   });
   const [skipReason, setSkipReason] = useState("");
   // On a training package lesson: when the client called to cancel.
@@ -363,6 +378,7 @@ export function VisitDetailDrawer({
           reason: skipReason,
           code: "other",
           clientCancelledAt: data?.visit?.client_package_id ? clientCalledAtIso(calledAt) : null,
+          expectedUpdatedAt: loadedUpdatedAt(),
         },
       }),
     onSuccess: () => {
@@ -370,7 +386,7 @@ export function VisitDetailDrawer({
       invalidate();
       onOpenChange(false);
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toastSaveError(e, reload),
   });
   const v: any = data?.visit;
   const p = v?.properties;
@@ -425,7 +441,9 @@ export function VisitDetailDrawer({
             )}
             {/* Part of a sitter's stay (#411): the stay's dates. */}
             {visitStayDates((v as any)?.subscriptions?.stays) && (
-              <Badge variant="outline">Stay, {visitStayDates((v as any).subscriptions.stays)}</Badge>
+              <Badge variant="outline">
+                Stay, {visitStayDates((v as any).subscriptions.stays)}
+              </Badge>
             )}
           </SheetTitle>
           <SheetDescription>
@@ -622,7 +640,12 @@ export function VisitDetailDrawer({
                 the visit was completed. Absent when nothing asked. */}
             <VisitChecklistAnswers answers={parseAnswers(v.visit_checklist) ?? []} />
 
-            <PhotosSection key={visitId!} visitId={visitId!} photos={v.visit_photos ?? []} status={v.status} />
+            <PhotosSection
+              key={visitId!}
+              visitId={visitId!}
+              photos={v.visit_photos ?? []}
+              status={v.status}
+            />
 
             {/* Past and future apart. One "Other visits here" list, newest
                 first, put next month's scheduled visits above last week's
@@ -716,9 +739,9 @@ export function VisitDetailDrawer({
                       </Button>
                     </div>
                     <p className="text-2xs text-muted-foreground">
-                      It stays with the same tech when the new day is a work day and they are
-                      not off. Otherwise it is left unassigned for dispatch. Reordering a
-                      tech's stops is on the Schedule board.
+                      It stays with the same tech when the new day is a work day and they are not
+                      off. Otherwise it is left unassigned for dispatch. Reordering a tech's stops
+                      is on the Schedule board.
                     </p>
                   </form>
                 )}
@@ -741,8 +764,8 @@ export function VisitDetailDrawer({
                   <>
                     {v.status === "missed" && (
                       <p className="text-xs text-muted-foreground">
-                        Marked missed because nobody closed it out. If it was serviced, complete
-                        it here.
+                        Marked missed because nobody closed it out. If it was serviced, complete it
+                        here.
                       </p>
                     )}
                     {canComplete && (
@@ -844,7 +867,9 @@ function OtherVisits({
           <li key={h.id} className="flex justify-between gap-2">
             <span className="shrink-0">{formatDay(h.scheduled_on)}</span>
             <span className="min-w-0 text-end text-muted-foreground">
-              <span className="capitalize">{i18n.t(`status.${h.status}`, { defaultValue: "Visit" })}</span>
+              <span className="capitalize">
+                {i18n.t(`status.${h.status}`, { defaultValue: "Visit" })}
+              </span>
               {h.status === "skipped" && (
                 <span className="block break-words">
                   {skipReasonText(h.skip_reason, h.skip_reason_code)}

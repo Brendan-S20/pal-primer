@@ -24,6 +24,7 @@ import { ConfirmButton } from "@/components/ConfirmButton";
 import { DownloadPdfButton } from "@/components/DownloadPdfButton";
 import { downloadInvoicePdf } from "@/lib/document-pdf.functions";
 import { toast } from "sonner";
+import { toastSaveError } from "@/lib/stale-write-toast";
 import { pageTitle, titleHead, useDocumentTitle } from "@/lib/page-title";
 import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
 import { isInvoiceOverdue } from "@/lib/overdue";
@@ -116,8 +117,20 @@ function InvoiceDetail() {
   // Payment Element. Same component the invoice drawer embeds.
   const [payOpen, setPayOpen] = useState(false);
 
+  // The invoice as this page shows it (#655): recording a payment or voiding
+  // is refused when somebody changed the invoice after it was drawn, so a
+  // "whole balance" or a void is never decided from numbers that are gone.
+  const loadedUpdatedAt = (): string | undefined =>
+    (q.data?.invoice as { updated_at?: string } | undefined)?.updated_at ?? undefined;
+  const reload = async () => {
+    await qc.refetchQueries({ queryKey: ["invoice", invoiceId] });
+    qc.invalidateQueries({ queryKey: ["invoice-detail", invoiceId] });
+    qc.invalidateQueries({ queryKey: ["invoices"] });
+  };
+
   const recordM = useMutation({
-    mutationFn: (how: RecordPaymentAnswer) => paidFn({ data: { ids: [invoiceId], ...how } }),
+    mutationFn: (how: RecordPaymentAnswer) =>
+      paidFn({ data: { ids: [invoiceId], ...how, expectedUpdatedAt: loadedUpdatedAt() } }),
     onSuccess: (r) => {
       if (!r.ok) {
         toast.error(
@@ -142,16 +155,17 @@ function InvoiceDetail() {
       qc.invalidateQueries({ queryKey: ["invoice-detail", invoiceId] });
       qc.invalidateQueries({ queryKey: ["invoices"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toastSaveError(e, reload),
   });
 
   const voidM = useMutation({
-    mutationFn: async () => voidFn({ data: { id: invoiceId } }),
+    mutationFn: async () =>
+      voidFn({ data: { id: invoiceId, expectedUpdatedAt: loadedUpdatedAt() } }),
     onSuccess: () => {
       toast.success("Invoice voided");
       qc.invalidateQueries({ queryKey: ["invoice", invoiceId] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toastSaveError(e, reload),
   });
 
   const emailFn = useServerFn(sendInvoiceEmail);

@@ -9,6 +9,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
+import { toastSaveError } from "@/lib/stale-write-toast";
 import { CalendarClock, CalendarOff, ChevronLeft, ChevronRight, Scissors, X } from "lucide-react";
 import { usePermissions } from "@/hooks/useMyRole";
 import { useServiceLines } from "@/components/CommercialOnly";
@@ -748,9 +749,7 @@ function VisitTable({
                     />
                   )}
                   {v.status === "skipped" && (v.skip_reason_code || v.skip_reason) && (
-                    <span className="ml-1 text-xs text-muted-foreground">
-                      {skipReasonText(v)}
-                    </span>
+                    <span className="ml-1 text-xs text-muted-foreground">{skipReasonText(v)}</span>
                   )}
                   {v.is_deepclean && <MetaChip className="ml-1">Deep clean</MetaChip>}
                 </td>
@@ -1040,6 +1039,11 @@ function VisitDetailDrawer({
   });
   const staff = ((staffData as any)?.staff ?? []).filter((s: any) => s.is_field_tech !== false);
 
+  // The visit as this panel shows it (#655): an action is refused when
+  // somebody changed the visit after the list was loaded. Reload fetches the
+  // list again; the panel follows the row.
+  const expectedUpdatedAt: string | undefined = v?.updated_at ?? undefined;
+  const reload = () => qc.refetchQueries({ queryKey: ["client-visit-history", clientId] });
   const afterAction = (msg: string, clash?: string | null) => {
     toast.success(msg);
     if (clash) toast.warning(clash);
@@ -1054,17 +1058,17 @@ function VisitDetailDrawer({
 
   const completeMut = useMutation({
     mutationFn: (confirmedEarly: boolean) =>
-      completeFn({ data: { visitId: v.id, confirmedEarly } }),
+      completeFn({ data: { visitId: v.id, confirmedEarly, expectedUpdatedAt } }),
     onSuccess: () => afterAction("Visit marked completed"),
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e) => toastSaveError(e, reload),
   });
   const rescheduleMut = useMutation({
-    mutationFn: () => rescheduleFn({ data: { visitId: v.id, newDate } }),
+    mutationFn: () => rescheduleFn({ data: { visitId: v.id, newDate, expectedUpdatedAt } }),
     onSuccess: (r) => {
       warnLessonClashes(r);
       afterAction("Visit rescheduled", r.clash);
     },
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e) => toastSaveError(e, reload),
   });
   const cancelMut = useMutation({
     mutationFn: () =>
@@ -1074,10 +1078,11 @@ function VisitDetailDrawer({
           reason: cancelReason.trim(),
           code: cancelCode as any,
           clientCancelledAt: v.client_package_id ? clientCalledAtIso(calledAt) : null,
+          expectedUpdatedAt,
         },
       }),
     onSuccess: () => afterAction("Visit canceled"),
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e) => toastSaveError(e, reload),
   });
   const reassignMut = useMutation({
     mutationFn: () => reassignFn({ data: { visitId: v.id, staffId: newStaffId || null } }),
@@ -1096,6 +1101,7 @@ function VisitDetailDrawer({
           startedAt: fromLocalInput(startedAt),
           completedAt: fromLocalInput(completedAt),
           reason: reason.trim(),
+          expectedUpdatedAt,
         },
       }),
     onSuccess: () => {
@@ -1106,7 +1112,7 @@ function VisitDetailDrawer({
       qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
       onClose();
     },
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e) => toastSaveError(e, reload),
   });
 
   if (!v) return null;

@@ -802,7 +802,7 @@ export const getClient = createServerFn({ method: "GET" })
     const { data: client, error } = await supabase
       .from("clients")
       .select(
-        "id, display_name, first_name, last_name, company, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, email_opt_out, comms_paused, sms_consent_at, sms_consent_phone, sms_consent_text, sms_consent_source, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at, tags, preferred_contact, referral_source, churn_score, autopay_paused, billing_frequency, dna_compliance_enabled, tax_exempt, emergency_contact_name, emergency_contact_phone, emergency_contact_may_approve_vet, vet_treatment_limit_cents",
+        "id, display_name, first_name, last_name, company, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, email_opt_out, comms_paused, sms_consent_at, sms_consent_phone, sms_consent_text, sms_consent_source, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at, tags, preferred_contact, referral_source, churn_score, autopay_paused, billing_frequency, dna_compliance_enabled, tax_exempt, emergency_contact_name, emergency_contact_phone, emergency_contact_may_approve_vet, vet_treatment_limit_cents, updated_at",
       )
       .eq("id", data.clientId)
       .single();
@@ -963,6 +963,9 @@ export const updateClient = createServerFn({ method: "POST" })
         emergencyContactPhone: z.string().max(40).nullable().optional(),
         emergencyContactMayApproveVet: z.boolean().optional(),
         vetTreatmentLimitCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
+        // The updated_at the edit form loaded with (#655). When the row has
+        // changed since, the save is refused instead of overwriting it.
+        expectedUpdatedAt: z.string().min(1).max(64).optional(),
       })
       .parse(d),
   )
@@ -979,6 +982,8 @@ export const updateClient = createServerFn({ method: "POST" })
         ? "manage_client_billing"
         : "view_client_directory",
     );
+    const { refuseStaleWrite } = await import("@/lib/stale-write.server");
+    await refuseStaleWrite(supabase, "client", data.clientId, data.expectedUpdatedAt);
 
     const { data: beforeRow, error: beforeErr } = await supabase
       .from("clients")
@@ -1060,14 +1065,24 @@ export const updateClient = createServerFn({ method: "POST" })
     }
     if (changed.length === 0) return { ok: true };
 
-    const { data: rows, error } = await supabase
+    let write = supabase
       .from("clients")
       .update(patch as never)
-      .eq("id", data.clientId)
-      .select("id, organization_id");
+      .eq("id", data.clientId);
+    // The same test as refuseStaleWrite, inside the write itself, so a save
+    // that lands between that read and this update is still caught.
+    if (data.expectedUpdatedAt !== undefined)
+      write = write.eq("updated_at", data.expectedUpdatedAt);
+    const { data: rows, error } = await write.select("id, organization_id");
     if (error) throw new Error(error.message);
     const row = rows?.[0];
-    if (!row) throw new Error("Client not found");
+    if (!row) {
+      if (data.expectedUpdatedAt !== undefined) {
+        const { staleWriteMessage } = await import("@/lib/stale-write");
+        throw new Error(staleWriteMessage("client"));
+      }
+      throw new Error("Client not found");
+    }
 
     const beforeChanged: Record<string, unknown> = {};
     const afterChanged: Record<string, unknown> = {};
@@ -1102,7 +1117,7 @@ export const listClientVisitHistory = createServerFn({ method: "GET" })
     const { supabase } = context;
     await requirePermission(supabase, context.userId, "view_client_directory");
     const select =
-      "id, subscription_id, property_id, scheduled_on, status, created_at, assigned_staff_id, started_at, completed_at, start_time, eta_start, eta_end, skip_reason_code, skip_reason, rescheduled_from, is_deepclean, duration_min, groom_summary, client_package_id, properties(street, earliest_service_time, latest_service_time), subscriptions(earliest_time, latest_time), staff:assigned_staff_id(display_name)";
+      "id, subscription_id, property_id, scheduled_on, status, created_at, assigned_staff_id, started_at, completed_at, start_time, eta_start, eta_end, skip_reason_code, skip_reason, rescheduled_from, is_deepclean, duration_min, groom_summary, client_package_id, updated_at, properties(street, earliest_service_time, latest_service_time), subscriptions(earliest_time, latest_time), staff:assigned_staff_id(display_name)";
     const limit = data.limit ?? 100;
     const today = new Date().toISOString().slice(0, 10);
     // Two windows so a heavily scheduled client (many future visits) can't

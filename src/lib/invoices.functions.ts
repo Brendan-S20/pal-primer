@@ -358,9 +358,20 @@ export const invoiceVisit = createServerFn({ method: "POST" })
 
 export const voidInvoice = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
+  .inputValidator((d) =>
+    z
+      .object({
+        id: z.string().uuid(),
+        // The updated_at the invoice page loaded with (#655). A payment,
+        // credit or edit since then refuses the void instead of acting on it.
+        expectedUpdatedAt: z.string().min(1).max(64).optional(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
     await requirePermission(context.supabase, context.userId, "manage_client_billing");
+    const { refuseStaleWrite } = await import("@/lib/stale-write.server");
+    await refuseStaleWrite(context.supabase, "invoice", data.id, data.expectedUpdatedAt);
     const { error } = await context.supabase.rpc("void_invoice", { _invoice_id: data.id });
     if (error) throw new Error(error.message);
 
@@ -441,12 +452,23 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
         /** Less than the balance is a partial payment; more is refused. One
          *  invoice only. Absent means the whole balance, as it always did. */
         amountCents: z.number().int().min(1).max(100_000_000).optional(),
+        /** The updated_at the invoice page loaded with (#655). One invoice
+         *  only. A payment or change since then refuses this one, so a
+         *  "whole balance" read off a stale page is not recorded against a
+         *  balance somebody else has already reduced. */
+        expectedUpdatedAt: z.string().min(1).max(64).optional(),
       })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
     const { supabase } = context;
     const { orgId } = await requirePermission(supabase, context.userId, "manage_client_billing");
+    if (data.expectedUpdatedAt !== undefined) {
+      if (data.ids.length !== 1)
+        throw new Error("A loaded version can only be checked for one invoice");
+      const { refuseStaleWrite } = await import("@/lib/stale-write.server");
+      await refuseStaleWrite(supabase, "invoice", data.ids[0], data.expectedUpdatedAt);
+    }
     const { data: org } = await supabase
       .from("organizations")
       .select("timezone")
@@ -1305,7 +1327,7 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
       supabase
         .from("invoices")
         .select(
-          "id, number, client_id, status, kind, currency, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, credit_applied_cents, amount_paid_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, voided_at, notes, checkout_url, created_at, clients(id, display_name, primary_email, default_payment_method_id, default_card_brand, default_card_last4)",
+          "id, number, client_id, status, kind, currency, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, credit_applied_cents, amount_paid_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, voided_at, notes, checkout_url, created_at, updated_at, clients(id, display_name, primary_email, default_payment_method_id, default_card_brand, default_card_last4)",
         )
         .eq("id", data.invoiceId)
         .single(),
