@@ -249,3 +249,100 @@ describe("F-15: the office's Complete asks what the tech's does", () => {
     expect(officeCompleteOverrideAsk(ASK)).toBe("This visit has no completion photo.");
   });
 });
+
+describe("R2-21, at the handler: getInternalQuote for a commercial account", () => {
+  const zones = [
+    {
+      id: "zone-res",
+      name: "Residential 48",
+      account_type: "residential",
+      postal_prefix: "48",
+      zip_codes: null,
+      priority: 0,
+      enabled: true,
+      geo_match_mode: "zip",
+      base_price_cents: 2500,
+      per_dog_addl_cents: 500,
+      initial_cleanup_cents: 0,
+      pricing_mode: "flat",
+      commercial_base_cents: null,
+      commercial_per_unit_cents: null,
+      commercial_per_acre_cents: null,
+      commercial_per_station_cents: null,
+    },
+    {
+      id: "zone-hoa",
+      name: "HOA 48",
+      account_type: "commercial",
+      postal_prefix: "48",
+      zip_codes: null,
+      priority: 0,
+      enabled: true,
+      geo_match_mode: "zip",
+      base_price_cents: 0,
+      per_dog_addl_cents: 0,
+      initial_cleanup_cents: 0,
+      pricing_mode: "flat",
+      commercial_base_cents: 4000,
+      commercial_per_unit_cents: 0,
+      commercial_per_acre_cents: 0,
+      commercial_per_station_cents: 600,
+    },
+  ];
+
+  it("quotes $88 for 8 stations from the commercial zone, and names the zone", async () => {
+    vi.resetModules();
+    vi.doMock("@tanstack/react-start", () => ({
+      createServerFn: () => {
+        let validate: (d: unknown) => unknown = (d) => d;
+        const b = {
+          middleware: () => b,
+          inputValidator: (fn: typeof validate) => ((validate = fn), b),
+          handler:
+            (fn: (a: { data: unknown; context: unknown }) => unknown) =>
+            async (args?: { data: unknown }) =>
+              fn({
+                data: validate(args?.data),
+                context: {
+                  userId: "user-1",
+                  supabase: {
+                    from(table: string) {
+                      const q: Record<string, unknown> = {};
+                      q.select = () => q;
+                      q.eq = () =>
+                        table === "zones" ? Promise.resolve({ data: zones, error: null }) : q;
+                      q.single = async () => ({
+                        data: { currency: "USD", frequency_multipliers: {} },
+                        error: null,
+                      });
+                      return q;
+                    },
+                  },
+                },
+              }),
+        };
+        return b;
+      },
+    }));
+    const { getInternalQuote } = await import("@/lib/clients.functions");
+    const r = (await (getInternalQuote as unknown as (a: { data: unknown }) => Promise<any>)({
+      data: {
+        postalCode: "48201",
+        accountType: "commercial",
+        dogCount: 1,
+        frequency: "weekly",
+        unitCount: 1,
+        stationCount: 8,
+      },
+    })) as any;
+    expect(r.available).toBe(true);
+    expect(r.quote.zoneId).toBe("zone-hoa");
+    expect(r.quote.recurringPriceCents).toBe(8800);
+    expect(r.quote.commercial).toEqual({
+      baseCents: 4000,
+      unitCents: 0,
+      acreageCents: 0,
+      stationCents: 4800,
+    });
+  });
+});

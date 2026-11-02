@@ -1379,7 +1379,7 @@ const internalQuoteSchema = z.object({
   // A commercial account is priced by its units and waste stations, not its
   // dogs (computeCommercialZonePrice). Ignored for residential.
   unitCount: z.coerce.number().int().min(0).max(100_000).optional(),
-  stationCount: z.coerce.number().int().min(0).max(1_000).optional(),
+  stationCount: z.coerce.number().int().min(0).max(200).optional(),
 });
 
 export const getInternalQuote = createServerFn({ method: "POST" })

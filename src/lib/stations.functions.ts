@@ -27,7 +27,8 @@ export const listStations = createServerFn({ method: "GET" })
     if (error) throw new Error(error.message);
     const stations = rows ?? [];
     // Last-serviced per station: newest visit date across its service logs.
-    // Populated by record_visit_station_service() on visit completion (G7).
+    // Written only by log_station_service, when somebody services the
+    // station; completing a visit no longer logs every station (#658).
     const ids = stations.map((s: any) => s.id);
     // The same rule the tech's stop card uses (lib/stop-facts), so "last
     // serviced" is one answer in two places.

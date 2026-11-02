@@ -40,9 +40,10 @@
 -- neither, so any visit could be closed from the office with no proof at all.
 -- It now asks the same two questions, and the office may still close the
 -- visit -- it is often the one who knows the work was done -- but only by
--- saying why (_override_reason). The reason is recorded on the visit:
--- completion_photo_waived_reason when the photo is missing, and the
--- checklist's answers (every asked item, checked = false) so the record says
+-- saying why (_override_reason). The reason is recorded on the visit as
+-- completion_photo_waived_reason when the photo is missing, and on the
+-- client's timeline either way (completeVisitFromOffice); the checklist's
+-- answers (every asked item, checked = false) are recorded so the visit says
 -- what was not confirmed rather than nothing.
 --
 -- The signature gains a parameter, so the one-argument function is dropped
@@ -182,7 +183,10 @@ BEGIN
          completion_photo_waived_reason = CASE
            WHEN _photo_missing THEN 'Completed from the office: ' || _why
            ELSE completion_photo_waived_reason END,
-         visit_checklist = COALESCE(_answers, visit_checklist)
+         -- Answers already on the visit are kept: only complete_visit writes
+         -- them, and only on completion, so today there are none here; if
+         -- that changes, the tech's answers outrank the office's "unchecked".
+         visit_checklist = COALESCE(visit_checklist, _answers)
    WHERE id = _visit_id AND status IN ('scheduled','in_progress','missed');
   IF NOT FOUND THEN RETURN; END IF;
 
