@@ -2,7 +2,12 @@ import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { lookupInviteByToken, acceptPlatformInvite } from "@/lib/platform-onboarding.functions";
+import {
+  lookupInviteByToken,
+  acceptPlatformInvite,
+  checkInviteReadiness,
+} from "@/lib/platform-onboarding.functions";
+import { inviteProblem, inviteTitle, otherOrgReason } from "@/lib/invite-copy";
 import { supabase } from "@/integrations/supabase/client";
 import { acceptPendingInvite, rememberInviteToken } from "@/lib/ensure-workspace";
 import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
@@ -28,6 +33,7 @@ function InvitePage() {
   const navigate = useNavigate();
   const lookupFn = useServerFn(lookupInviteByToken);
   const acceptFn = useServerFn(acceptPlatformInvite);
+  const readinessFn = useServerFn(checkInviteReadiness);
   const [session, setSession] = useState<{ email: string | null } | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
   const { signOut, dialog: signOutDialog } = useOfflineSignOut();
@@ -57,6 +63,20 @@ function InvitePage() {
   useEffect(() => {
     if (isStaff) rememberInviteToken(token);
   }, [isStaff, token]);
+  // Signed in as the invited address: can this account actually join? Asked
+  // before "ready to accept", so an account that already belongs to another
+  // business reads why instead of pressing a button that fails (gaps-r2-03).
+  const emailMatches =
+    !!session?.email &&
+    !!q.data?.email &&
+    session.email.toLowerCase() === q.data.email.toLowerCase();
+  const readyQ = useQuery({
+    queryKey: ["invite-readiness", token, session?.email ?? null],
+    queryFn: () => readinessFn({ data: { token } }),
+    enabled: isStaff && emailMatches,
+    retry: false,
+  });
+  const blocked = readyQ.data && readyQ.data.ready === false ? readyQ.data : null;
   const signInTo = () =>
     isStaff
       ? navigate({ to: "/auth", search: { invite: token } as any })
@@ -91,7 +111,7 @@ function InvitePage() {
     <div className="mx-auto flex min-h-screen max-w-md items-center px-4">
       <Card className="w-full">
         <CardHeader>
-          <CardTitle>{isStaff ? "Team invitation" : "Platform invite"}</CardTitle>
+          <CardTitle>{inviteTitle(q.data?.kind)}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {q.isLoading || checkingSession ? (
@@ -101,12 +121,7 @@ function InvitePage() {
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
               <div>
                 <div className="font-medium">Can't use this invite</div>
-                <div className="text-muted-foreground">
-                  {q.data?.reason === "expired" ? "This invite has expired."
-                   : q.data?.reason === "revoked" ? "This invite was revoked."
-                   : q.data?.reason === "accepted" ? "This invite has already been used."
-                   : "Invite not found."}
-                </div>
+                <div className="text-muted-foreground">{inviteProblem(q.data ?? {})}</div>
               </div>
             </div>
           ) : (
@@ -154,6 +169,28 @@ function InvitePage() {
                     signInTo();
                   }}>
                     Sign out &amp; switch accounts
+                  </Button>
+                </div>
+              ) : isStaff && readyQ.isLoading ? (
+                <div className="text-sm text-muted-foreground">Checking your account…</div>
+              ) : blocked ? (
+                <div className="space-y-2">
+                  <div className="rounded-md bg-destructive/10 p-2 text-sm text-destructive">
+                    {otherOrgReason(
+                      session.email,
+                      blocked.current_organization_name,
+                      q.data.organization_name,
+                    )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={async () => {
+                      if (!(await signOut())) return;
+                      signInTo();
+                    }}
+                  >
+                    Sign out &amp; use another account
                   </Button>
                 </div>
               ) : (

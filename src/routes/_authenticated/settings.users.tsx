@@ -28,6 +28,8 @@ import { useMyRole } from "@/hooks/useMyRole";
 import { humanizeRole } from "@/lib/humanize";
 import { MapPin, ChevronDown, ChevronRight } from "lucide-react";
 import { titleHead } from "@/lib/page-title";
+import { inviteSendToast } from "@/lib/invite-copy";
+import { ConfirmButton } from "@/components/ConfirmButton";
 
 export const Route = createFileRoute("/_authenticated/settings/users")({
   head: () => titleHead("Users & roles", "Settings"),
@@ -315,11 +317,16 @@ function InvitePanel() {
       () => toast.error(`Couldn't copy. The link is ${link}`),
     );
   };
-  const reportSend = (to: string, r: { emailSent?: boolean; link?: string }, verb: string) => {
-    if (r.emailSent) {
-      toast.success(`Invite ${verb} to ${to}`);
+  const reportSend = (
+    to: string,
+    r: { emailSent?: boolean; link?: string },
+    action: "created" | "resent",
+  ) => {
+    const said = inviteSendToast(action, to, r.emailSent);
+    if (said.tone === "success") {
+      toast.success(said.message);
     } else {
-      toast.warning(`Invite created, but the email to ${to} did not go out. Copy the invite link and send it to them yourself.`, {
+      toast.warning(said.message, {
         duration: 15000,
         action: r.link ? { label: "Copy link", onClick: () => copyLink(r.link) } : undefined,
       });
@@ -328,7 +335,7 @@ function InvitePanel() {
   const createMut = useMutation({
     mutationFn: () => createFn({ data: { email: email.trim(), role } }),
     onSuccess: (r) => {
-      reportSend(email.trim(), r, "emailed");
+      reportSend(email.trim(), r, "created");
       setEmail("");
       qc.invalidateQueries({ queryKey: ["org-invites"] });
     },
@@ -341,7 +348,10 @@ function InvitePanel() {
   });
   const resendMut = useMutation({
     mutationFn: (id: string) => resendFn({ data: { id } }),
-    onSuccess: (r, id) => reportSend(invites.find((i) => i.id === id)?.email ?? "them", r, "emailed again"),
+    onSuccess: (r, id) => {
+      reportSend(invites.find((i) => i.id === id)?.email ?? "them", r, "resent");
+      qc.invalidateQueries({ queryKey: ["org-invites"] });
+    },
     onError: (e) => toast.error((e as Error).message),
   });
 
@@ -399,7 +409,15 @@ function InvitePanel() {
                       <button className="text-xs underline touch:min-h-11" onClick={() => copyLink(i.link)}>Copy link</button>
                     )}
                     <button className="text-xs underline disabled:opacity-50 touch:min-h-11" onClick={() => resendMut.mutate(i.id)} disabled={resendMut.isPending}>Resend</button>
-                    <button className="text-xs text-destructive underline touch:min-h-11" onClick={() => revokeMut.mutate(i.id)}>Revoke</button>
+                    {/* Revoking cannot be undone: the link stops working and
+                        inviting again sends a new link (gaps-r2-10). */}
+                    <ConfirmButton
+                      title={`Revoke the invite for ${i.email}?`}
+                      description="The link they were sent stops working. To invite them again, send a new invite with a new link."
+                      confirmLabel="Revoke invite"
+                      onConfirm={() => revokeMut.mutate(i.id)}
+                      trigger={<button className="text-xs text-destructive underline touch:min-h-11">Revoke</button>}
+                    />
                   </span>
                 </li>
               ))}
