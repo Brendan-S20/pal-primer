@@ -5,7 +5,7 @@ import { warnLessonClashes } from "@/components/training/lessonClashWarning";
 // estimates into facts. Rows open a detail drawer (QA follow-up 2.3) with
 // permission-gated timestamp correction; >10 visits group Upcoming/Past
 // with status + property filters.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -94,12 +94,18 @@ export function VisitsTab({
   clientId,
   subscriptions = [],
   canCorrect = false,
+  pendingGroom = null,
+  onPendingGroomConsumed,
 }: {
   visits: any[];
   isLoading: boolean;
   clientId: string;
   subscriptions?: any[];
   canCorrect?: boolean;
+  /** A grooming lead just converted (#657): open Book a groom once, with
+   *  the lead's service and start day and every pet at the address. */
+  pendingGroom?: { serviceId: string | null; scheduledOn: string | null } | null;
+  onPendingGroomConsumed?: () => void;
 }) {
   const tz = useOrgTimezone();
   const [statusFilter, setStatusFilter] = useState("all");
@@ -118,11 +124,35 @@ export function VisitsTab({
   // see it.
   const [oneOffOpen, setOneOffOpen] = useState(false);
   const [groomOpen, setGroomOpen] = useState(false);
-  const { can } = usePermissions();
+  const { can, loading: roleLoading } = usePermissions();
   // Booking, not pricing (#616): a dispatcher books here at the set price.
   const canBookOneOff = can("booking");
-  const { lines } = useServiceLines();
+  const { lines, known: linesKnown } = useServiceLines();
   const runsGrooming = lines.includes("mobile_grooming");
+  // Held for the dialog's whole open life, then dropped, so a later "Book a
+  // groom" from the button opens blank as it always has.
+  const [groomStart, setGroomStart] = useState<{
+    serviceId: string | null;
+    scheduledOn: string | null;
+  } | null>(null);
+  useEffect(() => {
+    if (!pendingGroom || roleLoading || !linesKnown) return;
+    onPendingGroomConsumed?.();
+    // Somebody who may add clients but not book (or a business whose lines
+    // no longer include grooming) is told, rather than landing on an empty
+    // Visits tab with a client that has no plan and no groom.
+    if (!runsGrooming || !canBookOneOff) {
+      toast.warning(
+        !canBookOneOff
+          ? "The client was created without a plan. Ask someone who can book to schedule the groom."
+          : "The client was created without a plan. Grooming isn't turned on for this business, so the groom could not be opened.",
+        { duration: 10000 },
+      );
+      return;
+    }
+    setGroomStart(pendingGroom);
+    setGroomOpen(true);
+  }, [pendingGroom, roleLoading, linesKnown, runsGrooming, canBookOneOff]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Vacation hold banner (QA round 8): an active or upcoming hold explains
   // why no visits exist in a range. Managed from the header's ••• menu.
@@ -307,9 +337,13 @@ export function VisitsTab({
       {runsGrooming && (
         <BookGroomDialog
           open={groomOpen}
-          onOpenChange={setGroomOpen}
+          onOpenChange={(o) => {
+            setGroomOpen(o);
+            if (!o) setGroomStart(null);
+          }}
           clientId={clientId}
           onCreated={booked}
+          startFrom={groomStart}
         />
       )}
     </>
