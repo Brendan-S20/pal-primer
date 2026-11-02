@@ -24,9 +24,11 @@ import {
   importContentHash,
   importDisplayStatus,
   IMPORT_NOT_FOUND,
+  labelClientRows,
   previewStats,
   propertyKey,
   refusalMessage,
+  rememberClient,
   retryRefusal,
   type CommitBlock,
   type ExistingClient,
@@ -94,8 +96,13 @@ export const PROPERTY_TARGET_FIELDS = [
 ] as const;
 export type PropertyTargetField = (typeof PROPERTY_TARGET_FIELDS)[number];
 
+// A dog finds its client by the old system's id, or, for an export that has
+// none, by the client's email, phone or exact name (#656).
 export const DOG_TARGET_FIELDS = [
   "client_external_id",
+  "client_email",
+  "client_phone",
+  "client_name",
   "name",
   "breed",
   "weight_class",
@@ -342,16 +349,52 @@ const PROPERTY_PRESETS: Record<string, PresetMap> = {
   },
 };
 
+// How a dogs file names the client it belongs to, when it has no client id.
+// "Name" alone is never the client: in a dogs file it is as likely the dog.
+const DOG_CLIENT_LINK: PresetMap = {
+  client_email: [
+    "Client Email",
+    "client_email",
+    "Customer Email",
+    "Owner Email",
+    "Email",
+    "E-mail",
+    "Primary email",
+  ],
+  client_phone: [
+    "Client Phone",
+    "client_phone",
+    "Customer Phone",
+    "Owner Phone",
+    "Phone",
+    "Mobile",
+    "Mobile phone number",
+  ],
+  client_name: [
+    "Client Name",
+    "client_name",
+    "Customer Name",
+    "Owner Name",
+    "Client",
+    "Customer",
+    "Owner",
+  ],
+};
+
+// The dog's own name: the specific headers first, and "Name" last, so a file
+// with both "Name" (the client) and "Dog name" maps the dog to "Dog name".
 const DOG_PRESETS: Record<string, PresetMap> = {
   generic_csv: {
     client_external_id: ["client_id", "customer_id", "external_id"],
-    name: ["name", "dog name", "pet name"],
+    ...DOG_CLIENT_LINK,
+    name: ["dog name", "dog_name", "pet name", "pet_name", "dog", "pet", "name"],
     breed: ["breed"],
     weight_class: ["weight", "weight_class", "weight (lbs)"],
     notes: ["notes", "note"],
   },
   sweepgo: {
     client_external_id: ["Client ID", "Customer ID"],
+    ...DOG_CLIENT_LINK,
     name: ["Dog Name", "Pet Name", "Name"],
     breed: ["Breed"],
     weight_class: ["Weight", "Weight (lbs)"],
@@ -359,35 +402,40 @@ const DOG_PRESETS: Record<string, PresetMap> = {
   },
   jobber: {
     client_external_id: ["Client ID"],
-    name: ["Pet name", "Name"],
+    ...DOG_CLIENT_LINK,
+    name: ["Pet name", "Dog name", "Name"],
     breed: ["Breed"],
     weight_class: ["Weight"],
     notes: ["Notes"],
   },
   housecall_pro: {
     client_external_id: ["Customer ID"],
-    name: ["Pet Name"],
+    ...DOG_CLIENT_LINK,
+    name: ["Pet Name", "Dog Name"],
     breed: ["Breed"],
     weight_class: ["Weight"],
     notes: ["Notes"],
   },
   time_to_pet: {
     client_external_id: ["Client ID"],
-    name: ["Pet Name", "Name"],
+    ...DOG_CLIENT_LINK,
+    name: ["Pet Name", "Dog Name", "Name"],
     breed: ["Breed"],
     weight_class: ["Weight"],
     notes: ["Notes"],
   },
   gorilla_desk: {
     client_external_id: ["Customer ID"],
-    name: ["Pet Name"],
+    ...DOG_CLIENT_LINK,
+    name: ["Pet Name", "Dog Name"],
     breed: ["Breed"],
     weight_class: ["Weight"],
     notes: ["Notes"],
   },
   quoteiq_family: {
     client_external_id: ["Client ID"],
-    name: ["Pet Name", "Name"],
+    ...DOG_CLIENT_LINK,
+    name: ["Pet Name", "Dog Name", "Name"],
     breed: ["Breed"],
     weight_class: ["Weight"],
     notes: ["Notes"],
@@ -429,7 +477,7 @@ const SERVICE_PRESETS: Record<string, PresetMap> = {
   },
   sweepgo: {
     client_external_id: ["Client ID", "Customer ID"],
-    client_name: ["Client Name", "Customer Name", "Name"],
+    client_name: ["Client Name", "client_name", "Customer Name", "Name"],
     frequency: ["Frequency", "Cleanup Frequency", "Service Frequency"],
     price_per_visit: ["Price", "Price Per Cleanup", "Rate", "Amount"],
     service_day: ["Service Day", "Day", "Cleanup Day"],
@@ -457,7 +505,7 @@ const BALANCE_PRESETS: Record<string, PresetMap> = {
   },
   sweepgo: {
     client_external_id: ["Client ID", "Customer ID"],
-    client_name: ["Client Name", "Customer Name", "Name"],
+    client_name: ["Client Name", "client_name", "Customer Name", "Name"],
     amount: ["Balance", "Open Balance", "Amount Due"],
     due_date: ["Due Date"],
     note: ["Notes", "Memo"],
@@ -506,6 +554,52 @@ function normalizeAccountType(v: unknown): "residential" | "commercial" {
   if (s === "false" || s === "no" || s === "n") return "residential";
   if (s.startsWith("comm") || s.includes("business") || s.includes("hoa") || s.includes("commercial")) return "commercial";
   return "residential";
+}
+
+/** Why a phone cell is not a phone number, or null when it is one (or is
+ *  empty). The first number of a multi-number cell is the one checked, and an
+ *  extension ("x12", "ext. 12") is allowed after it. A whole number is ten
+ *  digits, eleven starting with 1, or "+" and a country code (up to 15). */
+export function phoneProblem(v: string | null): string | null {
+  if (!v) return null;
+  const first = v
+    .split(/[;,/]/)
+    .map((p) => p.trim())
+    .find((p) => p.length > 0);
+  if (!first) return null;
+  const main = first.replace(/\s*(?:x|ext\.?|extension)\s*\d+\s*$/i, "");
+  const digits = main.replace(/\D+/g, "");
+  const ok =
+    digits.length === 10 ||
+    (digits.length === 11 && digits.startsWith("1")) ||
+    (main.trim().startsWith("+") && digits.length >= 11 && digits.length <= 15);
+  return ok
+    ? null
+    : `Phone "${first}" is not a full phone number (10 digits, or + and the country code)`;
+}
+
+const US_ZIP = /^\d{5}(?:-?\d{4})?$/;
+const CA_POSTAL = /^[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z] ?\d[ABCEGHJ-NPRSTV-Z]\d$/i;
+
+/** A ZIP as it is stored, or an error when it is not one. US five-digit and
+ *  ZIP+4, and Canadian postal codes ("K1A 0B1"), are accepted. A four-digit
+ *  ZIP is a spreadsheet that dropped the leading zero ("2134" is 02134). */
+export function normalizePostal(v: string | null): { value: string | null; error: string | null } {
+  if (!v) return { value: null, error: null };
+  const s = v.trim();
+  if (/^\d{4}$/.test(s)) return { value: `0${s}`, error: null };
+  if (US_ZIP.test(s)) {
+    const d = s.replace(/\D/g, "");
+    return { value: d.length === 9 ? `${d.slice(0, 5)}-${d.slice(5)}` : d, error: null };
+  }
+  if (CA_POSTAL.test(s)) {
+    const c = s.replace(/\s+/g, "").toUpperCase();
+    return { value: `${c.slice(0, 3)} ${c.slice(3)}`, error: null };
+  }
+  return {
+    value: null,
+    error: `ZIP "${s}" is not a ZIP code (5 digits, ZIP+4, or a Canadian postal code)`,
+  };
 }
 
 function normalizePhone(v: string | null): string | null {
@@ -598,15 +692,21 @@ export function mapClientRow(raw: Record<string, any>, mapping: Record<string, s
     getStr(raw, mapping, "city") ?? rawLookup(raw, BILLING_FALLBACK_COLUMNS.city);
   const region =
     getStr(raw, mapping, "region") ?? rawLookup(raw, BILLING_FALLBACK_COLUMNS.region);
-  const postal_code =
-    getStr(raw, mapping, "postal_code") ?? rawLookup(raw, BILLING_FALLBACK_COLUMNS.postal_code);
+  const postal = normalizePostal(
+    getStr(raw, mapping, "postal_code") ?? rawLookup(raw, BILLING_FALLBACK_COLUMNS.postal_code),
+  );
+  if (postal.error) return { mapped: null, error: postal.error };
+  const postal_code = postal.value;
+  const phoneRaw = getStr(raw, mapping, "primary_phone");
+  const badPhone = phoneProblem(phoneRaw);
+  if (badPhone) return { mapped: null, error: badPhone };
 
   return {
     mapped: {
       display_name,
       account_type: normalizeAccountType(getStr(raw, mapping, "account_type")),
       primary_email: email,
-      primary_phone: normalizePhone(getStr(raw, mapping, "primary_phone")),
+      primary_phone: normalizePhone(phoneRaw),
       external_id: getStr(raw, mapping, "external_id"),
       notes: getStr(raw, mapping, "notes"),
       // Optional inline service address → a property is created on commit.
@@ -628,6 +728,8 @@ function mapPropertyRow(raw: Record<string, any>, mapping: Record<string, string
   if (!street) return { mapped: null, error: "Missing street" };
   const line2 = rawLookup(raw, ADDRESS_2_COLUMNS);
   if (line2) street = `${street}, ${line2}`;
+  const postal = normalizePostal(getStr(raw, mapping, "postal_code"));
+  if (postal.error) return { mapped: null, error: postal.error };
   return {
     mapped: {
       client_external_id,
@@ -635,7 +737,7 @@ function mapPropertyRow(raw: Record<string, any>, mapping: Record<string, string
       street,
       city: getStr(raw, mapping, "city"),
       region: getStr(raw, mapping, "region"),
-      postal_code: getStr(raw, mapping, "postal_code"),
+      postal_code: postal.value,
       gate_code: getStr(raw, mapping, "gate_code"),
       notes: getStr(raw, mapping, "notes"),
     },
@@ -643,9 +745,17 @@ function mapPropertyRow(raw: Record<string, any>, mapping: Record<string, string
   };
 }
 
-function mapDogRow(raw: Record<string, any>, mapping: Record<string, string | null>) {
+export function mapDogRow(raw: Record<string, any>, mapping: Record<string, string | null>) {
   const client_external_id = getStr(raw, mapping, "client_external_id");
-  if (!client_external_id) return { mapped: null, error: "Missing client_external_id (link to client)" };
+  const client_email = firstEmail(getStr(raw, mapping, "client_email"))?.toLowerCase() ?? null;
+  const client_phone = getStr(raw, mapping, "client_phone");
+  const client_name = getStr(raw, mapping, "client_name");
+  if (!client_external_id && !client_email && !client_phone && !client_name) {
+    return {
+      mapped: null,
+      error: "Missing the client: their ID in your old system, email, phone or name",
+    };
+  }
   const name = getStr(raw, mapping, "name");
   if (!name) return { mapped: null, error: "Missing dog name" };
   const wRaw = getStr(raw, mapping, "weight_class");
@@ -661,6 +771,9 @@ function mapDogRow(raw: Record<string, any>, mapping: Record<string, string | nu
   return {
     mapped: {
       client_external_id,
+      client_email,
+      client_phone,
+      client_name,
       name,
       breed: getStr(raw, mapping, "breed"),
       weight_class: weightClass,
@@ -1039,11 +1152,58 @@ export const previewImport = createServerFn({ method: "POST" })
     if (bErr) throw new Error(bErr.message);
     const batchId = batch.id as string;
 
+    // A dog's client: the old system's id, then the client's email, phone,
+    // and exact name (#656). Dogs used to need the id, so an export without
+    // one could not bring its dogs at all.
+    const resolveDogClient = (m: {
+      client_external_id: string | null;
+      client_email: string | null;
+      client_phone: string | null;
+      client_name: string | null;
+    }) => {
+      if (m.client_external_id && clientByExternal.has(m.client_external_id)) {
+        return { id: clientByExternal.get(m.client_external_id)!, error: null };
+      }
+      const byContact = findExistingClient(
+        { primary_email: m.client_email, primary_phone: m.client_phone },
+        existing.clients,
+      );
+      if (byContact) return { id: byContact.id, error: null };
+      if (m.client_name) {
+        return resolveClient({ client_external_id: null, client_name: m.client_name });
+      }
+      const said = m.client_external_id
+        ? `with id ${m.client_external_id}`
+        : m.client_email
+          ? `with email ${m.client_email}`
+          : `with phone ${m.client_phone}`;
+      return { id: null, error: `No client ${said} (import clients first)` };
+    };
+
+    const mappedRows = data.rows.map((raw) => mapRow(entity, raw, data.mapping as any));
+    // Clients are labelled create or skip the way the commit will treat them:
+    // against the clients the business has, and against the rows above in the
+    // same file (#656). The commit always skipped a second row with the same
+    // email; the preview used to promise it as a create.
+    const clientLabels =
+      entity === "clients"
+        ? labelClientRows(
+            mappedRows.map(({ mapped, error }) => {
+              const m = mapped as any;
+              if (error || !m) return null;
+              if (m.external_id && clientByExternal.has(m.external_id)) return null;
+              return m;
+            }),
+            existing.clients,
+            data.source,
+          )
+        : [];
+
     const rowsToInsert: any[] = [];
     let create = 0, update = 0, skip = 0, errors = 0;
 
     data.rows.forEach((raw, idx) => {
-      const { mapped, error } = mapRow(entity, raw, data.mapping as any);
+      const { mapped, error } = mappedRows[idx];
       if (error || !mapped) {
         errors += 1;
         rowsToInsert.push({
@@ -1054,19 +1214,20 @@ export const previewImport = createServerFn({ method: "POST" })
       }
       let action: "create" | "update" | "skip" = "create";
       let target_id: string | null = null;
+      let reason: string | null = null;
 
       if (entity === "clients") {
         const m = mapped as any;
-        if (m.external_id && clientByExternal.has(m.external_id)) {
+        const label = clientLabels[idx];
+        if (!label) {
           action = "update";
           target_id = clientByExternal.get(m.external_id)!;
         } else {
-          // Email, phone, or the same name at the same service address.
-          const match = findExistingClient(m, existing.clients);
-          if (match) {
-            action = "skip";
-            target_id = match.id;
-          }
+          // Email, phone, or the same name at the same service address, in
+          // the business's clients or earlier in this file.
+          action = label.action;
+          target_id = label.targetId;
+          reason = label.reason;
         }
       } else if (entity === "properties") {
         const m = mapped as any;
@@ -1084,16 +1245,16 @@ export const previewImport = createServerFn({ method: "POST" })
         if (alreadyInDatabase(entity, m, clientId, existing)) action = "skip";
       } else if (entity === "dogs") {
         const m = mapped as any;
-        const clientId = clientByExternal.get(m.client_external_id);
-        if (!clientId) {
+        const who = resolveDogClient(m);
+        if (!who.id) {
           errors += 1;
           rowsToInsert.push({
             batch_id: batchId, organization_id: orgId, row_num: idx + 1,
-            raw, mapped, action: "error", target_id: null,
-            error: `No client with external id ${m.client_external_id} (import clients first)`,
+            raw, mapped, action: "error", target_id: null, error: who.error,
           });
           return;
         }
+        const clientId = who.id;
         target_id = clientId;
         if (alreadyInDatabase(entity, m, clientId, existing)) action = "skip";
       } else if (entity === "services" || entity === "balances") {
@@ -1119,7 +1280,8 @@ export const previewImport = createServerFn({ method: "POST" })
       else skip += 1;
       rowsToInsert.push({
         batch_id: batchId, organization_id: orgId, row_num: idx + 1,
-        raw, mapped, action, target_id, error: null,
+        // A skipped row carries why in `error`; its action says it is not one.
+        raw, mapped, action, target_id, error: reason,
       });
     });
 
@@ -1297,10 +1459,15 @@ export const commitImport = createServerFn({ method: "POST" })
     }
     if (!claimed)
       throw new Error("This preview can no longer commit. Refresh to see its current status.");
+    // The rows the preview already marked skip are skipped rows of this
+    // import, and the result counts them (#656). It used to count only what
+    // the commit itself skipped, so "SKIP 1" in the preview could end as
+    // "1 skipped" with two rows skipped.
+    const previewSkipped = Number((batch.stats as { skip?: number } | null)?.skip ?? 0) || 0;
     let created = 0,
       updated = 0,
       failed = 0,
-      skipped = 0;
+      skipped = previewSkipped;
     const rowErrors = new Map<string, number>();
 
     // Whatever stops this commit, the batch says so (#569). It used to stay
@@ -1660,23 +1827,19 @@ export const commitImport = createServerFn({ method: "POST" })
                 },
               });
               // Include clients created earlier in this file in the next check.
-              const added = clientDuplicateIndex(
-                [
-                  {
-                    id: clientId,
-                    display_name: m.display_name,
-                    primary_email: m.primary_email,
-                    primary_phone: m.primary_phone,
-                    import_source: batch.source,
-                    import_external_id: m.external_id,
-                    streets: [{ street: m.street, postal_code: m.postal_code }],
-                  },
-                ],
+              rememberClient(
+                existing.clients,
+                {
+                  id: clientId,
+                  display_name: m.display_name,
+                  primary_email: m.primary_email,
+                  primary_phone: m.primary_phone,
+                  import_source: batch.source,
+                  import_external_id: m.external_id,
+                  streets: [{ street: m.street, postal_code: m.postal_code }],
+                },
                 batch.source,
               );
-              for (const key of ["byExternal", "byEmail", "byPhone", "byNameAndStreet"] as const) {
-                for (const [value, id] of added[key]) existing.clients[key].set(value, id);
-              }
               created += 1;
               if (newClients.length >= IMPORT_WRITE_CHUNK) await flushNewClients();
             } else if (row.action === "update" && row.target_id) {
@@ -1905,7 +2068,7 @@ export const commitImport = createServerFn({ method: "POST" })
         .eq("status", "previewing")
         .is("commit_started_at", null);
       if (supersedeError) throw new Error(supersedeError.message);
-      return stats;
+      return { ...previewStats(batch.stats), ...stats };
     } catch (e) {
       await recordCommitFailure(
         supabase,
