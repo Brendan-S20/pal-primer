@@ -143,11 +143,11 @@ describe("the wiring", () => {
     expect(src).toMatch(
       /const link = takeDeepLink\(\);\s*if \(link\) router\.history\.push\(link\);/,
     );
-    // Four ways a session arrives: web mount, native cold launch, password,
-    // native OAuth / Apple. Each lands through land().
+    // Three ways a session arrives: a cold start on either build (one path
+    // since #661), password, native OAuth / Apple. Each lands through land().
     expect(
       src.match(/land\(await landingPathForUser\(|land\(to\)|land\(\s*data\.user \?/g)?.length,
-    ).toBe(4);
+    ).toBe(3);
     // And none still navigates to the role landing directly: the one
     // `navigate({ to })` left is land()'s own fallback.
     expect(src.match(/navigate\(\{ to \}\)/g)?.length).toBe(1);
