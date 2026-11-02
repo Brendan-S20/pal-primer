@@ -54,6 +54,7 @@ import { InvoiceDrawer } from "@/components/InvoiceDrawer";
 import { InvoiceCard, InvoiceRow } from "@/components/InvoiceRow";
 import type { RowAction } from "@/components/RowActions";
 import { invoiceDueCents, invoiceOutstandingCents } from "@/lib/ar";
+import { toastSaveError } from "@/lib/stale-write-toast";
 import { formatLineItemDescription, invoiceNumberLabel } from "@/lib/invoice-labels";
 import type { VisitInvoiceLine } from "@/lib/visit-invoicing";
 import { useRowSelection } from "@/hooks/useRowSelection";
@@ -796,10 +797,19 @@ function InvoicesPage() {
       }),
     onError: (e: Error) => toast.error(e.message),
   });
+  // One invoice from its row: the row's updated_at as it was when the
+  // action was picked goes with it, so a payment or void somebody else saved
+  // since is refused rather than overwritten (#655).
   const rowPaidM = useMutation({
-    mutationFn: (v: { id: string } & RecordPaymentAnswer) => {
-      const { id, ...how } = v;
-      return paidBulk({ data: { ids: [id], ...how } });
+    mutationFn: (v: { id: string; version?: string | null } & RecordPaymentAnswer) => {
+      const { id, version, ...how } = v;
+      return paidBulk({
+        data: {
+          ids: [id],
+          ...how,
+          ...(version !== undefined ? { expectedVersion: version } : {}),
+        },
+      });
     },
     onSuccess: (r) => {
       if (!r.ok) toast.error(r.refusal ?? "The payment could not be recorded");
@@ -814,15 +824,18 @@ function InvoicesPage() {
       }
       refreshMoney();
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toastSaveError(e, refreshMoney),
   });
   const rowVoidM = useMutation({
-    mutationFn: (id: string) => voidOne({ data: { id } }),
+    mutationFn: ({ id, version }: { id: string; version?: string | null }) =>
+      voidOne({
+        data: { id, ...(version !== undefined ? { expectedVersion: version } : {}) },
+      }),
     onSuccess: () => {
       toast.success("Invoice voided");
       refreshMoney();
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toastSaveError(e, refreshMoney),
   });
 
   /** ••• items for one row; open invoices only (mirrors the drawer's gating).
@@ -859,11 +872,12 @@ function InvoicesPage() {
         disabled: busy,
         onSelect: async () => {
           const owed = invoiceDueCents(inv);
+          const version = inv.updated_at;
           const how = await askPayment({
             amountLine: `${fmtCents(owed, inv.currency ?? "usd")} is still owed by ${client?.display_name ?? "this client"}. The invoice is marked paid when the balance reaches zero. A payment can't be undone here.`,
             balanceCents: owed,
           });
-          if (how) rowPaidM.mutate({ id: inv.id, ...how });
+          if (how) rowPaidM.mutate({ id: inv.id, version, ...how });
         },
       },
       {
@@ -871,6 +885,7 @@ function InvoicesPage() {
         destructive: true,
         disabled: busy,
         onSelect: async () => {
+          const version = inv.updated_at;
           if (
             await confirm({
               title: "Void this invoice?",
@@ -880,7 +895,7 @@ function InvoicesPage() {
               confirmLabel: "Void invoice",
             })
           )
-            rowVoidM.mutate(inv.id);
+            rowVoidM.mutate({ id: inv.id, version });
         },
       },
     ];

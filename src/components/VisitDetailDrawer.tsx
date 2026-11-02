@@ -59,12 +59,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
-import {
-  PHOTO_KIND_OPTIONS,
-  photoKindLabel,
-  defaultPhotoKind,
-  type PhotoKind,
-} from "@/lib/photo-kinds";
+import { PHOTO_KIND_OPTIONS, photoKindLabel, defaultPhotoKind, type PhotoKind } from "@/lib/photo-kinds";
 import { parseAnswers } from "@/lib/visit-checklist";
 import { VisitChecklistAnswers } from "@/components/VisitChecklistAnswers";
 import { visitStayDates } from "@/lib/stays";
@@ -208,16 +203,20 @@ export function VisitDetailDrawer({
   const orgToday = useOrgToday();
   const { confirm: confirmEarly, dialog: earlyDialog } = useConfirmDialog();
   const [moveTo, setMoveTo] = useState("");
-  useEffect(() => setMoveTo(""), [visitId]);
+  // The visit's updated_at when a new day was first picked. Sent with the
+  // move so one somebody else saved since is refused, not replaced (#655).
+  const moveFrom = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    setMoveTo("");
+    moveFrom.current = undefined;
+  }, [visitId]);
   const rescheduleMut = useMutation({
-    // The visit as this drawer shows it: a move somebody else saved since is
-    // refused rather than replaced (#655).
     mutationFn: () =>
       doReschedule({
         data: {
           visitId: visitId!,
           newDate: moveTo,
-          ...(v?.updated_at !== undefined ? { expectedUpdatedAt: v.updated_at } : {}),
+          ...(moveFrom.current !== undefined ? { expectedUpdatedAt: moveFrom.current } : {}),
         },
       }),
     onSuccess: (r) => {
@@ -238,9 +237,15 @@ export function VisitDetailDrawer({
       warnLessonClashes(r);
       if (r.clash) toast.warning(r.clash);
       setMoveTo("");
+      moveFrom.current = undefined;
       invalidate();
     },
-    onError: (e: Error) => toastSaveError(e, invalidate),
+    onError: (e: Error) =>
+      toastSaveError(e, () => {
+        setMoveTo("");
+        moveFrom.current = undefined;
+        invalidate();
+      }),
   });
   // Reassigning used to apply the moment the native select changed, with no
   // undo, and reassignVisit tells the tech losing the stop and the tech
@@ -440,9 +445,7 @@ export function VisitDetailDrawer({
             )}
             {/* Part of a sitter's stay (#411): the stay's dates. */}
             {visitStayDates((v as any)?.subscriptions?.stays) && (
-              <Badge variant="outline">
-                Stay, {visitStayDates((v as any).subscriptions.stays)}
-              </Badge>
+              <Badge variant="outline">Stay, {visitStayDates((v as any).subscriptions.stays)}</Badge>
             )}
           </SheetTitle>
           <SheetDescription>
@@ -639,12 +642,7 @@ export function VisitDetailDrawer({
                 the visit was completed. Absent when nothing asked. */}
             <VisitChecklistAnswers answers={parseAnswers(v.visit_checklist) ?? []} />
 
-            <PhotosSection
-              key={visitId!}
-              visitId={visitId!}
-              photos={v.visit_photos ?? []}
-              status={v.status}
-            />
+            <PhotosSection key={visitId!} visitId={visitId!} photos={v.visit_photos ?? []} status={v.status} />
 
             {/* Past and future apart. One "Other visits here" list, newest
                 first, put next month's scheduled visits above last week's
@@ -726,7 +724,10 @@ export function VisitDetailDrawer({
                         className="min-w-0 flex-1"
                         min={orgToday}
                         value={moveTo}
-                        onChange={(e) => setMoveTo(e.target.value)}
+                        onChange={(e) => {
+                          if (moveFrom.current === undefined) moveFrom.current = v?.updated_at;
+                          setMoveTo(e.target.value);
+                        }}
                       />
                       <Button
                         type="submit"
@@ -738,9 +739,9 @@ export function VisitDetailDrawer({
                       </Button>
                     </div>
                     <p className="text-2xs text-muted-foreground">
-                      It stays with the same tech when the new day is a work day and they are not
-                      off. Otherwise it is left unassigned for dispatch. Reordering a tech's stops
-                      is on the Schedule board.
+                      It stays with the same tech when the new day is a work day and they are
+                      not off. Otherwise it is left unassigned for dispatch. Reordering a
+                      tech's stops is on the Schedule board.
                     </p>
                   </form>
                 )}
@@ -763,8 +764,8 @@ export function VisitDetailDrawer({
                   <>
                     {v.status === "missed" && (
                       <p className="text-xs text-muted-foreground">
-                        Marked missed because nobody closed it out. If it was serviced, complete it
-                        here.
+                        Marked missed because nobody closed it out. If it was serviced, complete
+                        it here.
                       </p>
                     )}
                     {canComplete && (
@@ -866,9 +867,7 @@ function OtherVisits({
           <li key={h.id} className="flex justify-between gap-2">
             <span className="shrink-0">{formatDay(h.scheduled_on)}</span>
             <span className="min-w-0 text-end text-muted-foreground">
-              <span className="capitalize">
-                {i18n.t(`status.${h.status}`, { defaultValue: "Visit" })}
-              </span>
+              <span className="capitalize">{i18n.t(`status.${h.status}`, { defaultValue: "Visit" })}</span>
               {h.status === "skipped" && (
                 <span className="block break-words">
                   {skipReasonText(h.skip_reason, h.skip_reason_code)}

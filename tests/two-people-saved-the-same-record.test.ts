@@ -108,19 +108,19 @@ function makeDb() {
           .reduce((s, p) => s + (p.amount_cents as number), 0);
         const balance = (inv.total_cents as number) - paid;
         const amount = (args._amount_cents as number | undefined) ?? balance;
-        // Like the real function: a payment row, and the invoice row is
-        // touched only when the balance reaches zero.
+        // Like the real function: a payment row, whose insert fires
+        // payments_sync_invoice_paid. That rewrites amount_paid_cents on the
+        // invoice and touch_invoices moves updated_at, partial or not.
         (state.tables.payments ??= []).push({
           id: `pay-${state.tick}`,
           invoice_id: inv.id,
           amount_cents: amount,
           created_at: now(),
         });
+        inv.amount_paid_cents = paid + amount;
         const settled = amount === balance;
-        if (settled) {
-          inv.status = "paid";
-          inv.updated_at = now();
-        }
+        if (settled) inv.status = "paid";
+        inv.updated_at = now();
         return {
           data: {
             invoice_id: inv.id,
@@ -171,7 +171,7 @@ vi.mock("@/lib/push-liveactivity.server", () => ({
   refreshOrgRouteLiveActivities: async () => {},
 }));
 vi.mock("@/lib/walk-notify.server", () => ({
-  watchWalkSchedule: async () => ({ finish: async () => {} }),
+  watchWalkSchedule: vi.fn(async () => ({ finish: async () => {} })),
 }));
 vi.mock("@/lib/booking-dates.server", () => ({ refusePastDay: async () => {} }));
 vi.mock("@/lib/groom-clash.server", () => ({
@@ -188,11 +188,15 @@ vi.mock("@/lib/refunds.server", () => ({ refundedCentsByPayment: async () => new
 
 import { getClient, updateClient } from "@/lib/clients.functions";
 import { correctVisitTimestamps, rescheduleVisitFromOffice } from "@/lib/visits.functions";
-import { bulkMarkInvoicesPaid, getInvoiceDetail, voidInvoice } from "@/lib/invoices.functions";
+import {
+  bulkMarkInvoicesPaid,
+  getInvoiceDetail,
+  listInvoices,
+  voidInvoice,
+} from "@/lib/invoices.functions";
 import {
   STALE_WRITE_MESSAGE,
   instantMicros,
-  invoiceVersion,
   isStaleWriteError,
   sameInstant,
 } from "@/lib/stale-write";
@@ -361,6 +365,24 @@ describe("visit: moving it and correcting its times", () => {
     expect(state.rpcCalls.filter(([n]) => n === "reschedule_visit")).toHaveLength(1);
   });
 
+  it("refuses a reschedule when the visit changes during its own checks", async () => {
+    const loaded = row("visits", VISIT).updated_at as string;
+    // Somebody else moves the visit after this request's first check, while
+    // it is still doing the clash checks and starting the watchers.
+    const { watchWalkSchedule } = await import("@/lib/walk-notify.server");
+    vi.mocked(watchWalkSchedule).mockImplementationOnce(async () => {
+      Object.assign(row("visits", VISIT), { scheduled_on: "2026-11-12", updated_at: now() });
+      return { finish: async () => {} } as never;
+    });
+    await refused(
+      rescheduleVisitFromOffice({
+        data: { visitId: VISIT, newDate: "2026-11-14", expectedUpdatedAt: loaded },
+      }),
+    );
+    expect(row("visits", VISIT).scheduled_on).toBe("2026-11-12");
+    expect(state.rpcCalls.some(([n]) => n === "reschedule_visit")).toBe(false);
+  });
+
   it("refuses the second timestamp correction on a stale visit", async () => {
     const loaded = row("visits", DONE).updated_at as string;
 
@@ -398,8 +420,8 @@ describe("invoice: voiding it and recording a payment", () => {
     const ana = await version();
     const ben = await version();
 
-    // Ana records $20. A partial payment adds a payments row and does not
-    // touch the invoice row, so updated_at alone would not see it.
+    // Ana records $20. The payment rewrites amount_paid_cents on the
+    // invoice, which moves its updated_at.
     const r = await bulkMarkInvoicesPaid({
       data: { ids: [INVOICE], method: "check", amountCents: 2000, expectedVersion: ana },
     });
@@ -436,6 +458,30 @@ describe("invoice: voiding it and recording a payment", () => {
     expect(state.rpcCalls.some(([n]) => n === "record_invoice_payment")).toBe(false);
   });
 
+  it("refuses a void from a stale row on the invoice list", async () => {
+    // Both have the Invoices list open; the row carries updated_at.
+    const listed = (await listInvoices()) as Row[];
+    const benRow = listed.find((r) => r.id === INVOICE) as Row;
+    expect(benRow.updated_at).toBeTruthy();
+
+    // Ana records $20 from the invoice page.
+    await bulkMarkInvoicesPaid({
+      data: {
+        ids: [INVOICE],
+        method: "check",
+        amountCents: 2000,
+        expectedVersion: await version(),
+      },
+    });
+
+    // Ben voids from the row he loaded before that.
+    await refused(
+      voidInvoice({ data: { id: INVOICE, expectedVersion: benRow.updated_at as string } }),
+    );
+    expect(row("invoices", INVOICE).status).toBe("open");
+    expect(state.tables.payments).toHaveLength(1);
+  });
+
   it("will not check a version across several invoices at once", async () => {
     const v = await version();
     await expect(
@@ -452,17 +498,5 @@ describe("comparing versions", () => {
     expect(sameInstant("2026-11-02T10:00:00.123+00:00", "2026-11-02T10:00:00.123000Z")).toBe(true);
     expect(sameInstant("2026-11-02T05:00:00-05:00", "2026-11-02T10:00:00+00:00")).toBe(true);
     expect(instantMicros("not a date")).toBeNull();
-  });
-
-  it("takes an invoice's newest payment as its version when that is later", () => {
-    expect(
-      invoiceVersion("2026-11-02T10:00:00.000001+00:00", [
-        { created_at: "2026-11-02T10:00:00.000005+00:00" },
-        { created_at: "2026-11-02T10:00:00.000003+00:00" },
-      ]),
-    ).toBe("2026-11-02T10:00:00.000005+00:00");
-    expect(invoiceVersion("2026-11-02T10:00:00.000009+00:00", [])).toBe(
-      "2026-11-02T10:00:00.000009+00:00",
-    );
   });
 });

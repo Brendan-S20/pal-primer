@@ -108,11 +108,12 @@ export function InvoiceDrawer({
   // somebody else saved since makes the server refuse this one and the
   // drawer offer Reload (#655).
   const voidMut = useMutation({
-    mutationFn: () =>
+    // `version` is read when the Void confirm opens, below.
+    mutationFn: (version: string | null | undefined) =>
       voidFn({
         data: {
           id: invoiceId!,
-          ...(data?.version !== undefined ? { expectedVersion: data.version } : {}),
+          ...(version !== undefined ? { expectedVersion: version } : {}),
         },
       }),
     onSuccess: () => {
@@ -379,6 +380,7 @@ export function InvoiceDrawer({
                   className="text-muted-foreground hover:text-destructive"
                   disabled={voidMut.isPending}
                   onClick={async () => {
+                    const version = data?.version;
                     if (
                       await confirm({
                         title: "Void this invoice?",
@@ -388,7 +390,7 @@ export function InvoiceDrawer({
                         confirmLabel: "Void invoice",
                       })
                     )
-                      voidMut.mutate();
+                      voidMut.mutate(version);
                   }}
                 >
                   <Ban className="mr-1 h-3.5 w-3.5 shrink-0" /> Void

@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { invoiceVersion, refuseIfChanged } from "@/lib/stale-write";
+import { refuseIfChanged } from "@/lib/stale-write";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
@@ -69,7 +69,7 @@ export const listInvoices = createServerFn({ method: "GET" })
     const { data, error } = await supabase
       .from("invoices")
       .select(
-        "id, number, client_id, status, kind, subtotal_cents, total_cents, credit_applied_cents, amount_paid_cents, currency, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, clients(display_name)",
+        "id, number, client_id, status, kind, subtotal_cents, total_cents, credit_applied_cents, amount_paid_cents, currency, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, updated_at, clients(display_name)",
       )
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
@@ -161,7 +161,7 @@ export const getInvoice = createServerFn({ method: "GET" })
       items: items ?? [],
       payments: await withRefunded(supabase, orgId, named),
       /** Sent back with a void or a payment, so a stale page is refused (#655). */
-      version: invoiceVersion(invoice.updated_at, payments),
+      version: invoice.updated_at,
     };
   });
 
@@ -364,12 +364,12 @@ export const invoiceVisit = createServerFn({ method: "POST" })
   });
 
 /**
- * Two people with one invoice open (#655). The page sends the version it was
- * loaded with (`invoiceVersion`: the later of the invoice row and its newest
- * payment, since a partial payment does not touch the row). If somebody has
- * voided it, recorded a payment, applied credit or otherwise saved it since,
- * this one is refused and the office is asked to reload. A caller that sends
- * no version is not checked.
+ * Two people with one invoice open (#655). The page sends the invoice's
+ * updated_at as it was loaded. If somebody has voided it, recorded a payment,
+ * applied credit or otherwise saved it since, this one is refused and the
+ * office is asked to reload. A payment counts because payments_sync_invoice_paid
+ * rewrites amount_paid_cents on the invoice, and touch_invoices moves
+ * updated_at with it. A caller that sends no version is not checked.
  */
 async function refuseIfInvoiceChanged(
   supabase: SupabaseClient<Database>,
@@ -377,14 +377,14 @@ async function refuseIfInvoiceChanged(
   expected: string | null | undefined,
 ): Promise<void> {
   if (expected === undefined) return;
-  const [{ data: inv, error }, { data: pays, error: pErr }] = await Promise.all([
-    supabase.from("invoices").select("updated_at").eq("id", invoiceId).maybeSingle(),
-    supabase.from("payments").select("created_at").eq("invoice_id", invoiceId),
-  ]);
+  const { data: inv, error } = await supabase
+    .from("invoices")
+    .select("updated_at")
+    .eq("id", invoiceId)
+    .maybeSingle();
   if (error) throw new Error(error.message);
-  if (pErr) throw new Error(pErr.message);
   if (!inv) throw new Error("Invoice not found");
-  refuseIfChanged(invoiceVersion(inv.updated_at, pays ?? []), expected);
+  refuseIfChanged(inv.updated_at, expected);
 }
 
 export const voidInvoice = createServerFn({ method: "POST" })
@@ -1398,7 +1398,7 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
        *  Record payment instead of shown a red error. */
       cardPaymentsReady: !!org?.stripe_connect_charges_enabled,
       /** Sent back with a void or a payment, so a stale drawer is refused (#655). */
-      version: invoiceVersion((inv as { updated_at?: string | null }).updated_at, pays),
+      version: inv.updated_at,
     };
   });
 

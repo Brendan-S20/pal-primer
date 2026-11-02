@@ -6,9 +6,9 @@
  * second save cannot quietly replace the first. The office is then told to
  * reload, see what changed, and make their change again.
  *
- * An invoice's version is the later of its own `updated_at` and its newest
- * payment, because a partial payment adds a `payments` row and does not touch
- * the invoice row. See `invoiceVersion`.
+ * For an invoice that includes payments: a payment row fires
+ * payments_sync_invoice_paid, which rewrites invoices.amount_paid_cents, and
+ * touch_invoices moves updated_at with it.
  *
  * Shared by the server functions and the screens, so it imports nothing.
  */
@@ -58,28 +58,6 @@ export function sameInstant(a: string | null | undefined, b: string | null | und
   const y = instantMicros(b);
   if (x == null || y == null) return x == null && y == null;
   return x === y;
-}
-
-/** The latest of some timestamps, as given. Null when there are none. */
-export function latestInstant(values: Array<string | null | undefined>): string | null {
-  let best: string | null = null;
-  let bestMicros = -Infinity;
-  for (const v of values) {
-    const n = instantMicros(v);
-    if (n != null && n > bestMicros) {
-      best = v as string;
-      bestMicros = n;
-    }
-  }
-  return best;
-}
-
-/** An invoice's version: the later of its row and its newest payment. */
-export function invoiceVersion(
-  invoiceUpdatedAt: string | null | undefined,
-  payments: Array<{ created_at?: string | null }> | null | undefined,
-): string | null {
-  return latestInstant([invoiceUpdatedAt, ...(payments ?? []).map((p) => p.created_at)]);
 }
 
 /**

@@ -749,7 +749,9 @@ function VisitTable({
                     />
                   )}
                   {v.status === "skipped" && (v.skip_reason_code || v.skip_reason) && (
-                    <span className="ml-1 text-xs text-muted-foreground">{skipReasonText(v)}</span>
+                    <span className="ml-1 text-xs text-muted-foreground">
+                      {skipReasonText(v)}
+                    </span>
                   )}
                   {v.is_deepclean && <MetaChip className="ml-1">Deep clean</MetaChip>}
                 </td>

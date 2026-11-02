@@ -732,6 +732,17 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
     // A dog walk's client is told the new day (#410).
     const { watchWalkSchedule } = await import("@/lib/walk-notify.server");
     const walks = await watchWalkSchedule([data.visitId]);
+    // Checked again right before the move, since the clash checks and
+    // watchers above take several round trips (#655).
+    if (data.expectedUpdatedAt !== undefined) {
+      const { data: latest, error: lErr } = await supabase
+        .from("visits")
+        .select("updated_at")
+        .eq("id", data.visitId)
+        .maybeSingle();
+      if (lErr) throw new Error(lErr.message);
+      refuseIfChanged(latest?.updated_at ?? null, data.expectedUpdatedAt);
+    }
     const { error } = await supabase.rpc("reschedule_visit", {
       _visit_id: data.visitId,
       _new_date: data.newDate,

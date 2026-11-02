@@ -4,7 +4,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { LineQuantity } from "@/components/LineQuantity";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { bulkMarkInvoicesPaid, getInvoice, voidInvoice } from "@/lib/invoices.functions";
 import { showsTaxLine, taxLineLabel } from "@/lib/sales-tax";
 import { useRecordPaymentDialog, type RecordPaymentAnswer } from "@/components/RecordPaymentDialog";
@@ -161,12 +161,15 @@ function InvoiceDetail() {
     onError: (e: Error) => toastSaveError(e, reloadInvoice),
   });
 
+  // The version when the Void confirm opened, not when it was confirmed: a
+  // refetch while the dialog is up must not make a stale void look fresh.
+  const voidFrom = useRef<string | null | undefined>(undefined);
   const voidM = useMutation({
     mutationFn: async () =>
       voidFn({
         data: {
           id: invoiceId,
-          ...(q.data?.version !== undefined ? { expectedVersion: q.data.version } : {}),
+          ...(voidFrom.current !== undefined ? { expectedVersion: voidFrom.current } : {}),
         },
       }),
     onSuccess: () => {
@@ -466,6 +469,9 @@ function InvoiceDetail() {
             title="Void this invoice?"
             description="Voiding removes this invoice from the client's balance and can't be undone."
             confirmLabel="Void invoice"
+            onOpen={() => {
+              voidFrom.current = q.data?.version;
+            }}
             onConfirm={() => voidM.mutate()}
             disabled={voidM.isPending}
           >
