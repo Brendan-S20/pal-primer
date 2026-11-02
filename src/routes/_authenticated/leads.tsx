@@ -24,6 +24,7 @@ import { useMemo, useState } from "react";
 import { humanizeEnum } from "@/lib/humanize";
 import { formatDateTime, formatPhone } from "@/lib/format";
 import { titleHead } from "@/lib/page-title";
+import { linkUrl } from "@/lib/app-origin";
 
 export const Route = createFileRoute("/_authenticated/leads")({
   head: () => titleHead("Leads"),
@@ -112,7 +113,7 @@ function LeadsPage() {
           {/* The form these leads come from: see it as a prospect would, or
               jump straight into editing it (Brendan, 2026-07-14). */}
           {formSlug && (
-            <a href={`/signup/${formSlug}`} target="_blank" rel="noreferrer">
+            <a href={linkUrl(`/signup/${formSlug}`)} target="_blank" rel="noreferrer">
               <Button variant="outline">
                 <Eye className="mr-1 h-4 w-4 shrink-0" /> Preview form
               </Button>

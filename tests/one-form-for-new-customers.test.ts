@@ -428,7 +428,9 @@ describe("one settings page", () => {
 
   it("Leads previews the one form and edits it in one place", () => {
     const page = read("src/routes/_authenticated/leads.tsx");
-    expect(page).toMatch(/href=\{`\/signup\/\$\{formSlug\}`\}/);
+    // linkUrl (#660): a relative href opens the bundle's own origin from the
+    // native app, which is not where the form is served.
+    expect(page).toMatch(/href=\{linkUrl\(`\/signup\/\$\{formSlug\}`\)\}/);
     expect(page).toMatch(/<Link to="\/settings\/online-signup">/);
     expect(codeOnly(page)).not.toMatch(/\/lead\/\$\{/);
   });

@@ -92,3 +92,75 @@ export function appOrigin(): string {
 export function appUrl(path = "/"): string {
   return `${appOrigin()}${path.startsWith("/") ? path : `/${path}`}`;
 }
+
+// ── LINKS BUILT IN THE BROWSER (#660) ─────────────────────────────────────
+//
+// `appOrigin()` answers from the SERVER's environment. In a browser there is
+// no `process.env`, so every link a staff screen built with it (portal, pay,
+// signup form, embed code, Preview, Download PDF) pointed at the production
+// fallback whatever was actually running: a localhost dev server, a staging
+// deploy, or a native build pointed at a local API. Android then left the app
+// for Chrome and reached production with tokens that only exist locally.
+//
+// `linkOrigin()` is the browser's answer to the same question, in order:
+//
+//   1. A native bundle: the API origin baked in at build time
+//      (VITE_NATIVE_API_ORIGIN). That is where the server functions already
+//      go, so it is the host that holds the tokens this build can see. The
+//      page origin there is capacitor://localhost or https://localhost, which
+//      nobody else can open.
+//   2. A page served over http(s): this page's own origin, unless it is a
+//      Lovable preview host. A preview domain is a link that works today and
+//      404s next week, so a link built there uses the canonical host, as it
+//      always has.
+//   3. Anything else, and the server: `appOrigin()`.
+//
+// In production all three give app.houndstack.com.
+
+/** Hosts that serve a build for a while and then stop. */
+const PREVIEW_HOST = /(^|\.)(lovable\.app|lovableproject\.com|lovable\.dev)$/i;
+
+export type LinkOriginInputs = {
+  /** `window.location`, or null where there is no page. */
+  location: { protocol: string; hostname: string; origin: string } | null;
+  /** The API origin baked into a native bundle; "" on the web. */
+  nativeApiOrigin: string;
+  /** True only in the bundle that ships inside the app binary. */
+  nativeBundle: boolean;
+  /** What to use when nothing better is known. */
+  fallback: string;
+};
+
+/** The rule behind `linkOrigin()`, with its inputs passed in so it can be
+ *  tested without a browser or a native build. */
+export function resolveLinkOrigin(i: LinkOriginInputs): string {
+  const api = clean(i.nativeApiOrigin);
+  if (api) return api;
+  // A native bundle with no API origin cannot happen (vite.config.ts always
+  // sets one), but its page origin is never a link, so say so.
+  if (i.nativeBundle || !i.location) return i.fallback;
+  const { protocol, hostname } = i.location;
+  if (protocol !== "https:" && protocol !== "http:") return i.fallback;
+  if (PREVIEW_HOST.test(hostname)) return i.fallback;
+  return clean(i.location.origin);
+}
+
+/**
+ * Where a link built on THIS device should point: the API origin in a native
+ * build, this page's origin on the web, `appOrigin()` on the server. Use it
+ * for any portal, pay, signup, embed, preview or PDF link a staff screen
+ * builds. Server code (emails, texts, webhooks) keeps `appUrl()`.
+ */
+export function linkOrigin(): string {
+  return resolveLinkOrigin({
+    location: typeof window !== "undefined" ? window.location : null,
+    nativeApiOrigin: import.meta.env.VITE_NATIVE_API_ORIGIN ?? "",
+    nativeBundle: import.meta.env.VITE_NATIVE_BUNDLE === "1",
+    fallback: appOrigin(),
+  });
+}
+
+/** `linkOrigin()` joined to a path. */
+export function linkUrl(path = "/"): string {
+  return `${linkOrigin()}${path.startsWith("/") ? path : `/${path}`}`;
+}

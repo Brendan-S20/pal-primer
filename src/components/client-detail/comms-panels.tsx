@@ -2,7 +2,7 @@
 // request / referral code, and the portal-access panel. Moved verbatim from
 // the route file during the client-detail refactor (Stage 2) so the page
 // itself stays a thin shell.
-import { appUrl } from "@/lib/app-origin";
+import { linkUrl } from "@/lib/app-origin";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -315,10 +315,10 @@ export function PortalLinkPanel({
 
   // Canonical pretty URL; falls back to the legacy form only if the org has no
   // slug yet (the legacy path redirects to the pretty URL anyway).
-  // appUrl(), not the page origin: this is handed to a customer, and in the
+  // linkUrl(), not the page origin: this is handed to a customer, and in the
   // native binary the page origin is `capacitor://localhost`.
   const path = slug ? `/portal/${slug}/${token}` : `/portal/${token}`;
-  const url = appUrl(path);
+  const url = linkUrl(path);
 
   const regenMut = useMutation({
     mutationFn: () => regenFn({ data: { clientId } }),

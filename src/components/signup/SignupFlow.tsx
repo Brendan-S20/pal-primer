@@ -30,7 +30,7 @@
 // page navigates to the success screen, the walk-mode sheet stays put and
 // marks the door. `offerQuoteRequest` is off in walk mode, which has its own
 // fallback (mark the door, the office finishes it).
-import { appUrl } from "@/lib/app-origin";
+import { linkUrl } from "@/lib/app-origin";
 import {
   ADD_ON_COPY,
   BOOKING_COPY,
@@ -1468,8 +1468,8 @@ function SignupPayForm({
     const { error: confirmError } = await stripe.confirmPayment({
       elements,
       confirmParams: {
-        // appUrl(): Stripe returns the buyer here after paying.
-        return_url: appUrl(`/signup/success?sr=${signupRequestId}`),
+        // linkUrl(): Stripe returns the buyer here after paying.
+        return_url: linkUrl(`/signup/success?sr=${signupRequestId}`),
       },
       redirect: "if_required",
     });

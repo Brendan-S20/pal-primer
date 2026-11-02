@@ -1,4 +1,4 @@
-import { appUrl } from "@/lib/app-origin";
+import { linkUrl } from "@/lib/app-origin";
 import { invoiceDueCents, isPartiallyPaid } from "@/lib/ar";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -425,9 +425,9 @@ function InvoiceDetail() {
               <Button
                 variant="outline"
                 onClick={() => {
-                  // appUrl(): staff copy this and send it to a customer. From
+                  // linkUrl(): staff copy this and send it to a customer. From
                   // the binary the page origin is `capacitor://localhost`.
-                  const url = appUrl(`/pay/i/${(invoice as any).public_token}`);
+                  const url = linkUrl(`/pay/i/${(invoice as any).public_token}`);
                   navigator.clipboard.writeText(url).then(
                     () => toast.success("Pay link copied to clipboard"),
                     () => toast.error("Copy failed"),
@@ -453,14 +453,7 @@ function InvoiceDetail() {
         {/* A real PDF, made on the server: what a bookkeeper files. "Print"
             stays for the paper copy, and used to be the only way to get
             either (it was labelled "Download / print"). */}
-        <DownloadPdfButton
-          load={() => pdfFn({ data: { invoiceId } })}
-          nativeUrl={
-            (invoice as any).public_token
-              ? appUrl(`/api/public/invoice-pdf?token=${(invoice as any).public_token}`)
-              : null
-          }
-        />
+        <DownloadPdfButton load={() => pdfFn({ data: { invoiceId } })} />
         <Button variant="outline" onClick={() => window.print()}>
           Print
         </Button>
