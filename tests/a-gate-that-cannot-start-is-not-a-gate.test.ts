@@ -95,7 +95,9 @@ describe("the schema gate can be scheduled", () => {
     // The original worry -- two jobs, two spellings, half of CI somewhere
     // nobody meant -- is answered by asserting the difference explicitly here
     // rather than by forcing them to be equal.
-    expect(verify["runs-on"]).toContain("PORTABLE_RUNNER_JSON");
+    expect(verify["runs-on"]).toContain(
+      "vars.VERIFY_RUNNER_JSON || vars.PORTABLE_RUNNER_JSON",
+    );
     expect(verify["runs-on"]).toContain('["self-hosted"]');
     expect(migrations["runs-on"]).not.toBe(verify["runs-on"]);
     expect(migrations["runs-on"]).toContain("UNIX_RUNNER");

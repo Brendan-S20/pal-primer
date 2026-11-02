@@ -135,7 +135,7 @@ which both runners carry, and runs on whichever is online and idle:
 
 | job | runs on | why |
 |---|---|---|
-| `ci.yml` `verify` | either (`PORTABLE_RUNNER_JSON`, default `["self-hosted"]`) | npm, npx, Git Bash on the PC |
+| `ci.yml` `verify` | either (`VERIFY_RUNNER_JSON`, else `PORTABLE_RUNNER_JSON`, default `["self-hosted"]`) | npm, npx, Git Bash on the PC |
 | `sandboxes.yml` `changes`, `viewports`, `viewport-cases` | either (same variable) | git, bash, Playwright against a stub backend |
 | `ci.yml` `windows-probe` | the PC (`WINDOWS_RUNNER_JSON`) | its whole answer is "on Windows"; now main and manual runs only |
 | `ci.yml` `migrations`, `deployment`; `sandboxes.yml` `database` | the Mac (`UNIX_RUNNER = macOS`) | psql, Docker and the Supabase CLI. The PC's runner service has no Docker or Supabase CLI on its PATH, and every `database` run on it failed |
@@ -160,6 +160,33 @@ back to the PC with the variable above.
 
 Concurrency: pull-request runs of the same branch cancel the superseded run.
 Runs on main and manual runs are never cancelled, not even while pending.
+
+### `verify` has its own variable (2026-11-02)
+
+`VERIFY_RUNNER_JSON` moves `ci.yml` `verify` and nothing else.
+`PORTABLE_RUNNER_JSON` stays the shared portable pool: `verify` falls back to
+it when `VERIFY_RUNNER_JSON` is unset, and the `sandboxes.yml` jobs read only
+it. So a verify trial does not move the Sandboxes browser jobs, and the other
+way round.
+
+Why: on 2026-11-02 the last 23 PR `verify` jobs queued a median of 2s but a
+p90 of 2335s (38.9 min), because the Sandboxes browser jobs held both
+machines. Active time was a median of 206s on the Mac and 931s on the PC.
+
+Trial values, set without a commit (they apply from the next run):
+
+- unset: same as before, `PORTABLE_RUNNER_JSON`, then `["self-hosted"]`
+- `["self-hosted","macOS"]`: the Mac only. Faster active time, and no verify
+  lands on the PC. Queues behind Mac Sandboxes jobs.
+- `"ubuntu-latest"`: GitHub-hosted Linux. Billed minutes, about 3 to 5 a PR
+  update; frees both machines for Sandboxes. The npm Actions cache switches on
+  for a `-latest` value.
+
+Set it under Settings, Secrets and variables, Actions, Variables, or:
+
+    gh variable set VERIFY_RUNNER_JSON --repo Brendan-S20/pal-primer --body '["self-hosted","macOS"]'
+
+Rollback: `gh variable delete VERIFY_RUNNER_JSON --repo Brendan-S20/pal-primer`.
 
 ## What the machine needs
 
