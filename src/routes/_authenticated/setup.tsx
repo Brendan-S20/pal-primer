@@ -15,6 +15,8 @@ import { ServiceLinesChoices } from "@/components/ServiceLinesChoices";
 import { DayEndPanel } from "@/components/SetupDayEndPanel";
 import { useMyRole, usePermissions } from "@/hooks/useMyRole";
 import { useMyProfile } from "@/hooks/useMyProfile";
+import { useFormDraft } from "@/hooks/useFormDraft";
+import { DraftRestoredNotice } from "@/components/DraftRestoredNotice";
 import {
   getOnboardingStatus,
   ONBOARDING_STEP_IDS,
@@ -349,6 +351,27 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
   const [phone, setPhone] = useState<string | null>(null);
   const [address, setAddress] = useState<string | null>(null);
   const [tz, setTz] = useState<string | null>(null);
+  // Kept on the device as it is typed (gaps-r2-12): a reload used to clear
+  // the services ticked, the phone, the address and the zone. Only what was
+  // touched is kept, the same null-means-untouched values as above.
+  const draft = useFormDraft({
+    form: "setup-business",
+    value: { lines, name, phone, address, tz },
+    restore: (d) => {
+      setLines(d.lines);
+      setName(d.name);
+      setPhone(d.phone);
+      setAddress(d.address);
+      setTz(d.tz);
+    },
+    reset: () => {
+      setLines(null);
+      setName(null);
+      setPhone(null);
+      setAddress(null);
+      setTz(null);
+    },
+  });
 
   const b = brandingQ.data;
   const nameVal = name ?? b?.name ?? "";
@@ -391,6 +414,7 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
       if (writeTz) await saveDispatchFn({ data: { timezone: tzVal } });
     },
     onSuccess: () => {
+      draft.clear();
       toast.success("Business details saved");
       qc.invalidateQueries({ queryKey: ["org-branding"] });
       qc.invalidateQueries({ queryKey: ["dispatch-settings"] });
@@ -417,6 +441,7 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
         m.mutate();
       }}
     >
+      {draft.restored && <DraftRestoredNotice onDiscard={draft.discard} />}
       {/* "Which services do you offer?" (organizations.service_lines), first
           in this form. It belongs in this step rather than a seventh one,
           because it changes what the later steps ask: a dog walker's "where

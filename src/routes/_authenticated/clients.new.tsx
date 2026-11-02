@@ -54,6 +54,9 @@ import { servicePickerOptions } from "@/lib/visit-service";
 import { isZonePriced, servicePriceCents } from "@/lib/services";
 import { normalizeWeekdays, WORK_WEEK } from "@/lib/weekday-set";
 import { toastServerError } from "@/lib/server-outcome";
+import { useFormDraft } from "@/hooks/useFormDraft";
+import { DraftRestoredNotice } from "@/components/DraftRestoredNotice";
+import { newClientDraftForm } from "@/lib/form-drafts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -79,12 +82,16 @@ type FromLead = {
 /**
  * The wizard, started either blank or from a lead.
  *
- * The wizard's state is plain useState, seeded once at mount, and it keeps no
- * draft anywhere (no localStorage, no query cache). So the one way for one
- * lead's answers to show up under another's is a remount that does not
- * happen: TanStack keeps this component mounted when only the search string
- * changes. The `key` below is what makes /clients/new?fromLead=A to
- * ?fromLead=B, or to a blank /clients/new, start again from nothing.
+ * The wizard's state is plain useState, seeded once at mount. TanStack keeps
+ * this component mounted when only the search string changes, so the `key`
+ * below is what makes /clients/new?fromLead=A to ?fromLead=B, or to a blank
+ * /clients/new, start again from nothing.
+ *
+ * Since gaps-r2-12 the wizard also keeps a draft on the device, per user and
+ * organization (useFormDraft), so a reload or Android back no longer loses
+ * the step and the values. Its form name carries the lead or quote id
+ * (newClientDraftForm), so one lead's draft can never open under another's,
+ * nor under a blank wizard.
  */
 function NewClientPage() {
   const { fromLead, fromQuote } = Route.useSearch();
@@ -393,15 +400,31 @@ function polyAreaSqm(g: PolygonGeoJSON): number {
   return Math.abs(a / 2);
 }
 
-function NewClientWizard({
-  prefill,
-  fromLead,
-  fromQuote = null,
-}: {
+type WizardProps = {
   prefill: WizardPrefill;
   fromLead: FromLead | null;
   fromQuote?: FromQuote | null;
-}) {
+};
+
+/** "Discard draft" puts the wizard back to how it opened by remounting it:
+ *  thirty-odd fields and the step, all seeded at mount. */
+function NewClientWizard(props: WizardProps) {
+  const [generation, setGeneration] = useState(0);
+  return (
+    <NewClientWizardForm
+      key={generation}
+      {...props}
+      onDiscarded={() => setGeneration((g) => g + 1)}
+    />
+  );
+}
+
+function NewClientWizardForm({
+  prefill,
+  fromLead,
+  fromQuote = null,
+  onDiscarded,
+}: WizardProps & { onDiscarded: () => void }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const onboardFn = useServerFn(onboardClient);
@@ -714,6 +737,88 @@ function NewClientWizard({
       ? (fcPricing.tiers.find((t) => t.id === fcChoice)?.label ?? null)
       : null;
 
+  // ── The draft (gaps-r2-12) ───────────────────────────────────────────────
+  // Everything typed, and the step, kept on this device for this user and
+  // this business. Not the gate code: an access code does not sit in browser
+  // storage (lib/form-drafts.ts strips one by name as well). Not the geocode
+  // status either; it follows from the pin.
+  const draft = useFormDraft({
+    form: newClientDraftForm(fromLead, fromQuote),
+    value: {
+      step,
+      groomInstead,
+      displayName,
+      accountType,
+      primaryEmail,
+      primaryPhone,
+      officeNote,
+      street,
+      city,
+      region,
+      postalCode,
+      accessNotes,
+      parkingNotes,
+      hazardNotes,
+      vcName,
+      vcPhone,
+      vcEmail,
+      hz,
+      boundary,
+      geo,
+      dogs,
+      frequency,
+      billingCadence,
+      unitCount,
+      stationCount,
+      priceOverride,
+      skipPlan,
+      startedOn,
+      serviceDays,
+      serviceId,
+      weekdays,
+      fcChoice,
+      fcOverride,
+    },
+    restore: (d) => {
+      setStep(d.step);
+      setGroomInstead(d.groomInstead);
+      setDisplayName(d.displayName);
+      setAccountType(d.accountType);
+      setPrimaryEmail(d.primaryEmail);
+      setPrimaryPhone(d.primaryPhone);
+      setOfficeNote(d.officeNote);
+      setStreet(d.street);
+      setCity(d.city);
+      setRegion(d.region);
+      setPostalCode(d.postalCode);
+      setAccessNotes(d.accessNotes);
+      setParkingNotes(d.parkingNotes);
+      setHazardNotes(d.hazardNotes);
+      setVcName(d.vcName);
+      setVcPhone(d.vcPhone);
+      setVcEmail(d.vcEmail);
+      setHz(d.hz);
+      setBoundary(d.boundary);
+      setGeo(d.geo);
+      setGeoStatus(d.geo ? "ok" : "idle");
+      setDogs(d.dogs);
+      setFrequency(d.frequency);
+      setBillingCadence(d.billingCadence);
+      setUnitCount(d.unitCount);
+      setStationCount(d.stationCount);
+      setPriceOverride(d.priceOverride);
+      setSkipPlan(d.skipPlan);
+      // A start day that has passed since the draft was kept is not offered.
+      if (d.startedOn >= orgTodayStr) setStartedOn(d.startedOn);
+      setServiceDays(d.serviceDays);
+      setServiceId(d.serviceId);
+      setWeekdays(d.weekdays);
+      setFcChoice(d.fcChoice);
+      setFcOverride(d.fcOverride);
+    },
+    reset: onDiscarded,
+  });
+
   const mutation = useMutation({
     mutationFn: () =>
       onboardFn({
@@ -794,6 +899,7 @@ function NewClientWizard({
       leadLinked,
       firstCleanupInvoiced,
     }) => {
+      draft.clear();
       const parts = ["Client created."];
       if (firstVisitOn) parts.push(`First visit ${formatDay(firstVisitOn)}.`);
       if (firstCleanupInvoiced) parts.push("First cleanup invoiced.");
@@ -868,6 +974,7 @@ function NewClientWizard({
   const linkMutation = useMutation({
     mutationFn: (clientId: string) => linkFn({ data: { leadId: fromLead!.id, clientId } }),
     onSuccess: ({ clientId }) => {
+      draft.clear();
       toast.success("Lead linked to the existing client");
       qc.invalidateQueries({ queryKey: ["leads"] });
       navigate({ to: "/clients/$clientId", params: { clientId } });
@@ -887,6 +994,7 @@ function NewClientWizard({
 
   return (
     <WizardShell backTo={fromQuote ? "quotes" : fromLead ? "leads" : "clients"}>
+      {draft.restored && <DraftRestoredNotice onDiscard={draft.discard} />}
       {fromQuote && (
         <div role="status" className="space-y-1 rounded-md border bg-primary/5 p-3 text-sm">
           <p className="break-words">
