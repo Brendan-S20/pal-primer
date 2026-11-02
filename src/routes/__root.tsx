@@ -215,6 +215,13 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+/** Where toasts sit in the app: below the status bar, and clear of a side
+ *  inset (see the note on <Toaster> below). Undefined on the web. */
+const SIDE_INSET = "calc(max(env(safe-area-inset-left), env(safe-area-inset-right)) + 16px)";
+const NATIVE_TOAST_OFFSET = IS_NATIVE_BUNDLE
+  ? { top: "calc(env(safe-area-inset-top) + 12px)", left: SIDE_INSET, right: SIDE_INSET }
+  : undefined;
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
@@ -239,6 +246,35 @@ function RootComponent() {
   // Register the guarded service worker on real hosts only (see src/pwa/register.ts).
   useEffect(() => {
     import("../pwa/register").then((m) => m.registerPwa());
+  }, []);
+
+  // The status-bar style, while the splash still covers the page (native-r2-01).
+  // Only the signed-in shell set it, so a cold launch onto /auth kept whatever
+  // the system theme chose: in Android dark mode, white icons on the cream
+  // sign-in page. styles.xml now starts with dark icons; this makes the style
+  // follow the app's own theme on every surface, signed in or not. No-op on web.
+  useEffect(() => {
+    import("../lib/native").then((m) => m.initStatusBar()).catch(() => {});
+  }, []);
+
+  // While a text field has the on-screen keyboard up: bottom bars step aside
+  // on small screens, dialogs fit above it, the focused field stays in view
+  // (native-r2-06, native-r2-11). See src/lib/keyboard-chrome.ts. The app only,
+  // like every other fix from a native pass: the hosted web app is unchanged,
+  // and with nothing setting them the dialog's variables are 0 there.
+  useEffect(() => {
+    if (!IS_NATIVE_BUNDLE) return;
+    let stop: (() => void) | undefined;
+    let gone = false;
+    import("../lib/keyboard-chrome")
+      .then((m) => {
+        if (!gone) stop = m.initKeyboardChrome();
+      })
+      .catch(() => {});
+    return () => {
+      gone = true;
+      stop?.();
+    };
   }, []);
 
   // Take the native splash down once the app has actually painted, rather than
@@ -365,14 +401,17 @@ function RootComponent() {
           the status clock and the Dynamic Island ("Already syncing" measured
           clipped behind both, iPhone 17 Pro sim, 2026-09-26). Same doctrine
           as PublicShell's inset: the web product's spacing stays exactly as
-          it was, so the props are undefined outside the binary. */}
+          it was, so the props are undefined outside the binary. The sides
+          too (native-r2-06): on the iPhone Duo's cover display a phone-width
+          toast ran under the sensor column on the right. Both sides take the
+          larger inset, because sonner sizes a phone toast as the width minus
+          twice the LEFT offset, so only a symmetric pair keeps it centred and
+          clear of either edge. */}
       <Toaster
         position="top-center"
         richColors
-        offset={IS_NATIVE_BUNDLE ? { top: "calc(env(safe-area-inset-top) + 12px)" } : undefined}
-        mobileOffset={
-          IS_NATIVE_BUNDLE ? { top: "calc(env(safe-area-inset-top) + 12px)" } : undefined
-        }
+        offset={NATIVE_TOAST_OFFSET}
+        mobileOffset={NATIVE_TOAST_OFFSET}
       />
     </QueryClientProvider>
   );
