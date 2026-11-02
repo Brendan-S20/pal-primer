@@ -358,6 +358,21 @@ function money(cents: number, currency = "USD") {
   return new Intl.NumberFormat("en-US", { style: "currency", currency }).format((cents ?? 0) / 100);
 }
 
+/** "Base $40.00 + 8 stations $48.00" for a commercial quote's line. */
+function commercialBasis(
+  c: { baseCents: number; unitCents: number; acreageCents: number; stationCents: number } | null,
+  units: number,
+  stations: number,
+): string {
+  const n = (k: number, one: string) => `${k} ${one}${k === 1 ? "" : "s"}`;
+  if (!c) return `Based on ${n(units, "unit")} and ${n(stations, "station")}`;
+  const parts = [`Base ${money(c.baseCents)}`];
+  if (c.unitCents) parts.push(`${n(units, "unit")} ${money(c.unitCents)}`);
+  if (c.stationCents) parts.push(`${n(stations, "station")} ${money(c.stationCents)}`);
+  if (c.acreageCents) parts.push(`grounds ${money(c.acreageCents)}`);
+  return parts.join(" + ");
+}
+
 function polyAreaSqm(g: PolygonGeoJSON): number {
   const ring = g.coordinates[0];
   if (!ring || ring.length < 4) return 0;
@@ -561,6 +576,11 @@ function NewClientWizard({
   );
   const [billingCadence, setBillingCadence] = useState<"postpaid" | "prepaid">("postpaid");
   const [unitCount, setUnitCount] = useState("1");
+  // A commercial property's waste stations: created with the client, and
+  // counted by the zone's per-station rate (#658).
+  const [stationCount, setStationCount] = useState("");
+  const unitsN = Math.max(1, parseInt(unitCount, 10) || 1);
+  const stationsN = Math.min(200, Math.max(0, parseInt(stationCount, 10) || 0));
   // From a quote, the price the customer accepted, not the zone's.
   const [priceOverride, setPriceOverride] = useState<string>(() =>
     fromQuote?.priceCents != null ? (fromQuote.priceCents / 100).toFixed(2) : "",
@@ -600,7 +620,10 @@ function NewClientWizard({
   const setDays = walkLike && frequency === "weekly";
   const needsDays = !planSkipped && setDays && weekdays.length === 0;
 
-  // Auto-quote (residential)
+  // Auto-quote. Residential from dogs; commercial from units and stations
+  // (#658, R2-21: a commercial account was never quoted, and its plan was
+  // saved with no zone).
+  const commercial = accountType === "commercial";
   const quoteKey = useMemo(
     () => ({
       postalCode: postalCode.trim(),
@@ -608,8 +631,9 @@ function NewClientWizard({
       dogCount,
       frequency: frequency === "one_time" ? "weekly" : frequency,
       boundaryAreaSqm: boundaryAreaSqm ?? undefined,
+      ...(commercial ? { unitCount: unitsN, stationCount: stationsN } : {}),
     }),
-    [postalCode, accountType, dogCount, frequency, boundaryAreaSqm],
+    [postalCode, accountType, dogCount, frequency, boundaryAreaSqm, commercial, unitsN, stationsN],
   );
 
   const quoteQ = useQuery({
@@ -617,7 +641,6 @@ function NewClientWizard({
       current === "Plan" &&
       !planSkipped &&
       !walkLike &&
-      accountType === "residential" &&
       quoteKey.postalCode.length >= 3 &&
       frequency !== "one_time",
     queryKey: ["internal-quote", quoteKey],
@@ -631,8 +654,8 @@ function NewClientWizard({
 
   const suggestedCents = walkLike
     ? serviceCents
-    : accountType === "residential" && zoneQuote
-      ? (zoneQuote.recurringPriceCents as number)
+    : zoneQuote
+      ? ((zoneQuote.recurringPriceCents as number | null) ?? null)
       : null;
 
   // No zone quote and nothing typed means no price, not $25. The old
@@ -717,6 +740,7 @@ function NewClientWizard({
           hazards: hz,
           boundary: boundary ?? undefined,
           boundaryAreaSqm: boundaryAreaSqm ?? undefined,
+          stationCount: accountType === "commercial" && stationsN > 0 ? stationsN : undefined,
           dogs: validDogs.length
             ? validDogs.map((d) => ({
                 name: d.name.trim(),
@@ -746,10 +770,7 @@ function NewClientWizard({
                 // business's plan takes its default on insert, as always.
                 serviceId: chosenService?.id,
                 dogCount: accountType === "residential" ? dogCount : undefined,
-                unitCount:
-                  accountType === "commercial"
-                    ? Math.max(1, parseInt(unitCount, 10) || 1)
-                    : undefined,
+                unitCount: accountType === "commercial" ? unitsN : undefined,
                 zoneId: zoneQuote ? (zoneQuote.zoneId as string) : undefined,
                 billingCadence,
               },
@@ -1477,15 +1498,36 @@ function NewClientWizard({
                     </select>
                   </div>
                   {accountType === "commercial" && (
-                    <div className="space-y-2">
-                      <Label>Units / stations</Label>
-                      <Input
-                        type="number"
-                        min={1}
-                        value={unitCount}
-                        onChange={(e) => setUnitCount(e.target.value)}
-                      />
-                    </div>
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="nc-units">Units</Label>
+                        <Input
+                          id="nc-units"
+                          type="number"
+                          inputMode="numeric"
+                          min={1}
+                          value={unitCount}
+                          onChange={(e) => setUnitCount(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="nc-stations">Waste stations</Label>
+                        <Input
+                          id="nc-stations"
+                          type="number"
+                          inputMode="numeric"
+                          min={0}
+                          max={200}
+                          placeholder="0"
+                          value={stationCount}
+                          onChange={(e) => setStationCount(e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Added as Station 1, Station 2… Rename them on the client&apos;s Stations
+                          tab.
+                        </p>
+                      </div>
+                    </>
                   )}
                 </div>
 
@@ -1558,10 +1600,10 @@ function NewClientWizard({
                   )}
                 </div>
 
-                {accountType === "residential" && (
+                {(accountType === "residential" || !walkLike) && (
                   <div className="rounded-md border bg-primary/5 p-4">
-                    <div className="flex items-baseline justify-between">
-                      <div>
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <div className="min-w-0">
                         <div className="text-xs uppercase tracking-wide text-muted-foreground">
                           Suggested price / visit
                         </div>
@@ -1587,6 +1629,15 @@ function NewClientWizard({
                             Services.
                           </div>
                         )}
+                        {commercial &&
+                          !quoteQ.isFetching &&
+                          zoneQuote &&
+                          suggestedCents == null && (
+                            <div className="text-sm text-amber-600">
+                              {zoneQuote.zoneName} has no commercial rates. Set the price below, or
+                              add them in Settings → Zones & pricing.
+                            </div>
+                          )}
                       </div>
                       {zoneQuote && <Badge variant="secondary">Zone: {zoneQuote.zoneName}</Badge>}
                       {walkLike && serviceCents != null && (
@@ -1594,8 +1645,10 @@ function NewClientWizard({
                       )}
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Based on {dogCount} dog
-                      {dogCount === 1 ? "" : "s"} ·{" "}
+                      {commercial
+                        ? commercialBasis(zoneQuote?.commercial ?? null, unitsN, stationsN)
+                        : `Based on ${dogCount} dog${dogCount === 1 ? "" : "s"}`}{" "}
+                      ·{" "}
                       {setDays
                         ? `${weekdays.length} day${weekdays.length === 1 ? "" : "s"} a week`
                         : FREQS.find((f) => f.value === frequency)?.label}

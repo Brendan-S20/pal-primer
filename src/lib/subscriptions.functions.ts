@@ -299,6 +299,19 @@ const updateSubSchema = z
     message: "The window's earliest time must be before its latest time",
   });
 
+/** dog_count / unit_count for an update, shaped by the plan's account type.
+ *  Exported for tests. */
+export function countsFor(
+  before: { account_type?: string | null; dog_count?: number | null; unit_count?: number | null } | null,
+  data: { dogCount?: number; unitCount?: number },
+): { dog_count: number | null; unit_count: number | null } {
+  if (before?.account_type === "commercial")
+    return { dog_count: null, unit_count: data.unitCount ?? before.unit_count ?? 1 };
+  if (before?.account_type === "residential")
+    return { dog_count: data.dogCount ?? before.dog_count ?? 1, unit_count: null };
+  return { dog_count: data.dogCount ?? null, unit_count: data.unitCount ?? null };
+}
+
 export const updateSubscription = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => updateSubSchema.parse(d))
@@ -311,7 +324,7 @@ export const updateSubscription = createServerFn({ method: "POST" })
     const { data: before } = await supabase
       .from("subscriptions")
       .select(
-        "organization_id, client_id, price_cents, frequency, weekdays, started_on, ends_on, status, service_id, earliest_time, latest_time",
+        "organization_id, client_id, account_type, dog_count, unit_count, price_cents, frequency, weekdays, started_on, ends_on, status, service_id, earliest_time, latest_time",
       )
       .eq("id", data.subscriptionId)
       .single();
@@ -342,8 +355,11 @@ export const updateSubscription = createServerFn({ method: "POST" })
         property_id: data.propertyId,
         frequency: data.frequency,
         price_cents: data.priceCents,
-        dog_count: data.dogCount ?? null,
-        unit_count: data.unitCount ?? null,
+        // The count the plan's shape carries (subscriptions_account_shape_chk:
+        // dogs for residential, units for commercial, never both). A caller
+        // that omits it keeps the one on file rather than writing NULL, which
+        // the database refuses with the raw constraint name (#658, R2-20).
+        ...countsFor(before, data),
         zone_id: data.zoneId ?? null,
         // A person typed a different number. Stamped only on a real change, so
         // re-saving the drawer without touching the price does not manufacture

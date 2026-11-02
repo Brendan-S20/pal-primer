@@ -1,4 +1,5 @@
 import i18n from "@/lib/i18n";
+import { completeFromOffice, useOfficeCompleteOverride } from "@/components/OfficeCompleteOverride";
 import { warnLessonClashes } from "@/components/training/lessonClashWarning";
 // Visits tab (spec): scheduled window and actual timing are separate,
 // clearly labeled things. Missing timestamps say so instead of blurring
@@ -1093,10 +1094,18 @@ function VisitDetailDrawer({
     onClose();
   };
 
+  // No photo or checklist: the office says why, or the visit stays open (#658).
+  const { askWhy, dialog: overrideDialog } = useOfficeCompleteOverride();
   const completeMut = useMutation({
     mutationFn: (confirmedEarly: boolean) =>
-      completeFn({ data: { visitId: v.id, confirmedEarly } }),
-    onSuccess: () => afterAction("Visit marked completed"),
+      completeFromOffice(
+        (overrideReason) =>
+          completeFn({ data: { visitId: v.id, confirmedEarly, overrideReason } }),
+        askWhy,
+      ),
+    onSuccess: (done) => {
+      if (done) afterAction("Visit marked completed");
+    },
     onError: (e) => toast.error((e as Error).message),
   });
   const rescheduleMut = useMutation({
@@ -1248,6 +1257,7 @@ function VisitDetailDrawer({
         </dl>
 
         {confirmDialog}
+        {overrideDialog}
 
         {canCorrect && (canComplete || canReschedule) && (
           <div className="space-y-3 rounded-md border bg-muted/20 p-3">

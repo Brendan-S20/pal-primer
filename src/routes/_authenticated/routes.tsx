@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { completeFromOffice, useOfficeCompleteOverride } from "@/components/OfficeCompleteOverride";
 import { warnLessonClashes } from "@/components/training/lessonClashWarning";
 import { humanizeRole } from "@/lib/humanize";
 import { orgLocalTime } from "@/lib/org-day";
@@ -413,10 +414,16 @@ function RoutesPage() {
   const doComplete = useServerFn(completeVisitFromOffice);
   const qc = useQueryClient();
 
+  // No photo or checklist: the office says why, or the visit stays open (#658).
+  const { askWhy, dialog: overrideDialog } = useOfficeCompleteOverride();
   const completeMut = useMutation({
     mutationFn: ({ visitId, confirmedEarly }: { visitId: string; confirmedEarly: boolean }) =>
-      doComplete({ data: { visitId, confirmedEarly } }),
-    onSuccess: () => {
+      completeFromOffice(
+        (overrideReason) => doComplete({ data: { visitId, confirmedEarly, overrideReason } }),
+        askWhy,
+      ),
+    onSuccess: (done) => {
+      if (!done) return;
       toast.success("Visit marked complete");
       setLocalColumns(null);
       qc.invalidateQueries({ queryKey: ["visits", day] });
@@ -1013,6 +1020,7 @@ function RoutesPage() {
   return (
     <>
       {moveDialog}
+      {overrideDialog}
       {visitsData?.clash && (
         <p
           role="alert"

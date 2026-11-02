@@ -153,6 +153,18 @@ export function canOfficeComplete(status: string | null | undefined): boolean {
   return (OFFICE_COMPLETABLE_STATUSES as readonly string[]).includes(String(status));
 }
 
+/** The tail of office_complete_visit's refusal when a visit has no
+ *  completion photo, or required checklist items nobody checked, and the
+ *  office gave no reason (#658, F-15). The tech's complete_visit asks the
+ *  same two questions; the office may still complete, by saying why. */
+export const OFFICE_COMPLETE_ASKS_WHY = "Say why you are completing it from the office.";
+
+/** The question to put to the office, when `message` is that refusal. */
+export function officeCompleteOverrideAsk(message: string | null | undefined): string | null {
+  if (!message || !message.includes(OFFICE_COMPLETE_ASKS_WHY)) return null;
+  return message.replace(OFFICE_COMPLETE_ASKS_WHY, "").trim();
+}
+
 /** Share of the visits that reached an outcome that were completed, 0 to 1,
  *  or null when none did. Missed and skipped count against it: missed is not
  *  done. Canceled visits and ones still open (scheduled, in progress) do not
