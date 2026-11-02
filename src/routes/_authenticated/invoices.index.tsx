@@ -44,7 +44,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { downloadCsv } from "@/lib/csv";
-import { lineTotalCents, parseQuantity } from "@/lib/invoice-lines";
+import { draftInvoiceItems, lineTotalCents, parseQuantity } from "@/lib/invoice-lines";
 import { HelpTip } from "@/components/HelpTip";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { useRecordPaymentDialog, type RecordPaymentAnswer } from "@/components/RecordPaymentDialog";
@@ -179,42 +179,22 @@ function NewInvoiceDialog() {
   const pickedEmail = picked?.primary_email?.trim() || null;
   const willEmail = sendNow && !!pickedEmail;
 
+  // Per line, for the "= $45.00" beside an itemized line.
   const lines = items.map((i) => {
     const quantity = parseQuantity(i.quantity);
     const unitCents = Math.round((parseFloat(i.price) || 0) * 100);
-    const amountCents = quantity === null ? 0 : lineTotalCents(quantity, unitCents);
-    return {
-      description: i.description.trim(),
-      quantity,
-      unitCents,
-      amountCents,
-      visitId: i.visitId,
-      addonChargeId: i.addonChargeId,
-    };
+    return { quantity, amountCents: quantity === null ? 0 : lineTotalCents(quantity, unitCents) };
   });
   // A quantity that is not one ("0", "1.255", "") blocks the button rather than
   // being quietly read as 1, which would bill something the form does not show.
-  const badQuantity = items.some((i, j) => i.description.trim() && lines[j].quantity === null);
-  const parsedItems = lines
-    // A visit line may be $0 (a skip the business does not charge for); it
-    // still has to be sent, or the visit is left for the billing run.
-    .filter((l) => l.description && l.quantity !== null && (l.amountCents > 0 || l.visitId))
-    .map((l) => {
-      const link = {
-        ...(l.visitId ? { visitId: l.visitId } : {}),
-        ...(l.addonChargeId ? { addonChargeId: l.addonChargeId } : {}),
-      };
-      return l.quantity === 1
-        ? { description: l.description, amountCents: l.amountCents, ...link }
-        : {
-            description: l.description,
-            amountCents: l.amountCents,
-            quantity: l.quantity!,
-            unitAmountCents: l.unitCents,
-            ...link,
-          };
-    });
-  const totalCents = parsedItems.reduce((s, i) => s + i.amountCents, 0);
+  // A minus price is a discount line, and it is sent (#653): it used to be
+  // filtered out here, so $20 - $5 was created as $20.
+  const {
+    items: parsedItems,
+    badQuantity,
+    problem: linesProblem,
+    totalCents,
+  } = draftInvoiceItems(items);
 
   const submitting = useRef(false);
   const createM = useMutation({
@@ -336,13 +316,12 @@ function NewInvoiceDialog() {
                     aria-label={`Line ${i + 1} price each`}
                     type="number"
                     step="0.01"
-                    min="0"
                     placeholder="0.00"
                     className="min-w-0 flex-1 sm:w-28 sm:flex-none"
                     value={item.price}
                     onChange={(e) => set({ price: e.target.value })}
                   />
-                  {line.quantity !== null && line.quantity !== 1 && line.amountCents > 0 && (
+                  {line.quantity !== null && line.quantity !== 1 && line.amountCents !== 0 && (
                     <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
                       {fmtCents(line.amountCents)}
                     </span>
@@ -367,6 +346,14 @@ function NewInvoiceDialog() {
                 A quantity is a number above zero with at most two decimal places.
               </p>
             )}
+            {linesProblem && (
+              <p role="alert" className="text-xs text-destructive">
+                {linesProblem}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              For a discount, add a line with a minus price, such as -5.00.
+            </p>
             <Button
               type="button"
               variant="outline"
@@ -376,7 +363,9 @@ function NewInvoiceDialog() {
               <Plus className="mr-1 h-3.5 w-3.5 shrink-0" /> Add line
             </Button>
           </div>
-          {totalCents > 0 && <p className="text-sm font-medium">Total: {fmtCents(totalCents)}</p>}
+          {parsedItems.length > 0 && (
+            <p className="text-sm font-medium">Total: {fmtCents(totalCents)}</p>
+          )}
           {clientId && (
             <label className="flex min-h-11 items-start gap-3 text-sm">
               <Checkbox
@@ -401,7 +390,13 @@ function NewInvoiceDialog() {
         </div>
         <DialogFooter>
           <Button
-            disabled={!clientId || parsedItems.length === 0 || badQuantity || createM.isPending}
+            disabled={
+              !clientId ||
+              parsedItems.length === 0 ||
+              badQuantity ||
+              !!linesProblem ||
+              createM.isPending
+            }
             onClick={() => {
               // isPending reaches the button a render later; a second click
               // inside that gap would start a second request.
