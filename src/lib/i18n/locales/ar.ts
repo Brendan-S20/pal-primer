@@ -212,6 +212,13 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     viewMySchedule: "عرض جدولي",
     myRoute: "مساري",
     aVisit: "زيارة",
+    canceledStops_zero: "لا توجد زيارات ملغاة",
+    canceledStops_one: "زيارة واحدة ملغاة",
+    canceledStops_two: "زيارتان ملغاتان",
+    canceledStops_few: "{{count}} زيارات ملغاة",
+    canceledStops_many: "{{count}} زيارة ملغاة",
+    canceledStops_other: "{{count}} زيارة ملغاة",
+    canceledStopsHint: "ليست ضمن مسارك. لا داعي للذهاب.",
     weekdaySeparator: "، ",
   },
   cacheAge: {
