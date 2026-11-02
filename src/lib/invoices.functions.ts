@@ -367,9 +367,10 @@ export const invoiceVisit = createServerFn({ method: "POST" })
  * Two people with one invoice open (#655). The page sends the invoice's
  * updated_at as it was loaded. If somebody has voided it, recorded a payment,
  * applied credit or otherwise saved it since, this one is refused and the
- * office is asked to reload. A payment counts because payments_sync_invoice_paid
- * rewrites amount_paid_cents on the invoice, and touch_invoices moves
- * updated_at with it. A caller that sends no version is not checked.
+ * office is asked to reload. A payment that changes what is paid counts,
+ * because payments_sync_invoice_paid rewrites amount_paid_cents on the
+ * invoice and touch_invoices moves updated_at with it; a pending or failed
+ * payment row does not. A caller that sends no version is not checked.
  */
 async function refuseIfInvoiceChanged(
   supabase: SupabaseClient<Database>,

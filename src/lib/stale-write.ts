@@ -6,9 +6,11 @@
  * second save cannot quietly replace the first. The office is then told to
  * reload, see what changed, and make their change again.
  *
- * For an invoice that includes payments: a payment row fires
- * payments_sync_invoice_paid, which rewrites invoices.amount_paid_cents, and
- * touch_invoices moves updated_at with it.
+ * For an invoice that includes payments that change what is paid: a
+ * succeeded payment, partial or not, fires payments_sync_invoice_paid, which
+ * rewrites invoices.amount_paid_cents, and touch_invoices moves updated_at
+ * with it. A pending or failed payment row changes no amount, so it does not
+ * move the version.
  *
  * Shared by the server functions and the screens, so it imports nothing.
  */

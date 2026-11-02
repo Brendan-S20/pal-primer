@@ -482,6 +482,25 @@ describe("invoice: voiding it and recording a payment", () => {
     expect(state.tables.payments).toHaveLength(1);
   });
 
+  it("refuses a payment from a stale row on the invoice list", async () => {
+    const listed = (await listInvoices()) as Row[];
+    const benRow = listed.find((r) => r.id === INVOICE) as Row;
+
+    // Ana voids it from the invoice page.
+    await voidInvoice({ data: { id: INVOICE, expectedVersion: await version() } });
+    expect(row("invoices", INVOICE).status).toBe("void");
+
+    // Ben records a payment from the row he loaded before that.
+    await refused(
+      bulkMarkInvoicesPaid({
+        data: { ids: [INVOICE], method: "cash", expectedVersion: benRow.updated_at as string },
+      }),
+    );
+    expect(row("invoices", INVOICE).status).toBe("void");
+    expect(state.tables.payments).toHaveLength(0);
+    expect(state.rpcCalls.some(([n]) => n === "record_invoice_payment")).toBe(false);
+  });
+
   it("will not check a version across several invoices at once", async () => {
     const v = await version();
     await expect(
