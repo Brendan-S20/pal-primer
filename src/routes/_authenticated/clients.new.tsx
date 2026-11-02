@@ -20,7 +20,9 @@ import { convertTarget, quoteConversion, quoteToWizardPrefill } from "@/lib/quot
 import {
   BLANK_DOG,
   EMPTY_PREFILL,
+  leadBooksAGroom,
   leadConversionState,
+  leadStartDate,
   leadToWizardPrefill,
   type WizardDog as Dog,
   type WizardPrefill,
@@ -397,7 +399,23 @@ function NewClientWizard({
   const { petWaste, lines } = useServiceLines();
   const sitting = lines.includes("pet_sitting");
   const grooming = lines.includes("mobile_grooming");
-  const steps = newClientWizardSteps(petWaste);
+  // A grooming lead books a groom, priced from the size grid, once the
+  // client exists; the recurring Plan step would price it as a weekly plan
+  // at the service's base price (#657). Settled once the services have
+  // loaded, since the lead's service is what decides. The owner can still
+  // choose a recurring plan instead.
+  const { services: orgServices, isLoading: servicesLoading } = useOrgServices();
+  const leadServiceLine = prefill.serviceId
+    ? (orgServices.find((x) => x.id === prefill.serviceId)?.service_line ?? null)
+    : null;
+  const groomLead =
+    !!fromLead &&
+    !fromQuote &&
+    !(prefill.serviceId && servicesLoading) &&
+    leadBooksAGroom(leadServiceLine, lines);
+  const [groomInstead, setGroomInstead] = useState(true);
+  const booksGroom = groomLead && groomInstead;
+  const steps = newClientWizardSteps(petWaste).filter((s) => !(booksGroom && s === "Plan"));
   // Clamped: if the answer arrives while somebody is on the last step, the
   // list can be one shorter than the index they were on.
   const current: NewClientStep = steps[Math.min(step, steps.length - 1)];
@@ -432,6 +450,8 @@ function NewClientWizard({
   const [region, setRegion] = useState(prefill.region);
   const [postalCode, setPostalCode] = useState(prefill.postalCode);
   const [gateCode, setGateCode] = useState("");
+  // The lead's "Gate code or access notes" (#657), for properties.access_notes.
+  const [accessNotes, setAccessNotes] = useState(prefill.accessNotes);
   const [parkingNotes, setParkingNotes] = useState("");
   const [hazardNotes, setHazardNotes] = useState("");
   // P3.5 optional on-site visit contact (tenant/property manager)
@@ -546,11 +566,17 @@ function NewClientWizard({
     fromQuote?.priceCents != null ? (fromQuote.priceCents / 100).toFixed(2) : "",
   );
   const [skipPlan, setSkipPlan] = useState(false);
+  // No subscription is written for a groom lead: the groom is booked next.
+  const planSkipped = skipPlan || booksGroom;
   // When the service starts, on the business's calendar. Tomorrow by default:
   // today, created in the evening, meant a visit that night after the route
   // had ended, with nobody on it and nobody told (persona review, 2026-09-27).
+  // From a lead, the day it asked to start (#657), unless that has passed.
   const orgTodayStr = useOrgToday();
-  const [startedOn, setStartedOn] = useState(() => tomorrowOf(orgTodayStr));
+  const [startedOn, setStartedOn] = useState(() =>
+    leadStartDate(prefill.startDate, orgTodayStr, tomorrowOf(orgTodayStr)),
+  );
+  const askedStartPassed = !!prefill.startDate && prefill.startDate < orgTodayStr;
   const [serviceDays, setServiceDays] = useState<number[] | null>(null);
   const effectiveServiceDays = serviceDays ?? [weekdayOf(startedOn)];
 
@@ -560,7 +586,6 @@ function NewClientWizard({
   // takes the business's default on insert, exactly as before the catalog.
   // Started from a lead, the service the lead asked for, when it is one of
   // the business's; the plan form's picker (ServicesTab) is the same control.
-  const { services: orgServices, isLoading: servicesLoading } = useOrgServices();
   const [serviceId, setServiceId] = useState<string>(prefill.serviceId ?? "");
   const offersServicePicker = servicePickerOptions(orgServices).length > 1;
   const chosenService = offersServicePicker
@@ -573,7 +598,7 @@ function NewClientWizard({
   // The days a weekly walk runs on: Monday to Friday until the owner says.
   const [weekdays, setWeekdays] = useState<number[]>([...WORK_WEEK]);
   const setDays = walkLike && frequency === "weekly";
-  const needsDays = !skipPlan && setDays && weekdays.length === 0;
+  const needsDays = !planSkipped && setDays && weekdays.length === 0;
 
   // Auto-quote (residential)
   const quoteKey = useMemo(
@@ -590,7 +615,7 @@ function NewClientWizard({
   const quoteQ = useQuery({
     enabled:
       current === "Plan" &&
-      !skipPlan &&
+      !planSkipped &&
       !walkLike &&
       accountType === "residential" &&
       quoteKey.postalCode.length >= 3 &&
@@ -619,7 +644,7 @@ function NewClientWizard({
     if (suggestedCents != null) return suggestedCents;
     return null;
   })();
-  const needsPrice = !skipPlan && priceCents == null;
+  const needsPrice = !planSkipped && priceCents == null;
 
   // ── The first cleanup ────────────────────────────────────────────────────
   // Offered when the owner prices one, to someone who may bill, and not when
@@ -684,6 +709,7 @@ function NewClientWizard({
           longitude: geo?.lng,
           gateCode: gateCode || undefined,
           parkingNotes: parkingNotes || undefined,
+          accessNotes: accessNotes.trim() || undefined,
           hazardNotes: hazardNotes || undefined,
           visitContactName: vcName || undefined,
           visitContactPhone: vcPhone || undefined,
@@ -706,7 +732,7 @@ function NewClientWizard({
                 notes: d.notes || undefined,
               }))
             : undefined,
-          subscription: skipPlan
+          subscription: planSkipped
             ? undefined
             : {
                 frequency,
@@ -730,7 +756,7 @@ function NewClientWizard({
           officeNote: officeNote.trim() || undefined,
           fromLeadId: fromLead?.id,
           firstCleanup:
-            !skipPlan && fcCents != null && fcCents > 0
+            !planSkipped && fcCents != null && fcCents > 0
               ? { priceCents: fcCents, description: firstCleanupDescription(fcTierLabel, dogCount) }
               : undefined,
         },
@@ -785,6 +811,22 @@ function NewClientWizard({
           )
           .finally(() => qc.invalidateQueries({ queryKey: ["quotes"] }));
       }
+      if (booksGroom) {
+        // Book a groom opens on the client's Visits tab with the lead's
+        // service, every pet and the day it asked for; the price is the
+        // size grid's, read there (#657).
+        navigate({
+          to: "/clients/$clientId",
+          params: { clientId: id },
+          search: {
+            tab: "visits",
+            bookGroom: true,
+            groomService: leadServiceLine === "mobile_grooming" ? prefill.serviceId! : undefined,
+            groomOn: startedOn,
+          },
+        });
+        return;
+      }
       navigate({ to: "/clients/$clientId", params: { clientId: id } });
     },
     onError: (e) => toast.error((e as Error).message),
@@ -837,6 +879,22 @@ function NewClientWizard({
             Started from the lead <strong>{fromLead.name}</strong>. Check each step: nothing is
             saved until you press Create client, and the lead is marked converted when you do.
           </p>
+          {groomLead && (
+            <label className="flex min-h-11 items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-5 w-5 shrink-0"
+                checked={groomInstead}
+                onChange={(e) => setGroomInstead(e.target.checked)}
+              />
+              <span className="min-w-0">
+                Book the groom next. The client is created without a recurring plan, then Book a
+                groom opens with these pets
+                {prefill.startDate ? `, on ${formatDay(startedOn)},` : ""} at the size grid&apos;s
+                price.
+              </span>
+            </label>
+          )}
           {fromLead.existingClient && (
             <div
               role="status"
@@ -1111,6 +1169,18 @@ function NewClientWizard({
                   value={parkingNotes}
                   onChange={(e) => setParkingNotes(e.target.value)}
                   placeholder="Where to park"
+                  className="min-h-11 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="min-w-0 space-y-2 sm:col-span-2">
+                <Label htmlFor="access">Access notes (optional)</Label>
+                <textarea
+                  id="access"
+                  rows={2}
+                  maxLength={500}
+                  value={accessNotes}
+                  onChange={(e) => setAccessNotes(e.target.value)}
+                  placeholder="How to get in: side gate, key box, which door"
                   className="min-h-11 w-full rounded-md border bg-background px-3 py-2 text-sm"
                 />
               </div>
@@ -1433,6 +1503,12 @@ function NewClientWizard({
                     <p className="text-xs text-muted-foreground">
                       If that isn&apos;t a work day or a service day, it moves to the next one.
                     </p>
+                    {askedStartPassed && (
+                      <p className="text-xs text-muted-foreground">
+                        The lead asked to start on {formatDay(prefill.startDate!)}, which has
+                        passed.
+                      </p>
+                    )}
                   </div>
                   {setDays && (
                     <div className="min-w-0 space-y-2">
@@ -1659,7 +1735,11 @@ function NewClientWizard({
                 disabled={mutation.isPending || linkMutation.isPending || needsPrice || needsDays}
                 onClick={() => mutation.mutate()}
               >
-                {mutation.isPending ? "Creating…" : "Create client"}
+                {mutation.isPending
+                  ? "Creating…"
+                  : booksGroom
+                    ? "Create and book groom"
+                    : "Create client"}
               </Button>
               {needsPrice && (
                 <p className="text-xs text-muted-foreground">Set a price per visit first.</p>

@@ -1462,6 +1462,10 @@ const onboardSchema = z.object({
   longitude: z.number().min(-180).max(180).optional(),
   gateCode: z.string().max(60).optional(),
   parkingNotes: z.string().max(1000).optional(),
+  // properties.access_notes, the line the tech reads under Access. The
+  // wizard prefills it from a lead's "Gate code or access notes" (#657);
+  // 500 is the column's own constraint on leads and signups.
+  accessNotes: z.string().max(500).optional(),
   yardSize: z.enum(["small", "medium", "large", "xlarge"]).optional(),
   hazardNotes: z.string().max(1000).optional(),
   visitContactName: z.string().max(120).optional(),
@@ -1654,6 +1658,7 @@ export const onboardClient = createServerFn({ method: "POST" })
         postal_code: data.postalCode,
         gate_code: data.gateCode || null,
         parking_notes: data.parkingNotes || null,
+        access_notes: data.accessNotes?.trim() || null,
         address_source: "manual",
         auto_zone_id: autoZoneId,
         zone_id: autoZoneId,

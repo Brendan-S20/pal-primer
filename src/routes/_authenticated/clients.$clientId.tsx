@@ -124,6 +124,12 @@ type ClientDetailSearch = {
   /** An accepted quote being turned into work: opens Add service on the
    *  Services tab with the quote's price. Stripped on arrival like the rest. */
   fromQuote?: string;
+  /** A grooming lead just converted in the new-client wizard (#657): opens
+   *  Book a groom on the Visits tab with the lead's service and start day.
+   *  Stripped on arrival like the rest. */
+  bookGroom?: boolean;
+  groomService?: string;
+  groomOn?: string;
 };
 
 export const Route = createFileRoute("/_authenticated/clients/$clientId")({
@@ -147,6 +153,12 @@ export const Route = createFileRoute("/_authenticated/clients/$clientId")({
       out.editService = search.editService;
     if (typeof search.fromQuote === "string" && UUID_RE.test(search.fromQuote))
       out.fromQuote = search.fromQuote;
+    if (search.bookGroom === true || search.bookGroom === "true" || search.bookGroom === "1")
+      out.bookGroom = true;
+    if (typeof search.groomService === "string" && UUID_RE.test(search.groomService))
+      out.groomService = search.groomService;
+    if (typeof search.groomOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(search.groomOn))
+      out.groomOn = search.groomOn;
     return out;
   },
 });
@@ -242,6 +254,10 @@ function ClientDetail() {
   const [pendingEditPropertyId, setPendingEditPropertyId] = useState<string | null>(null);
   const [pendingEditServiceId, setPendingEditServiceId] = useState<string | null>(null);
   const [pendingFromQuoteId, setPendingFromQuoteId] = useState<string | null>(null);
+  const [pendingGroom, setPendingGroom] = useState<{
+    serviceId: string | null;
+    scheduledOn: string | null;
+  } | null>(null);
 
   // Deep-linked edit affordances (?edit=true from the Clients list row
   // actions; ?editProperty / ?editService from the Properties / Services
@@ -249,21 +265,35 @@ function ClientDetail() {
   // nav) so refresh doesn't re-open it. editProperty / editService force the
   // owning tab, since drawers inside an unmounted tab can't render.
   useEffect(() => {
-    if (!search.edit && !search.editProperty && !search.editService && !search.fromQuote) return;
+    if (
+      !search.edit &&
+      !search.editProperty &&
+      !search.editService &&
+      !search.fromQuote &&
+      !search.bookGroom
+    )
+      return;
     if (search.edit) setEditClientOpen(true);
     if (search.editProperty) setPendingEditPropertyId(search.editProperty);
     if (search.editService) setPendingEditServiceId(search.editService);
     if (search.fromQuote) setPendingFromQuoteId(search.fromQuote);
+    if (search.bookGroom)
+      setPendingGroom({
+        serviceId: search.groomService ?? null,
+        scheduledOn: search.groomOn ?? null,
+      });
     const nextTab: TabValue | undefined = search.editProperty
       ? "properties"
       : search.editService || search.fromQuote
         ? "services"
-        : search.tab;
+        : search.bookGroom
+          ? "visits"
+          : search.tab;
     navigate({
       search: nextTab && nextTab !== "summary" ? { tab: nextTab } : {},
       replace: true,
     });
-  }, [search.edit, search.editProperty, search.editService, search.fromQuote]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [search.edit, search.editProperty, search.editService, search.fromQuote, search.bookGroom]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A deep link to ?tab=billing for a role without billing visibility (e.g. a
   // dispatcher) falls back to Summary below — also strip the param (replace
@@ -511,6 +541,8 @@ function ClientDetail() {
               clientId={clientId}
               subscriptions={subs}
               canCorrect={canBill}
+              pendingGroom={pendingGroom}
+              onPendingGroomConsumed={() => setPendingGroom(null)}
             />
           </TabLoading>
         </TabsContent>
