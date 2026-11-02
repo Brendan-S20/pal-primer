@@ -168,6 +168,7 @@ describe("the wiring", () => {
     // Without booking, the owner of the screen is told rather than left on
     // an empty Visits tab.
     expect(visits).toMatch(/Ask someone who can book to schedule the groom/);
+    expect(visits).toMatch(/Grooming isn't turned on for this business/);
     expect(dialog).toMatch(/startFrom\?\.serviceId/);
     expect(dialog).toMatch(/notBeforeToday\(startFrom\.scheduledOn, today\)/);
   });

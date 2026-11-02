@@ -143,7 +143,9 @@ export function VisitsTab({
     // Visits tab with a client that has no plan and no groom.
     if (!runsGrooming || !canBookOneOff) {
       toast.warning(
-        "The client was created without a plan. Ask someone who can book to schedule the groom.",
+        !canBookOneOff
+          ? "The client was created without a plan. Ask someone who can book to schedule the groom."
+          : "The client was created without a plan. Grooming isn't turned on for this business, so the groom could not be opened.",
         { duration: 10000 },
       );
       return;
