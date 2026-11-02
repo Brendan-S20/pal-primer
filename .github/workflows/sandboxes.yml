@@ -710,7 +710,28 @@ jobs:
     # JSON) moves it without a commit:
     #   '["self-hosted","Windows","X64"]'  back to the PC only
     #   '"ubuntu-latest"'                  GitHub-hosted (billed minutes)
-    runs-on: ${{ fromJSON(vars.PORTABLE_RUNNER_JSON || '["self-hosted"]') }}
+    #
+    # ── 2026-11-02: PINNED TO THE MAC (#685) ─────────────────────────────
+    #
+    # On DESKTOP-JUC6SL1 this job failed on every run of the day, on main as
+    # well as on PRs (main c42f26d: 6 failed, "/no-workspace rendered only 0
+    # characters", "did not draw its fixture"). The pages were not the cause.
+    # Chromium there refused the dev server's module requests with
+    # net::ERR_INSUFFICIENT_RESOURCES, a Playwright worker died with
+    # 0xC0000409 (code=3221226505), and the one-off cases lost their dev
+    # server partway through (every later test ERR_CONNECTION_REFUSED). The
+    # same specs pass on the Mac and on Linux. So the job no longer takes
+    # plain `self-hosted`; it takes the `macOS` label, which only Mac0s has.
+    # VIEWPORTS_RUNNER_JSON (a repository variable, JSON) moves it without a
+    # commit, e.g. '["self-hosted"]' to let the PC take it again once that
+    # machine is fixed. PORTABLE_RUNNER_JSON is deliberately not consulted
+    # here, so pinning other jobs to the PC cannot pull this one back.
+    #
+    # The cost is the one measured above: the Mac is slower per job, and
+    # this job and viewport-cases now queue behind each other there. If the
+    # Mac runs time out, raise VIEWPORTS_TIMEOUT_MINUTES rather than moving
+    # the job back to a machine that cannot run it.
+    runs-on: ${{ fromJSON(vars.VIEWPORTS_RUNNER_JSON || '["self-hosted","macOS"]') }}
     # 45, raised from 30 on 2026-09-14 after this job was cancelled at 30m13s
     # with the last step mid-run. Raising a ceiling is usually how a real
     # slowdown gets hidden, so here is the arithmetic it was raised against,
@@ -1024,7 +1045,10 @@ jobs:
     # JSON) moves it without a commit:
     #   '["self-hosted","Windows","X64"]'  back to the PC only
     #   '"ubuntu-latest"'                  GitHub-hosted (billed minutes)
-    runs-on: ${{ fromJSON(vars.PORTABLE_RUNNER_JSON || '["self-hosted"]') }}
+    #
+    # 2026-11-02: pinned to the Mac with the viewports job above, for the
+    # reason written there (#685). Same VIEWPORTS_RUNNER_JSON override.
+    runs-on: ${{ fromJSON(vars.VIEWPORTS_RUNNER_JSON || '["self-hosted","macOS"]') }}
     # ~17.5 min of tests plus ~4.5 of setup on a quiet box (2026-10-09),
     # and 20.3 min of tests in the slowest hour measured. If this ever needs most of 45, the
     # cases have outgrown one job too -- split them again by file, as this
