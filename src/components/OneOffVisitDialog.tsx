@@ -26,7 +26,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Link } from "@tanstack/react-router";
-import { toast } from "sonner";
+import { toastServerError, toastServerOutcome } from "@/lib/server-outcome";
+import { oneOffBookedCopy } from "@/lib/one-off-booked";
 import {
   Dialog,
   DialogContent,
@@ -48,6 +49,8 @@ import {
   ONE_OFF_PRICE_SETTING_HASH,
   ONE_OFF_PRICE_SETTING_PATH,
 } from "@/lib/services";
+
+const BOOK_FAILED = "The visit could not be booked. Try again.";
 
 export function OneOffVisitDialog({
   open,
@@ -160,12 +163,15 @@ export function OneOffVisitDialog({
     onSuccess: (r: any) => {
       // Assignment is best-effort on the server: the visit exists either way,
       // and failing the whole booking over it used to invite a second booking
-      // (and a second bill). Say what actually happened.
-      if (r.assignWarning) {
-        toast.warning(`Visit booked for ${r.scheduledOn}, but left unassigned: ${r.assignWarning}`);
-      } else {
-        toast.success(`Visit booked for ${r.scheduledOn}`);
-      }
+      // (and a second bill). Say what actually happened (#662): the day it
+      // landed on, whose route it is on, and why not when it is on nobody's.
+      const assignee = techs.find((s: { id: string }) => s.id === staffId)?.display_name ?? null;
+      const copy = oneOffBookedCopy({
+        requestedOn: scheduledOn,
+        result: r,
+        assigneeName: assignee,
+      });
+      if (toastServerOutcome(r, { ...copy, fallback: BOOK_FAILED }) === "error") return;
       // The board, the mobile day list and the client's own tabs all read these.
       qc.invalidateQueries({ queryKey: ["visits"] });
       qc.invalidateQueries({ queryKey: ["client-detail"] });
@@ -175,7 +181,7 @@ export function OneOffVisitDialog({
     // The server refuses a blackout day, a non-work day, or a date inside a
     // hold on this client, and says which. Surfacing the message verbatim is
     // the point — a generic "couldn't book" would send someone hunting.
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toastServerError(e, { fallback: BOOK_FAILED }),
   });
 
   const ready = !!clientId && !!propertyId && !!scheduledOn && priceValid;
