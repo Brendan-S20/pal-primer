@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { refuseIfChanged } from "@/lib/stale-write";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
@@ -68,7 +69,7 @@ export const listInvoices = createServerFn({ method: "GET" })
     const { data, error } = await supabase
       .from("invoices")
       .select(
-        "id, number, client_id, status, kind, subtotal_cents, total_cents, credit_applied_cents, amount_paid_cents, currency, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, clients(display_name)",
+        "id, number, client_id, status, kind, subtotal_cents, total_cents, credit_applied_cents, amount_paid_cents, currency, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, updated_at, clients(display_name)",
       )
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
@@ -155,7 +156,13 @@ export const getInvoice = createServerFn({ method: "GET" })
       .eq("invoice_id", data.id)
       .order("created_at", { ascending: false });
     const named = await withTipStaffNames(supabase, payments ?? []);
-    return { invoice, items: items ?? [], payments: await withRefunded(supabase, orgId, named) };
+    return {
+      invoice,
+      items: items ?? [],
+      payments: await withRefunded(supabase, orgId, named),
+      /** Sent back with a void or a payment, so a stale page is refused (#655). */
+      version: invoice.updated_at,
+    };
   });
 
 export const generateInvoicesForOrg = createServerFn({ method: "POST" })
@@ -356,11 +363,45 @@ export const invoiceVisit = createServerFn({ method: "POST" })
     });
   });
 
+/**
+ * Two people with one invoice open (#655). The page sends the invoice's
+ * updated_at as it was loaded. If somebody has voided it, recorded a payment,
+ * applied credit or otherwise saved it since, this one is refused and the
+ * office is asked to reload. A payment that changes what is paid counts,
+ * because payments_sync_invoice_paid rewrites amount_paid_cents on the
+ * invoice and touch_invoices moves updated_at with it; a pending or failed
+ * payment row does not. A caller that sends no version is not checked.
+ */
+async function refuseIfInvoiceChanged(
+  supabase: SupabaseClient<Database>,
+  invoiceId: string,
+  expected: string | null | undefined,
+): Promise<void> {
+  if (expected === undefined) return;
+  const { data: inv, error } = await supabase
+    .from("invoices")
+    .select("updated_at")
+    .eq("id", invoiceId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!inv) throw new Error("Invoice not found");
+  refuseIfChanged(inv.updated_at, expected);
+}
+
 export const voidInvoice = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
+  .inputValidator((d) =>
+    z
+      .object({
+        id: z.string().uuid(),
+        // What getInvoice / getInvoiceDetail returned as `version` (#655).
+        expectedVersion: z.string().max(64).nullable().optional(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
     await requirePermission(context.supabase, context.userId, "manage_client_billing");
+    await refuseIfInvoiceChanged(context.supabase, data.id, data.expectedVersion);
     const { error } = await context.supabase.rpc("void_invoice", { _invoice_id: data.id });
     if (error) throw new Error(error.message);
 
@@ -441,6 +482,10 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
         /** Less than the balance is a partial payment; more is refused. One
          *  invoice only. Absent means the whole balance, as it always did. */
         amountCents: z.number().int().min(1).max(100_000_000).optional(),
+        /** What getInvoice / getInvoiceDetail returned as `version`. One
+         *  invoice only: a page that saw the invoice before somebody else
+         *  saved it is refused (#655). */
+        expectedVersion: z.string().max(64).nullable().optional(),
       })
       .parse(d),
   )
@@ -486,6 +531,10 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
     };
     if (data.amountCents != null && (data.ids.length !== 1 || data.fieldCollectionId)) {
       throw new Error("An amount can only be recorded against one invoice at a time");
+    }
+    if (data.expectedVersion !== undefined) {
+      if (data.ids.length !== 1) throw new Error("A version can only be checked on one invoice");
+      await refuseIfInvoiceChanged(supabase, data.ids[0], data.expectedVersion);
     }
     let field: ClaimedCollection | null = null;
     if (data.fieldCollectionId) {
@@ -1305,7 +1354,7 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
       supabase
         .from("invoices")
         .select(
-          "id, number, client_id, status, kind, currency, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, credit_applied_cents, amount_paid_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, voided_at, notes, checkout_url, created_at, clients(id, display_name, primary_email, default_payment_method_id, default_card_brand, default_card_last4)",
+          "id, number, client_id, status, kind, currency, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, credit_applied_cents, amount_paid_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, voided_at, notes, checkout_url, created_at, updated_at, clients(id, display_name, primary_email, default_payment_method_id, default_card_brand, default_card_last4)",
         )
         .eq("id", data.invoiceId)
         .single(),
@@ -1349,6 +1398,8 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
        *  account every card path fails, and the office should be pointed at
        *  Record payment instead of shown a red error. */
       cardPaymentsReady: !!org?.stripe_connect_charges_enabled,
+      /** Sent back with a void or a payment, so a stale drawer is refused (#655). */
+      version: inv.updated_at,
     };
   });
 

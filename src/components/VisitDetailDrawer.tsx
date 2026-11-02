@@ -81,6 +81,7 @@ import { isYardVisit } from "@/lib/walk-concerns";
 import { canOfficeComplete } from "@/lib/visit-lifecycle";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { earlyCompleteConfirm, isFutureVisit } from "@/lib/booking-dates";
+import { toastSaveError } from "@/lib/stale-write-toast";
 
 const MISSED_REASON_LABELS: Record<(typeof BUSINESS_REASONS)[number], string> = {
   our_fault: "Our fault",
@@ -202,9 +203,22 @@ export function VisitDetailDrawer({
   const orgToday = useOrgToday();
   const { confirm: confirmEarly, dialog: earlyDialog } = useConfirmDialog();
   const [moveTo, setMoveTo] = useState("");
-  useEffect(() => setMoveTo(""), [visitId]);
+  // The visit's updated_at when a new day was first picked. Sent with the
+  // move so one somebody else saved since is refused, not replaced (#655).
+  const moveFrom = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    setMoveTo("");
+    moveFrom.current = undefined;
+  }, [visitId]);
   const rescheduleMut = useMutation({
-    mutationFn: () => doReschedule({ data: { visitId: visitId!, newDate: moveTo } }),
+    mutationFn: () =>
+      doReschedule({
+        data: {
+          visitId: visitId!,
+          newDate: moveTo,
+          ...(moveFrom.current !== undefined ? { expectedUpdatedAt: moveFrom.current } : {}),
+        },
+      }),
     onSuccess: (r) => {
       const who = r.techName ?? "The tech";
       if (r.tech === "kept") {
@@ -223,9 +237,15 @@ export function VisitDetailDrawer({
       warnLessonClashes(r);
       if (r.clash) toast.warning(r.clash);
       setMoveTo("");
+      moveFrom.current = undefined;
       invalidate();
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) =>
+      toastSaveError(e, () => {
+        setMoveTo("");
+        moveFrom.current = undefined;
+        invalidate();
+      }),
   });
   // Reassigning used to apply the moment the native select changed, with no
   // undo, and reassignVisit tells the tech losing the stop and the tech
@@ -704,7 +724,10 @@ export function VisitDetailDrawer({
                         className="min-w-0 flex-1"
                         min={orgToday}
                         value={moveTo}
-                        onChange={(e) => setMoveTo(e.target.value)}
+                        onChange={(e) => {
+                          if (moveFrom.current === undefined) moveFrom.current = v?.updated_at;
+                          setMoveTo(e.target.value);
+                        }}
                       />
                       <Button
                         type="submit"

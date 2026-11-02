@@ -16,6 +16,7 @@ export function ConfirmButton({
   description,
   confirmLabel = "Confirm",
   onConfirm,
+  onOpen,
   disabled,
   variant = "destructive",
   size,
@@ -26,13 +27,16 @@ export function ConfirmButton({
   description: string;
   confirmLabel?: string;
   onConfirm: () => void;
+  /** Called when the dialog opens, e.g. to note the version the person is
+   *  looking at before they confirm (#655). */
+  onOpen?: () => void;
   disabled?: boolean;
   variant?: ButtonProps["variant"];
   size?: ButtonProps["size"];
   children?: ReactNode;
 }) {
   return (
-    <AlertDialog>
+    <AlertDialog onOpenChange={(open) => (open ? onOpen?.() : undefined)}>
       <AlertDialogTrigger asChild>
         {trigger ?? (
           <Button variant={variant} size={size} disabled={disabled}>

@@ -1,5 +1,6 @@
 import { COAT_TYPES } from "@/lib/groom";
 import { createServerFn } from "@tanstack/react-start";
+import { refuseIfChanged, StaleWriteError } from "@/lib/stale-write";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
@@ -802,7 +803,7 @@ export const getClient = createServerFn({ method: "GET" })
     const { data: client, error } = await supabase
       .from("clients")
       .select(
-        "id, display_name, first_name, last_name, company, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, email_opt_out, comms_paused, sms_consent_at, sms_consent_phone, sms_consent_text, sms_consent_source, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at, tags, preferred_contact, referral_source, churn_score, autopay_paused, billing_frequency, dna_compliance_enabled, tax_exempt, emergency_contact_name, emergency_contact_phone, emergency_contact_may_approve_vet, vet_treatment_limit_cents",
+        "id, display_name, first_name, last_name, company, account_type, primary_email, primary_phone, active, created_at, notes, portal_token, sms_opt_out, email_opt_out, comms_paused, sms_consent_at, sms_consent_phone, sms_consent_text, sms_consent_source, referral_code, referred_by_client_id, referral_applied_at, review_asked_at, review_submitted_at, tags, preferred_contact, referral_source, churn_score, autopay_paused, billing_frequency, dna_compliance_enabled, tax_exempt, emergency_contact_name, emergency_contact_phone, emergency_contact_may_approve_vet, vet_treatment_limit_cents, updated_at",
       )
       .eq("id", data.clientId)
       .single();
@@ -963,6 +964,9 @@ export const updateClient = createServerFn({ method: "POST" })
         emergencyContactPhone: z.string().max(40).nullable().optional(),
         emergencyContactMayApproveVet: z.boolean().optional(),
         vetTreatmentLimitCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
+        // The client's updated_at when the form was opened (#655). Sent, the
+        // save is refused if somebody else saved this client since.
+        expectedUpdatedAt: z.string().max(64).nullable().optional(),
       })
       .parse(d),
   )
@@ -983,11 +987,18 @@ export const updateClient = createServerFn({ method: "POST" })
     const { data: beforeRow, error: beforeErr } = await supabase
       .from("clients")
       .select(
-        "display_name, first_name, last_name, company, primary_email, primary_phone, account_type, active, tags, preferred_contact, referral_source, sms_opt_out, email_opt_out, comms_paused, tax_exempt, emergency_contact_name, emergency_contact_phone, emergency_contact_may_approve_vet, vet_treatment_limit_cents",
+        "display_name, first_name, last_name, company, primary_email, primary_phone, account_type, active, tags, preferred_contact, referral_source, sms_opt_out, email_opt_out, comms_paused, tax_exempt, emergency_contact_name, emergency_contact_phone, emergency_contact_may_approve_vet, vet_treatment_limit_cents, updated_at",
       )
       .eq("id", data.clientId)
       .single();
     if (beforeErr) throw new Error(beforeErr.message);
+    // Two people editing one client: the second save is refused rather than
+    // quietly replacing the first (#655). Checked again in the UPDATE below,
+    // so a save landing between this read and that write is caught too.
+    refuseIfChanged(
+      (beforeRow as { updated_at?: string | null }).updated_at,
+      data.expectedUpdatedAt,
+    );
 
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     const changed: string[] = [];
@@ -1058,16 +1069,30 @@ export const updateClient = createServerFn({ method: "POST" })
       patch.tax_exempt = data.taxExempt;
       changed.push("sales tax exemption");
     }
-    if (changed.length === 0) return { ok: true };
+    if (changed.length === 0) {
+      return {
+        ok: true,
+        updatedAt: (beforeRow as { updated_at?: string | null }).updated_at ?? null,
+      };
+    }
 
-    const { data: rows, error } = await supabase
+    let write = supabase
       .from("clients")
       .update(patch as never)
-      .eq("id", data.clientId)
-      .select("id, organization_id");
+      .eq("id", data.clientId);
+    if (data.expectedUpdatedAt !== undefined) {
+      const loaded = (beforeRow as { updated_at?: string | null }).updated_at ?? null;
+      write = loaded == null ? write.is("updated_at", null) : write.eq("updated_at", loaded);
+    }
+    const { data: rows, error } = await write.select("id, organization_id, updated_at");
     if (error) throw new Error(error.message);
     const row = rows?.[0];
-    if (!row) throw new Error("Client not found");
+    if (!row) {
+      // The row was there a moment ago, so a guarded write that touched
+      // nothing means somebody saved in between.
+      if (data.expectedUpdatedAt !== undefined) throw new StaleWriteError();
+      throw new Error("Client not found");
+    }
 
     const beforeChanged: Record<string, unknown> = {};
     const afterChanged: Record<string, unknown> = {};
@@ -1086,7 +1111,7 @@ export const updateClient = createServerFn({ method: "POST" })
       summary: `Updated client ${changed.join(", ")}`,
       meta: { fields: changed, before: beforeChanged, after: afterChanged },
     });
-    return { ok: true };
+    return { ok: true, updatedAt: (row as { updated_at?: string | null }).updated_at ?? null };
   });
 
 /** Full visit history for the Visits tab: scheduled window vs actual
@@ -1102,7 +1127,7 @@ export const listClientVisitHistory = createServerFn({ method: "GET" })
     const { supabase } = context;
     await requirePermission(supabase, context.userId, "view_client_directory");
     const select =
-      "id, subscription_id, property_id, scheduled_on, status, created_at, assigned_staff_id, started_at, completed_at, start_time, eta_start, eta_end, skip_reason_code, skip_reason, rescheduled_from, is_deepclean, duration_min, groom_summary, client_package_id, properties(street, earliest_service_time, latest_service_time), subscriptions(earliest_time, latest_time), staff:assigned_staff_id(display_name)";
+      "id, subscription_id, property_id, scheduled_on, status, created_at, assigned_staff_id, started_at, completed_at, start_time, eta_start, eta_end, skip_reason_code, skip_reason, rescheduled_from, is_deepclean, duration_min, groom_summary, client_package_id, updated_at, properties(street, earliest_service_time, latest_service_time), subscriptions(earliest_time, latest_time), staff:assigned_staff_id(display_name)";
     const limit = data.limit ?? 100;
     const today = new Date().toISOString().slice(0, 10);
     // Two windows so a heavily scheduled client (many future visits) can't

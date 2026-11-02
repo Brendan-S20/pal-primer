@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { refuseIfChanged, StaleWriteError } from "@/lib/stale-write";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
@@ -69,7 +70,7 @@ export const getVisitDetail = createServerFn({ method: "GET" })
          weather_flagged, weather_note, tech_note, completion_photo_waived_reason, visit_checklist,
          duration_min, groom_summary, start_time,
          eta_start, eta_end, travel_km, travel_min, window_violated,
-         client_id, property_id,
+         client_id, property_id, updated_at,
          clients(id, display_name, primary_phone, primary_email, credit_balance_cents),
          properties(id, street, city, region, postal_code, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, latitude, longitude),
          zones(name),
@@ -549,6 +550,8 @@ export const correctVisitTimestamps = createServerFn({ method: "POST" })
         startedAt: z.string().datetime({ offset: true }).nullable(),
         completedAt: z.string().datetime({ offset: true }).nullable(),
         reason: z.string().min(1).max(300),
+        // The visit's updated_at when the drawer was opened (#655).
+        expectedUpdatedAt: z.string().max(64).nullable().optional(),
       })
       .refine((v) => !v.startedAt || !v.completedAt || v.completedAt >= v.startedAt, {
         message: "Completion can't be before the start",
@@ -562,16 +565,25 @@ export const correctVisitTimestamps = createServerFn({ method: "POST" })
 
     const { data: before, error: bErr } = await supabase
       .from("visits")
-      .select("id, organization_id, client_id, property_id, scheduled_on, started_at, completed_at")
+      .select(
+        "id, organization_id, client_id, property_id, scheduled_on, started_at, completed_at, updated_at",
+      )
       .eq("id", data.visitId)
       .single();
     if (bErr) throw new Error(bErr.message);
+    // Somebody else changed the visit since this drawer loaded it (#655).
+    refuseIfChanged(before.updated_at, data.expectedUpdatedAt);
 
-    const { error } = await supabase
+    let write = supabase
       .from("visits")
       .update({ started_at: data.startedAt, completed_at: data.completedAt })
       .eq("id", data.visitId);
+    // Checked in the write as well, so a save landing between the read above
+    // and this update is refused rather than overwritten.
+    if (data.expectedUpdatedAt !== undefined) write = write.eq("updated_at", before.updated_at);
+    const { data: written, error } = await write.select("id");
     if (error) throw new Error(error.message);
+    if (data.expectedUpdatedAt !== undefined && !written?.length) throw new StaleWriteError();
 
     const { logActivity } = await import("@/lib/activity.server");
     await logActivity(supabase, {
@@ -600,7 +612,7 @@ async function loadVisitForOfficeAction(supabase: any, userId: string, visitId: 
   await requirePermission(supabase, userId, "manage_client_billing");
   const { data: v, error } = await supabase
     .from("visits")
-    .select("id, organization_id, client_id, property_id, scheduled_on, status")
+    .select("id, organization_id, client_id, property_id, scheduled_on, status, updated_at")
     .eq("id", visitId)
     .single();
   if (error) throw new Error(error.message);
@@ -611,6 +623,7 @@ async function loadVisitForOfficeAction(supabase: any, userId: string, visitId: 
     property_id: string | null;
     scheduled_on: string;
     status: string;
+    updated_at: string | null;
   };
 }
 
@@ -684,12 +697,17 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
       .object({
         visitId: z.string().uuid(),
         newDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        // The visit's updated_at when the drawer was opened (#655).
+        expectedUpdatedAt: z.string().max(64).nullable().optional(),
       })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
+    // Somebody else changed the visit since this drawer loaded it: refused
+    // before anyone is told about a move (#655).
+    refuseIfChanged(v.updated_at, data.expectedUpdatedAt);
     if (v.status !== "scheduled") throw new Error("Only scheduled visits can be rescheduled");
     const { refusePastDay } = await import("@/lib/booking-dates.server");
     await refusePastDay(supabase, v.organization_id, data.newDate);
@@ -714,6 +732,17 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
     // A dog walk's client is told the new day (#410).
     const { watchWalkSchedule } = await import("@/lib/walk-notify.server");
     const walks = await watchWalkSchedule([data.visitId]);
+    // Checked again right before the move, since the clash checks and
+    // watchers above take several round trips (#655).
+    if (data.expectedUpdatedAt !== undefined) {
+      const { data: latest, error: lErr } = await supabase
+        .from("visits")
+        .select("updated_at")
+        .eq("id", data.visitId)
+        .maybeSingle();
+      if (lErr) throw new Error(lErr.message);
+      refuseIfChanged(latest?.updated_at ?? null, data.expectedUpdatedAt);
+    }
     const { error } = await supabase.rpc("reschedule_visit", {
       _visit_id: data.visitId,
       _new_date: data.newDate,

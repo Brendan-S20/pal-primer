@@ -4,7 +4,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { LineQuantity } from "@/components/LineQuantity";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { bulkMarkInvoicesPaid, getInvoice, voidInvoice } from "@/lib/invoices.functions";
 import { showsTaxLine, taxLineLabel } from "@/lib/sales-tax";
 import { useRecordPaymentDialog, type RecordPaymentAnswer } from "@/components/RecordPaymentDialog";
@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import { pageTitle, titleHead, useDocumentTitle } from "@/lib/page-title";
 import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
 import { isInvoiceOverdue } from "@/lib/overdue";
+import { toastSaveError } from "@/lib/stale-write-toast";
 
 export const Route = createFileRoute("/_authenticated/invoices/$invoiceId")({
   head: () => titleHead("Invoice"),
@@ -116,8 +117,23 @@ function InvoiceDetail() {
   // Payment Element. Same component the invoice drawer embeds.
   const [payOpen, setPayOpen] = useState(false);
 
+  // `version` is the invoice as this page showed it when Record payment was
+  // pressed. A payment or a void somebody else saved since makes the server
+  // refuse this one and the page offer Reload (#655).
+  const reloadInvoice = () => {
+    qc.invalidateQueries({ queryKey: ["invoice", invoiceId] });
+    qc.invalidateQueries({ queryKey: ["invoice-detail", invoiceId] });
+    qc.invalidateQueries({ queryKey: ["invoices"] });
+  };
   const recordM = useMutation({
-    mutationFn: (how: RecordPaymentAnswer) => paidFn({ data: { ids: [invoiceId], ...how } }),
+    mutationFn: ({ how, version }: { how: RecordPaymentAnswer; version?: string | null }) =>
+      paidFn({
+        data: {
+          ids: [invoiceId],
+          ...how,
+          ...(version !== undefined ? { expectedVersion: version } : {}),
+        },
+      }),
     onSuccess: (r) => {
       if (!r.ok) {
         toast.error(
@@ -142,16 +158,25 @@ function InvoiceDetail() {
       qc.invalidateQueries({ queryKey: ["invoice-detail", invoiceId] });
       qc.invalidateQueries({ queryKey: ["invoices"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toastSaveError(e, reloadInvoice),
   });
 
+  // The version when the Void confirm opened, not when it was confirmed: a
+  // refetch while the dialog is up must not make a stale void look fresh.
+  const voidFrom = useRef<string | null | undefined>(undefined);
   const voidM = useMutation({
-    mutationFn: async () => voidFn({ data: { id: invoiceId } }),
+    mutationFn: async () =>
+      voidFn({
+        data: {
+          id: invoiceId,
+          ...(voidFrom.current !== undefined ? { expectedVersion: voidFrom.current } : {}),
+        },
+      }),
     onSuccess: () => {
       toast.success("Invoice voided");
       qc.invalidateQueries({ queryKey: ["invoice", invoiceId] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toastSaveError(e, reloadInvoice),
   });
 
   const emailFn = useServerFn(sendInvoiceEmail);
@@ -381,11 +406,12 @@ function InvoiceDetail() {
               disabled={recordM.isPending}
               onClick={async () => {
                 const due = invoiceDueCents(invoice);
+                const version = q.data?.version;
                 const how = await askPayment({
                   amountLine: `${fmtCents(due, invoice.currency)} is still owed${client?.display_name ? ` by ${client.display_name}` : ""}. The invoice is marked paid when the balance reaches zero. A payment can't be undone here.`,
                   balanceCents: due,
                 });
-                if (how) recordM.mutate(how);
+                if (how) recordM.mutate({ how, version });
               }}
             >
               Record payment
@@ -443,6 +469,9 @@ function InvoiceDetail() {
             title="Void this invoice?"
             description="Voiding removes this invoice from the client's balance and can't be undone."
             confirmLabel="Void invoice"
+            onOpen={() => {
+              voidFrom.current = q.data?.version;
+            }}
             onConfirm={() => voidM.mutate()}
             disabled={voidM.isPending}
           >

@@ -50,6 +50,7 @@ import { reportQueuedSend } from "@/lib/send-report";
 // working; the implementation now lives in the shared domain lib (I3).
 export { isInvoiceOverdue } from "@/lib/overdue";
 import { isInvoiceOverdue } from "@/lib/overdue";
+import { toastSaveError } from "@/lib/stale-write-toast";
 import { invoiceDueCents, isPartiallyPaid } from "@/lib/ar";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
 import { appUrl } from "@/lib/app-origin";
@@ -103,17 +104,34 @@ export function InvoiceDrawer({
     onChanged?.();
   };
 
+  // `version` is the invoice as this drawer showed it. A payment or a void
+  // somebody else saved since makes the server refuse this one and the
+  // drawer offer Reload (#655).
   const voidMut = useMutation({
-    mutationFn: () => voidFn({ data: { id: invoiceId! } }),
+    // `version` is read when the Void confirm opens, below.
+    mutationFn: (version: string | null | undefined) =>
+      voidFn({
+        data: {
+          id: invoiceId!,
+          ...(version !== undefined ? { expectedVersion: version } : {}),
+        },
+      }),
     onSuccess: () => {
       toast.success("Invoice voided");
       refresh();
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toastSaveError(e, refresh),
   });
 
   const recordMut = useMutation({
-    mutationFn: (how: RecordPaymentAnswer) => paidFn({ data: { ids: [invoiceId!], ...how } }),
+    mutationFn: ({ how, version }: { how: RecordPaymentAnswer; version?: string | null }) =>
+      paidFn({
+        data: {
+          ids: [invoiceId!],
+          ...how,
+          ...(version !== undefined ? { expectedVersion: version } : {}),
+        },
+      }),
     onSuccess: (r) => {
       if (!r.ok) {
         toast.error(
@@ -136,7 +154,7 @@ export function InvoiceDrawer({
       qc.invalidateQueries({ queryKey: ["billing-summary"] });
       refresh();
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toastSaveError(e, refresh),
   });
 
   const creditCents = inv?.credit_applied_cents ?? 0;
@@ -145,11 +163,12 @@ export function InvoiceDrawer({
 
   const recordPayment = async () => {
     if (!inv) return;
+    const version = data?.version;
     const how = await askPayment({
       amountLine: `${fmtCents(dueCents, inv.currency ?? "usd")} is still owed${client?.display_name ? ` by ${client.display_name}` : ""}. The invoice is marked paid when the balance reaches zero. A payment can't be undone here.`,
       balanceCents: dueCents,
     });
-    if (how) recordMut.mutate(how);
+    if (how) recordMut.mutate({ how, version });
   };
 
   const emailMut = useMutation({
@@ -361,6 +380,7 @@ export function InvoiceDrawer({
                   className="text-muted-foreground hover:text-destructive"
                   disabled={voidMut.isPending}
                   onClick={async () => {
+                    const version = data?.version;
                     if (
                       await confirm({
                         title: "Void this invoice?",
@@ -370,7 +390,7 @@ export function InvoiceDrawer({
                         confirmLabel: "Void invoice",
                       })
                     )
-                      voidMut.mutate();
+                      voidMut.mutate(version);
                   }}
                 >
                   <Ban className="mr-1 h-3.5 w-3.5 shrink-0" /> Void
