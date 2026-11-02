@@ -5,6 +5,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { formatWeekdaySet, normalizeWeekdays } from "@/lib/weekday-set";
 import { MAX_MULTIPLIER, MIN_MULTIPLIER } from "@/lib/frequency-multipliers";
+import { endServiceDecision } from "@/lib/subscription-form";
 
 // Scheduling model (client detail refactor): the five UI choices map to
 //   Weekly            -> weekly (interval_weeks null/1)
@@ -709,15 +710,20 @@ export const endSubscription = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const sub = await loadSubForLifecycle(supabase, userId, data.subscriptionId);
-    if (data.effectiveDate < sub.started_on)
-      throw new Error("End date can't be before the service started");
 
     // ends_on drives generation (it stops there) and the DB trigger trims
     // future scheduled visits past it. Rows are never deleted here. Status
     // flips to canceled once the end date is reached; a future-dated end
     // stays active until then (visits through the end date still happen)
-    // and the isServiceEnded helper handles the flip in the UI.
+    // and the isServiceEnded helper handles the flip in the UI. A service
+    // that has not started may end before its start (#676): it never runs.
     const today = new Date().toISOString().slice(0, 10);
+    const decision = endServiceDecision({
+      startedOn: sub.started_on,
+      effectiveDate: data.effectiveDate,
+      today,
+    });
+    if (!decision.ok) throw new Error(decision.error);
     const { error } = await supabase
       .from("subscriptions")
       .update({
@@ -726,7 +732,7 @@ export const endSubscription = createServerFn({ method: "POST" })
         end_notes: data.notes || null,
         ended_by: userId,
         paused_at: null,
-        status: data.effectiveDate <= today ? "canceled" : "active",
+        status: decision.status,
       })
       .eq("id", sub.id);
     if (error) throw new Error(error.message);
@@ -763,7 +769,9 @@ export const deleteDraftSubscription = createServerFn({ method: "POST" })
       .eq("subscription_id", sub.id);
     if (lErr) throw new Error(lErr.message);
     if ((doneCount ?? 0) > 0 || (lineCount ?? 0) > 0)
-      throw new Error("This service has history. End it instead of deleting.");
+      throw new Error(
+        "This service has history, so it can't be deleted. Use End service… in its menu instead.",
+      );
 
     const { error: dvErr } = await supabase
       .from("visits")
