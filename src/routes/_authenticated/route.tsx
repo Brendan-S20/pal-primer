@@ -40,7 +40,7 @@ import { MobileTabBar } from "@/components/MobileTabBar";
 import { TimeClockSheetHost } from "@/components/TimeClock";
 import { RouteLockScreenHost } from "@/components/my-day/RouteLockScreen";
 import { sidebarDocksFrom, useTabletTier } from "@/hooks/useTabletTier";
-import { useMyRole } from "@/hooks/useMyRole";
+import { useMyRole, deniedRouteDestination } from "@/hooks/useMyRole";
 import { RoleGuard } from "@/components/RoleGuard";
 import { CommandPalette } from "@/components/CommandPalette";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -281,9 +281,31 @@ function AppShell() {
   const redirecting = useMatches({
     select: (matches) => matches.some((match) => match.staticData.clientRedirect),
   });
+  // The page actually drawn (the deepest match), not the location, which moves
+  // as soon as a navigation starts.
+  const drawnPath = useMatches({ select: (matches) => matches[matches.length - 1]?.pathname });
+  const { role } = useMyRole();
+  const denied = !!drawnPath && deniedRouteDestination(role, drawnPath) !== null;
   // An alias has no page to preload links for. Mount the shell at the target,
   // so its render-time preloads cannot race the alias replacing their matches.
   if (redirecting) return <Outlet />;
+  // #682: the same race for a page this role may not open. The shell's tab
+  // bar preloads every tab as it renders, RoleGuard navigates away while those
+  // preloads are still running, and each one then logged "Cannot read
+  // properties of undefined (reading '_nonReactive')". So a refused page
+  // mounts neither the shell nor the page itself (whose queries the server
+  // would refuse anyway); RoleGuard sends the person on from here. Not a
+  // beforeLoad redirect: one thrown by this layout to a page under it leaves
+  // the shared layout match redirected with no promise to suspend on, and
+  // the root error boundary catches it (RedirectFallback says the same).
+  if (denied) {
+    return (
+      <>
+        <ShellPending />
+        <RoleGuard />
+      </>
+    );
+  }
   return <WorkspaceShell />;
 }
 
