@@ -212,6 +212,8 @@ export async function requestGroomFromPortal(
     bufferMin: page.bufferMin,
   });
   const window = GROOM_WINDOWS[input.window];
+  // rpc-role: service. The only caller (portal-groom.functions.ts) passes
+  // admin(); the function is granted to service_role only.
   const { data: rows, error } = await db.rpc("portal_request_groom", {
     _token: token,
     _dog_id: input.dogId,

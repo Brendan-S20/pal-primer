@@ -155,4 +155,27 @@ describe("and the question it asks is one Postgres can answer", () => {
     const at = site.indexOf('rpc("generate_visits_core"');
     expect(site.slice(Math.max(0, at - 200), at)).toMatch(/rpc-role: service/);
   });
+
+  // #684: both are portal reads/writes reached only through admin(), and both
+  // migrations raise if anon or authenticated can EXECUTE them. Unmarked, the
+  // check read `db` and `sb` as the request client and asked for a GRANT that
+  // would have undone the portal lockdown.
+  it.each([
+    ["src/lib/portal-groom.server.ts", "portal_request_groom"],
+    ["src/lib/training-portal.server.ts", "portal_training_lesson_notes"],
+  ])("marks %s's call to %s as service-role", (file, fn) => {
+    const site = readFileSync(join(import.meta.dirname, "..", file), "utf8");
+    const at = site.indexOf(`rpc("${fn}"`);
+    expect(at).toBeGreaterThan(-1);
+    const before = site.slice(0, at).split("\n").slice(-4).join("\n");
+    expect(before).toMatch(/rpc-role:\s*service/);
+  });
+
+  it.each([
+    ["portal-groom.functions.ts", "requestGroomFromPortal(await admin()"],
+    ["portal-training.functions.ts", "loadPortalTraining(await admin()"],
+  ])("%s hands the server code the admin client", (file, call) => {
+    const src = readFileSync(join(import.meta.dirname, "../src/lib", file), "utf8");
+    expect(src).toContain(call);
+  });
 });
