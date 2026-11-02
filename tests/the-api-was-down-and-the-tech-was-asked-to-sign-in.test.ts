@@ -200,3 +200,91 @@ describe("the wiring", () => {
     expect(src).toMatch(/landingPathForUser\(identity\.userId, identity\.verified\)/);
   });
 });
+
+describe("the probe asks the network, not supabase-js's memory of the outage", () => {
+  beforeEach(() => {
+    forgetVerifiedIdentity();
+    auth.getUser.mockReset();
+    auth.getSession.mockReset();
+    auth.getSession.mockResolvedValue({ data: { session: { user: USER } } });
+  });
+
+  it("touches no session while the health check gets no answer", async () => {
+    auth.getUser.mockResolvedValue({ data: { user: USER }, error: null });
+    expect(await probeIdentity(async () => false)).toBe("unreachable");
+    expect(auth.getUser).not.toHaveBeenCalled();
+  });
+
+  it("asks who is signed in once the health check answers", async () => {
+    auth.getUser.mockResolvedValue({ data: { user: USER }, error: null });
+    expect(await probeIdentity(async () => true)).toBe("verified");
+    expect(auth.getUser).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads a gateway 5xx or a failed fetch as no answer, and any other status as an answer", async () => {
+    const { authServerAnswers } = await import("@/lib/offline/identity");
+    const { supabase } = await import("@/integrations/supabase/client");
+    const authClient = supabase.auth as unknown as { url?: string };
+    authClient.url = "https://api.example.test/auth/v1";
+    try {
+      const at = (status: number) => vi.fn(async () => new Response(null, { status }));
+      for (const s of [502, 503, 504]) expect(await authServerAnswers(at(s) as never)).toBe(false);
+      for (const s of [200, 401, 404]) expect(await authServerAnswers(at(s) as never)).toBe(true);
+      const fails = vi.fn(async () => {
+        throw new TypeError("Load failed");
+      });
+      expect(await authServerAnswers(fails as never)).toBe(false);
+      const ok = at(200);
+      await authServerAnswers(ok as never);
+      expect(ok).toHaveBeenCalledWith("https://api.example.test/auth/v1/health", expect.anything());
+    } finally {
+      delete authClient.url;
+    }
+  });
+
+  it("drops the refresh failure supabase-js cached during the outage", async () => {
+    const { forgetCachedRefreshFailure } = await import("@/lib/offline/identity");
+    const { supabase } = await import("@/integrations/supabase/client");
+    const authClient = supabase.auth as unknown as { lastRefreshFailure?: unknown };
+    authClient.lastRefreshFailure = { refreshToken: "r", expiresAt: Date.now() + 60_000 };
+    try {
+      forgetCachedRefreshFailure();
+      expect(authClient.lastRefreshFailure).toBeNull();
+    } finally {
+      delete authClient.lastRefreshFailure;
+    }
+  });
+
+  it("the installed supabase-js still caches refresh failures under the name this clears", () => {
+    // If an upgrade renames the field, forgetCachedRefreshFailure becomes a
+    // silent no-op and recovery waits out the cooldown again. Fail here instead.
+    const src = readFileSync(
+      join(process.cwd(), "node_modules/@supabase/auth-js/dist/module/GoTrueClient.js"),
+      "utf8",
+    );
+    expect(src).toMatch(/this\.lastRefreshFailure\s*=\s*\{/);
+    expect(src).toMatch(/this\.lastRefreshFailure\.refreshToken === refreshToken/);
+  });
+});
+
+describe("a probe that never answers does not stop the loop", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("counts a hung probe as unreachable and asks again", async () => {
+    const { PROBE_DEADLINE_MS } = await import("@/lib/offline/api-recovery");
+    const target = fakeTarget();
+    const onAnswer = vi.fn();
+    let calls = 0;
+    const probe = vi.fn((): Promise<ApiProbeResult> => {
+      calls += 1;
+      return calls === 1 ? new Promise(() => {}) : Promise.resolve("verified");
+    });
+    startApiRecovery({ probe, onAnswer, isOffline: () => false, target });
+    await vi.advanceTimersByTimeAsync(RECOVERY_DELAYS_MS[0]);
+    expect(probe).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(PROBE_DEADLINE_MS + RECOVERY_DELAYS_MS[1]);
+    expect(probe).toHaveBeenCalledTimes(2);
+    expect(onAnswer).toHaveBeenCalledWith("verified");
+  });
+});

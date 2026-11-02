@@ -206,12 +206,81 @@ export async function resolveIdentity(): Promise<IdentityResult> {
     : { ok: false, rejected: false };
 }
 
+/** How long the bare health check may take before it counts as no answer. */
+export const HEALTH_DEADLINE_MS = 4_000;
+
+/**
+ * Does the auth server answer at all? A plain GET of its /health: no session,
+ * no auth lock, no refresh. Any answer under 500 counts, because only a
+ * gateway 5xx or a failed fetch means the API is still down.
+ *
+ * Why not just call getUser(): while the API was down, supabase-js tried to
+ * refresh the access token and failed, and it caches that failure for
+ * REFRESH_FAILURE_COOLDOWN_MS (60s) per refresh token. Every getUser() in
+ * that window replays the cached failure WITHOUT sending a request, and a
+ * refresh in flight can hold the auth lock for up to 30s of retries. So for
+ * up to a minute and a half after the API came back, every recovery probe
+ * read "unreachable" from the device, which fits the #622 web smoke seeing
+ * no new API requests for 47s after the block was lifted. This check asks
+ * the network directly.
+ *
+ * Cannot tell where to ask (a test client with no url): answers true and
+ * leaves the question to resolveIdentity, as before this existed.
+ */
+export async function authServerAnswers(fetchImpl: typeof fetch = fetch): Promise<boolean> {
+  const url = (supabase.auth as unknown as { url?: unknown }).url;
+  if (typeof url !== "string" || !url) return true;
+  const key = (supabase as unknown as { supabaseKey?: unknown }).supabaseKey;
+  const ctrl = typeof AbortController === "function" ? new AbortController() : null;
+  const timer = setTimeout(() => ctrl?.abort(), HEALTH_DEADLINE_MS);
+  try {
+    const res = await withDeadline(
+      fetchImpl(`${url}/health`, {
+        method: "GET",
+        cache: "no-store",
+        headers: typeof key === "string" && key ? { apikey: key } : undefined,
+        signal: ctrl?.signal,
+      }),
+      HEALTH_DEADLINE_MS,
+      "auth health",
+    );
+    return res.status < 500;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * The auth server answered again, so the refresh failure supabase-js cached
+ * while it was down is about an outage that is over. Dropping it lets the
+ * next getSession()/getUser() actually refresh instead of replaying the
+ * failure for the rest of the cooldown. This is what supabase-js itself does
+ * when another tab reports a successful refresh. The field is private;
+ * tests/the-api-was-down-and-the-tech-was-asked-to-sign-in.test.ts fails if
+ * an upgrade renames it, rather than this silently becoming a no-op.
+ */
+export function forgetCachedRefreshFailure(): void {
+  const client = supabase.auth as unknown as { lastRefreshFailure?: unknown };
+  if (client && "lastRefreshFailure" in client) client.lastRefreshFailure = null;
+}
+
 /**
  * One question to the auth server for lib/offline/api-recovery.ts: is the API
  * answering again, and if so, is this session still good? "unreachable" is
  * every answer that came from the device rather than the server.
+ *
+ * Asks the bare health endpoint first: while it is down, nothing touches the
+ * session (no refresh attempt, no new cached failure, no lock held). Once it
+ * answers, the outage's cached refresh failure is dropped and the real
+ * identity check runs.
  */
-export async function probeIdentity(): Promise<"verified" | "rejected" | "unreachable"> {
+export async function probeIdentity(
+  answers: () => Promise<boolean> = authServerAnswers,
+): Promise<"verified" | "rejected" | "unreachable"> {
+  if (!(await answers())) return "unreachable";
+  forgetCachedRefreshFailure();
   const identity = await resolveIdentity();
   if (identity.ok) return identity.verified ? "verified" : "unreachable";
   return identity.rejected ? "rejected" : "unreachable";
