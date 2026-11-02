@@ -33,13 +33,39 @@ export const listOrgUsers = createServerFn({ method: "GET" })
     return { users: data ?? [] };
   });
 
+/**
+ * D7 (#659, decided by Brendan 2026-11-02): only an owner turns a person on
+ * or off, or changes anybody's role -- and so only an owner can make somebody
+ * an owner. Settings -> Users already showed these controls to the owner
+ * alone; setStaffActive did not ask at all, so an office manager could
+ * deactivate any teammate through it. The database refuses the same things
+ * (set_staff_active, change_user_role, and the restrictive policies on staff
+ * in 20261102140000); this is the readable sentence, not the only lock.
+ */
+export const ONLY_AN_OWNER_TURNS_PEOPLE_ON_OR_OFF = "Only an owner can turn people on or off.";
+export const ONLY_AN_OWNER_CHANGES_ROLES = "Only an owner can change roles.";
+
+async function requireOwner(
+  supabase: unknown,
+  userId: string,
+  refusal: string,
+): Promise<{ orgId: string }> {
+  const caller = await resolveCaller(supabase, userId);
+  if (caller.role !== "owner") throw new Error(refusal);
+  return { orgId: caller.orgId };
+}
+
 const roleEnum = z.enum(["owner", "office_manager", "dispatcher", "tech"]);
 
 export const changeUserRole = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ userId: z.string().uuid(), role: roleEnum }).parse(d))
   .handler(async ({ data, context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const { orgId } = await requireOwner(
+      context.supabase,
+      context.userId,
+      ONLY_AN_OWNER_CHANGES_ROLES,
+    );
     const { error } = await context.supabase.rpc("change_user_role", {
       _org_id: orgId,
       _user_id: data.userId,
@@ -67,12 +93,17 @@ export const setStaffActive = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ staffId: z.string().uuid(), active: z.boolean() }).parse(d))
   .handler(async ({ data, context }) => {
+    // Owner only (D7, #659), asked before anything is read or written.
+    const { orgId } = await requireOwner(
+      context.supabase,
+      context.userId,
+      ONLY_AN_OWNER_TURNS_PEOPLE_ON_OR_OFF,
+    );
     // Enabling somebody past the plan's team-size cap is refused here, before
     // the write, with the sentence the owner needs (NP-10). The database
     // trigger staff_team_size_cap refuses it too, for callers that reach the
     // RPC without this function. Turning somebody OFF is never refused.
     if (data.active) {
-      const orgId = await resolveOrgId(context.supabase, context.userId);
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
       const { data: row } = await (supabaseAdmin as any)
         .from("staff")
@@ -107,7 +138,6 @@ export const setStaffActive = createServerFn({ method: "POST" })
     // than theirs.
     let seats: SeatOutcome = { state: "unknown" };
     try {
-      const orgId = await resolveOrgId(context.supabase, context.userId);
       const { syncOrgSeatQuantity } = await import("@/lib/seat-sync.server");
       const r = await syncOrgSeatQuantity(orgId);
       seats =
