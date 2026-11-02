@@ -165,7 +165,14 @@ jobs:
         continue-on-error: true
         run: node scripts/runner-headroom.mjs
 
+      # Node sizes its default heap from the machine's RAM. On a 7 GB
+      # GitHub-hosted runner that is about 2 GB, and tsc ran out of heap there
+      # on 2026-11-02 (#694, VERIFY_RUNNER_JSON trial). The self-hosted
+      # machines have more RAM and a larger default, so this only matters on a
+      # hosted image, but it is harmless on all of them.
       - name: Typecheck
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: npx tsc --noEmit
 
       # `npm test` is `vitest run` — the whole suite, discovered.
