@@ -187,10 +187,11 @@ export function InvoiceDrawer({
 
   const copyPayLink = () => {
     if (!inv) return;
-    // linkUrl(), not window.location.origin: this link goes to a CUSTOMER, and
-    // the origin the staffer happens to be on is not necessarily the host the
-    // product lives at — a Lovable preview URL would produce a pay link that
-    // works today and 404s next week. See src/lib/app-origin.ts.
+    // linkUrl(), not a raw window.location.origin: this link goes to a
+    // CUSTOMER. linkUrl names the host this build runs on (#660), except a
+    // Lovable preview, which would give a pay link that 404s next week, and a
+    // native bundle, whose own origin nobody else can open. See
+    // src/lib/app-origin.ts.
     const url = linkUrl(`/pay/i/${inv.public_token}`);
     navigator.clipboard.writeText(url).then(
       () => {

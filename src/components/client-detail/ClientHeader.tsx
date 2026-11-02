@@ -186,7 +186,7 @@ export function ClientHeader({
   });
 
   const slug = (orgData?.organization as any)?.portal_slug as string | undefined;
-  // linkUrl(), never window.location.origin. This address is READ ALOUD to a
+  // linkUrl(), never a raw window.location.origin. This address is READ ALOUD to a
   // customer and pasted into their browser, and inside the iOS binary the page
   // origin is `capacitor://localhost` — so the app was showing staff
   // `capacitor://localhost/portal/...`, which is not a link anybody can open.
