@@ -160,6 +160,36 @@ back to the PC with the variable above.
 
 Concurrency: pull-request runs of the same branch cancel the superseded run.
 Runs on main and manual runs are never cancelled, not even while pending.
+See the next section for what that means when the pool is thin.
+
+## Superseded runs cancel themselves (ops guidance)
+
+The pool is two machines (the Mac and DESKTOP-JUC6SL1). A Sandboxes viewport
+job can hold one of them for close to an hour, so a run on a commit that is
+no longer the PR head is a machine nobody else can use.
+
+- **Superseded PR runs cancel automatically.** `ci.yml` and `sandboxes.yml`
+  each key their `concurrency` group on the workflow and the PR ref
+  (`refs/pull/<n>/merge`) with `cancel-in-progress` on for `pull_request`. A
+  new push to the PR cancels the older CI and Sandboxes runs, including one
+  still queued. Push again rather than cancelling by hand.
+- **main is never cancelled.** Push and manual runs are grouped by their own
+  run id, so two merges in a row both finish and every main commit gets a
+  result.
+- **A fresh draft tip beats an obsolete Device run.** If an old run is still
+  on a machine after a newer push (for example because it was started by
+  hand, so it is not in the PR group), cancel it from the Actions page. A
+  result for a commit that is no longer the head is not worth an hour of the
+  pool.
+- **One heavy Windows Sandboxes lane when the pool is thin.** With only
+  DESKTOP-JUC6SL1 up, let one Sandboxes run hold it at a time and queue the
+  rest behind it, rather than starting the full browser suite on several PRs
+  at once. This is a habit, not a runner label; the labels stay as listed
+  above.
+- **Run the full browser suite late.** A migration-only PR needs the
+  `database` job, not the one-off and four-width sweeps. Leave the full
+  browser suite for when the PR is about to be approved or marked ready.
+  The `pull_request` path filters in `sandboxes.yml` are unchanged.
 
 ## What the machine needs
 
