@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- the Supabase client is passed in so a test can hand it a fake, as in refunds.server.ts */
 // The two writes a refund makes besides the reversal ledger (#674, #675),
 // called from the Stripe webhook's `charge.refunded` and
 // `charge.refund.updated` branches — the only place a tenant refund is
@@ -12,6 +11,7 @@
 // are best-effort and log rather than throw: the reversal ledger and the
 // payment's status are the facts that have to land, and these follow them.
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   invoicedShareRefunded,
   signupRefundPatch,
@@ -30,7 +30,7 @@ import {
  * figure is current and may lower it (a refund that failed).
  */
 export async function recordRefundOnPayment(
-  supabaseAdmin: any,
+  supabaseAdmin: SupabaseClient,
   pay: RefundablePayment & { id: string },
   amountRefundedCents: number,
   opts: { authoritative?: boolean } = {},
@@ -61,7 +61,7 @@ export async function recordRefundOnPayment(
  * payment belongs to.
  */
 export async function recordRefundOnSignup(
-  supabaseAdmin: any,
+  supabaseAdmin: SupabaseClient,
   where: { organizationId: string; paymentIntentId: string },
   ev: { refundId: string | null; amountRefundedCents: number; at: string; authoritative?: boolean },
 ): Promise<Partial<SignupRefundRow> | null> {
