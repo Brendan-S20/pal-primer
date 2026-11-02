@@ -17,6 +17,7 @@ import { centsToDollarInput, parseDollarsToCents } from "@/lib/services";
 import { useClientTexting } from "@/hooks/useClientTexting";
 import { ComingSoonBadge } from "@/components/ComingSoonBadge";
 import { clientNameFormDefaults } from "@/lib/client-name";
+import { toastSaveError } from "@/lib/stale-write-toast";
 
 export function EditClientDrawer({
   open,
@@ -66,27 +67,44 @@ export function EditClientDrawer({
   const wasOpen = useRef(false);
   const seededClientId = useRef<string | null>(null);
   const edited = useRef(false);
+  // The client's updated_at when the form was filled, sent with the save so
+  // a save made by somebody else in the meantime is not overwritten (#655).
+  // Kept from the moment of seeding: a background refetch updates `client`
+  // but not what the person is looking at in the form.
+  const seededUpdatedAt = useRef<string | null | undefined>(undefined);
+  // Bumped by Reload after a refused save, to fill the form again.
+  const [reloads, setReloads] = useState(0);
+  const seededReloads = useRef(0);
   useEffect(() => {
     if (!open) {
       wasOpen.current = false;
       seededClientId.current = null;
       edited.current = false;
+      seededUpdatedAt.current = undefined;
       return;
     }
 
     const loadedClientId = client?.id ?? null;
     const shouldSeed =
       !wasOpen.current ||
+      seededReloads.current !== reloads ||
       (!!loadedClientId && seededClientId.current !== loadedClientId && !edited.current);
 
     if (shouldSeed) {
       setForm(initial);
       seededClientId.current = loadedClientId;
+      seededUpdatedAt.current = client?.updated_at ?? undefined;
+      seededReloads.current = reloads;
       edited.current = false;
     }
 
     wasOpen.current = open;
-  }, [open, initial, client?.id]);
+  }, [open, initial, client?.id, client?.updated_at, reloads]);
+
+  const reload = async () => {
+    await qc.refetchQueries({ queryKey: ["client", clientId] });
+    setReloads((n) => n + 1);
+  };
 
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
   const { enabled: commercialEnabled } = useCommercialAccounts();
@@ -152,6 +170,9 @@ export function EditClientDrawer({
             ? { emergencyContactMayApproveVet: form.emergencyMayApproveVet }
             : {}),
           ...(form.vetLimit !== initial.vetLimit ? { vetTreatmentLimitCents: vetLimitCents } : {}),
+          ...(seededUpdatedAt.current !== undefined
+            ? { expectedUpdatedAt: seededUpdatedAt.current }
+            : {}),
         },
       }),
     onSuccess: () => {
@@ -160,7 +181,7 @@ export function EditClientDrawer({
       qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
       onClose();
     },
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e) => toastSaveError(e, () => void reload()),
   });
 
   return (

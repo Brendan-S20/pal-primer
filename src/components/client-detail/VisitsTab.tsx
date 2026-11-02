@@ -47,6 +47,7 @@ import {
   nowAsCalledAt,
 } from "@/components/training/ClientCalledAtField";
 import { orgToday } from "@/lib/org-day";
+import { toastSaveError } from "@/lib/stale-write-toast";
 
 /** A skip's reason as words: a code through the office's labels, free text
  *  (from before reasons were codes) as it was typed. */
@@ -748,9 +749,7 @@ function VisitTable({
                     />
                   )}
                   {v.status === "skipped" && (v.skip_reason_code || v.skip_reason) && (
-                    <span className="ml-1 text-xs text-muted-foreground">
-                      {skipReasonText(v)}
-                    </span>
+                    <span className="ml-1 text-xs text-muted-foreground">{skipReasonText(v)}</span>
                   )}
                   {v.is_deepclean && <MetaChip className="ml-1">Deep clean</MetaChip>}
                 </td>
@@ -1008,6 +1007,12 @@ function VisitDetailDrawer({
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const correctFn = useServerFn(correctVisitTimestamps);
   const [correcting, setCorrecting] = useState(false);
+  // The visit's updated_at when the correction form or the reschedule form
+  // was opened. Sent with the save so somebody else's save in the meantime
+  // is refused rather than overwritten (#655). Kept from the moment the form
+  // opened, since `v` follows the list as it refetches.
+  const [correctingFrom, setCorrectingFrom] = useState<string | null | undefined>(undefined);
+  const [rescheduleFrom, setRescheduleFrom] = useState<string | null | undefined>(undefined);
   const [startedAt, setStartedAt] = useState("");
   const [completedAt, setCompletedAt] = useState("");
   const [reason, setReason] = useState("");
@@ -1059,12 +1064,23 @@ function VisitDetailDrawer({
     onError: (e) => toast.error((e as Error).message),
   });
   const rescheduleMut = useMutation({
-    mutationFn: () => rescheduleFn({ data: { visitId: v.id, newDate } }),
+    mutationFn: () =>
+      rescheduleFn({
+        data: {
+          visitId: v.id,
+          newDate,
+          ...(rescheduleFrom !== undefined ? { expectedUpdatedAt: rescheduleFrom } : {}),
+        },
+      }),
     onSuccess: (r) => {
       warnLessonClashes(r);
       afterAction("Visit rescheduled", r.clash);
     },
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e) =>
+      toastSaveError(e, () => {
+        qc.invalidateQueries({ queryKey: ["client-visit-history", clientId] });
+        setAction(null);
+      }),
   });
   const cancelMut = useMutation({
     mutationFn: () =>
@@ -1096,6 +1112,7 @@ function VisitDetailDrawer({
           startedAt: fromLocalInput(startedAt),
           completedAt: fromLocalInput(completedAt),
           reason: reason.trim(),
+          ...(correctingFrom !== undefined ? { expectedUpdatedAt: correctingFrom } : {}),
         },
       }),
     onSuccess: () => {
@@ -1106,7 +1123,11 @@ function VisitDetailDrawer({
       qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
       onClose();
     },
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e) =>
+      toastSaveError(e, () => {
+        qc.invalidateQueries({ queryKey: ["client-visit-history", clientId] });
+        setCorrecting(false);
+      }),
   });
 
   if (!v) return null;
@@ -1237,7 +1258,10 @@ function VisitDetailDrawer({
                 <Button
                   size="sm"
                   variant={action === "reschedule" ? "default" : "outline"}
-                  onClick={() => setAction(action === "reschedule" ? null : "reschedule")}
+                  onClick={() => {
+                    setRescheduleFrom(v.updated_at);
+                    setAction(action === "reschedule" ? null : "reschedule");
+                  }}
                 >
                   Reschedule…
                 </Button>
@@ -1407,6 +1431,7 @@ function VisitDetailDrawer({
                 onClick={() => {
                   setStartedAt(toLocalInput(v.started_at));
                   setCompletedAt(toLocalInput(v.completed_at));
+                  setCorrectingFrom(v.updated_at);
                   setCorrecting(true);
                 }}
               >
