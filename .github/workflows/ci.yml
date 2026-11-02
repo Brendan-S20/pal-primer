@@ -67,11 +67,14 @@ jobs:
     # Plain `self-hosted` matches BOTH DESKTOP-JUC6SL1 and Mac0s, so whichever
     # machine is online and idle takes this job. Every step is portable: the
     # Git Bash PATH step and the line-ending steps run only when
-    # runner.os == 'Windows'. PORTABLE_RUNNER_JSON (a repository variable,
-    # JSON) moves it without a commit:
-    #   '["self-hosted","Windows","X64"]'  back to the PC only
+    # runner.os == 'Windows'. VERIFY_RUNNER_JSON (a repository variable,
+    # JSON) moves this job alone without a commit; unset, it follows
+    # PORTABLE_RUNNER_JSON, the pool shared with the Sandboxes jobs:
+    #   '["self-hosted","macOS"]'          the Mac only
+    #   '["self-hosted","Windows","X64"]'  the PC only
     #   '"ubuntu-latest"'                  GitHub-hosted (billed minutes)
-    runs-on: ${{ fromJSON(vars.PORTABLE_RUNNER_JSON || '["self-hosted"]') }}
+    # See docs/self-hosted-runner.md. Rollback: delete VERIFY_RUNNER_JSON.
+    runs-on: ${{ fromJSON(vars.VERIFY_RUNNER_JSON || vars.PORTABLE_RUNNER_JSON || '["self-hosted"]') }}
     # A hosted runner is destroyed after each job; a self-hosted one is not, so
     # a wedged step there holds the machine until someone notices.
     #
@@ -121,8 +124,9 @@ jobs:
           node-version: 22
           # A self-hosted runner keeps its own npm cache, so the Actions cache
           # stays off there (its post-run save could fail a green job). It is
-          # on only when PORTABLE_RUNNER_JSON points at a GitHub-hosted image.
-          cache: ${{ contains(vars.PORTABLE_RUNNER_JSON || '', '-latest') && 'npm' || '' }}
+          # on only when the runner chosen above (VERIFY_RUNNER_JSON, else
+          # PORTABLE_RUNNER_JSON) is a GitHub-hosted image.
+          cache: ${{ contains(vars.VERIFY_RUNNER_JSON || vars.PORTABLE_RUNNER_JSON || '', '-latest') && 'npm' || '' }}
 
       # npm, not bun: package-lock.json resolves to the public registry, which
       # is reachable from CI.
