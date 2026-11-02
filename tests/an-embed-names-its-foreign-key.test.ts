@@ -21,24 +21,68 @@
 // database. An embed with two or more keys between its tables and no `!hint`
 // fails, and so does a hint that names no key or column between them.
 //
+// An embed whose name is neither a table nor a foreign key column of its
+// parent also fails: PostgREST answers that with PGRST200 (#683).
+//
+// A select passed through a helper, `scoped(select)`, is read at each call
+// of the helper. The name `select` is looked up where it is used, as the
+// language does: until #683 it was looked up file-wide, so a parameter
+// picked up an unrelated `const select` elsewhere in the file and the
+// database half failed on a query production never sends.
+//
 // types.ts is generated, and can lag a migration. The database half,
 // tests/integration/every-select-embed-resolves.db.test.ts, asks a real
 // PostgREST built from the migrations the same question, so a key types.ts
 // has not caught up with is caught there.
 
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   candidates,
   collectSelects,
   embedsOf,
   foreignKeysFromTypes,
+  relationsFromTypes,
+  type Fk,
 } from "./support/select-embeds";
 
 const root = join(import.meta.dirname, "..");
-const fks = () =>
-  foreignKeysFromTypes(readFileSync(join(root, "src/integrations/supabase/types.ts"), "utf8"));
+const typesTs = () => readFileSync(join(root, "src/integrations/supabase/types.ts"), "utf8");
+const fks = () => foreignKeysFromTypes(typesTs());
+
+/** Embeds that join a name that is neither a table nor, on the parent, a
+ *  single-column foreign key: PostgREST's PGRST200, "Could not find a
+ *  relationship between 'clients' and 'assigned_staff_id'". */
+function unknownTargets(
+  sites: { file: string; line: number; table: string; select: string }[],
+  all: Fk[],
+  relations: Set<string>,
+): string[] {
+  const bad: string[] = [];
+  for (const s of sites) {
+    for (const e of embedsOf(s.table, s.select, all)) {
+      if (relations.has(e.target)) continue;
+      bad.push(
+        `${s.file}:${s.line}  ${e.parent} -> ${e.text}: "${e.target}" is not a table, and not a foreign key column of ${e.parent} (PGRST200)`,
+      );
+    }
+  }
+  return bad;
+}
+
+/** A throwaway repo root holding one src/ file, for the collector. */
+function withSource<T>(source: string, run: (root: string) => T): T {
+  const dir = mkdtempSync(join(tmpdir(), "select-embeds-"));
+  try {
+    mkdirSync(join(dir, "src"));
+    writeFileSync(join(dir, "src", "x.ts"), source);
+    return run(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 describe("an embed names its foreign key when there is more than one", () => {
   it("reads the foreign keys out of types.ts", () => {
@@ -82,6 +126,64 @@ describe("an embed names its foreign key when there is more than one", () => {
       }
     }
     expect(bad, bad.join("\n")).toEqual([]);
+  });
+
+  it("every embed joins a table, or a foreign key column of its parent", () => {
+    const relations = relationsFromTypes(typesTs());
+    expect(relations.size).toBeGreaterThan(100);
+    expect(relations.has("clients")).toBe(true);
+    const bad = unknownTargets(collectSelects(root).sites, fks(), relations);
+    expect(bad, bad.join("\n")).toEqual([]);
+  });
+
+  it("would have caught clients -> staff:assigned_staff_id (#683)", () => {
+    // What the database half was sent for clients.functions.ts:637: the
+    // visits select, embedding the visit's tech by its column, against
+    // clients, which has no such column.
+    const all = fks();
+    const relations = relationsFromTypes(typesTs());
+    const site = {
+      file: "src/lib/clients.functions.ts",
+      line: 637,
+      table: "clients",
+      select: "id, assigned_staff_id, staff:assigned_staff_id(display_name)",
+    };
+    expect(unknownTargets([site], all, relations)).toHaveLength(1);
+    // The same embed hangs off visits, where the column is a foreign key.
+    expect(unknownTargets([{ ...site, table: "visits" }], all, relations)).toEqual([]);
+  });
+
+  it("looks a select's name up in its own scope, not anywhere in the file", () => {
+    const source = `
+      const db: any = null;
+      export function search() {
+        const cols = "id, display_name";
+        const scoped = (select: string) => db.from("clients").select(select);
+        scoped(\`\${cols}, properties(street)\`);
+        scoped(cols);
+      }
+      export function visits() {
+        const select = "id, staff:assigned_staff_id(display_name)";
+        return db.from("visits").select(select);
+      }
+      export function shadowed(select: string) {
+        return db.from("clients").select(select);
+      }
+    `;
+    const { sites, skipped } = withSource(source, (dir) => collectSelects(dir));
+    const at = (table: string) =>
+      sites
+        .filter((s) => s.table === table)
+        .map((s) => s.select)
+        .sort();
+    // The helper's parameter is read at each call of the helper.
+    expect(at("clients")).toEqual(["id, display_name", "id, display_name, properties(street)"]);
+    // The visits const stays with visits.
+    expect(at("visits")).toEqual(["id, staff:assigned_staff_id(display_name)"]);
+    // An exported function's parameter is not readable, and is not
+    // mistaken for the const of the same name above it.
+    expect(skipped.map((s) => [s.table, s.select])).toEqual([["clients", "select"]]);
+    expect(unknownTargets(sites, fks(), relationsFromTypes(typesTs()))).toEqual([]);
   });
 
   it("would have caught the select #603 shipped", () => {

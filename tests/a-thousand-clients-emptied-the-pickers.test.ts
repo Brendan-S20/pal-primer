@@ -7,7 +7,8 @@
 // One-off visit pickers. A 1,000-row import took 19 min 47 s.
 //
 // The acceptance this pins:
-//   * at 1,000 and 5,000 clients /clients answers in under 2 s;
+//   * at 1,000 and 5,000 clients /clients answers in under 2 s, which is
+//     asserted as round trips counted, not as time on the test machine;
 //   * the pickers find clients (not empty);
 //   * no request URL is over 2 KB;
 //   * a 1,000-row import is minutes at most, not twenty.
@@ -16,7 +17,7 @@
 // that answers like PostgREST, so the URLs measured are the URLs production
 // sends, not a reconstruction of them.
 
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
@@ -192,6 +193,25 @@ async function firstLoad() {
 
 const timings: string[] = [];
 
+// Every handler here loads its helpers with `await import(...)` before its
+// first request. Cold, on a loaded runner, one of those can take longer than
+// the fake's latency, so the summary's first request went out after the
+// page's had been answered and roundTrips read 2 where production makes 1
+// (#683: "expected 2 to be 1" at 1,000 clients, the first case in the file,
+// cleared by re-running). A server process loads these once, so the
+// question is about a warm one. Loaded here, once, on a small book; after
+// this nothing between a handler starting and its requests leaving waits on
+// a timer, so which requests go out side by side is decided by the code
+// alone and not by how fast the machine is.
+beforeAll(async () => {
+  useBook(60);
+  await firstLoad();
+  await listClientsPage({ data: { q: "client 4", status: "outstanding" } });
+  await listClients();
+  await searchClients({ data: {} });
+  await searchClients({ data: { q: "street 4" } });
+});
+
 describe("/clients at 1,000 and 5,000 clients", () => {
 
   it.each([1_000, 5_000])("opens in under 2 s at %i clients", async (n) => {
@@ -207,8 +227,8 @@ describe("/clients at 1,000 and 5,000 clients", () => {
     // side by side: one round trip, and a second only when the tags run past
     // a thousand rows. Counted, not timed: a wall-clock ceiling near the
     // fake's latency failed on a loaded CI runner (609 ms against 480) with
-    // the same requests, because it also measured this fake's own CPU.
-    expect(took).toBeLessThan(2_000);
+    // the same requests, because it also measured this fake's own CPU. The
+    // 2 s is what this count buys in production; the time is logged below.
     expect(roundTrips(seen)).toBe(n > 1_000 ? 2 : 1);
     expect(seen.filter((r) => r.url.includes("limit=50"))).toHaveLength(1);
     expect(tablesRead()).toEqual(["clients", "invoices"]);
@@ -255,7 +275,7 @@ describe("/clients at 1,000 and 5,000 clients", () => {
     // Two round trips: the candidates (by name and by street, side by side),
     // then the page's rows.
     expect(seen).toHaveLength(3);
-    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(roundTrips(seen)).toBe(2);
   });
 
   it("'Has balance' reads the clients with an open invoice, not the book", async () => {
@@ -456,12 +476,12 @@ describe("the pickers and Cmd-K search on the server", () => {
     // "street" (the longest word, so the one the database filters on) is on
     // every address. "4999" is on one: client 4899's, far down the list by
     // name. A fixed first batch of 80 never reached it.
-    const started = Date.now();
     const r = await searchClients({ data: { q: "street 4999", limit: 6 } });
     expect(r.clients.map((c: any) => c.street)).toContain("4999 Oak Street");
     // Batches that double: a handful of round trips, not one per 80 rows.
+    // Counted, so a slow machine cannot fail it (it read 9 sequential trips
+    // when this was written, about 1.1 s against a 60 ms database).
     expect(seen.length).toBeLessThanOrEqual(12);
-    expect(Date.now() - started).toBeLessThan(2_000);
   });
 
   it("keeps the longest possible query under 2 KB", async () => {
