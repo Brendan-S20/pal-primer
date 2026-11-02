@@ -72,9 +72,50 @@ export function maskPhone(phone: string): string {
   return digits.length >= 4 ? `•••• ${digits.slice(-4)}` : "your phone";
 }
 
+/** The sentence for a kind of second step this Supabase project has switched
+ *  off (Authentication > Multi-Factor in the dashboard; `[auth.mfa.totp]` /
+ *  `[auth.mfa.phone]` in supabase/config.toml for the local stack). */
+export const SECOND_STEP_UNAVAILABLE: Record<"totp" | "phone", string> = {
+  totp: "Authenticator apps aren't available for HoundStack yet.",
+  phone: "Text-message codes aren't set up for HoundStack yet.",
+};
+
+/** True when Supabase refused because enrolling (or verifying) this kind of
+ *  factor is switched off for the project: a setting, not something the
+ *  person did wrong. Matches the error code where the client gives one
+ *  (`mfa_totp_enroll_not_enabled`), and the message ("MFA enroll is disabled
+ *  for TOTP") where it does not. This only decides what the profile OFFERS;
+ *  it never loosens what the database requires (public.mfa_satisfied,
+ *  require_mfa_policy). */
+export function isSecondStepDisabled(e: unknown, type: "totp" | "phone"): boolean {
+  const code = String((e as { code?: string })?.code ?? "");
+  const msg = String((e as { message?: string })?.message ?? e ?? "");
+  if (new RegExp(`^mfa_${type}_(enroll|verify)_not_enabled$`).test(code)) return true;
+  const kind = type === "totp" ? "totp" : "(phone|sms)";
+  return new RegExp(`(enroll|verif)\\w*\\s+is\\s+disabled\\s+for\\s+${kind}`, "i").test(msg);
+}
+
+/** What the profile says in place of the buttons Supabase has switched off. */
+export function secondStepUnavailableNote(off: { totp: boolean; phone: boolean }): string {
+  const parts: string[] = [];
+  if (off.totp) parts.push(SECOND_STEP_UNAVAILABLE.totp);
+  if (off.phone) parts.push(SECOND_STEP_UNAVAILABLE.phone);
+  if (off.totp && off.phone) {
+    parts.push(
+      "Two-step sign-in can't be turned on until one of them is switched on. Your password still signs you in.",
+    );
+  }
+  return parts.join(" ");
+}
+
 /** A sentence for an MFA error, never Supabase's raw text on its own. */
 export function secondStepErrorMessage(e: unknown, type: "totp" | "phone" = "totp"): string {
   const msg = String((e as { message?: string })?.message ?? e ?? "");
+  if (isSecondStepDisabled(e, type)) {
+    return type === "totp"
+      ? SECOND_STEP_UNAVAILABLE.totp
+      : `${SECOND_STEP_UNAVAILABLE.phone} Use an authenticator app instead.`;
+  }
   if (/invalid.*(totp|code)|code.*invalid|expired/i.test(msg)) {
     return "That code didn't work. Codes change every 30 seconds; enter the one showing now.";
   }
