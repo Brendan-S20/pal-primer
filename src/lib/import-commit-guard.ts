@@ -291,6 +291,96 @@ export function findExistingClient(
   return null;
 }
 
+/** Adds one client to an index, as the commit does for each client it queues,
+ *  so a later row of the same file that names it is found. */
+export function rememberClient(
+  idx: ClientDuplicateIndex,
+  client: ExistingClient,
+  source: string,
+): void {
+  const added = clientDuplicateIndex([client], source);
+  for (const key of ["byExternal", "byEmail", "byPhone", "byNameAndStreet"] as const) {
+    for (const [value, id] of added[key]) idx[key].set(value, id);
+  }
+}
+
+const MATCH_WORDS: Record<ExistingMatch["by"], string> = {
+  external_id: "client ID",
+  email: "email",
+  phone: "phone number",
+  name_and_address: "name and service address",
+};
+
+/** Why a row is skipped because an earlier row of the same file creates the
+ *  same client (#656). The commit always skipped it; the preview now says so. */
+export function inFileDuplicateReason(by: ExistingMatch["by"], firstRow: number): string {
+  return `Same ${MATCH_WORDS[by]} as row ${firstRow} in this file. Only row ${firstRow} is imported.`;
+}
+
+/** Why a row is skipped because the business already has the client. */
+export function existingClientReason(by: ExistingMatch["by"]): string {
+  return `Already in your clients (same ${MATCH_WORDS[by]}).`;
+}
+
+/** Labels client rows create or skip the way the commit will treat them:
+ *  first against the clients that exist, then against the rows above it in
+ *  the same file. `rows[i]` is null for a row that did not map (an error).
+ *  `isUpdate` marks a row the preview already matched by the old system's id. */
+export function labelClientRows(
+  rows: (ClientRow | null)[],
+  existing: ClientDuplicateIndex,
+  source: string,
+): ({ action: "create" | "skip"; targetId: string | null; reason: string | null } | null)[] {
+  const inFile = clientDuplicateIndex([], source);
+  return rows.map((row, i) => {
+    if (!row) return null;
+    const match = findExistingClient(row, existing);
+    if (match) {
+      return { action: "skip", targetId: match.id, reason: existingClientReason(match.by) };
+    }
+    const twin = findExistingClient(row, inFile);
+    if (twin) {
+      const firstRow = Number(twin.id);
+      return { action: "skip", targetId: null, reason: inFileDuplicateReason(twin.by, firstRow) };
+    }
+    rememberClient(
+      inFile,
+      {
+        id: String(i + 1),
+        display_name: row.display_name ?? null,
+        primary_email: row.primary_email ?? null,
+        primary_phone: row.primary_phone ?? null,
+        import_source: source,
+        import_external_id: row.external_id ?? null,
+        streets: [{ street: row.street ?? null, postal_code: row.postal_code ?? null }],
+      },
+      source,
+    );
+    return { action: "create", targetId: null, reason: null };
+  });
+}
+
+/** What the commit's result says, counted the way the rows are written:
+ *  `skipped` includes the rows the preview already marked skip, and
+ *  `failed` includes the rows the preview found errors in. Before #656 the
+ *  result counted only what the commit itself skipped or failed, so a file
+ *  whose preview said "SKIP 1" could end "1 skipped" with two rows skipped. */
+export function commitResultCounts(stats: unknown): {
+  created: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+} {
+  const s = (stats ?? {}) as Record<string, unknown>;
+  const n = (k: string) => (typeof s[k] === "number" ? (s[k] as number) : 0);
+  return {
+    created: n("created"),
+    updated: n("updated"),
+    skipped: n("skipped"),
+    failed: n("failed") + n("errors"),
+  };
+}
+
 // ── Every entity: is this row already in the database? ─────────────────────
 
 /** What already exists, read once per preview and once per commit. */

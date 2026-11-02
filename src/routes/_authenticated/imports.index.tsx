@@ -56,6 +56,7 @@ const ENTITY_LABELS: Record<ImportEntity, string> = {
 };
 
 const ENTITY_HINTS: Partial<Record<ImportEntity, string>> = {
+  dogs: "One row per dog. Import clients first; each dog is matched to a client by ID, or by the client's email, phone or exact name if the file has no ID, and goes on that client's first address.",
   services:
     "One row per plan. Import clients first; each plan is matched to a client by ID, or by exact name if the file has no ID, and goes on that client's first address. Visits are scheduled as soon as you commit.",
   balances:
@@ -65,7 +66,7 @@ const ENTITY_HINTS: Partial<Record<ImportEntity, string>> = {
 const REQUIRED_FIELDS: Record<ImportEntity, string[]> = {
   clients: ["display_name"],
   properties: ["client_external_id", "street"],
-  dogs: ["client_external_id", "name"],
+  dogs: ["name"],
   services: ["price_per_visit"],
   balances: ["amount"],
 };
@@ -84,6 +85,8 @@ const FIELD_LABELS: Record<string, string> = {
   external_id: "Client ID in your old system",
   client_external_id: "Client ID in your old system",
   client_name: "Client name",
+  client_email: "Client email",
+  client_phone: "Client phone",
   notes: "Notes",
   tags: "Tags",
   street: "Street",
@@ -127,7 +130,16 @@ const TEMPLATE_HEADERS: Record<ImportEntity, Record<string, string[]>> = {
     quoteiq_family: ["Client ID", "Location", "Street", "City", "State", "Zip", "Notes"],
   },
   dogs: {
-    generic_csv: ["client_id", "name", "breed", "weight", "notes"],
+    generic_csv: [
+      "client_id",
+      "client_email",
+      "client_phone",
+      "client_name",
+      "dog_name",
+      "breed",
+      "weight",
+      "notes",
+    ],
     sweepgo: ["Client ID", "Dog Name", "Breed", "Weight (lbs)", "Notes"],
     jobber: ["Client ID", "Pet name", "Breed", "Weight", "Notes"],
     housecall_pro: ["Customer ID", "Pet Name", "Breed", "Weight", "Notes"],
@@ -153,7 +165,9 @@ function humanizeStats(stats: Record<string, unknown>): string {
   const parts = [
     n("created") > 0 && `${n("created")} created`,
     n("updated") > 0 && `${n("updated")} updated`,
-    n("skip") + n("skipped") > 0 && `${n("skip") + n("skipped")} skipped`,
+    // After a commit, "skipped" already includes the preview's skips (#656).
+    (stats.skipped !== undefined ? n("skipped") : n("skip")) > 0 &&
+      `${stats.skipped !== undefined ? n("skipped") : n("skip")} skipped`,
     n("failed") + n("errors") > 0 && `${n("failed") + n("errors")} failed`,
   ].filter(Boolean);
   if (!parts.length) {
@@ -326,6 +340,17 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
     }
     if (CLIENT_BY_ID_OR_NAME.includes(entity) && !mapping.client_external_id && !mapping.client_name) {
       return toast.error("Choose a column for the client: their ID in your old system, or their name.");
+    }
+    if (
+      entity === "dogs" &&
+      !mapping.client_external_id &&
+      !mapping.client_email &&
+      !mapping.client_phone &&
+      !mapping.client_name
+    ) {
+      return toast.error(
+        "Choose a column for the client: their ID in your old system, email, phone or name.",
+      );
     }
     setBusy(true);
     try {

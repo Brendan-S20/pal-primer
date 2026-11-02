@@ -4,7 +4,12 @@ import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { toast } from "sonner";
 import { getImportBatch, commitImport, cancelImport, retryImport } from "@/lib/imports.functions";
-import { commitRefusal, IMPORT_NOT_FOUND, refusalMessage } from "@/lib/import-commit-guard";
+import {
+  commitRefusal,
+  commitResultCounts,
+  IMPORT_NOT_FOUND,
+  refusalMessage,
+} from "@/lib/import-commit-guard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/format";
@@ -86,9 +91,7 @@ function BatchDetail() {
     setBusy(true);
     try {
       const s = await commitFn({ data: { batchId } });
-      toast.success(
-        `Committed. ${s.created} created, ${s.updated} updated, ${s.skipped} skipped, ${s.failed} failed.`,
-      );
+      toast.success(committedSentence(s));
       refetch();
     } catch (e: any) {
       toast.error(e?.message ?? "Commit failed");
@@ -105,9 +108,7 @@ function BatchDetail() {
     try {
       await retryFn({ data: { batchId } });
       const s = await commitFn({ data: { batchId } });
-      toast.success(
-        `Committed. ${s.created} created, ${s.updated} updated, ${s.skipped} skipped, ${s.failed} failed.`,
-      );
+      toast.success(committedSentence(s));
     } catch (e) {
       toast.error((e as Error)?.message ?? "The import did not finish");
     } finally {
@@ -204,8 +205,7 @@ function BatchDetail() {
 
       {batch.status === "committed" && stats.created !== undefined && (
         <div className="rounded border bg-emerald-50 p-4 text-sm text-emerald-900 dark:bg-emerald-500/10 dark:text-emerald-300">
-          Import committed: {stats.created} created, {stats.updated} updated, {stats.skipped ?? 0}{" "}
-          skipped, {stats.failed} failed. Imported clients won't receive automated messages until
+          Import committed: {committedCounts(stats)}. Imported clients won't receive automated messages until
           you resume communications or reach out. Lift the hold from each client's page, or select
           clients on the Clients list and use "Resume communications".
           {Number(stats.unpinned ?? 0) > 0 && (
@@ -344,7 +344,9 @@ function BatchDetail() {
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">{m.external_id ?? "-"}</td>
                     <td className="px-3 py-2 text-xs">
-                      {r.error ? (
+                      {r.error && r.action === "skip" ? (
+                        <span className="text-muted-foreground">{r.error}</span>
+                      ) : r.error ? (
                         <span className="text-red-600">{r.error}</span>
                       ) : (
                         <span className="text-muted-foreground">{m.notes ?? ""}</span>
@@ -451,4 +453,15 @@ function PlanOrBalanceCells({ entity, m, error }: { entity: string; m: any; erro
       {issue}
     </>
   );
+}
+
+/** The commit's result, counted the way the rows are written (#656): the
+ *  preview's skips are in "skipped" and its errors in "failed". */
+function committedCounts(stats: unknown): string {
+  const c = commitResultCounts(stats);
+  return `${c.created} created, ${c.updated} updated, ${c.skipped} skipped, ${c.failed} failed`;
+}
+
+function committedSentence(stats: unknown): string {
+  return `Committed. ${committedCounts(stats)}.`;
 }
