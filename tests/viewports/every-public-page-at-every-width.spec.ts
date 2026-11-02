@@ -49,7 +49,37 @@ const STUBBED: Record<string, string> = {
 const ROUTES = [...UNSTUBBED, ...Object.keys(STUBBED)];
 
 const stubbed = new WeakSet<Page>();
+
+// What the page said while it loaded, so a page that never renders names its
+// cause in the failure instead of only "0 characters" (#685: the Windows
+// runner's artifacts held a "Loading…" snapshot and nothing else).
+const heard = new WeakMap<Page, string[]>();
+function listen(page: Page) {
+  if (heard.has(page)) return;
+  const lines: string[] = [];
+  heard.set(page, lines);
+  const note = (s: string) => lines.push(s.slice(0, 300));
+  page.on("console", (m) => {
+    if (m.type() === "error" || m.type() === "warning") note(`console.${m.type()}: ${m.text()}`);
+  });
+  page.on("pageerror", (e) => note(`pageerror: ${e.message}`));
+  page.on("requestfailed", (r) => {
+    if (r.url().startsWith("http://127.0.0.1"))
+      note(`failed: ${r.url()} ${r.failure()?.errorText ?? ""}`);
+  });
+  page.on("response", (r) => {
+    if (r.status() >= 400 && r.url().startsWith("http://127.0.0.1"))
+      note(`${r.status()}: ${r.url()}`);
+  });
+  page.on("load", () => note(`load: ${page.url()}`));
+}
+function whatThePageSaid(page: Page) {
+  const lines = heard.get(page) ?? [];
+  return lines.length ? `\n  page said (last 15):\n    ${lines.slice(-15).join("\n    ")}` : "";
+}
+
 async function open(page: Page, route: string) {
+  listen(page);
   if (route in STUBBED && !stubbed.has(page)) {
     await installStubBackend(page as any, { portal: true });
     stubbed.add(page);
@@ -109,14 +139,24 @@ async function open(page: Page, route: string) {
 // `networkidle` is bounded too. Its default timeout is the navigation
 // timeout, which is unset, so a request that never finished used the whole
 // 90s test budget waiting for it (/legal/sms at 360×780 on b8b3da60).
+//
+// A reading taken while the document is being replaced (a reload, or a
+// navigation the page makes itself) counts as "not rendered yet" rather than
+// failing the test: on #690's first run /no-workspace failed with "Execution
+// context was destroyed" and with `document.body` null, both inside this
+// read. The poll then reads the new document; a page that keeps reloading
+// still fails at the deadline.
 const RENDER_WAIT_MS = 30_000;
+const NOT_YET = { els: 0, text: 0, overlay: false };
 
 async function readHealth(page: Page) {
-  return page.evaluate(() => ({
-    els: document.querySelectorAll("*").length,
-    text: document.body.innerText.trim().length,
-    overlay: Boolean(document.querySelector("vite-error-overlay")),
-  }));
+  return page
+    .evaluate(() => ({
+      els: document.querySelectorAll("*").length,
+      text: (document.body?.innerText ?? "").trim().length,
+      overlay: Boolean(document.querySelector("vite-error-overlay")),
+    }))
+    .catch(() => NOT_YET);
 }
 
 async function settle(page: Page, route: string) {
@@ -126,7 +166,7 @@ async function settle(page: Page, route: string) {
   if (route in STUBBED) {
     await expect(
       page.getByText(STUBBED[route]).first(),
-      `${route} did not draw its fixture`,
+      `${route} did not draw its fixture${whatThePageSaid(page)}`,
     ).toBeVisible({
       timeout: RENDER_WAIT_MS,
     });
@@ -144,11 +184,11 @@ async function settle(page: Page, route: string) {
   expect(health.overlay, `${route} rendered a Vite error overlay`).toBe(false);
   expect(
     health.els,
-    `${route} rendered only ${health.els} elements — the page did not render, so every assertion about it would pass vacuously`,
+    `${route} rendered only ${health.els} elements — the page did not render, so every assertion about it would pass vacuously${whatThePageSaid(page)}`,
   ).toBeGreaterThan(40);
   expect(
     health.text,
-    `${route} rendered only ${health.text} characters of text — the page did not render`,
+    `${route} rendered only ${health.text} characters of text — the page did not render${whatThePageSaid(page)}`,
   ).toBeGreaterThan(200);
 }
 
