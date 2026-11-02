@@ -67,6 +67,13 @@ GRANT EXECUTE ON FUNCTION public.set_staff_active(uuid, boolean) TO authenticate
 -- Reads the row as it is stored. STABLE, so inside the UPDATE's WITH CHECK it
 -- sees the row before the update. SECURITY DEFINER so it reads the stored row
 -- whatever the caller's SELECT policy says.
+--
+-- It answers only about a row in the caller's own business: a policy
+-- expression runs as the querying role, so EXECUTE cannot be revoked from
+-- authenticated, and a SECURITY DEFINER function that takes another tenant's
+-- row id must ask who is calling
+-- (tests/six-helpers-that-answered-questions-about-other-peoples-tenants).
+-- For anyone else it says false, which can only refuse.
 CREATE OR REPLACE FUNCTION public.staff_authority_unchanged(
   _staff_id uuid, _active boolean, _role public.staff_role)
  RETURNS boolean
@@ -78,6 +85,7 @@ AS $function$
   SELECT EXISTS (
     SELECT 1 FROM public.staff s
      WHERE s.id = _staff_id
+       AND (auth.uid() IS NULL OR public.is_org_member(auth.uid(), s.organization_id))
        AND s.active IS NOT DISTINCT FROM _active
        AND s.role IS NOT DISTINCT FROM _role
   );
