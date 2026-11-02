@@ -19,7 +19,8 @@ import { Label } from "@/components/ui/label";
 import { CheckCircle2 } from "lucide-react";
 import { APP_NAME, APP_DESCRIPTION } from "@/lib/scoop";
 import { PublicShell } from "@/components/PublicShell";
-import { resolveIdentity } from "@/lib/offline/identity";
+import { probeIdentity, resolveIdentity } from "@/lib/offline/identity";
+import { startApiRecovery } from "@/lib/offline/api-recovery";
 import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { withDeadline } from "@/lib/offline/run-or-queue";
 import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
@@ -52,11 +53,15 @@ async function lookupLandingPath(userId: string): Promise<string> {
   const { data: isPlatform } = await supabase.rpc("is_platform_admin", { _user_id: userId });
   if (isPlatform) return "/platform";
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("user_roles")
     .select("role")
     .eq("user_id", userId)
     .maybeSingle();
+  // A failed lookup is not "no role". Reading it as one sent a tech to
+  // /dashboard and remembered that over their /my-day; the caller falls back
+  // to the remembered answer instead.
+  if (error) throw error;
   const role = data?.role;
   if (role === "tech") return "/my-day";
   if (role === "dispatcher") return "/routes";
@@ -67,31 +72,35 @@ async function lookupLandingPath(userId: string): Promise<string> {
 
 // Where a given role should land immediately after sign-in.
 //
-// WEB: exactly what it has always done — await the two queries and return.
+// Both lookups are network calls, so with no network, or with the API not
+// answering, this cannot be computed at all. It therefore remembers its answer
+// and reads that back when it cannot ask; falling back to a blanket /dashboard
+// would send a TECH, the one role whose whole job happens where the signal is
+// worst, to a page they do not use. On both builds since #661: a web cold start
+// with the API down lands here unverified too.
 //
-// NATIVE ONLY, below: both lookups are network calls, so in a dead zone this
-// cannot be computed at all. It therefore remembers its answer and reads that
-// back when it cannot ask; falling back to a blanket /dashboard would send a
-// TECH — the one role whose whole job happens where the signal is worst — to a
-// page they do not use.
+// WEB, when it can ask: await the two queries as it always has, and remember
+// the answer for the next time it cannot. A lookup that fails falls back to the
+// remembered answer, as on native.
 //
-// TWO guards, not one, and the second is the one that was missing first time.
-// Checking `isDefinitelyOffline` means the known-offline case makes no request
-// at all. But a try/catch alone does not save the case where we THINK we are
-// online and are not: a Supabase call against a dead network does not reject
-// promptly, it hangs, and `catch` never runs. Instrumenting the built bundle
-// against a blocked API showed exactly that — resolveIdentity correctly
-// recovered the user from the device, and then this function never returned, so
-// `navigate()` was never reached and the sign-in form stayed up. Same shape as
-// the bug in lib/offline/action-owner.ts: code only ever reached when offline,
-// quietly depending on being online.
+// NATIVE, when it can ask, also bounds the lookup. TWO guards, not one, and
+// the second is the one that was missing first time. Checking `isDefinitelyOffline` means the known-offline
+// case makes no request at all. But a try/catch alone does not save the case
+// where we THINK we are online and are not: a Supabase call against a dead
+// network does not reject promptly, it hangs, and `catch` never runs.
+// Instrumenting the built bundle against a blocked API showed exactly that:
+// resolveIdentity correctly recovered the user from the device, and then this
+// function never returned, so `navigate()` was never reached and the sign-in
+// form stayed up. Same shape as the bug in lib/offline/action-owner.ts: code
+// only ever reached when offline, quietly depending on being online.
 async function landingPathForUser(userId: string, reachable = true): Promise<string> {
-  if (!IS_NATIVE_BUNDLE) return lookupLandingPath(userId);
-
   const remembered = readLandingPath();
   if (isDefinitelyOffline() || !reachable) return remembered ?? "/dashboard";
   try {
-    const path = await withDeadline(lookupLandingPath(userId), LANDING_DEADLINE_MS, "landing path");
+    const lookup = lookupLandingPath(userId);
+    const path = await (IS_NATIVE_BUNDLE
+      ? withDeadline(lookup, LANDING_DEADLINE_MS, "landing path")
+      : lookup);
     rememberLandingPath(path);
     return path;
   } catch {
@@ -187,68 +196,73 @@ function AuthPage() {
 
   useEffect(() => {
     // If already signed in (incl. returning from an OAuth redirect), ensure
-    // org bootstrap, then land — brand-new orgs go to the onboarding path.
+    // org bootstrap, then land. Brand-new orgs go to the onboarding path.
     //
-    // WEB: unchanged. `supabase.auth.getUser()` is a network call, and on the
-    // hosted app that is fine — you cannot reach app.houndstack.com without one.
-    if (!IS_NATIVE_BUNDLE) {
-      supabase.auth.getUser().then(async ({ data }) => {
-        if (!data.user) return;
-        let isNewOrg: boolean | typeof NEEDS_ORG_NAME = false;
-        try {
-          // THIS IS THE OAUTH RETURN PATH. A provider hands back a profile, not
-          // a business, so requireOrgName stops the bootstrap and /no-workspace
-          // asks — the same screen, and the same validator, that /get-started
-          // uses on the email path.
-          isNewOrg = await ensureBootstrapped(data.user as any, { requireOrgName: true });
-          if (isNewOrg === true) forgetWorkspaceCache();
-        } catch (err) {
-          // An invitation refused on the way back from Google is the one
-          // error here a person has to read. Landing anyway would put them on
-          // "name your business" with no idea why (#568).
-          if (err instanceof InviteRefusedError) return refuseInvite(err);
-          console.error("bootstrap on landing failed", err);
-        }
-        if (isNewOrg === NEEDS_ORG_NAME) return navigate({ to: "/no-workspace" });
-        if (isNewOrg) return navigate({ to: "/onboarding" });
-        land(await landingPathForUser(data.user.id));
-      });
-      return;
-    }
-
-    // NATIVE ONLY — THIS IS THE SCREEN A COLD LAUNCH LANDS ON. The app boots at
-    // `capacitor://localhost/`, and routes/index.tsx sends `/` here
-    // unconditionally, so this effect is the only thing that moves an
-    // already-signed-in user onward. The web path above, run inside the binary,
-    // meant a tech with no signal was parked on a sign-in form they could not
-    // submit, holding a valid session that was sitting on the device the whole
-    // time. iOS QA 2026-08-20 reproduced it with Wi-Fi off: kill, relaunch,
-    // sign-in wall.
+    // THIS IS THE SCREEN A COLD START LANDS ON, on both builds: routes/index.tsx
+    // sends `/` here unconditionally, so this effect is the only thing that
+    // moves an already-signed-in user onward. The native app boots at
+    // `capacitor://localhost/`; a PWA or a bookmarked tab boots at `/`.
     //
-    // resolveIdentity answers from the device when the network cannot be
+    // It used to ask `supabase.auth.getUser()` on the web and stop when that
+    // failed. With the API unreachable that is a signed-in user, with a session
+    // and a saved day on the device, parked on a sign-in form, and nothing here
+    // ever asked again: only a reload got them out (#661). The native app had
+    // the same wall in a dead zone (iOS QA 2026-08-20) and with the API down
+    // (#622). Both builds now take the one path below.
+    //
+    // resolveIdentity answers from the device when the auth server cannot be
     // reached, and is bounded so a hanging token refresh cannot park the app
     // here either. A REJECTED identity still falls through to the form, which
-    // is correct: that is the auth server saying no, not a dead zone.
+    // is correct: that is the auth server saying no, not a dead connection.
     let cancelled = false;
-    void (async () => {
+    let stopRecovery: (() => void) | null = null;
+
+    const run = async () => {
       const identity = await resolveIdentity();
-      if (cancelled || !identity.ok) return;
+      if (cancelled) return;
+      if (!identity.ok) {
+        // Could not ask, and nothing on this device says who is signed in.
+        // Keep asking, and come back through here once the server answers,
+        // rather than leaving this form as the only way on.
+        if (!identity.rejected && !stopRecovery) {
+          stopRecovery = startApiRecovery({
+            probe: probeIdentity,
+            isOffline: isDefinitelyOffline,
+            target: window,
+            doc: document,
+            onAnswer: (result) => {
+              stopRecovery = null;
+              if (result === "verified" && !cancelled) void run();
+            },
+          });
+        }
+        return;
+      }
 
       // Bootstrap is a write and needs a live user object and a network; both
-      // are absent on the offline path, and skipping it is right there — an
+      // are absent on the offline path, and skipping it is right there: an
       // existing org has nothing to bootstrap.
       //
-      // Also skipped when the identity came from the device (#622): the
+      // Also skipped when the identity came from the device (#622, #661): the
       // network is up but the API did not answer. Every lookup in there would
       // fail, and a failed "does this person have a role?" reads as "no",
       // which sent a tech to the name-your-business screen, or left this form
-      // up while a request hung.
+      // up while a request hung. The shell then draws the saved copy and keeps
+      // asking until the API answers (lib/offline/api-recovery.ts).
+      //
+      // ON THE WEB THIS IS ALSO THE OAUTH RETURN PATH. A provider hands back a
+      // profile, not a business, so requireOrgName stops the bootstrap and
+      // /no-workspace asks: the same screen, and the same validator, that
+      // /get-started uses on the email path.
       let isNewOrg: boolean | typeof NEEDS_ORG_NAME = false;
       if (identity.user && identity.verified && !isDefinitelyOffline()) {
         try {
           isNewOrg = await ensureBootstrapped(identity.user as any, { requireOrgName: true });
           if (isNewOrg === true) forgetWorkspaceCache();
         } catch (err) {
+          // An invitation refused on the way back from Google is the one
+          // error here a person has to read. Landing anyway would put them on
+          // "name your business" with no idea why (#568).
           if (err instanceof InviteRefusedError) {
             if (!cancelled) refuseInvite(err);
             return;
@@ -261,9 +275,11 @@ function AuthPage() {
       if (isNewOrg) return navigate({ to: "/onboarding" });
       const to = await landingPathForUser(identity.userId, identity.verified);
       if (!cancelled) land(to);
-    })();
+    };
+    void run();
     return () => {
       cancelled = true;
+      stopRecovery?.();
     };
   }, [navigate]);
 

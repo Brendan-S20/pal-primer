@@ -193,8 +193,9 @@ describe("a refusal is read, not logged", () => {
     const handled =
       auth.match(/err instanceof InviteRefusedError\) (return )?refuseInvite\(err\)/g) ?? [];
     const guarded = auth.match(/if \(!cancelled\) refuseInvite\(err\)/g) ?? [];
-    // web landing, native landing, password sign-in, native hand-back
-    expect(handled.length + guarded.length).toBe(4);
+    // cold-start landing (one path for both builds since #661), password
+    // sign-in, native hand-back
+    expect(handled.length + guarded.length).toBe(3);
     expect(auth).toMatch(/Sign out and switch accounts/);
   });
 });
