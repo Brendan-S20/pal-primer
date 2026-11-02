@@ -58,6 +58,8 @@ import {
   formatFrequency,
   isServiceEnded,
   serviceScheduleState,
+  canEndService,
+  endServiceCopy,
   type ScheduleChoice,
   type SubscriptionFormValues,
 } from "@/lib/subscription-form";
@@ -408,7 +410,12 @@ export function ServicesTab({
               ended,
               paused,
             });
-            const showEnd = !ended && started;
+            // Every service that is not over can be ended (#676). It used to
+            // need `started`, so a one_time visit before its day — prepaid,
+            // refunded, canceled — offered only Delete, which the server
+            // refuses once there is history, pointing at an End that was
+            // not on the card.
+            const showEnd = canEndService(s, today);
             const showDelete = !started;
             return (
               <li key={s.id} className="@container rounded-lg border bg-card shadow-sm p-4 text-sm">
@@ -2202,6 +2209,7 @@ function EndServiceDialog({
   const [effectiveDate, setEffectiveDate] = useState(today);
   const [reason, setReason] = useState("");
   const [notes, setNotes] = useState("");
+  const copy = endServiceCopy(subscription ?? {});
 
   useEffect(() => {
     if (subscription) {
@@ -2235,7 +2243,7 @@ function EndServiceDialog({
       open={!!subscription}
       onClose={onClose}
       title="End service"
-      description="Ended services keep their history. Scheduled visits after the effective date are removed."
+      description={copy.description}
       size="sm"
       dirty={!!reason || !!notes}
     >
@@ -2252,6 +2260,9 @@ function EndServiceDialog({
           onChange={setEffectiveDate}
           hint="The last day service applies. Future visits past it are removed automatically."
         />
+        <p role="note" className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+          {copy.money}
+        </p>
         <div>
           <Label htmlFor="end-reason">Why is this ending?</Label>
           {/* One of a few answers, so Reports can count them; the detail
