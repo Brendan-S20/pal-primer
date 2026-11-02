@@ -7,8 +7,9 @@
 // of what an embed is, so it lives here once.
 //
 // A select is only collected when its table and its string are both known
-// without running the code: a string literal, a template with no `${}`, or a
-// `const` in the same file holding one of those. Anything built at runtime is
+// without running the code: a string literal, a template whose `${}` are
+// readable, a `const` in scope holding one of those, or a parameter of a
+// local helper whose every call passes one. Anything built at runtime is
 // counted as skipped, so a test can say how much it did not see.
 
 import ts from "typescript";
@@ -38,29 +39,159 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+/** Looks up what an identifier names at the place it is used. */
+type Resolve = (id: ts.Identifier) => string | null;
+
 /** The string an expression always evaluates to, when that can be read off
  *  the source: literals, `+` of those, a template whose `${}` are themselves
- *  readable, and a `const` in the same file holding any of these. */
-function stringOf(node: ts.Node | undefined, consts?: Map<string, string>): string | null {
+ *  readable, and a `const` in scope holding any of these. */
+function stringOf(node: ts.Node | undefined, resolve?: Resolve): string | null {
   if (!node) return null;
   if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
-  if (ts.isParenthesizedExpression(node)) return stringOf(node.expression, consts);
-  if (ts.isIdentifier(node)) return consts?.get(node.text) ?? null;
+  if (ts.isParenthesizedExpression(node)) return stringOf(node.expression, resolve);
+  if (ts.isIdentifier(node)) return resolve?.(node) ?? null;
   if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
-    const a = stringOf(node.left, consts);
-    const b = stringOf(node.right, consts);
+    const a = stringOf(node.left, resolve);
+    const b = stringOf(node.right, resolve);
     return a === null || b === null ? null : a + b;
   }
   if (ts.isTemplateExpression(node)) {
     let out = node.head.text;
     for (const span of node.templateSpans) {
-      const v = stringOf(span.expression, consts);
+      const v = stringOf(span.expression, resolve);
       if (v === null) return null;
       out += v + span.literal.text;
     }
     return out;
   }
   return null;
+}
+
+/** Whether a binding pattern (or a plain name) binds `name`. */
+function binds(name: ts.BindingName, text: string): boolean {
+  if (ts.isIdentifier(name)) return name.text === text;
+  return name.elements.some((el) => !ts.isOmittedExpression(el) && binds(el.name, text));
+}
+
+/** What a name refers to at a given place in the file, found the way the
+ *  language finds it: the nearest enclosing scope that declares it wins.
+ *
+ *  This used to be one map per FILE, name to string. So a `.select(select)`
+ *  whose `select` is a function parameter read whatever `const select` some
+ *  other function in the same file held: clients.functions.ts:637 was sent to
+ *  PostgREST as `clients?select=...staff:assigned_staff_id(...)`, the visits
+ *  select from line 1130, and the database check failed with PGRST200 on a
+ *  query production never sends (#683). */
+type Binding =
+  | { kind: "const"; decl: ts.VariableDeclaration }
+  | { kind: "param"; fn: ts.SignatureDeclaration; index: number }
+  | { kind: "function"; decl: ts.FunctionDeclaration }
+  | { kind: "other" };
+
+function lookup(id: ts.Identifier): Binding | null {
+  const text = id.text;
+  for (let n: ts.Node | undefined = id.parent; n; n = n.parent) {
+    if (ts.isFunctionLike(n)) {
+      const index = n.parameters.findIndex((p) => binds(p.name, text));
+      if (index >= 0) {
+        const p = n.parameters[index];
+        return ts.isIdentifier(p.name) ? { kind: "param", fn: n, index } : { kind: "other" };
+      }
+    }
+    if (ts.isCatchClause(n) && n.variableDeclaration && binds(n.variableDeclaration.name, text))
+      return { kind: "other" };
+    if (
+      (ts.isForStatement(n) || ts.isForOfStatement(n) || ts.isForInStatement(n)) &&
+      n.initializer &&
+      ts.isVariableDeclarationList(n.initializer) &&
+      n.initializer.declarations.some((d) => binds(d.name, text))
+    )
+      return { kind: "other" };
+    if (
+      ts.isBlock(n) ||
+      ts.isSourceFile(n) ||
+      ts.isModuleBlock(n) ||
+      ts.isCaseClause(n) ||
+      ts.isDefaultClause(n)
+    ) {
+      for (const st of n.statements) {
+        if (ts.isVariableStatement(st)) {
+          for (const d of st.declarationList.declarations) {
+            if (!binds(d.name, text)) continue;
+            const isConst = (st.declarationList.flags & ts.NodeFlags.Const) !== 0;
+            return isConst && ts.isIdentifier(d.name)
+              ? { kind: "const", decl: d }
+              : { kind: "other" };
+          }
+        } else if (ts.isFunctionDeclaration(st) && st.name?.text === text) {
+          return { kind: "function", decl: st };
+        } else if (
+          (ts.isClassDeclaration(st) || ts.isEnumDeclaration(st)) &&
+          st.name?.text === text
+        ) {
+          return { kind: "other" };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/** The name a function is called by, when it is a `const f = (...) =>` or a
+ *  `function f(...)`; null for anything passed around anonymously. */
+function nameOf(fn: ts.SignatureDeclaration): ts.Identifier | null {
+  if (ts.isFunctionDeclaration(fn)) return fn.name ?? null;
+  if (
+    (ts.isArrowFunction(fn) || ts.isFunctionExpression(fn)) &&
+    ts.isVariableDeclaration(fn.parent) &&
+    ts.isIdentifier(fn.parent.name)
+  )
+    return fn.parent.name;
+  return null;
+}
+
+/** Every string an expression can be, read off the source: one for a literal
+ *  or a const, and for a parameter of a local helper, one per call of that
+ *  helper. Null when any of them cannot be read. */
+function stringsOf(node: ts.Node | undefined, sf: ts.SourceFile, depth = 0): string[] | null {
+  if (!node || depth > 8) return null;
+  const resolve: Resolve = (id) => {
+    const b = lookup(id);
+    if (b?.kind !== "const") return null;
+    const v = stringsOf(b.decl.initializer, sf, depth + 1);
+    return v && v.length === 1 ? v[0] : null;
+  };
+  if (ts.isIdentifier(node)) {
+    const b = lookup(node);
+    if (b?.kind === "param") {
+      const name = nameOf(b.fn);
+      if (!name) return null;
+      const out: string[] = [];
+      let unreadable = false;
+      const visit = (n: ts.Node) => {
+        if (
+          ts.isCallExpression(n) &&
+          ts.isIdentifier(n.expression) &&
+          n.expression.text === name.text
+        ) {
+          const callee = lookup(n.expression);
+          const same =
+            (callee?.kind === "const" && callee.decl === name.parent) ||
+            (callee?.kind === "function" && callee.decl === b.fn);
+          if (same) {
+            const v = stringsOf(n.arguments[b.index], sf, depth + 1);
+            if (v === null) unreadable = true;
+            else out.push(...v);
+          }
+        }
+        ts.forEachChild(n, visit);
+      };
+      visit(sf);
+      return unreadable || out.length === 0 ? null : out;
+    }
+  }
+  const one = stringOf(node, resolve);
+  return one === null ? null : [one];
 }
 
 /** The `.from("x")` a call chain started from, or null if it started anywhere
@@ -99,15 +230,6 @@ export function collectSelects(root: string): { sites: SelectSite[]; skipped: Se
     if (!text.includes(".select(")) continue;
     const file = repoRelative(path, root);
     const sf = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true);
-    const consts = new Map<string, string>();
-    const visitConsts = (n: ts.Node) => {
-      if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name)) {
-        const s = stringOf(n.initializer, consts);
-        if (s !== null) consts.set(n.name.text, s);
-      }
-      ts.forEachChild(n, visitConsts);
-    };
-    visitConsts(sf);
     const visit = (n: ts.Node) => {
       if (
         ts.isCallExpression(n) &&
@@ -118,8 +240,9 @@ export function collectSelects(root: string): { sites: SelectSite[]; skipped: Se
         if (table) {
           const arg = n.arguments[0];
           const line = sf.getLineAndCharacterOfPosition(n.getStart()).line + 1;
-          const select = stringOf(arg, consts);
-          if (select !== null) sites.push({ file, line, table, select });
+          const selects = stringsOf(arg, sf);
+          if (selects !== null)
+            for (const select of selects) sites.push({ file, line, table, select });
           else if (arg) skipped.push({ file, line, table, select: arg.getText(sf) });
         }
       }
@@ -218,4 +341,13 @@ export function candidates(fks: Fk[], parent: string, target: string): Fk[] {
   return fks.filter(
     (f) => (f.from === parent && f.to === target) || (f.from === target && f.to === parent),
   );
+}
+
+/** The public schema's tables and views, as types.ts was generated with them:
+ *  every name an embed can join without a foreign key column standing in. */
+export function relationsFromTypes(typesTs: string): Set<string> {
+  const start = typesTs.indexOf("  public: {\n    Tables: {");
+  const end = typesTs.indexOf("\n    Functions: {", start);
+  const body = typesTs.slice(start, end);
+  return new Set([...body.matchAll(/^ {6}(\w+): \{\n {8}Row: \{/gm)].map((m) => m[1]));
 }

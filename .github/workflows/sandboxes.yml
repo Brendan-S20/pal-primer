@@ -71,12 +71,20 @@ on:
   # playwright.config.ts is in the list for the same reason. It carries the
   # timeouts, the retry count and the dev-server wiring, so a change to it
   # changes the outcome of every spec without touching one.
+  #
+  # The tests/support files are what the DB tests import. #683 changed only
+  # select-embeds.ts, which decides every query every-select-embed-resolves
+  # sends; without them the fix to that test would not have run it.
   pull_request:
     paths:
       - "supabase/migrations/**"
       - "supabase/proofs/**"
       - "tests/integration/*.db.test.ts"
       - "tests/run-db-tests.sh"
+      - "tests/support/walk-db.ts"
+      - "tests/support/org-day.ts"
+      - "tests/support/select-embeds.ts"
+      - "tests/support/withheld-columns.ts"
       - "tests/e2e/**"
       - "playwright.e2e.config.ts"
       - "tests/viewports/**"
@@ -204,6 +212,8 @@ jobs:
               supabase/migrations/*|supabase/proofs/*)     database=true ;;
               tests/integration/*.db.test.ts)              database=true ;;
               tests/run-db-tests.sh)                       database=true ;;
+              tests/support/walk-db.ts|tests/support/org-day.ts) database=true ;;
+              tests/support/select-embeds.ts|tests/support/withheld-columns.ts) database=true ;;
               tests/e2e/*|playwright.e2e.config.ts)        database=true ;;
               tests/viewports/*|playwright.config.ts)      viewports=true ;;
               # The workflow itself changes what both jobs DO, so it runs both.
