@@ -295,6 +295,12 @@ export const PROPERTIES = CLIENTS.map((c, i) => ({
   earliest_service_time: "08:00",
   latest_service_time: "17:00",
   service_duration_min: 15,
+  // #680: the Properties card shows this. Long, with an unbroken run, because
+  // that is what a pasted lead note looks like.
+  access_notes:
+    i === 0
+      ? "Side gate on the left behind the recycling bins, latch sticks so lift while pulling; code is on the lockbox at https://example.com/very/long/link/with/no/spaces/at/all"
+      : null,
   archived_at: null,
 }));
 

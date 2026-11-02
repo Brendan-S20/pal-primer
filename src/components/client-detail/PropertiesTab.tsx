@@ -647,6 +647,14 @@ function PropertyCard({
                   ) : (
                     <span>No gate code</span>
                   )}
+                  {p.access_notes && (
+                    <span
+                      className="min-w-0 max-w-full [overflow-wrap:anywhere]"
+                      data-testid="property-access-notes"
+                    >
+                      Access notes: <bdi className="text-foreground">{p.access_notes}</bdi>
+                    </span>
+                  )}
                   {isAccessMethod(p.access_method) && (
                     <span>
                       Way in:{" "}
