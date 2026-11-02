@@ -5,6 +5,9 @@
  *  values; properties_access_method_check is the database's copy. */
 
 import type { ServiceLine } from "@/lib/service-lines";
+import { ACCESS_NOTES_MAX } from "@/lib/booking-details";
+
+export { ACCESS_NOTES_MAX };
 
 export const ACCESS_METHODS = ["key", "lockbox", "code", "garage", "person_home"] as const;
 export type AccessMethod = (typeof ACCESS_METHODS)[number];
@@ -78,6 +81,21 @@ export type GateCodeForm = { gateCode: string };
 export function gateCodeSave(initial: GateCodeForm, form: GateCodeForm): { gateCode?: string | null } {
   if (form.gateCode.trim() === initial.gateCode.trim()) return {};
   return { gateCode: form.gateCode.trim() || null };
+}
+
+/** Access notes (#680): free text from lead conversion or signup, saved to
+ *  properties.access_notes and read by My Day and the visit drawer. */
+export type AccessNotesForm = { accessNotes: string };
+
+/** What the property drawer sends for access notes on save. Same rule as the
+ *  gate code: left alone, it is omitted and the server keeps the stored text;
+ *  edited, it is sent trimmed; cleared, it is sent as null. */
+export function accessNotesSave(
+  initial: AccessNotesForm,
+  form: AccessNotesForm,
+): { accessNotes?: string | null } {
+  if (form.accessNotes.trim() === initial.accessNotes.trim()) return {};
+  return { accessNotes: form.accessNotes.trim() || null };
 }
 
 /** What the property drawer sends for walker access on save.
