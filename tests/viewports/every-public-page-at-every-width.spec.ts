@@ -84,22 +84,64 @@ async function open(page: Page, route: string) {
  * where the failure mode is a redirect to a page that renders perfectly. See
  * the note in `fixtures/surfaces.ts`.
  */
-async function settle(page: Page, route: string) {
-  await page.waitForLoadState("networkidle").catch(() => {});
-  await page.evaluate(() => document.fonts?.ready).catch(() => {});
-  await page.waitForTimeout(150);
+//
+// ── WAIT FOR THE PAGE, THEN MEASURE IT (#685) ─────────────────────────────
+//
+// Until #685 this read the page ONCE, 150ms after `networkidle`, and judged
+// that reading. Two faults followed, both seen on the Windows runner on
+// b8b3da60 and both reproduced on Linux with eight workers on four cores:
+//
+// - /no-workspace is client-only (`ssr: false`). The server sends the root's
+//   "Loading…" status and nothing else, so "the network went quiet" is not
+//   "the page painted". Under load the one reading landed on the placeholder
+//   and the guard reported 0 characters. The page was fine; the reading was
+//   early.
+// - For a stubbed route the reading was taken BEFORE waiting for the
+//   fixture, and the wait did not refresh it. So the fixture could be on
+//   screen and the check still failed on the old number ("rendered only 81
+//   characters" with the quote form visible in the same snapshot).
+//
+// So: wait for the fixture first, then poll until the page clears the
+// thresholds, and assert on the last reading. A page that never renders
+// still fails, with the same message, after RENDER_WAIT_MS. Nothing about
+// what counts as rendered changed; only when it is asked.
+//
+// `networkidle` is bounded too. Its default timeout is the navigation
+// timeout, which is unset, so a request that never finished used the whole
+// 90s test budget waiting for it (/legal/sms at 360×780 on b8b3da60).
+const RENDER_WAIT_MS = 30_000;
 
-  const health = await page.evaluate(() => ({
+async function readHealth(page: Page) {
+  return page.evaluate(() => ({
     els: document.querySelectorAll("*").length,
     text: document.body.innerText.trim().length,
     overlay: Boolean(document.querySelector("vite-error-overlay")),
   }));
-  expect(health.overlay, `${route} rendered a Vite error overlay`).toBe(false);
+}
+
+async function settle(page: Page, route: string) {
+  await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
+  await page.evaluate(() => document.fonts?.ready).catch(() => {});
+
   if (route in STUBBED) {
-    await expect(page.getByText(STUBBED[route]).first(), `${route} did not draw its fixture`).toBeVisible({
-      timeout: 30_000,
+    await expect(
+      page.getByText(STUBBED[route]).first(),
+      `${route} did not draw its fixture`,
+    ).toBeVisible({
+      timeout: RENDER_WAIT_MS,
     });
   }
+
+  let health = await readHealth(page);
+  const deadline = Date.now() + RENDER_WAIT_MS;
+  while (!health.overlay && (health.els <= 40 || health.text <= 200) && Date.now() < deadline) {
+    await page.waitForTimeout(250);
+    health = await readHealth(page);
+  }
+  await page.evaluate(() => document.fonts?.ready).catch(() => {});
+  await page.waitForTimeout(150);
+
+  expect(health.overlay, `${route} rendered a Vite error overlay`).toBe(false);
   expect(
     health.els,
     `${route} rendered only ${health.els} elements — the page did not render, so every assertion about it would pass vacuously`,
