@@ -816,6 +816,10 @@ const es: Translations = {
       "Este teléfono dijo que no. Para activarlas, ve a Ajustes › Aplicaciones › HoundStack › Notificaciones.",
     openSettings: "Abrir Ajustes",
     unavailable: "Las notificaciones no están disponibles en esta versión de la app.",
+    explainerTitle: "¿Recibir avisos en este teléfono?",
+    explainerBody:
+      "Te avisamos cuando cambia tu ruta, se agrega una visita o la oficina te escribe. Después el teléfono te pregunta: elige Permitir.",
+    notNow: "Ahora no",
   },
   nav: {
     primary: "Principal",

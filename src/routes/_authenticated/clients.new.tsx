@@ -53,6 +53,7 @@ import { WeekdayPicker } from "@/components/client-detail/WeekdayPicker";
 import { servicePickerOptions } from "@/lib/visit-service";
 import { isZonePriced, servicePriceCents } from "@/lib/services";
 import { normalizeWeekdays, WORK_WEEK } from "@/lib/weekday-set";
+import { toastServerError } from "@/lib/server-outcome";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -850,7 +851,16 @@ function NewClientWizard({
       }
       navigate({ to: "/clients/$clientId", params: { clientId: id } });
     },
-    onError: (e) => toast.error((e as Error).message),
+    // A role the subscriptions policy refuses (a dispatcher at the plan step)
+    // gets the policy's own words back, which name a table and not a reason
+    // (#662).
+    onError: (e) =>
+      toastServerError(e, {
+        fallback: "The client could not be saved. Try again.",
+        refused: planSkipped
+          ? undefined
+          : 'Your role is not allowed to set up a subscription. Tick "Skip subscription for now" to save the client without one, and ask the owner to add it.',
+      }),
   });
 
   // The lead's email already belongs to a client. The old one-tap conversion
