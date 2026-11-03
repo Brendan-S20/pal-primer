@@ -55,11 +55,16 @@ export const getRevenueByService = createServerFn({ method: "POST" })
     const timezone = (org?.timezone as string | null) || DEFAULT_ORG_TIMEZONE;
 
     const { fetchAllPages } = await import("@/lib/supabase-paging.server");
-    const invoices = await fetchAllPages<{ id: string; status: string | null; issued_at: string | null }>(
+    const invoices = await fetchAllPages<{
+      id: string;
+      status: string | null;
+      issued_at: string | null;
+      deposit_for_invoice_id: string | null;
+    }>(
       (a, b) =>
         supabase
           .from("invoices")
-          .select("id, status, issued_at")
+          .select("id, status, issued_at, deposit_for_invoice_id")
           .eq("organization_id", orgId)
           .gte("issued_at", widen(data.from, -1))
           .lt("issued_at", widen(data.to, 2))

@@ -283,7 +283,13 @@ describe("no trigger function is executable by a signed-in user", () => {
     // tg_log_staff_authority_change, which writes the activity_log row naming
     // who turned a person on or off or changed their role. Revoked from
     // PUBLIC, anon and authenticated there.
-    expect(triggerFunctions().size).toBe(95);
+    //
+    // 95 -> 98 (20261102160000, a deposit is part payment of its stay, #653):
+    // tg_invoices_guard_deposit_link (nobody signed in moves a deposit's link),
+    // tg_invoices_deposit_follows (a deposit follows its stay invoice) and
+    // tg_stays_deposit_link (the stay sets and releases the link). Each
+    // revoked from PUBLIC, anon and authenticated there.
+    expect(triggerFunctions().size).toBe(98);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

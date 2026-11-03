@@ -11,6 +11,7 @@ import { useRecordPaymentDialog, type RecordPaymentAnswer } from "@/components/R
 import { describeManualPayment } from "@/lib/manual-payments";
 import { StaffInvoicePayForm } from "@/components/StaffInvoicePayForm";
 import { RefundPaymentAction } from "@/components/RefundPaymentAction";
+import { ManualRefundAction } from "@/components/ManualRefundAction";
 import { getMyOrg } from "@/lib/org.functions";
 import { getQuickBooksStatus, syncInvoice } from "@/lib/accounting.functions";
 import { hasPermission } from "@/lib/permissions";
@@ -149,6 +150,7 @@ function InvoiceDetail() {
         );
         setPayOpen(false);
       }
+      if (r.tipFailed) toast.error("The payment was recorded, but the tip was not saved.");
       if (r.intentStillLive?.length) {
         toast.warning(
           "The payment link for this invoice is still live. Cancel it in Stripe, or the client can still be charged.",
@@ -576,6 +578,12 @@ function InvoiceDetail() {
                           last column is off the edge of a phone. */}
                       <div className="mt-1">
                         <RefundPaymentAction
+                          payment={p}
+                          invoiceId={invoiceId}
+                          currency={invoice.currency}
+                          customerName={client?.display_name}
+                        />
+                        <ManualRefundAction
                           payment={p}
                           invoiceId={invoiceId}
                           currency={invoice.currency}
