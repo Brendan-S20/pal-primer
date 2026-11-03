@@ -15,6 +15,7 @@ vi.mock("@/integrations/supabase/client.server", () => {
   const from = () => {
     let col = "";
     let val = "";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- a chainable query stub
     const q: any = {
       select: () => q,
       eq: (c: string, v: string) => {

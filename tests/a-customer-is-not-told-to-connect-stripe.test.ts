@@ -7,9 +7,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 
-const h = vi.hoisted(() => ({ rows: [] as any[] }));
+const h = vi.hoisted(() => ({ rows: [] as Array<Record<string, unknown>> }));
 
 vi.mock("@/integrations/supabase/client.server", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- a chainable query stub
   const p: any = {
     select: () => p,
     eq: () => p,
