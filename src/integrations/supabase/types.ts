@@ -3225,6 +3225,7 @@ export type Database = {
         Row: {
           accounting_remote_id: string | null
           amount_paid_cents: number
+          amount_refunded_cents: number
           checkout_url: string | null
           client_id: string
           created_at: string
@@ -3260,6 +3261,7 @@ export type Database = {
         Insert: {
           accounting_remote_id?: string | null
           amount_paid_cents?: number
+          amount_refunded_cents?: number
           checkout_url?: string | null
           client_id: string
           created_at?: string
@@ -3295,6 +3297,7 @@ export type Database = {
         Update: {
           accounting_remote_id?: string | null
           amount_paid_cents?: number
+          amount_refunded_cents?: number
           checkout_url?: string | null
           client_id?: string
           created_at?: string
@@ -4638,6 +4641,7 @@ export type Database = {
           paid_at: string | null
           raw_event: Json | null
           reference: string | null
+          refunded_cents: number
           status: Database["public"]["Enums"]["payment_status"]
           stripe_checkout_session_id: string | null
           stripe_payment_intent_id: string | null
@@ -4660,6 +4664,7 @@ export type Database = {
           paid_at?: string | null
           raw_event?: Json | null
           reference?: string | null
+          refunded_cents?: number
           status?: Database["public"]["Enums"]["payment_status"]
           stripe_checkout_session_id?: string | null
           stripe_payment_intent_id?: string | null
@@ -4682,6 +4687,7 @@ export type Database = {
           paid_at?: string | null
           raw_event?: Json | null
           reference?: string | null
+          refunded_cents?: number
           status?: Database["public"]["Enums"]["payment_status"]
           stripe_checkout_session_id?: string | null
           stripe_payment_intent_id?: string | null
@@ -9757,6 +9763,7 @@ export type Database = {
       }
       increment_unit_offense: { Args: { _unit_id: string }; Returns: undefined }
       invoice_paid_cents: { Args: { _invoice_id: string }; Returns: number }
+      invoice_refunded_cents: { Args: { _invoice_id: string }; Returns: number }
       invoice_stay: { Args: { _stay_id: string }; Returns: string }
       is_org_member: {
         Args: { _org_id: string; _user_id: string }

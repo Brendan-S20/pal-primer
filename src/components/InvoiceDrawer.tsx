@@ -25,6 +25,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
+import { invoiceRefundState } from "@/lib/refund-outcome";
 import { MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { StaffInvoicePayForm } from "@/components/StaffInvoicePayForm";
@@ -160,6 +161,7 @@ export function InvoiceDrawer({
   const creditCents = inv?.credit_applied_cents ?? 0;
   const paidCents = inv?.amount_paid_cents ?? 0;
   const dueCents = inv ? invoiceDueCents(inv) : 0;
+  const refundedCents = inv?.amount_refunded_cents ?? 0;
 
   const recordPayment = async () => {
     if (!inv) return;
@@ -273,7 +275,7 @@ export function InvoiceDrawer({
           <div className="space-y-5 text-sm">
             {/* Status line */}
             <div className="flex flex-wrap items-center gap-2">
-              <InvoiceStatusBadge status={inv.status} />
+              <InvoiceStatusBadge status={inv.status} refund={invoiceRefundState(inv)} />
               {isPartiallyPaid(inv) && <MetaChip>Partially paid</MetaChip>}
               {overdue && (
                 <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-medium text-destructive">
@@ -447,12 +449,22 @@ export function InvoiceDrawer({
                   <span>-{fmtCents(paidCents, inv.currency ?? "usd")}</span>
                 </div>
               )}
-              {(creditCents > 0 || paidCents > 0) && inv.status !== "void" && (
-                <div className="mt-2 flex items-center justify-between border-t pt-2 font-medium">
-                  <span>Balance due</span>
-                  <span>{fmtCents(dueCents, inv.currency ?? "usd")}</span>
+              {refundedCents > 0 && (
+                <div className="mt-2 flex items-center justify-between text-muted-foreground">
+                  <span>Refunded</span>
+                  <span>{fmtCents(refundedCents, inv.currency ?? "usd")}</span>
                 </div>
               )}
+              {/* A paid invoice with money given back owes nothing: the
+                  refund was the business's choice, not a balance (#674). */}
+              {(creditCents > 0 || paidCents > 0) &&
+                inv.status !== "void" &&
+                !invoiceRefundState(inv) && (
+                  <div className="mt-2 flex items-center justify-between border-t pt-2 font-medium">
+                    <span>Balance due</span>
+                    <span>{fmtCents(dueCents, inv.currency ?? "usd")}</span>
+                  </div>
+                )}
             </div>
 
             {/* Payments */}
