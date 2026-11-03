@@ -21,6 +21,7 @@ import {
 } from "@/lib/booking-details";
 import {
   isRequestedAsAStay,
+  linkServicesForLines,
   publicServiceChoices,
   type PublicService,
 } from "@/lib/public-services";
@@ -187,14 +188,34 @@ export const getPublicSignupForm = createServerFn({ method: "GET" })
     try {
       const { loadServiceLineAvailability } =
         await import("@/lib/service-line-availability.server");
+      // With "Accept signups online" off (the default), public_services
+      // answers nothing, so a new business's link had no service picker and
+      // its leads could not say walk from sit (R2-25). The quote request
+      // still lists the services, read here with the service role for the
+      // business the lookup resolved, on public_services' own terms: active,
+      // and priced unless zone-priced pet waste. Nothing is sold: with the
+      // switch off instantStart is false and the form only asks.
       const [{ data: svcRows, error: svcErr }, availability] = await Promise.all([
-        sb.rpc("public_services", { _slug: data.slug }),
+        enabled
+          ? sb.rpc("public_services", { _slug: data.slug })
+          : supabaseAdmin
+              .from("services")
+              .select(
+                "id, name, service_line, price_unit, base_price_cents, extra_pet_cents, default_duration_min",
+              )
+              .eq("organization_id", found.id)
+              .eq("active", true)
+              .or("service_line.eq.pet_waste,base_price_cents.not.is.null")
+              .order("name"),
         loadServiceLineAvailability(),
       ]);
       if (svcErr) console.error("signup services lookup failed", found.id, svcErr);
       else {
         serviceLines = availability;
-        services = publicServiceChoices(svcRows, availability);
+        services = linkServicesForLines(
+          publicServiceChoices(svcRows, availability),
+          serviceLinesOrDefault(org?.service_lines),
+        );
       }
     } catch (e) {
       console.error("signup services lookup failed", found.id, e);

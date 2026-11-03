@@ -225,6 +225,28 @@ export function runsPetWaste(lines: readonly ServiceLine[]): boolean {
 }
 
 /**
+ * Whether the first step of /setup starts with nothing ticked and asks
+ * (F-06): the step is not done yet, the answer was read, and it is still the
+ * column's default. Every new business is created holding {pet_waste}, so
+ * showing that ticked told a groomer they scoop. The column default and the
+ * fail-open read are unchanged: an answer that could not be read (`known`
+ * false) shows what it shows today, and a finished step shows what is
+ * stored, pet waste included.
+ */
+export function setupAsksServiceLines(
+  saved: readonly ServiceLine[],
+  known: boolean,
+  stepDone: boolean,
+): boolean {
+  return (
+    known &&
+    !stepDone &&
+    saved.length === DEFAULT_SERVICE_LINES.length &&
+    saved.every((l) => DEFAULT_SERVICE_LINES.includes(l))
+  );
+}
+
+/**
  * The set after ticking or unticking one line, in the order the screens list
  * them, or null when the change would leave nothing ticked: the database
  * refuses an empty set, and "runs nothing" is not a business. One copy for
@@ -295,6 +317,32 @@ export function showsPetWasteModule(
   lines: readonly ServiceLine[],
 ): boolean {
   return runsPetWaste(lines);
+}
+
+/** Whether Zones shows a zone's per-visit price and per-dog charge (R2-38).
+ *  They are what a scooping plan is quoted from; a walk, a sit, a groom or
+ *  a lesson is priced from its own service. Shown to a business that runs
+ *  pet waste, and to any business while the zone prices a yard some other
+ *  way (area pricing, a first-cleanup fee), so nothing that is charging a
+ *  customer is hidden. A new zone (`zone` null) is flat with no fee. */
+export function showsZoneVisitPrice(
+  lines: readonly ServiceLine[],
+  zone: { pricing_mode?: string | null; initial_cleanup_cents?: number | null } | null,
+): boolean {
+  return (
+    runsPetWaste(lines) ||
+    (zone?.pricing_mode ?? "flat") !== "flat" ||
+    Number(zone?.initial_cleanup_cents ?? 0) > 0
+  );
+}
+
+/** Settings → Client portal's one-off price field (F-06). It is the pet-waste
+ *  one-off's price, so it says so beside a business's other lines; a
+ *  business that runs no pet waste reads "an extra visit". */
+export function portalExtraVisitPriceLabel(lines: readonly ServiceLine[]): string {
+  return runsPetWaste(lines) && lines.some((l) => l !== "pet_waste")
+    ? "Price of an extra pet waste visit"
+    : "Price of an extra visit";
 }
 
 /** The new-client wizard's steps, in order. */

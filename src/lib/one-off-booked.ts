@@ -41,3 +41,11 @@ export function oneOffBookedCopy(input: {
   }
   return { success: `Visit booked for ${day}${who}.`, warnings };
 }
+
+/** Why a one-off's arrival window cannot be booked, or null (F-05). Either
+ *  end may be empty; with both set, "after" comes before "by". The inputs'
+ *  HH:MM values compare as strings. */
+export function oneOffWindowProblem(earliest: string, latest: string): string | null {
+  if (earliest && latest && earliest >= latest) return "Arrive after has to be before Arrive by.";
+  return null;
+}
