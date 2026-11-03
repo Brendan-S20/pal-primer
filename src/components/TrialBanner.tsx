@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { ChevronDown, ChevronUp, Clock } from "lucide-react";
 import { getTrialState } from "@/lib/trial.functions";
-import { TRIAL_COPY } from "@/lib/trial";
+import { TRIAL_COPY, growthPausedFor } from "@/lib/trial";
 import type { TrialState } from "@/lib/trial";
 import { useMyRole } from "@/hooks/useMyRole";
 import { useDismissed } from "@/lib/dismissible";
@@ -72,6 +72,20 @@ export function trialDismissVersion(s: Pick<TrialState, "phase" | "daysRemaining
 // manager and dispatcher still see it; they are the people who can act or
 // pass it on. Hidden while the role is still loading too, so a tech's phone
 // never flashes it on the way in.
+//
+// ── THE COUNTDOWN IS THE OWNER'S ──────────────────────────────────────────
+//
+// R2-51: an office manager or dispatcher saw "14 days left… Ask an owner to
+// set up billing" on every page, about a quarter of a 390px screen, for the
+// whole trial. Only the owner can set up billing (`manage_org_billing`), so a
+// countdown is chrome for the owner alone. Once the trial or plan has ENDED
+// the others see it again: adding clients is paused for them too, and the
+// notice is what explains the refusal and who to ask.
+export function shownToRole(s: Pick<TrialState, "phase"> & { canManageBilling: boolean }): boolean {
+  if (s.phase === "paid" || s.phase === "none") return false;
+  return s.canManageBilling || growthPausedFor(s as TrialState);
+}
+
 export function TrialBanner() {
   const [showWhy, setShowWhy] = useState(false);
   const { role, orgId } = useMyRole();
@@ -84,7 +98,7 @@ export function TrialBanner() {
     enabled: role !== null && role !== "tech",
   });
 
-  const shown = !!data && data.phase !== "paid" && data.phase !== "none";
+  const shown = !!data && shownToRole(data);
   // Re-shows when the version changes (see trialDismissVersion) and, whatever
   // the phase, a week after it was put away.
   const { dismissed, dismiss } = useDismissed(
@@ -95,7 +109,7 @@ export function TrialBanner() {
 
   if (role === null || role === "tech") return null;
   if (!data) return null;
-  if (data.phase === "paid" || data.phase === "none") return null;
+  if (!shownToRole(data)) return null;
   if (dismissed) return null;
 
   const copy = TRIAL_COPY[data.phase];

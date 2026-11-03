@@ -211,16 +211,30 @@ async function businessLocked(orgId: string): Promise<boolean> {
   }
 }
 
-/** Org branding + slug for the generic company sign-in page, looked up by slug. */
+/** Org branding + slug for the generic company sign-in page, looked up by slug.
+ *
+ *  The portal address first, then the booking-link address (R2-48). The
+ *  booking-link settings promise "The form accepts either", and a customer who
+ *  trims /signup/<link> to /portal/<link> got "Company not found". The portal
+ *  address wins a tie, as it does on /signup; the sign-in then redirects to
+ *  `orgSlug`, so the session lives at the portal address either way. */
 export async function orgBrandingBySlug(
   slug: string,
 ): Promise<(PortalBranding & { organizationId: string }) | null> {
   const supabaseAdmin = await sbAdmin();
-  const { data } = await supabaseAdmin
+  const cols = "id, name, portal_slug, logo_url, brand_color, timezone";
+  let { data } = await supabaseAdmin
     .from("organizations")
-    .select("id, name, portal_slug, logo_url, brand_color, timezone")
+    .select(cols)
     .eq("portal_slug", slug)
     .maybeSingle();
+  if (!data) {
+    ({ data } = await supabaseAdmin
+      .from("organizations")
+      .select(cols)
+      .eq("slug", slug)
+      .maybeSingle());
+  }
   if (!data) return null;
   if (await businessLocked(data.id)) return null;
   return {

@@ -8,7 +8,7 @@ import {
   Preview,
   Text,
 } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
+import { styles, OrgFooter, type OrgContact, TenantHeader, howToReach, cap } from "./_shared";
 import type { TemplateEntry } from "./registry";
 
 interface Props extends OrgContact {
@@ -66,7 +66,9 @@ function StayNotice({
               View your stay
             </Button>
           )}
-          <Text style={styles.text}>Reply to this email if your plans have changed.</Text>
+          <Text style={styles.text}>
+            {cap(howToReach({ ...contact, orgName }))} if your plans have changed.
+          </Text>
           <OrgFooter {...contact} orgName={orgName} />
         </Container>
       </Body>
