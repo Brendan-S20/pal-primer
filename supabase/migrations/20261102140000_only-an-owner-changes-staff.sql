@@ -48,8 +48,8 @@ DECLARE _org uuid;
 BEGIN
   SELECT organization_id INTO _org FROM public.staff WHERE id = _staff_id;
   IF _org IS NULL THEN RAISE EXCEPTION 'staff not found'; END IF;
-  -- D7 (#659): owner only. An office manager was allowed here until
-  -- 20261102140000.
+  -- D7 (#659): owner only. Until 20261102140000 the other role that runs
+  -- the office was let in here too.
   IF NOT public.has_role(auth.uid(), _org, 'owner'::app_role) THEN
     RAISE EXCEPTION USING
       ERRCODE = '42501',
@@ -185,9 +185,20 @@ BEGIN
                             'Only an owner removes a person')) <> 3 THEN
     RAISE EXCEPTION 'staff is missing one of the three owner-only restrictive policies';
   END IF;
-  IF (SELECT prosrc FROM pg_proc WHERE oid = 'public.set_staff_active(uuid, boolean)'::regprocedure)
-       LIKE '%office_manager%' THEN
+  -- strpos, not LIKE: in LIKE '_' matches any character, so
+  -- '%office_manager%' also matched the words "office manager" in a comment
+  -- in the new body and failed every replay (Sandboxes run 41526612770).
+  IF strpos((SELECT prosrc FROM pg_proc WHERE oid = 'public.set_staff_active(uuid, boolean)'::regprocedure),
+            '''office_manager''') > 0 THEN
     RAISE EXCEPTION 'set_staff_active still lets an office manager turn people on or off';
+  END IF;
+  IF strpos((SELECT prosrc FROM pg_proc WHERE oid = 'public.set_staff_active(uuid, boolean)'::regprocedure),
+            'IF NOT public.has_role(auth.uid(), _org, ''owner''::app_role) THEN') = 0 THEN
+    RAISE EXCEPTION 'set_staff_active does not ask for an owner';
+  END IF;
+  IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'public' AND p.proname = 'set_staff_active') <> 1 THEN
+    RAISE EXCEPTION 'set_staff_active has an overload that the owner-only body does not cover';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM pg_trigger
