@@ -205,6 +205,10 @@ const en = {
     viewMySchedule: "View my schedule",
     myRoute: "My route",
     aVisit: "a visit",
+    /** The folded line under the list: visits canceled today (gaps-r2-08). */
+    canceledStops_one: "{{count}} canceled visit",
+    canceledStops_other: "{{count}} canceled visits",
+    canceledStopsHint: "Not on your route. No need to go.",
     /** Between the weekday and the date on the day chip: "Tue, Oct 6". */
     weekdaySeparator: ", ",
   },

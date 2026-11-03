@@ -289,7 +289,10 @@ describe("no trigger function is executable by a signed-in user", () => {
     // tg_invoices_deposit_follows (a deposit follows its stay invoice) and
     // tg_stays_deposit_link (the stay sets and releases the link). Each
     // revoked from PUBLIC, anon and authenticated there.
-    expect(triggerFunctions().size).toBe(98);
+    //
+    // 98 -> 99 (20261102190000, gaps-r2-07): tg_stays_invoice_period, an
+    // unpaid stay invoice's period follows the stay's dates. Revoked there.
+    expect(triggerFunctions().size).toBe(99);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

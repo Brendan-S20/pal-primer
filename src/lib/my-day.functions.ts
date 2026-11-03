@@ -1106,6 +1106,9 @@ export const getMyUpcomingDays = createServerFn({ method: "GET" })
 
     const byDay = new Map<string, UpcomingDay>();
     for (const v of (visits ?? []) as any[]) {
+      // A canceled visit is not a stop (gaps-r2-08): a day whose only visits
+      // were canceled is not a workday, and one is not counted as a stop.
+      if (v.status === "canceled") continue;
       const key = v.scheduled_on as string;
       let day = byDay.get(key);
       if (!day) {

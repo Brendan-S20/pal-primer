@@ -34,15 +34,17 @@ describe("My Day completion progress", () => {
     ).toMatchObject({ completedCount: 5, missedCount: 3, skippedCount: 0, total: 8, pct: 63 });
   });
 
-  it("never counts missed, skipped, cancelled or unfinished visits as done", () => {
+  it("never counts missed, skipped, canceled or unfinished visits as done", () => {
+    // "canceled" is the status the database writes. A canceled visit is not
+    // a stop at all, so it is out of the total too (gaps-r2-08).
     const result = dayAtAGlance(
-      visits("missed", "skipped", "cancelled", "scheduled", "in_progress"),
+      visits("missed", "skipped", "canceled", "scheduled", "in_progress"),
     );
     expect(result).toMatchObject({
       completedCount: 0,
       missedCount: 1,
       skippedCount: 1,
-      total: 5,
+      total: 4,
       pct: 0,
     });
     expect(result.nextUp?.status).toBe("in_progress");
