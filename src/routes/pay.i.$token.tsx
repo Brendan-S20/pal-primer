@@ -11,7 +11,8 @@ import { useEffect, useMemo, useState } from "react";
 // The /pure entry adds js.stripe.com only when loadStripe() runs, on a
 // payment screen. The bare entry adds it the moment this module is imported,
 // which put Stripe on every page, /auth included (R2-52).
-import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js/pure";
+import { loadStripe } from "@stripe/stripe-js/pure";
+import type { Stripe as StripeJs } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { Loader2, ShieldCheck, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";

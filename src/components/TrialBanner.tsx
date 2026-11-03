@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { ChevronDown, ChevronUp, Clock } from "lucide-react";
 import { getTrialState } from "@/lib/trial.functions";
-import { TRIAL_COPY, growthPausedFor } from "@/lib/trial";
+import { TRIAL_COPY } from "@/lib/trial";
 import type { TrialState } from "@/lib/trial";
 import { useMyRole } from "@/hooks/useMyRole";
 import { useDismissed } from "@/lib/dismissible";
@@ -81,9 +81,10 @@ export function trialDismissVersion(s: Pick<TrialState, "phase" | "daysRemaining
 // countdown is chrome for the owner alone. Once the trial or plan has ENDED
 // the others see it again: adding clients is paused for them too, and the
 // notice is what explains the refusal and who to ask.
-export function shownToRole(s: Pick<TrialState, "phase"> & { canManageBilling: boolean }): boolean {
+export function shownToRole(s: { phase: TrialState["phase"]; canManageBilling: boolean }): boolean {
   if (s.phase === "paid" || s.phase === "none") return false;
-  return s.canManageBilling || growthPausedFor(s as TrialState);
+  // Ended is growthPausedFor()'s definition: expired or lapsed.
+  return s.canManageBilling || s.phase === "expired" || s.phase === "lapsed";
 }
 
 export function TrialBanner() {
@@ -109,6 +110,8 @@ export function TrialBanner() {
 
   if (role === null || role === "tech") return null;
   if (!data) return null;
+  // Narrows the phase for TRIAL_COPY below; shownToRole says the rest.
+  if (data.phase === "paid" || data.phase === "none") return null;
   if (!shownToRole(data)) return null;
   if (dismissed) return null;
 
