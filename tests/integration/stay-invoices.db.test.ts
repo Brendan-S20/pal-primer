@@ -46,6 +46,9 @@ async function request(
   h: Awaited<ReturnType<typeof home>>,
   serviceId = nightService,
   requestKey = randomUUID(),
+  /** Days from `startDate` (today + 14) the stay starts. 0 unless a case needs
+   *  the other side of the deposit's refund window. */
+  startIn = 0,
 ) {
   const args = {
     _org_id: org.orgId,
@@ -54,8 +57,8 @@ async function request(
     _input: {
       propertyId: h.propertyId,
       serviceId,
-      startsOn: day(0),
-      endsOn: day(serviceId === nightService ? 5 : 4),
+      startsOn: day(startIn),
+      endsOn: day(startIn + (serviceId === nightService ? 5 : 4)),
       petIds: h.pets,
       windows: [
         { earliest: "08:00", latest: "10:00" },
@@ -248,36 +251,92 @@ describe.skipIf(!dbEnabled)("stay invoices in the database", () => {
     expect((await org.owner.client.rpc("confirm_stay", { _stay_id: stayId })).error).not.toBeNull();
   });
 
-  it("the paid deposit becomes account credit that comes off the stay invoice", async () => {
+  // Decision D3 (#653): a deposit is part payment of its stay invoice, not
+  // account credit. This test used to say "the paid deposit becomes account
+  // credit that comes off the stay invoice" (credit_applied_cents 10000); the
+  // deposit now comes off as a payment (amount_paid_cents 10000) and no credit
+  // is posted until a cancel releases it.
+  //
+  // What a cancel then does is the cancellation rule (tg_stays_follow,
+  // 20261024080900 and 081100), unchanged by D3: this org keeps the default
+  // stay_deposit_refund_days of 7, so a stay canceled fewer than 7 days before
+  // it starts keeps the deposit as a "Cancellation fee" invoice paid from the
+  // client's credit, and one canceled 7 or more days ahead gives it back.
+  // Note `day(0)` in this file is today + 14 (startDate), so the original
+  // spec's same-`day(0)` cancel was 14 days ahead: refundable, credit $100,
+  // no fee, on main before D3 and with it. Both sides are pinned here.
+  async function paidDepositStay(startIn: number) {
     const h = await home();
-    const { stayId } = await request(h);
+    const { stayId } = await request(h, nightService, randomUUID(), startIn);
     const id = await confirm(stayId);
     const st = await stay(stayId);
+    // Paid the way markInvoicePaidFromStripe pays it: the status, then the row.
     const paid = await org.admin
       .from("invoices")
       .update({ status: "paid", paid_at: new Date().toISOString() })
       .eq("id", st.deposit_invoice_id);
     expect(paid.error).toBeNull();
-    const applied = await org.admin.rpc("apply_credit_to_invoice", { _invoice_id: id });
-    expect(applied.error).toBeNull();
+    const row = await org.admin.from("payments").insert({
+      invoice_id: st.deposit_invoice_id,
+      organization_id: org.orgId,
+      amount_cents: 10000,
+      currency: "usd",
+      status: "succeeded",
+      paid_at: new Date().toISOString(),
+      stripe_payment_intent_id: `pi_deposit_${randomUUID()}`,
+    });
+    expect(row.error).toBeNull();
     const inv = await org.admin
       .from("invoices")
-      .select("credit_applied_cents, total_cents")
+      .select("credit_applied_cents, amount_paid_cents, total_cents, status")
       .eq("id", id)
       .single();
-    expect(inv.data).toMatchObject({ total_cents: 37500, credit_applied_cents: 10000 });
-    // The existing void path returns partial applied credit on cancellation.
+    expect(inv.data).toMatchObject({
+      total_cents: 37500,
+      credit_applied_cents: 0,
+      amount_paid_cents: 10000,
+      status: "open",
+    });
+    expect(await creditOf(h.clientId)).toBe(0);
     const canceled = await org.owner.client
       .from("stays")
       .update({ status: "canceled" })
       .eq("id", stayId);
     expect(canceled.error).toBeNull();
-    const balance = await org.admin
+    const fees = await org.admin
+      .from("invoices")
+      .select("status, total_cents, credit_applied_cents")
+      .eq("client_id", h.clientId)
+      .like("notes", "Stay canceled less than%");
+    expect(fees.error).toBeNull();
+    const stayInv = await org.admin.from("invoices").select("status").eq("id", id).single();
+    return { clientId: h.clientId, fees: fees.data ?? [], stayStatus: stayInv.data?.status };
+  }
+
+  async function creditOf(clientId: string) {
+    const r = await org.admin
       .from("clients")
       .select("credit_balance_cents")
-      .eq("id", h.clientId)
+      .eq("id", clientId)
       .single();
-    expect(balance.data?.credit_balance_cents).toBe(10000);
+    return r.data?.credit_balance_cents;
+  }
+
+  it("a paid deposit is part payment of its stay; canceled inside the window it is kept as the fee", async () => {
+    // day(-11) is 3 days from today: inside the 7-day window.
+    const r = await paidDepositStay(-11);
+    expect(r.stayStatus).toBe("void");
+    // The released $100 went to credit and straight onto the fee.
+    expect(r.fees).toEqual([{ status: "paid", total_cents: 10000, credit_applied_cents: 10000 }]);
+    expect(await creditOf(r.clientId)).toBe(0);
+  });
+
+  it("a paid deposit is part payment of its stay; canceled 7 or more days ahead it comes back as credit", async () => {
+    // day(0) is 14 days from today, as in the original spec: refundable.
+    const r = await paidDepositStay(0);
+    expect(r.stayStatus).toBe("void");
+    expect(r.fees).toEqual([]);
+    expect(await creditOf(r.clientId)).toBe(10000);
   });
 
   it("adds the configured holiday percentage only on holiday dates, not on a blackout", async () => {

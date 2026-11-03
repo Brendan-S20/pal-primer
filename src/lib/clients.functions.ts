@@ -117,7 +117,9 @@ async function loadClientRoster(supabase: any, orgId: string, seesInvoices: bool
       ? fetchAllPagesConcurrently<any>((a, b) =>
           supabase
             .from("invoices")
-            .select("client_id, total_cents, credit_applied_cents, amount_paid_cents, status")
+            .select(
+              "client_id, total_cents, credit_applied_cents, amount_paid_cents, deposit_for_invoice_id, status",
+            )
             .eq("organization_id", orgId)
             .eq("status", "open")
             .order("id")
@@ -276,7 +278,7 @@ const CLIENT_ROW_SELECT_NO_INVOICES =
  *  a dispatcher's request does not ask for invoices at all. */
 const CLIENT_ROW_SELECT =
   CLIENT_ROW_SELECT_NO_INVOICES +
-  ", invoices(total_cents, credit_applied_cents, amount_paid_cents, status)";
+  ", invoices(total_cents, credit_applied_cents, amount_paid_cents, deposit_for_invoice_id, status)";
 
 /** What a search or a balance is checked against: a client's own words and
  *  every street, nothing the list shows but does not search. */
@@ -289,7 +291,7 @@ const CLIENT_MATCH_SELECT =
 const RUNNING_EMBED = ", running:subscriptions(id)";
 /** The open invoices of a client with any, for "Has balance". */
 const OWED_EMBED =
-  ", owed:invoices!inner(client_id, total_cents, credit_applied_cents, amount_paid_cents, status)";
+  ", owed:invoices!inner(client_id, total_cents, credit_applied_cents, amount_paid_cents, deposit_for_invoice_id, status)";
 /** The properties whose street a search matched. */
 const STREET_HIT_EMBED = ", hit:properties!inner(street, archived_at)";
 
@@ -561,7 +563,9 @@ export const listClientsSummary = createServerFn({ method: "GET" })
         : fetchAllPagesConcurrently<any>((a, b) =>
             supabase
               .from("invoices")
-              .select("client_id, total_cents, credit_applied_cents, amount_paid_cents, status")
+              .select(
+                "client_id, total_cents, credit_applied_cents, amount_paid_cents, deposit_for_invoice_id, status",
+              )
               .eq("organization_id", orgId)
               .eq("status", "open")
               .order("id")
