@@ -32,7 +32,8 @@ import { StaffInvoicePayForm } from "@/components/StaffInvoicePayForm";
 import { DownloadPdfButton } from "@/components/DownloadPdfButton";
 import { downloadInvoicePdf } from "@/lib/document-pdf.functions";
 import { RefundPaymentAction } from "@/components/RefundPaymentAction";
-import { canOfferRefund } from "@/lib/refunds";
+import { ManualRefundAction } from "@/components/ManualRefundAction";
+import { canOfferRefund, canRecordManualRefund } from "@/lib/refunds";
 import { usePermissions } from "@/hooks/useMyRole";
 import { describePaymentSplit, formatDateTime, formatDay, surchargeSplit } from "@/lib/format";
 import {
@@ -144,6 +145,7 @@ export function InvoiceDrawer({
       } else {
         toast.success("Payment recorded. Invoice paid");
       }
+      if (r.tipFailed) toast.error("The payment was recorded, but the tip was not saved.");
       if (r.intentStillLive?.length) {
         toast.warning(
           "The payment link for this invoice is still live. Cancel it in Stripe, or the client can still be charged.",
@@ -519,7 +521,9 @@ export function InvoiceDrawer({
                       {/* Its own line under the payment, not squeezed into the
                         row: at 320px the row already holds a date, a chip and
                         a two-line amount. */}
-                      {(p.refunded_cents > 0 || canOfferRefund(role, p)) && (
+                      {(p.refunded_cents > 0 ||
+                        canOfferRefund(role, p) ||
+                        canRecordManualRefund(role, p)) && (
                         <div className="mt-1 flex items-center justify-between gap-2">
                           <span className="min-w-0 text-2xs text-muted-foreground">
                             {p.refunded_cents > 0
@@ -532,6 +536,13 @@ export function InvoiceDrawer({
                             currency={inv.currency}
                             customerName={client?.display_name}
                             onRefunded={onChanged}
+                          />
+                          <ManualRefundAction
+                            payment={p}
+                            invoiceId={inv.id}
+                            currency={inv.currency}
+                            customerName={client?.display_name}
+                            onRecorded={onChanged}
                           />
                         </div>
                       )}

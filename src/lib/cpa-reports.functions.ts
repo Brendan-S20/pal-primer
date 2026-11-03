@@ -258,7 +258,7 @@ type InvoiceRow = {
 };
 
 const INVOICE_COLS =
-  "id, number, client_id, status, total_cents, tax_cents, tax_rate_bps, tax_label, credit_applied_cents, amount_paid_cents, issued_at, paid_at, voided_at, due_on, updated_at";
+  "id, number, client_id, status, total_cents, tax_cents, tax_rate_bps, tax_label, credit_applied_cents, amount_paid_cents, deposit_for_invoice_id, issued_at, paid_at, voided_at, due_on, updated_at";
 
 /** The whole invoice ledger for this org. The bridge and the aging report both
  *  need point-in-time positions, which cannot be derived from a filtered

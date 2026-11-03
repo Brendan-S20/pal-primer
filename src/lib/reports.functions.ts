@@ -183,7 +183,7 @@ export const getReports = createServerFn({ method: "POST" })
       supabase
         .from("invoices")
         .select(
-          "id, client_id, status, total_cents, tax_cents, credit_applied_cents, amount_paid_cents, due_on, issued_at, paid_at, voided_at, updated_at, kind",
+          "id, client_id, status, total_cents, tax_cents, credit_applied_cents, amount_paid_cents, deposit_for_invoice_id, due_on, issued_at, paid_at, voided_at, updated_at, kind",
         )
         .eq("organization_id", orgId)
         .order("id")
