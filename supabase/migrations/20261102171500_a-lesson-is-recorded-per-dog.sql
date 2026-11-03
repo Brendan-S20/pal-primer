@@ -44,7 +44,7 @@ ALTER TABLE public.homework
 
 -- ── 3. Backfill, before the new keys, while visit_id is still unique ─────────
 
-DO $backfill$
+DO $fill_lesson_dog$
 DECLARE _n integer;
 BEGIN
   -- The dog each lesson was for, where it can be known.
@@ -87,7 +87,7 @@ BEGIN
   RAISE NOTICE 'homework rows given their dog: %', _n;
   DROP TABLE _lesson_dog;
 END
-$backfill$;
+$fill_lesson_dog$;
 
 ALTER TABLE public.session_progress DROP CONSTRAINT IF EXISTS session_progress_visit_id_skill_id_key;
 ALTER TABLE public.session_progress DROP CONSTRAINT IF EXISTS session_progress_visit_dog_skill_key;
