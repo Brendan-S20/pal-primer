@@ -2754,6 +2754,7 @@ export type Database = {
           created_at: string
           dog_id: string | null
           due_on: string | null
+          id: string
           organization_id: string
           updated_at: string
           visit_id: string
@@ -2764,6 +2765,7 @@ export type Database = {
           created_at?: string
           dog_id?: string | null
           due_on?: string | null
+          id?: string
           organization_id: string
           updated_at?: string
           visit_id: string
@@ -2774,6 +2776,7 @@ export type Database = {
           created_at?: string
           dog_id?: string | null
           due_on?: string | null
+          id?: string
           organization_id?: string
           updated_at?: string
           visit_id?: string
@@ -2796,7 +2799,7 @@ export type Database = {
           {
             foreignKeyName: "homework_visit_id_fkey"
             columns: ["visit_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "visits"
             referencedColumns: ["id"]
           },
@@ -7031,6 +7034,7 @@ export type Database = {
       session_progress: {
         Row: {
           created_at: string
+          dog_id: string | null
           id: string
           organization_id: string
           score: number
@@ -7040,6 +7044,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          dog_id?: string | null
           id?: string
           organization_id: string
           score: number
@@ -7049,6 +7054,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          dog_id?: string | null
           id?: string
           organization_id?: string
           score?: number
@@ -7057,6 +7063,13 @@ export type Database = {
           visit_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "session_progress_dog_id_fkey"
+            columns: ["dog_id"]
+            isOneToOne: false
+            referencedRelation: "dogs"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "session_progress_organization_id_fkey"
             columns: ["organization_id"]
@@ -8065,6 +8078,8 @@ export type Database = {
       training_session_notes: {
         Row: {
           created_at: string
+          dog_id: string | null
+          id: string
           note: string | null
           organization_id: string
           trainer_note: string | null
@@ -8073,6 +8088,8 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          dog_id?: string | null
+          id?: string
           note?: string | null
           organization_id: string
           trainer_note?: string | null
@@ -8081,6 +8098,8 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          dog_id?: string | null
+          id?: string
           note?: string | null
           organization_id?: string
           trainer_note?: string | null
@@ -8088,6 +8107,13 @@ export type Database = {
           visit_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "training_session_notes_dog_id_fkey"
+            columns: ["dog_id"]
+            isOneToOne: false
+            referencedRelation: "dogs"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "training_session_notes_organization_id_fkey"
             columns: ["organization_id"]
@@ -8098,7 +8124,7 @@ export type Database = {
           {
             foreignKeyName: "training_session_notes_visit_id_fkey"
             columns: ["visit_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "visits"
             referencedColumns: ["id"]
           },
@@ -10368,6 +10394,7 @@ export type Database = {
           _visit_ids: string[]
         }
         Returns: {
+          dog_id: string
           note: string
           visit_id: string
         }[]
