@@ -376,7 +376,15 @@ function ReportsPage() {
           <CardHeader>
             <CardTitle>Zone activity</CardTitle>
           </CardHeader>
-          <CardContent className="overflow-x-auto">
+          {/* A region that scrolls sideways has to be reachable by keyboard,
+              or the right-hand columns are mouse-and-touch only: axe
+              scrollable-region-focusable (gaps-r2-11). Same on the next. */}
+          <CardContent
+            className="overflow-x-auto"
+            tabIndex={0}
+            role="region"
+            aria-label="Zone activity"
+          >
             {data.perZone.length === 0 ? (
               <p className="text-sm text-muted-foreground">No visits.</p>
             ) : (
@@ -413,7 +421,12 @@ function ReportsPage() {
             above, less anything paid without an invoice.
           </p>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
+        <CardContent
+          className="overflow-x-auto"
+          tabIndex={0}
+          role="region"
+          aria-label="Top clients by money collected"
+        >
           {data.topClients.length === 0 ? (
             <p className="text-sm text-muted-foreground">No payments received in this range.</p>
           ) : (

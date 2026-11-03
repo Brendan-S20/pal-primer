@@ -190,7 +190,7 @@ function SetupPage() {
             one tap away from the next. */}
         <nav aria-label="Setup steps" className="min-w-0">
           <div className="lg:hidden">
-            <Progress value={setupProgressPct(steps)} />
+            <Progress value={setupProgressPct(steps)} aria-label="Setup progress" />
           </div>
           <ol className="hidden space-y-1 lg:block">
             {steps.map((s, i) => (

@@ -609,6 +609,10 @@ function WorkspaceShell() {
             <button
               type="button"
               onClick={openPalette}
+              // The ⌘K hint inside is aria-hidden and announced as this
+              // instead, so the button's name is what it does rather than
+              // "Search or jump to… ⌘K" (gaps-r2-11).
+              aria-keyshortcuts="Meta+K Control+K"
               // 34.0px measured at 360px, from `py-1.5` around a 20px line —
               // the widest control in the header and, on a phone, the one most
               // likely to be aimed at with a thumb. `min-h-11` rather than more
@@ -619,7 +623,10 @@ function WorkspaceShell() {
             >
               <Search className="h-4 w-4 shrink-0" />
               <span className="truncate">Search or jump to…</span>
-              <kbd className="ml-auto hidden shrink-0 rounded border bg-muted px-1.5 py-0.5 font-mono text-3xs sm:inline-block">
+              <kbd
+                aria-hidden="true"
+                className="ml-auto hidden shrink-0 rounded border bg-muted px-1.5 py-0.5 font-mono text-3xs text-muted-foreground-strong sm:inline-block"
+              >
                 {isMac ? "⌘K" : "Ctrl K"}
               </kbd>
             </button>

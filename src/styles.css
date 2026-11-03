@@ -101,6 +101,7 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-muted-foreground-strong: var(--muted-foreground-strong);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
@@ -138,6 +139,14 @@
   --secondary-foreground: oklch(0.208 0.042 265.755);
   --muted: oklch(0.968 0.007 247.896);
   --muted-foreground: oklch(0.554 0.046 257.417);
+  /* Secondary text that sits on a TINT rather than on white: the setup banner
+   * (bg-primary/5), the ⌘K hint (bg-muted), the tab bar's labels (a
+   * translucent bar over whatever scrolls under it). muted-foreground clears
+   * 4.5:1 on white (4.77) and nothing else: 4.35 on bg-muted, 4.31 on the
+   * banner, which is where axe found 398 color-contrast nodes (gaps-r2-11).
+   * Same hue, lower lightness: 5.4:1 on either tint, 6.0 on white. Dark mode
+   * keeps muted-foreground's value, which already clears 5.5 on dark muted. */
+  --muted-foreground-strong: oklch(0.5 0.046 257.417);
   --accent: oklch(0.968 0.007 247.896);
   --accent-foreground: oklch(0.208 0.042 265.755);
   --destructive: oklch(0.577 0.245 27.325);
@@ -173,6 +182,7 @@
   --secondary-foreground: oklch(0.984 0.003 247.858);
   --muted: oklch(0.279 0.041 260.031);
   --muted-foreground: oklch(0.704 0.04 256.788);
+  --muted-foreground-strong: oklch(0.704 0.04 256.788);
   --accent: oklch(0.279 0.041 260.031);
   --accent-foreground: oklch(0.984 0.003 247.858);
   --destructive: oklch(0.704 0.191 22.216);

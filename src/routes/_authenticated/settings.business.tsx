@@ -426,7 +426,7 @@ function CommercialAccountsCard() {
       <CardContent className="space-y-3">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-sm font-medium">
+            <div id="commercial-accounts-label" className="text-sm font-medium">
               We serve HOAs, apartment complexes or dog parks
             </div>
             <div className="mt-0.5 text-xs text-muted-foreground">
@@ -436,6 +436,7 @@ function CommercialAccountsCard() {
             </div>
           </div>
           <Switch
+            aria-labelledby="commercial-accounts-label"
             checked={on}
             disabled={!canEdit || locked || mut.isPending || q.isLoading}
             onCheckedChange={(v) => mut.mutate(v)}

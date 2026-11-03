@@ -73,7 +73,9 @@ describe("setupProgressPct", () => {
 
   it("drives the /setup bar, not the step index", () => {
     const setup = read("src/routes/_authenticated/setup.tsx");
-    expect(setup).toMatch(/<Progress value=\{setupProgressPct\(steps\)\} \/>/);
+    expect(setup).toMatch(
+      /<Progress value=\{setupProgressPct\(steps\)\} aria-label="Setup progress" \/>/,
+    );
     expect(setup).not.toMatch(/\(index \+ 1\) \/ steps\.length/);
   });
 });
