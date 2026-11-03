@@ -27,8 +27,22 @@ export async function attachDatedPartialPayments<T extends LedgerInvoice & { id:
     .eq("status", "succeeded")
     .eq("raw_event->>partial", "true");
   if (error) throw new Error(error.message);
+  // A stay invoice is paid in parts whenever its deposit is paid (D3, #653):
+  // the deposit's payments sit on the deposit invoice and count toward the
+  // stay's. So each such stay invoice is dated from its own payments AND its
+  // deposits', whether or not any of them was marked partial.
+  const depositsOf = new Map<string, string[]>();
+  for (const inv of invoices) {
+    const parent = inv.deposit_for_invoice_id;
+    if (!parent) continue;
+    depositsOf.set(parent, [...(depositsOf.get(parent) ?? []), inv.id]);
+  }
   const ids = [
-    ...new Set(((marks ?? []) as Array<{ invoice_id: string }>).map((m) => m.invoice_id)),
+    ...new Set([
+      ...((marks ?? []) as Array<{ invoice_id: string }>).map((m) => m.invoice_id),
+      ...depositsOf.keys(),
+      ...[...depositsOf.values()].flat(),
+    ]),
   ];
   if (ids.length === 0) return invoices;
 
@@ -56,8 +70,9 @@ export async function attachDatedPartialPayments<T extends LedgerInvoice & { id:
     }
   }
   for (const inv of invoices) {
-    const pays = byInvoice.get(inv.id);
-    if (pays) inv.paymentsAsOf = pays;
+    const own = byInvoice.get(inv.id) ?? [];
+    const deposits = (depositsOf.get(inv.id) ?? []).flatMap((d) => byInvoice.get(d) ?? []);
+    if (deposits.length > 0 || byInvoice.has(inv.id)) inv.paymentsAsOf = [...own, ...deposits];
   }
   return invoices;
 }

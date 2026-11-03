@@ -279,11 +279,22 @@ describe("no trigger function is executable by a signed-in user", () => {
     // tg_zones_enabled_owner_only, which refuses anyone but an owner turning a
     // zone on or off. Revoked from PUBLIC, anon and authenticated there.
     //
-    // 94 -> 95 (20261102172500, a lesson series skips closed days and can
+    // 94 -> 95 (20261102140000, only an owner changes staff, #659):
+    // tg_log_staff_authority_change, which writes the activity_log row naming
+    // who turned a person on or off or changed their role. Revoked from
+    // PUBLIC, anon and authenticated there.
+    //
+    // 95 -> 98 (20261102160000, a deposit is part payment of its stay, #653):
+    // tg_invoices_guard_deposit_link (nobody signed in moves a deposit's link),
+    // tg_invoices_deposit_follows (a deposit follows its stay invoice) and
+    // tg_stays_deposit_link (the stay sets and releases the link). Each
+    // revoked from PUBLIC, anon and authenticated there.
+    //
+    // 98 -> 99 (20261102172500, a lesson series skips closed days and can
     // stop, R2-49): visits_follow_series_rules, which leaves out a series
     // visit on a closed or holiday date, or past the series' session count.
     // Revoked from PUBLIC, anon and authenticated there.
-    expect(triggerFunctions().size).toBe(95);
+    expect(triggerFunctions().size).toBe(99);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

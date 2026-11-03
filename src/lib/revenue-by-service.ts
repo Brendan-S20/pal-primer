@@ -18,7 +18,13 @@ export type RevenueLine = {
   subscription_id: string | null;
 };
 
-export type RevenueInvoice = { id: string; status: string | null; issued_at: string | null };
+export type RevenueInvoice = {
+  id: string;
+  status: string | null;
+  issued_at: string | null;
+  /** A linked stay deposit bills nothing of its own (billedDay). */
+  deposit_for_invoice_id?: string | null;
+};
 
 export type RevenueRow = { serviceId: string | null; name: string; cents: number; lines: number };
 
@@ -51,7 +57,12 @@ export function revenueByService(input: {
       null;
     const name = (sid && input.serviceName.get(sid)) || OTHER_CHARGES;
     const key = sid && name !== OTHER_CHARGES ? sid : OTHER_CHARGES;
-    const row = rows.get(key) ?? { serviceId: key === OTHER_CHARGES ? null : sid, name, cents: 0, lines: 0 };
+    const row = rows.get(key) ?? {
+      serviceId: key === OTHER_CHARGES ? null : sid,
+      name,
+      cents: 0,
+      lines: 0,
+    };
     row.cents += l.amount_cents ?? 0;
     row.lines += 1;
     rows.set(key, row);

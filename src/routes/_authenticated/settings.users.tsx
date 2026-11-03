@@ -1,8 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { lookupAddressPoint } from "@/lib/geocode.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import {
   listOrgUsers,
   changeUserRole,
@@ -28,8 +28,38 @@ import { useMyRole } from "@/hooks/useMyRole";
 import { useRoleLabel } from "@/components/CommercialOnly";
 import { MapPin, ChevronDown, ChevronRight } from "lucide-react";
 import { titleHead } from "@/lib/page-title";
-import { inviteSendToast } from "@/lib/invite-copy";
+import { inviteSendToast, replaceInviteQuestion } from "@/lib/invite-copy";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { toastServerError } from "@/lib/server-outcome";
 import { ConfirmButton } from "@/components/ConfirmButton";
+import {
+  SIGNED_OUT_MESSAGE,
+  forgetDraft,
+  isSignedOutError,
+  keepDraft,
+  readDraft,
+  returnHereAfterSignIn,
+} from "@/lib/signed-out";
+
+const USERS_PAGE = "/settings/users";
+type AddressDraft = { start: string; end: string };
+const addressDraftKey = (staffId: string) => `staff-addresses:${staffId}`;
+
+/** R2-19 (#659): a save with the session gone says so, offers the way back,
+ *  and comes back to this page after sign-in. Anything else is shown as the
+ *  error it is. Returns true when it was the signed-out case. */
+function useSignedOutToast() {
+  const navigate = useNavigate();
+  return (e: unknown): boolean => {
+    if (!isSignedOutError(e)) return false;
+    returnHereAfterSignIn(USERS_PAGE);
+    toast.error(SIGNED_OUT_MESSAGE, {
+      duration: Infinity,
+      action: { label: "Sign in", onClick: () => navigate({ to: "/auth" }) },
+    });
+    return true;
+  };
+}
 
 export const Route = createFileRoute("/_authenticated/settings/users")({
   head: () => titleHead("Users & roles", "Settings"),
@@ -77,13 +107,17 @@ function UsersPage() {
   const { data: staffData } = useQuery({ queryKey: ["staff-addresses"], queryFn: () => addrFn() });
   const staffById = new Map<string, any>((staffData?.staff ?? []).map((s: any) => [s.id, s]));
 
+  const signedOut = useSignedOutToast();
+
   const changeRole = useMutation({
     mutationFn: (v: { userId: string; role: any }) => changeFn({ data: v }),
     onSuccess: () => {
       toast.success("Role updated");
       qc.invalidateQueries({ queryKey: ["org-users"] });
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => {
+      if (!signedOut(e)) toast.error(e.message);
+    },
   });
 
   const toggleActive = useMutation({
@@ -114,10 +148,22 @@ function UsersPage() {
       }
       qc.invalidateQueries({ queryKey: ["org-users"] });
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => {
+      if (!signedOut(e)) toast.error(e.message);
+    },
   });
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // A row whose address draft was kept through a sign-in opens again, so the
+  // kept text is on screen rather than behind a chevron.
+  const staffIds = (data?.users ?? []).map((u: any) => u.staff_id).filter(Boolean) as string[];
+  const withDraft = staffIds.filter((id) => readDraft<AddressDraft>(addressDraftKey(id)));
+  const [reopened, setReopened] = useState(false);
+  useEffect(() => {
+    if (reopened || withDraft.length === 0) return;
+    setReopened(true);
+    setExpanded((prev) => new Set([...prev, ...withDraft]));
+  }, [reopened, withDraft]);
   const toggleExpand = (id: string) => {
     const next = new Set(expanded);
     if (next.has(id)) next.delete(id);
@@ -307,6 +353,7 @@ function InvitePanel() {
   const resendFn = useServerFn(resendOrgInvite);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"office_manager" | "dispatcher" | "tech">("tech");
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
 
   const invitesQ = useQuery({ queryKey: ["org-invites"], queryFn: () => listFn() });
   const invites: any[] = (invitesQ.data as any)?.invites ?? [];
@@ -334,14 +381,32 @@ function InvitePanel() {
       });
     }
   };
+  // R2-32: the server refuses your own address and anyone already on the
+  // team (a toast, in its words), resends a pending invite under the same
+  // role, and asks before replacing one under a different role.
   const createMut = useMutation({
-    mutationFn: () => createFn({ data: { email: email.trim(), role } }),
+    mutationFn: async () => {
+      const to = email.trim();
+      const first = await createFn({ data: { email: to, role } });
+      if (!("replaceQuestion" in first) || !first.replaceQuestion) return first;
+      const q = first.replaceQuestion;
+      const ask = replaceInviteQuestion(q.email, q.currentRole, q.role);
+      const yes = await confirm({
+        title: ask.title,
+        description: ask.description,
+        confirmLabel: ask.confirmLabel,
+        cancelLabel: ask.cancelLabel,
+      });
+      if (!yes) return null;
+      return createFn({ data: { email: to, role, replace: true } });
+    },
     onSuccess: (r) => {
-      reportSend(email.trim(), r, "created");
+      if (!r || "replaceQuestion" in r) return;
+      reportSend(email.trim(), r, r.resent ? "resent" : "created");
       setEmail("");
       qc.invalidateQueries({ queryKey: ["org-invites"] });
     },
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e) => toastServerError(e, { fallback: "Couldn't send the invite. Try again." }),
   });
   const revokeMut = useMutation({
     mutationFn: (id: string) => revokeFn({ data: { id } }),
@@ -363,6 +428,7 @@ function InvitePanel() {
         <CardTitle className="text-base">Invite a teammate</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {confirmDialog}
         <form
           className="flex flex-wrap items-end gap-2"
           onSubmit={(e) => { e.preventDefault(); if (email.trim()) createMut.mutate(); }}
@@ -435,8 +501,11 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
   const qc = useQueryClient();
   const saveFn = useServerFn(setStaffAddresses);
   const routingFn = useServerFn(setStaffRouting);
-  const [start, setStart] = useState(staff.start_address ?? "");
-  const [end, setEnd] = useState(staff.end_address ?? "");
+  const signedOut = useSignedOutToast();
+  // What was typed before a save found the session gone (R2-19), if any.
+  const [kept] = useState(() => readDraft<AddressDraft>(addressDraftKey(staff.id)));
+  const [start, setStart] = useState(kept?.start ?? staff.start_address ?? "");
+  const [end, setEnd] = useState(kept?.end ?? staff.end_address ?? "");
   // A pin that came back with a matched address. Held so save() can skip the
   // Nominatim round trip below and store the provider's own coordinates,
   // which are the point of matching in the first place. Cleared the moment
@@ -454,7 +523,9 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
       qc.invalidateQueries({ queryKey: ["staff-addresses"] });
       qc.invalidateQueries({ queryKey: ["staff"] });
     },
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e) => {
+      if (!signedOut(e)) toast.error((e as Error).message);
+    },
   });
 
   const save = async () => {
@@ -476,10 +547,12 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
           endLongitude: eGeo?.lng ?? (end === staff.end_address ? staff.end_longitude : null),
         },
       });
+      forgetDraft(addressDraftKey(staff.id));
       toast.success("Route endpoints saved");
       qc.invalidateQueries({ queryKey: ["staff-addresses"] });
     } catch (e: any) {
-      toast.error(e.message);
+      if (isSignedOutError(e)) keepDraft(addressDraftKey(staff.id), { start, end });
+      if (!signedOut(e)) toast.error(e.message);
     } finally {
       setSaving(false);
     }

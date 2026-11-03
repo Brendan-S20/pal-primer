@@ -25,6 +25,7 @@ import { pathOpenWhenLocked } from "@/lib/account-lock";
 import { AccountLockedShell } from "@/components/AccountLockedShell";
 import { reportClientError, setMonitoringIdentity } from "@/lib/monitoring/client";
 import { needsSecondStep } from "@/lib/mfa";
+import { returnHereAfterSignIn } from "@/lib/signed-out";
 import { getPlatformContext } from "@/lib/platform.functions";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { SetupGuideBanner } from "@/components/SetupGuideBanner";
@@ -96,6 +97,11 @@ export const Route = createFileRoute("/_authenticated")({
         // means we do not know anything, and deleting the day then would erase
         // the tech's route exactly when they need it most.
         if (identity.rejected) clearPersistedReadCaches();
+        // Come back here after sign-in (R2-19, #659): a reload with the
+        // session gone used to land on the role's page, not this one. /auth
+        // delivers the held page (lib/pending-deep-link.ts). This route is
+        // ssr: false, so the hold is in this tab's memory, never a server's.
+        returnHereAfterSignIn(location.href);
         throw redirect({ to: "/auth" });
       }
 
