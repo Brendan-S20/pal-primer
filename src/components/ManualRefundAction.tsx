@@ -44,7 +44,7 @@ function fmt(cents: number, currency = "usd") {
 const KIND_LABELS: Record<ManualRefundKind, { title: string; help: string }> = {
   refund: {
     title: "I gave the money back",
-    help: "Cash or a check returned to the customer. The invoice keeps its status.",
+    help: "Cash or a check returned to the client. The invoice keeps its status.",
   },
   reversal: {
     title: "The payment didn't go through",

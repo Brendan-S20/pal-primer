@@ -248,25 +248,53 @@ describe.skipIf(!dbEnabled)("stay invoices in the database", () => {
     expect((await org.owner.client.rpc("confirm_stay", { _stay_id: stayId })).error).not.toBeNull();
   });
 
-  it("the paid deposit becomes account credit that comes off the stay invoice", async () => {
+  // Decision D3 (#653): a deposit is part payment of its stay invoice, not
+  // account credit. This test used to say "the paid deposit becomes account
+  // credit that comes off the stay invoice" (credit_applied_cents 10000); the
+  // deposit now comes off as a payment (amount_paid_cents 10000) and no credit
+  // is posted until a cancel releases it.
+  it("the paid deposit is part payment of the stay invoice, not account credit", async () => {
     const h = await home();
     const { stayId } = await request(h);
     const id = await confirm(stayId);
     const st = await stay(stayId);
+    // Paid the way markInvoicePaidFromStripe pays it: the status, then the row.
     const paid = await org.admin
       .from("invoices")
       .update({ status: "paid", paid_at: new Date().toISOString() })
       .eq("id", st.deposit_invoice_id);
     expect(paid.error).toBeNull();
-    const applied = await org.admin.rpc("apply_credit_to_invoice", { _invoice_id: id });
-    expect(applied.error).toBeNull();
+    const row = await org.admin.from("payments").insert({
+      invoice_id: st.deposit_invoice_id,
+      organization_id: org.orgId,
+      amount_cents: 10000,
+      currency: "usd",
+      status: "succeeded",
+      paid_at: new Date().toISOString(),
+      stripe_payment_intent_id: `pi_deposit_${randomUUID()}`,
+    });
+    expect(row.error).toBeNull();
     const inv = await org.admin
       .from("invoices")
-      .select("credit_applied_cents, total_cents")
+      .select("credit_applied_cents, amount_paid_cents, total_cents, status")
       .eq("id", id)
       .single();
-    expect(inv.data).toMatchObject({ total_cents: 37500, credit_applied_cents: 10000 });
-    // The existing void path returns partial applied credit on cancellation.
+    expect(inv.data).toMatchObject({
+      total_cents: 37500,
+      credit_applied_cents: 0,
+      amount_paid_cents: 10000,
+      status: "open",
+    });
+    const before = await org.admin
+      .from("clients")
+      .select("credit_balance_cents")
+      .eq("id", h.clientId)
+      .single();
+    expect(before.data?.credit_balance_cents).toBe(0);
+    // Canceled before it is paid, the stay releases its deposit to account
+    // credit, exactly what a paid deposit was before D3, and the cancellation
+    // rule then applies to that credit. Nothing is created or lost: what the
+    // client holds plus what a cancellation fee took is the $100 they paid.
     const canceled = await org.owner.client
       .from("stays")
       .update({ status: "canceled" })
@@ -277,7 +305,13 @@ describe.skipIf(!dbEnabled)("stay invoices in the database", () => {
       .select("credit_balance_cents")
       .eq("id", h.clientId)
       .single();
-    expect(balance.data?.credit_balance_cents).toBe(10000);
+    const fees = await org.admin
+      .from("invoices")
+      .select("credit_applied_cents")
+      .eq("client_id", h.clientId)
+      .like("notes", "Stay canceled less than%");
+    const keptByFee = (fees.data ?? []).reduce((n, f) => n + (f.credit_applied_cents ?? 0), 0);
+    expect((balance.data?.credit_balance_cents ?? 0) + keptByFee).toBe(10000);
   });
 
   it("adds the configured holiday percentage only on holiday dates, not on a blackout", async () => {
