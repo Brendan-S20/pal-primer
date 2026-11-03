@@ -46,8 +46,8 @@ async function request(
   h: Awaited<ReturnType<typeof home>>,
   serviceId = nightService,
   requestKey = randomUUID(),
-  /** Days from today the stay starts. 0 unless a case needs the other side of
-   *  the deposit's refund window. */
+  /** Days from `startDate` (today + 14) the stay starts. 0 unless a case needs
+   *  the other side of the deposit's refund window. */
   startIn = 0,
 ) {
   const args = {
@@ -257,12 +257,14 @@ describe.skipIf(!dbEnabled)("stay invoices in the database", () => {
   // deposit now comes off as a payment (amount_paid_cents 10000) and no credit
   // is posted until a cancel releases it.
   //
-  // What a cancel then does is the cancellation rule (20261024080900, kept by
-  // 20261024081100), unchanged: this org keeps the default
+  // What a cancel then does is the cancellation rule (tg_stays_follow,
+  // 20261024080900 and 081100), unchanged by D3: this org keeps the default
   // stay_deposit_refund_days of 7, so a stay canceled fewer than 7 days before
   // it starts keeps the deposit as a "Cancellation fee" invoice paid from the
   // client's credit, and one canceled 7 or more days ahead gives it back.
-  // Both sides are pinned, each with its exact numbers.
+  // Note `day(0)` in this file is today + 14 (startDate), so the original
+  // spec's same-`day(0)` cancel was 14 days ahead: refundable, credit $100,
+  // no fee, on main before D3 and with it. Both sides are pinned here.
   async function paidDepositStay(startIn: number) {
     const h = await home();
     const { stayId } = await request(h, nightService, randomUUID(), startIn);
@@ -321,8 +323,8 @@ describe.skipIf(!dbEnabled)("stay invoices in the database", () => {
   }
 
   it("a paid deposit is part payment of its stay; canceled inside the window it is kept as the fee", async () => {
-    // Starts today: 0 days ahead, inside the 7-day window.
-    const r = await paidDepositStay(0);
+    // day(-11) is 3 days from today: inside the 7-day window.
+    const r = await paidDepositStay(-11);
     expect(r.stayStatus).toBe("void");
     // The released $100 went to credit and straight onto the fee.
     expect(r.fees).toEqual([{ status: "paid", total_cents: 10000, credit_applied_cents: 10000 }]);
@@ -330,7 +332,8 @@ describe.skipIf(!dbEnabled)("stay invoices in the database", () => {
   });
 
   it("a paid deposit is part payment of its stay; canceled 7 or more days ahead it comes back as credit", async () => {
-    const r = await paidDepositStay(10);
+    // day(0) is 14 days from today, as in the original spec: refundable.
+    const r = await paidDepositStay(0);
     expect(r.stayStatus).toBe("void");
     expect(r.fees).toEqual([]);
     expect(await creditOf(r.clientId)).toBe(10000);
