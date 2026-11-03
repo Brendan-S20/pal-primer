@@ -429,7 +429,7 @@ async function loadPortalInvoices(token: string, session: PortalSession) {
     // the PDF, the email and the pay link (C-03). It used to number rows by
     // their position in the list.
     .select(
-      "id, number, due_on, credit_applied_cents, amount_paid_cents, tax_cents, tax_rate_bps, tax_label",
+      "id, number, due_on, credit_applied_cents, amount_paid_cents, tax_cents, tax_rate_bps, tax_label, deposit_for_invoice_id",
     )
     .eq("client_id", session.clientId);
   if (dueErr) throw new Error(dueErr.message);
@@ -444,6 +444,7 @@ async function loadPortalInvoices(token: string, session: PortalSession) {
         tax_cents?: number | null;
         tax_rate_bps?: number | null;
         tax_label?: string | null;
+        deposit_for_invoice_id?: string | null;
       }>
     ).map((r) => [r.id, r]),
   );
@@ -471,6 +472,9 @@ async function loadPortalInvoices(token: string, session: PortalSession) {
       tax_cents: Number(extra?.tax_cents ?? 0),
       tax_rate_bps: Number(extra?.tax_rate_bps ?? 0),
       tax_label: (extra?.tax_label ?? null) as string | null,
+      // A stay deposit is part payment of its stay invoice (D3, #653): listed,
+      // and payable, but not added to the open total on top of the stay.
+      deposit_for_invoice_id: (extra?.deposit_for_invoice_id ?? null) as string | null,
       // What the client still owes on this invoice, net of applied credit
       // (B7) and of any partial payment.
       amount_due_cents: invoiceOutstandingCents({

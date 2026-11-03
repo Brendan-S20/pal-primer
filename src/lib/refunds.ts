@@ -125,3 +125,42 @@ export function canOfferRefund(
   const refunded = payment.refunded_cents ?? 0;
   return refunded < charged;
 }
+
+// ── Cash and checks (#653, F-09) ────────────────────────────────────────────
+//
+// Money that never went through Stripe cannot be refunded through it. The
+// office records what happened instead, against the payment, and must say
+// why: refund_manual_payment (20261102160000) refuses a reason shorter than
+// this, and refuses a second record on the same payment.
+
+export const MANUAL_REFUND_REASON_MIN = 3;
+export const MANUAL_REFUND_REASON_MAX = 300;
+
+/** "refund": the money went back to the customer. "reversal": it never really
+ *  arrived (a bounced check, a payment recorded in error), so a paid invoice
+ *  is owed again. */
+export const MANUAL_REFUND_KINDS = ["refund", "reversal"] as const;
+export type ManualRefundKind = (typeof MANUAL_REFUND_KINDS)[number];
+
+/** Whether a payment row gets "Record refund": a billing role, a payment
+ *  taken outside Stripe that succeeded, with nothing recorded against it yet.
+ *  Cosmetic, like canOfferRefund; the database asks again. */
+export function canRecordManualRefund(
+  role: AppRole | null | undefined,
+  payment: RefundablePaymentRow,
+): boolean {
+  if (!hasPermission(role, REFUND_PERMISSION)) return false;
+  if (payment.stripe_payment_intent_id) return false;
+  if (payment.status !== "succeeded") return false;
+  if ((payment.amount_cents ?? 0) <= 0) return false;
+  return (payment.refunded_cents ?? 0) === 0;
+}
+
+/** Why a reason cannot be recorded, or null. */
+export function manualRefundReasonProblem(reason: string): string | null {
+  const t = reason.trim();
+  if (t.length < MANUAL_REFUND_REASON_MIN) return "Say why the money is going back.";
+  if (t.length > MANUAL_REFUND_REASON_MAX)
+    return `Keep the reason to ${MANUAL_REFUND_REASON_MAX} characters.`;
+  return null;
+}

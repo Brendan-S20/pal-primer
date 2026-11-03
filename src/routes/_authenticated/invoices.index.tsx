@@ -728,6 +728,7 @@ function InvoicesPage() {
       // so the client can still press Pay and be charged a second time, and
       // that charge is recorded nowhere. The office needs to hear it now, while
       // it can still cancel the intent in Stripe.
+      if (r.tipFailed) toast.error("The payment was recorded, but the tip was not saved.");
       if (r.intentStillLive?.length) {
         const n = r.intentStillLive.length;
         toast.warning(
@@ -811,6 +812,7 @@ function InvoicesPage() {
       else if (r.partial?.length)
         toast.success("Partial payment recorded. The rest stays open on the invoice");
       else toast.success("Payment recorded. Invoice paid");
+      if (r.tipFailed) toast.error("The payment was recorded, but the tip was not saved.");
       if (r.intentStillLive?.length) {
         toast.warning(
           "The payment link for this invoice is still live. Cancel it in Stripe, or the client can still be charged.",
