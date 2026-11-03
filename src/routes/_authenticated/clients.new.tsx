@@ -52,7 +52,13 @@ import {
 import { WeekdayPicker } from "@/components/client-detail/WeekdayPicker";
 import { servicePickerOptions } from "@/lib/visit-service";
 import { isZonePriced, servicePriceCents } from "@/lib/services";
-import { normalizeWeekdays, WORK_WEEK } from "@/lib/weekday-set";
+import {
+  normalizeWeekdays,
+  pickServiceDay,
+  serviceDaysFor,
+  serviceDaysPerWeek,
+  WORK_WEEK,
+} from "@/lib/weekday-set";
 import { toastServerError } from "@/lib/server-outcome";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -599,7 +605,9 @@ function NewClientWizard({
   );
   const askedStartPassed = !!prefill.startDate && prefill.startDate < orgTodayStr;
   const [serviceDays, setServiceDays] = useState<number[] | null>(null);
-  const effectiveServiceDays = serviceDays ?? [weekdayOf(startedOn)];
+  // What the chips show is what is saved: no more days than the cadence runs
+  // on (R2-44), even after switching from Twice weekly to Weekly.
+  const effectiveServiceDays = serviceDaysFor(serviceDays ?? [weekdayOf(startedOn)], frequency);
 
   // ── Which service (the catalog) ─────────────────────────────────────────
   // A business that sells more than one thing picks it here; one that sells
@@ -1580,7 +1588,14 @@ function NewClientWizard({
                   )}
                   {frequency !== "one_time" && !setDays && (
                     <fieldset className="space-y-2">
-                      <legend className="text-sm font-medium">Service day</legend>
+                      <legend className="text-sm font-medium">
+                        {serviceDaysPerWeek(frequency) === 2 ? "Service days" : "Service day"}
+                      </legend>
+                      <p id="nc-service-day-hint" className="text-xs text-muted-foreground">
+                        {serviceDaysPerWeek(frequency) === 2
+                          ? "Pick the two days each week."
+                          : "One visit on this day. For more days a week, choose Twice weekly."}
+                      </p>
                       <div className="flex flex-wrap gap-1.5">
                         {WEEKDAYS.map((label, d) => {
                           const on = effectiveServiceDays.includes(d);
@@ -1589,12 +1604,9 @@ function NewClientWizard({
                               key={label}
                               type="button"
                               aria-pressed={on}
-                              onClick={() => {
-                                const next = on
-                                  ? effectiveServiceDays.filter((x) => x !== d)
-                                  : [...effectiveServiceDays, d].sort((a, b) => a - b);
-                                setServiceDays(next.length ? next : [weekdayOf(startedOn)]);
-                              }}
+                              onClick={() =>
+                                setServiceDays(pickServiceDay(effectiveServiceDays, d, frequency))
+                              }
                               className={`h-9 min-w-11 shrink-0 rounded-md border px-2 text-sm touch:min-h-11 ${
                                 on
                                   ? "border-primary bg-primary text-primary-foreground"

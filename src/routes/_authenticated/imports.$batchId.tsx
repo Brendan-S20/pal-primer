@@ -16,6 +16,8 @@ import { formatDateTime } from "@/lib/format";
 import { importStatusLabel } from "@/lib/import-status";
 import { titleHead } from "@/lib/page-title";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { IMPORT_CANCEL_CONFIRM } from "@/lib/import-cancel-confirm";
 
 export const Route = createFileRoute("/_authenticated/imports/$batchId")({
   head: () => titleHead("Import"),
@@ -31,6 +33,7 @@ function BatchDetail() {
   const cancelFn = useServerFn(cancelImport);
   const retryFn = useServerFn(retryImport);
   const [busy, setBusy] = useState(false);
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [filter, setFilter] = useState<"all" | "create" | "update" | "skip" | "error">("all");
 
   const { data, isLoading, isError, error, refetch } = useQuery({
@@ -118,6 +121,8 @@ function BatchDetail() {
   };
 
   const doCancel = async () => {
+    // One tap used to throw away the whole preview with no way back (R2-32).
+    if (!(await confirm(IMPORT_CANCEL_CONFIRM))) return;
     setBusy(true);
     try {
       await cancelFn({ data: { batchId } });
@@ -132,6 +137,7 @@ function BatchDetail() {
 
   return (
     <>
+      {confirmDialog}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <Link to="/imports" className="text-sm text-muted-foreground hover:underline">

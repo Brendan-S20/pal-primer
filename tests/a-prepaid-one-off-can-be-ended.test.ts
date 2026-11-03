@@ -118,6 +118,6 @@ describe("the wiring", () => {
     expect(fns).toMatch(/status: decision\.status/);
   });
   it("Delete's refusal names the control that now exists", () => {
-    expect(fns).toMatch(/Use End service… in its menu instead/);
+    expect(fns).toMatch(/Use End service… on the service instead/);
   });
 });
