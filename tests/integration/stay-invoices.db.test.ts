@@ -46,6 +46,9 @@ async function request(
   h: Awaited<ReturnType<typeof home>>,
   serviceId = nightService,
   requestKey = randomUUID(),
+  /** Days from today the stay starts. 0 unless a case needs the other side of
+   *  the deposit's refund window. */
+  startIn = 0,
 ) {
   const args = {
     _org_id: org.orgId,
@@ -54,8 +57,8 @@ async function request(
     _input: {
       propertyId: h.propertyId,
       serviceId,
-      startsOn: day(0),
-      endsOn: day(serviceId === nightService ? 5 : 4),
+      startsOn: day(startIn),
+      endsOn: day(startIn + (serviceId === nightService ? 5 : 4)),
       petIds: h.pets,
       windows: [
         { earliest: "08:00", latest: "10:00" },
@@ -253,9 +256,16 @@ describe.skipIf(!dbEnabled)("stay invoices in the database", () => {
   // credit that comes off the stay invoice" (credit_applied_cents 10000); the
   // deposit now comes off as a payment (amount_paid_cents 10000) and no credit
   // is posted until a cancel releases it.
-  it("the paid deposit is part payment of the stay invoice, not account credit", async () => {
+  //
+  // What a cancel then does is the cancellation rule (20261024080900, kept by
+  // 20261024081100), unchanged: this org keeps the default
+  // stay_deposit_refund_days of 7, so a stay canceled fewer than 7 days before
+  // it starts keeps the deposit as a "Cancellation fee" invoice paid from the
+  // client's credit, and one canceled 7 or more days ahead gives it back.
+  // Both sides are pinned, each with its exact numbers.
+  async function paidDepositStay(startIn: number) {
     const h = await home();
-    const { stayId } = await request(h);
+    const { stayId } = await request(h, nightService, randomUUID(), startIn);
     const id = await confirm(stayId);
     const st = await stay(stayId);
     // Paid the way markInvoicePaidFromStripe pays it: the status, then the row.
@@ -285,33 +295,45 @@ describe.skipIf(!dbEnabled)("stay invoices in the database", () => {
       amount_paid_cents: 10000,
       status: "open",
     });
-    const before = await org.admin
-      .from("clients")
-      .select("credit_balance_cents")
-      .eq("id", h.clientId)
-      .single();
-    expect(before.data?.credit_balance_cents).toBe(0);
-    // Canceled before it is paid, the stay releases its deposit to account
-    // credit, exactly what a paid deposit was before D3, and the cancellation
-    // rule then applies to that credit. Nothing is created or lost: what the
-    // client holds plus what a cancellation fee took is the $100 they paid.
+    expect(await creditOf(h.clientId)).toBe(0);
     const canceled = await org.owner.client
       .from("stays")
       .update({ status: "canceled" })
       .eq("id", stayId);
     expect(canceled.error).toBeNull();
-    const balance = await org.admin
-      .from("clients")
-      .select("credit_balance_cents")
-      .eq("id", h.clientId)
-      .single();
     const fees = await org.admin
       .from("invoices")
-      .select("credit_applied_cents")
+      .select("status, total_cents, credit_applied_cents")
       .eq("client_id", h.clientId)
       .like("notes", "Stay canceled less than%");
-    const keptByFee = (fees.data ?? []).reduce((n, f) => n + (f.credit_applied_cents ?? 0), 0);
-    expect((balance.data?.credit_balance_cents ?? 0) + keptByFee).toBe(10000);
+    expect(fees.error).toBeNull();
+    const stayInv = await org.admin.from("invoices").select("status").eq("id", id).single();
+    return { clientId: h.clientId, fees: fees.data ?? [], stayStatus: stayInv.data?.status };
+  }
+
+  async function creditOf(clientId: string) {
+    const r = await org.admin
+      .from("clients")
+      .select("credit_balance_cents")
+      .eq("id", clientId)
+      .single();
+    return r.data?.credit_balance_cents;
+  }
+
+  it("a paid deposit is part payment of its stay; canceled inside the window it is kept as the fee", async () => {
+    // Starts today: 0 days ahead, inside the 7-day window.
+    const r = await paidDepositStay(0);
+    expect(r.stayStatus).toBe("void");
+    // The released $100 went to credit and straight onto the fee.
+    expect(r.fees).toEqual([{ status: "paid", total_cents: 10000, credit_applied_cents: 10000 }]);
+    expect(await creditOf(r.clientId)).toBe(0);
+  });
+
+  it("a paid deposit is part payment of its stay; canceled 7 or more days ahead it comes back as credit", async () => {
+    const r = await paidDepositStay(10);
+    expect(r.stayStatus).toBe("void");
+    expect(r.fees).toEqual([]);
+    expect(await creditOf(r.clientId)).toBe(10000);
   });
 
   it("adds the configured holiday percentage only on holiday dates, not on a blackout", async () => {
