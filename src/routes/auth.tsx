@@ -27,7 +27,7 @@ import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
 import { rememberLandingPath, readLandingPath } from "@/lib/offline/read-cache";
 import { pageTitle } from "@/lib/page-title";
 import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
-import { markLanded, takeDeepLink } from "@/lib/pending-deep-link";
+import { takeLinkForLanding } from "@/lib/pending-deep-link";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -118,8 +118,7 @@ function AuthPage() {
    *  exactly this moment (lib/pending-deep-link.ts, #621). Native only in
    *  practice: nothing holds a link on the web. */
   const land = (to: string) => {
-    markLanded();
-    const link = takeDeepLink();
+    const link = takeLinkForLanding();
     if (link) router.history.push(link);
     else navigate({ to });
   };
@@ -319,17 +318,23 @@ function AuthPage() {
     let cancelled = false;
 
     void (async () => {
-      const { App } = await import("@capacitor/app");
-      const handle = await App.addListener("appUrlOpen", async ({ url }) => {
-        const { completeNativeOAuth } = await import("@/lib/native-oauth");
-        const result = await completeNativeOAuth(url);
-        if (!result) return; // some other deep link; not ours
-        setLoading(false);
-        if (!result.ok) return setError(result.message);
-        await afterNativeSignIn();
+      // Not App.addListener: Capacitor gives a cold-start link to the first
+      // listener only, and this one, one import away, used to beat the root's
+      // and drop the staff link it was handed (#621). lib/app-url-open.ts owns
+      // the one listener and sends this page only what is not a page link.
+      const { onAppUrl } = await import("@/lib/app-url-open");
+      const off = await onAppUrl("other", (url) => {
+        void (async () => {
+          const { completeNativeOAuth } = await import("@/lib/native-oauth");
+          const result = await completeNativeOAuth(url);
+          if (!result) return; // some other deep link; not ours
+          setLoading(false);
+          if (!result.ok) return setError(result.message);
+          await afterNativeSignIn();
+        })();
       });
-      if (cancelled) void handle.remove();
-      else remove = () => void handle.remove();
+      if (cancelled) off();
+      else remove = off;
     })();
 
     return () => {
@@ -503,7 +508,11 @@ function AuthPage() {
                 id="si-email"
                 type="email"
                 required
-                autoFocus
+                // Not in the app (R2-56): on a cold launch the keyboard came up
+                // over the splash, and on a signed-in launch it flashed over
+                // the dashboard on the way through. A tap brings it up. The web
+                // app keeps the focus: there it costs nothing.
+                autoFocus={!IS_NATIVE_BUNDLE}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@yourbusiness.com"

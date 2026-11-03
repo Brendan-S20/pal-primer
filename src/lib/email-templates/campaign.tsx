@@ -10,7 +10,15 @@ import {
   Preview,
   Text,
 } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
+import {
+  styles,
+  OrgFooter,
+  type OrgContact,
+  TenantHeader,
+  howToReach,
+  cap,
+  noEndPeriod,
+} from "./_shared";
 import type { TemplateEntry } from "./registry";
 import { bodyParagraphs, isSafeButtonUrl } from "@/lib/campaigns";
 
@@ -67,13 +75,14 @@ const Campaign = ({
             </Button>
           ) : null}
           <Text style={styles.small}>
-            You are getting this because you are a customer of {orgName || "this business"}.{" "}
+            You are getting this because you are a customer of{" "}
+            {noEndPeriod(orgName || "this business")}.{" "}
             {unsubscribeUrl ? (
               <Link href={unsubscribeUrl} style={{ color: "#64748b", textDecoration: "underline" }}>
                 Unsubscribe from these emails
               </Link>
             ) : (
-              "Reply to this email to stop receiving them."
+              `${cap(howToReach({ ...orgContact, orgName }))} to stop receiving them`
             )}
             .
           </Text>

@@ -5,6 +5,7 @@ import type { AuthedContext } from "@/lib/server-fn-context";
 import { accessTurnedOff, requirePermission } from "@/lib/authz.server";
 import { assertValidOrgName } from "@/lib/dna-linkage";
 import { selectWithCountryFallback, updateWithCountryFallback } from "@/lib/org-country-column";
+import { requestedServiceLine } from "@/lib/signup-service";
 
 const bootstrapSchema = z.object({
   orgName: z.string().min(1).max(120),
@@ -21,6 +22,12 @@ const bootstrapSchema = z.object({
   // bootstrap_organization asks it. An unrecognised zone is dropped there
   // rather than raised on, so a browser string can never block a signup.
   timezone: z.string().trim().max(64).optional(),
+  // The service line the visitor came for (/sign-up?service=, site-r2-03).
+  // Only an offered line passes; anything else is dropped, not raised on.
+  serviceLine: z
+    .string()
+    .optional()
+    .transform((v) => requestedServiceLine(v)),
 });
 
 // Pre-signup validation for the "Promo or referral code" box: public (the
@@ -101,6 +108,19 @@ export const bootstrapOrganization = createServerFn({ method: "POST" })
       _timezone: data.timezone || undefined,
     });
     if (error) throw new Error(error.message);
+
+    // The line the visitor came for (site-r2-03 / F-06). Only for somebody who
+    // had no business before this call -- an idempotent re-run for an existing
+    // org is not a signup -- and never at the cost of the signup: a failure
+    // here leaves the default, which setup step 1 still lets them change.
+    if (orgId && data.serviceLine && !member?.length) {
+      try {
+        const { startNewOrgOnRequestedLine } = await import("@/lib/org-features.functions");
+        await startNewOrgOnRequestedLine(supabase, orgId as string, data.serviceLine);
+      } catch (e) {
+        console.error("requested service line not applied (continuing without it)", e);
+      }
+    }
 
     // Coupon capture: written once (only while null, so an idempotent re-run
     // for an existing org can't overwrite), audited best-effort. Application
@@ -197,52 +217,50 @@ export const getMyOrg = createServerFn({ method: "GET" })
   .handler(async ({ context }) => loadMyOrg(context));
 
 /** getMyOrg's answer, also asked by getShellContext. */
-export const loadMyOrg = createServerOnlyFn(
-  async (context: AuthedContext) => {
-    const { supabase, userId } = context;
+export const loadMyOrg = createServerOnlyFn(async (context: AuthedContext) => {
+  const { supabase, userId } = context;
 
-    // Both at once. access_turned_off is the one question a person who has
-    // been turned off may still ask: which business turned them off.
-    const [{ data: role, error: roleErr }, off] = await Promise.all([
-      supabase.from("user_roles").select("organization_id, role").eq("user_id", userId).maybeSingle(),
-      accessTurnedOff(supabase),
-    ]);
-    if (roleErr) throw new Error(roleErr.message);
-    if (!role) return { organization: null as null, accessTurnedOff: null as null };
+  // Both at once. access_turned_off is the one question a person who has
+  // been turned off may still ask: which business turned them off.
+  const [{ data: role, error: roleErr }, off] = await Promise.all([
+    supabase.from("user_roles").select("organization_id, role").eq("user_id", userId).maybeSingle(),
+    accessTurnedOff(supabase),
+  ]);
+  if (roleErr) throw new Error(roleErr.message);
+  if (!role) return { organization: null as null, accessTurnedOff: null as null };
 
-    // Off means off (20261009180000): no business, and the shell says why
-    // instead of drawing a workspace every query in which comes back empty.
-    const mine = off.find((o) => o.organizationId === role.organization_id);
-    if (mine) {
-      return {
-        organization: null as null,
-        accessTurnedOff: { organizationName: mine.organizationName },
-      };
-    }
+  // Off means off (20261009180000): no business, and the shell says why
+  // instead of drawing a workspace every query in which comes back empty.
+  const mine = off.find((o) => o.organizationId === role.organization_id);
+  if (mine) {
+    return {
+      organization: null as null,
+      accessTurnedOff: { organizationName: mine.organizationName },
+    };
+  }
 
-    // Through the fallback so a deploy that lands before 20261018120000 reads
-    // `country: null` instead of breaking every signed-in page.
-    const { data: org, error: orgErr } = await selectWithCountryFallback(
-      // `timezone` is here for useOrgToday: components that judge whether a
-      // date has passed must ask the org's calendar, not the server's
-      // default. See src/hooks/useOrgToday.ts. `require_completion_photo`
-      // and `visit_checklist` are here for My Day (useOrgFieldRules): this
-      // query is persisted for offline, so a tech in a dead zone still
-      // knows what finishing a visit asks of them. `country` and `currency`
-      // are here for useDistanceUnit: miles or km on the board and drawer.
-      "id, name, portal_slug, timezone, country, currency, active_client_count, billing_tier, plan_status, current_period_end, stripe_customer_id, stripe_subscription_id, slug, is_comped, require_completion_photo, visit_checklist",
-      (columns) =>
-        (supabase as any)
-          .from("organizations")
-          .select(columns)
-          .eq("id", role.organization_id)
-          .single(),
-    );
-    if (orgErr) throw new Error(orgErr.message);
+  // Through the fallback so a deploy that lands before 20261018120000 reads
+  // `country: null` instead of breaking every signed-in page.
+  const { data: org, error: orgErr } = await selectWithCountryFallback(
+    // `timezone` is here for useOrgToday: components that judge whether a
+    // date has passed must ask the org's calendar, not the server's
+    // default. See src/hooks/useOrgToday.ts. `require_completion_photo`
+    // and `visit_checklist` are here for My Day (useOrgFieldRules): this
+    // query is persisted for offline, so a tech in a dead zone still
+    // knows what finishing a visit asks of them. `country` and `currency`
+    // are here for useDistanceUnit: miles or km on the board and drawer.
+    "id, name, portal_slug, timezone, country, currency, active_client_count, billing_tier, plan_status, current_period_end, stripe_customer_id, stripe_subscription_id, slug, is_comped, require_completion_photo, visit_checklist",
+    (columns) =>
+      (supabase as any)
+        .from("organizations")
+        .select(columns)
+        .eq("id", role.organization_id)
+        .single(),
+  );
+  if (orgErr) throw new Error(orgErr.message);
 
-    return { organization: { ...org, role: role.role as string }, accessTurnedOff: null as null };
-  },
-);
+  return { organization: { ...org, role: role.role as string }, accessTurnedOff: null as null };
+});
 
 const slugSchema = z.object({ slug: z.string().trim().min(3).max(63) });
 

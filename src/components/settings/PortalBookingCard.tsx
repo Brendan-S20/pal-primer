@@ -29,11 +29,15 @@ import { Switch } from "@/components/ui/switch";
 import { getPortalBookingSettings, setPortalBookingSettings } from "@/lib/portal-booking.functions";
 import { useServiceLines } from "@/components/CommercialOnly";
 import { ONE_OFF_PRICE_SETTING_HASH } from "@/lib/services";
+import { portalExtraVisitPriceLabel } from "@/lib/service-lines";
 
 export function PortalBookingCard() {
   const qc = useQueryClient();
   const { lines } = useServiceLines();
   const otherServices = lines.some((l) => l !== "pet_waste");
+  // "an extra pet waste visit" told a trainer they scoop (F-06). The field
+  // is named for pet waste only beside a business's other lines.
+  const priceLabel = portalExtraVisitPriceLabel(lines);
   const getFn = useServerFn(getPortalBookingSettings);
   const setFn = useServerFn(setPortalBookingSettings);
   const q = useQuery({ queryKey: ["portal-booking-settings"], queryFn: () => getFn() });
@@ -83,7 +87,7 @@ export function PortalBookingCard() {
       <CardContent className="space-y-4">
         <div className="max-w-xs">
           <Label htmlFor={ONE_OFF_PRICE_SETTING_HASH} className="text-xs">
-            {otherServices ? "Price of an extra pet waste visit" : "Price of an extra visit"}
+            {priceLabel}
           </Label>
           <Input
             id={ONE_OFF_PRICE_SETTING_HASH}

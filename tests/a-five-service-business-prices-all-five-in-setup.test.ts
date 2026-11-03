@@ -170,7 +170,8 @@ describe("a business with one line keeps the step for that line", () => {
     [["dog_walking"], "Price your walks", "/settings/services"],
     [["pet_sitting"], "Price your sitting services", "/settings/services"],
     [["mobile_grooming"], "Review your grooming prices, vaccines and buffer", "/setup"],
-    [["training"], "Your service area and price", "/setup"],
+    // R2-47: a trainer's step is the lessons, not the pet-waste area form.
+    [["training"], "Price your lessons", "/settings/services"],
   ])("%j", async (lines, label, to) => {
     const step = await priceStep(lines);
     expect(step.label).toBe(label);

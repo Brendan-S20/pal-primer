@@ -33,6 +33,7 @@ import { useNotificationLanguageSync } from "@/hooks/useNotificationLanguageSync
 import { useRatingPrompt } from "@/hooks/useRatingPrompt";
 import { headerControlsForRole } from "@/lib/header-prefs";
 import { InstallBanner } from "@/components/InstallBanner";
+import { NativePushExplainer } from "@/components/NativePushExplainer";
 import { AppSidebar } from "@/components/AppSidebar";
 import { AccountMenu } from "@/components/AccountMenu";
 import { TrialBanner } from "@/components/TrialBanner";
@@ -40,7 +41,7 @@ import { MobileTabBar } from "@/components/MobileTabBar";
 import { TimeClockSheetHost } from "@/components/TimeClock";
 import { RouteLockScreenHost } from "@/components/my-day/RouteLockScreen";
 import { sidebarDocksFrom, useTabletTier } from "@/hooks/useTabletTier";
-import { useMyRole } from "@/hooks/useMyRole";
+import { useMyRole, deniedRouteDestination } from "@/hooks/useMyRole";
 import { RoleGuard } from "@/components/RoleGuard";
 import { CommandPalette } from "@/components/CommandPalette";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -281,9 +282,31 @@ function AppShell() {
   const redirecting = useMatches({
     select: (matches) => matches.some((match) => match.staticData.clientRedirect),
   });
+  // The page actually drawn (the deepest match), not the location, which moves
+  // as soon as a navigation starts.
+  const drawnPath = useMatches({ select: (matches) => matches[matches.length - 1]?.pathname });
+  const { role } = useMyRole();
+  const denied = !!drawnPath && deniedRouteDestination(role, drawnPath) !== null;
   // An alias has no page to preload links for. Mount the shell at the target,
   // so its render-time preloads cannot race the alias replacing their matches.
   if (redirecting) return <Outlet />;
+  // #682: the same race for a page this role may not open. The shell's tab
+  // bar preloads every tab as it renders, RoleGuard navigates away while those
+  // preloads are still running, and each one then logged "Cannot read
+  // properties of undefined (reading '_nonReactive')". So a refused page
+  // mounts neither the shell nor the page itself (whose queries the server
+  // would refuse anyway); RoleGuard sends the person on from here. Not a
+  // beforeLoad redirect: one thrown by this layout to a page under it leaves
+  // the shared layout match redirected with no promise to suspend on, and
+  // the root error boundary catches it (RedirectFallback says the same).
+  if (denied) {
+    return (
+      <>
+        <ShellPending />
+        <RoleGuard />
+      </>
+    );
+  }
   return <WorkspaceShell />;
 }
 
@@ -364,9 +387,13 @@ function WorkspaceShell() {
         }),
       );
       // The same call the Preferences card's button makes; the token is saved
-      // through subscribeStaffNativePush in there, not here.
+      // through subscribeStaffNativePush in there, not here. `ask: false`
+      // (R2-35): this registers a phone that already said yes and never
+      // raises the system prompt itself, which on a fresh install landed over
+      // the dashboard within 3 s of signing in with no word of why.
+      // NativePushExplainer below asks, after a tap.
       const registered = await step("push_registration", () =>
-        native.turnOnPushNotifications({ isCancelled: () => cancelled }),
+        native.turnOnPushNotifications({ isCancelled: () => cancelled, ask: false }),
       );
       removePushRegistration = registered?.cleanup;
       // Unmounted while registering: the cleanup below already ran.
@@ -651,6 +678,9 @@ function WorkspaceShell() {
           {/* The guided setup, off its own page. In the flow, never over it:
               see SetupGuideBanner for the overlay this replaced. */}
           <SetupGuideBanner />
+          {/* Native only: what notifications are for, before iOS or Android
+              asks (R2-35). The shell's own registration never asks. */}
+          <NativePushExplainer />
           {/* The bottom padding clears the fixed tab bar for exactly as long
               as the bar is on screen — which now depends on the role, not only
               the width (Q-2). Both read useTabletTier so they cannot disagree:

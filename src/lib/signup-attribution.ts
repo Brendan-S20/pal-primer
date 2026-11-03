@@ -5,6 +5,9 @@
 // through the provider and back — and is handed to bootstrap_organization at
 // org creation, the only moment attribution can be captured reliably.
 
+import { requestedServiceLine } from "@/lib/signup-service";
+import type { ServiceLine } from "@/lib/service-lines";
+
 const KEY = "hs_signup_attribution";
 
 export type SignupAttribution = {
@@ -13,6 +16,9 @@ export type SignupAttribution = {
   /** "Promo or referral code" typed on Get-started (coupon OR referral code —
    *  classified server-side). Stashed so it survives the OAuth bounce. */
   promo?: string;
+  /** The service line the visitor came for (`?service=`, site-r2-03). Only a
+   *  line the settings screen offers survives requestedServiceLine. */
+  service?: ServiceLine;
   /** Epoch ms when the attribution was captured. */
   at?: number;
 };
@@ -32,12 +38,14 @@ export function stashSignupAttribution(search: Record<string, unknown>) {
     if (typeof v === "string" && v) utm[k] = v.slice(0, 200);
   }
   const ref = typeof search.ref === "string" && search.ref ? search.ref.slice(0, 40) : undefined;
-  if (!ref && !Object.keys(utm).length) return;
+  const service = requestedServiceLine(search.service);
+  if (!ref && !service && !Object.keys(utm).length) return;
   const existing = readSignupAttribution();
   const next: SignupAttribution = {
     ref: ref ?? existing.ref,
     utm: { ...existing.utm, ...utm },
     promo: existing.promo,
+    service: service ?? existing.service,
     at: Date.now(),
   };
   try {

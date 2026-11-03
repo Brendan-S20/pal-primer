@@ -413,14 +413,19 @@ describe("the new-client wizard", () => {
   const fns = read("src/lib/clients.functions.ts");
 
   it("picks a service only when the business has more than one to pick", () => {
+    // RC3 (F-04): counted on the business's lines, so the seeded pet-waste
+    // service of a business that does not scoop is not one of the choices.
     expect(wizard).toMatch(
-      /const offersServicePicker = servicePickerOptions\(orgServices\)\.length > 1/,
+      /const offersServicePicker = servicePickerOptions\(orgServices, null, pickerLines\)\.length > 1/,
     );
     expect(wizard).toMatch(/\{offersServicePicker && \(\s*<ServicePicker/);
-    // Nothing is sent when nothing was offered: the plan takes the business's
-    // default on insert, as every client before the catalog.
+    // Nothing is sent when nothing was offered to a pet-waste business: the
+    // plan takes its default on insert, as every client before the catalog.
+    // A business that does not scoop sends its one service.
     expect(wizard).toMatch(/serviceId: chosenService\?\.id,/);
-    expect(wizard).toMatch(/const chosenService = offersServicePicker\s*\?/);
+    expect(wizard).toMatch(
+      /const chosenService =\s*offersServicePicker \|\| \(linesKnown && !petWaste\)\s*\?/,
+    );
   });
 
   it("prices a walk through the one rule and never from a zone", () => {
@@ -436,7 +441,10 @@ describe("the new-client wizard", () => {
 
   it("asks for the days of a weekly walk, Monday to Friday until told, and refuses none", () => {
     expect(wizard).toMatch(/const setDays = walkLike && frequency === "weekly"/);
-    expect(wizard).toMatch(/useState<number\[\]>\(\[\.\.\.WORK_WEEK\]\)/);
+    // Monday to Friday for a walk; the first visit's weekday for anything
+    // else (F-04, defaultPlanWeekdays).
+    expect(wizard).toMatch(/useState<number\[\] \| null>\(null\)/);
+    expect(wizard).toMatch(/defaultPlanWeekdays\(chosenService\?\.service_line, weekdayOf\(startedOn\)\)/);
     expect(wizard).toMatch(/<WeekdayPicker[\s\S]*?label="Days each week"/);
     expect(wizard).toMatch(/weekdays: setDays \? normalizeWeekdays\(weekdays\) : undefined/);
     expect(wizard).toMatch(
@@ -622,9 +630,9 @@ describe("the Settings copy", () => {
   it("a pet-waste business reads the card it always has; one with other services is told where their prices live", () => {
     const card = read("src/components/settings/PortalBookingCard.tsx");
     expect(card).toMatch(/const otherServices = lines\.some\(\(l\) => l !== "pet_waste"\)/);
-    expect(card).toMatch(
-      /\{otherServices \? "Price of an extra pet waste visit" : "Price of an extra visit"\}/,
-    );
+    // F-06: "pet waste" only beside a business's other lines, never to a
+    // business that does not scoop (portalExtraVisitPriceLabel).
+    expect(card).toMatch(/const priceLabel = portalExtraVisitPriceLabel\(lines\);/);
     expect(card).toMatch(/offered at their own price from Settings → Services/);
     // Staff copy says client, never customer.
     expect(card).not.toMatch(/[Cc]ustomer/);

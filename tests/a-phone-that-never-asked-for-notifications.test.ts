@@ -219,6 +219,26 @@ describe("turnOnPushNotifications", () => {
     expect(h.issues).toHaveLength(1);
   });
 
+  // R2-35: the shell no longer raises the system prompt on a launch.
+  it("ask: false on an unasked phone: no prompt, no register, nothing reported", async () => {
+    const native = await loadNative();
+    const { permission } = await native.turnOnPushNotifications({ ask: false });
+    expect(permission).toBe("prompt");
+    expect(h.calls.filter((c) => c !== "import")).toEqual(["checkPermissions"]);
+    expect(h.issues).toEqual([]);
+  });
+
+  it("ask: false on a phone that already said yes still registers and saves", async () => {
+    h.check = "granted";
+    const native = await loadNative();
+    const { permission } = await native.turnOnPushNotifications({ ask: false });
+    expect(permission).toBe("granted");
+    expect(h.calls).not.toContain("requestPermissions");
+    expect(h.calls).toContain("register");
+    h.listeners.registration({ value: TOKEN });
+    await vi.waitFor(() => expect(h.saved).toHaveLength(1));
+  });
+
   it("already denied: does not ask (iOS would not show it), and says the prompt was NOT shown", async () => {
     h.check = "denied";
     const native = await loadNative();
@@ -409,6 +429,28 @@ describe("the shell and the Preferences button take the same path", () => {
     for (const step of ["status_bar", "connectivity", "push_deep_links", "push_registration"]) {
       expect(effect).toContain(`"${step}"`);
     }
+  });
+
+  it("the shell never asks; the explainer asks after a tap (R2-35)", () => {
+    const shell = codeOnly(read("src/routes/_authenticated/route.tsx"));
+    const calls = shell.match(/turnOnPushNotifications\(\{[^}]*\}\)/g) ?? [];
+    expect(calls.length, "a call without options asks").toBe(
+      (shell.match(/turnOnPushNotifications\(/g) ?? []).length,
+    );
+    expect(calls.length).toBeGreaterThan(0);
+    for (const c of calls) expect(c, "the shell raised the system prompt").toMatch(/ask: false/);
+    expect(shell).toMatch(/<NativePushExplainer \/>/);
+    const explainer = codeOnly(read("src/components/NativePushExplainer.tsx"));
+    // Shown only while the phone is unasked, and only on native.
+    expect(explainer).toMatch(/if \(!isNative\(\)\) return;/);
+    expect(explainer).toMatch(/p === "prompt"/);
+    // The prompt is behind the button, not on mount.
+    const turnOn = explainer.slice(explainer.indexOf("const turnOn"));
+    expect(turnOn).toMatch(/turnOnPushNotifications\(\)/);
+    expect(explainer.slice(0, explainer.indexOf("const turnOn"))).not.toMatch(
+      /turnOnPushNotifications\(/,
+    );
+    expect(explainer).toMatch(/onClick=\{turnOn\}/);
   });
 
   it("the card renders nothing on the web, where PushToggle is the control", () => {

@@ -4,7 +4,11 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
+// The /pure entry adds js.stripe.com only when loadStripe() runs, on a
+// payment screen. The bare entry adds it the moment this module is imported,
+// which put Stripe on every page, /auth included (R2-52).
+import { loadStripe } from "@stripe/stripe-js/pure";
+import type { Stripe as StripeJs } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { Button } from "@/components/ui/button";
 import { Loader2, ArrowLeft, ShieldCheck } from "lucide-react";

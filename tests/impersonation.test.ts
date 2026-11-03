@@ -34,11 +34,13 @@ describe("supabase client storage isolation (finding #5)", () => {
     expect(created[0].auth.storageKey).toBe("sb-hs-impersonation-auth");
   });
 
-  it("a normal tab uses localStorage and the default storage key", async () => {
+  it("a normal tab uses localStorage and the named storage key", async () => {
     const { created } = loadClientWith("");
     const mod = await import("@/integrations/supabase/client");
     expect(mod.isImpersonationTab()).toBe(false);
     expect(created[0].auth.storage).toEqual({ kind: "local" });
-    expect(created[0].auth.storageKey).toBeUndefined();
+    // Named, never `undefined` (native-r2-09: that saved every session as
+    // localStorage["undefined"]).
+    expect(created[0].auth.storageKey).toBe("sb-houndstack-auth-token");
   });
 });

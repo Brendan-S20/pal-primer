@@ -7,6 +7,7 @@
 import * as React from "react";
 import { orgLocalDay } from "@/lib/org-day";
 import { render } from "react-email";
+import { EMAIL_TEXT_OPTIONS } from "@/lib/email/plain-text";
 import { TEMPLATES } from "@/lib/email-templates/registry";
 import { grossReceivedCents, receivedPaymentStatuses } from "@/lib/revenue";
 import { buildDigestAlerts } from "@/lib/digest-alerts";
@@ -378,7 +379,7 @@ export async function sendDigestEmail(params: {
   try {
     const element = React.createElement(entry.component, data);
     html = await render(element);
-    text = await render(element, { plainText: true });
+    text = await render(element, EMAIL_TEXT_OPTIONS);
   } catch (e) {
     console.error("digest render failed", e);
     return { ok: false, reason: "render_failed" };

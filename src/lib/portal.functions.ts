@@ -826,7 +826,7 @@ export const portalCancelAddon = createServerFn({ method: "POST" })
 // Tenant->client card ops run on the org's own connected Stripe account.
 async function loadStripe(orgId: string): Promise<{ stripe: any; stripeAccount: string }> {
   const { requireOrgStripeAccount, connectStripe } = await import("@/lib/stripe-connect.server");
-  const acct = await requireOrgStripeAccount(orgId);
+  const acct = await requireOrgStripeAccount(orgId, { audience: "customer" });
   const stripe = await connectStripe();
   return { stripe, stripeAccount: acct.accountId };
 }
@@ -852,7 +852,7 @@ export const portalCreateSetupIntent = createServerFn({ method: "POST" })
       connectPublishableKey,
       verifyClientStripeCustomer,
     } = await import("@/lib/stripe-connect.server");
-    const acct = await requireOrgStripeAccount(session.organizationId);
+    const acct = await requireOrgStripeAccount(session.organizationId, { audience: "customer" });
     const stripe = await connectStripe();
     const opts = { stripeAccount: acct.accountId };
 
@@ -904,7 +904,7 @@ export const portalFinalizeCardSetup = createServerFn({ method: "POST" })
     const session = await requirePortalSession(data.token);
     const supabaseAdmin = await admin();
     const { requireOrgStripeAccount, connectStripe } = await import("@/lib/stripe-connect.server");
-    const acct = await requireOrgStripeAccount(session.organizationId);
+    const acct = await requireOrgStripeAccount(session.organizationId, { audience: "customer" });
     const stripe = await connectStripe();
     const opts = { stripeAccount: acct.accountId };
 
@@ -2198,7 +2198,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
 
     const { requireOrgStripeAccount, connectStripe, verifyClientStripeCustomer } =
       await import("@/lib/stripe-connect.server");
-    const acct = await requireOrgStripeAccount(invoice.organization_id);
+    const acct = await requireOrgStripeAccount(invoice.organization_id, { audience: "customer" });
     const stripe = await connectStripe();
     const opts = { stripeAccount: acct.accountId };
 

@@ -7,6 +7,8 @@
 // asks a business without pet waste a different question.
 
 import { describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 vi.mock("@tanstack/react-start", () => {
   const builder = {
@@ -57,33 +59,66 @@ async function priceStep(lines: string[], counts: Counts): Promise<OnboardingSte
   return steps.find((s) => s.id === "zones")!;
 }
 
+// R2-47 (round-2 audit, train-r2-06): the step a trainer read was the
+// pet-waste area form ("How far you drive / Price per visit / Each extra
+// dog"), and it was done only when the area AND the lessons were, so a saved
+// area left "1 of 6 done" with nothing saying why. A trainer's step is now
+// the lessons alone, on Settings, Services, the way a walker's is the walks.
 describe("the price step at a training business", () => {
-  it("stays open until the lesson package is priced and a skill exists", async () => {
-    const step = await priceStep(["training"], { zones: 1 });
-    expect(step.done).toBe(false);
-    expect(step.training).toEqual({ areaDone: true, done: false });
-    expect(step.alt).toEqual({
-      to: "/settings/services",
-      cta: "Price lessons",
-      gate: "/settings/services",
-    });
+  it("is the lessons, on Settings, Services", async () => {
+    const step = await priceStep(["training"], {});
+    expect(step.label).toBe("Price your lessons");
+    expect(step.to).toBe("/settings/services");
+    expect(step.gate).toBe("/settings/services");
+    expect(step.cta).toBe("Price lessons");
     expect(step.description).toMatch(/lesson package/);
+    expect(step.description).not.toMatch(/per visit/);
+    expect(step.alt).toBeUndefined();
+    expect(step.parts).toBeUndefined();
   });
 
-  it("is done when the area, a priced package and a skill all exist", async () => {
-    const step = await priceStep(["training"], {
-      zones: 1,
-      service_packages: 1,
-      training_skills: 5,
-    });
+  it("stays open until the lesson package is priced and a skill exists, area or not", async () => {
+    expect((await priceStep(["training"], { zones: 1 })).done).toBe(false);
+    expect((await priceStep(["training"], { service_packages: 1 })).done).toBe(false);
+  });
+
+  it("is done when a priced package and a skill exist, with no area asked for", async () => {
+    const step = await priceStep(["training"], { service_packages: 1, training_skills: 5 });
     expect(step.done).toBe(true);
+  });
+
+  it("with another line, asks no area unless the business scoops", async () => {
+    const walkTrain = await priceStep(["dog_walking", "training"], {});
+    expect(walkTrain.parts?.map((p) => p.id)).toEqual(["walks", "lessons"]);
+    const wasteTrain = await priceStep(["pet_waste", "training"], {});
+    expect(wasteTrain.parts?.map((p) => p.id)).toEqual(["area", "lessons"]);
   });
 
   it("is unchanged for a business that does not run training", async () => {
     const step = await priceStep(["pet_waste"], { zones: 1 });
     expect(step.done).toBe(true);
-    expect(step.training).toBeUndefined();
     expect(step.alt).toBeUndefined();
     expect(step.description).not.toMatch(/lesson/);
+  });
+});
+
+describe("pricing elsewhere ticks the checklist without waiting for its cache", () => {
+  const read = (p: string) => readFileSync(join(__dirname, "..", p), "utf8");
+
+  it("Services, packages, skills and a saved zone each refresh it", () => {
+    for (const f of [
+      "src/routes/_authenticated/settings.services.tsx",
+      "src/components/settings/TrainingPackagesCard.tsx",
+      "src/components/settings/TrainingSkillsCard.tsx",
+      "src/components/ZoneDrawer.tsx",
+    ]) {
+      expect(read(f), f).toMatch(/invalidateQueries\(\{ queryKey: \["onboarding-status"\] \}\)/);
+    }
+  });
+
+  it("setup draws no area form for a trainer", () => {
+    const setup = read("src/routes/_authenticated/setup.tsx");
+    expect(setup).not.toMatch(/TrainingPriceNote/);
+    expect(setup).not.toMatch(/step\.training/);
   });
 });

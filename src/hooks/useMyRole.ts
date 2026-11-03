@@ -160,3 +160,21 @@ export function canAccess(role: AppRole | null, path: string): boolean {
   if (!key) return true;
   return ROUTE_ROLES[key].includes(role);
 }
+
+/**
+ * Where a role is sent from a page it may not open, or null when it may open
+ * it (or the path is not one ROUTE_ROLES guards). Techs land on /my-day;
+ * everyone else on /dashboard.
+ */
+export function deniedRouteDestination(
+  role: AppRole | null,
+  pathname: string,
+): "/my-day" | "/dashboard" | null {
+  if (!role) return null;
+  const guarded = Object.keys(ROUTE_ROLES).some(
+    (k) => pathname === k || pathname.startsWith(k + "/"),
+  );
+  if (!guarded || canAccess(role, pathname)) return null;
+  const dest = role === "tech" ? "/my-day" : "/dashboard";
+  return pathname === dest ? null : dest;
+}

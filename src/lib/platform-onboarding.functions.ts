@@ -204,6 +204,9 @@ export type InviteLookupResult = {
   role?: string;
   organization_id?: string | null;
   organization_name?: string | null;
+  /** Who sent a teammate invitation, by the name they go by in that business.
+   *  Said on a failed link too, so the invitee knows who to ask (gaps-r2-14). */
+  inviter_name?: string | null;
 };
 
 export const lookupInviteByToken = createServerFn({ method: "GET" })
@@ -218,9 +221,9 @@ export const lookupInviteByToken = createServerFn({ method: "GET" })
     // Teammate invitations live in org_invites, and this page only ever read
     // platform_invites, so every staff link said "Invite not found" (#568).
     if (error || !inv) return lookupStaffInvite(supabaseAdmin, data.token);
-    if (inv.accepted_at) return { ok: false, reason: "accepted" };
-    if (inv.revoked_at) return { ok: false, reason: "revoked" };
-    if (new Date(inv.expires_at).getTime() < Date.now()) return { ok: false, reason: "expired" };
+    if (inv.accepted_at) return { ok: false, kind: "platform", reason: "accepted" };
+    if (inv.revoked_at) return { ok: false, kind: "platform", reason: "revoked" };
+    if (new Date(inv.expires_at).getTime() < Date.now()) return { ok: false, kind: "platform", reason: "expired" };
     return {
       ok: true,
       kind: "platform",
@@ -234,22 +237,86 @@ export const lookupInviteByToken = createServerFn({ method: "GET" })
 async function lookupStaffInvite(admin: any, token: string): Promise<InviteLookupResult> {
   const { data: inv, error } = await admin
     .from("org_invites")
-    .select("email, role, status, expires_at, organization_id, organizations:organization_id(name)")
+    .select("email, role, status, expires_at, organization_id, invited_by, organizations:organization_id(name)")
     .eq("token", token)
     .maybeSingle();
   if (error || !inv) return { ok: false, reason: "not_found" };
-  if (inv.status === "accepted") return { ok: false, reason: "accepted" };
-  if (inv.status !== "pending") return { ok: false, reason: "revoked" };
-  if (new Date(inv.expires_at).getTime() < Date.now()) return { ok: false, reason: "expired" };
+  // A failed teammate link is still a teammate link: say which business, and
+  // who to ask, rather than "Platform invite" (gaps-r2-14).
+  const known = {
+    kind: "staff" as const,
+    organization_name: inv.organizations?.name ?? null,
+    inviter_name: await inviterName(admin, inv.organization_id, inv.invited_by),
+  };
+  if (inv.status === "accepted") return { ok: false, reason: "accepted", ...known };
+  if (inv.status !== "pending") return { ok: false, reason: "revoked", ...known };
+  if (new Date(inv.expires_at).getTime() < Date.now()) return { ok: false, reason: "expired", ...known };
   return {
     ok: true,
-    kind: "staff",
     email: inv.email,
     role: inv.role,
     organization_id: inv.organization_id,
-    organization_name: inv.organizations?.name ?? null,
+    ...known,
   };
 }
+
+async function inviterName(
+  admin: any,
+  orgId: string,
+  userId: string | null,
+): Promise<string | null> {
+  if (!userId) return null;
+  const { data } = await admin
+    .from("staff")
+    .select("display_name")
+    .eq("organization_id", orgId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  return (data?.display_name as string | undefined)?.trim() || null;
+}
+
+export type InviteReadiness =
+  | { ready: true }
+  | { ready: false; reason: "other_org"; current_organization_name: string | null };
+
+/** Whether the signed-in account can accept this teammate invitation, asked
+ *  BEFORE the page says "ready to accept". accept_org_invite_for_current_user
+ *  refuses an account that already belongs to a different business; the page
+ *  used to find that out only when Accept was pressed (gaps-r2-03). A platform
+ *  invite, or a token this does not recognise, is left to the accept call. */
+export const checkInviteReadiness = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ token: z.string().min(10).max(200) }).parse(d))
+  .handler(async ({ data, context }): Promise<InviteReadiness> => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const admin = supabaseAdmin as any;
+    const { data: inv } = await admin
+      .from("org_invites")
+      .select("organization_id")
+      .eq("token", data.token)
+      .maybeSingle();
+    if (!inv?.organization_id) return { ready: true };
+    const { data: roles, error } = await admin
+      .from("user_roles")
+      .select("organization_id")
+      .eq("user_id", context.userId);
+    if (error) throw new Error(error.message);
+    const orgs = ((roles ?? []) as { organization_id: string | null }[])
+      .map((r) => r.organization_id)
+      .filter((o): o is string => !!o);
+    // Already in the inviting business: accepting just marks the invite used.
+    if (orgs.length === 0 || orgs.includes(inv.organization_id)) return { ready: true };
+    const { data: org } = await admin
+      .from("organizations")
+      .select("name")
+      .eq("id", orgs[0])
+      .maybeSingle();
+    return {
+      ready: false,
+      reason: "other_org",
+      current_organization_name: (org?.name as string | undefined) ?? null,
+    };
+  });
 
 const acceptInviteSchema = z.object({
   token: z.string().min(10).max(200),

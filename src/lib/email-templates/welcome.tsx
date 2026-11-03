@@ -9,7 +9,15 @@ import {
   Text,
   Button,
 } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
+import {
+  styles,
+  OrgFooter,
+  type OrgContact,
+  TenantHeader,
+  howToReach,
+  cap,
+  noEndPeriod,
+} from "./_shared";
 import type { TemplateEntry } from "./registry";
 
 interface Props extends OrgContact {
@@ -42,7 +50,8 @@ const WelcomeEmail = ({
         <TenantHeader {...orgContact} orgName={orgName} />
         <Heading style={styles.h1}>Welcome, {clientName}!</Heading>
         <Text style={styles.text}>
-          Thanks for choosing {orgName}. We're set up and looking forward to your first visit.
+          Thanks for choosing {noEndPeriod(orgName)}. We're set up and looking forward to your first
+          visit.
         </Text>
         {bookedGroom ? (
           <Text style={styles.text}>Your first groom is booked for {bookedGroom}.</Text>
@@ -62,7 +71,9 @@ const WelcomeEmail = ({
             </Button>
           </>
         ) : null}
-        <Text style={styles.small}>Reply to this email if you have questions.</Text>
+        <Text style={styles.small}>
+          {cap(howToReach({ ...orgContact, orgName }))} if you have questions.
+        </Text>
         <OrgFooter {...orgContact} orgName={orgName} />
       </Container>
     </Body>
