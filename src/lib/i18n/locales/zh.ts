@@ -205,6 +205,8 @@ const zh: TranslationsWithPlurals<"other"> = {
     viewMySchedule: "查看我的日程",
     myRoute: "我的路线",
     aVisit: "一次服务",
+    canceledStops_other: "{{count}} 次已取消的服务",
+    canceledStopsHint: "不在你的路线上，无需前往。",
     weekdaySeparator: "，",
   },
   cacheAge: {

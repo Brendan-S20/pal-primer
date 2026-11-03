@@ -205,6 +205,9 @@ const es: Translations = {
     viewMySchedule: "Ver mi calendario",
     myRoute: "Mi ruta",
     aVisit: "una visita",
+    canceledStops_one: "{{count}} visita cancelada",
+    canceledStops_other: "{{count}} visitas canceladas",
+    canceledStopsHint: "No están en tu ruta. No hace falta ir.",
     weekdaySeparator: ", ",
   },
   cacheAge: {
