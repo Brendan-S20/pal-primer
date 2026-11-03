@@ -115,8 +115,9 @@ function AuthPage() {
   /** Land a signed-in person on their role's page, unless a link opened the
    *  app: then go where the link points. On a cold start the link arrives
    *  while this page is still working out who is signed in, and is held for
-   *  exactly this moment (lib/pending-deep-link.ts, #621). Native only in
-   *  practice: nothing holds a link on the web. */
+   *  exactly this moment (lib/pending-deep-link.ts, #621). On the web too
+   *  since #659: a page the _authenticated guard bounced here, or a save that
+   *  found the session gone, is held the same way so sign-in returns to it. */
   const land = (to: string) => {
     const link = takeLinkForLanding();
     if (link) router.history.push(link);
