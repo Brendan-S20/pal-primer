@@ -28,7 +28,9 @@ import { useMyRole } from "@/hooks/useMyRole";
 import { humanizeRole } from "@/lib/humanize";
 import { MapPin, ChevronDown, ChevronRight } from "lucide-react";
 import { titleHead } from "@/lib/page-title";
-import { inviteSendToast } from "@/lib/invite-copy";
+import { inviteSendToast, replaceInviteQuestion } from "@/lib/invite-copy";
+import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { toastServerError } from "@/lib/server-outcome";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import {
   SIGNED_OUT_MESSAGE,
@@ -349,6 +351,7 @@ function InvitePanel() {
   const resendFn = useServerFn(resendOrgInvite);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"office_manager" | "dispatcher" | "tech">("tech");
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
 
   const invitesQ = useQuery({ queryKey: ["org-invites"], queryFn: () => listFn() });
   const invites: any[] = (invitesQ.data as any)?.invites ?? [];
@@ -376,14 +379,32 @@ function InvitePanel() {
       });
     }
   };
+  // R2-32: the server refuses your own address and anyone already on the
+  // team (a toast, in its words), resends a pending invite under the same
+  // role, and asks before replacing one under a different role.
   const createMut = useMutation({
-    mutationFn: () => createFn({ data: { email: email.trim(), role } }),
+    mutationFn: async () => {
+      const to = email.trim();
+      const first = await createFn({ data: { email: to, role } });
+      if (!("replaceQuestion" in first) || !first.replaceQuestion) return first;
+      const q = first.replaceQuestion;
+      const ask = replaceInviteQuestion(q.email, q.currentRole, q.role);
+      const yes = await confirm({
+        title: ask.title,
+        description: ask.description,
+        confirmLabel: ask.confirmLabel,
+        cancelLabel: ask.cancelLabel,
+      });
+      if (!yes) return null;
+      return createFn({ data: { email: to, role, replace: true } });
+    },
     onSuccess: (r) => {
-      reportSend(email.trim(), r, "created");
+      if (!r || "replaceQuestion" in r) return;
+      reportSend(email.trim(), r, r.resent ? "resent" : "created");
       setEmail("");
       qc.invalidateQueries({ queryKey: ["org-invites"] });
     },
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e) => toastServerError(e, { fallback: "Couldn't send the invite. Try again." }),
   });
   const revokeMut = useMutation({
     mutationFn: (id: string) => revokeFn({ data: { id } }),
@@ -405,6 +426,7 @@ function InvitePanel() {
         <CardTitle className="text-base">Invite a teammate</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {confirmDialog}
         <form
           className="flex flex-wrap items-end gap-2"
           onSubmit={(e) => { e.preventDefault(); if (email.trim()) createMut.mutate(); }}
