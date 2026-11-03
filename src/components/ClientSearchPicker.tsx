@@ -14,6 +14,7 @@ import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { searchClients } from "@/lib/clients.functions";
+import { clientPickerLabels } from "@/lib/client-picker-labels";
 
 export type PickedClient = {
   id: string;
@@ -58,7 +59,9 @@ export function ClientSearchPicker({
     placeholderData: keepPreviousData,
     staleTime: 30_000,
   });
-  const hits = (results.data?.clients ?? []) as PickedClient[];
+  // Never two rows that read the same (#429): two clients called "Harbor
+  // Point" are told apart by street, then by the start of the id.
+  const hits = clientPickerLabels((results.data?.clients ?? []) as PickedClient[]);
 
   if (value) {
     return (
@@ -120,7 +123,7 @@ export function ClientSearchPicker({
                   setQ("");
                 }}
               >
-                <span className="w-full truncate font-medium">{c.display_name || "(no name)"}</span>
+                <span className="w-full truncate font-medium">{c.label}</span>
                 {(c.street || c.primary_email || c.primary_phone) && (
                   <span className="w-full truncate text-xs text-muted-foreground">
                     {[c.street, c.primary_email ?? c.primary_phone].filter(Boolean).join(" · ")}
