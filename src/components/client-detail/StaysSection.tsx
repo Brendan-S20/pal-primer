@@ -59,6 +59,7 @@ import {
   stayWindowsProblem,
   visitCountSentence,
 } from "@/lib/stays";
+import { sitterChangeSentence, sitterOptions } from "@/lib/stay-sitter-change";
 import { runsPetSitting, speciesLabel } from "@/lib/pets";
 import { centsToDollarInput, formatServiceMoney, parseDollarsToCents } from "@/lib/services";
 import { windowLabel } from "@/lib/walk-windows";
@@ -180,6 +181,12 @@ function StayRowView({
     queryKey: ["staff"],
     queryFn: () => staffFn(),
     enabled: changingSitter,
+  });
+  // Staff who run routes, and the current sitter whatever their role, so the
+  // select can show who has the stay before the list has loaded.
+  const sitterChoices = sitterOptions(staffQ.data?.staff ?? [], {
+    id: stay.assigned_staff_id,
+    name: stay.sitter_name,
   });
   const invalidate = () => invalidateStay(qc, clientId);
   // The dialog's checkbox writes here; the dialog's description is drawn once.
@@ -335,15 +342,37 @@ function StayRowView({
             <Label htmlFor={`stay-sitter-${stay.id}`} className="text-xs">
               Sitter
             </Label>
+            {/* Controlled, and opened on the stay's sitter (gaps-r2-06). A
+                defaultValue was applied before the staff list loaded, so the
+                select showed "Not assigned" over a stay that had a sitter,
+                and picking a name moved the nights with no confirm. */}
             <select
               id={`stay-sitter-${stay.id}`}
-              defaultValue={stay.assigned_staff_id ?? ""}
+              value={stay.assigned_staff_id ?? ""}
               disabled={staffQ.isLoading || sitter.isPending}
-              onChange={(e) => sitter.mutate(e.target.value || null)}
+              onChange={async (e) => {
+                const next = e.target.value || null;
+                if (next === (stay.assigned_staff_id ?? null)) return;
+                const name = next
+                  ? (sitterChoices.find((s) => s.id === next)?.display_name ?? null)
+                  : null;
+                const ok = await confirm({
+                  title: next ? "Change the sitter?" : "Take the sitter off this stay?",
+                  description: sitterChangeSentence({
+                    kind: stay.kind,
+                    startsOn: stay.starts_on,
+                    visits: stay.visits,
+                    today,
+                    toName: name,
+                  }),
+                  confirmLabel: next ? "Change sitter" : "Remove sitter",
+                });
+                if (ok) sitter.mutate(next);
+              }}
               className="h-10 w-full min-w-0 rounded-md border bg-background px-3 text-sm touch:h-11"
             >
               <option value="">Not assigned</option>
-              {(staffQ.data?.staff ?? []).map((s: any) => (
+              {sitterChoices.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.display_name}
                 </option>

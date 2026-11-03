@@ -60,6 +60,7 @@ import {
 import { runOrQueue } from "@/lib/offline/run-or-queue";
 import { useQueuedLifecycle } from "@/lib/offline/useQueuedLifecycle";
 import { dayAtAGlance } from "@/lib/my-day-progress";
+import { routeStops } from "@/lib/live-activity-state";
 import { withQueuedLifecycle, type LifecycleKind } from "@/lib/offline/queued-visit-state";
 import { resolveOfflineUserId } from "@/lib/offline/action-owner";
 import { confirmEndWithEmptyReport } from "@/lib/offline/walk-drafts";
@@ -488,9 +489,21 @@ function MyDay() {
   // all move on together. See lib/offline/queued-visit-state.ts.
   const queuedLifecycle = useQueuedLifecycle(dataUpdatedAt);
   const serverVisits = data?.visits;
-  const visits = useMemo(
+  const dayAsWorked = useMemo(
     () => withQueuedLifecycle(serverVisits ?? [], queuedLifecycle),
     [serverVisits, queuedLifecycle],
+  );
+  // A canceled visit is not a stop (gaps-r2-08). After an early return the
+  // stay's last nights are canceled, and they were drawn as full cards with
+  // Navigate, Call and the money due, and counted in "0 of 2 done", so a
+  // sitter could drive to a house the client had come back to. The cards,
+  // the count, the next stop and the map read `visits`; the canceled ones are
+  // folded under one line below the list. Same rule as the lock screen
+  // (routeStops in lib/live-activity-state.ts).
+  const visits = useMemo(() => routeStops(dayAsWorked), [dayAsWorked]);
+  const canceledVisits = useMemo(
+    () => dayAsWorked.filter((v: { status: string }) => v.status === "canceled"),
+    [dayAsWorked],
   );
   // List or map. Not in the URL: it is a way of looking at the day, not a
   // different day, and a tech who taps Map then reloads in a dead spot should
@@ -501,7 +514,7 @@ function MyDay() {
   // an effect has run, and a toast that says "and 2 others" with no names is
   // worse than one that says nothing.
   visitNames.current = new Map(
-    visits.map((v: { id: string; clients?: { display_name?: string | null } | null }) => [
+    dayAsWorked.map((v: { id: string; clients?: { display_name?: string | null } | null }) => [
       v.id,
       v.clients?.display_name ?? t("myDay.aVisit"),
     ]),
@@ -1125,6 +1138,23 @@ function MyDay() {
               />
             ))}
           </ol>
+        )}
+        {view === "list" && canceledVisits.length > 0 && (
+          <details className="rounded-lg border bg-card px-(--card-pad) text-sm text-muted-foreground">
+            <summary className="flex min-h-11 cursor-pointer items-center">
+              {t("myDay.canceledStops", { count: canceledVisits.length })}
+            </summary>
+            <p className="pb-2 text-xs">{t("myDay.canceledStopsHint")}</p>
+            <ul className="space-y-1 pb-3">
+              {canceledVisits.map(
+                (v: { id: string; clients?: { display_name?: string | null } | null }) => (
+                  <li key={v.id} className="min-w-0 truncate">
+                    <bdi>{v.clients?.display_name ?? t("myDay.aVisit")}</bdi>
+                  </li>
+                ),
+              )}
+            </ul>
+          </details>
         )}
       </div>
 

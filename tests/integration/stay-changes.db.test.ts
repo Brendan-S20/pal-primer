@@ -161,6 +161,39 @@ describe.skipIf(!dbEnabled)("changing a confirmed stay in the database", () => {
     expect((await invoice(s.invoiceId)).total_cents).toBe(5 * 6000);
   });
 
+  it("the unpaid stay invoice's period follows the new dates; a paid one keeps its own (gaps-r2-07)", async () => {
+    const period = async (id: string) => {
+      const r = await org.admin
+        .from("invoices")
+        .select("period_start, period_end")
+        .eq("id", id)
+        .single();
+      if (r.error) throw new Error(r.error.message);
+      return r.data;
+    };
+    const s = await booked(ahead, 5);
+    expect(await period(s.invoiceId)).toEqual({ period_start: ahead, period_end: shift(ahead, 5) });
+    // Early return: two nights fewer.
+    expect((await change(s.stayId, { endsOn: shift(ahead, 3) })).error).toBeNull();
+    expect(await period(s.invoiceId)).toEqual({ period_start: ahead, period_end: shift(ahead, 3) });
+    // A start moved later, and the end extended.
+    expect(
+      (await change(s.stayId, { startsOn: shift(ahead, 1), endsOn: shift(ahead, 6) })).error,
+    ).toBeNull();
+    expect(await period(s.invoiceId)).toEqual({
+      period_start: shift(ahead, 1),
+      period_end: shift(ahead, 6),
+    });
+
+    const paid = await booked(ahead, 5);
+    await markPaid(paid.invoiceId);
+    expect((await change(paid.stayId, { endsOn: shift(ahead, 3) })).error).toBeNull();
+    expect(await period(paid.invoiceId)).toEqual({
+      period_start: ahead,
+      period_end: shift(ahead, 5),
+    });
+  });
+
   it("adds a pet: the nights to come take the two-pet price", async () => {
     const s = await booked(ahead, 3);
     const r = await change(s.stayId, { endsOn: shift(ahead, 3), petIds: s.pets });
