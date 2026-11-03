@@ -296,7 +296,10 @@ describe("the public form", () => {
     expect(lookup).toMatch(/services,\s*serviceLines,\s*extras,\s*\};/);
     // A lookup that fails lists nothing; the page still loads.
     expect(lookup).toMatch(/let services: PublicService\[\] = \[\];/);
-    expect(lookup).toMatch(/services = publicServiceChoices\(svcRows, availability\);/);
+    // RC3: narrowed to the lines the business runs (linkServicesForLines).
+    expect(lookup).toMatch(
+      /services = linkServicesForLines\(\s*publicServiceChoices\(svcRows, availability\),\s*serviceLinesOrDefault\(org\?\.service_lines\),\s*\);/,
+    );
     expect(flow).toMatch(
       /publicServiceChoices\(\s*formQ\.data\?\.services,\s*formQ\.data\?\.serviceLines/,
     );
@@ -568,7 +571,7 @@ beforeEach(() => {
 describe("a quote request that names a service, through the shipped endpoint", () => {
   it("records the service on the lead and names it to the office", async () => {
     const r = await postLead({ ...QUOTE, service_id: WALK.id });
-    expect(r).toEqual({ status: 201, body: { ok: true } });
+    expect(r).toEqual({ status: 201, body: { ok: true, serviceArea: "unknown" } });
     expect(h.leads).toHaveLength(1);
     expect(h.leads[0]).toMatchObject({ organization_id: ORG, service_id: WALK.id, status: "new" });
     expect(h.notices).toHaveLength(1);

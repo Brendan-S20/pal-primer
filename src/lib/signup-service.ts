@@ -46,3 +46,20 @@ export function preselectedServiceLines(
   const onlyDefault = saved.length === 1 && saved[0] === "pet_waste";
   return onlyDefault ? [requested] : [...saved];
 }
+
+/** What setup step 1 starts on, before the owner touches it, combining the
+ *  link's request (preselectedServiceLines) with RC3 / F-06: a business that
+ *  has not answered (still the bare column default, step open) and did not
+ *  come with a valid, bookable ?service= starts with nothing ticked and must
+ *  choose. A valid request ticks that line alone, pet waste included. A
+ *  business that has answered sees the link's preselection rules unchanged. */
+export function setupStartingLines(input: {
+  unanswered: boolean;
+  saved: readonly ServiceLine[];
+  requested: ServiceLine | undefined;
+  preselected: readonly ServiceLine[];
+}): ServiceLine[] {
+  if (!input.unanswered) return [...input.preselected];
+  const honoured = !!input.requested && input.preselected.includes(input.requested);
+  return honoured ? [...input.preselected] : [];
+}

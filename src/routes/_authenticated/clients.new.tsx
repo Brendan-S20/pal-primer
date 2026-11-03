@@ -49,6 +49,7 @@ import {
   ServicePicker,
   useOrgServices,
 } from "@/components/client-detail/ServicePicker";
+import { usePickerLines } from "@/components/CommercialOnly";
 import { WeekdayPicker } from "@/components/client-detail/WeekdayPicker";
 import { servicePickerOptions } from "@/lib/visit-service";
 import { isZonePriced, servicePriceCents } from "@/lib/services";
@@ -57,8 +58,8 @@ import {
   pickServiceDay,
   serviceDaysFor,
   serviceDaysPerWeek,
-  WORK_WEEK,
 } from "@/lib/weekday-set";
+import { defaultPlanWeekdays, planStartsSkipped, propertyHazardsFor } from "@/lib/new-client-plan";
 import { toastServerError } from "@/lib/server-outcome";
 import { useFormDraft } from "@/hooks/useFormDraft";
 import { DraftRestoredNotice } from "@/components/DraftRestoredNotice";
@@ -441,7 +442,8 @@ function NewClientWizardForm({
   const linkFn = useServerFn(linkLeadToExistingClient);
 
   const [step, setStep] = useState(0);
-  const { petWaste, lines } = useServiceLines();
+  const { petWaste, lines, known: linesKnown } = useServiceLines();
+  const pickerLines = usePickerLines();
   const sitting = lines.includes("pet_sitting");
   const grooming = lines.includes("mobile_grooming");
   // A grooming lead books a groom, priced from the size grid, once the
@@ -615,7 +617,12 @@ function NewClientWizardForm({
   const [priceOverride, setPriceOverride] = useState<string>(() =>
     fromQuote?.priceCents != null ? (fromQuote.priceCents / 100).toFixed(2) : "",
   );
-  const [skipPlan, setSkipPlan] = useState(false);
+  // null until the owner touches it: then the line decides (F-04). A business
+  // that only sits, grooms or trains books the stay, groom or lesson after
+  // the client exists, so the box starts ticked; a scooping or walking
+  // business starts on a plan, as before.
+  const [skipPlanChoice, setSkipPlan] = useState<boolean | null>(null);
+  const skipPlan = skipPlanChoice ?? planStartsSkipped(lines, linesKnown);
   // No subscription is written for a groom lead: the groom is booked next.
   const planSkipped = skipPlan || booksGroom;
   // When the service starts, on the business's calendar. Tomorrow by default:
@@ -639,16 +646,26 @@ function NewClientWizardForm({
   // Started from a lead, the service the lead asked for, when it is one of
   // the business's; the plan form's picker (ServicesTab) is the same control.
   const [serviceId, setServiceId] = useState<string>(prefill.serviceId ?? "");
-  const offersServicePicker = servicePickerOptions(orgServices).length > 1;
-  const chosenService = offersServicePicker
-    ? (orgServices.find((x) => x.id === effectiveServiceId(serviceId, orgServices)) ?? null)
-    : null;
+  // A business without pet waste is not offered (or started on) the seeded
+  // "Pet waste removal" it still has (RC3), and its one service is the plan's
+  // service even with no picker to show: a walker with one walk was quoted
+  // from a zone, as a cleanup.
+  const offersServicePicker = servicePickerOptions(orgServices, null, pickerLines).length > 1;
+  const chosenService =
+    offersServicePicker || (linesKnown && !petWaste)
+      ? (orgServices.find(
+          (x) => x.id === effectiveServiceId(serviceId, orgServices, pickerLines),
+        ) ?? null)
+      : null;
   // A walk, a sit or a groom: priced from its service through the one rule
   // (servicePriceCents), never from a zone, and sold by the day of the week.
   const walkLike = !!chosenService && !isZonePriced(chosenService);
   const serviceCents = walkLike ? servicePriceCents(chosenService!, { pets: dogCount }) : null;
-  // The days a weekly walk runs on: Monday to Friday until the owner says.
-  const [weekdays, setWeekdays] = useState<number[]>([...WORK_WEEK]);
+  // The days a weekly plan runs on until the owner says: Monday to Friday
+  // for a walk, the first visit's weekday for anything else (F-04).
+  const [weekdayChoice, setWeekdays] = useState<number[] | null>(null);
+  const weekdays =
+    weekdayChoice ?? defaultPlanWeekdays(chosenService?.service_line, weekdayOf(startedOn));
   const setDays = walkLike && frequency === "weekly";
   const needsDays = !planSkipped && setDays && weekdays.length === 0;
 
@@ -779,11 +796,13 @@ function NewClientWizardForm({
       unitCount,
       stationCount,
       priceOverride,
-      skipPlan,
+      // The owner's own choices (null until touched), not the values the line
+      // derives (F-04), so a restored draft starts from the line again.
+      skipPlan: skipPlanChoice,
       startedOn,
       serviceDays,
       serviceId,
-      weekdays,
+      weekdays: weekdayChoice,
       fcChoice,
       fcOverride,
     },
@@ -1392,18 +1411,9 @@ function NewClientWizardForm({
                 Safety & access
               </div>
               <div className="mt-2 grid gap-1 text-sm sm:grid-cols-2">
-                {(
-                  [
-                    ["doNotEnterIfDogOut", "Do NOT enter if dog is outside"],
-                    ["aggressiveDog", "Aggressive dog"],
-                    ["escapeRisk", "Escape risk (close gate)"],
-                    ["invisibleFence", "Invisible fence"],
-                    ["dogInYardDuringService", "Dog in yard during service"],
-                    ["beesWasps", "Bees / wasps"],
-                    ["sharpObjects", "Sharp objects"],
-                    ["slipperySurfaces", "Slippery surfaces"],
-                  ] as const
-                ).map(([k, label]) => (
+                {/* The yard's hazards are asked of a business that scoops
+                    (F-06); propertyHazardsFor keeps one that is ticked. */}
+                {propertyHazardsFor(lines, hz).map(({ key: k, label }) => (
                   <label key={k} className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -1595,6 +1605,7 @@ function NewClientWizardForm({
                     services={orgServices}
                     isLoading={servicesLoading}
                     onChange={setServiceId}
+                    lines={pickerLines}
                   />
                 )}
                 <div className="grid gap-3 sm:grid-cols-2">

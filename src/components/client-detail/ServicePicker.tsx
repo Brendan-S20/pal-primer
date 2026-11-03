@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { listServices } from "@/lib/services.functions";
 import { defaultServiceId, servicePickerOptions } from "@/lib/visit-service";
 import type { Service } from "@/lib/services";
+import type { ServiceLine } from "@/lib/service-lines";
 
 export const SERVICES_QUERY_KEY = ["services", "all"] as const;
 
@@ -25,9 +26,16 @@ export function useOrgServices(enabled = true) {
   return { services: (data?.services ?? []) as Service[], isLoading };
 }
 
-/** What a picker with nothing chosen yet shows, and what Save sends. */
-export function effectiveServiceId(chosen: string, services: readonly Service[]): string | null {
-  return chosen || defaultServiceId(services);
+/** What a picker with nothing chosen yet shows, and what Save sends. `lines`
+ *  is usePickerLines() (CommercialOnly.tsx): a business without pet waste
+ *  does not start on its seeded "Pet waste removal" (RC3). The caller passes
+ *  the same lines to <ServicePicker>, so what it shows is what Save sends. */
+export function effectiveServiceId(
+  chosen: string,
+  services: readonly Service[],
+  lines?: readonly ServiceLine[],
+): string | null {
+  return chosen || defaultServiceId(services, lines);
 }
 
 export function ServicePicker({
@@ -37,6 +45,7 @@ export function ServicePicker({
   services,
   isLoading,
   onChange,
+  lines,
 }: {
   id?: string;
   /** What the person chose; "" until they choose (the default shows). */
@@ -46,9 +55,11 @@ export function ServicePicker({
   services: readonly Service[];
   isLoading: boolean;
   onChange: (serviceId: string) => void;
+  /** usePickerLines(): omitted, nothing is hidden. */
+  lines?: readonly ServiceLine[];
 }) {
-  const options = servicePickerOptions(services, currentId);
-  const selected = effectiveServiceId(value, services) ?? "";
+  const options = servicePickerOptions(services, currentId, lines);
+  const selected = effectiveServiceId(value, services, lines) ?? "";
   return (
     <div className="min-w-0">
       <Label htmlFor={id}>Service</Label>
@@ -60,7 +71,13 @@ export function ServicePicker({
         className="h-10 w-full min-w-0 rounded-md border bg-background px-3 text-sm touch:h-11"
       >
         {isLoading && <option value="">Loading…</option>}
-        {!isLoading && options.length === 0 && <option value="">Pet waste removal</option>}
+        {!isLoading && options.length === 0 && (
+          <option value="">
+            {lines && !lines.includes("pet_waste")
+              ? "No services yet: add one in Settings, Services"
+              : "Pet waste removal"}
+          </option>
+        )}
         {options.map((s) => (
           <option key={s.id} value={s.id}>
             {s.active ? s.name : `${s.name} (no longer offered)`}

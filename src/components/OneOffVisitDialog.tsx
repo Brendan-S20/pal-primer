@@ -49,6 +49,14 @@ import {
   ONE_OFF_PRICE_SETTING_HASH,
   ONE_OFF_PRICE_SETTING_PATH,
 } from "@/lib/services";
+import { servicePickerOptions } from "@/lib/visit-service";
+import { oneOffWindowProblem } from "@/lib/one-off-booked";
+import {
+  ServicePicker,
+  effectiveServiceId,
+  useOrgServices,
+} from "@/components/client-detail/ServicePicker";
+import { usePickerLines } from "@/components/CommercialOnly";
 
 const BOOK_FAILED = "The visit could not be booked. Try again.";
 
@@ -85,6 +93,29 @@ export function OneOffVisitDialog({
   const [price, setPrice] = useState("");
   const [staffId, setStaffId] = useState("");
   const [note, setNote] = useState("");
+  const [serviceId, setServiceId] = useState("");
+  const [earliestTime, setEarliestTime] = useState("");
+  const [latestTime, setLatestTime] = useState("");
+
+  // Which service, and when in the day (F-05). It used to ask neither, so a
+  // trainer's or a groomer's one-off was booked as the business's default
+  // service -- the seeded "Pet waste removal", often inactive -- with no time.
+  // A business that sells one pet-waste service sees no picker and books as
+  // it always did; any other business picks from its own services, and the
+  // seeded pet-waste one is not offered to a business that does not scoop.
+  const { services: orgServices, isLoading: servicesLoading } = useOrgServices(open);
+  const pickerLines = usePickerLines();
+  const serviceOptions = servicePickerOptions(orgServices, null, pickerLines);
+  const nonWaste = !!pickerLines && !pickerLines.includes("pet_waste");
+  const asksService = serviceOptions.length > 1 || (nonWaste && serviceOptions.length > 0);
+  const bookedServiceId = asksService
+    ? effectiveServiceId(serviceId, orgServices, pickerLines)
+    : null;
+  const bookedService = orgServices.find((s) => s.id === bookedServiceId) ?? null;
+  // The extra-visit price on Client portal is a pet-waste one-off's (#641);
+  // any other service is priced from Settings, Services.
+  const pricedAsExtraVisit = !bookedService || bookedService.service_line === "pet_waste";
+  const windowProblem = oneOffWindowProblem(earliestTime, latestTime);
 
   // Reset per opening. A dialog that remembers the last client is a dialog that
   // books the wrong client the second time.
@@ -97,6 +128,9 @@ export function OneOffVisitDialog({
     setPrice("");
     setStaffId("");
     setNote("");
+    setServiceId("");
+    setEarliestTime("");
+    setLatestTime("");
   }, [open, fixedClientId, today]);
 
   const { data: propsData } = useQuery({
@@ -137,9 +171,12 @@ export function OneOffVisitDialog({
     isLoading: listPriceLoading,
     error: listPriceError,
   } = useQuery({
-    enabled: open && (!setsPrices || changesSettings) && !!propertyId,
-    queryKey: ["one-off-set-price", propertyId],
-    queryFn: () => setPriceFn({ data: { propertyId } }),
+    enabled: open && (!setsPrices || changesSettings) && !!propertyId && !servicesLoading,
+    queryKey: ["one-off-set-price", propertyId, bookedServiceId],
+    queryFn: () =>
+      setPriceFn({
+        data: { propertyId, ...(bookedServiceId ? { serviceId: bookedServiceId } : {}) },
+      }),
   });
 
   const typedCents = Math.round(parseFloat(price || "0") * 100);
@@ -158,6 +195,9 @@ export function OneOffVisitDialog({
           priceCents: priceCents ?? undefined,
           staffId: staffId || null,
           note: note.trim() || undefined,
+          ...(bookedServiceId ? { serviceId: bookedServiceId } : {}),
+          earliestTime: earliestTime || null,
+          latestTime: latestTime || null,
         },
       }),
     onSuccess: (r: any) => {
@@ -184,7 +224,13 @@ export function OneOffVisitDialog({
     onError: (e: unknown) => toastServerError(e, { fallback: BOOK_FAILED }),
   });
 
-  const ready = !!clientId && !!propertyId && !!scheduledOn && priceValid;
+  const ready =
+    !!clientId &&
+    !!propertyId &&
+    !!scheduledOn &&
+    priceValid &&
+    !windowProblem &&
+    (!asksService || !!bookedServiceId);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -235,6 +281,18 @@ export function OneOffVisitDialog({
               </p>
             )}
           </div>
+
+          {asksService && (
+            <ServicePicker
+              id="oo-service"
+              value={serviceId}
+              currentId={null}
+              services={orgServices}
+              isLoading={servicesLoading}
+              onChange={setServiceId}
+              lines={pickerLines}
+            />
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
@@ -292,20 +350,54 @@ export function OneOffVisitDialog({
           )}
           {setsPrices && propertyId && listPrice && listPrice.cents == null && (
             <p className="text-2xs text-muted-foreground">
-              No extra-visit price is set, so type one. To set it once for every extra visit, use{" "}
-              {ONE_OFF_PRICE_SETTING}.
+              {pricedAsExtraVisit
+                ? `No extra-visit price is set, so type one. To set it once for every extra visit, use ${ONE_OFF_PRICE_SETTING}.`
+                : "This service has no price yet, so type one. Its price is set in Settings, Services."}
             </p>
           )}
-          {changesSettings && propertyId && listPrice && listPrice.cents == null && (
-            <Link
-              to={ONE_OFF_PRICE_SETTING_PATH}
-              hash={ONE_OFF_PRICE_SETTING_HASH}
-              onClick={() => onOpenChange(false)}
-              className="inline-flex min-h-9 items-center text-xs font-medium text-primary underline touch:min-h-11"
-            >
-              Set the extra-visit price
-            </Link>
-          )}
+          {changesSettings &&
+            pricedAsExtraVisit &&
+            propertyId &&
+            listPrice &&
+            listPrice.cents == null && (
+              <Link
+                to={ONE_OFF_PRICE_SETTING_PATH}
+                hash={ONE_OFF_PRICE_SETTING_HASH}
+                onClick={() => onOpenChange(false)}
+                className="inline-flex min-h-9 items-center text-xs font-medium text-primary underline touch:min-h-11"
+              >
+                Set the extra-visit price
+              </Link>
+            )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="min-w-0 space-y-1">
+              <Label htmlFor="oo-after" className="text-xs">
+                Arrive after (optional)
+              </Label>
+              <Input
+                id="oo-after"
+                type="time"
+                value={earliestTime}
+                onChange={(e) => setEarliestTime(e.target.value)}
+              />
+            </div>
+            <div className="min-w-0 space-y-1">
+              <Label htmlFor="oo-by" className="text-xs">
+                Arrive by (optional)
+              </Label>
+              <Input
+                id="oo-by"
+                type="time"
+                value={latestTime}
+                onChange={(e) => setLatestTime(e.target.value)}
+              />
+            </div>
+          </div>
+          <p className={`text-2xs ${windowProblem ? "text-destructive" : "text-muted-foreground"}`}>
+            {windowProblem ??
+              "The route plans the visit inside this window. Leave both empty for any time."}
+          </p>
 
           <div className="space-y-1">
             <Label htmlFor="oo-tech" className="text-xs">Assign to (optional)</Label>

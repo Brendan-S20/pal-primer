@@ -120,6 +120,24 @@ export function publicServiceChoices(
   return out;
 }
 
+/** The services the booking link lists, for what the business runs (RC3):
+ *  a business that runs no pet waste is not offered the seeded "Pet waste
+ *  removal" it still holds, which turned a trainer's page into "Tell us
+ *  about your property" (bookingLine sees pet waste listed). In the order
+ *  public_services gives them: by line, then as listed. Hiding only: the
+ *  service stays, and public_quote still prices it if asked by id. */
+export function linkServicesForLines(
+  services: readonly PublicService[],
+  orgLines: readonly ServiceLine[],
+): PublicService[] {
+  const at = (l: ServiceLine) => SERVICE_LINES.indexOf(l);
+  return services
+    .filter((s) => s.service_line !== "pet_waste" || orgLines.includes("pet_waste"))
+    .map((s, i) => ({ s, i }))
+    .sort((a, b) => at(a.s.service_line) - at(b.s.service_line) || a.i - b.i)
+    .map(({ s }) => s);
+}
+
 /** True when there is a choice to make. One service, or none listed, is the
  *  form as it always was. */
 export function offersAChoice(services: readonly PublicService[]): boolean {

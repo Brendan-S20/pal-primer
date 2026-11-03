@@ -241,8 +241,10 @@ export const STAY_COPY = {
     "Tell us your dates and pets and we'll get back to you to confirm your stay and its price.",
   /** The preferred start date's label. */
   startDateLabel: "First night",
+  /** The stay's other end (R2-24): it went in the note, if anywhere. */
+  endDateLabel: "Last night",
   /** The "Anything else?" placeholder. */
-  notePlaceholder: "Your last night, pet names, feeding and medication, how to get in…",
+  notePlaceholder: "Pet names, feeding and medication, how to get in…",
   /** The quote request's button. */
   requestButton: "Request this stay",
 } as const;

@@ -77,7 +77,7 @@ import {
   createSignupPaymentIntent,
 } from "@/lib/signup.functions";
 import { LAST_CLEANED_QUESTION } from "@/lib/first-cleanup";
-import { outOfAreaAnswer } from "@/lib/booking-page";
+import { outOfAreaAnswer, outOfAreaSentNote } from "@/lib/booking-page";
 import { stripeAppearance } from "@/lib/stripe-appearance";
 import {
   QUOTE_REQUEST_DISCLOSURE,
@@ -123,6 +123,7 @@ import {
   ONE_TIME_COPY,
   PACKAGE_COPY,
   effectivePublicBookingMode,
+  quoteRequestMessage,
 } from "@/lib/public-booking-mode";
 import { groomTimeLabel } from "@/lib/groom-online";
 import type { ServiceLine } from "@/lib/service-lines";
@@ -239,6 +240,8 @@ export function SignupFlow({
     // A groom booked online (#560): the start time picked from the open
     // times on the groom's day (preferred_start_date).
     groom_start_time: "",
+    // A stay's last night (R2-24), sent in the lead's message.
+    last_night: "",
   });
 
   // What the business sells (public_services, through the form lookup). A
@@ -304,6 +307,14 @@ export function SignupFlow({
   // one the owner takes by request only (#574).
   const asksOnly = request === "unpriced" || request === "request_only";
   const sellsHere = instantStart && !stay && !asksOnly;
+  // A groom's day and start time are booked here only when the link can
+  // take a card (R2-24). With no Stripe they were drawn "(to book)" and
+  // disabled for good; a request asks for a preferred day instead.
+  const groomBooks = groom && instantStart;
+  // The package, named and priced, for its sentence and the lead (R2-24).
+  const packDetail = pack
+    ? { name: pack.name, price: money(pack.price_cents, formQ.data?.currency) }
+    : null;
 
   // The pet-waste questions apply when nothing was picked and for the
   // pet-waste service; a walk has no yard to ask about.
@@ -459,6 +470,10 @@ export function SignupFlow({
         // after the service changed. None for a stay (#546).
         body: JSON.stringify({
           ...lead,
+          message: quoteRequestMessage(lead.message, {
+            pack: pack && packDetail ? { ...packDetail, sessions_count: pack.sessions_count } : null,
+            lastNight: stay && form.last_night ? form.last_night : null,
+          }),
           frequency: stay || !repeats ? "" : frequency,
           ...serviceField,
           ...extrasField,
@@ -468,9 +483,16 @@ export function SignupFlow({
         const b = await res.json().catch(() => ({}));
         throw new Error((b as any).error || "Something went wrong. Please try again.");
       }
+      return (await res.json().catch(() => ({}))) as { serviceArea?: string };
     },
-    onSuccess: () => setSent(true),
+    onSuccess: (r) => {
+      // No zone lists the ZIP (R2-25): said on the thank-you, as the quote
+      // answer already says it, instead of a thank-you and silence.
+      setSentOutside(r?.serviceArea === "outside");
+      setSent(true);
+    },
   });
+  const [sentOutside, setSentOutside] = useState(false);
 
   const branch = decideFormBranch({
     instantStart,
@@ -527,7 +549,7 @@ export function SignupFlow({
           pet_sizes: petSizes,
         },
       }),
-    enabled: groom && !!quote && !!chosen && /^\d{4}-\d{2}-\d{2}$/.test(groomDay),
+    enabled: groomBooks && !!quote && !!chosen && /^\d{4}-\d{2}-\d{2}$/.test(groomDay),
     retry: false,
   });
   const groomTimes = groomTimesQ.data?.times ?? [];
@@ -650,6 +672,11 @@ export function SignupFlow({
         </div>
         <h2 className="text-xl font-semibold">Thanks, we got your request!</h2>
         <p className="mt-2 text-sm text-muted-foreground">{copy?.confirmation}</p>
+        {sentOutside && (
+          <p className="mt-2 text-sm text-muted-foreground" data-sent-outside-area>
+            {outOfAreaSentNote(formQ.data.name, form.postal_code)}
+          </p>
+        )}
       </div>
     );
   }
@@ -844,13 +871,17 @@ export function SignupFlow({
           </p>
         ) : pack ? (
           <p className="min-w-0 text-sm text-muted-foreground sm:col-span-3">
-            {PACKAGE_COPY.howItWorks(pack.sessions_count)}
+            {PACKAGE_COPY.howItWorks(pack.sessions_count, packDetail, instantStart)}
           </p>
         ) : oneTime ? (
           <p className="min-w-0 text-sm text-muted-foreground sm:col-span-3">
-            {ONE_TIME_COPY.howItWorks}
+            {ONE_TIME_COPY.howItWorks(lineCopy.visit, instantStart)}
           </p>
-        ) : (
+        ) : mode === "request_only" ? null : (
+          // A request-only service sends no cadence (the lead's frequency is
+          // empty unless the service repeats), so it shows no Frequency: a
+          // trainer's one-session service read "Weekly", a groom's select was
+          // blank because "weekly" is not on grooming's list (R2-24).
           <div className="space-y-1.5">
             <Label htmlFor="frequency">Frequency</Label>
             <Select
@@ -1170,7 +1201,7 @@ export function SignupFlow({
             />
           </div>
         )}
-        {(details.startDate !== "off" || groom) && (
+        {(details.startDate !== "off" || groomBooks) && (
           <div className="min-w-0 space-y-1.5">
             <Label htmlFor="preferred_start_date">
               {stay
@@ -1178,7 +1209,7 @@ export function SignupFlow({
                 : groom
                   ? GROOM_COPY.dayLabel
                   : "Preferred start date"}
-              {groom ? (
+              {groomBooks ? (
                 <span className="font-normal text-muted-foreground"> {GROOM_COPY.toBook}</span>
               ) : (
                 markRequired(details.startDate)
@@ -1195,16 +1226,31 @@ export function SignupFlow({
             <p className="text-xs text-muted-foreground">
               {stay
                 ? stayStartDateHint(formQ.data.name ?? "The business")
-                : groom
+                : groomBooks
                   ? GROOM_COPY.dayHint
                   : `${formQ.data.name ?? "The business"} will confirm your first visit for on or after this date.`}
             </p>
           </div>
         )}
+        {stay && details.startDate !== "off" && (
+          <div className="min-w-0 space-y-1.5">
+            <Label htmlFor="last_night">
+              {STAY_COPY.endDateLabel}
+              <span className="font-normal text-muted-foreground"> (optional)</span>
+            </Label>
+            <Input
+              id="last_night"
+              type="date"
+              min={form.preferred_start_date || earliestStart}
+              value={form.last_night}
+              onChange={(e) => setFormField({ ...form, last_night: e.target.value })}
+            />
+          </div>
+        )}
         {/* The groom's start time (#560): the openings on that day for a
             groom this long, once it is priced. Booking needs one; a request
-            does not. */}
-        {groom && (
+            does not, and with no card to take there is no booking here. */}
+        {groomBooks && (
           <div className="min-w-0 space-y-1.5">
             <Label htmlFor="groom_start_time">
               {GROOM_COPY.timeLabel}

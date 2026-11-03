@@ -87,6 +87,7 @@ import {
   effectiveServiceId,
   useOrgServices,
 } from "@/components/client-detail/ServicePicker";
+import { usePickerLines } from "@/components/CommercialOnly";
 import { WeekdayPicker } from "@/components/client-detail/WeekdayPicker";
 import { WORK_WEEK, normalizeWeekdays, offersSetDays } from "@/lib/weekday-set";
 import { servicePriceCents } from "@/lib/services";
@@ -1187,6 +1188,7 @@ function ServiceDrawer({
   // What the plan sells. "" until the person picks: the picker shows the
   // business's pet waste removal, and Save sends whatever it shows.
   const { services: orgServices, isLoading: servicesLoading } = useOrgServices(open);
+  const pickerLines = usePickerLines();
 
   const initial: SubscriptionFormValues & { choice: ScheduleChoice; serviceId: string } = useMemo(() => {
     if (subscription) {
@@ -1246,7 +1248,9 @@ function ServiceDrawer({
   const locale = useIntlLocale();
   // What the plan sells, as the picker shows it (its default until chosen).
   const chosenService =
-    orgServices.find((x) => x.id === effectiveServiceId(form.serviceId, orgServices)) ?? null;
+    orgServices.find(
+      (x) => x.id === effectiveServiceId(form.serviceId, orgServices, pickerLines),
+    ) ?? null;
   const creatingWalk = !subscription && chosenService?.service_line === "dog_walking";
   const walkWindows = [
     { earliestTime: form.earliestTime, latestTime: form.latestTime },
@@ -1527,7 +1531,7 @@ function ServiceDrawer({
         weekdays: form.choice === "set_days" ? normalizeWeekdays(form.weekdays) : null,
         earliestTime: form.earliestTime || null,
         latestTime: form.latestTime || null,
-        serviceId: effectiveServiceId(form.serviceId, orgServices) ?? undefined,
+        serviceId: effectiveServiceId(form.serviceId, orgServices, pickerLines) ?? undefined,
       };
       const run = subscription
         ? updateFn({ data: { subscriptionId: subscription.id, ...common } })
@@ -1617,6 +1621,7 @@ function ServiceDrawer({
           services={orgServices}
           isLoading={servicesLoading}
           onChange={onServiceChange}
+          lines={pickerLines}
         />
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
