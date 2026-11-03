@@ -21,6 +21,11 @@ import {
   setupAsksServiceLines,
 } from "@/lib/service-lines";
 import { PROPERTY_HAZARDS, propertyHazardsFor } from "@/lib/new-client-plan";
+import {
+  preselectedServiceLines,
+  requestedServiceLine,
+  setupStartingLines,
+} from "@/lib/signup-service";
 
 const read = (p: string) => readFileSync(join(__dirname, "..", p), "utf8");
 
@@ -49,12 +54,74 @@ describe("setup asks what a new business runs", () => {
 
   it("the first step starts empty, refuses an empty answer, and writes only a change", () => {
     const setup = read("src/routes/_authenticated/setup.tsx");
-    expect(setup).toMatch(/setupAsksServiceLines\(savedLines, linesKnown, alreadyDone\)/);
-    expect(setup).toMatch(/lines \?\? \(unanswered \? \[\] : savedLines\)/);
+    expect(setup).toMatch(
+      /unanswered: setupAsksServiceLines\(savedLines, linesKnown, alreadyDone\)/,
+    );
+    expect(setup).toMatch(
+      /preselected: preselectedServiceLines\(savedLines, requestedLine, availability\)/,
+    );
+    expect(setup).toMatch(/const linesVal = lines \?\? startingLines;/);
     expect(setup).toMatch(
       /if \(linesVal\.length === 0\) \{\s*toast\.error\("Choose the services you offer\."\)/,
     );
     expect(setup).toMatch(/if \(linesChanged\) await saveLinesFn/);
+  });
+});
+
+describe("setup step 1 with a ?service= request (#710) and without", () => {
+  const avail = {
+    bookable: ["pet_waste", "training", "dog_walking"],
+    customerRequestable: [],
+  } as never;
+  const start = (requested: Parameters<typeof requestedServiceLine>[0], unanswered = true) => {
+    const r = requestedServiceLine(requested);
+    return setupStartingLines({
+      unanswered,
+      saved: ["pet_waste"],
+      requested: r,
+      preselected: preselectedServiceLines(["pet_waste"], r, avail),
+    });
+  };
+
+  it("a valid request ticks that line alone", () => {
+    expect(start("training")).toEqual(["training"]);
+    expect(start("dog-walking")).toEqual(["dog_walking"]);
+    expect(start("pet_waste")).toEqual(["pet_waste"]);
+  });
+
+  it("no request, an unknown one or a Coming soon one ticks nothing", () => {
+    expect(start(undefined)).toEqual([]);
+    expect(start("llama_grooming")).toEqual([]);
+    expect(start("pet_sitting")).toEqual([]);
+  });
+
+  it("availability not loaded yet ticks nothing rather than pet waste", () => {
+    const r = requestedServiceLine("training");
+    expect(
+      setupStartingLines({
+        unanswered: true,
+        saved: ["pet_waste"],
+        requested: r,
+        preselected: preselectedServiceLines(["pet_waste"], r, null),
+      }),
+    ).toEqual([]);
+  });
+
+  it("an answered business keeps #710's rules", () => {
+    expect(
+      setupStartingLines({
+        unanswered: false,
+        saved: ["mobile_grooming"],
+        requested: "training",
+        preselected: ["mobile_grooming"],
+      }),
+    ).toEqual(["mobile_grooming"]);
+  });
+
+  it("#711's draft keeps only what was touched, so a restore wins over the start", () => {
+    const setup = read("src/routes/_authenticated/setup.tsx");
+    expect(setup).toMatch(/value: \{ lines, name, phone, address, tz \}/);
+    expect(setup).toMatch(/setLines\(d\.lines\)/);
   });
 });
 

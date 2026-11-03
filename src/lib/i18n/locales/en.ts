@@ -824,6 +824,10 @@ const en = {
       "This phone said no. To turn them on, go to Settings › Apps › HoundStack › Notifications.",
     openSettings: "Open Settings",
     unavailable: "Notifications are not available in this version of the app.",
+    explainerTitle: "Get notified on this phone?",
+    explainerBody:
+      "We tell you when your route changes, a visit is added or the office messages you. Your phone asks next: choose Allow.",
+    notNow: "Not now",
   },
   nav: {
     primary: "Primary",

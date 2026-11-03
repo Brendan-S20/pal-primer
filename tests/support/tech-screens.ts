@@ -52,6 +52,9 @@ export const TECH_SCREENS: { file: string; only?: string[] }[] = [
   { file: "src/components/TimeClock.tsx" },
   { file: "src/components/VisitChecklistAnswers.tsx" },
   { file: "src/components/PushToggle.tsx" },
+  // The line in the shell that says what notifications are for, before the
+  // phone's own prompt (R2-35).
+  { file: "src/components/NativePushExplainer.tsx" },
   { file: "src/components/PhotoLightbox.tsx" },
   { file: "src/components/MobileTabBar.tsx" },
   { file: "src/components/AppSidebar.tsx" },

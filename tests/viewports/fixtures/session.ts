@@ -47,23 +47,16 @@ import { PUBLIC_SUPABASE_URL } from "../../../src/lib/supabase-url";
  * written before the app's first script runs. `page.addInitScript` is exactly
  * that hook.
  *
- * The KEY is the surprise. supabase-js derives `sb-<project-ref>-auth-token`
- * by default, but client.ts passes `storageKey: impersonating ? '…' : undefined`
- * and an explicit `undefined` OVERWRITES the default in the options spread. So
- * GoTrueClient ends up with `storageKey === undefined`, and every read is
- * `localStorage.getItem(undefined)` — the literal key `"undefined"`. That is
- * what this app stores its session under today; measured, not assumed.
- *
- * Both keys are written. The literal is what the app reads NOW; the derived
- * one is what it will read the day someone gives that ternary an `else`. The
- * sweep must not start failing on a fix.
+ * The KEY: until native-r2-09, client.ts passed `storageKey: … : undefined`,
+ * an explicit `undefined` overwrote supabase-js's default in the options
+ * spread, and every session was saved under the literal key `"undefined"`.
+ * It is now the named SESSION_STORAGE_KEY (src/integrations/supabase/
+ * session-key.ts); tests/a-session-saved-as-undefined.test.ts checks this
+ * file writes that same name.
  */
 
-/** Project ref from `src/integrations/supabase/client.ts`. Still the ref and not
- *  the custom domain, because the only thing it is used for below is the
- *  DERIVED storage key `sb-<ref>-auth-token`, which supabase-js builds from the
- *  hostname of whatever URL it was given. That key is a fallback the app does
- *  not currently read at all — see the note above. */
+/** Project ref from `src/integrations/supabase/client.ts`. No longer used for
+ *  the storage key (see the note above); kept for whatever imports it. */
 export const SUPABASE_PROJECT_REF = "vsxzrbxublqrcfnxfwcu";
 
 /** The origin the browser client actually talks to, imported rather than
@@ -183,10 +176,10 @@ export async function installSignedInSession(
   await context.addInitScript(
     ([serialized, extras]: [string, Record<string, string>]) => {
       try {
-        // The key the app actually reads today, and the key it would read if
-        // client.ts ever stopped passing `storageKey: undefined`.
-        localStorage.setItem("undefined", serialized);
-        localStorage.setItem("sb-vsxzrbxublqrcfnxfwcu-auth-token", serialized);
+        // The named key the app reads since native-r2-09
+        // (SESSION_STORAGE_KEY in src/integrations/supabase/session-key.ts,
+        // spelled out because this runs in the page, not in node).
+        localStorage.setItem("sb-houndstack-auth-token", serialized);
         for (const [k, v] of Object.entries(extras)) localStorage.setItem(k, v);
       } catch {
         /* a context with storage disabled cannot be signed in; settle() will say so */

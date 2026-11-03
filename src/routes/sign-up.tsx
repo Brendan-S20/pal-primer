@@ -19,6 +19,9 @@ export const Route = createFileRoute("/sign-up")({
     utm_campaign: typeof s.utm_campaign === "string" ? s.utm_campaign : undefined,
     utm_term: typeof s.utm_term === "string" ? s.utm_term : undefined,
     utm_content: typeof s.utm_content === "string" ? s.utm_content : undefined,
+    // The service line the visitor came for (site-r2-03). Validated by
+    // requestedServiceLine when it is stashed; an unknown value is ignored.
+    service: typeof s.service === "string" ? s.service : undefined,
   }),
   head: () => ({
     meta: [
@@ -49,6 +52,7 @@ function SignUpRedirect() {
         utm_campaign: undefined,
         utm_term: undefined,
         utm_content: undefined,
+        service: undefined,
       },
       replace: true,
     });

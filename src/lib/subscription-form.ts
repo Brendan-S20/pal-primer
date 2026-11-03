@@ -170,6 +170,20 @@ export function formatFrequency(
   }
 }
 
+/** The SERVICE column of a client's visit list: what was booked ("Bath &
+ *  brush", "Weekly cleanup"), not only whether it repeats. A groom used to
+ *  read "One time service" there with its real name only in the sub-line
+ *  (R2-31, groom-r2-08). Falls back to the cadence when the plan has no
+ *  catalog service. */
+export function visitServiceLabel(
+  s: { frequency?: string | null; services?: { name?: string | null } | null } | null | undefined,
+): string {
+  if (!s) return "-";
+  const name = s.services?.name?.trim();
+  if (name) return name;
+  return `${s.frequency === "one_time" ? "One time" : "Recurring"} service`;
+}
+
 /**
  * Single source of truth for "this service is over" (UX round 4: ended
  * services kept showing as active). A service is ended when its status is
