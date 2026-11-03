@@ -4,8 +4,10 @@ import { addDaysToDay } from "@/lib/reclean";
 import { invoiceRef } from "@/lib/invoice-labels";
 import { newInvoice } from "@/lib/db-insert";
 import { effectiveTaxRateBps, invoiceTotals } from "@/lib/sales-tax";
+import { manualLinesProblem, manualSubtotalCents } from "@/lib/invoice-lines";
 
-/** One line of a hand-made invoice. `amountCents` is the line total; a line
+/** One line of a hand-made invoice. `amountCents` is the line total, below
+ *  zero for a discount (total only, never a visit or an add-on); a line
  *  with a quantity also carries the price of one, and the database holds the
  *  two together (invoice_line_items_total_is_quantity_times_unit). */
 export type ManualInvoiceItem = {
@@ -48,7 +50,12 @@ export async function insertManualInvoice(
     const { checkInvoiceLinks } = await import("@/lib/visit-invoicing.server");
     await checkInvoiceLinks(supabase, p.orgId, p.clientId, p.items);
   }
-  const subtotal = p.items.reduce((s, i) => s + i.amountCents, 0);
+  // A minus line is a discount and is part of the subtotal (#653). The same
+  // rules the form and the server function apply, again here, because a
+  // quote's one-time charges reach this without either.
+  const problem = manualLinesProblem(p.items);
+  if (problem) throw new Error(problem);
+  const subtotal = manualSubtotalCents(p.items);
   const nowIso = new Date().toISOString();
   // Due date = issued date + the org's payment terms. (A DB trigger also
   // fills due_on for paths that don't set it, e.g. the generate RPCs.)
