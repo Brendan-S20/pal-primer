@@ -973,7 +973,7 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
     const { requireOrgStripeAccount, connectStripe, connectPublishableKey } = await import(
       "@/lib/stripe-connect.server"
     );
-    const acct = await requireOrgStripeAccount(q.organization_id);
+    const acct = await requireOrgStripeAccount(q.organization_id, { audience: "customer" });
     const stripe = await connectStripe();
 
     const amountCents = charge.amountCents;

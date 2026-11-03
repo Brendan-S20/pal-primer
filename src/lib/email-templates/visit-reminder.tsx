@@ -9,7 +9,15 @@ import {
   Preview,
   Text,
 } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
+import {
+  styles,
+  OrgFooter,
+  type OrgContact,
+  TenantHeader,
+  howToReach,
+  cap,
+  sentence,
+} from "./_shared";
 import type { TemplateEntry } from "./registry";
 
 // The day-before reminder, sent by the nightly job. One email per client per
@@ -71,7 +79,9 @@ const VisitReminder = ({
             </Button>
           </>
         ) : (
-          <Text style={styles.text}>Need to skip it or move it? Reply to this email.</Text>
+          <Text style={styles.text}>
+            Need to skip it or move it? {sentence(cap(howToReach({ ...orgContact, orgName })))}
+          </Text>
         )}
         <OrgFooter {...orgContact} orgName={orgName} />
       </Container>

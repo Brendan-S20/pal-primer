@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Body, Container, Head, Heading, Html, Preview, Text } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
+import { styles, OrgFooter, type OrgContact, TenantHeader, howToReach, sentence } from "./_shared";
 import type { TemplateEntry } from "./registry";
 import { walkCanceledSubject } from "@/lib/walk-notify";
 
@@ -65,7 +65,8 @@ const WalkCanceled = ({
             </>
           )}
           <Text style={styles.text}>
-            If you have a question, or want to book another time, reply to this email.
+            If you have a question, or want to book another time,{" "}
+            {sentence(howToReach({ ...orgContact, orgName }))}
           </Text>
           <OrgFooter {...orgContact} orgName={orgName} />
         </Container>
