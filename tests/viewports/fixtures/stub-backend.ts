@@ -1020,6 +1020,7 @@ export const BASE_STUBS: Record<string, Stub> = {
   },
   searchClients: (a: Record<string, any>) => ({
     clients: fx.CLIENTS.filter((c) => !a.activeOnly || c.active)
+      .filter((c) => !a.id || c.id === a.id)
       .filter((c) => clientMatchesQuery(c, String(a.q ?? "")))
       .slice(0, Number(a.limit ?? 20))
       .map((c, i) => ({

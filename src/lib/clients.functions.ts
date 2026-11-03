@@ -94,7 +94,7 @@ async function loadClientRoster(supabase: any, orgId: string, seesInvoices: bool
     fetchAllPagesConcurrently<any>((a, b) =>
       supabase
         .from("properties")
-        .select("id, client_id, street, created_at, dogs(id, active, species)")
+        .select("id, client_id, street, postal_code, city, created_at, dogs(id, active, species)")
         .eq("organization_id", orgId)
         .is("archived_at", null)
         .order("created_at", { ascending: true })
@@ -204,6 +204,8 @@ async function decorateClients(clients: any[], props: any[], subs: any[], invs: 
     id: string;
     client_id: string;
     street: string | null;
+    postal_code?: string | null;
+    city?: string | null;
     dogs: Array<{ active?: boolean | null; species?: string | null }> | null;
   }>) {
     if (!p.client_id) continue;
@@ -213,8 +215,10 @@ async function decorateClients(clients: any[], props: any[], subs: any[], invs: 
     );
     talliesByClient.set(p.client_id, [...(talliesByClient.get(p.client_id) ?? []), tally]);
     if (p.street && !streetByClient.has(p.client_id)) streetByClient.set(p.client_id, p.street);
-    if (p.street)
-      streetsByClient.set(p.client_id, [...(streetsByClient.get(p.client_id) ?? []), p.street]);
+    // With its ZIP and town, so a search by either finds the client (R2-27).
+    const words = [p.street, p.postal_code, p.city].filter((w): w is string => !!w);
+    if (words.length)
+      streetsByClient.set(p.client_id, [...(streetsByClient.get(p.client_id) ?? []), ...words]);
   }
 
   // Same AR math as Dashboard "AR Open" and Reports "Outstanding" (finding #7).
@@ -277,7 +281,7 @@ const CLIENT_ROW_SELECT =
 /** What a search or a balance is checked against: a client's own words and
  *  every street, nothing the list shows but does not search. */
 const CLIENT_MATCH_SELECT =
-  "id, created_at, display_name, company, first_name, last_name, primary_email, primary_phone, import_external_id, tags, active, churn_score, properties(street, archived_at)";
+  "id, created_at, display_name, company, first_name, last_name, primary_email, primary_phone, import_external_id, tags, active, churn_score, properties(street, postal_code, city, archived_at)";
 
 /** A client's services that have not ended, for the "No service plan"
  *  anti-join. On every clients select that applyClientFilters narrows, and
@@ -376,7 +380,7 @@ async function matchingClientIds(
   today: string,
 ): Promise<string[]> {
   const { fetchAllPagesConcurrently } = await import("@/lib/supabase-paging.server");
-  const { clientMatchesQuery, clientSearchOrFilter, streetSearchPattern } =
+  const { clientMatchesQuery, clientSearchOrFilter, placeSearchOrFilter, placesOf } =
     await import("@/lib/client-search");
   const { outstandingByClient } = await import("@/lib/ar");
   const q = (f.q ?? "").trim();
@@ -402,11 +406,11 @@ async function matchingClientIds(
   if (!q) candidates = await read(false, (b) => b);
   else {
     const or = clientSearchOrFilter(q);
-    const street = streetSearchPattern(q);
+    const place = placeSearchOrFilter(q);
     const [byClient, byStreet] = await Promise.all([
       or ? read(false, (b) => b.or(or)) : Promise.resolve([]),
-      street
-        ? read(true, (b) => b.ilike("hit.street", street).is("hit.archived_at", null))
+      place
+        ? read(true, (b) => b.or(place, { referencedTable: "hit" }).is("hit.archived_at", null))
         : Promise.resolve([]),
     ]);
     const byId = new Map<string, any>();
@@ -418,10 +422,7 @@ async function matchingClientIds(
     .filter((c) => {
       if (owing && !((outstandingByClient(c.owed ?? []).get(c.id) ?? 0) > 0)) return false;
       if (!q) return true;
-      const streets = ((c.properties ?? []) as any[])
-        .filter((p) => !p.archived_at)
-        .map((p) => p.street);
-      return clientMatchesQuery({ ...c, streets }, q);
+      return clientMatchesQuery({ ...c, streets: placesOf(c.properties) }, q);
     })
     .sort(byNewest)
     .map((c) => c.id as string);
@@ -608,6 +609,9 @@ const searchClientsSchema = z.object({
   limit: z.number().int().min(1).max(50).optional(),
   /** Leave archived clients out (the pickers); Cmd-K finds them too. */
   activeOnly: z.boolean().optional(),
+  /** One client by id: the one a picker opens already holding (a draft
+   *  quote's client), so it can show the name without the roster. */
+  id: z.string().uuid().optional(),
 });
 
 /**
@@ -627,7 +631,7 @@ export const searchClients = createServerFn({ method: "GET" })
   .inputValidator((d) => searchClientsSchema.parse(d ?? {}))
   .handler(async ({ data, context }) => {
     const { orgId, db: supabase } = await directoryReader(context.supabase, context.userId);
-    const { clientMatchesQuery, clientSearchOrFilter, streetSearchPattern } =
+    const { clientMatchesQuery, clientSearchOrFilter, placeSearchOrFilter, placesOf } =
       await import("@/lib/client-search");
     const q = (data.q ?? "").trim();
     const limit = data.limit ?? 20;
@@ -654,6 +658,16 @@ export const searchClients = createServerFn({ method: "GET" })
       street: firstStreet(c.properties),
     });
 
+    if (data.id) {
+      const { data: rows, error } = await scoped(
+        `${cols}, properties(street, archived_at, created_at)`,
+      )
+        .eq("id", data.id)
+        .limit(1);
+      if (error) throw new Error(error.message);
+      return { clients: ((rows ?? []) as any[]).map(shape) };
+    }
+
     if (!q) {
       const { data: rows, error } = await scoped(
         `${cols}, properties(street, archived_at, created_at)`,
@@ -665,7 +679,7 @@ export const searchClients = createServerFn({ method: "GET" })
     }
 
     const or = clientSearchOrFilter(q);
-    const street = streetSearchPattern(q);
+    const place = placeSearchOrFilter(q);
     // The SQL filter is a superset built from one word, and clientMatchesQuery
     // has the last word. So candidates are read a batch at a time until there
     // are `limit` real matches or nothing is left: a fixed first batch could
@@ -681,18 +695,18 @@ export const searchClients = createServerFn({ method: "GET" })
     const sources = [
       or
         ? (from: number, size: number) =>
-            scoped(`${cols}, properties(street, archived_at, created_at)`)
+            scoped(`${cols}, properties(street, postal_code, city, archived_at, created_at)`)
               .or(or)
               .order("display_name")
               .order("id")
               .range(from, from + size - 1)
         : null,
-      street
+      place
         ? (from: number, size: number) =>
             scoped(
-              `${cols}, properties(street, archived_at, created_at), hit:properties!inner(street, archived_at)`,
+              `${cols}, properties(street, postal_code, city, archived_at, created_at), hit:properties!inner(street, archived_at)`,
             )
-              .ilike("hit.street", street)
+              .or(place, { referencedTable: "hit" })
               .is("hit.archived_at", null)
               .order("display_name")
               .order("id")
@@ -715,10 +729,7 @@ export const searchClients = createServerFn({ method: "GET" })
         if (rows.length < size) done[k] = true;
         for (const c of rows) {
           if (byId.has(c.id)) continue;
-          const streets = (Array.isArray(c.properties) ? c.properties : [])
-            .filter((p: any) => !p.archived_at)
-            .map((p: any) => p.street);
-          const entry = { ...c, streets };
+          const entry = { ...c, streets: placesOf(c.properties) };
           byId.set(c.id, entry);
           if (clientMatchesQuery(entry, q)) hitIds.add(c.id);
         }

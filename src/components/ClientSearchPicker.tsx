@@ -86,7 +86,7 @@ export function ClientSearchPicker({
           id={id}
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search name, phone, email or street"
+          placeholder="Search name, phone, email, address or ID"
           className="ps-8"
           autoComplete="off"
           role="combobox"

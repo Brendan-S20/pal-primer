@@ -1633,7 +1633,8 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
 
     const { requireOrgStripeAccount, connectStripe, verifyClientStripeCustomer } =
       await import("@/lib/stripe-connect.server");
-    const acct = await requireOrgStripeAccount(invoice.organization_id);
+    // The customer on /pay/i/{token} reads this, not the owner (R2-42).
+    const acct = await requireOrgStripeAccount(invoice.organization_id, { audience: "customer" });
     const stripe = await connectStripe();
     const opts = { stripeAccount: acct.accountId };
 

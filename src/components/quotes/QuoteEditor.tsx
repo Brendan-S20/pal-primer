@@ -19,8 +19,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupSegment } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
-import { listClients } from "@/lib/clients.functions";
-import { clientPickerLabels } from "@/lib/client-picker-labels";
+import { searchClients } from "@/lib/clients.functions";
+import { ClientSearchPicker, type PickedClient } from "@/components/ClientSearchPicker";
 import { saveQuoteDraft, sendQuote } from "@/lib/quotes.functions";
 import { getFirstCleanupPricing } from "@/lib/first-cleanup.functions";
 import { LAST_CLEANED_QUESTION, firstCleanupQuoteLine } from "@/lib/first-cleanup";
@@ -183,7 +183,7 @@ export function QuoteEditor({
   serviceLines?: readonly ServiceLine[];
 }) {
   const qc = useQueryClient();
-  const clientsFn = useServerFn(listClients);
+  const searchFn = useServerFn(searchClients);
   const saveFn = useServerFn(saveQuoteDraft);
   const sendFn = useServerFn(sendQuote);
   // A new quote whose prices are already in the cache opens priced, rather
@@ -326,24 +326,25 @@ export function QuoteEditor({
     setSvcOpen(false);
   };
 
-  const clientsQ = useQuery({
-    queryKey: ["clients", "picker"],
-    queryFn: () => clientsFn(),
+  // Who the quote is for, found by searching on the server (F-32, gaps-r2-01):
+  // a <select> of the whole roster was every client in one read and a
+  // thousand-row list to scroll. Two clients called "Harbor Point" are still
+  // told apart (#429): each result shows its street under the name.
+  const [pickedClient, setPickedClient] = useState<PickedClient | null>(null);
+  // A quote that opens already holding a client (a draft, a lead who is a
+  // client) reads that one client by id, for its name.
+  const heldId =
+    v.mode === "client" && v.clientId && pickedClient?.id !== v.clientId ? v.clientId : null;
+  const heldQ = useQuery({
+    queryKey: ["client-search", "id", heldId],
+    queryFn: () => searchFn({ data: { id: heldId!, limit: 1 } }),
+    enabled: !!heldId,
     staleTime: 60_000,
   });
-  const clients: Array<{
-    id: string;
-    display_name: string;
-    active: boolean | null;
-    street?: string | null;
-  }> = (clientsQ.data as any)?.clients ?? [];
-  // One row per client, by name, and never two rows that read the same: two
-  // clients called "Harbor Point" are told apart by street, then by id
-  // (#429).
-  const pickerRows = useMemo(
-    () => clientPickerLabels(clients.filter((c) => c.active !== false || c.id === v.clientId)),
-    [clients, v.clientId],
-  );
+  const pickerValue: PickedClient | null =
+    pickedClient && pickedClient.id === v.clientId
+      ? pickedClient
+      : ((heldQ.data?.clients?.[0] as PickedClient | undefined) ?? null);
   // The line the app priced for this client, and what their plan bills now.
   const planNoteKey = v.lines.find((l) => l.recurring && isUntouchedPrefill(l))?.key ?? null;
 
@@ -471,22 +472,20 @@ export function QuoteEditor({
         {v.mode === "client" ? (
           <div className="space-y-2">
             <Label htmlFor="quote-client">Client</Label>
-            <select
-              id="quote-client"
-              className="h-10 w-full rounded-md border bg-background px-3 text-sm touch:min-h-11"
-              value={v.clientId}
-              onChange={(e) => set("clientId", e.target.value)}
-              aria-invalid={attempted && !v.clientId ? true : undefined}
-            >
-              <option value="">
-                {clientsQ.isLoading ? "Loading clients…" : "Select a client…"}
-              </option>
-              {pickerRows.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
+            {heldId && heldQ.isPending ? (
+              <div className="flex min-h-10 items-center rounded-md border bg-background px-3 text-sm text-muted-foreground touch:min-h-11">
+                Loading client…
+              </div>
+            ) : (
+              <ClientSearchPicker
+                id="quote-client"
+                value={pickerValue}
+                onChange={(c) => {
+                  setPickedClient(c);
+                  set("clientId", c?.id ?? "");
+                }}
+              />
+            )}
             {attempted && !v.clientId && (
               <p className="text-xs text-destructive">Choose who the quote is for.</p>
             )}
