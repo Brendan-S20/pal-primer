@@ -278,7 +278,12 @@ describe("no trigger function is executable by a signed-in user", () => {
     // 93 -> 94 (20261029180000, a zone can be turned off, #449):
     // tg_zones_enabled_owner_only, which refuses anyone but an owner turning a
     // zone on or off. Revoked from PUBLIC, anon and authenticated there.
-    expect(triggerFunctions().size).toBe(94);
+    //
+    // 94 -> 95 (20261102172500, a lesson series skips closed days and can
+    // stop, R2-49): visits_follow_series_rules, which leaves out a series
+    // visit on a closed or holiday date, or past the series' session count.
+    // Revoked from PUBLIC, anon and authenticated there.
+    expect(triggerFunctions().size).toBe(95);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

@@ -38,7 +38,7 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { useMyProfile } from "@/hooks/useMyProfile";
 import { supabase } from "@/integrations/supabase/client";
 import { appOrigin } from "@/lib/app-origin";
-import { humanizeRole } from "@/lib/humanize";
+import { useRoleLabel } from "@/components/CommercialOnly";
 import {
   changeMyEmail,
   sendMyPasswordReset,
@@ -59,6 +59,7 @@ const ACCEPT = "image/png,image/jpeg,image/webp";
 const MAX_BYTES = 8 * 1024 * 1024;
 
 function ProfilePage() {
+  const roleLabel = useRoleLabel();
   const qc = useQueryClient();
   const { confirm, dialog } = useConfirmDialog();
   const { staff, authEmail, pendingEmail, loading } = useMyProfile();
@@ -353,7 +354,7 @@ function ProfilePage() {
               hand-maintained copies of the same four strings eventually do.
               humanizeRole is the single map; the raw-enum fallback it carries
               is better than the one here was, which printed "office_manager". */}
-          <Badge variant="secondary">{humanizeRole(staff.role)}</Badge>
+          <Badge variant="secondary">{roleLabel(staff.role)}</Badge>
           {staff.is_field_tech ? (
             <Badge variant="outline">Runs routes</Badge>
           ) : (

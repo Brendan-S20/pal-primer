@@ -352,7 +352,13 @@ function ServicesPage() {
       </section>
 
       {lines.includes("mobile_grooming") && <VaccineSettings />}
-      {lines.includes("pet_sitting") && <HolidayDatesCard canEdit={canEdit} />}
+      {(lines.includes("pet_sitting") || lines.includes("training")) && (
+        <HolidayDatesCard
+          canEdit={canEdit}
+          sitting={lines.includes("pet_sitting")}
+          training={lines.includes("training")}
+        />
+      )}
       {lines.includes("pet_sitting") && <StayDepositCard canEdit={canEdit} />}
 
       <Dialog open={sizeService !== null} onOpenChange={(open) => !open && setSizeService(null)}>
