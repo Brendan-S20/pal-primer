@@ -263,6 +263,9 @@ BEGIN
 END;
 $function$;
 
+REVOKE ALL ON FUNCTION public.reverse_prepaid_credit_for_payment(uuid, bigint) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.reverse_prepaid_credit_for_payment(uuid, bigint) TO service_role;
+
 -- ── 4. A deposit follows its stay invoice ─────────────────────────────────
 -- Release: unlink a deposit from a stay invoice that will not be paid as
 -- booked (voided, or its stay canceled), and give back as account credit
