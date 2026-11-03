@@ -15,7 +15,11 @@ export function TrainingSkillsCard({ canEdit }: { canEdit: boolean }) {
   const q = useQuery({ queryKey: ["training-skills"], queryFn: () => list() });
   const [name, setName] = useState("");
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
-  const refresh = () => qc.invalidateQueries({ queryKey: ["training-skills"] });
+  // A skill list is the other half of a trainer's price step (R2-47).
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["training-skills"] });
+    qc.invalidateQueries({ queryKey: ["onboarding-status"] });
+  };
   const save = useMutation({
     mutationFn: (input: { id?: string; name: string; active?: boolean }) => saveFn({ data: input }),
     onSuccess: () => {

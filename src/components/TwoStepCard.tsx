@@ -19,7 +19,9 @@ import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { supabase } from "@/integrations/supabase/client";
 import {
   clearUnverifiedFactors,
+  isSecondStepDisabled,
   secondStepErrorMessage,
+  secondStepUnavailableNote,
   verifiedFactors,
   type SecondStepFactor,
 } from "@/lib/mfa";
@@ -50,6 +52,13 @@ export function TwoStepCard() {
   const [pending, setPending] = useState<Pending | null>(null);
   const [code, setCode] = useState("");
   const [phone, setPhone] = useState("");
+  // A kind of second step Supabase said is switched off for this project
+  // (gaps-r2-13). Its button goes, and a sentence says why, instead of
+  // "MFA enroll is disabled for TOTP" under a button that can never work.
+  const [unavailable, setUnavailable] = useState<{ totp: boolean; phone: boolean }>({
+    totp: false,
+    phone: false,
+  });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -85,7 +94,11 @@ export function TwoStepCard() {
         secret: data.totp.secret,
       });
     } catch (e) {
-      setError(secondStepErrorMessage(e));
+      if (isSecondStepDisabled(e, "totp")) {
+        setUnavailable((u) => ({ ...u, totp: true }));
+      } else {
+        setError(secondStepErrorMessage(e));
+      }
     } finally {
       setBusy(false);
     }
@@ -108,7 +121,12 @@ export function TwoStepCard() {
       if (ch.error || !ch.data) throw ch.error ?? new Error("Could not send the text.");
       setPending({ kind: "phone-code", factorId: data.id, challengeId: ch.data.id, phone: e164 });
     } catch (e) {
-      setError(secondStepErrorMessage(e, "phone"));
+      if (isSecondStepDisabled(e, "phone")) {
+        setUnavailable((u) => ({ ...u, phone: true }));
+        setPending(null);
+      } else {
+        setError(secondStepErrorMessage(e, "phone"));
+      }
     } finally {
       setBusy(false);
     }
@@ -209,7 +227,7 @@ export function TwoStepCard() {
 
         {!pending && (
           <div className="flex flex-wrap gap-2">
-            {!factors.some((f) => f.type === "totp") && (
+            {!unavailable.totp && !factors.some((f) => f.type === "totp") && (
               <Button type="button" disabled={busy} onClick={startApp}>
                 {busy ? (
                   <Loader2 className="mr-2 h-4 w-4 shrink-0 animate-spin" />
@@ -219,7 +237,7 @@ export function TwoStepCard() {
                 Use an authenticator app
               </Button>
             )}
-            {!factors.some((f) => f.type === "phone") && (
+            {!unavailable.phone && !factors.some((f) => f.type === "phone") && (
               <Button
                 type="button"
                 variant="outline"
@@ -288,6 +306,12 @@ export function TwoStepCard() {
             <CodeInput value={code} onChange={setCode} />
             <PendingButtons busy={busy} onCancel={reset} label="Turn on" />
           </form>
+        )}
+
+        {(unavailable.totp || unavailable.phone) && (
+          <p role="status" className="text-sm text-muted-foreground">
+            {secondStepUnavailableNote(unavailable)}
+          </p>
         )}
 
         {error && (

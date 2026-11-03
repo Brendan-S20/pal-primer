@@ -783,6 +783,10 @@ const zh: TranslationsWithPlurals<"other"> = {
     deniedBodyAndroid: "这部手机选择了不允许。要打开通知，请前往 设置 › 应用 › HoundStack › 通知。",
     openSettings: "打开设置",
     unavailable: "此版本的应用不支持通知。",
+    explainerTitle: "在这部手机上接收通知？",
+    explainerBody:
+      "路线变更、新增服务或办公室给你发消息时，我们会通知你。接下来手机会询问：请选择“允许”。",
+    notNow: "以后再说",
   },
   nav: {
     primary: "主导航",

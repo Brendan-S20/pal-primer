@@ -279,9 +279,14 @@ describe("no trigger function is executable by a signed-in user", () => {
     // tg_zones_enabled_owner_only, which refuses anyone but an owner turning a
     // zone on or off. Revoked from PUBLIC, anon and authenticated there.
     //
-    // 94 -> 95 (20261102190000, gaps-r2-07): tg_stays_invoice_period, an
+    // 94 -> 95 (20261102140000, only an owner changes staff, #659):
+    // tg_log_staff_authority_change, which writes the activity_log row naming
+    // who turned a person on or off or changed their role. Revoked from
+    // PUBLIC, anon and authenticated there.
+    //
+    // 95 -> 96 (20261102190000, gaps-r2-07): tg_stays_invoice_period, an
     // unpaid stay invoice's period follows the stay's dates. Revoked there.
-    expect(triggerFunctions().size).toBe(95);
+    expect(triggerFunctions().size).toBe(96);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

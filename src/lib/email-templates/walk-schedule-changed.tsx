@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Body, Container, Head, Heading, Html, Preview, Text } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
+import { styles, OrgFooter, type OrgContact, TenantHeader, howToReach, sentence } from "./_shared";
 import type { TemplateEntry } from "./registry";
 import type { WalkScheduleLine } from "@/lib/walk-notify";
 
@@ -45,7 +45,9 @@ const WalkScheduleChanged = ({
             {moreCount === 1 ? "One more walk moved too." : `${moreCount} more walks moved too.`}
           </Text>
         ) : null}
-        <Text style={styles.text}>If that does not work for you, reply to this email.</Text>
+        <Text style={styles.text}>
+          If that does not work for you, {sentence(howToReach({ ...orgContact, orgName }))}
+        </Text>
         <OrgFooter {...orgContact} orgName={orgName} />
       </Container>
     </Body>

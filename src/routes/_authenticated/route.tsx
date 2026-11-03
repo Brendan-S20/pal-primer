@@ -25,6 +25,7 @@ import { pathOpenWhenLocked } from "@/lib/account-lock";
 import { AccountLockedShell } from "@/components/AccountLockedShell";
 import { reportClientError, setMonitoringIdentity } from "@/lib/monitoring/client";
 import { needsSecondStep } from "@/lib/mfa";
+import { returnHereAfterSignIn } from "@/lib/signed-out";
 import { getPlatformContext } from "@/lib/platform.functions";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { SetupGuideBanner } from "@/components/SetupGuideBanner";
@@ -33,6 +34,7 @@ import { useNotificationLanguageSync } from "@/hooks/useNotificationLanguageSync
 import { useRatingPrompt } from "@/hooks/useRatingPrompt";
 import { headerControlsForRole } from "@/lib/header-prefs";
 import { InstallBanner } from "@/components/InstallBanner";
+import { NativePushExplainer } from "@/components/NativePushExplainer";
 import { AppSidebar } from "@/components/AppSidebar";
 import { AccountMenu } from "@/components/AccountMenu";
 import { TrialBanner } from "@/components/TrialBanner";
@@ -95,6 +97,11 @@ export const Route = createFileRoute("/_authenticated")({
         // means we do not know anything, and deleting the day then would erase
         // the tech's route exactly when they need it most.
         if (identity.rejected) clearPersistedReadCaches();
+        // Come back here after sign-in (R2-19, #659): a reload with the
+        // session gone used to land on the role's page, not this one. /auth
+        // delivers the held page (lib/pending-deep-link.ts). This route is
+        // ssr: false, so the hold is in this tab's memory, never a server's.
+        returnHereAfterSignIn(location.href);
         throw redirect({ to: "/auth" });
       }
 
@@ -386,9 +393,13 @@ function WorkspaceShell() {
         }),
       );
       // The same call the Preferences card's button makes; the token is saved
-      // through subscribeStaffNativePush in there, not here.
+      // through subscribeStaffNativePush in there, not here. `ask: false`
+      // (R2-35): this registers a phone that already said yes and never
+      // raises the system prompt itself, which on a fresh install landed over
+      // the dashboard within 3 s of signing in with no word of why.
+      // NativePushExplainer below asks, after a tap.
       const registered = await step("push_registration", () =>
-        native.turnOnPushNotifications({ isCancelled: () => cancelled }),
+        native.turnOnPushNotifications({ isCancelled: () => cancelled, ask: false }),
       );
       removePushRegistration = registered?.cleanup;
       // Unmounted while registering: the cleanup below already ran.
@@ -673,6 +684,9 @@ function WorkspaceShell() {
           {/* The guided setup, off its own page. In the flow, never over it:
               see SetupGuideBanner for the overlay this replaced. */}
           <SetupGuideBanner />
+          {/* Native only: what notifications are for, before iOS or Android
+              asks (R2-35). The shell's own registration never asks. */}
+          <NativePushExplainer />
           {/* The bottom padding clears the fixed tab bar for exactly as long
               as the bar is on screen — which now depends on the role, not only
               the width (Q-2). Both read useTabletTier so they cannot disagree:

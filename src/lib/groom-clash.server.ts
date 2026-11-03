@@ -18,6 +18,7 @@
 // groomClashRefusal; groomWriteError turns that back into the full sentence.
 
 import { groomClashes, openGroomStarts, type BookedGroom } from "@/lib/groom";
+import { isSeriesDayTaken, seriesDayTakenMessage } from "@/lib/series-day-taken";
 
 /** The statuses that hold a groomer's time. */
 export const GROOM_BUSY_STATUSES = ["scheduled", "in_progress", "completed"] as const;
@@ -60,6 +61,9 @@ export async function groomWriteError(
       return e as Error;
     }
   }
+  // Every move of a visit to another day comes through here, groom or not:
+  // the day already holding one of this plan's visits is said in words (R2-30).
+  if (isSeriesDayTaken(error)) return new Error(seriesDayTakenMessage(move?.toDate));
   return new Error(error.message);
 }
 

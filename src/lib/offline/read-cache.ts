@@ -27,6 +27,7 @@ import {
   type ReadCacheEnvelope,
 } from "./read-cache-policy";
 import { asLastGoodCopy, hasLastGoodCopy, savedCopiesToKeep } from "./last-good-copy";
+import { clearAllFormDrafts } from "@/lib/form-drafts";
 
 /** Coalesces the burst of cache events a single page load produces into one
  * write. localStorage writes are synchronous and block the UI thread, which on
@@ -121,6 +122,15 @@ export function clearPersistedReadCaches(): void {
   } catch {
     /* best effort */
   }
+}
+
+/** Half-typed office forms (lib/form-drafts.ts, gaps-r2-12), every one on the
+ *  device, so the next person to sign in never sees them. Not from an
+ *  impersonation tab, for the reason clearPersistedReadCaches gives: it
+ *  shares localStorage with the admin's own, still signed-in, tabs. */
+function clearFormDraftsOnSignOut(): void {
+  if (isImpersonationTab()) return;
+  clearAllFormDrafts();
 }
 
 function stopPersistence(): void {
@@ -425,6 +435,7 @@ export function ensureReadCachePersistence(
             /* nothing resolvable, nothing to clear */
           } finally {
             clearPersistedReadCaches();
+            clearFormDraftsOnSignOut();
           }
         })();
       }
@@ -470,6 +481,7 @@ export async function signOutAndClearDevice(): Promise<void> {
     /* no identity resolvable means no queue of ours to clear */
   }
   clearPersistedReadCaches();
+  clearFormDraftsOnSignOut();
   // Before signOut, while the session can still authenticate the delete: this
   // device stops receiving the signed-out user's push notifications. Bounded
   // inside releasePushRegistration, and a no-op on the web.

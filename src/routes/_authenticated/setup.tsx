@@ -15,6 +15,8 @@ import { ServiceLinesChoices } from "@/components/ServiceLinesChoices";
 import { DayEndPanel } from "@/components/SetupDayEndPanel";
 import { useMyRole, usePermissions } from "@/hooks/useMyRole";
 import { useMyProfile } from "@/hooks/useMyProfile";
+import { useFormDraft } from "@/hooks/useFormDraft";
+import { DraftRestoredNotice } from "@/components/DraftRestoredNotice";
 import {
   getOnboardingStatus,
   ONBOARDING_STEP_IDS,
@@ -25,7 +27,13 @@ import {
 import { getOrgBranding, updateOrgBranding } from "@/lib/org.functions";
 import { countryFromAddress } from "@/lib/distance-unit";
 import { setServiceLines } from "@/lib/org-features.functions";
-import type { ServiceLine } from "@/lib/service-lines";
+import { setupAsksServiceLines, type ServiceLine } from "@/lib/service-lines";
+import {
+  preselectedServiceLines,
+  requestedServiceLine,
+  setupStartingLines,
+} from "@/lib/signup-service";
+import { useServiceLineAvailability } from "@/hooks/useServiceLineAvailability";
 import { getDispatchSettings, updateDispatchSettings } from "@/lib/visits.functions";
 import { createZone, geocodePostal } from "@/lib/zones.functions";
 import { createOrgInvite, listStaffAddresses, setStaffRouting } from "@/lib/users.functions";
@@ -65,11 +73,16 @@ const STEP_IDS = ONBOARDING_STEP_IDS as readonly string[];
 
 export const Route = createFileRoute("/_authenticated/setup")({
   head: () => titleHead("Set up your business"),
-  validateSearch: (s: Record<string, unknown>): { step?: OnboardingStepId } => ({
+  validateSearch: (
+    s: Record<string, unknown>,
+  ): { step?: OnboardingStepId; service?: ServiceLine } => ({
     step:
       typeof s.step === "string" && STEP_IDS.includes(s.step)
         ? (s.step as OnboardingStepId)
         : undefined,
+    // The line a visitor came for (site-r2-03). Only an offered id survives;
+    // step 1 preselects it in place of the bare pet-waste default.
+    service: requestedServiceLine(s.service),
   }),
   component: SetupPage,
 });
@@ -339,6 +352,8 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
   const saveLinesFn = useServerFn(setServiceLines);
   const { can } = usePermissions();
   const { lines: savedLines, known: linesKnown } = useServiceLines();
+  const { service: requestedLine } = Route.useSearch();
+  const availability = useServiceLineAvailability();
 
   // null until the owner touches it: the rows show what is stored (pet waste
   // removal for a new business, the column's default), and only a CHANGE is
@@ -349,6 +364,27 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
   const [phone, setPhone] = useState<string | null>(null);
   const [address, setAddress] = useState<string | null>(null);
   const [tz, setTz] = useState<string | null>(null);
+  // Kept on the device as it is typed (gaps-r2-12): a reload used to clear
+  // the services ticked, the phone, the address and the zone. Only what was
+  // touched is kept, the same null-means-untouched values as above.
+  const draft = useFormDraft({
+    form: "setup-business",
+    value: { lines, name, phone, address, tz },
+    restore: (d) => {
+      setLines(d.lines);
+      setName(d.name);
+      setPhone(d.phone);
+      setAddress(d.address);
+      setTz(d.tz);
+    },
+    reset: () => {
+      setLines(null);
+      setName(null);
+      setPhone(null);
+      setAddress(null);
+      setTz(null);
+    },
+  });
 
   const b = brandingQ.data;
   const nameVal = name ?? b?.name ?? "";
@@ -365,10 +401,27 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
       ? (savedTz ?? DEFAULT_ORG_TIMEZONE)
       : suggestSetupTimezone({ saved: savedTz, device: deviceTimezone(), address: addressVal }));
   const writeTz = tz !== null || !alreadyDone;
-  const linesVal = lines ?? savedLines;
+  // A visitor who came for one line (?service=, site-r2-03) sees that line
+  // ticked instead of the bare pet-waste default. Only once the stored answer
+  // is actually known and before this step is done, so it can never write over
+  // a real answer whose read failed, or over one already chosen.
+  const mayPreselect = linesKnown && !alreadyDone;
+  // With no valid request, a business still holding the column's default has
+  // not answered the question (F-06): pet waste was shown ticked to a groomer
+  // or a trainer, who saved it without reading. It starts with nothing ticked
+  // and has to pick (setupStartingLines).
+  const startingLines = mayPreselect
+    ? setupStartingLines({
+        unanswered: setupAsksServiceLines(savedLines, linesKnown, alreadyDone),
+        saved: savedLines,
+        requested: requestedLine,
+        preselected: preselectedServiceLines(savedLines, requestedLine, availability),
+      })
+    : savedLines;
+  const linesVal = lines ?? startingLines;
   const linesChanged =
-    lines !== null &&
-    (lines.length !== savedLines.length || lines.some((l) => !savedLines.includes(l)));
+    (lines !== null || mayPreselect) &&
+    (linesVal.length !== savedLines.length || linesVal.some((l) => !savedLines.includes(l)));
 
   const m = useMutation({
     mutationFn: async () => {
@@ -391,6 +444,7 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
       if (writeTz) await saveDispatchFn({ data: { timezone: tzVal } });
     },
     onSuccess: () => {
+      draft.clear();
       toast.success("Business details saved");
       qc.invalidateQueries({ queryKey: ["org-branding"] });
       qc.invalidateQueries({ queryKey: ["dispatch-settings"] });
@@ -410,6 +464,10 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
       className="space-y-4"
       onSubmit={(e) => {
         e.preventDefault();
+        if (linesVal.length === 0) {
+          toast.error("Choose the services you offer.");
+          return;
+        }
         if (!addressVal.trim()) {
           toast.error("Add your business address. Routes start from it.");
           return;
@@ -417,6 +475,7 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
         m.mutate();
       }}
     >
+      {draft.restored && <DraftRestoredNotice onDiscard={draft.discard} />}
       {/* "Which services do you offer?" (organizations.service_lines), first
           in this form. It belongs in this step rather than a seventh one,
           because it changes what the later steps ask: a dog walker's "where
@@ -495,25 +554,6 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
 
 const MILES = [5, 10, 15, 25, 40] as const;
 
-/** For a business that runs training, the second half of the price step:
- *  the lesson package's price and the skill list, both in Settings, Services. */
-function TrainingPriceNote({ done }: { done: boolean }) {
-  return (
-    <div className="space-y-2 rounded-md border p-3">
-      <p className="text-sm">
-        {done
-          ? "Your lesson package is priced and your skill list is set. Both can be changed in Settings, Services."
-          : "You also run training. Price your lesson package, turn it on, and add the skills a trainer scores, in Settings, Services."}
-      </p>
-      {!done && (
-        <Button asChild variant="outline" data-setup-action="price-lessons">
-          <Link to="/settings/services">Price lessons</Link>
-        </Button>
-      )}
-    </div>
-  );
-}
-
 /** For a business that runs more than one service line (#639): one row per
  *  thing to price, each saying whether it is done and where to do it. The
  *  service area, when the business has one to set, is the form below the
@@ -586,7 +626,7 @@ function PricesPanel({
         <div className="space-y-3">
           <h3 className="text-sm font-medium">{area.label}</h3>
           <ServiceAreaPanel
-            step={{ ...step, done: area.done, training: undefined }}
+            step={{ ...step, done: area.done }}
             onSaved={areaSaved}
             saveLabel={othersOpen ? "Save area" : undefined}
           />
@@ -605,10 +645,9 @@ function ServiceAreaPanel({
   onSaved: () => void;
   saveLabel?: string;
 }) {
-  // A training business's step is done when the area AND the lesson price
-  // are; the form below is about the area alone.
-  const training = step.training;
-  const done = training ? training.areaDone : step.done;
+  // Only a pet-waste business is asked for an area here (R2-47); a trainer
+  // prices lessons on Settings, Services.
+  const done = step.done;
   const qc = useQueryClient();
   // Done means a priced area exists. Offering the create form again on a
   // finished step reads as "you have not done this yet"; adding a second
@@ -672,7 +711,6 @@ function ServiceAreaPanel({
         <Button type="button" variant="outline" onClick={() => setAdding(true)}>
           Add another area
         </Button>
-        {training && <TrainingPriceNote done={training.done} />}
       </div>
     );
   }

@@ -20,7 +20,12 @@ import {
 import { DEFAULT_ORG_TIMEZONE } from "@/lib/org-day";
 import { invoiceDueCents } from "@/lib/ar";
 import { formatCents } from "@/lib/digest-alerts";
-import { QUANTITY_MAX, lineTotalCents } from "@/lib/invoice-lines";
+import {
+  QUANTITY_MAX,
+  discountLineProblem,
+  lineTotalCents,
+  manualLinesProblem,
+} from "@/lib/invoice-lines";
 
 /** Each payment row with how much of it has been refunded, from the reversal
  *  ledger — so the invoice can say "$30.00 refunded" and hide the Refund button
@@ -69,7 +74,7 @@ export const listInvoices = createServerFn({ method: "GET" })
     const { data, error } = await supabase
       .from("invoices")
       .select(
-        "id, number, client_id, status, kind, subtotal_cents, total_cents, credit_applied_cents, amount_paid_cents, currency, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, updated_at, clients(display_name)",
+        "id, number, client_id, status, kind, subtotal_cents, total_cents, credit_applied_cents, amount_paid_cents, amount_refunded_cents, currency, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, updated_at, clients(display_name)",
       )
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
@@ -221,7 +226,9 @@ const manualInvoiceSchema = z.object({
       z
         .object({
           description: z.string().min(1).max(300),
-          amountCents: z.number().int().min(0).max(10_000_000),
+          // Below zero is a discount line (#653): "Loyalty discount -$5.00".
+          // It used to be dropped by the form before it got here.
+          amountCents: z.number().int().min(-10_000_000).max(10_000_000),
           // The visit or the pending add-on this line bills (#605). Linking is
           // what keeps the billing run from billing the same work again.
           visitId: z.string().uuid().optional(),
@@ -235,8 +242,12 @@ const manualInvoiceSchema = z.object({
         })
         // A $0 line only when it names a visit: a skip the business does not
         // charge for is still work the invoice covers.
-        .refine((i) => i.amountCents >= 1 || i.visitId !== undefined, {
+        .refine((i) => i.amountCents !== 0 || i.visitId !== undefined, {
           message: "A line needs an amount",
+        })
+        .superRefine((i, ctx) => {
+          const problem = discountLineProblem(i);
+          if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem });
         })
         .refine((i) => !(i.visitId && i.addonChargeId), {
           message: "A line bills a visit or an add-on, not both",
@@ -253,7 +264,12 @@ const manualInvoiceSchema = z.object({
         ),
     )
     .min(1)
-    .max(25),
+    .max(25)
+    // Discounts may not take the invoice to $0 or below (#653).
+    .superRefine((items, ctx) => {
+      const problem = manualLinesProblem(items);
+      if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem });
+    }),
   notes: z.string().max(500).optional(),
   // Minted once each time the dialog opens and sent with every attempt, so a
   // double click or a retry after a lost response makes one invoice (#607).
@@ -1282,7 +1298,7 @@ export const getClientBillingSummary = createServerFn({ method: "GET" })
       supabase
         .from("invoices")
         .select(
-          "id, number, status, kind, currency, subtotal_cents, total_cents, credit_applied_cents, amount_paid_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, created_at",
+          "id, number, status, kind, currency, subtotal_cents, total_cents, credit_applied_cents, amount_paid_cents, amount_refunded_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, created_at",
         )
         .eq("client_id", data.clientId)
         .order("created_at", { ascending: false })
@@ -1354,7 +1370,7 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
       supabase
         .from("invoices")
         .select(
-          "id, number, client_id, status, kind, currency, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, credit_applied_cents, amount_paid_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, voided_at, notes, checkout_url, created_at, updated_at, clients(id, display_name, primary_email, default_payment_method_id, default_card_brand, default_card_last4)",
+          "id, number, client_id, status, kind, currency, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, credit_applied_cents, amount_paid_cents, amount_refunded_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, voided_at, notes, checkout_url, created_at, updated_at, clients(id, display_name, primary_email, default_payment_method_id, default_card_brand, default_card_last4)",
         )
         .eq("id", data.invoiceId)
         .single(),

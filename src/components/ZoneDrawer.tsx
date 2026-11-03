@@ -31,12 +31,14 @@ import { Label } from "@/components/ui/label";
 import { ZoneEnabledSwitch } from "@/components/ZoneEnabledSwitch";
 import { offZoneNotice } from "@/lib/zone-enabled";
 import { useCommercialAccounts, useServiceLines } from "@/components/CommercialOnly";
+import { showsZoneVisitPrice } from "@/lib/service-lines";
 import {
   addTyped,
   applyShapeFill,
   baselineFill,
   claimedElsewhere,
   initialZipState,
+  isBaselineLookup,
   removeZips,
   shapeKey,
   fillStatusText,
@@ -301,6 +303,14 @@ export function ZoneDrawer({
   // The zone's first-cleanup fee, on the same terms: shown while it holds a
   // price. Hidden, the drawer still saves the loaded value back unchanged.
   const showInitialCleanup = petWaste || Number(zone?.initial_cleanup_cents ?? 0) > 0;
+  // A zone's per-visit price and per-dog charge are what a SCOOPING plan is
+  // quoted from (R2-38). A walk, a sit, a groom or a lesson is priced from
+  // its own service, so a business that runs no pet waste was asked "Base
+  // price / visit" and "Each additional dog" for numbers nothing reads. They
+  // are shown while the zone prices a yard some other way (area pricing, a
+  // first-cleanup fee); hidden, the drawer saves the loaded values back.
+  const { lines } = useServiceLines();
+  const showVisitPricing = showsZoneVisitPrice(lines, zone ?? null);
   const [zoneType, setZoneType] = useState<ZoneType>(
     (zone?.account_type as ZoneType) ?? (commercialEnabled ? "all" : "residential"),
   );
@@ -429,7 +439,11 @@ export function ZoneDrawer({
     mutationFn: (postalCode: string) => geocodeFn({ data: { postalCode } }),
     onSuccess: (res: any, postalCode) => {
       setGeocodedZip(postalCode);
-      if (res?.point) setFocusPoint({ lat: res.point.latitude, lng: res.point.longitude });
+      if (res?.point) {
+        // The map seeds a circle around it: a shape nobody drew (R2-38).
+        autoPlacedPending.current = true;
+        setFocusPoint({ lat: res.point.latitude, lng: res.point.longitude });
+      }
       // A new zone with no name yet is offered the town its first ZIP is in.
       // Typed into the box, so it is plainly a suggestion and one edit away.
       if (isNew && res?.place && !name.trim()) {
@@ -483,6 +497,8 @@ export function ZoneDrawer({
   const [fill, setFill] = useState<FillView>(IDLE_FILL);
   const initialKey = useMemo(() => shapeKey(initialCoverage), [initialCoverage]);
   const baselinePending = useRef(!isNew && initialKey != null);
+  // Set when the map is handed a typed ZIP's center to seed a circle from.
+  const autoPlacedPending = useRef(false);
   const fillOnOpenPending = useRef(fillOnOpen);
   const lastKey = useRef<string | null>(null);
   const seq = useRef(0);
@@ -492,7 +508,18 @@ export function ZoneDrawer({
     if (!key || key === lastKey.current) return;
     lastKey.current = key;
     const mine = ++seq.current;
-    const isBaseline = baselinePending.current && key === initialKey;
+    // A shape nobody drew adds no ZIPs (R2-38). Two such shapes: the first
+    // one an existing zone reports, whatever its key, and the circle the map
+    // seeds around a typed ZIP's center (autoPlacedPending, below). A 4-ZIP
+    // zone was handed the ZIPs inside a default 1-mile circle around the
+    // first one, silently, and Save re-assigned 39 properties. Either is a
+    // baseline: the drawer says what the area holds and offers "Fill ZIPs
+    // from the area". The owner's own move of the shape still adds.
+    const firstOfExisting = baselinePending.current;
+    const isBaseline = isBaselineLookup({
+      existingZoneFirstLookup: firstOfExisting,
+      autoPlaced: autoPlacedPending.current,
+    });
     setFill((f) => ({ ...f, status: "loading" }));
     // The radius slider reports every step; wait for the hand to stop.
     const t = setTimeout(async () => {
@@ -515,8 +542,12 @@ export function ZoneDrawer({
         let added = 0;
         let removed = 0;
         baselinePending.current = false;
+        autoPlacedPending.current = false;
         if (isBaseline) {
-          next = baselineFill(next, inside).state;
+          // An existing zone's list is sorted into "from the shape" and
+          // "typed" against its own area. A seeded circle leaves what the
+          // owner typed as typed: it only offers the rest.
+          if (firstOfExisting) next = baselineFill(next, inside).state;
           if (fillOnOpenPending.current) {
             fillOnOpenPending.current = false;
             const r = applyShapeFill(next, inside, { explicit: true });
@@ -629,6 +660,8 @@ export function ZoneDrawer({
         reassignedToastMsg(isNew ? "Zone created" : "Zone saved", res?.propertiesUpdated),
       );
       qc.invalidateQueries({ queryKey: ["zones"] });
+      // A pet-waste business's setup price step is a zone (R2-47).
+      qc.invalidateQueries({ queryKey: ["onboarding-status"] });
       setDirty(false);
       onClose();
     },
@@ -851,7 +884,12 @@ export function ZoneDrawer({
           </p>
         </div>
 
-        {showResidential && (
+        {showResidential && !showVisitPricing && (
+          <p className="text-sm text-muted-foreground" data-zone-priced-by-service>
+            Your services are priced in Settings, Services. This zone says where you work.
+          </p>
+        )}
+        {showResidential && showVisitPricing && (
           <div className="space-y-3">
             <SectionLabel>Residential pricing</SectionLabel>
             <div className="grid gap-4 sm:grid-cols-3">

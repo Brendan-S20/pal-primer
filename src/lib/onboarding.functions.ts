@@ -24,11 +24,6 @@ export type OnboardingStep = {
    *  viewer's role with the same `canAccess` the sidebar and CreateSheet use,
    *  because this runs on the server and cannot see the role itself. */
   alt?: { to: string; cta: string; gate: string };
-  /** Only on the price step, and only for a business that runs training:
-   *  whether its service area is set (`areaDone`) and whether a lesson
-   *  package is priced and a skill list exists (`done`). The step is done
-   *  when both are. */
-  training?: { areaDone: boolean; done: boolean };
   /** Only on the price step, and only for a business that runs more than one
    *  service line: one part per thing to price, in the order /setup draws
    *  them. The step is done when every part is. A one-line business never
@@ -173,7 +168,7 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
     : [{ count: 0 }, { count: 0 }];
   const areaDone = (zones.count ?? 0) > 0;
   const training = runsTraining
-    ? { areaDone, done: (pricedPackages.count ?? 0) > 0 && (skills.count ?? 0) > 0 }
+    ? { done: (pricedPackages.count ?? 0) > 0 && (skills.count ?? 0) > 0 }
     : undefined;
 
   const grooming = orgLines.includes("mobile_grooming");
@@ -268,13 +263,11 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
     {
       id: "zones",
       label: "Your service area and price",
-      description: training
-        ? "Where you work and what you charge per visit, and the price of your lesson package and the skills a trainer scores. Clients are quoted these prices."
-        : "Where you work and what you charge per visit. New clients in the area are quoted this price.",
-      done:
-        areaDone &&
-        (!training || training.done) &&
-        (!grooming || !!groomingSetup?.data?.groom_setup_reviewed_at),
+      // The pet-waste step: a zone's per-visit price is what a scooping plan
+      // is quoted from. Every other line is restated below (R2-47).
+      description:
+        "Where you work and what you charge per visit. New clients in the area are quoted this price.",
+      done: areaDone && (!grooming || !!groomingSetup?.data?.groom_setup_reviewed_at),
       to: "/setup",
       cta: "Set your price",
       gate: "/zones",
@@ -285,12 +278,6 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
               cta: "Review grooming setup",
               gate: "/settings/services",
             },
-          }
-        : {}),
-      ...(training
-        ? {
-            training,
-            alt: { to: "/settings/services", cta: "Price lessons", gate: "/settings/services" },
           }
         : {}),
     },
@@ -417,16 +404,17 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
   const groomDone = !!groomingSetup?.data?.groom_setup_reviewed_at;
 
   const parts: PricePart[] = [];
-  // The service area is asked of a pet-waste business, whose plans are
-  // quoted from it, and of a training business, whose step has asked for
-  // it since #476.
-  if (petWaste || runsTraining) {
+  // The service area and its per-visit price are asked of a pet-waste
+  // business only: its plans are quoted from it. A lesson is priced by its
+  // package (R2-47): "How far you drive / Price per visit / Each extra dog"
+  // asked a trainer for a number no lesson reads, and the step stayed open
+  // after it was saved. A trainer's area is still on Zones.
+  if (petWaste) {
     parts.push({
       id: "area",
-      label: petWaste ? "Pet waste service area" : "Service area",
-      description: petWaste
-        ? "Where you work and what you charge per visit. New pet waste clients in the area are quoted this price."
-        : "Where you work and what you charge per visit.",
+      label: "Pet waste service area",
+      description:
+        "Where you work and what you charge per visit. New pet waste clients in the area are quoted this price.",
       done: areaDone,
       to: "/zones",
       cta: "Set area price",
@@ -482,8 +470,7 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
       names.length > 1
         ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`
         : names[0];
-    // `training` and `alt` belong to the one-line step; the parts carry both.
-    delete zonesStep.training;
+    // `alt` belongs to the one-line step; the parts carry it.
     delete zonesStep.alt;
     Object.assign(zonesStep, {
       label: "Price your services",
@@ -524,6 +511,21 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
       done: staysDone,
       to: "/settings/services",
       cta: "Review sitting services",
+      gate: "/settings/services",
+    });
+  } else if (training) {
+    // R2-47: the step a trainer reads is the lesson price, done when the
+    // package is priced and a skill exists, the same test the multi-line
+    // part uses. It used to be the pet-waste area form, done only when the
+    // area AND the lessons were, so a saved area left it open with no word
+    // about why.
+    Object.assign(zonesStep, {
+      label: "Price your lessons",
+      description:
+        "Price your lesson package, turn it on, and add the skills a trainer scores. New clients are quoted these prices. Your service area is on Zones.",
+      done: training.done,
+      to: "/settings/services",
+      cta: "Price lessons",
       gate: "/settings/services",
     });
   }

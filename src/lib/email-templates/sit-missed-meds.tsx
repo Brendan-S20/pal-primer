@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Body, Container, Head, Heading, Html, Preview, Text } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
+import { styles, OrgFooter, type OrgContact, TenantHeader, howToReach, sentence } from "./_shared";
 import type { TemplateEntry } from "./registry";
 import { missedMedsSubject, type MissedMed } from "@/lib/sit-report";
 
@@ -45,7 +45,8 @@ const SitMissedMeds = ({
             </Text>
           ))}
           <Text style={styles.text}>
-            {orgName} has been told. If there is something we should do, reply to this email.
+            {orgName} has been told. If there is something we should do,{" "}
+            {sentence(howToReach({ ...orgContact, orgName }))}
           </Text>
           <OrgFooter {...orgContact} orgName={orgName} />
         </Container>

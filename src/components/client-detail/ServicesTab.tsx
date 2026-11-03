@@ -87,6 +87,7 @@ import {
   effectiveServiceId,
   useOrgServices,
 } from "@/components/client-detail/ServicePicker";
+import { usePickerLines } from "@/components/CommercialOnly";
 import { WeekdayPicker } from "@/components/client-detail/WeekdayPicker";
 import { WORK_WEEK, normalizeWeekdays, offersSetDays } from "@/lib/weekday-set";
 import { servicePriceCents } from "@/lib/services";
@@ -612,7 +613,15 @@ export function ServicesTab({
                         <Play className="mr-1 h-3.5 w-3.5 shrink-0" /> Resume
                       </Button>
                     )}
-                    {canManagePricing && (showEnd || showDelete) && (
+                    {/* End service is a button with its name on it, beside
+                        Pause: it used to be reachable only through an
+                        unlabeled "…" (R2-46, waste-r2-11). */}
+                    {canManagePricing && showEnd && (
+                      <Button size="sm" variant="outline" onClick={() => setEndingSub(s)}>
+                        <Square className="mr-1 h-3.5 w-3.5 shrink-0" /> End service…
+                      </Button>
+                    )}
+                    {canManagePricing && showDelete && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           {/* size="icon": 40px wide was under the 44px touch
@@ -627,11 +636,6 @@ export function ServicesTab({
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {showEnd && (
-                            <DropdownMenuItem onSelect={() => setEndingSub(s)}>
-                              <Square className="mr-2 h-3.5 w-3.5 shrink-0" /> End service…
-                            </DropdownMenuItem>
-                          )}
                           {showDelete && (
                             <DropdownMenuItem
                               className="text-destructive focus:text-destructive"
@@ -1184,6 +1188,7 @@ function ServiceDrawer({
   // What the plan sells. "" until the person picks: the picker shows the
   // business's pet waste removal, and Save sends whatever it shows.
   const { services: orgServices, isLoading: servicesLoading } = useOrgServices(open);
+  const pickerLines = usePickerLines();
 
   const initial: SubscriptionFormValues & { choice: ScheduleChoice; serviceId: string } = useMemo(() => {
     if (subscription) {
@@ -1243,7 +1248,9 @@ function ServiceDrawer({
   const locale = useIntlLocale();
   // What the plan sells, as the picker shows it (its default until chosen).
   const chosenService =
-    orgServices.find((x) => x.id === effectiveServiceId(form.serviceId, orgServices)) ?? null;
+    orgServices.find(
+      (x) => x.id === effectiveServiceId(form.serviceId, orgServices, pickerLines),
+    ) ?? null;
   const creatingWalk = !subscription && chosenService?.service_line === "dog_walking";
   const walkWindows = [
     { earliestTime: form.earliestTime, latestTime: form.latestTime },
@@ -1524,7 +1531,7 @@ function ServiceDrawer({
         weekdays: form.choice === "set_days" ? normalizeWeekdays(form.weekdays) : null,
         earliestTime: form.earliestTime || null,
         latestTime: form.latestTime || null,
-        serviceId: effectiveServiceId(form.serviceId, orgServices) ?? undefined,
+        serviceId: effectiveServiceId(form.serviceId, orgServices, pickerLines) ?? undefined,
       };
       const run = subscription
         ? updateFn({ data: { subscriptionId: subscription.id, ...common } })
@@ -1614,6 +1621,7 @@ function ServiceDrawer({
           services={orgServices}
           isLoading={servicesLoading}
           onChange={onServiceChange}
+          lines={pickerLines}
         />
         <div className="grid gap-3 sm:grid-cols-2">
           <div>

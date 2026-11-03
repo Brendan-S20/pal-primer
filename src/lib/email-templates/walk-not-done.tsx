@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Body, Container, Head, Heading, Html, Preview, Text } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
+import { styles, OrgFooter, type OrgContact, TenantHeader, howToReach, sentence } from "./_shared";
 import type { TemplateEntry } from "./registry";
 import { walkNotDoneSubject, type WalkNotDoneKind } from "@/lib/walk-notify";
 
@@ -45,7 +45,8 @@ const WalkNotDone = ({
               <Text style={styles.text}>Hi {clientName},</Text>
               <Text style={styles.text}>{reason ?? "The walker could not do the walk today."}</Text>
               <Text style={styles.text}>
-                If you have a question, or want to book another time, reply to this email.
+                If you have a question, or want to book another time,{" "}
+                {sentence(howToReach({ ...orgContact, orgName }))}
               </Text>
             </>
           ) : (
