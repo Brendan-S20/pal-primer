@@ -35,12 +35,25 @@ export type ArInvoice = {
    *  receivable figure keeps it; taken back out only where the question is
    *  revenue (billedInPeriod). Absent means 0. */
   tax_cents?: number | null;
+  /** Set on a stay deposit: the stay invoice it is part payment of (decision
+   *  D3, #653). The stay invoice carries the whole price and counts the
+   *  deposit's payments in its amount_paid_cents, so a linked deposit is
+   *  never a receivable or billed revenue of its own. Counting it as well is
+   *  how the portal showed the December deposit on top of the December stay.
+   *  Rows fetched without the column are treated as not a deposit, which was
+   *  every row before it. */
+  deposit_for_invoice_id?: string | null;
 };
 
 const OUTSTANDING_STATUSES = new Set(["open"]);
 
+/** A stay deposit, which is part of another invoice rather than a bill. */
+export function isLinkedDeposit(inv: Pick<ArInvoice, "deposit_for_invoice_id">): boolean {
+  return !!inv.deposit_for_invoice_id;
+}
+
 export function isOutstanding(inv: ArInvoice): boolean {
-  return OUTSTANDING_STATUSES.has(inv.status ?? "");
+  return OUTSTANDING_STATUSES.has(inv.status ?? "") && !isLinkedDeposit(inv);
 }
 
 /** What is still owed on an invoice whatever its status: total, less credit
@@ -179,8 +192,9 @@ export function outstandingAsOf(
   tz: string = DEFAULT_ORG_TIMEZONE,
 ): number {
   // A draft has not been billed to anyone, so it is never a receivable — on any
-  // day, including one where it happens to carry an issue date.
-  if (inv.status === "draft") return 0;
+  // day, including one where it happens to carry an issue date. A linked stay
+  // deposit is inside its stay invoice's balance already.
+  if (inv.status === "draft" || isLinkedDeposit(inv)) return 0;
   const issued = inv.issued_at ? orgLocalDay(inv.issued_at, tz) : null;
   if (!issued || issued > day) return 0;
   const paid = inv.paid_at ? orgLocalDay(inv.paid_at, tz) : null;
@@ -268,10 +282,13 @@ export function arPositionAsOf(
  *  including one settled entirely from account credit, which is billed revenue
  *  that simply never produced a bank deposit. */
 export function billedDay(
-  inv: Pick<LedgerInvoice, "status" | "issued_at">,
+  inv: Pick<LedgerInvoice, "status" | "issued_at" | "deposit_for_invoice_id">,
   tz: string = DEFAULT_ORG_TIMEZONE,
 ): string | null {
   if (inv.status === "void" || inv.status === "draft") return null;
+  // A linked stay deposit bills nothing: the stay invoice it is part of is the
+  // sale, and billing both counted the deposit twice (F-19).
+  if (isLinkedDeposit(inv)) return null;
   if (!inv.issued_at) return null;
   return orgLocalDay(inv.issued_at, tz) || null;
 }

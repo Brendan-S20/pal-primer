@@ -499,6 +499,35 @@ export default defineConfig({
           }
         : {}),
     },
+    // ── A COLD DEV SERVER RELOADED EVERY OPEN PAGE (#685) ─────────────────
+    //
+    // Dev only: optimizeDeps does nothing to `vite build`. Vite's startup scan
+    // misses these, because they are reached only through what TanStack Start
+    // leaves of a server function on the client (the first route that pulls
+    // one in is /no-workspace, through getPlatformContext). So the first visit
+    // made Vite bundle them then, and a re-bundle sends a full reload to EVERY
+    // page connected to the server, not just the one that asked. A page that
+    // was mid-import got "504 Outdated Optimize Dep" and sat on the root
+    // "Loading…" for good.
+    //
+    // The viewport sweeps run eight browsers against one cold server, so that
+    // reload landed inside whatever the other seven were measuring: on
+    // b8b3da60 and again on #690, /no-workspace read 0 characters, /signup
+    // never drew its fixture and /legal pages timed out. Reproduced on Linux
+    // with an empty node_modules/.vite: /no-workspace navigated twice on its
+    // first visit. Listed here, they are bundled at startup and nothing
+    // reloads.
+    optimizeDeps: {
+      include: [
+        "@tanstack/history",
+        "@tanstack/router-core",
+        "@tanstack/router-core/isServer",
+        "@tanstack/router-core/ssr/client",
+        "@tanstack/router-core/ssr/server",
+        "h3-v2",
+        "seroval",
+      ],
+    },
     resolve: {
       alias: {
         // ── THE SAAS PURCHASE UI IS NOT IN THE STORE BINARY ──────────────

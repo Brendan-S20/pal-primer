@@ -209,7 +209,9 @@ export async function computeDigestMetrics(
   // net of applied credit, overdue by due_on.
   const { data: openInvoices } = await supabaseAdmin
     .from("invoices")
-    .select("total_cents, credit_applied_cents, amount_paid_cents, due_on, issued_at, status")
+    .select(
+      "total_cents, credit_applied_cents, amount_paid_cents, deposit_for_invoice_id, due_on, issued_at, status",
+    )
     .eq("organization_id", orgId)
     .eq("status", "open");
   const { summarizeAr } = await import("@/lib/ar");

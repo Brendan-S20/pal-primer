@@ -38,6 +38,7 @@ import {
   receivedOnProblem,
   type ManualPaymentMethod,
 } from "@/lib/manual-payments";
+import { TIP_CUSTOM_MAX_CENTS } from "@/lib/tips";
 import { cn } from "@/lib/utils";
 
 const usd = (cents: number) =>
@@ -49,6 +50,9 @@ export interface RecordPaymentAnswer {
   receivedOn: string;
   /** Set when the caller passed a balance. Less than it is a partial payment. */
   amountCents?: number;
+  /** A tip handed over with cash or a check (#653). Beside the payment, never
+   *  inside it: it is not applied to the invoice and is not revenue. */
+  tipCents?: number;
 }
 
 export interface RecordPaymentOptions {
@@ -69,6 +73,7 @@ export function useRecordPaymentDialog() {
   const [reference, setReference] = useState("");
   const [receivedOn, setReceivedOn] = useState(today);
   const [amount, setAmount] = useState("");
+  const [tip, setTip] = useState("");
   const [error, setError] = useState<string | null>(null);
   const resolver = useRef<(v: RecordPaymentAnswer | null) => void>(() => {});
 
@@ -80,6 +85,7 @@ export function useRecordPaymentDialog() {
         setReference("");
         setReceivedOn(today);
         setAmount(opts.balanceCents != null ? (opts.balanceCents / 100).toFixed(2) : "");
+        setTip("");
         setError(null);
         setOptions(opts);
       }),
@@ -96,6 +102,10 @@ export function useRecordPaymentDialog() {
   const amountCents = balance != null ? parsePaymentAmount(amount) : null;
   const partial =
     balance != null && amountCents != null && amountCents > 0 && amountCents < balance;
+  // A tip comes with one invoice's cash or check, the way the office is handed
+  // it. Several invoices at once, or a transfer, takes no tip.
+  const takesTip = balance != null && (method === "cash" || method === "check");
+  const tipCents = takesTip && tip.trim() ? parsePaymentAmount(tip) : 0;
 
   function submit() {
     if (balance != null) {
@@ -104,6 +114,14 @@ export function useRecordPaymentDialog() {
         setError(bad);
         return;
       }
+    }
+    if (tipCents == null || tipCents > TIP_CUSTOM_MAX_CENTS) {
+      setError(
+        tipCents == null
+          ? "Enter the tip in dollars and cents, like 5.00, or leave it empty."
+          : `A tip can be at most ${usd(TIP_CUSTOM_MAX_CENTS)}.`,
+      );
+      return;
     }
     const problem = receivedOnProblem(receivedOn, tz);
     if (problem) {
@@ -116,6 +134,7 @@ export function useRecordPaymentDialog() {
       reference: method !== "cash" && ref ? ref : undefined,
       receivedOn,
       amountCents: balance != null && amountCents != null ? amountCents : undefined,
+      tipCents: tipCents > 0 ? tipCents : undefined,
     });
   }
 
@@ -205,6 +224,39 @@ export function useRecordPaymentDialog() {
                 autoComplete="off"
                 onChange={(e) => setReference(e.target.value)}
               />
+            </div>
+          )}
+
+          {takesTip && (
+            <div>
+              <Label htmlFor="record-payment-tip">
+                Tip <span className="font-normal text-muted-foreground">(optional)</span>
+              </Label>
+              <div className="relative mt-1">
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-y-0 start-3 flex items-center text-sm text-muted-foreground"
+                >
+                  $
+                </span>
+                <Input
+                  id="record-payment-tip"
+                  className="ps-7 tabular-nums"
+                  value={tip}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder="0.00"
+                  aria-describedby="record-payment-tip-hint"
+                  onChange={(e) => {
+                    setTip(e.target.value);
+                    setError(null);
+                  }}
+                />
+              </div>
+              <p id="record-payment-tip-hint" className="mt-1 text-xs text-muted-foreground">
+                Extra handed over for the technician. It is not taken off the invoice and is not
+                counted as revenue.
+              </p>
             </div>
           )}
 

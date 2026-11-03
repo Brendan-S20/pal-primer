@@ -3234,6 +3234,7 @@ export type Database = {
           created_at: string
           creation_key: string | null
           credit_applied_cents: number
+          deposit_for_invoice_id: string | null
           currency: string
           due_on: string | null
           id: string
@@ -3270,6 +3271,7 @@ export type Database = {
           created_at?: string
           creation_key?: string | null
           credit_applied_cents?: number
+          deposit_for_invoice_id?: string | null
           currency?: string
           due_on?: string | null
           id?: string
@@ -3306,6 +3308,7 @@ export type Database = {
           created_at?: string
           creation_key?: string | null
           credit_applied_cents?: number
+          deposit_for_invoice_id?: string | null
           currency?: string
           due_on?: string | null
           id?: string
@@ -10593,6 +10596,15 @@ export type Database = {
           _note?: string
           _paid_at?: string
           _reference?: string
+        }
+        Returns: Json
+      }
+      refund_manual_payment: {
+        Args: {
+          _amount_cents: number
+          _payment_id: string
+          _reason: string
+          _reverse?: boolean
         }
         Returns: Json
       }
