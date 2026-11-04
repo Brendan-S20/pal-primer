@@ -239,8 +239,12 @@ for (const { w, h } of WIDTHS) {
 
         if (which === "one_time") {
           await expect(page.locator("#frequency")).toHaveCount(0);
+          // SIGNUP_FORM takes cards (instantStart), so the link still promises
+          // the one payment. The Evaluation is training, whose word for a
+          // visit is "session" (ONE_TIME_COPY.howItWorks, R2-24): "One visit"
+          // was the same sentence with two words for one thing.
           await expect(
-            page.getByText("One visit. You pay once for this session.").first(),
+            page.getByText("One session. You pay once for this session.").first(),
           ).toBeVisible();
           await expect(
             page
