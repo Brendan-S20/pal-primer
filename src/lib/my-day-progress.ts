@@ -19,13 +19,18 @@ export type DayAtAGlance<V extends DayVisit> = {
 };
 
 export function dayAtAGlance<V extends DayVisit>(visits: readonly V[]): DayAtAGlance<V> {
-  // Done = completed only. Total = every stop listed for the day, including
-  // missed, skipped and cancelled stops. Percentage = round(done / total * 100).
+  // Done = completed only. Total = every stop on the route for the day,
+  // including missed and skipped ones. Percentage = round(done / total * 100).
   // Missed and skipped are counted separately and never increase done.
-  const completedCount = visits.filter((v) => v.status === "completed").length;
-  const skippedCount = visits.filter((v) => v.status === "skipped").length;
-  const missedCount = visits.filter((v) => v.status === "missed").length;
-  const total = visits.length;
+  // A CANCELED visit is not a stop (gaps-r2-08): after an early return the
+  // stay's last nights are canceled, and counting them left a sitter's day at
+  // "0 of 2 done" for good. It is not in the total, and My Day does not draw
+  // it as a card (routeStops, the lock screen's same rule).
+  const stops = visits.filter((v) => v.status !== "canceled");
+  const completedCount = stops.filter((v) => v.status === "completed").length;
+  const skippedCount = stops.filter((v) => v.status === "skipped").length;
+  const missedCount = stops.filter((v) => v.status === "missed").length;
+  const total = stops.length;
   const pct = total > 0 ? Math.round((completedCount / total) * 100) : 0;
   // BUG-17: a visit the tech has already STARTED outranks anything merely
   // scheduled. The previous single `.find()` returned whichever came first in
