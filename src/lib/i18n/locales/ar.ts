@@ -208,6 +208,9 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     previewReadOnly: "معاينة · للقراءة فقط",
     noTechnicians: "لا يوجد فنيون نشطون في مؤسستك بعد.",
     pickTechnician: "اختر فنيًا من الأعلى لمعاينة يومه.",
+    selectTrainer: "(اختر مدربًا)",
+    noTrainers: "لا يوجد مدربون نشطون في مؤسستك بعد.",
+    pickTrainer: "اختر مدربًا من الأعلى لمعاينة يومه.",
     previewNothingScheduled: "لا شيء مجدول لـ {{name}} يوم {{day}}.",
     viewMySchedule: "عرض جدولي",
     myRoute: "مساري",
@@ -395,6 +398,15 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     after: "بعد {{time}}",
     by: "قبل {{time}}",
     over8h: "أكثر من 8 س · بدأت {{time}}",
+  },
+  role: {
+    owner: "المالك",
+    office_manager: "مدير المكتب",
+    dispatcher: "منسق المواعيد",
+    tech: "فني",
+    trainer: "مدرب",
+    platform_admin: "مسؤول المنصة",
+    other: "عضو في الفريق",
   },
   serviceLine: {
     pet_waste: "إزالة فضلات الحيوانات",
@@ -1323,6 +1335,9 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     chooseDog: "اختر كلبًا",
     dogRequiredHint: "لدى هذا المنزل أكثر من كلب. يُحفظ التقدم والواجب لكل كلب.",
     shareProgress: "مشاركة ملاحظات الدروس والواجبات مع العملاء",
+    seriesSkipClosed: "سلاسل الدروس الجديدة تتخطى العطلات وأيام الإغلاق",
+    seriesSkipClosedHint:
+      "لا تحجز السلسلة الأسبوعية درسًا في يوم عطلة أو يوم إغلاق. يمكن تغيير ذلك لكل سلسلة عند إنشائها أو تعديلها.",
     shareProgressHint:
       "يرى العملاء ملاحظة كل درس وواجبه في صفحة التدريب في بوابتهم. تظهر الدرجات والتواريخ والجلسات المتبقية في كل الأحوال.",
   },

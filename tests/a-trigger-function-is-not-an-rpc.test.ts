@@ -292,7 +292,12 @@ describe("no trigger function is executable by a signed-in user", () => {
     //
     // 98 -> 99 (20261102190000, gaps-r2-07): tg_stays_invoice_period, an
     // unpaid stay invoice's period follows the stay's dates. Revoked there.
-    expect(triggerFunctions().size).toBe(99);
+    //
+    // 99 -> 100 (20261102172500, a lesson series skips closed days and can
+    // stop, R2-49): visits_follow_series_rules, which leaves out a series
+    // visit on a closed or holiday date, or past the series' session count.
+    // Revoked from PUBLIC, anon and authenticated there.
+    expect(triggerFunctions().size).toBe(100);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

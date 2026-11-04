@@ -201,6 +201,9 @@ const en = {
     previewReadOnly: "Preview · read-only",
     noTechnicians: "No active technicians in your organization yet.",
     pickTechnician: "Pick a technician above to preview their day.",
+    selectTrainer: "(Select trainer)",
+    noTrainers: "No active trainers in your organization yet.",
+    pickTrainer: "Pick a trainer above to preview their day.",
     previewNothingScheduled: "{{name}} has nothing scheduled on {{day}}.",
     viewMySchedule: "View my schedule",
     myRoute: "My route",
@@ -368,6 +371,15 @@ const en = {
   /** What kind of work a stop is, by service line (services, phase 2). The
    *  business's own name for the service is its text and is not translated;
    *  this is the line it belongs to. */
+  role: {
+    owner: "Owner",
+    office_manager: "Office manager",
+    dispatcher: "Dispatcher",
+    tech: "Technician",
+    trainer: "Trainer",
+    platform_admin: "Platform admin",
+    other: "Team member",
+  },
   serviceLine: {
     pet_waste: "Pet waste removal",
     dog_walking: "Dog walking",
@@ -1258,6 +1270,9 @@ const en = {
     chooseDog: "Choose a dog",
     dogRequiredHint: "This household has more than one dog. Progress and homework are kept per dog.",
     shareProgress: "Share lesson notes and homework with clients",
+    seriesSkipClosed: "New lesson series skip holidays and closed days",
+    seriesSkipClosedHint:
+      "A weekly series books no lesson on a holiday or blackout date. Each series can change this when it is created or edited.",
     shareProgressHint:
       "Clients see each lesson's note and homework on the Training page of their portal. Scores, dates and sessions left show either way.",
   },

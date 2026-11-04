@@ -10,7 +10,7 @@ import { getDashboardSummary } from "@/lib/dashboard.functions";
 import { getBillingStatus } from "@/lib/billing.functions";
 import { getQuickBooksStatus } from "@/lib/accounting.functions";
 import { hasPermission } from "@/lib/permissions";
-import { humanizeRole } from "@/lib/humanize";
+import { useRoleLabel } from "@/components/CommercialOnly";
 import type { AppRole } from "@/hooks/useMyRole";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +48,7 @@ function fmtMoney(cents: number) {
 }
 
 function Dashboard() {
+  const roleLabel = useRoleLabel();
   const motionList = useMotionList<HTMLUListElement>();
   const orgFn = useServerFn(getMyOrg);
   const sumFn = useServerFn(getDashboardSummary);
@@ -210,7 +211,7 @@ function Dashboard() {
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="text-2xl font-semibold">{org.name}</h1>
-          <p className="text-sm text-muted-foreground">Signed in as {humanizeRole(org.role)}</p>
+          <p className="text-sm text-muted-foreground">Signed in as {roleLabel(org.role)}</p>
         </div>
         {/* `size="sm"` is `h-8` — a 32px target, and on a phone these two are
             the only navigation in the header of the first screen the owner
