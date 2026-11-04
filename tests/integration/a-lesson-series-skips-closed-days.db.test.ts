@@ -138,8 +138,11 @@ describe.skipIf(!enabled)("a lesson series and the days the business is closed (
   });
 
   it("a series that stops after 3 lessons has 3, and a canceled one without charge frees a place", async () => {
-    const { id, days } = await series({ session_limit: 3 });
-    expect(days).toHaveLength(3);
+    // Skip off, so this case is about the count alone. The next lesson after
+    // the third falls on `holiday` (first + 21), and with skip on the trigger
+    // leaves that insert out, as it should.
+    const { id, days } = await series({ session_limit: 3, skip_closed_days: false });
+    expect(days).toEqual([first, addDays(first, 7), addDays(first, 14)]);
     const again = await admin.rpc("generate_visits_core", {
       _org_id: orgId,
       _through: through,
@@ -181,6 +184,11 @@ describe.skipIf(!enabled)("a lesson series and the days the business is closed (
     expect((data ?? []).map((v) => v.scheduled_on).sort()).toEqual(
       [days[1], days[2], addDays(days[2], 7)].sort(),
     );
+  });
+
+  it("a skipped holiday does not use up one of the series' lessons", async () => {
+    const { days } = await series({ session_limit: 4 });
+    expect(days).toEqual([first, addDays(first, 7), addDays(first, 14), addDays(first, 28)]);
   });
 
   it("an open-ended series keeps generating", async () => {
