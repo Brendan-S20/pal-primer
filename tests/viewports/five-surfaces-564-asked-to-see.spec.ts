@@ -175,6 +175,10 @@ const SIT_ON_MY_WAY = {
   address: "4417 N Sacramento Ave, Chicago",
   trackUrl: "https://app.houndstack.com/t/example",
   yard: false,
+  // Since #713 "reply to this email" is said only when a reply-to exists, and
+  // that is the wording this case was written for. Without one the line names
+  // the business (the next test, and tests/a-reply-that-reaches-nobody.test.tsx).
+  orgEmail: "office@example.test",
 };
 const GROOM_COMPLETED = {
   orgName: PORTAL_ORG_NAME,
@@ -365,6 +369,21 @@ for (const width of WIDTHS) {
       ).toBeVisible();
       await expect(page.getByText(/out in the yard/)).toHaveCount(0);
       await measure(page, "email-on-my-way-sit", width);
+    });
+
+    test("on-my-way email with no contact email: no reply promised", async ({ page }) => {
+      const onMyWay = await loadTemplate("on-my-way");
+      const noContact = { ...SIT_ON_MY_WAY, orgEmail: undefined };
+      const html = await render(React.createElement(onMyWay.component, noContact));
+      await showEmail(page, html, onMyWay.subject(noContact));
+      await expect(page.getByRole("heading", { name: "On the way" })).toBeVisible();
+      await expect(
+        page.getByText(
+          `If anything has changed, or there is anything we should know, contact ${PORTAL_ORG_NAME}.`,
+        ),
+      ).toBeVisible();
+      await expect(page.getByText(/reply to this email/)).toHaveCount(0);
+      await measure(page, "email-on-my-way-sit-no-contact", width);
     });
 
     test("visit-completed email for a groom: no dirty work", async ({ page }) => {
