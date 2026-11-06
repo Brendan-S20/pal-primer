@@ -98,6 +98,8 @@ on:
 # Every other event (push to main, manual dispatch) gets a group of its own
 # run id, so it is never cancelled -- not even while pending, which a shared
 # group with cancel-in-progress: false would still do to a queued run.
+# Ops guidance for a thin runner pool: docs/self-hosted-runner.md, "Superseded
+# runs cancel themselves".
 concurrency:
   group: sandboxes-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
