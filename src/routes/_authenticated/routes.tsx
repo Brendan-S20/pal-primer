@@ -1205,7 +1205,11 @@ function RoutesPage() {
                     Skip Sat/Sun in Week and Month views.
                   </div>
                 </div>
-                <Switch checked={hideWeekends} onCheckedChange={setHideWeekendsPersist} />
+                <Switch
+                  aria-label="Hide weekends"
+                  checked={hideWeekends}
+                  onCheckedChange={setHideWeekendsPersist}
+                />
               </div>
               <p className="border-b pb-3 text-2xs text-muted-foreground">
                 Workday hours, work days and travel assumptions live in{" "}
@@ -1238,7 +1242,11 @@ function RoutesPage() {
                     Keeps a pin and its lane on screen together. Stacks below 1280px.
                   </div>
                 </div>
-                <Switch checked={sideBySide} onCheckedChange={setSideBySidePersist} />
+                <Switch
+                  aria-label="Map beside the board"
+                  checked={sideBySide}
+                  onCheckedChange={setSideBySidePersist}
+                />
               </div>
               <div className="space-y-1.5">
                 <div className="text-sm font-medium">Board layout</div>
@@ -2434,12 +2442,18 @@ function SortableVisitCard({
     transition,
     opacity: isDragging ? 0.4 : 1,
   };
+  // `attributes` (role="button", tabIndex 0, the sortable roledescription)
+  // go on the grip with the listeners, not on this wrapper. On the wrapper
+  // they made the whole card a button with the grip, the checkbox and the
+  // Complete button inside it, which axe reports as nested-interactive
+  // (gaps-r2-11), and a tab stop that did nothing: the keyboard sensor
+  // listens where `listeners` are, which was always the grip.
   return (
-    <div ref={setNodeRef} style={style} {...attributes}>
+    <div ref={setNodeRef} style={style}>
       <VisitCardView
         visit={visit}
         seq={seq}
-        dragHandle={listeners}
+        dragHandle={{ ...attributes, ...listeners }}
         onComplete={onComplete}
         completing={completing}
         onOpen={onOpen}

@@ -462,7 +462,7 @@ function ClientsList() {
           />
         </div>
         <Select value={status} onValueChange={(v) => setStatus(v as StatusFilter)}>
-          <SelectTrigger className="w-44">
+          <SelectTrigger className="w-44" aria-label="Filter by status">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -475,7 +475,7 @@ function ClientsList() {
           </SelectContent>
         </Select>
         <Select value={type} onValueChange={(v) => setType(v as TypeFilter)}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-40" aria-label="Filter by type">
             <SelectValue placeholder="Type" />
           </SelectTrigger>
           <SelectContent>
