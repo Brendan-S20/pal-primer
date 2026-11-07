@@ -414,7 +414,12 @@ jobs:
             if [ "${st:-0}" -gt 0 ]; then
               pct=$(awk -v t="$st" -v f="$sf" 'BEGIN{printf "%d", (t-f)*100/t}')
               echo "swap ${pct}% used, load ${load1} on ${cores} cores"
-              [ "$pct" -ge 50 ] && echo "::warning::Swap is ${pct}% full on this runner, load ${load1} on ${cores} cores. Treat timeouts and SIGBUS here as suspect and re-run once. See docs/owner-actions-before-submission.md §12."
+              # `if`, not `[ ] && echo`: as the step's last command the
+              # latter exits 1 whenever swap is UNDER 50%, failing a check
+              # that is meant only to warn (first hit on hosted Linux).
+              if [ "$pct" -ge 50 ]; then
+                echo "::warning::Swap is ${pct}% full on this runner, load ${load1} on ${cores} cores. Treat timeouts and SIGBUS here as suspect and re-run once. See docs/owner-actions-before-submission.md §12."
+              fi
             else
               echo "no swap configured; load ${load1} on ${cores} cores"
             fi
