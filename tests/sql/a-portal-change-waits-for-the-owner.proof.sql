@@ -87,7 +87,9 @@ SELECT v.id::uuid, '0a000000-0000-4000-8000-000000073000', 'e0000000-0000-4000-8
                ('7a000000-0000-4000-8000-000000073006', 6),
                ('7a000000-0000-4000-8000-000000073007', 7),
                ('7a000000-0000-4000-8000-000000073008', 8),
-               ('7a000000-0000-4000-8000-000000073009', 9)) AS v(id, off);
+               ('7a000000-0000-4000-8000-000000073009', 9),
+               -- Outside the 14-day late window (section 6, the inverse).
+               ('7a000000-0000-4000-8000-000000073010', 35)) AS v(id, off);
 INSERT INTO public.visits (id, organization_id, subscription_id, client_id, property_id, scheduled_on, status)
 VALUES ('7b000000-0000-4000-8000-000000073001', '0b000000-0000-4000-8000-000000073000', 'e0000000-0000-4000-8000-0000000730b1',
         'c0000000-0000-4000-8000-0000000730b1', 'd0000000-0000-4000-8000-0000000730b1', current_date + 10, 'scheduled');
@@ -582,7 +584,35 @@ BEGIN
   IF _n <> 1 THEN
     RAISE EXCEPTION 'PROOF FAILED [one fee]: expected 1 fee for the moved visit, found %', _n;
   END IF;
+  -- The fee asserted, not assumed: the moved visit was +6, inside the window.
+  IF (SELECT fee_cents FROM public.portal_change_requests WHERE id = (_r1->>'request_id')::uuid) <> 1000
+     OR (SELECT amount_cents FROM public.portal_change_fee_charges WHERE request_id = (_r1->>'request_id')::uuid) <> 1000 THEN
+    RAISE EXCEPTION 'PROOF FAILED [fee in window]: the change inside the window does not carry the rule''s 1000';
+  END IF;
   RAISE NOTICE 'ok: a repeated press returns its first answer, the same change again is refused, and one change carries one fee';
+END $$;
+
+-- The inverse (re-review of 394fd5a): a visit 35 days out is outside the
+-- 336-hour window, so its change carries no fee and no fee row is made.
+DO $$
+DECLARE _r jsonb; _c jsonb;
+BEGIN
+  BEGIN
+    _r := public.portal_request_visit_change('aaaaaaaa-0000-4000-8000-0000000730a1',
+            '7a000000-0000-4000-8000-000000073010', 'reschedule', current_date + 36, NULL, NULL, 'press-0010-a');
+  EXCEPTION WHEN raise_exception THEN
+    RAISE EXCEPTION 'PROOF FAILED [outside window]: a change outside the late window was refused: %', SQLERRM;
+  END;
+  IF _r->>'status' <> 'applied' OR (_r->>'fee_cents')::int <> 0
+     OR (SELECT fee_cents FROM public.portal_change_requests WHERE id = (_r->>'request_id')::uuid) <> 0 THEN
+    RAISE EXCEPTION 'PROOF FAILED [outside window]: a change outside the late window carried a fee (%)', _r;
+  END IF;
+  _c := public.begin_portal_change_fee((_r->>'request_id')::uuid);
+  IF _c IS DISTINCT FROM jsonb_build_object('charge', NULL, 'created', false)
+     OR EXISTS (SELECT 1 FROM public.portal_change_fee_charges WHERE request_id = (_r->>'request_id')::uuid) THEN
+    RAISE EXCEPTION 'PROOF FAILED [outside window]: a fee row was made for a change with no fee (%)', _c;
+  END IF;
+  RAISE NOTICE 'ok: a change outside the late window carries no fee, and beginning a fee for it makes none';
 END $$;
 
 -- ── 7. A webhook that beats the server's response (review finding 2) ──────
