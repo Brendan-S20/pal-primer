@@ -233,6 +233,16 @@ BEGIN /* walker-race-hold */
   END IF;
 END $hold$;`;
 
+/** Waits until session `name` is in its hold loop. If it never gets there,
+ *  ends it and fails with what it printed, so a broken script says why
+ *  instead of only that it did not arrive. */
+async function arrives(name: string, running: Promise<Result>, label: string) {
+  if (await eventually(isHolding(name))) return;
+  for (const c of live) c.kill("SIGKILL");
+  const r = await running;
+  throw new Error(`${label}: never reached its hold loop (exit ${r.code})\n${r.stderr}${r.stdout}`);
+}
+
 /** Session names unique to one test. */
 const names = () => {
   const run = Math.random().toString(36).slice(2, 8);
@@ -415,7 +425,7 @@ describe.skipIf(!dbEnabled)("walker assignment is narrow and atomic", () => {
           n.A,
           `BEGIN;\n${handAssign(g.visitId, org.walker.staffId!)}\n${holdUntil(isBlocked(n.B), "B blocked")}\nCOMMIT;\n`,
         );
-        expect(await eventually(isHolding(n.A)), "A holds the hand assignment").toBe(true);
+        await arrives(n.A, a, "A holds the hand assignment");
         const b = session(
           n.B,
           `${asDispatcher()}\nUPDATE public.walk_groups SET assigned_staff_id = '${org.otherWalker.staffId}'
@@ -437,15 +447,16 @@ describe.skipIf(!dbEnabled)("walker assignment is narrow and atomic", () => {
         const n = names();
         const a = session(
           n.A,
-          `BEGIN;\n${handAssign(g.visitId, org.walker.staffId!)}\nSELECT pg_advisory_xact_lock(hashtext('${n.B}')) \\g /dev/null\n${holdUntil(isBlocked(n.B), "B, past its call, waits on A's advisory lock")}\nCOMMIT;\n`,
+          `BEGIN;\n${handAssign(g.visitId, org.walker.staffId!)}\n${holdUntil(isBlocked(n.B), "B, past its call, waits on the walk A holds")}\nCOMMIT;\n`,
         );
-        expect(await eventually(isHolding(n.A)), "A holds the hand assignment").toBe(true);
+        await arrives(n.A, a, "A holds the hand assignment");
         const b = session(
           n.B,
-          // The call, then a wait on A's advisory lock: B can only block there
-          // once the call has returned, and A commits only once it sees B
-          // blocked, so the call ran while the hand assignment was open.
-          `${asDispatcher()}\nSELECT public.assign_walk_group_if_open('${g.groupId}', '${org.otherWalker.staffId}');\nRESET ROLE;\nSELECT pg_advisory_lock(hashtext('${n.B}')) \\g /dev/null\n`,
+          // The call, then a plain lock on the walk A holds: B can only block
+          // there once the call has returned (the call itself never waits on a
+          // walk), and A commits only once it sees B blocked, so the call ran
+          // while the hand assignment was open.
+          `${asDispatcher()}\nSELECT public.assign_walk_group_if_open('${g.groupId}', '${org.otherWalker.staffId}');\nRESET ROLE;\nSELECT 1 FROM public.visits WHERE id = '${g.visitId}' FOR NO KEY UPDATE \\g /dev/null\n`,
         );
         const { ra, rb } = await both(a, b);
         expect(ra.code, ra.stderr).toBe(0);
@@ -474,7 +485,7 @@ describe.skipIf(!dbEnabled)("walker assignment is narrow and atomic", () => {
           n.B,
           `BEGIN;\n${asDispatcher()}\nSELECT public.assign_walk_group_if_open('${g.groupId}', '${org.otherWalker.staffId}');\nRESET ROLE;\n${holdUntil(isBlocked(n.A), "A blocked")}\nCOMMIT;\n`,
         );
-        expect(await eventually(isHolding(n.B)), "B holds the capacity write").toBe(true);
+        await arrives(n.B, b, "B holds the capacity write");
         const a = session(n.A, `${handAssign(g.visitId, org.walker.staffId!)}\n`);
         const { ra, rb } = await both(a, b);
         expect(ra.code, ra.stderr).toBe(0);
@@ -540,7 +551,7 @@ END $f$`);
             n.A,
             planChange(g.visitId, sub2, isBlocked(n.B), "B holds the group and waits on the walk"),
           );
-          expect(await eventually(isHolding(n.A)), "A holds the walk's row").toBe(true);
+          await arrives(n.A, a, "A holds the walk's row");
           const b = session(n.B, `BEGIN;\nSELECT ${fn}('${g.groupId}');\nCOMMIT;\n`);
           const { ra, rb } = await both(a, b);
           // B takes the group and waits on the walk; A, holding the walk,
@@ -562,7 +573,7 @@ END $f$`);
         const n = names();
         // A holds the walk's row and, once B holds the group, asks for it.
         const a = session(n.A, planChange(g.visitId, sub2, isHolding(n.B), "B holds the group"));
-        expect(await eventually(isHolding(n.A)), "A holds the walk's row").toBe(true);
+        await arrives(n.A, a, "A holds the walk's row");
         // B takes the group, finds the walk locked, answers busy, and holds
         // the group until A is seen waiting for it.
         const b = session(
@@ -604,7 +615,7 @@ UPDATE public.visits SET walk_group_id = '${g.groupId}' WHERE id = '${g.visitId}
 COMMIT;
 `,
         );
-        expect(await eventually(isHolding(n.A)), "A holds the walk's row").toBe(true);
+        await arrives(n.A, a, "A holds the walk's row");
         const b = session(
           n.B,
           `BEGIN;\n${asDispatcher()}\nSELECT public.assign_walk_group_if_open('${g.groupId}', '${org.otherWalker.staffId}');\nRESET ROLE;\n${holdUntil(isBlocked(n.A), "A blocked on the group")}\nCOMMIT;\n`,
