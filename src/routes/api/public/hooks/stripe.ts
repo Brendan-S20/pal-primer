@@ -729,6 +729,22 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
             return new Response("ok", { status: 200 });
           }
 
+          // A late-change fee on a portal reschedule or cancel (#730). Settled
+          // only here: matched by PaymentIntent AND event.account in the
+          // database, and recorded once per event id, so a duplicate delivery
+          // or another tenant's event changes nothing. A database error
+          // throws to the 500 below and Stripe retries.
+          if (
+            (event.type === "payment_intent.succeeded" ||
+              event.type === "payment_intent.payment_failed") &&
+            (event.data.object as { metadata?: Record<string, string> } | null)?.metadata
+              ?.source === "portal_change_fee"
+          ) {
+            const { recordPortalChangeFeeEvent } = await import("@/lib/portal-change-fees.server");
+            await recordPortalChangeFeeEvent(supabaseAdmin as any, event as any);
+            return new Response("ok", { status: 200 });
+          }
+
           if (event.type === "setup_intent.succeeded") {
             // The durable backstop for saving a card.
             //

@@ -25,6 +25,12 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  PORTAL_CHANGE_COPY,
+  feeIfChangedNow,
+  formatCents,
+  type PortalVisitChangeTerms,
+} from "@/lib/portal-change";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -69,6 +75,7 @@ import {
   portalListPrepaidSubs,
   portalRequestSkip,
   portalRescheduleVisit,
+  portalWithdrawVisitChange,
   portalChangeFrequency,
   portalListAddonCatalog,
   portalListClientAddons,
@@ -233,6 +240,7 @@ export function usePortal(token: string, slug?: string) {
   const listSubsFn = useServerFn(portalListPrepaidSubs);
   const skipFn = useServerFn(portalRequestSkip);
   const rescheduleFn = useServerFn(portalRescheduleVisit);
+  const withdrawChangeFn = useServerFn(portalWithdrawVisitChange);
   const changeFreqFn = useServerFn(portalChangeFrequency);
   const listAddonCatalogFn = useServerFn(portalListAddonCatalog);
   const listClientAddonsFn = useServerFn(portalListClientAddons);
@@ -380,19 +388,34 @@ export function usePortal(token: string, slug?: string) {
     onSuccess: () => invalidatePortal(),
     onError: (e) => toast.error((e as Error).message),
   });
+  // With the business's policy on approval (#730) the change waits for the
+  // owner, and the toast says so rather than claiming it happened.
   const skipMut = useMutation({
-    mutationFn: (v: { visitId: string; reason: string }) => skipFn({ data: { token, ...v } }),
-    onSuccess: () => {
-      toast.success("Skip requested");
+    mutationFn: (v: { visitId: string; reason: string; acceptedFeeCents?: number | null }) =>
+      skipFn({ data: { token, ...v } }),
+    onSuccess: (r) => {
+      toast.success(
+        r?.status === "pending" ? PORTAL_CHANGE_COPY.sentForApproval : "Skip requested",
+      );
       invalidatePortal();
     },
     onError: (e) => toast.error((e as Error).message),
   });
   const rescheduleMut = useMutation({
-    mutationFn: (v: { visitId: string; newDate: string }) =>
+    mutationFn: (v: { visitId: string; newDate: string; acceptedFeeCents?: number | null }) =>
       rescheduleFn({ data: { token, ...v } }),
+    onSuccess: (r) => {
+      toast.success(
+        r?.status === "pending" ? PORTAL_CHANGE_COPY.sentForApproval : "Visit rescheduled",
+      );
+      invalidatePortal();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const withdrawChangeMut = useMutation({
+    mutationFn: (requestId: string) => withdrawChangeFn({ data: { token, requestId } }),
     onSuccess: () => {
-      toast.success("Visit rescheduled");
+      toast.success("Request withdrawn");
       invalidatePortal();
     },
     onError: (e) => toast.error((e as Error).message),
@@ -504,6 +527,7 @@ export function usePortal(token: string, slug?: string) {
     recleanMut,
     skipMut,
     rescheduleMut,
+    withdrawChangeMut,
     freqMut,
     subscribeAddonMut,
     cancelAddonMut,
@@ -1045,13 +1069,16 @@ export function UpcomingVisitsList({
   skipBillablePct = 0,
   onSkip,
   onReschedule,
+  onWithdraw,
 }: {
   rows: Array<any>;
   allowReschedule: boolean;
   /** Percentage of the visit price a portal skip still bills. See VisitRow. */
   skipBillablePct?: number;
-  onSkip: (id: string, reason: string) => void;
-  onReschedule: (id: string, newDate: string) => void;
+  /** acceptedFeeCents: the late fee the row SHOWED, or null when none. */
+  onSkip: (id: string, reason: string, acceptedFeeCents: number | null) => void;
+  onReschedule: (id: string, newDate: string, acceptedFeeCents: number | null) => void;
+  onWithdraw?: (requestId: string) => void;
 }) {
   const addresses = new Set(rows.map((r) => `${r.street}|${r.city}|${r.postal_code}`));
   const sharedAddress = addresses.size === 1 && rows[0]?.street ? rows[0] : null;
@@ -1073,8 +1100,9 @@ export function UpcomingVisitsList({
             showAddress={!sharedAddress}
             allowReschedule={allowReschedule}
             skipBillablePct={skipBillablePct}
-            onSkip={(reason) => onSkip(v.visit_id, reason)}
-            onReschedule={(d) => onReschedule(v.visit_id, d)}
+            onSkip={(reason, fee) => onSkip(v.visit_id, reason, fee)}
+            onReschedule={(d, fee) => onReschedule(v.visit_id, d, fee)}
+            onWithdraw={onWithdraw}
           />
         ))}
       </ul>
@@ -1089,6 +1117,7 @@ function VisitRow({
   skipBillablePct = 0,
   onSkip,
   onReschedule,
+  onWithdraw,
 }: {
   v: any;
   showAddress: boolean;
@@ -1097,10 +1126,16 @@ function VisitRow({
    *  default org, and zero is the honest majority case — see the note by the
    *  copy below. */
   skipBillablePct?: number;
-  onSkip: (reason: string) => void;
-  onReschedule: (newDate: string) => void;
+  onSkip: (reason: string, acceptedFeeCents: number | null) => void;
+  onReschedule: (newDate: string, acceptedFeeCents: number | null) => void;
+  onWithdraw?: (requestId: string) => void;
 }) {
   const tz = usePortalTimezone();
+  // #730: the business's policy, this visit's late fee, and any request of
+  // this customer's still waiting. Absent when the read failed; the server
+  // still refuses a late change whose fee was not shown here.
+  const terms: PortalVisitChangeTerms | undefined = v.change_terms;
+  const [feeAccepted, setFeeAccepted] = useState(false);
   const [skipOpen, setSkipOpen] = useState(false);
   const [reschedOpen, setReschedOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -1131,6 +1166,32 @@ function VisitRow({
   const cutoffCopy = cutoff
     ? `Changes allowed until ${fmtCutoff(v.changes_allowed_until, tz)}.`
     : "";
+
+  const pending = terms?.pending_request_id
+    ? { id: terms.pending_request_id, kind: terms.pending_kind, date: terms.pending_requested_date }
+    : null;
+  const openKind = skipOpen ? "cancel" : reschedOpen ? "reschedule" : null;
+  const feeNow = openKind ? feeIfChangedNow(terms, openKind) : 0;
+  const upcomingFee = openKind
+    ? openKind === "reschedule"
+      ? (terms?.reschedule_fee_cents ?? 0)
+      : (terms?.cancel_fee_cents ?? 0)
+    : 0;
+  // Said before the customer confirms, whichever way it goes: the fee that
+  // applies now, or when one will start; and that the business reviews it.
+  const changeTermsCopy = openKind
+    ? [
+        feeNow > 0
+          ? PORTAL_CHANGE_COPY.feeNow(formatCents(feeNow))
+          : upcomingFee > 0 && terms?.late_from
+            ? PORTAL_CHANGE_COPY.feeStarts(formatCents(upcomingFee), fmtCutoff(terms.late_from, tz))
+            : "",
+        terms?.policy === "approval" ? PORTAL_CHANGE_COPY.needsApproval : "",
+      ]
+        .filter(Boolean)
+        .join(" ")
+    : "";
+  const blockedOnFee = feeNow > 0 && !feeAccepted;
 
   return (
     <li className="p-3 text-sm">
@@ -1172,32 +1233,47 @@ function VisitRow({
             </div>
           )}
         </div>
-        <div className="flex gap-2">
-          {allowReschedule && !pastCutoff && (
+        {pending ? (
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <Badge variant="outline" className="max-w-full whitespace-normal text-start">
+              {pending.kind === "reschedule"
+                ? PORTAL_CHANGE_COPY.pendingReschedule(fmtDayShort(pending.date ?? ""))
+                : PORTAL_CHANGE_COPY.pendingCancel}
+            </Badge>
+            {onWithdraw && (
+              <Button size="sm" variant="outline" onClick={() => onWithdraw(pending.id)}>
+                {PORTAL_CHANGE_COPY.withdraw}
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            {allowReschedule && !pastCutoff && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setReschedOpen((o) => !o);
+                  setSkipOpen(false);
+                }}
+              >
+                {reschedOpen ? "Cancel" : "Reschedule"}
+              </Button>
+            )}
             <Button
               size="sm"
               variant="outline"
+              disabled={pastCutoff}
+              title={pastCutoff ? "Past the change cutoff. Text the office" : undefined}
               onClick={() => {
-                setReschedOpen((o) => !o);
-                setSkipOpen(false);
+                setSkipOpen((o) => !o);
+                setReschedOpen(false);
               }}
             >
-              {reschedOpen ? "Cancel" : "Reschedule"}
+              {skipOpen ? "Cancel" : "Skip"}
             </Button>
-          )}
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={pastCutoff}
-            title={pastCutoff ? "Past the change cutoff. Text the office" : undefined}
-            onClick={() => {
-              setSkipOpen((o) => !o);
-              setReschedOpen(false);
-            }}
-          >
-            {skipOpen ? "Cancel" : "Skip"}
-          </Button>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Two things were wrong with the single line this replaces —
@@ -1222,6 +1298,18 @@ function VisitRow({
           So: the cutoff line stands on both actions, since the cutoff really
           does govern both; the money line appears only when skipping, only
           when the org charges for it, and says how much. */}
+      {changeTermsCopy && <p className="mt-2 text-xs text-muted-foreground">{changeTermsCopy}</p>}
+      {feeNow > 0 && (skipOpen || reschedOpen) && (
+        <label className="mt-2 flex min-h-11 items-center gap-3 text-sm">
+          <input
+            type="checkbox"
+            className="h-5 w-5 shrink-0"
+            checked={feeAccepted}
+            onChange={(e) => setFeeAccepted(e.target.checked)}
+          />
+          <span className="min-w-0">{PORTAL_CHANGE_COPY.acceptFee(formatCents(feeNow))}</span>
+        </label>
+      )}
       {(skipOpen || reschedOpen) && (cutoffCopy || (skipOpen && skipBillablePct > 0)) && (
         <p className="mt-2 text-xs text-muted-foreground">
           {[
@@ -1258,12 +1346,15 @@ function VisitRow({
           </div>
           <Button
             size="sm"
+            disabled={blockedOnFee}
             onClick={() => {
-              onReschedule(newDate);
+              onReschedule(newDate, feeNow > 0 ? feeNow : null);
               setReschedOpen(false);
+              setFeeAccepted(false);
             }}
           >
-            Confirm reschedule to {fmtDayShort(newDate)}
+            {terms?.policy === "approval" ? "Request reschedule to" : "Confirm reschedule to"}{" "}
+            {fmtDayShort(newDate)}
           </Button>
         </div>
       )}
@@ -1280,13 +1371,16 @@ function VisitRow({
           />
           <Button
             size="sm"
+            disabled={blockedOnFee}
             onClick={() => {
-              onSkip(reason);
+              onSkip(reason, feeNow > 0 ? feeNow : null);
               setSkipOpen(false);
               setReason("");
+              setFeeAccepted(false);
             }}
           >
-            Confirm skip {fmtDayShort(v.scheduled_on)}
+            {terms?.policy === "approval" ? "Request skip" : "Confirm skip"}{" "}
+            {fmtDayShort(v.scheduled_on)}
           </Button>
         </div>
       )}

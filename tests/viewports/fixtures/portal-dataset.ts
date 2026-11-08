@@ -105,14 +105,32 @@ export const PORTAL_CLIENT = {
  *  the pair that overflows an address row. Invented. */
 const STREET = "18847 Northwood Meadowbrook Terrace Extension, Unit 12B";
 
-export const PORTAL_UPCOMING_VISITS = [0, 2, 9, 16].map((offset, i) => ({
-  visit_id: `eeeeeeee-0000-4000-8000-00000000e0${String(i + 1).padStart(2, "0")}`,
-  scheduled_on: day(offset),
-  status: i === 0 ? "in_progress" : "scheduled",
-  street: STREET,
-  city: "Ridgefield Heights",
-  postal_code: "60614",
-}));
+export const PORTAL_UPCOMING_VISITS = [0, 2, 9, 16].map((offset, i) => {
+  const visit_id = `eeeeeeee-0000-4000-8000-00000000e0${String(i + 1).padStart(2, "0")}`;
+  return {
+    visit_id,
+    scheduled_on: day(offset),
+    status: i === 0 ? "in_progress" : "scheduled",
+    street: STREET,
+    city: "Ridgefield Heights",
+    postal_code: "60614",
+    // #730, merged by the handler from portal_visit_change_terms. The second
+    // visit has a reschedule waiting for the owner (the badge and Withdraw
+    // draw instead of the buttons); the others carry a late fee whose window
+    // is already open, so opening Skip draws the fee line and the checkbox.
+    change_terms: {
+      visit_id,
+      policy: "approval",
+      cutoff_at: null,
+      late_from: new Date(Date.now() - 3600e3).toISOString(),
+      reschedule_fee_cents: 1000,
+      cancel_fee_cents: 2500,
+      pending_request_id: i === 1 ? "9d000000-0000-4000-8000-000000000001" : null,
+      pending_kind: i === 1 ? "reschedule" : null,
+      pending_requested_date: i === 1 ? day(offset + 5) : null,
+    },
+  };
+});
 
 export const PORTAL_RECENT_VISITS = [-3, -10, -17, -24].map((offset, i) => ({
   visit_id: `ffffffff-0000-4000-8000-00000000f0${String(i + 1).padStart(2, "0")}`,
