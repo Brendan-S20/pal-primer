@@ -228,9 +228,10 @@ export const deleteWalkGroup = createServerFn({ method: "POST" })
  * this reads the day and writes only what it decided.
  *
  * It never takes work from anyone (#609, D10). A group that names a walker,
- * or whose walks are already held or pinned, is left as it is, and the write
- * itself is conditional on the group still having no walker, so a dispatcher
- * who assigns one while this runs wins. The database still checks each
+ * or whose walks are already held or pinned, is left as it is; and because
+ * the day can change between this read and the write, the write is
+ * public.assign_walk_group_if_open, which checks both again under row locks
+ * and writes nothing if either changed. The database still checks each
  * walker's cap (walk_groups_walker_cap) and availability on the visits.
  */
 export const assignWalkGroupsByCapacity = createServerFn({ method: "POST" })
@@ -285,16 +286,17 @@ export const assignWalkGroupsByCapacity = createServerFn({ method: "POST" })
         kept.push({ groupId: d.groupId, reason: d.reason });
         continue;
       }
-      const { data: rows, error } = await context.supabase
-        .from("walk_groups")
-        .update({ assigned_staff_id: d.walkerId })
-        .eq("id", d.groupId)
-        .eq("organization_id", orgId)
-        .is("assigned_staff_id", null)
-        .select("id");
+      // One atomic step in the database (20261108150200): it locks the group
+      // and every walk in it, re-reads them, and writes only if the group
+      // still has no walker and no walk still to happen is held or pinned.
+      // A hand assignment made since the read above is never replaced.
+      const { data: outcome, error } = await context.supabase.rpc("assign_walk_group_if_open", {
+        _group_id: d.groupId,
+        _walker_id: d.walkerId,
+      });
       if (error) throw new Error(error.message);
-      if (rows?.length) assigned.push({ groupId: d.groupId, walkerId: d.walkerId });
-      else kept.push({ groupId: d.groupId, reason: "has_walker" });
+      if (outcome === "assigned") assigned.push({ groupId: d.groupId, walkerId: d.walkerId });
+      else kept.push({ groupId: d.groupId, reason: outcome ?? "has_walker" });
     }
     return { assigned, kept };
   });

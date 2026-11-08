@@ -1,7 +1,13 @@
--- A walk plan has a walker, and a one-person walking business walks its own
--- walks (#731, F-17), proved against a real Postgres. Run by
--- tests/a-walk-plan-has-a-walker-in-a-real-database.test.ts, which passes the
--- migration as :migration.
+-- Proof for 20261108150100 — a walk plan has a walker, and a one-person
+-- walking business walks its own walks (#731, F-17).
+--
+-- Run by the database job in .github/workflows/sandboxes.yml ("The proofs,
+-- which are evidence rather than schema") against the database it has just
+-- replayed from every migration, so the migration is already applied here.
+-- Locally:
+--   supabase db reset
+--   psql "postgresql://postgres:postgres@127.0.0.1:54422/postgres" \
+--     -v ON_ERROR_STOP=1 -f supabase/proofs/20261108150100-a-walk-plan-has-a-walker.sql
 --
 -- Business P has an owner and two walkers, Ann and Bo. Business S is one
 -- person, its owner, who runs routes. Proves:
@@ -25,8 +31,6 @@ SET client_min_messages TO notice;
 DO $turn$ BEGIN PERFORM pg_advisory_lock(hashtext('houndstack.proof')); END $turn$;
 
 BEGIN;
-
-\i :migration
 
 -- ── Fixture ───────────────────────────────────────────────────────────────
 SELECT set_config('request.jwt.claims', '{}', true);
@@ -204,6 +208,23 @@ BEGIN
     RAISE EXCEPTION 'PROOF FAILED [solo-two]: with two people a walk was still given to %', _got;
   END IF;
   RAISE NOTICE 'ok: a one-person business walks its own walks, and only walks, and only while it is one person';
+END $$;
+
+-- ── 7. Mutation: without the trigger, nothing fills the walker ─────────
+-- visits_plan_walker is dropped (inside this transaction; the ROLLBACK puts
+-- it back) and a new visit from Bo's plan arrives. If it still gets a walker,
+-- something else was filling it and group 1 proved nothing.
+DO $$
+DECLARE _got uuid;
+BEGIN
+  DROP TRIGGER visits_plan_walker ON public.visits;
+  _got := pg_temp.new_visit('f7320000-0000-4000-8000-0000000000a9', '07320000-0000-4000-8000-0000000000aa',
+    'd7320000-0000-4000-8000-0000000000a1', 'c7320000-0000-4000-8000-0000000000a1',
+    'e7320000-0000-4000-8000-0000000000a1', (SELECT d FROM proof_day) + 9);
+  IF _got IS NOT NULL THEN
+    RAISE EXCEPTION 'PROOF INCONCLUSIVE [mutation]: with visits_plan_walker gone a new visit still got %', _got;
+  END IF;
+  RAISE NOTICE 'ok: mutation reproduces: without visits_plan_walker a plan''s new visit arrives unassigned';
 END $$;
 
 ROLLBACK;

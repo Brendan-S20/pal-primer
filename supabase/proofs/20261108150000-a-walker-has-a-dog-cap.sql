@@ -1,6 +1,12 @@
--- A walker has a dog cap (#731), proved against a real Postgres. Run by
--- tests/a-walker-has-a-dog-cap-in-a-real-database.test.ts, which passes the
--- migration as :migration.
+-- Proof for 20261108150000 — a walker has a dog cap (#731).
+--
+-- Run by the database job in .github/workflows/sandboxes.yml ("The proofs,
+-- which are evidence rather than schema") against the database it has just
+-- replayed from every migration, so the migration is already applied here.
+-- Locally:
+--   supabase db reset
+--   psql "postgresql://postgres:postgres@127.0.0.1:54422/postgres" \
+--     -v ON_ERROR_STOP=1 -f supabase/proofs/20261108150000-a-walker-has-a-dog-cap.sql
 --
 -- One business that walks dogs, a group walk service for up to six dogs, and
 -- two walkers: Ann, capped at three dogs at once, and Bo, with no cap (the
@@ -34,8 +40,6 @@ SET client_min_messages TO notice;
 DO $turn$ BEGIN PERFORM pg_advisory_lock(hashtext('houndstack.proof')); END $turn$;
 
 BEGIN;
-
-\i :migration
 
 -- ── Fixture ───────────────────────────────────────────────────────────────
 SELECT set_config('request.jwt.claims', '{}', true);
@@ -311,6 +315,30 @@ BEGIN
     RAISE EXCEPTION 'PROOF FAILED [bill]: a second billing run billed a shared walk again';
   END IF;
   RAISE NOTICE 'ok: three clients on one shared walk get one line each, on their own invoice, once';
+END $$;
+
+-- ── 8. Mutation: without the triggers, nothing refuses ─────────────────
+-- The cap triggers are dropped (inside this transaction, so the ROLLBACK puts
+-- them back) and the refusals in 2 and 3 are tried again. If either still
+-- fails, something other than these triggers was doing the refusing and every
+-- "ok" above was for the wrong reason.
+DO $$
+BEGIN
+  DROP TRIGGER walk_groups_walker_cap ON public.walk_groups;
+  DROP TRIGGER visits_validate_walk_group_walker_cap ON public.visits;
+  -- Bo's group (C 2 + D 1 = 3 dogs) to Ann, capped at 3, then lowered to 2.
+  UPDATE public.staff SET max_dogs_per_walk = 2 WHERE id = '5e731000-0000-4000-8000-0000000000a2';
+  BEGIN
+    UPDATE public.walk_groups SET assigned_staff_id = '5e731000-0000-4000-8000-0000000000a2'
+     WHERE id = '97310000-0000-4000-8000-0000000000b2';
+  EXCEPTION WHEN check_violation THEN
+    RAISE EXCEPTION 'PROOF INCONCLUSIVE [mutation]: with the cap triggers gone a group over the cap was still refused: %', SQLERRM;
+  END;
+  IF (SELECT assigned_staff_id FROM public.walk_groups WHERE id = '97310000-0000-4000-8000-0000000000b2')
+     IS DISTINCT FROM '5e731000-0000-4000-8000-0000000000a2' THEN
+    RAISE EXCEPTION 'PROOF INCONCLUSIVE [mutation]: the over-cap assignment did not land';
+  END IF;
+  RAISE NOTICE 'ok: mutation reproduces: without walk_groups_walker_cap a group goes to a walker it exceeds';
 END $$;
 
 ROLLBACK;

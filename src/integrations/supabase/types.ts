@@ -9312,6 +9312,10 @@ export type Database = {
         }
         Returns: number
       }
+      assign_walk_group_if_open: {
+        Args: { _group_id: string; _walker_id: string }
+        Returns: string
+      }
       book_training_package_plan: {
         Args: {
           _client_package_id: string
@@ -10793,6 +10797,10 @@ export type Database = {
       set_org_commercial_accounts: {
         Args: { _enabled: boolean }
         Returns: Json
+      }
+      set_plan_walker: {
+        Args: { _subscription_id: string; _walker_id: string | null }
+        Returns: undefined
       }
       set_route_windows: {
         Args: { _org_id: string; _policy: string }

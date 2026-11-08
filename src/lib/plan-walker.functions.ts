@@ -41,8 +41,15 @@ export const getPlanWalker = createServerFn({ method: "GET" })
     };
   });
 
-/** Dispatch's permission: the same database predicate group walks and
- *  reassign_visit check. */
+/**
+ * Dispatch's permission (can_write_org: owner, office manager, dispatcher),
+ * through public.set_plan_walker (20261108150200). The signed-in client
+ * cannot UPDATE subscriptions as a dispatcher, because that policy guards a
+ * plan's price and asks for manage_pricing; the function takes only the plan
+ * and the walker and writes only the walker, so it opens nothing else. It
+ * checks the walker is an active person in the plan's business who runs
+ * routes, and refuses a plan in another business as "Not authorized".
+ */
 export const setPlanWalker = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
@@ -51,35 +58,11 @@ export const setPlanWalker = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const { orgId } = await resolveCaller(context.supabase, context.userId);
-    const { data: allowed, error: authError } = await context.supabase.rpc("can_write_org", {
-      _user_id: context.userId,
-      _org_id: orgId,
+    await resolveCaller(context.supabase, context.userId);
+    const { error } = await context.supabase.rpc("set_plan_walker", {
+      _subscription_id: data.subscriptionId,
+      _walker_id: data.walkerId,
     });
-    if (authError) throw new Error(authError.message);
-    if (!allowed) throw new Error("Not authorized");
-    if (data.walkerId) {
-      const { data: person, error } = await context.supabase
-        .from("staff")
-        .select("id, display_name, is_field_tech, active")
-        .eq("id", data.walkerId)
-        .eq("organization_id", orgId)
-        .maybeSingle();
-      if (error) throw new Error(error.message);
-      if (!person || person.active === false)
-        throw new Error("Choose a walker from this business.");
-      if (!person.is_field_tech)
-        throw new Error(
-          `${person.display_name ?? "That person"} is not set up to run routes. Turn on "Runs routes" for them in Settings → Users & roles first.`,
-        );
-    }
-    const { data: rows, error } = await context.supabase
-      .from("subscriptions")
-      .update({ assigned_staff_id: data.walkerId })
-      .eq("id", data.subscriptionId)
-      .eq("organization_id", orgId)
-      .select("id");
     if (error) throw new Error(error.message);
-    if (!rows?.length) throw new Error("That plan was not found.");
     return { ok: true };
   });

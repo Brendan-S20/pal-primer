@@ -5,7 +5,8 @@
 // assigned by capacity". This file pins the pure rules, the wiring around
 // them, and R2-29 (the group's Walker select said "Unassigned" while the
 // database had the walker). The database half of the cap is
-// a-walker-has-a-dog-cap-in-a-real-database.test.ts.
+// supabase/proofs/20261108150000-a-walker-has-a-dog-cap.sql, which the
+// database job runs (a-walker-proof-runs-where-a-database-does.test.ts).
 
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -414,15 +415,18 @@ describe("assign by capacity", () => {
     expect(planWalkerCapacity(groups, walkers)).toEqual(planWalkerCapacity(groups, walkers));
   });
 
-  it("writes only to a group that still has no walker, as the office", () => {
+  it("writes through the atomic database check, never a bare group UPDATE, as the office", () => {
     const server = read("src/lib/walk-groups.functions.ts");
     const fn = server.slice(
       server.indexOf("export const assignWalkGroupsByCapacity"),
       server.indexOf("export const setWalkerDogCap"),
     );
     expect(fn).toContain("await requireWalkGroupOffice(context.supabase, context.userId)");
-    expect(fn).toContain('.is("assigned_staff_id", null)');
-    expect(fn).toContain('.eq("organization_id", orgId)');
+    // The race (#733 review): a guard on the group row alone let
+    // copy_walk_group_walker replace a hand assignment made after the read.
+    expect(fn).toContain('rpc("assign_walk_group_if_open"');
+    expect(fn).not.toMatch(/\.from\("walk_groups"\)\s*\.update/);
+    expect(fn).toContain('if (outcome === "assigned")');
     expect(fn).toContain("planWalkerCapacity(summaries, walkers, dayLoad)");
     expect(fn).toContain('rpc("is_staff_off"');
     expect(fn).toContain("p.active && p.is_field_tech && p.routingAvailable");
@@ -476,10 +480,10 @@ describe("a walk plan has a walker, and a one-person business walks its own walk
   it("is set by dispatch, for someone who runs routes, in this business", () => {
     const server = read("src/lib/plan-walker.functions.ts");
     const set = server.slice(server.indexOf("export const setPlanWalker"));
-    expect(set).toContain('rpc("can_write_org"');
-    expect(set).toContain('if (!allowed) throw new Error("Not authorized");');
-    expect(set).toContain("if (!person.is_field_tech)");
-    expect(set.match(/\.eq\("organization_id", orgId\)/g)).toHaveLength(2);
+    // Not a subscriptions UPDATE through the signed-in client: that policy is
+    // manage_pricing and a dispatcher matched no row (#733 review).
+    expect(set).toContain('rpc("set_plan_walker"');
+    expect(set).not.toMatch(/\.from\("subscriptions"\)/);
     const tab = read("src/components/client-detail/ServicesTab.tsx");
     expect(tab).toMatch(
       /s\.services\?\.service_line === "dog_walking" && !s\.stay_id && \(\s*<PlanWalker subscriptionId=\{s\.id\} \/>/,
@@ -488,5 +492,51 @@ describe("a walk plan has a walker, and a one-person business walks its own walk
     expect(ui).toContain("Walks already on");
     expect(ui).toContain("walkerOptions(walkers, people, current)");
     expect(ui).toContain("min-h-11");
+  });
+});
+
+describe("walker assignment is narrow and atomic (#733 review)", () => {
+  const sql = read("supabase/migrations/20261108150200_walker-assignment-is-narrow-and-atomic.sql");
+  const fnBody = (name: string) =>
+    sql.slice(
+      sql.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`),
+      sql.indexOf(`REVOKE ALL ON FUNCTION public.${name}(`),
+    );
+
+  it("lets dispatch set a plan's walker and nothing else, without touching the pricing policy", () => {
+    const body = fnBody("set_plan_walker");
+    expect(body).toContain("SECURITY DEFINER");
+    expect(body).toContain("NOT public.can_write_org((SELECT auth.uid()), _org)");
+    expect(body).toContain("MESSAGE = 'Not authorized'");
+    expect(body).toContain("WHERE st.id = _walker_id AND st.organization_id = _org");
+    expect(body).toContain("COALESCE(st.is_field_tech, false)");
+    const writes = body.match(/UPDATE public\.subscriptions SET [^;]+;/g) ?? [];
+    expect(writes).toEqual([
+      "UPDATE public.subscriptions SET assigned_staff_id = _walker_id WHERE id = _subscription_id;",
+    ]);
+    expect(sql).not.toMatch(/(CREATE|DROP|ALTER) POLICY/i);
+    expect(sql).toContain("strpos(_qual, 'manage_pricing') = 0");
+    expect(sql).toContain(
+      "REVOKE ALL ON FUNCTION public.set_plan_walker(uuid, uuid) FROM PUBLIC, anon;",
+    );
+  });
+
+  it("locks the group, then every walk in it unconditionally, then reads, then writes", () => {
+    const body = fnBody("assign_walk_group_if_open");
+    const order = [
+      "WHERE g.id = _group_id FOR UPDATE;",
+      "PERFORM 1 FROM public.visits v WHERE v.walk_group_id = _group_id ORDER BY v.id FOR UPDATE;",
+      "AND (v.assigned_staff_id IS NOT NULL OR v.route_pinned)",
+      "UPDATE public.walk_groups SET assigned_staff_id = _walker_id WHERE id = _group_id;",
+    ].map((s) => body.indexOf(s));
+    expect(order.every((i) => i > 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // The member lock must not be conditional on assigned_staff_id: an
+    // uncommitted hand assignment still reads as unassigned and would be
+    // skipped without waiting for it.
+    expect(body).not.toMatch(/assigned_staff_id IS NULL[^;]*FOR UPDATE/);
+    expect(body).toContain("RETURN 'members_assigned';");
+    expect(body).toContain("NOT public.can_write_org((SELECT auth.uid()), _org)");
+    expect(sql).not.toMatch(/CREATE OR REPLACE FUNCTION public\.copy_walk_group_walker/);
   });
 });
