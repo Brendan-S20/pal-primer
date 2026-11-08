@@ -179,6 +179,10 @@ export function VisitDetailDrawer({
   // business runs.
   const { petWaste: businessRunsPetWaste } = useServiceLines();
   const canActFromOffice = can("manage_client_billing");
+  // Moving a visit to another day is routes work, not billing (#728):
+  // rescheduleVisitFromOffice asks for manage_schedule, which a dispatcher
+  // holds. Complete and Cancel can bill and stay on canActFromOffice.
+  const canMoveDay = can("manage_schedule");
 
   // Q-12, narrowest useful answer. Below 768px the dnd board is display:none
   // and there is no other way to move a visit, so a dispatcher on a phone
@@ -187,11 +191,11 @@ export function VisitDetailDrawer({
   //
   // Reassign for every office role: reassign_visit authorizes on
   // can_write_org, which all three pass. Moving the day is here too since
-  // 2026-09-28, for the roles that hold manage_client_billing (which
-  // rescheduleVisitFromOffice requires, so a dispatcher still does not see
-  // it). Before that it said "is on desktop", and an owner in a driveway with
-  // a customer asking for Thursday had no way to do it. Reorder stays on the
-  // board; it has no meaning without one.
+  // 2026-09-28, and for a dispatcher since #728 (manage_schedule, which
+  // rescheduleVisitFromOffice requires). Before that it said "is on
+  // desktop", and an owner in a driveway with a customer asking for Thursday
+  // had no way to do it. Reorder stays on the board; it has no meaning
+  // without one.
   const doReassign = useServerFn(reassignVisit);
   const listStaffFn = useServerFn(listStaff);
   const { data: staffData } = useQuery({
@@ -715,7 +719,7 @@ export function VisitDetailDrawer({
                     </span>
                   </button>
                 )}
-                {canActFromOffice && (
+                {canMoveDay && (
                   <form
                     className="space-y-1 pt-2"
                     onSubmit={(e) => {

@@ -707,10 +707,18 @@ function NewClientWizardForm({
       ? ((zoneQuote.recurringPriceCents as number | null) ?? null)
       : null;
 
+  // Booking, not pricing (#728): a dispatcher starts a plan at the set price,
+  // the one shown above, and the server refuses any other. Billing it in
+  // advance is a billing decision, which stays with whoever manages billing.
+  const { can: canPlan } = usePermissions();
+  const setsPrices = canPlan("manage_pricing");
+  const billsClients = canPlan("manage_client_billing");
+
   // No zone quote and nothing typed means no price, not $25. The old
   // fallback saved $25.00 for anyone who left the box empty, while the box
   // showed a grey placeholder that looked like a suggestion.
   const priceCents = (() => {
+    if (!setsPrices) return suggestedCents;
     const override = parseFloat(priceOverride);
     if (!isNaN(override) && override > 0) return Math.round(override * 100);
     if (suggestedCents != null) return suggestedCents;
@@ -905,7 +913,7 @@ function NewClientWizardForm({
                 dogCount: accountType === "residential" ? dogCount : undefined,
                 unitCount: accountType === "commercial" ? unitsN : undefined,
                 zoneId: zoneQuote ? (zoneQuote.zoneId as string) : undefined,
-                billingCadence,
+                billingCadence: billsClients ? billingCadence : "postpaid",
               },
           officeNote: officeNote.trim() || undefined,
           fromLeadId: fromLead?.id,
@@ -992,7 +1000,7 @@ function NewClientWizardForm({
         fallback: "The client could not be saved. Try again.",
         refused: planSkipped
           ? undefined
-          : 'Your role is not allowed to set up a subscription. Tick "Skip subscription for now" to save the client without one, and ask the owner to add it.',
+          : 'Your role is not allowed to set up this subscription. Tick "Skip subscription for now" to save the client without one, and ask the owner to add it.',
       }),
   });
 
@@ -1626,12 +1634,13 @@ function NewClientWizardForm({
                   <div className="space-y-2">
                     <Label>Billing</Label>
                     <select
-                      value={billingCadence}
+                      value={billsClients ? billingCadence : "postpaid"}
                       onChange={(e) => setBillingCadence(e.target.value as any)}
+                      disabled={!billsClients}
                       className="h-10 w-full rounded-md border bg-background px-3 text-sm"
                     >
                       <option value="postpaid">Bill after each visit</option>
-                      <option value="prepaid">Prepaid credits</option>
+                      {billsClients && <option value="prepaid">Prepaid credits</option>}
                     </select>
                   </div>
                   {accountType === "commercial" && (
@@ -1761,7 +1770,9 @@ function NewClientWizardForm({
                           quoteQ.data &&
                           !("quote" in (quoteQ.data as any)) && (
                             <div className="text-sm text-amber-600">
-                              No zone matches ZIP {postalCode}. Set price manually below.
+                              {setsPrices
+                                ? `No zone matches ZIP ${postalCode}. Set price manually below.`
+                                : `No zone matches ZIP ${postalCode}, so there is no set price.`}
                             </div>
                           )}
                         {walkLike && serviceCents == null && (
@@ -1802,29 +1813,49 @@ function NewClientWizardForm({
                   </div>
                 )}
 
-                <div className="space-y-2">
-                  <Label htmlFor="po">
-                    {suggestedCents != null ? "Price per visit (override)" : "Price per visit"}
-                  </Label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">$</span>
-                    <Input
-                      id="po"
-                      inputMode="decimal"
-                      placeholder={
-                        suggestedCents != null ? (suggestedCents / 100).toFixed(2) : "Enter a price"
-                      }
-                      value={priceOverride}
-                      onChange={(e) => setPriceOverride(e.target.value)}
-                      className="max-w-[160px]"
-                    />
-                    {priceCents != null && (
-                      <span className="text-xs text-muted-foreground">
-                        Final: <strong>{money(priceCents)}</strong> / visit
-                      </span>
+                {!setsPrices ? (
+                  <div className="space-y-1 text-sm">
+                    {suggestedCents != null ? (
+                      <p>
+                        Price per visit: <strong>{money(suggestedCents)}</strong>, the set price.
+                        Only an owner or office manager can change it.
+                      </p>
+                    ) : (
+                      !quoteQ.isFetching && (
+                        <p role="alert" className="text-amber-600">
+                          There is no set price for this plan. Tick "Skip subscription for now" to
+                          save the client, and ask an owner or office manager to add the plan.
+                        </p>
+                      )
                     )}
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="po">
+                      {suggestedCents != null ? "Price per visit (override)" : "Price per visit"}
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">$</span>
+                      <Input
+                        id="po"
+                        inputMode="decimal"
+                        placeholder={
+                          suggestedCents != null
+                            ? (suggestedCents / 100).toFixed(2)
+                            : "Enter a price"
+                        }
+                        value={priceOverride}
+                        onChange={(e) => setPriceOverride(e.target.value)}
+                        className="max-w-[160px]"
+                      />
+                      {priceCents != null && (
+                        <span className="text-xs text-muted-foreground">
+                          Final: <strong>{money(priceCents)}</strong> / visit
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {offersFirstCleanup && fcPricing && (
                   <div className="space-y-3 rounded-md border p-4">
