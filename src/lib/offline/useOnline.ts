@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { countPending } from "./queue";
 import { resolveOfflineUserId } from "./action-owner";
 import { CONNECTIVITY_CHANGE, isDefinitelyOffline } from "./connectivity";
+import { LAST_REQUEST_CHANGE, lastRequestOutcome, type RequestOutcome } from "./last-request";
 
 /**
  * What every offline INDICATOR in the app renders from.
@@ -81,4 +82,17 @@ export function usePendingCount(): number {
     };
   }, []);
   return n;
+}
+
+/** Whether the last request a tech was waiting on got through (R2-53). See
+ *  last-request.ts: an interface that is up is not a server that answers. */
+export function useLastRequestOutcome(): RequestOutcome | null {
+  const [outcome, setOutcome] = useState<RequestOutcome | null>(() => lastRequestOutcome());
+  useEffect(() => {
+    const refresh = () => setOutcome(lastRequestOutcome());
+    refresh();
+    window.addEventListener(LAST_REQUEST_CHANGE, refresh);
+    return () => window.removeEventListener(LAST_REQUEST_CHANGE, refresh);
+  }, []);
+  return outcome;
 }

@@ -45,7 +45,9 @@ import {
   SIT_SKIP_REASON_LABELS,
   techSkipReasonCodes,
 } from "@/lib/skip-rules.functions";
-import { useOnline, usePendingCount } from "@/lib/offline/useOnline";
+import { useLastRequestOutcome, useOnline, usePendingCount } from "@/lib/offline/useOnline";
+import { connectionLine, recordRequestOutcome } from "@/lib/offline/last-request";
+import { isTransportFailure } from "@/lib/offline/run-or-queue";
 import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { nativeTopBarStyle } from "@/lib/native-build";
 import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
@@ -349,6 +351,8 @@ function MyDay() {
     return () => window.clearInterval(id);
   }, []);
   const pending = usePendingCount();
+  const lastRequest = useLastRequestOutcome();
+  const connection = connectionLine({ online, pending, lastOutcome: lastRequest });
   const { t } = useTranslation();
   // In the language this device reads. The route's head is English because
   // it runs before i18n has read the device's choice.
@@ -422,7 +426,19 @@ function MyDay() {
 
   const { data, isLoading, isError, isFetching, dataUpdatedAt, refetch } = useQuery({
     queryKey: ["my-day", day, staffParam ?? ""],
-    queryFn: () => fn({ data: staffParam ? { day, staffId: staffParam } : { day } }),
+    // Recorded for the connection line (R2-53): the load is the one request
+    // My Day always makes, so it is the first to know the server is not
+    // answering even though the phone says it is online.
+    queryFn: async () => {
+      try {
+        const r = await fn({ data: staffParam ? { day, staffId: staffParam } : { day } });
+        recordRequestOutcome("ok");
+        return r;
+      } catch (e) {
+        recordRequestOutcome(isTransportFailure(e) ? "failed" : "ok");
+        throw e;
+      }
+    },
     // Coming back to the app in a dead zone is not a reason to ask the server
     // for the day: the request can only fail. The saved copy now survives a
     // failed refresh (lib/offline/last-good-copy.ts), but a refetch that cannot
@@ -698,17 +714,23 @@ function MyDay() {
               that truncates, with its action at the end. When the saved-copy
               line already says "Offline", the connection line is not drawn
               again: its pending count joins the saved-copy line instead. */}
-          {(!online || pending > 0) && !(freshness?.status === "cached" && !online) && (
+          {connection && !(freshness?.status === "cached" && !online) && (
             <div
               className={`flex min-h-9 items-center gap-2 rounded-md border ps-2.5 text-xs animate-fade-in ${
-                online
+                connection === "online"
                   ? "border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400"
                   : "border-destructive/50 bg-destructive/10 text-destructive"
               }`}
             >
-              {!online && <WifiOff className="h-3.5 w-3.5 shrink-0" />}
+              {connection !== "online" && <WifiOff className="h-3.5 w-3.5 shrink-0" />}
+              {/* R2-53: "Back online" only while requests are getting through.
+                  The phone saying it has a network is not the server answering. */}
               <span className="min-w-0 flex-1 truncate py-1 font-medium">
-                {!online ? t("common.offline") : t("common.online")}
+                {connection === "offline"
+                  ? t("common.offline")
+                  : connection === "unreachable"
+                    ? t("common.unreachable")
+                    : t("common.online")}
                 {pending > 0 ? ` · ${t("common.pending", { count: pending })}` : ""}
               </span>
               {online && pending > 0 && (

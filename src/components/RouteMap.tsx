@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { isNative, getPositionNative } from "@/lib/native";
+import { isNative, getPositionNative, openAppSettings, platform } from "@/lib/native";
 import { AlertTriangle, Loader2, LocateFixed } from "lucide-react";
 import type { TileVariant } from "@/lib/map-tiles";
 import { useMapRenderer } from "@/lib/maps/use-map-renderer";
@@ -186,12 +186,22 @@ export function geolocationUnsupportedMessage(secureContext: boolean): string {
  *  stays. */
 export function nativeGeolocationErrorMessage(
   reason: "denied" | "unavailable" | "timeout",
+  os: "ios" | "android" = "ios",
 ): string {
+  // R2-54: the steps are the platform's own. "Location Services" and "While
+  // Using the App" are iOS words; a Pixel says Permissions › Location and
+  // "Allow only while using the app", and its master switch is just Location.
+  // Both now come with an Open Settings button beside them (see the map's
+  // alert box), so the steps start from the app's own page.
   switch (reason) {
     case "denied":
-      return "HoundStack does not have permission to use your location. Open Settings, find HoundStack, tap Location and choose While Using the App, then press the button again.";
+      return os === "android"
+        ? "HoundStack does not have permission to use your location. Tap Open Settings, then Permissions › Location, choose Allow only while using the app, and press the button again."
+        : "HoundStack does not have permission to use your location. Tap Open Settings, then Location, choose While Using the App, and press the button again.";
     case "timeout":
-      return "Locating timed out. Check that Location Services are switched on in Settings, then try again.";
+      return os === "android"
+        ? "Locating timed out. Check that Location is switched on in quick settings, then try again."
+        : "Locating timed out. Check that Location Services are switched on in Settings, then try again.";
     default:
       return "Your device could not work out where it is. Move somewhere with a clearer view of the sky and try again.";
   }
@@ -311,6 +321,8 @@ export function RouteMap({
   const [hint, setHint] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
+  // A native denial, which only Settings can undo: the alert offers the way there.
+  const [geoDenied, setGeoDenied] = useState(false);
   /** Once the user has asked "where am I", stop the data effect from flinging
    *  the viewport back to the whole route. Cleared when the visit set actually
    *  changes (a different day), not when the same day merely refetches — being
@@ -451,6 +463,7 @@ export function RouteMap({
     const layer = meRef.current;
     if (!map || !layer) return;
     setGeoError(null);
+    setGeoDenied(false);
     const secure = inSecureContext();
 
     /** The same dot for both paths. Two copies of this drifted apart is how
@@ -511,7 +524,12 @@ export function RouteMap({
         setLocating(false);
         if (!r) return;
         if (r.ok) drawMe(r.latitude, r.longitude, r.accuracy);
-        else setGeoError(nativeGeolocationErrorMessage(r.reason));
+        else {
+          setGeoError(
+            nativeGeolocationErrorMessage(r.reason, platform() === "android" ? "android" : "ios"),
+          );
+          setGeoDenied(r.reason === "denied");
+        }
       });
       return;
     }
@@ -838,10 +856,24 @@ export function RouteMap({
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
             {/* min-w-0 so the message wraps inside the box instead of setting
                 its width — CLAUDE.md's flex-row rule. */}
-            <span className="min-w-0">{geoError}</span>
+            <span className="min-w-0">
+              {geoError}
+              {geoDenied && (
+                <button
+                  type="button"
+                  onClick={() => void openAppSettings()}
+                  className="mt-1 flex min-h-11 items-center font-semibold text-primary underline underline-offset-2"
+                >
+                  Open Settings
+                </button>
+              )}
+            </span>
             <button
               type="button"
-              onClick={() => setGeoError(null)}
+              onClick={() => {
+                setGeoError(null);
+                setGeoDenied(false);
+              }}
               aria-label="Dismiss location message"
               className="-my-1.5 -mr-1 flex h-11 w-11 shrink-0 items-center justify-center text-muted-foreground"
             >

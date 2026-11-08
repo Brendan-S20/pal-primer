@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { isDefinitelyOffline } from "./connectivity";
 import type { PhotoKind } from "@/lib/photo-kinds";
 import { isTransportFailure, withDeadline } from "@/lib/offline/run-or-queue";
+import { recordRequestOutcome } from "@/lib/offline/last-request";
 import {
   deleteAction,
   deletePhoto,
@@ -401,7 +402,13 @@ export async function syncQueue(callers: SyncCallers, userId: string): Promise<S
         await withDeadline(runOne(action, callers), REPLAY_DEADLINE_MS, `replay ${action.kind}`);
         await deleteAction(action.id);
         result.succeeded++;
+        recordRequestOutcome("ok");
       } catch (e) {
+        // What the connection line reads (R2-53): a refusal is the server
+        // answering; only a transport failure means it was not reached.
+        if (!(e instanceof MissingPhotoError)) {
+          recordRequestOutcome(isTransportFailure(e) ? "failed" : "ok");
+        }
         if (e instanceof MissingPhotoError) {
           // Nothing to retry — the bytes are gone. Drop it so the rest of the
           // queue can move, and report it as a loss rather than a success.
