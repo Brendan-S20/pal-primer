@@ -39,6 +39,8 @@ import type { Stripe } from "stripe";
 /** The PaymentIntent metadata `source` the Connect webhook routes on. */
 export const PORTAL_CHANGE_FEE_SOURCE = "portal_change_fee";
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export type FeeChargingMode = { enabled: true } | { enabled: false; reason: string };
 
 /**
@@ -191,6 +193,20 @@ export async function chargePortalChangeFee(
       }
     }
 
+    // Durable correlation BEFORE Stripe is asked (#730 review, finding 2):
+    // the row now names the account, and the intent will carry the row's id,
+    // so a webhook that arrives before this function stores the intent's id
+    // is still matched (record_portal_change_fee_event). If this fails,
+    // nothing has been sent to Stripe.
+    const { error: prepErr } = await db.rpc("prepare_portal_change_fee", {
+      _charge_id: charge.id,
+      _account: stripeAccount,
+    });
+    if (prepErr) {
+      console.error("portal change fee: could not prepare", charge.id, prepErr.message);
+      return { outcome: "failed", reason: prepErr.message };
+    }
+
     const pi = await conn.stripe.paymentIntents.create(
       {
         amount: charge.amount_cents,
@@ -236,12 +252,19 @@ export async function chargePortalChangeFee(
  * identifier on a Connect event, so the database matches the fee by its
  * PaymentIntent AND that account; metadata is never trusted to name a row.
  * Returns what the database did: succeeded / failed / duplicate / unchanged /
- * unknown / ignored. Throws on a database error so Stripe retries.
+ * unknown / ignored. Throws on a database error so Stripe retries; the route
+ * answers 409 to "unknown" for the same reason (no fee matched yet).
  */
 export async function recordPortalChangeFeeEvent(
   db: Db,
   event: Pick<Stripe.Event, "id" | "type" | "account" | "livemode"> & {
-    data: { object: { id: string; last_payment_error?: { message?: string } | null } };
+    data: {
+      object: {
+        id: string;
+        last_payment_error?: { message?: string } | null;
+        metadata?: Record<string, string> | null;
+      };
+    };
   },
 ): Promise<string> {
   if (event.type !== "payment_intent.succeeded" && event.type !== "payment_intent.payment_failed") {
@@ -256,6 +279,9 @@ export async function recordPortalChangeFeeEvent(
     _succeeded: event.type === "payment_intent.succeeded",
     _message: pi.last_payment_error?.message ?? null,
     _livemode: event.livemode,
+    // The fee row's own id, which the intent carries in its metadata. Used
+    // only together with event.account, which the row was prepared for.
+    _charge_id: UUID.test(pi.metadata?.fee_charge_id ?? "") ? pi.metadata!.fee_charge_id : null,
   });
   if (error) throw new Error(`portal change fee event ${event.id}: ${error.message}`);
   return String(data);

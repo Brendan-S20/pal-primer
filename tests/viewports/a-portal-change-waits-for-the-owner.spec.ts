@@ -44,9 +44,13 @@ for (const { w, h, label } of WIDTHS) {
       await installSignedInSession(page);
       await installStubBackend(page);
       await page.goto("/concerns", { waitUntil: "domcontentloaded" });
-      const heading = page.getByRole("heading", { name: "Reschedules and skips waiting for approval" });
+      const heading = page.getByRole("heading", {
+        name: "Reschedules and skips waiting for approval",
+      });
       await expect(heading).toBeVisible({ timeout: FIRST_PAINT_MS });
-      await expect(page.getByText("Bartholomew Featherstonehaugh-Wolstenholme").first()).toBeVisible();
+      await expect(
+        page.getByText("Bartholomew Featherstonehaugh-Wolstenholme").first(),
+      ).toBeVisible();
       await expect(
         page.getByText("The client was shown and accepted a $25.00 late-change fee.").first(),
       ).toBeVisible();
@@ -68,7 +72,9 @@ for (const { w, h, label } of WIDTHS) {
       // The grooming block carries the fixture's own override and fee.
       await expect(page.locator("#pc-cutoff-mobile_grooming")).toHaveValue("24");
       await expect(page.locator("#pc-cfee-mobile_grooming")).toHaveValue("45.00");
-      await expect(page.getByRole("switch", { name: "Charge late fees automatically" })).not.toBeChecked();
+      await expect(
+        page.getByRole("switch", { name: "Charge late fees automatically" }),
+      ).not.toBeChecked();
       await measure(page, `/settings/client-portal @${w}`, touch);
     });
   });
@@ -89,7 +95,9 @@ for (const width of [360, 430, 768, 1280]) {
         waitUntil: "domcontentloaded",
       });
       await expect(page.getByText(PORTAL_CLIENT_NAME).first()).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByText(/is waiting for approval/).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(/is waiting for approval/).first()).toBeVisible({
+        timeout: 15_000,
+      });
       await expect(page.getByRole("button", { name: "Withdraw request" })).toBeVisible();
       await measure(page, `portal visits @${width}`, width < 768);
 
@@ -98,13 +106,62 @@ for (const width of [360, 430, 768, 1280]) {
       const skip = page.getByRole("button", { name: "Skip", exact: true }).last();
       await skip.scrollIntoViewIfNeeded();
       await skip.click();
-      await expect(page.getByText("A late-change fee of $25.00 applies to this change.").first()).toBeVisible();
-      await expect(page.getByText("The business reviews this change before it takes effect.").first()).toBeVisible();
+      await expect(
+        page.getByText("A late-change fee of $25.00 applies to this change.").first(),
+      ).toBeVisible();
+      await expect(
+        page.getByText("The business reviews this change before it takes effect.").first(),
+      ).toBeVisible();
       const confirm = page.getByRole("button", { name: /^Request skip/ });
       await expect(confirm).toBeDisabled();
-      await page.getByRole("checkbox", { name: /I understand a \$25\.00 late-change fee applies/ }).check();
+      await page
+        .getByRole("checkbox", { name: /I understand a \$25\.00 late-change fee applies/ })
+        .check();
       await expect(confirm).toBeEnabled();
       await measure(page, `portal visits, skip open @${width}`, width < 768);
+
+      // Review finding 4: the $25 skip fee was accepted. Switching to the
+      // $10 reschedule is a different fee, and it needs its own tick.
+      const reschedule = page.getByRole("button", { name: "Reschedule", exact: true }).last();
+      await reschedule.click();
+      await expect(
+        page.getByText("A late-change fee of $10.00 applies to this change.").first(),
+      ).toBeVisible();
+      const requestMove = page.getByRole("button", { name: /^Request reschedule to/ });
+      await expect(requestMove).toBeDisabled();
+      const tick10 = page.getByRole("checkbox", {
+        name: /I understand a \$10\.00 late-change fee applies/,
+      });
+      await expect(tick10).not.toBeChecked();
+      await tick10.check();
+      await expect(requestMove).toBeEnabled();
+    });
+
+    test("sees the business's answer: on the visit, and on the Requests tab", async ({ page }) => {
+      await installStubBackend(page, { portal: true });
+      await page.goto(`/portal/${PORTAL_SLUG}/${PORTAL_TOKEN}/visits`, {
+        waitUntil: "domcontentloaded",
+      });
+      await expect(page.getByText(PORTAL_CLIENT_NAME).first()).toBeVisible({ timeout: 30_000 });
+      // Review finding 5: a declined request does not just disappear.
+      await expect(
+        page.getByText(/^Your request to move this visit to .+ was declined\./).first(),
+      ).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(page.getByText(/any other weekday works/).first()).toBeVisible();
+      await measure(page, `portal visits, declined @${width}`, width < 768);
+
+      await page.goto(`/portal/${PORTAL_SLUG}/${PORTAL_TOKEN}/requests`, {
+        waitUntil: "domcontentloaded",
+      });
+      const heading = page.getByRole("heading", { name: "Reschedule and skip requests" });
+      await expect(heading).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText("Declined", { exact: true }).first()).toBeVisible();
+      await expect(page.getByText("Waiting for approval", { exact: true }).first()).toBeVisible();
+      await expect(page.getByText(/No problem, enjoy the trip\./).first()).toBeVisible();
+      await heading.scrollIntoViewIfNeeded();
+      await measure(page, `portal requests @${width}`, width < 768);
     });
   });
 }

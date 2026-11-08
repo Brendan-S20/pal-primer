@@ -5,7 +5,7 @@
 -- prints "ok: ..." or raises "PROOF FAILED [...]".
 --
 -- Two businesses. A: an owner, an office manager, a client with a portal
--- token and four visits. B: an owner, a client, a visit. Staff are tried as
+-- token and its visits. B: an owner, a client, a visit. Staff are tried as
 -- the API sees them (role authenticated, the JWT's sub set the way Supabase
 -- sets it); the customer's calls run as the server does, with no user.
 
@@ -31,7 +31,12 @@ INSERT INTO public.organizations (id, name, timezone) VALUES
   ('0e000000-0000-4000-8000-000000073000', 'D6 Existing Before', 'UTC');
 SET LOCAL app.allow_protected_org_write = '';
 
+-- Run by the vitest file, the migration is applied here inside this
+-- transaction. Run by CI's database job (supabase/proofs/), the database was
+-- just built from every migration and there is nothing to apply.
+\if :{?migration}
 \i :migration
+\endif
 
 -- ── Fixture ─────────────────────────────────────────────────────────────────
 SET LOCAL app.allow_protected_org_write = '1';
@@ -77,7 +82,12 @@ SELECT v.id::uuid, '0a000000-0000-4000-8000-000000073000', 'e0000000-0000-4000-8
                ('7a000000-0000-4000-8000-000000073003', 12),
                ('7a000000-0000-4000-8000-000000073004', 13),
                -- Inside two weeks, for the per-line cutoff at the end.
-               ('7a000000-0000-4000-8000-000000073005', 5)) AS v(id, off);
+               ('7a000000-0000-4000-8000-000000073005', 5),
+               -- For the review's findings (sections 6 to 8).
+               ('7a000000-0000-4000-8000-000000073006', 6),
+               ('7a000000-0000-4000-8000-000000073007', 7),
+               ('7a000000-0000-4000-8000-000000073008', 8),
+               ('7a000000-0000-4000-8000-000000073009', 9)) AS v(id, off);
 INSERT INTO public.visits (id, organization_id, subscription_id, client_id, property_id, scheduled_on, status)
 VALUES ('7b000000-0000-4000-8000-000000073001', '0b000000-0000-4000-8000-000000073000', 'e0000000-0000-4000-8000-0000000730b1',
         'c0000000-0000-4000-8000-0000000730b1', 'd0000000-0000-4000-8000-0000000730b1', current_date + 10, 'scheduled');
@@ -207,7 +217,7 @@ DO $$
 DECLARE _r jsonb; _v record;
 BEGIN
   _r := public.portal_request_visit_change('aaaaaaaa-0000-4000-8000-0000000730a1',
-          '7a000000-0000-4000-8000-000000073001', 'reschedule', current_date + 20, 'away', NULL);
+          '7a000000-0000-4000-8000-000000073001', 'reschedule', current_date + 20, 'away', NULL, gen_random_uuid()::text);
   IF _r->>'status' <> 'applied' THEN
     RAISE EXCEPTION 'PROOF FAILED [instant]: reschedule came back %', _r;
   END IF;
@@ -217,7 +227,7 @@ BEGIN
   END IF;
 
   _r := public.portal_request_visit_change('aaaaaaaa-0000-4000-8000-0000000730a1',
-          '7a000000-0000-4000-8000-000000073002', 'cancel', NULL, 'party', NULL);
+          '7a000000-0000-4000-8000-000000073002', 'cancel', NULL, 'party', NULL, gen_random_uuid()::text);
   IF _r->>'status' <> 'applied'
      OR (SELECT status FROM public.visits WHERE id = '7a000000-0000-4000-8000-000000073002') <> 'skipped'
      OR (SELECT skip_reason_code FROM public.visits WHERE id = '7a000000-0000-4000-8000-000000073002') <> 'customer_requested' THEN
@@ -248,7 +258,7 @@ DO $$
 DECLARE _r jsonb;
 BEGIN
   _r := public.portal_request_visit_change('aaaaaaaa-0000-4000-8000-0000000730a1',
-          '7a000000-0000-4000-8000-000000073003', 'reschedule', current_date + 25, NULL, NULL);
+          '7a000000-0000-4000-8000-000000073003', 'reschedule', current_date + 25, NULL, NULL, gen_random_uuid()::text);
   IF _r->>'status' <> 'pending' THEN
     RAISE EXCEPTION 'PROOF FAILED [approval]: reschedule came back %', _r;
   END IF;
@@ -259,14 +269,14 @@ BEGIN
 
   BEGIN
     PERFORM public.portal_request_visit_change('aaaaaaaa-0000-4000-8000-0000000730a1',
-              '7a000000-0000-4000-8000-000000073003', 'cancel', NULL, NULL, NULL);
+              '7a000000-0000-4000-8000-000000073003', 'cancel', NULL, NULL, NULL, gen_random_uuid()::text);
     RAISE EXCEPTION 'PROOF FAILED [approval]: a second request on a waiting visit was accepted';
   EXCEPTION WHEN raise_exception THEN
     IF SQLERRM NOT LIKE 'A change to this visit is already waiting%' THEN RAISE; END IF;
   END;
 
   _r := public.portal_request_visit_change('aaaaaaaa-0000-4000-8000-0000000730a1',
-          '7a000000-0000-4000-8000-000000073004', 'cancel', NULL, NULL, NULL);
+          '7a000000-0000-4000-8000-000000073004', 'cancel', NULL, NULL, NULL, gen_random_uuid()::text);
   INSERT INTO proof_req VALUES ('cancel', (_r->>'request_id')::uuid);
   IF (SELECT status FROM public.visits WHERE id = '7a000000-0000-4000-8000-000000073004') <> 'scheduled' THEN
     RAISE EXCEPTION 'PROOF FAILED [approval]: a pending cancel skipped the visit';
@@ -275,7 +285,7 @@ BEGIN
   -- Cross-tenant from the portal: A's token, B's visit.
   BEGIN
     PERFORM public.portal_request_visit_change('aaaaaaaa-0000-4000-8000-0000000730a1',
-              '7b000000-0000-4000-8000-000000073001', 'cancel', NULL, NULL, NULL);
+              '7b000000-0000-4000-8000-000000073001', 'cancel', NULL, NULL, NULL, gen_random_uuid()::text);
     RAISE EXCEPTION 'PROOF FAILED [cross-tenant portal]: A''s customer asked about B''s visit';
   EXCEPTION WHEN raise_exception THEN
     IF SQLERRM NOT LIKE 'Visit not eligible%' THEN RAISE; END IF;
@@ -374,7 +384,7 @@ DO $$
 DECLARE _r jsonb;
 BEGIN
   _r := public.portal_request_visit_change('aaaaaaaa-0000-4000-8000-0000000730a1',
-          '7a000000-0000-4000-8000-000000073004', 'cancel', NULL, NULL, NULL);
+          '7a000000-0000-4000-8000-000000073004', 'cancel', NULL, NULL, NULL, gen_random_uuid()::text);
   BEGIN
     PERFORM public.portal_withdraw_change_request('bbbbbbbb-0000-4000-8000-0000000730b1', (_r->>'request_id')::uuid);
     RAISE EXCEPTION 'PROOF FAILED [withdraw cross-tenant]: B''s customer withdrew A''s request';
@@ -418,21 +428,21 @@ BEGIN
 
   BEGIN
     PERFORM public.portal_request_visit_change('aaaaaaaa-0000-4000-8000-0000000730a1',
-              '7a000000-0000-4000-8000-000000073004', 'cancel', NULL, NULL, NULL);
+              '7a000000-0000-4000-8000-000000073004', 'cancel', NULL, NULL, NULL, gen_random_uuid()::text);
     RAISE EXCEPTION 'PROOF FAILED [fee]: a late cancel was accepted without the fee being accepted';
   EXCEPTION WHEN raise_exception THEN
     IF SQLERRM NOT LIKE 'FEE_NOT_ACCEPTED%' THEN RAISE; END IF;
   END;
   BEGIN
     PERFORM public.portal_request_visit_change('aaaaaaaa-0000-4000-8000-0000000730a1',
-              '7a000000-0000-4000-8000-000000073004', 'cancel', NULL, NULL, 1);
+              '7a000000-0000-4000-8000-000000073004', 'cancel', NULL, NULL, 1, gen_random_uuid()::text);
     RAISE EXCEPTION 'PROOF FAILED [fee]: a late cancel was accepted at a figure the customer typed';
   EXCEPTION WHEN raise_exception THEN
     IF SQLERRM NOT LIKE 'FEE_NOT_ACCEPTED%' THEN RAISE; END IF;
   END;
 
   _r := public.portal_request_visit_change('aaaaaaaa-0000-4000-8000-0000000730a1',
-          '7a000000-0000-4000-8000-000000073004', 'cancel', NULL, NULL, 1500);
+          '7a000000-0000-4000-8000-000000073004', 'cancel', NULL, NULL, 1500, gen_random_uuid()::text);
   IF (_r->>'fee_cents')::int <> 1500 OR _r->>'status' <> 'pending' THEN
     RAISE EXCEPTION 'PROOF FAILED [fee]: %', _r;
   END IF;
@@ -475,15 +485,15 @@ BEGIN
     IF SQLERRM NOT LIKE 'A fee attempt cannot be recorded as%' THEN RAISE; END IF;
   END;
 
-  _out := public.record_portal_change_fee_event('evt_d6_1', 'payment_intent.succeeded', 'pi_test_d6', 'acct_test_b', true, NULL, false);
+  _out := public.record_portal_change_fee_event('evt_d6_1', 'payment_intent.succeeded', 'pi_test_d6', 'acct_test_b', true, NULL, false, NULL);
   IF _out <> 'unknown' THEN
     RAISE EXCEPTION 'PROOF FAILED [webhook tenant]: another account''s event settled the fee (%)', _out;
   END IF;
-  _out := public.record_portal_change_fee_event('evt_d6_1', 'payment_intent.succeeded', 'pi_test_d6', 'acct_test_a', true, NULL, false);
+  _out := public.record_portal_change_fee_event('evt_d6_1', 'payment_intent.succeeded', 'pi_test_d6', 'acct_test_a', true, NULL, false, NULL);
   IF _out <> 'succeeded' THEN RAISE EXCEPTION 'PROOF FAILED [webhook]: %', _out; END IF;
-  _out := public.record_portal_change_fee_event('evt_d6_1', 'payment_intent.succeeded', 'pi_test_d6', 'acct_test_a', true, NULL, false);
+  _out := public.record_portal_change_fee_event('evt_d6_1', 'payment_intent.succeeded', 'pi_test_d6', 'acct_test_a', true, NULL, false, NULL);
   IF _out <> 'duplicate' THEN RAISE EXCEPTION 'PROOF FAILED [webhook duplicate]: %', _out; END IF;
-  _out := public.record_portal_change_fee_event('evt_d6_2', 'payment_intent.payment_failed', 'pi_test_d6', 'acct_test_a', false, 'late', false);
+  _out := public.record_portal_change_fee_event('evt_d6_2', 'payment_intent.payment_failed', 'pi_test_d6', 'acct_test_a', false, 'late', false, NULL);
   IF _out <> 'unchanged' OR (SELECT status FROM public.portal_change_fee_charges WHERE id = _id) <> 'succeeded' THEN
     RAISE EXCEPTION 'PROOF FAILED [webhook order]: a late failure undid a success (%)', _out;
   END IF;
@@ -492,6 +502,199 @@ BEGIN
     RAISE EXCEPTION 'PROOF FAILED [webhook log]: the charge is not logged exactly once';
   END IF;
   RAISE NOTICE 'ok: one charge per request, success only from a webhook of the right account, a duplicate delivery changes nothing';
+END $$;
+
+
+-- ── 6. One press, one request, one fee (review finding 1) ───────────────────
+-- INSTANT, with a late reschedule fee open for every fixture visit.
+SELECT pg_temp.as_user('f0000000-0000-4000-8000-000000073001');
+SET LOCAL ROLE authenticated;
+SELECT public.set_portal_change_settings('0a000000-0000-4000-8000-000000073000', 'instant', NULL,
+  '[{"service_line":"pet_waste","cutoff_hours":0,"late_window_hours":336,"late_reschedule_fee_cents":1000,"late_cancel_fee_cents":1500}]'::jsonb);
+RESET ROLE;
+
+SELECT pg_temp.as_server();
+DO $$
+DECLARE _r1 jsonb; _r2 jsonb; _n int;
+BEGIN
+  _r1 := public.portal_request_visit_change('aaaaaaaa-0000-4000-8000-0000000730a1',
+           '7a000000-0000-4000-8000-000000073006', 'reschedule', current_date + 30, NULL, 1000, 'press-0006-a');
+  BEGIN
+    _r2 := public.portal_request_visit_change('aaaaaaaa-0000-4000-8000-0000000730a1',
+             '7a000000-0000-4000-8000-000000073006', 'reschedule', current_date + 30, NULL, 1000, 'press-0006-a');
+  EXCEPTION WHEN raise_exception THEN
+    RAISE EXCEPTION 'PROOF FAILED [repeat key]: a retried press was refused instead of given its first answer: %', SQLERRM;
+  END;
+  IF _r1->>'status' <> 'applied' OR _r2->>'request_id' <> _r1->>'request_id'
+     OR NOT COALESCE((_r2->>'replayed')::boolean, false) THEN
+    RAISE EXCEPTION 'PROOF FAILED [repeat key]: a retried press was not given its first answer (% / %)', _r1, _r2;
+  END IF;
+
+  -- The same change with a NEW key (a second tab): the visit is already there.
+  BEGIN
+    PERFORM public.portal_request_visit_change('aaaaaaaa-0000-4000-8000-0000000730a1',
+              '7a000000-0000-4000-8000-000000073006', 'reschedule', current_date + 30, NULL, 1000, 'press-0006-b');
+    RAISE EXCEPTION 'PROOF FAILED [same date]: moving a visit to the day it is on made a second request';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM NOT LIKE 'This visit is already on that date%' THEN RAISE; END IF;
+  END;
+
+  -- A key cannot be reused for a different change.
+  BEGIN
+    PERFORM public.portal_request_visit_change('aaaaaaaa-0000-4000-8000-0000000730a1',
+              '7a000000-0000-4000-8000-000000073006', 'reschedule', current_date + 31, NULL, 1000, 'press-0006-a');
+    RAISE EXCEPTION 'PROOF FAILED [key reuse]: one key carried two different changes';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM NOT LIKE 'This request key was already used for a different change%' THEN RAISE; END IF;
+  END;
+
+  -- A cancel pressed twice with a new key: the visit is already skipped.
+  PERFORM public.portal_request_visit_change('aaaaaaaa-0000-4000-8000-0000000730a1',
+            '7a000000-0000-4000-8000-000000073007', 'cancel', NULL, NULL, 1500, 'press-0007-a');
+  BEGIN
+    PERFORM public.portal_request_visit_change('aaaaaaaa-0000-4000-8000-0000000730a1',
+              '7a000000-0000-4000-8000-000000073007', 'cancel', NULL, NULL, 1500, 'press-0007-b');
+    RAISE EXCEPTION 'PROOF FAILED [double cancel]: a skipped visit was skipped again';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM NOT LIKE 'Visit not eligible to skip%' THEN RAISE; END IF;
+  END;
+
+  -- The unique index is the backstop if two presses ever got past the lock.
+  BEGIN
+    INSERT INTO public.portal_change_requests (organization_id, client_id, visit_id, kind, original_date,
+      policy, status, service_line, idempotency_key)
+    VALUES ('0a000000-0000-4000-8000-000000073000', 'c0000000-0000-4000-8000-0000000730a1',
+      '7a000000-0000-4000-8000-000000073007', 'cancel', current_date + 7, 'instant', 'applied', 'pet_waste', 'press-0007-a');
+    RAISE EXCEPTION 'PROOF FAILED [key index]: a second request with the same key was stored';
+  EXCEPTION WHEN unique_violation THEN NULL;
+  END;
+
+  SELECT count(*) INTO _n FROM public.portal_change_requests
+   WHERE visit_id IN ('7a000000-0000-4000-8000-000000073006', '7a000000-0000-4000-8000-000000073007');
+  IF _n <> 2 THEN
+    RAISE EXCEPTION 'PROOF FAILED [one request each]: expected 2 requests for two presses, found %', _n;
+  END IF;
+  PERFORM public.begin_portal_change_fee((_r1->>'request_id')::uuid);
+  PERFORM public.begin_portal_change_fee((_r1->>'request_id')::uuid);
+  SELECT count(*) INTO _n FROM public.portal_change_fee_charges c
+    JOIN public.portal_change_requests r ON r.id = c.request_id
+   WHERE r.visit_id = '7a000000-0000-4000-8000-000000073006';
+  IF _n <> 1 THEN
+    RAISE EXCEPTION 'PROOF FAILED [one fee]: expected 1 fee for the moved visit, found %', _n;
+  END IF;
+  RAISE NOTICE 'ok: a repeated press returns its first answer, the same change again is refused, and one change carries one fee';
+END $$;
+
+-- ── 7. A webhook that beats the server's response (review finding 2) ──────
+SELECT pg_temp.as_server();
+DO $$
+DECLARE _req uuid; _c jsonb; _id uuid; _out text;
+BEGIN
+  SELECT id INTO _req FROM public.portal_change_requests
+   WHERE visit_id = '7a000000-0000-4000-8000-000000073007' AND status = 'applied';
+  _c := public.begin_portal_change_fee(_req);
+  _id := (_c->'charge'->>'id')::uuid;
+
+  -- Not yet prepared: an event naming it is not matched, so it is retried.
+  _out := public.record_portal_change_fee_event('evt_d6_early_0', 'payment_intent.succeeded', 'pi_test_early', 'acct_test_a', true, NULL, false, _id);
+  IF _out <> 'unknown' THEN RAISE EXCEPTION 'PROOF FAILED [unprepared]: %', _out; END IF;
+
+  PERFORM public.prepare_portal_change_fee(_id, 'acct_test_a');
+  BEGIN
+    PERFORM public.prepare_portal_change_fee(_id, 'acct_test_b');
+    RAISE EXCEPTION 'PROOF FAILED [prepare]: a fee was prepared for a second account';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM NOT LIKE 'This fee is not waiting to be charged on that account%' THEN RAISE; END IF;
+  END;
+
+  -- Another account naming this fee in its metadata finds nothing.
+  _out := public.record_portal_change_fee_event('evt_d6_early_1', 'payment_intent.succeeded', 'pi_test_early', 'acct_test_b', true, NULL, false, _id);
+  IF _out <> 'unknown' THEN RAISE EXCEPTION 'PROOF FAILED [early, other account]: %', _out; END IF;
+
+  -- The real event, before the server stored the intent's id.
+  _out := public.record_portal_change_fee_event('evt_d6_early_2', 'payment_intent.succeeded', 'pi_test_early', 'acct_test_a', true, NULL, false, _id);
+  IF _out <> 'succeeded'
+     OR (SELECT stripe_payment_intent_id FROM public.portal_change_fee_charges WHERE id = _id) <> 'pi_test_early' THEN
+    RAISE EXCEPTION 'PROOF FAILED [early webhook]: an event before the server''s response did not settle the fee (%)', _out;
+  END IF;
+
+  -- The server's own response arrives afterwards and changes nothing.
+  PERFORM public.note_portal_change_fee_attempt(_id, 'processing', 'pi_test_early', 'acct_test_a', NULL, false);
+  IF (SELECT status FROM public.portal_change_fee_charges WHERE id = _id) <> 'succeeded' THEN
+    RAISE EXCEPTION 'PROOF FAILED [late response]: the server''s response undid the webhook';
+  END IF;
+  RAISE NOTICE 'ok: a webhook before the server''s response settles the fee by fee id and account; another account cannot';
+END $$;
+
+-- ── 8. An approval about a visit the office has since moved (finding 3) ───
+SELECT pg_temp.as_user('f0000000-0000-4000-8000-000000073001');
+SET LOCAL ROLE authenticated;
+SELECT public.set_portal_change_settings('0a000000-0000-4000-8000-000000073000', 'approval', NULL, NULL);
+RESET ROLE;
+
+SELECT pg_temp.as_server();
+DO $$
+DECLARE _r jsonb;
+BEGIN
+  _r := public.portal_request_visit_change('aaaaaaaa-0000-4000-8000-0000000730a1',
+          '7a000000-0000-4000-8000-000000073008', 'reschedule', current_date + 33, NULL, 1000, 'press-0008-a');
+  INSERT INTO proof_req VALUES ('stale-resched', (_r->>'request_id')::uuid);
+  _r := public.portal_request_visit_change('aaaaaaaa-0000-4000-8000-0000000730a1',
+          '7a000000-0000-4000-8000-000000073009', 'cancel', NULL, NULL, 1500, 'press-0009-a');
+  INSERT INTO proof_req VALUES ('stale-cancel', (_r->>'request_id')::uuid);
+  -- The office moves both visits while the requests wait.
+  UPDATE public.visits SET scheduled_on = scheduled_on + 40
+   WHERE id IN ('7a000000-0000-4000-8000-000000073008', '7a000000-0000-4000-8000-000000073009');
+END $$;
+
+SELECT pg_temp.as_user('f0000000-0000-4000-8000-000000073001');
+SET LOCAL ROLE authenticated;
+DO $$
+DECLARE _k text;
+BEGIN
+  FOREACH _k IN ARRAY ARRAY['stale-resched', 'stale-cancel'] LOOP
+    BEGIN
+      PERFORM public.decide_portal_change_request((SELECT id FROM proof_req WHERE k = _k), true, NULL);
+      RAISE EXCEPTION 'PROOF FAILED [stale %]: an approval applied a request about a day the visit is no longer on', _k;
+    EXCEPTION WHEN raise_exception THEN
+      IF SQLERRM NOT LIKE 'STALE_REQUEST:%' THEN RAISE; END IF;
+    END;
+  END LOOP;
+  -- Denying it is still possible, and is what the message says to do.
+  PERFORM public.decide_portal_change_request((SELECT id FROM proof_req WHERE k = 'stale-cancel'), false, 'We moved this visit; please ask again.');
+END $$;
+RESET ROLE;
+
+DO $$
+BEGIN
+  IF (SELECT scheduled_on FROM public.visits WHERE id = '7a000000-0000-4000-8000-000000073008') <> current_date + 48
+     OR (SELECT status FROM public.visits WHERE id = '7a000000-0000-4000-8000-000000073009') <> 'scheduled'
+     OR (SELECT status FROM public.portal_change_requests WHERE id = (SELECT id FROM proof_req WHERE k = 'stale-resched')) <> 'pending' THEN
+    RAISE EXCEPTION 'PROOF FAILED [stale after]: a refused approval changed a visit or the request';
+  END IF;
+  RAISE NOTICE 'ok: an approval about a visit the office has since moved is refused, for a reschedule and a skip';
+END $$;
+
+-- ── 9. The client sees the answer (review finding 5) ──────────────────────
+SELECT pg_temp.as_server();
+DO $$
+DECLARE _t record; _n int;
+BEGIN
+  SELECT * INTO _t FROM public.portal_visit_change_terms('aaaaaaaa-0000-4000-8000-0000000730a1')
+   WHERE visit_id = '7a000000-0000-4000-8000-000000073009';
+  IF _t.denied_kind IS DISTINCT FROM 'cancel' OR _t.denied_note IS DISTINCT FROM 'We moved this visit; please ask again.'
+     OR _t.denied_at IS NULL OR _t.pending_request_id IS NOT NULL THEN
+    RAISE EXCEPTION 'PROOF FAILED [denial on the visit]: the visit row does not carry the denial and its note (%)', _t;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.portal_list_change_requests('aaaaaaaa-0000-4000-8000-0000000730a1')
+                  WHERE status = 'denied' AND decision_note = 'We moved this visit; please ask again.') THEN
+    RAISE EXCEPTION 'PROOF FAILED [denial listed]: the client''s request list does not show the denial and note';
+  END IF;
+  SELECT count(*) INTO _n FROM public.portal_list_change_requests('bbbbbbbb-0000-4000-8000-0000000730b1');
+  IF _n <> 0 THEN
+    RAISE EXCEPTION 'PROOF FAILED [denial cross-tenant]: business B''s client sees % of A''s requests', _n;
+  END IF;
+  RAISE NOTICE 'ok: a denial and the owner''s note stay visible to that client, on the visit and in their requests, and to nobody else';
 END $$;
 
 -- A hard cutoff per line: two weeks before the visit day puts the visit five
@@ -507,7 +710,7 @@ DO $$
 BEGIN
   BEGIN
     PERFORM public.portal_request_visit_change('aaaaaaaa-0000-4000-8000-0000000730a1',
-              '7a000000-0000-4000-8000-000000073005', 'cancel', NULL, NULL, NULL);
+              '7a000000-0000-4000-8000-000000073005', 'cancel', NULL, NULL, NULL, gen_random_uuid()::text);
     RAISE EXCEPTION 'PROOF FAILED [line cutoff]: a change past the line''s cutoff was accepted';
   EXCEPTION WHEN raise_exception THEN
     IF SQLERRM NOT LIKE 'This visit is past the change cutoff%' THEN RAISE; END IF;

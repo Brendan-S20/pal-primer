@@ -541,6 +541,10 @@ export const portalRequestSkip = createServerFn({ method: "POST" })
         /** The late-change fee the portal SHOWED, in cents. Compared with the
          *  server's own figure, never charged (#730). */
         acceptedFeeCents: z.number().int().min(0).max(100_000).nullable().optional(),
+        /** One per press of the confirm button (#730 review, finding 1): a
+         *  retry or a double tap sends the same key and gets the first answer
+         *  back rather than a second request and a second fee. */
+        idempotencyKey: z.string().uuid(),
       })
       .parse(d),
   )
@@ -553,6 +557,7 @@ export const portalRequestSkip = createServerFn({ method: "POST" })
       newDate: null,
       reason: data.reason,
       acceptedFeeCents: data.acceptedFeeCents ?? null,
+      idempotencyKey: data.idempotencyKey,
     });
   });
 
@@ -574,8 +579,9 @@ async function requestVisitChange(
     newDate: string | null;
     reason: string;
     acceptedFeeCents: number | null;
+    idempotencyKey: string;
   },
-): Promise<{ ok: true; status: "applied" | "pending"; requestId: string; feeCents: number }> {
+): Promise<{ ok: true; status: PortalChangeStatus; requestId: string; feeCents: number }> {
   const sb = await admin();
   const { startRouteWatch } = await import("@/lib/field-notify.server");
   const watch = await startRouteWatch({
@@ -592,9 +598,11 @@ async function requestVisitChange(
     _new_date: req.newDate,
     _reason: req.reason,
     _accepted_fee_cents: req.acceptedFeeCents,
+    _idempotency_key: req.idempotencyKey,
   });
   if (error) throw new Error(portalChangeError(error.message));
-  const r = out as { request_id: string; status: "applied" | "pending"; fee_cents: number };
+  // A replayed key returns the first answer, whatever has happened since.
+  const r = out as { request_id: string; status: PortalChangeStatus; fee_cents: number };
   await watch.finish();
   await pushRoutes();
   if (r.status === "applied" && Number(r.fee_cents) > 0) {
@@ -618,6 +626,34 @@ export function portalChangeError(message: string): string {
     ? "The fee for this change has changed since the page loaded. Refresh to see it, then try again."
     : message;
 }
+
+type PortalChangeStatus = "pending" | "applied" | "approved" | "denied" | "withdrawn";
+
+/** Every reschedule and skip this client asked for in the last 120 days, with
+ *  the owner's answer and note (#730 review, finding 5). */
+export const portalListMyChangeRequests = createServerFn({ method: "GET" })
+  .inputValidator((d) => tokenSchema.parse(d))
+  .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
+    await requirePortalSession(data.token, { readOnly: true });
+    const sb = await admin();
+    const { data: rows, error } = await sb.rpc("portal_list_change_requests" as any, {
+      _token: data.token,
+    });
+    if (error) throw new Error(error.message);
+    return (rows ?? []) as Array<{
+      request_id: string;
+      visit_id: string;
+      kind: "reschedule" | "cancel";
+      status: PortalChangeStatus;
+      original_date: string;
+      requested_date: string | null;
+      fee_cents: number;
+      decision_note: string | null;
+      decided_at: string | null;
+      created_at: string;
+    }>;
+  });
 
 export const portalWithdrawVisitChange = createServerFn({ method: "POST" })
   .inputValidator((d) =>
@@ -669,6 +705,10 @@ export const portalRescheduleVisit = createServerFn({ method: "POST" })
         visitId: z.string().uuid(),
         newDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         acceptedFeeCents: z.number().int().min(0).max(100_000).nullable().optional(),
+        /** One per press of the confirm button (#730 review, finding 1): a
+         *  retry or a double tap sends the same key and gets the first answer
+         *  back rather than a second request and a second fee. */
+        idempotencyKey: z.string().uuid(),
       })
       .parse(d),
   )
@@ -683,6 +723,7 @@ export const portalRescheduleVisit = createServerFn({ method: "POST" })
       newDate: data.newDate,
       reason: "",
       acceptedFeeCents: data.acceptedFeeCents ?? null,
+      idempotencyKey: data.idempotencyKey,
     });
   });
 

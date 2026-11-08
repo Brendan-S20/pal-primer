@@ -38,6 +38,7 @@ const ORG_B = "0b000000-0000-4000-8000-000000073000";
 const REQ = "9a000000-0000-4000-8000-000000073001";
 const VISIT = "7a000000-0000-4000-8000-000000073001";
 const TOKEN = "aaaaaaaa-0000-4000-8000-0000000730a1";
+const KEY = "11111111-2222-4333-8444-555555555555";
 
 // ── Shared fakes ──────────────────────────────────────────────────────────
 const state = vi.hoisted(() => ({
@@ -226,7 +227,13 @@ describe("the portal: INSTANT applies, APPROVAL waits", () => {
       fee_cents: 500,
     };
     const out = await portalRescheduleVisit({
-      data: { token: TOKEN, visitId: VISIT, newDate: "2026-12-01", acceptedFeeCents: 500 },
+      data: {
+        token: TOKEN,
+        visitId: VISIT,
+        newDate: "2026-12-01",
+        acceptedFeeCents: 500,
+        idempotencyKey: KEY,
+      },
     } as any);
     expect(out).toMatchObject({ status: "applied", requestId: REQ, feeCents: 500 });
     const call = state.rpcs.find((r) => r.fn === "portal_request_visit_change")!;
@@ -236,6 +243,7 @@ describe("the portal: INSTANT applies, APPROVAL waits", () => {
       _kind: "reschedule",
       _new_date: "2026-12-01",
       _accepted_fee_cents: 500,
+      _idempotency_key: KEY,
     });
     expect(state.feeCalls).toEqual([REQ]);
   });
@@ -248,7 +256,7 @@ describe("the portal: INSTANT applies, APPROVAL waits", () => {
       fee_cents: 0,
     };
     const out = await portalRequestSkip({
-      data: { token: TOKEN, visitId: VISIT, reason: "away" },
+      data: { token: TOKEN, visitId: VISIT, reason: "away", idempotencyKey: KEY },
     } as any);
     expect(out.status).toBe("applied");
     expect(state.rpcs.find((r) => r.fn === "portal_request_visit_change")!.args).toMatchObject({
@@ -267,7 +275,13 @@ describe("the portal: INSTANT applies, APPROVAL waits", () => {
       fee_cents: 1500,
     };
     const out = await portalRequestSkip({
-      data: { token: TOKEN, visitId: VISIT, reason: "", acceptedFeeCents: 1500 },
+      data: {
+        token: TOKEN,
+        visitId: VISIT,
+        reason: "",
+        acceptedFeeCents: 1500,
+        idempotencyKey: KEY,
+      },
     } as any);
     expect(out).toMatchObject({ status: "pending", feeCents: 1500 });
     expect(state.feeCalls).toEqual([]);
@@ -297,6 +311,184 @@ describe("the portal: INSTANT applies, APPROVAL waits", () => {
     // The fee stored is the server's _fee; the accepted figure is kept only as
     // what was disclosed.
     expect(sql).toMatch(/\(_t\.late_from IS NOT NULL AND now\(\) > _t\.late_from\), _fee,/);
+  });
+});
+
+// ── The review of 0e5b085 (#735), one regression test per finding ─────────
+describe("review finding 1: one press, one request, one fee", () => {
+  it("a portal change without a request key is refused before anything is called", async () => {
+    const { portalRequestSkip, portalRescheduleVisit } = await import("@/lib/portal.functions");
+    await expect(
+      (async () =>
+        portalRequestSkip({ data: { token: TOKEN, visitId: VISIT, reason: "" } } as any))(),
+    ).rejects.toThrow();
+    await expect(
+      (async () =>
+        portalRescheduleVisit({
+          data: { token: TOKEN, visitId: VISIT, newDate: "2026-12-01", idempotencyKey: "nope" },
+        } as any))(),
+    ).rejects.toThrow();
+    expect(state.rpcs).toEqual([]);
+  });
+
+  it("a retried press sends the same key, and a replayed applied change does not charge twice", async () => {
+    const { portalRescheduleVisit } = await import("@/lib/portal.functions");
+    const data = {
+      token: TOKEN,
+      visitId: VISIT,
+      newDate: "2026-12-01",
+      acceptedFeeCents: 500,
+      idempotencyKey: KEY,
+    };
+    state.rpcResult.portal_request_visit_change = {
+      request_id: REQ,
+      status: "applied",
+      fee_cents: 500,
+    };
+    await portalRescheduleVisit({ data } as any);
+    state.rpcResult.portal_request_visit_change = {
+      request_id: REQ,
+      status: "applied",
+      fee_cents: 500,
+      replayed: true,
+    };
+    await portalRescheduleVisit({ data } as any);
+    const keys = state.rpcs
+      .filter((r) => r.fn === "portal_request_visit_change")
+      .map((r) => r.args._idempotency_key);
+    expect(keys).toEqual([KEY, KEY]);
+    // Both reach the fee module with the SAME request: begin_portal_change_fee
+    // is unique per request, so the second finds it already attempted.
+    expect(state.feeCalls).toEqual([REQ, REQ]);
+  });
+
+  it("the database serialises presses on the visit, replays a key, and refuses the same change again", () => {
+    const sql = readFileSync(MIGRATION, "utf8");
+    const fn = sql.slice(
+      sql.indexOf("CREATE OR REPLACE FUNCTION public.portal_request_visit_change("),
+    );
+    const lock = fn.indexOf("FOR UPDATE;");
+    const replay = fn.indexOf("idempotency_key = _idempotency_key");
+    const insert = fn.indexOf("INSERT INTO public.portal_change_requests");
+    expect(lock).toBeGreaterThan(-1);
+    expect(replay).toBeGreaterThan(lock);
+    expect(insert).toBeGreaterThan(replay);
+    expect(fn).toMatch(
+      /IF _new_date = _on THEN RAISE EXCEPTION 'This visit is already on that date'/,
+    );
+    expect(sql).toMatch(
+      /CREATE UNIQUE INDEX IF NOT EXISTS portal_change_requests_one_per_key\s+ON public\.portal_change_requests \(client_id, idempotency_key\)/,
+    );
+  });
+
+  it("the portal makes a new key per press and keeps it for a retry", () => {
+    const ui = read("src/lib/portal-ui.tsx");
+    expect(ui).toMatch(/const \[requestKey, setRequestKey\] = useState\(newRequestKey\);/);
+    expect(ui).toMatch(/onReschedule\(newDate, feeNow > 0 \? feeNow : null, requestKey\);/);
+    expect(ui).toMatch(/onSkip\(reason, feeNow > 0 \? feeNow : null, requestKey\);/);
+    expect(ui.match(/setRequestKey\(newRequestKey\(\)\);/g)?.length).toBe(2);
+  });
+
+  it("makes UUIDs, with or without crypto.randomUUID", async () => {
+    const { newRequestKey } = await import("@/lib/portal-change");
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+    expect(newRequestKey()).toMatch(uuid);
+    const real = globalThis.crypto;
+    vi.stubGlobal("crypto", { getRandomValues: (b: Uint8Array) => real.getRandomValues(b) });
+    try {
+      const a = newRequestKey();
+      expect(a).toMatch(uuid);
+      expect(newRequestKey()).not.toBe(a);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("review finding 3: an approval about a visit the office has moved", () => {
+  it("is refused by the database for a reschedule and a skip alike", () => {
+    const sql = readFileSync(MIGRATION, "utf8");
+    const apply = sql.slice(
+      sql.indexOf("CREATE OR REPLACE FUNCTION public.portal_change_apply"),
+      sql.indexOf("-- ── 7. The customer asks"),
+    );
+    const stale = apply.indexOf("IF _on IS DISTINCT FROM _r.original_date THEN");
+    // Before the branch on kind, so it covers both.
+    expect(stale).toBeGreaterThan(-1);
+    expect(stale).toBeLessThan(apply.indexOf("IF _r.kind = 'reschedule' THEN"));
+  });
+
+  it("and the owner is told in words", async () => {
+    state.role = "owner";
+    const { decidePortalChangeRequest } = await import("@/lib/portal-change.functions");
+    const original = db.rpc;
+    db.rpc = async (fn: string, args: any) => {
+      state.rpcs.push({ fn, args });
+      return {
+        data: null,
+        error: {
+          message:
+            "STALE_REQUEST: This visit was moved to 2026-12-03 after the client asked about 2026-12-01.",
+        },
+      } as any;
+    };
+    try {
+      await expect(
+        decidePortalChangeRequest({ data: { requestId: REQ, approve: true } } as any),
+      ).rejects.toThrow(/^This visit was moved to 2026-12-03/);
+      expect(state.feeCalls).toEqual([]);
+    } finally {
+      db.rpc = original;
+    }
+  });
+});
+
+describe("review finding 4: the fee accepted is the fee shown, for this action", () => {
+  it("acceptance is keyed by action and amount, not one boolean", () => {
+    const ui = read("src/lib/portal-ui.tsx");
+    expect(ui).not.toMatch(/setFeeAccepted/);
+    expect(ui).toMatch(/const feeKey = openKind \? `\$\{openKind\}:\$\{feeNow\}` : null;/);
+    expect(ui).toMatch(/const feeAccepted = feeKey !== null && acceptedFee === feeKey;/);
+    expect(ui).toMatch(
+      /onChange=\{\(e\) => setAcceptedFee\(e\.target\.checked \? feeKey : null\)\}/,
+    );
+  });
+
+  it("and the server refuses any accepted amount that is not its own", () => {
+    const sql = readFileSync(MIGRATION, "utf8");
+    expect(sql).toMatch(/IF _fee > 0 AND _accepted_fee_cents IS DISTINCT FROM _fee THEN/);
+  });
+});
+
+describe("review finding 5: the client sees the owner's answer", () => {
+  it("lists the client's requests with status and note, from the new table", async () => {
+    const { portalListMyChangeRequests } = await import("@/lib/portal.functions");
+    state.rpcResult.portal_list_change_requests = [
+      {
+        request_id: REQ,
+        kind: "cancel",
+        status: "denied",
+        decision_note: "Need this one",
+        fee_cents: 0,
+      },
+    ];
+    const rows = await portalListMyChangeRequests({ data: { token: TOKEN } } as any);
+    expect(rows[0]).toMatchObject({ status: "denied", decision_note: "Need this one" });
+    expect(state.rpcs.at(-1)).toEqual({
+      fn: "portal_list_change_requests",
+      args: { _token: TOKEN },
+    });
+  });
+
+  it("shows it on the Requests tab and on the visit it was about", () => {
+    expect(read("src/routes/portal.$slug.$token.requests.tsx")).toMatch(
+      /<PortalChangeRequestsList token=\{token\} \/>/,
+    );
+    const ui = read("src/lib/portal-ui.tsx");
+    expect(ui).toMatch(/PORTAL_CHANGE_COPY\.deniedReschedule/);
+    expect(ui).toMatch(/PORTAL_CHANGE_COPY\.ownerNote\(denied\.note\)/);
+    const sql = readFileSync(MIGRATION, "utf8");
+    expect(sql).toMatch(/CASE WHEN last\.status = 'denied' THEN last\.decision_note END/);
   });
 });
 
@@ -362,8 +554,8 @@ describe("what the customer is told, and when", () => {
     const ui = read("src/lib/portal-ui.tsx");
     expect(ui).toMatch(/const blockedOnFee = feeNow > 0 && !feeAccepted;/);
     expect(ui.match(/disabled=\{blockedOnFee\}/g)?.length).toBe(2);
-    expect(ui).toMatch(/onReschedule\(newDate, feeNow > 0 \? feeNow : null\)/);
-    expect(ui).toMatch(/onSkip\(reason, feeNow > 0 \? feeNow : null\)/);
+    expect(ui).toMatch(/onReschedule\(newDate, feeNow > 0 \? feeNow : null, requestKey\)/);
+    expect(ui).toMatch(/onSkip\(reason, feeNow > 0 \? feeNow : null, requestKey\)/);
     expect(ui).toMatch(/PORTAL_CHANGE_COPY\.needsApproval/);
   });
 
@@ -524,6 +716,90 @@ describe("late-change fees: off by default, Stripe test mode only", () => {
     });
   });
 
+  it("review finding 2: the account is recorded before Stripe is asked, and a failed record asks nothing", async () => {
+    const { chargePortalChangeFee } = await vi.importActual<any>("@/lib/portal-change-fees.server");
+    const order: string[] = [];
+    const d = feeDb({ autocharge: true });
+    const rpc = d.rpc;
+    d.rpc = async (fn: string, args: any) => {
+      order.push(fn);
+      return rpc(fn, args);
+    };
+    const create = vi.fn(async () => {
+      order.push("stripe.paymentIntents.create");
+      return { id: "pi_1", status: "processing", livemode: false };
+    });
+    await chargePortalChangeFee(REQ, {
+      db: d,
+      env: TEST_ENV,
+      stripe: async () => ({ stripe: { paymentIntents: { create } }, stripeAccount: "acct_a" }),
+    });
+    expect(order).toEqual([
+      "begin_portal_change_fee",
+      "prepare_portal_change_fee",
+      "stripe.paymentIntents.create",
+      "note_portal_change_fee_attempt",
+    ]);
+
+    const failing = feeDb({ autocharge: true });
+    const rpc2 = failing.rpc;
+    failing.rpc = async (fn: string, args: any) =>
+      fn === "prepare_portal_change_fee"
+        ? {
+            data: null,
+            error: { message: "This fee is not waiting to be charged on that account" },
+          }
+        : rpc2(fn, args);
+    const create2 = vi.fn();
+    const out = await chargePortalChangeFee(REQ, {
+      db: failing,
+      env: TEST_ENV,
+      stripe: async () => ({
+        stripe: { paymentIntents: { create: create2 } },
+        stripeAccount: "acct_a",
+      }),
+    });
+    expect(out.outcome).toBe("failed");
+    expect(create2).not.toHaveBeenCalled();
+  });
+
+  it("review finding 2: a webhook before the server's response is matched by the fee id it carries, and an unmatched one is not acknowledged", async () => {
+    const { recordPortalChangeFeeEvent } = await vi.importActual<any>(
+      "@/lib/portal-change-fees.server",
+    );
+    const calls: any[] = [];
+    const d = {
+      from: () => ({}),
+      rpc: async (fn: string, args: any) => (calls.push(args), { data: "unknown", error: null }),
+    };
+    const ev = (metadata: Record<string, string>) => ({
+      id: "evt_early",
+      type: "payment_intent.succeeded",
+      account: "acct_a",
+      livemode: false,
+      data: { object: { id: "pi_early", metadata } },
+    });
+    expect(
+      await recordPortalChangeFeeEvent(
+        d,
+        ev({ fee_charge_id: "0f000000-0000-4000-8000-000000000001" }),
+      ),
+    ).toBe("unknown");
+    expect(calls[0]._charge_id).toBe("0f000000-0000-4000-8000-000000000001");
+    await recordPortalChangeFeeEvent(d, ev({ fee_charge_id: "not-a-uuid'; drop" }));
+    expect(calls[1]._charge_id).toBeNull();
+
+    const hook = read("src/routes/api/public/hooks/stripe.ts");
+    const branch = hook.slice(
+      hook.indexOf('"portal_change_fee"'),
+      hook.indexOf('if (event.type === "setup_intent.succeeded")'),
+    );
+    expect(branch).toMatch(/if \(settled === "unknown"\) \{[\s\S]*?status: 409/);
+
+    const sql = readFileSync(MIGRATION, "utf8");
+    expect(sql).toMatch(/WHERE id = _charge_id\s+AND stripe_account_id = _account/);
+  });
+
   it("a decline is recorded as failed with the intent's id, so the webhook can find it", async () => {
     const { chargePortalChangeFee } = await vi.importActual<any>("@/lib/portal-change-fees.server");
     const d = feeDb({ autocharge: true });
@@ -583,6 +859,7 @@ describe("late-change fees: off by default, Stripe test mode only", () => {
         _succeeded: true,
         _message: null,
         _livemode: false,
+        _charge_id: null,
       },
     });
     expect(

@@ -172,7 +172,9 @@ export const decidePortalChangeRequest = createServerFn({ method: "POST" })
       _approve: data.approve,
       _note: data.note,
     });
-    if (error) throw new Error(error.message);
+    // A request about a day the office has since moved the visit off is
+    // refused by the database (#730 review, finding 3); say it in words.
+    if (error) throw new Error(error.message.replace(/^STALE_REQUEST: /, ""));
     const result = out as { status: string; fee_cents: number };
     if (watch) await watch.finish();
 

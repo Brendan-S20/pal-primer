@@ -42,6 +42,12 @@ export type PortalVisitChangeTerms = {
   pending_request_id: string | null;
   pending_kind: "reschedule" | "cancel" | null;
   pending_requested_date: string | null;
+  /** The owner's answer when the latest request about this visit was a
+   *  denial (#730 review, finding 5); null otherwise. */
+  denied_kind?: "reschedule" | "cancel" | null;
+  denied_requested_date?: string | null;
+  denied_note?: string | null;
+  denied_at?: string | null;
 };
 
 /** Merge the terms into the upcoming-visit rows. A row with no terms (a read
@@ -111,4 +117,29 @@ export const PORTAL_CHANGE_COPY = {
   pendingReschedule: (date: string) => `Reschedule to ${date} is waiting for approval`,
   pendingCancel: "Skip is waiting for approval",
   withdraw: "Withdraw request",
+  deniedReschedule: (date: string) => `Your request to move this visit to ${date} was declined.`,
+  deniedCancel: "Your request to skip this visit was declined.",
+  ownerNote: (note: string) => `Note from the business: “${note}”`,
+  requestsHeading: "Reschedule and skip requests",
+  statusLabel: {
+    pending: "Waiting for approval",
+    applied: "Done",
+    approved: "Approved",
+    denied: "Declined",
+    withdrawn: "Withdrawn",
+  } as Record<string, string>,
 } as const;
+
+/** One key per press of a confirm button (#730 review, finding 1). A UUID,
+ *  from crypto.randomUUID where the browser has it, otherwise built from
+ *  crypto.getRandomValues the same way. */
+export function newRequestKey(): string {
+  const c = globalThis.crypto;
+  if (c && typeof c.randomUUID === "function") return c.randomUUID();
+  const b = new Uint8Array(16);
+  c.getRandomValues(b);
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}

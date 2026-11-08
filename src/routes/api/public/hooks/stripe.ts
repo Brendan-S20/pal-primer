@@ -741,7 +741,13 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               ?.source === "portal_change_fee"
           ) {
             const { recordPortalChangeFeeEvent } = await import("@/lib/portal-change-fees.server");
-            await recordPortalChangeFeeEvent(supabaseAdmin as any, event as any);
+            const settled = await recordPortalChangeFeeEvent(supabaseAdmin as any, event as any);
+            // Never acknowledge an event that settled nothing it should have
+            // (#730 review, finding 2): non-2xx, so Stripe delivers it again.
+            if (settled === "unknown") {
+              console.warn("portal change fee event matched no fee yet; asking Stripe to retry", event.id);
+              return new Response("Fee not found yet", { status: 409 });
+            }
             return new Response("ok", { status: 200 });
           }
 

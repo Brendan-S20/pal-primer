@@ -1666,6 +1666,8 @@ export const PORTAL_STUBS: Record<string, Stub> = {
   }),
   portalGetClient: pfx.PORTAL_CLIENT,
   portalListUpcomingVisits: pfx.PORTAL_UPCOMING_VISITS,
+  // #730: the client's reschedules and skips, with the business's answers.
+  portalListMyChangeRequests: pfx.PORTAL_CHANGE_REQUESTS,
   portalListRecentVisits: pfx.PORTAL_RECENT_VISITS,
   portalListInvoices: pfx.PORTAL_INVOICES,
   portalListPrepaidSubs: pfx.PORTAL_SUBS,
