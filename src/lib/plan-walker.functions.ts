@@ -1,7 +1,7 @@
 // The walker on a walk plan (#731, audit F-17).
 //
 // A plan's walker is copied onto each NEW visit the plan makes that arrives
-// with nobody on it (public.fill_visit_walker, 20261108150100). Setting or
+// with nobody on it (public.fill_visit_walker, 20261108170100). Setting or
 // clearing it here never moves a visit that already exists: those stay with
 // whoever has them, and the office moves them on Routes as before.
 import { createServerFn } from "@tanstack/react-start";
@@ -43,7 +43,7 @@ export const getPlanWalker = createServerFn({ method: "GET" })
 
 /**
  * Dispatch's permission (can_write_org: owner, office manager, dispatcher),
- * through public.set_plan_walker (20261108150200). The signed-in client
+ * through public.set_plan_walker (20261108170200). The signed-in client
  * cannot UPDATE subscriptions as a dispatcher, because that policy guards a
  * plan's price and asks for manage_pricing; the function takes only the plan
  * and the walker and writes only the walker, so it opens nothing else. It

@@ -1,4 +1,4 @@
--- Proof for 20261108150100 — a walk plan has a walker, and a one-person
+-- Proof for 20261108170100 — a walk plan has a walker, and a one-person
 -- walking business walks its own walks (#731, F-17).
 --
 -- Run by the database job in .github/workflows/sandboxes.yml ("The proofs,
@@ -7,7 +7,7 @@
 -- Locally:
 --   supabase db reset
 --   psql "postgresql://postgres:postgres@127.0.0.1:54422/postgres" \
---     -v ON_ERROR_STOP=1 -f supabase/proofs/20261108150100-a-walk-plan-has-a-walker.sql
+--     -v ON_ERROR_STOP=1 -f supabase/proofs/20261108170100-a-walk-plan-has-a-walker.sql
 --
 -- Business P has an owner and two walkers, Ann and Bo. Business S is one
 -- person, its owner, who runs routes. Proves:

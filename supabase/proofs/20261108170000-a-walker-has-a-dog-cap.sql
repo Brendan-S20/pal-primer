@@ -1,4 +1,4 @@
--- Proof for 20261108150000 — a walker has a dog cap (#731).
+-- Proof for 20261108170000 — a walker has a dog cap (#731).
 --
 -- Run by the database job in .github/workflows/sandboxes.yml ("The proofs,
 -- which are evidence rather than schema") against the database it has just
@@ -6,7 +6,7 @@
 -- Locally:
 --   supabase db reset
 --   psql "postgresql://postgres:postgres@127.0.0.1:54422/postgres" \
---     -v ON_ERROR_STOP=1 -f supabase/proofs/20261108150000-a-walker-has-a-dog-cap.sql
+--     -v ON_ERROR_STOP=1 -f supabase/proofs/20261108170000-a-walker-has-a-dog-cap.sql
 --
 -- One business that walks dogs, a group walk service for up to six dogs, and
 -- two walkers: Ann, capped at three dogs at once, and Bo, with no cap (the

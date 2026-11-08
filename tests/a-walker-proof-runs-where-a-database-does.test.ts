@@ -19,9 +19,9 @@ const root = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
 
 const PROOFS = [
-  "supabase/proofs/20261108150000-a-walker-has-a-dog-cap.sql",
-  "supabase/proofs/20261108150100-a-walk-plan-has-a-walker.sql",
-  "supabase/proofs/20261108150200-walker-assignment-is-narrow-and-atomic.sql",
+  "supabase/proofs/20261108170000-a-walker-has-a-dog-cap.sql",
+  "supabase/proofs/20261108170100-a-walk-plan-has-a-walker.sql",
+  "supabase/proofs/20261108170200-walker-assignment-is-narrow-and-atomic.sql",
 ];
 const RACE = "tests/integration/walker-assignment-is-narrow-and-atomic.db.test.ts";
 

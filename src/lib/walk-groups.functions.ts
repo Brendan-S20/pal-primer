@@ -286,7 +286,7 @@ export const assignWalkGroupsByCapacity = createServerFn({ method: "POST" })
         kept.push({ groupId: d.groupId, reason: d.reason });
         continue;
       }
-      // One atomic step in the database (20261108150200): it locks the group
+      // One atomic step in the database (20261108170200): it locks the group
       // and every walk in it, re-reads them, and writes only if the group
       // still has no walker and no walk still to happen is held or pinned.
       // A hand assignment made since the read above is never replaced.

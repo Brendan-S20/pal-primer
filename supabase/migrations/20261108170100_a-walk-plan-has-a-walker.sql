@@ -55,7 +55,7 @@ ALTER TABLE public.subscriptions ADD COLUMN IF NOT EXISTS assigned_staff_id uuid
 CREATE INDEX IF NOT EXISTS subscriptions_assigned_staff_idx
   ON public.subscriptions(assigned_staff_id);
 COMMENT ON COLUMN public.subscriptions.assigned_staff_id IS
-  'The plan''s walker. New visits from this plan that arrive unassigned are given to them when they are active, run routes and are not off that day. NULL means none. Never moves a visit already made. Migration 20261108150100.';
+  'The plan''s walker. New visits from this plan that arrive unassigned are given to them when they are active, run routes and are not off that day. NULL means none. Never moves a visit already made. Migration 20261108170100.';
 
 -- ── The plan's walker is from the plan's business ────────────────────────
 CREATE OR REPLACE FUNCTION public.validate_plan_walker()

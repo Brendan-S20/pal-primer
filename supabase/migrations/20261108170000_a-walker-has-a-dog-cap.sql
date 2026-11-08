@@ -41,7 +41,7 @@ ALTER TABLE public.staff DROP CONSTRAINT IF EXISTS staff_max_dogs_per_walk_check
 ALTER TABLE public.staff ADD CONSTRAINT staff_max_dogs_per_walk_check
   CHECK (max_dogs_per_walk IS NULL OR max_dogs_per_walk BETWEEN 1 AND 50);
 COMMENT ON COLUMN public.staff.max_dogs_per_walk IS
-  'Most dogs this person walks at once, 1 to 50. NULL means no cap of their own. A group walk holds the smaller of this and services.max_dogs. Migration 20261108150000.';
+  'Most dogs this person walks at once, 1 to 50. NULL means no cap of their own. A group walk holds the smaller of this and services.max_dogs. Migration 20261108170000.';
 
 -- ── A walk joining a capped walker's group ───────────────────────────────
 CREATE OR REPLACE FUNCTION public.enforce_walker_dog_cap_on_member()

@@ -163,7 +163,7 @@ function walkerStubs(world: World): Record<string, Stub> {
       const cap = args.walkerId ? (world.caps[args.walkerId] ?? null) : null;
       if (cap != null && dogs(g) > cap) {
         const name = fx.STAFF.find((s) => s.id === args.walkerId)!.display_name;
-        // walk_groups_walker_cap's own words (20261108150000).
+        // walk_groups_walker_cap's own words (20261108170000).
         throw new StubRefusal(
           `${name} walks up to ${cap} dogs at a time. This group has ${dogs(g)}.`,
         );

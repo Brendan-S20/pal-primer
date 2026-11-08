@@ -173,7 +173,7 @@ export type CapacityDecision =
   | {
       groupId: string;
       action: "keep";
-      reason: "has_walker" | "members_assigned" | "empty" | "no_walker_fits";
+      reason: "has_walker" | "members_assigned" | "empty" | "no_walker_fits" | "busy";
     };
 
 /**
@@ -251,4 +251,7 @@ export const CAPACITY_KEEP_REASON: Record<
   members_assigned: "its walks are already assigned by hand",
   empty: "has no walks yet",
   no_walker_fits: "no walker's dog cap fits it",
+  // assign_walk_group_if_open found one of its walks being changed at that
+  // moment and wrote nothing rather than wait (20261108170200).
+  busy: "was being changed by someone else; try again",
 };

@@ -4,30 +4,47 @@
  *
  *  1. A dispatcher could not save a plan's walker. The subscriptions UPDATE
  *     policy is manage_pricing, so the signed-in client's UPDATE matched no
- *     row. set_plan_walker (20261108150200) writes only the walker, for
+ *     row. set_plan_walker (20261108170200) writes only the walker, for
  *     can_write_org, and the policy stays manage_pricing. Proved with real
  *     sign-ins through the API: a dispatcher saves; their plain UPDATE still
  *     matches nothing and cannot reprice; a tech, another business's
  *     dispatcher and anon are refused; the owner's own UPDATE still works.
  *
  *  2. Assign by capacity could replace a hand assignment made between its read
- *     and its write. assign_walk_group_if_open locks the group and every walk
- *     in it before deciding. Proved with TWO real Postgres sessions whose
- *     interleaving is forced, not slept into: one waits, in SQL, until
- *     pg_stat_activity shows the other blocked on a lock, and only then
- *     commits.
- *       - hand first, capacity during: the old write (a plain group UPDATE)
- *         replaces the hand assignment, the mutation that shows the race is
- *         real; the new function sees it and leaves the group alone;
- *       - capacity first, hand during: the hand assignment waits, lands
- *         after, and is what stands.
+ *     and its write. assign_walk_group_if_open locks the group, then every
+ *     walk in it WITHOUT WAITING, and only then decides. Proved with real
+ *     Postgres sessions whose interleaving is forced, never slept into: a
+ *     session holds its transaction open and waits, in SQL, until
+ *     pg_stat_activity shows the other session in the state the case needs.
+ *       - hand assignment in flight, capacity during: the old write (a plain
+ *         group UPDATE) waits and then replaces it (the mutation that shows
+ *         the race is real); the new function answers 'busy' and writes
+ *         nothing;
+ *       - capacity first, hand assignment during: the hand assignment waits,
+ *         lands after, and is what stands.
+ *
+ *  3. Lock order (#733 review). A member whose plan changes, or that rejoins
+ *     its group, takes its own row and then the group; this function takes
+ *     the group and then the rows. A version that WAITED for the rows would
+ *     deadlock against such a writer, and does here (the second mutation).
+ *     The real function never waits on a row while holding the group, so the
+ *     same interleavings finish: it answers 'busy', the writer completes.
+ *
+ *  Every session runs with lock_timeout (20s) and statement_timeout (30s),
+ *  every hold loop gives up and raises after 10s, deliberately shorter than
+ *  the lock timeout: a lock wait that hits lock_timeout raises
+ *  lock_not_available, the very error NOWAIT raises, so a version that WAITED
+ *  would otherwise turn into 'busy' at 20s and pass by timing. With 10s it
+ *  fails instead. every child is killed and every
+ *  backend terminated after each test whatever happened, and each test names
+ *  its sessions uniquely, so one case can never leak into the next.
  *
  *  Runs where tests/run-db-tests.sh runs it: the database job, on the stack
  *  it has just replayed from every migration. Skipped without TEST_SUPABASE_*
  *  env, like every file in this directory; with that env but without
  *  TEST_SUPABASE_DB_URL or psql it FAILS rather than skip the race. */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { spawn, spawnSync } from "node:child_process";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import {
   DB_ANON,
@@ -114,7 +131,7 @@ async function groupWithOneWalk() {
   });
   const joined = await admin.from("visits").update({ walk_group_id: groupId }).eq("id", visitId);
   if (joined.error) throw new Error(joined.error.message);
-  return { groupId, visitId };
+  return { groupId, visitId, clientId, propertyId, subscriptionId };
 }
 
 async function visitRow(id: string) {
@@ -127,80 +144,103 @@ async function visitRow(id: string) {
   return data as { assigned_staff_id: string | null; route_pinned: boolean };
 }
 
-// ── Two real sessions ─────────────────────────────────────────────────────
+// ── Real sessions, with every wait bounded and every child reaped ────────
 
-type Session = Promise<{ code: number | null; stdout: string; stderr: string }>;
+type Result = { code: number | null; stdout: string; stderr: string };
 
-/** A psql session running `script`, named so pg_stat_activity can find it. */
-function session(name: string, script: string): Session {
+/** Every psql child still running, so afterEach can kill it whatever a test
+ *  did; and the prefix every race session's name carries, so afterEach can
+ *  terminate its backend too. */
+const live = new Set<ChildProcess>();
+const RACE_PREFIX = "walker-race-";
+
+/** A psql session running `script` in one connection, named for
+ *  pg_stat_activity. The database bounds its waits (lock_timeout,
+ *  statement_timeout); the child is killed outright at 45s regardless. */
+function session(name: string, script: string): Promise<Result> {
   return new Promise((resolve) => {
     const child = spawn("psql", [PG_URL!, "-X", "-q", "-A", "-t", "-v", "ON_ERROR_STOP=1"], {
-      env: { ...process.env, PGAPPNAME: name },
+      env: {
+        ...process.env,
+        PGAPPNAME: name,
+        PGOPTIONS: "-c lock_timeout=20s -c statement_timeout=30s",
+      },
     });
+    live.add(child);
+    const killer = setTimeout(() => child.kill("SIGKILL"), 45_000);
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (d) => (stdout += d));
     child.stderr.on("data", (d) => (stderr += d));
-    child.on("close", (code) => resolve({ code, stdout, stderr }));
+    child.on("close", (code) => {
+      clearTimeout(killer);
+      live.delete(child);
+      resolve({ code, stdout, stderr });
+    });
     child.stdin.end(script);
   });
 }
 
 function ask(sql: string): string {
-  const r = spawnSync("psql", [PG_URL!, "-X", "-A", "-t", "-c", sql], { encoding: "utf8" });
-  if (r.status !== 0) throw new Error(r.stderr);
+  const r = spawnSync("psql", [PG_URL!, "-X", "-A", "-t", "-c", sql], {
+    encoding: "utf8",
+    timeout: 10_000,
+  });
+  if (r.status !== 0) throw new Error(r.stderr || `psql exited ${r.status}`);
   return r.stdout.trim();
 }
 
-/** Polls until `sql` answers t, up to about 20s. Returns whether it ever did. */
-async function eventually(sql: string): Promise<boolean> {
-  for (let i = 0; i < 400; i++) {
-    if (ask(sql) === "t") return true;
+/** Polls (each poll its own connection, so its own fresh view of
+ *  pg_stat_activity) until `cond` holds, for at most 10s of wall clock. */
+async function eventually(cond: string): Promise<boolean> {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    if (ask(`SELECT ${cond}`) === "t") return true;
     await new Promise((r) => setTimeout(r, 50));
   }
   return false;
 }
 
-const holding = (name: string) =>
-  `SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE application_name = '${name}'
-     AND state = 'active' AND query LIKE '%walker-race-hold%')`;
-const blocked = (name: string) =>
-  `SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE application_name = '${name}'
-     AND wait_event_type = 'Lock')`;
+/** Session `name` is waiting on a lock. */
+const isBlocked = (name: string) =>
+  `EXISTS (SELECT 1 FROM pg_stat_activity
+            WHERE application_name = '${name}' AND wait_event_type = 'Lock')`;
+/** Session `name` is inside its own hold loop (so it holds what it took). */
+const isHolding = (name: string) =>
+  `EXISTS (SELECT 1 FROM pg_stat_activity
+            WHERE application_name = '${name}' AND state = 'active'
+              AND query LIKE '%walker-race-hold%')`;
 
-/** SQL that waits, inside the holder's open transaction, until `name` is
- *  blocked on a lock, and RAISES if it never is (20s), so the session exits
- *  non-zero and rolls back rather than the test hanging.
- *
- *  pg_stat_clear_snapshot() on every pass is what makes this work: a backend
- *  reads pg_stat_activity once per transaction and then answers from that
- *  snapshot, so without it the loop never sees the other session change. */
-const holdUntilBlocked = (name: string) => `
+/** SQL that waits, inside the holder's open transaction, until `cond` holds,
+ *  and RAISES after ~10s (under lock_timeout, see the header) if it never does, so the session exits non-zero and
+ *  rolls back instead of hanging. pg_stat_clear_snapshot() on every pass is
+ *  what lets it see anything: a backend answers pg_stat_activity from a
+ *  snapshot taken once per transaction. */
+const holdUntil = (cond: string, label: string) => `
 DO $hold$
 DECLARE _seen boolean := false;
 BEGIN /* walker-race-hold */
-  FOR i IN 1..400 LOOP
+  FOR i IN 1..200 LOOP
     PERFORM pg_stat_clear_snapshot();
-    IF EXISTS (SELECT 1 FROM pg_stat_activity
-                WHERE application_name = '${name}' AND wait_event_type = 'Lock') THEN
+    IF ${cond} THEN
       _seen := true;
       EXIT;
     END IF;
     PERFORM pg_sleep(0.05);
   END LOOP;
   IF NOT _seen THEN
-    RAISE EXCEPTION 'walker race: never saw % blocked on a lock', '${name}';
+    RAISE EXCEPTION 'walker race: gave up waiting until %', '${label}';
   END IF;
 END $hold$;`;
 
-/** Session names unique to one test, so a session from another test (one
- *  still finishing after a failure, say) can never be mistaken for this one. */
+/** Session names unique to one test. */
 const names = () => {
   const run = Math.random().toString(36).slice(2, 8);
-  return { A: `walker-race-A-${run}`, B: `walker-race-B-${run}` };
+  return { A: `${RACE_PREFIX}A-${run}`, B: `${RACE_PREFIX}B-${run}` };
 };
 
-const RACE_TIMEOUT = 120_000;
+/** Each race case's budget. Every wait inside it is bounded well below. */
+const RACE_TIMEOUT = 60_000;
 
 const asDispatcher = () => `
 SET ROLE authenticated;
@@ -210,6 +250,16 @@ SELECT set_config('request.jwt.claims',
 
 const handAssign = (visitId: string, staffId: string) =>
   `UPDATE public.visits SET assigned_staff_id = '${staffId}', route_pinned = true WHERE id = '${visitId}';`;
+
+/** Runs the two sessions to the end. A holding session commits only after
+ *  its hold loop has SEEN the state it waits for, and raises otherwise, so its
+ *  exit code 0 is the proof that the interleaving happened. (Polling for that
+ *  state from here as well would race the holder, which moves on within one
+ *  50ms pass of seeing it.) */
+async function both(a: Promise<Result>, b: Promise<Result>) {
+  const [ra, rb] = await Promise.all([a, b]);
+  return { ra, rb };
+}
 
 describe.skipIf(!dbEnabled)("walker assignment is narrow and atomic", () => {
   beforeAll(async () => {
@@ -337,52 +387,74 @@ describe.skipIf(!dbEnabled)("walker assignment is narrow and atomic", () => {
     });
   });
 
-  describe("assign by capacity, interleaved with a hand assignment", () => {
-    it("has the two sessions it needs", () => {
+  describe("assign by capacity, interleaved", () => {
+    afterEach(async () => {
+      // Whatever the test did: kill every child, end every race backend.
+      const waiting = [...live].map(
+        (c) => new Promise<void>((r) => (c.exitCode !== null ? r() : c.once("close", () => r()))),
+      );
+      for (const c of live) c.kill("SIGKILL");
+      await Promise.all(waiting);
+      ask(
+        `SELECT count(pg_terminate_backend(pid)) FROM pg_stat_activity
+          WHERE application_name LIKE '${RACE_PREFIX}%'`,
+      );
+    });
+
+    it("has the sessions it needs", () => {
       expect(PG_URL, "TEST_SUPABASE_DB_URL (tests/run-db-tests.sh exports it)").toBeTruthy();
       expect(spawnSync("psql", ["--version"]).status, "psql").toBe(0);
     });
 
-    /** Hand assignment first and held open; the capacity write arrives during
-     *  it, blocks on the walk's row, and runs on after the hand commit. */
-    async function handThenCapacity(capacitySql: string) {
-      const g = await groupWithOneWalk();
-      const n = names();
-      const a = session(
-        n.A,
-        `BEGIN;\n${handAssign(g.visitId, org.walker.staffId!)}\n${holdUntilBlocked(n.B)}\nCOMMIT;\n`,
-      );
-      expect(await eventually(holding(n.A)), "A holds the hand assignment").toBe(true);
-      const b = session(n.B, `${asDispatcher()}\n${capacitySql.replace("%G", g.groupId)}\n`);
-      const sawBlock = await eventually(blocked(n.B));
-      const [ra, rb] = await Promise.all([a, b]);
-      expect(ra.code, ra.stderr).toBe(0);
-      expect(rb.code, rb.stderr).toBe(0);
-      expect(sawBlock, "the capacity write was seen waiting on the hand assignment").toBe(true);
-      return { g, out: rb.stdout.trim(), row: await visitRow(g.visitId) };
-    }
-
     it(
-      "mutation: the old write replaces a hand assignment committed during it",
+      "mutation: the old write waits for an in-flight hand assignment and then replaces it",
       async () => {
-        const { row } = await handThenCapacity(
-          `UPDATE public.walk_groups SET assigned_staff_id = '${org.otherWalker.staffId}'
-          WHERE id = '%G' AND assigned_staff_id IS NULL;`,
+        const g = await groupWithOneWalk();
+        const n = names();
+        const a = session(
+          n.A,
+          `BEGIN;\n${handAssign(g.visitId, org.walker.staffId!)}\n${holdUntil(isBlocked(n.B), "B blocked")}\nCOMMIT;\n`,
         );
-        // If this ever stops reproducing, the test below proves nothing.
-        expect(row.assigned_staff_id).toBe(org.otherWalker.staffId);
+        expect(await eventually(isHolding(n.A)), "A holds the hand assignment").toBe(true);
+        const b = session(
+          n.B,
+          `${asDispatcher()}\nUPDATE public.walk_groups SET assigned_staff_id = '${org.otherWalker.staffId}'
+            WHERE id = '${g.groupId}' AND assigned_staff_id IS NULL;\n`,
+        );
+        const { ra, rb } = await both(a, b);
+        expect(ra.code, ra.stderr).toBe(0);
+        expect(rb.code, rb.stderr).toBe(0);
+        // If this ever stops reproducing, the next case proves nothing.
+        expect((await visitRow(g.visitId)).assigned_staff_id).toBe(org.otherWalker.staffId);
       },
       RACE_TIMEOUT,
     );
 
     it(
-      "assign_walk_group_if_open sees that hand assignment and leaves the group alone",
+      "assign_walk_group_if_open refuses while a hand assignment is in flight, and writes nothing",
       async () => {
-        const { g, out, row } = await handThenCapacity(
-          `SELECT public.assign_walk_group_if_open('%G', '${org.otherWalker.staffId}');`,
+        const g = await groupWithOneWalk();
+        const n = names();
+        const a = session(
+          n.A,
+          `BEGIN;\n${handAssign(g.visitId, org.walker.staffId!)}\nSELECT pg_advisory_xact_lock(hashtext('${n.B}')) \\g /dev/null\n${holdUntil(isBlocked(n.B), "B, past its call, waits on A's advisory lock")}\nCOMMIT;\n`,
         );
-        expect(out).toBe("members_assigned");
-        expect(row).toEqual({ assigned_staff_id: org.walker.staffId, route_pinned: true });
+        expect(await eventually(isHolding(n.A)), "A holds the hand assignment").toBe(true);
+        const b = session(
+          n.B,
+          // The call, then a wait on A's advisory lock: B can only block there
+          // once the call has returned, and A commits only once it sees B
+          // blocked, so the call ran while the hand assignment was open.
+          `${asDispatcher()}\nSELECT public.assign_walk_group_if_open('${g.groupId}', '${org.otherWalker.staffId}');\nRESET ROLE;\nSELECT pg_advisory_lock(hashtext('${n.B}')) \\g /dev/null\n`,
+        );
+        const { ra, rb } = await both(a, b);
+        expect(ra.code, ra.stderr).toBe(0);
+        expect(rb.code, rb.stderr).toBe(0);
+        expect(rb.stdout.trim()).toBe("busy");
+        expect(await visitRow(g.visitId)).toEqual({
+          assigned_staff_id: org.walker.staffId,
+          route_pinned: true,
+        });
         const group = await org.admin
           .from("walk_groups")
           .select("assigned_staff_id")
@@ -400,20 +472,154 @@ describe.skipIf(!dbEnabled)("walker assignment is narrow and atomic", () => {
         const n = names();
         const b = session(
           n.B,
-          `BEGIN;\n${asDispatcher()}\nSELECT public.assign_walk_group_if_open('${g.groupId}', '${org.otherWalker.staffId}');\nRESET ROLE;\n${holdUntilBlocked(n.A)}\nCOMMIT;\n`,
+          `BEGIN;\n${asDispatcher()}\nSELECT public.assign_walk_group_if_open('${g.groupId}', '${org.otherWalker.staffId}');\nRESET ROLE;\n${holdUntil(isBlocked(n.A), "A blocked")}\nCOMMIT;\n`,
         );
-        expect(await eventually(holding(n.B)), "B holds the capacity write").toBe(true);
+        expect(await eventually(isHolding(n.B)), "B holds the capacity write").toBe(true);
         const a = session(n.A, `${handAssign(g.visitId, org.walker.staffId!)}\n`);
-        const sawBlock = await eventually(blocked(n.A));
-        const [ra, rb] = await Promise.all([a, b]);
+        const { ra, rb } = await both(a, b);
         expect(ra.code, ra.stderr).toBe(0);
         expect(rb.code, rb.stderr).toBe(0);
-        expect(sawBlock, "the hand assignment was seen waiting on the capacity write").toBe(true);
         expect(rb.stdout.trim()).toBe("assigned");
         expect(await visitRow(g.visitId)).toEqual({
           assigned_staff_id: org.walker.staffId,
           route_pinned: true,
         });
+      },
+      RACE_TIMEOUT,
+    );
+
+    /** A second plan for the same client, home and group service, so moving
+     *  the walk onto it keeps the walk in the group (validate_walk_group_member
+     *  then takes the group lock rather than detaching it). */
+    async function secondPlan(g: Awaited<ReturnType<typeof groupWithOneWalk>>) {
+      return insertRow(org.admin, "subscriptions", {
+        organization_id: org.orgId,
+        client_id: g.clientId,
+        property_id: g.propertyId,
+        account_type: "residential",
+        dog_count: 1,
+        frequency: "one_time",
+        price_cents: 2500,
+        service_id: groupServiceId,
+        status: "active",
+        started_on: orgDay(WALK_ORG_TZ),
+      });
+    }
+
+    /** The plan-change writer: takes the walk's row, waits until `when` holds
+     *  for the other session, then changes the walk's plan, which asks for
+     *  the group. */
+    const planChange = (visitId: string, sub2: string, when: string, label: string) =>
+      `BEGIN;
+SELECT 1 FROM public.visits WHERE id = '${visitId}' FOR NO KEY UPDATE \\g /dev/null
+${holdUntil(when, label)}
+UPDATE public.visits SET subscription_id = '${sub2}' WHERE id = '${visitId}';
+COMMIT;
+`;
+
+    it(
+      "mutation: a version that waits for the walks deadlocks against a plan change",
+      async () => {
+        const g = await groupWithOneWalk();
+        const sub2 = await secondPlan(g);
+        const n = names();
+        // The old lock order, as a committed function in this throwaway
+        // database (another session cannot see an uncommitted one): the group,
+        // then the walks, waiting. Dropped in `finally`.
+        const fn = `public.zz_walker_race_waiting_${n.A.slice(-6)}`;
+        ask(`CREATE FUNCTION ${fn}(_g uuid) RETURNS text LANGUAGE plpgsql AS $f$
+BEGIN
+  PERFORM 1 FROM public.walk_groups WHERE id = _g FOR UPDATE;
+  PERFORM 1 FROM public.visits WHERE walk_group_id = _g ORDER BY id FOR NO KEY UPDATE;
+  RETURN 'locked';
+END $f$`);
+        try {
+          // A asks for the group only once B is seen waiting on the walk,
+          // i.e. once B already holds the group.
+          const a = session(
+            n.A,
+            planChange(g.visitId, sub2, isBlocked(n.B), "B holds the group and waits on the walk"),
+          );
+          expect(await eventually(isHolding(n.A)), "A holds the walk's row").toBe(true);
+          const b = session(n.B, `BEGIN;\nSELECT ${fn}('${g.groupId}');\nCOMMIT;\n`);
+          const { ra, rb } = await both(a, b);
+          // B takes the group and waits on the walk; A, holding the walk,
+          // asks for the group. Postgres finds the cycle and kills one.
+          const out = `${ra.stderr}\n${rb.stderr}`;
+          expect(out, "the waiting version deadlocks").toMatch(/deadlock detected/);
+        } finally {
+          ask(`DROP FUNCTION IF EXISTS ${fn}(uuid)`);
+        }
+      },
+      RACE_TIMEOUT,
+    );
+
+    it(
+      "assign_walk_group_if_open and a plan change on one of its walks both finish",
+      async () => {
+        const g = await groupWithOneWalk();
+        const sub2 = await secondPlan(g);
+        const n = names();
+        // A holds the walk's row and, once B holds the group, asks for it.
+        const a = session(n.A, planChange(g.visitId, sub2, isHolding(n.B), "B holds the group"));
+        expect(await eventually(isHolding(n.A)), "A holds the walk's row").toBe(true);
+        // B takes the group, finds the walk locked, answers busy, and holds
+        // the group until A is seen waiting for it.
+        const b = session(
+          n.B,
+          `BEGIN;\n${asDispatcher()}\nSELECT public.assign_walk_group_if_open('${g.groupId}', '${org.otherWalker.staffId}');\nRESET ROLE;\n${holdUntil(isBlocked(n.A), "A blocked on the group")}\nCOMMIT;\n`,
+        );
+        const { ra, rb } = await both(a, b);
+        expect(`${ra.stderr}${rb.stderr}`).not.toMatch(/deadlock/);
+        expect(ra.code, ra.stderr).toBe(0);
+        expect(rb.code, rb.stderr).toBe(0);
+        expect(rb.stdout.trim()).toBe("busy");
+        const row = await org.admin
+          .from("visits")
+          .select("subscription_id, walk_group_id, assigned_staff_id")
+          .eq("id", g.visitId)
+          .single();
+        expect(row.data).toEqual({
+          subscription_id: sub2,
+          walk_group_id: g.groupId,
+          assigned_staff_id: null,
+        });
+      },
+      RACE_TIMEOUT,
+    );
+
+    it(
+      "assign_walk_group_if_open and a walk rejoining its group both finish",
+      async () => {
+        const g = await groupWithOneWalk();
+        const n = names();
+        // A takes the walk out of the group (its row, no group lock), waits
+        // until B holds the group, then puts it back (which asks for it).
+        const a = session(
+          n.A,
+          `BEGIN;
+UPDATE public.visits SET walk_group_id = NULL WHERE id = '${g.visitId}';
+${holdUntil(isHolding(n.B), "B holds the group")}
+UPDATE public.visits SET walk_group_id = '${g.groupId}' WHERE id = '${g.visitId}';
+COMMIT;
+`,
+        );
+        expect(await eventually(isHolding(n.A)), "A holds the walk's row").toBe(true);
+        const b = session(
+          n.B,
+          `BEGIN;\n${asDispatcher()}\nSELECT public.assign_walk_group_if_open('${g.groupId}', '${org.otherWalker.staffId}');\nRESET ROLE;\n${holdUntil(isBlocked(n.A), "A blocked on the group")}\nCOMMIT;\n`,
+        );
+        const { ra, rb } = await both(a, b);
+        expect(`${ra.stderr}${rb.stderr}`).not.toMatch(/deadlock/);
+        expect(ra.code, ra.stderr).toBe(0);
+        expect(rb.code, rb.stderr).toBe(0);
+        expect(rb.stdout.trim()).toBe("busy");
+        const row = await org.admin
+          .from("visits")
+          .select("walk_group_id, assigned_staff_id")
+          .eq("id", g.visitId)
+          .single();
+        expect(row.data).toEqual({ walk_group_id: g.groupId, assigned_staff_id: null });
       },
       RACE_TIMEOUT,
     );

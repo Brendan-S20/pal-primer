@@ -1,11 +1,11 @@
--- Proof for 20261108150200 — walker assignment is narrow and atomic (#731).
+-- Proof for 20261108170200 — walker assignment is narrow and atomic (#731).
 --
 -- Run by the database job in .github/workflows/sandboxes.yml ("The proofs,
 -- which are evidence rather than schema") against the database it has just
 -- replayed from every migration. Locally:
 --   supabase db reset
 --   psql "postgresql://postgres:postgres@127.0.0.1:54422/postgres" \
---     -v ON_ERROR_STOP=1 -f supabase/proofs/20261108150200-walker-assignment-is-narrow-and-atomic.sql
+--     -v ON_ERROR_STOP=1 -f supabase/proofs/20261108170200-walker-assignment-is-narrow-and-atomic.sql
 --
 -- Every assertion acts as the `authenticated` ROLE with a signed-in user's
 -- claims, so RLS is live (README: setting the claims alone leaves you as
@@ -238,11 +238,11 @@ CREATE TEMP TABLE outcomes (k text PRIMARY KEY, v text) ON COMMIT DROP;
 GRANT ALL ON outcomes TO authenticated;
 SELECT pg_temp.as_user('a7330000-0000-4000-8000-0000000000a2');
 SET LOCAL ROLE authenticated;
-INSERT INTO outcomes VALUES
-  ('open',   public.assign_walk_group_if_open('97330000-0000-4000-8000-0000000000c1', '5e733000-0000-4000-8000-0000000000a4')),
-  ('held',   public.assign_walk_group_if_open('97330000-0000-4000-8000-0000000000c2', '5e733000-0000-4000-8000-0000000000a4')),
-  ('pinned', public.assign_walk_group_if_open('97330000-0000-4000-8000-0000000000c3', '5e733000-0000-4000-8000-0000000000a4')),
-  ('again',  public.assign_walk_group_if_open('97330000-0000-4000-8000-0000000000c1', '5e733000-0000-4000-8000-0000000000a3'));
+-- One statement each, in this order: 'again' depends on 'open' having run.
+INSERT INTO outcomes VALUES ('open',   public.assign_walk_group_if_open('97330000-0000-4000-8000-0000000000c1', '5e733000-0000-4000-8000-0000000000a4'));
+INSERT INTO outcomes VALUES ('held',   public.assign_walk_group_if_open('97330000-0000-4000-8000-0000000000c2', '5e733000-0000-4000-8000-0000000000a4'));
+INSERT INTO outcomes VALUES ('pinned', public.assign_walk_group_if_open('97330000-0000-4000-8000-0000000000c3', '5e733000-0000-4000-8000-0000000000a4'));
+INSERT INTO outcomes VALUES ('again',  public.assign_walk_group_if_open('97330000-0000-4000-8000-0000000000c1', '5e733000-0000-4000-8000-0000000000a3'));
 RESET ROLE;
 DO $$
 DECLARE _r text;

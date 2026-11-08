@@ -5,7 +5,7 @@
  * one, so a business that never touches this keeps the group sizes it set on
  * the service. When set, a group walk with this walker holds the smaller of
  * the two, and the database refuses a walk that would go over
- * (20261108150000). Drawn only for a business that walks dogs.
+ * (20261108170000). Drawn only for a business that walks dogs.
  *
  * Lowering a cap does not move or refuse anything already booked; the group
  * shows as over the cap on Routes and the office decides.

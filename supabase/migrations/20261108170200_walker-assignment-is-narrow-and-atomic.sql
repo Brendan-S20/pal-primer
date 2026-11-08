@@ -32,17 +32,34 @@
 -- COMMITTED it re-reads the row afterwards, still matches it, and writes X.
 --
 -- assign_walk_group_if_open makes the check and the write one atomic step:
---   * lock the group row (a walk joining the group already takes this lock,
---     validate_walk_group_member);
---   * lock EVERY row in the group, unconditionally. A conditional FOR UPDATE
---     is not enough: a member whose hand assignment is not yet committed still
---     reads as unassigned, so a WHERE on assigned_staff_id would skip it
---     without waiting for it;
+--   * lock the group row. A walk joining the group takes this lock too
+--     (validate_walk_group_member), so while it is held nobody joins;
+--   * lock EVERY row in the group, unconditionally, and WITHOUT WAITING
+--     (FOR NO KEY UPDATE NOWAIT, the lock the UPDATEs below take). A
+--     conditional lock is not enough: a member whose hand assignment is not
+--     yet committed still reads as unassigned, so a WHERE on
+--     assigned_staff_id would skip it. If any row is locked by someone else,
+--     write nothing and answer 'busy';
 --   * only then read, in a new statement, whether any walk still to happen is
 --     held or pinned; if so, write nothing.
--- A hand assignment committed first is seen and the group is left alone. One
--- that arrives after the locks waits, and lands after the copy, so it is the
--- assignment that stands. Either way nobody's hand assignment is replaced.
+-- A hand assignment committed first is seen ('members_assigned'). One in
+-- flight is refused ('busy'). One that arrives after the locks waits, and
+-- lands after the copy, so it is the assignment that stands. Nobody's hand
+-- assignment is replaced.
+--
+-- WHY NOWAIT, AND NOT A WAIT. The writers that touch a member AND its group
+-- take the member row first and the group second: an UPDATE locks its row
+-- before its BEFORE ROW triggers run, and validate_walk_group_member and
+-- enforce_walker_dog_cap_on_member then take the group FOR UPDATE when a
+-- member's plan (subscription_id) changes or it comes back to scheduled, and
+-- when a walk joins or rejoins. This function needs the opposite order,
+-- because the group lock is what freezes the membership it is about to read.
+-- Waiting for a member while holding the group would let one of those
+-- writers hold the member and wait for the group: a lock cycle Postgres
+-- resolves by killing one of the two. NOWAIT means this function never waits
+-- on a member while holding the group, so no cycle can form; on contention it
+-- refuses safely and Assign by capacity leaves that group for next time. The
+-- only wait it ever does is for the group row itself, while holding nothing.
 --
 -- What does NOT change: choosing a group's walker by hand (setWalkGroupWalker)
 -- still copies onto its scheduled walks, as before; that is a person deciding.
@@ -89,7 +106,7 @@ $function$;
 REVOKE ALL ON FUNCTION public.set_plan_walker(uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.set_plan_walker(uuid, uuid) TO authenticated, service_role;
 COMMENT ON FUNCTION public.set_plan_walker(uuid, uuid) IS
-  'Sets a walk plan''s walker (subscriptions.assigned_staff_id) for anyone public.can_write_org admits (owner, office_manager, dispatcher). Writes no other column; the subscriptions write policy stays manage_pricing. Migration 20261108150200 (#731).';
+  'Sets a walk plan''s walker (subscriptions.assigned_staff_id) for anyone public.can_write_org admits (owner, office_manager, dispatcher). Writes no other column; the subscriptions write policy stays manage_pricing. Migration 20261108170200 (#731).';
 
 -- ── assign_walk_group_if_open ────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.assign_walk_group_if_open(_group_id uuid, _walker_id uuid)
@@ -110,12 +127,18 @@ BEGIN
     RAISE EXCEPTION USING ERRCODE = 'check_violation', MESSAGE = 'Choose a walker.';
   END IF;
 
-  -- 1. The group, then 2. every walk in it, always in that order.
+  -- 1. The group: the only lock this function waits for, holding nothing.
   SELECT g.assigned_staff_id INTO _walker FROM public.walk_groups g WHERE g.id = _group_id FOR UPDATE;
   IF _walker IS NOT NULL THEN
     RETURN 'has_walker';
   END IF;
-  PERFORM 1 FROM public.visits v WHERE v.walk_group_id = _group_id ORDER BY v.id FOR UPDATE;
+  -- 2. Every walk in it, never waiting: see WHY NOWAIT above.
+  BEGIN
+    PERFORM 1 FROM public.visits v WHERE v.walk_group_id = _group_id
+      ORDER BY v.id FOR NO KEY UPDATE NOWAIT;
+  EXCEPTION WHEN lock_not_available THEN
+    RETURN 'busy';
+  END;
 
   -- 3. Read under those locks, in a statement of its own, so what is read is
   --    what was committed before the locks were granted.
@@ -145,7 +168,7 @@ $function$;
 REVOKE ALL ON FUNCTION public.assign_walk_group_if_open(uuid, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.assign_walk_group_if_open(uuid, uuid) TO authenticated, service_role;
 COMMENT ON FUNCTION public.assign_walk_group_if_open(uuid, uuid) IS
-  'Gives a group walk to a walker only if, under row locks on the group and every walk in it, the group has no walker and no walk still to happen is held or pinned. Returns assigned, has_walker, members_assigned or empty. For Assign by capacity. Migration 20261108150200 (#731).';
+  'Gives a group walk to a walker only if, under row locks on the group and every walk in it, the group has no walker and no walk still to happen is held or pinned. Never waits on a walk while holding the group (NOWAIT): a walk locked by anyone else answers busy. Returns assigned, has_walker, members_assigned, busy or empty. For Assign by capacity. Migration 20261108170200 (#731).';
 
 -- ── What this file establishes ───────────────────────────────────────────
 DO $check$

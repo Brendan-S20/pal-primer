@@ -5,7 +5,7 @@
 // assigned by capacity". This file pins the pure rules, the wiring around
 // them, and R2-29 (the group's Walker select said "Unassigned" while the
 // database had the walker). The database half of the cap is
-// supabase/proofs/20261108150000-a-walker-has-a-dog-cap.sql, which the
+// supabase/proofs/20261108170000-a-walker-has-a-dog-cap.sql, which the
 // database job runs (a-walker-proof-runs-where-a-database-does.test.ts).
 
 import { readFileSync, readdirSync } from "node:fs";
@@ -28,7 +28,7 @@ import { GroupWalkCard } from "@/components/routes/GroupWalksPanel";
 
 const root = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
-const MIGRATION = "supabase/migrations/20261108150000_a-walker-has-a-dog-cap.sql";
+const MIGRATION = "supabase/migrations/20261108170000_a-walker-has-a-dog-cap.sql";
 
 function visit(id: string, over: Partial<WalkGroupVisit> = {}): WalkGroupVisit {
   return {
@@ -434,7 +434,7 @@ describe("assign by capacity", () => {
 });
 
 describe("a walk plan has a walker, and a one-person business walks its own walks (F-17)", () => {
-  const sql = read("supabase/migrations/20261108150100_a-walk-plan-has-a-walker.sql");
+  const sql = read("supabase/migrations/20261108170100_a-walk-plan-has-a-walker.sql");
   const fill = sql.slice(
     sql.indexOf("CREATE OR REPLACE FUNCTION public.fill_visit_walker()"),
     sql.indexOf("REVOKE ALL ON FUNCTION public.fill_visit_walker()"),
@@ -496,7 +496,7 @@ describe("a walk plan has a walker, and a one-person business walks its own walk
 });
 
 describe("walker assignment is narrow and atomic (#733 review)", () => {
-  const sql = read("supabase/migrations/20261108150200_walker-assignment-is-narrow-and-atomic.sql");
+  const sql = read("supabase/migrations/20261108170200_walker-assignment-is-narrow-and-atomic.sql");
   const fnBody = (name: string) =>
     sql.slice(
       sql.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`),
@@ -521,11 +521,11 @@ describe("walker assignment is narrow and atomic (#733 review)", () => {
     );
   });
 
-  it("locks the group, then every walk in it unconditionally, then reads, then writes", () => {
+  it("locks the group, then every walk in it unconditionally and without waiting, then reads, then writes", () => {
     const body = fnBody("assign_walk_group_if_open");
     const order = [
       "WHERE g.id = _group_id FOR UPDATE;",
-      "PERFORM 1 FROM public.visits v WHERE v.walk_group_id = _group_id ORDER BY v.id FOR UPDATE;",
+      "ORDER BY v.id FOR NO KEY UPDATE NOWAIT;",
       "AND (v.assigned_staff_id IS NOT NULL OR v.route_pinned)",
       "UPDATE public.walk_groups SET assigned_staff_id = _walker_id WHERE id = _group_id;",
     ].map((s) => body.indexOf(s));
@@ -536,6 +536,11 @@ describe("walker assignment is narrow and atomic (#733 review)", () => {
     // skipped without waiting for it.
     expect(body).not.toMatch(/assigned_staff_id IS NULL[^;]*FOR UPDATE/);
     expect(body).toContain("RETURN 'members_assigned';");
+    // Lock order (#733 review): member writers take the walk, then the group;
+    // this takes the group, then the walks. It must never WAIT on a walk while
+    // holding the group, or the two can deadlock: on contention it refuses.
+    expect(body).toMatch(/EXCEPTION WHEN lock_not_available THEN\s+RETURN 'busy';/);
+    expect(body.match(/FOR (NO KEY )?UPDATE(?! NOWAIT)/g)).toEqual(["FOR UPDATE"]);
     expect(body).toContain("NOT public.can_write_org((SELECT auth.uid()), _org)");
     expect(sql).not.toMatch(/CREATE OR REPLACE FUNCTION public\.copy_walk_group_walker/);
   });
