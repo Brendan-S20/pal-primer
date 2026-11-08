@@ -62,9 +62,15 @@ const state = vi.hoisted(() => ({
 function fakeDb(tag: string): any {
   const builder = (table: string) => {
     let pendingInsert: any = null;
+    // The organization a read asked for, so a visit in another business
+    // reads as "no row", as RLS and the explicit filter both make it.
+    let orgFilter: string | null = null;
     const q: any = {
       select: () => q,
-      eq: () => q,
+      eq: (column: string, value: unknown) => {
+        if (column === "organization_id") orgFilter = String(value);
+        return q;
+      },
       neq: () => q,
       in: () => q,
       not: () => q,
@@ -80,7 +86,14 @@ function fakeDb(tag: string): any {
       single: async () => {
         if (pendingInsert)
           return { data: { id: `${table}-new`, portal_token: "tok" }, error: null };
-        if (table === "visits") return { data: state.visit, error: null };
+        if (table === "visits") {
+          if (orgFilter && orgFilter !== state.visit.organization_id)
+            return {
+              data: null,
+              error: { message: "Cannot coerce the result to a single JSON object" },
+            };
+          return { data: state.visit, error: null };
+        }
         return { data: null, error: null };
       },
       maybeSingle: async () => {
@@ -300,6 +313,22 @@ describe("a dispatcher's new client with a plan (gaps-r2-02)", () => {
     expect(state.inserts).toEqual([]);
   });
 
+  it("is refused a first cleanup, which is a bill, before anything is written", async () => {
+    await expect(
+      (onboardClient as any)({
+        data: {
+          displayName: "Rivera household",
+          accountType: "residential",
+          street: "1 Oak St",
+          city: "Springfield",
+          postalCode: "60614",
+          firstCleanup: { priceCents: 7500, description: "First cleanup" },
+        },
+      }),
+    ).rejects.toThrow("Not authorized");
+    expect(state.inserts).toEqual([]);
+  });
+
   it("is refused billing in advance, which is a billing decision", async () => {
     await expect(newClient({ billingCadence: "prepaid" })).rejects.toThrow(PLAN_CADENCE_IS_BILLING);
     expect(state.inserts).toEqual([]);
@@ -351,6 +380,12 @@ describe("moving a visit to another day (visit drawer)", () => {
   it("a technician is refused before the RPC", async () => {
     state.role = "tech";
     await expect(move()).rejects.toThrow("Not authorized");
+    expect(state.rpcs).toEqual([]);
+  });
+
+  it("another business's visit is not found, and nothing is moved", async () => {
+    state.visit = { ...state.visit, organization_id: "org-2" };
+    await expect(move()).rejects.toThrow("Cannot coerce the result to a single JSON object");
     expect(state.rpcs).toEqual([]);
   });
 
