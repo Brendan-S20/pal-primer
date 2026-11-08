@@ -152,9 +152,9 @@ function ask(sql: string): string {
   return r.stdout.trim();
 }
 
-/** Polls until `sql` answers t, up to 30s. Returns whether it ever did. */
+/** Polls until `sql` answers t, up to about 20s. Returns whether it ever did. */
 async function eventually(sql: string): Promise<boolean> {
-  for (let i = 0; i < 600; i++) {
+  for (let i = 0; i < 400; i++) {
     if (ask(sql) === "t") return true;
     await new Promise((r) => setTimeout(r, 50));
   }
@@ -169,15 +169,38 @@ const blocked = (name: string) =>
      AND wait_event_type = 'Lock')`;
 
 /** SQL that waits, inside the holder's open transaction, until `name` is
- *  blocked on a lock; 30s at most. */
+ *  blocked on a lock, and RAISES if it never is (20s), so the session exits
+ *  non-zero and rolls back rather than the test hanging.
+ *
+ *  pg_stat_clear_snapshot() on every pass is what makes this work: a backend
+ *  reads pg_stat_activity once per transaction and then answers from that
+ *  snapshot, so without it the loop never sees the other session change. */
 const holdUntilBlocked = (name: string) => `
-DO $hold$ BEGIN /* walker-race-hold */
-  FOR i IN 1..600 LOOP
-    EXIT WHEN EXISTS (SELECT 1 FROM pg_stat_activity
-                       WHERE application_name = '${name}' AND wait_event_type = 'Lock');
+DO $hold$
+DECLARE _seen boolean := false;
+BEGIN /* walker-race-hold */
+  FOR i IN 1..400 LOOP
+    PERFORM pg_stat_clear_snapshot();
+    IF EXISTS (SELECT 1 FROM pg_stat_activity
+                WHERE application_name = '${name}' AND wait_event_type = 'Lock') THEN
+      _seen := true;
+      EXIT;
+    END IF;
     PERFORM pg_sleep(0.05);
   END LOOP;
+  IF NOT _seen THEN
+    RAISE EXCEPTION 'walker race: never saw % blocked on a lock', '${name}';
+  END IF;
 END $hold$;`;
+
+/** Session names unique to one test, so a session from another test (one
+ *  still finishing after a failure, say) can never be mistaken for this one. */
+const names = () => {
+  const run = Math.random().toString(36).slice(2, 8);
+  return { A: `walker-race-A-${run}`, B: `walker-race-B-${run}` };
+};
+
+const RACE_TIMEOUT = 120_000;
 
 const asDispatcher = () => `
 SET ROLE authenticated;
@@ -324,16 +347,14 @@ describe.skipIf(!dbEnabled)("walker assignment is narrow and atomic", () => {
      *  it, blocks on the walk's row, and runs on after the hand commit. */
     async function handThenCapacity(capacitySql: string) {
       const g = await groupWithOneWalk();
+      const n = names();
       const a = session(
-        "walker-race-A",
-        `BEGIN;\n${handAssign(g.visitId, org.walker.staffId!)}\n${holdUntilBlocked("walker-race-B")}\nCOMMIT;\n`,
+        n.A,
+        `BEGIN;\n${handAssign(g.visitId, org.walker.staffId!)}\n${holdUntilBlocked(n.B)}\nCOMMIT;\n`,
       );
-      expect(await eventually(holding("walker-race-A")), "A holds the hand assignment").toBe(true);
-      const b = session(
-        "walker-race-B",
-        `${asDispatcher()}\n${capacitySql.replace("%G", g.groupId)}\n`,
-      );
-      const sawBlock = await eventually(blocked("walker-race-B"));
+      expect(await eventually(holding(n.A)), "A holds the hand assignment").toBe(true);
+      const b = session(n.B, `${asDispatcher()}\n${capacitySql.replace("%G", g.groupId)}\n`);
+      const sawBlock = await eventually(blocked(n.B));
       const [ra, rb] = await Promise.all([a, b]);
       expect(ra.code, ra.stderr).toBe(0);
       expect(rb.code, rb.stderr).toBe(0);
@@ -341,47 +362,60 @@ describe.skipIf(!dbEnabled)("walker assignment is narrow and atomic", () => {
       return { g, out: rb.stdout.trim(), row: await visitRow(g.visitId) };
     }
 
-    it("mutation: the old write replaces a hand assignment committed during it", async () => {
-      const { row } = await handThenCapacity(
-        `UPDATE public.walk_groups SET assigned_staff_id = '${org.otherWalker.staffId}'
+    it(
+      "mutation: the old write replaces a hand assignment committed during it",
+      async () => {
+        const { row } = await handThenCapacity(
+          `UPDATE public.walk_groups SET assigned_staff_id = '${org.otherWalker.staffId}'
           WHERE id = '%G' AND assigned_staff_id IS NULL;`,
-      );
-      // If this ever stops reproducing, the test below proves nothing.
-      expect(row.assigned_staff_id).toBe(org.otherWalker.staffId);
-    });
+        );
+        // If this ever stops reproducing, the test below proves nothing.
+        expect(row.assigned_staff_id).toBe(org.otherWalker.staffId);
+      },
+      RACE_TIMEOUT,
+    );
 
-    it("assign_walk_group_if_open sees that hand assignment and leaves the group alone", async () => {
-      const { g, out, row } = await handThenCapacity(
-        `SELECT public.assign_walk_group_if_open('%G', '${org.otherWalker.staffId}');`,
-      );
-      expect(out).toBe("members_assigned");
-      expect(row).toEqual({ assigned_staff_id: org.walker.staffId, route_pinned: true });
-      const group = await org.admin
-        .from("walk_groups")
-        .select("assigned_staff_id")
-        .eq("id", g.groupId)
-        .single();
-      expect(group.data?.assigned_staff_id).toBeNull();
-    });
+    it(
+      "assign_walk_group_if_open sees that hand assignment and leaves the group alone",
+      async () => {
+        const { g, out, row } = await handThenCapacity(
+          `SELECT public.assign_walk_group_if_open('%G', '${org.otherWalker.staffId}');`,
+        );
+        expect(out).toBe("members_assigned");
+        expect(row).toEqual({ assigned_staff_id: org.walker.staffId, route_pinned: true });
+        const group = await org.admin
+          .from("walk_groups")
+          .select("assigned_staff_id")
+          .eq("id", g.groupId)
+          .single();
+        expect(group.data?.assigned_staff_id).toBeNull();
+      },
+      RACE_TIMEOUT,
+    );
 
-    it("a hand assignment arriving during a capacity assignment waits and stands", async () => {
-      const g = await groupWithOneWalk();
-      const b = session(
-        "walker-race-B",
-        `BEGIN;\n${asDispatcher()}\nSELECT public.assign_walk_group_if_open('${g.groupId}', '${org.otherWalker.staffId}');\nRESET ROLE;\n${holdUntilBlocked("walker-race-A")}\nCOMMIT;\n`,
-      );
-      expect(await eventually(holding("walker-race-B")), "B holds the capacity write").toBe(true);
-      const a = session("walker-race-A", `${handAssign(g.visitId, org.walker.staffId!)}\n`);
-      const sawBlock = await eventually(blocked("walker-race-A"));
-      const [ra, rb] = await Promise.all([a, b]);
-      expect(ra.code, ra.stderr).toBe(0);
-      expect(rb.code, rb.stderr).toBe(0);
-      expect(sawBlock, "the hand assignment was seen waiting on the capacity write").toBe(true);
-      expect(rb.stdout.trim()).toBe("assigned");
-      expect(await visitRow(g.visitId)).toEqual({
-        assigned_staff_id: org.walker.staffId,
-        route_pinned: true,
-      });
-    });
+    it(
+      "a hand assignment arriving during a capacity assignment waits and stands",
+      async () => {
+        const g = await groupWithOneWalk();
+        const n = names();
+        const b = session(
+          n.B,
+          `BEGIN;\n${asDispatcher()}\nSELECT public.assign_walk_group_if_open('${g.groupId}', '${org.otherWalker.staffId}');\nRESET ROLE;\n${holdUntilBlocked(n.A)}\nCOMMIT;\n`,
+        );
+        expect(await eventually(holding(n.B)), "B holds the capacity write").toBe(true);
+        const a = session(n.A, `${handAssign(g.visitId, org.walker.staffId!)}\n`);
+        const sawBlock = await eventually(blocked(n.A));
+        const [ra, rb] = await Promise.all([a, b]);
+        expect(ra.code, ra.stderr).toBe(0);
+        expect(rb.code, rb.stderr).toBe(0);
+        expect(sawBlock, "the hand assignment was seen waiting on the capacity write").toBe(true);
+        expect(rb.stdout.trim()).toBe("assigned");
+        expect(await visitRow(g.visitId)).toEqual({
+          assigned_staff_id: org.walker.staffId,
+          route_pinned: true,
+        });
+      },
+      RACE_TIMEOUT,
+    );
   });
 });
