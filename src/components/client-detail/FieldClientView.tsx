@@ -146,7 +146,7 @@ export function FieldClientView({
             </div>
 
             {(p.gate_code || p.lock_box_code || p.key_location) && (
-              <div className="grid gap-2 rounded-md border bg-muted/30 p-3 text-sm sm:grid-cols-2">
+              <div className="grid gap-2 rounded-md border bg-muted/30 p-3 text-sm [overflow-wrap:anywhere] sm:grid-cols-2">
                 {p.gate_code && (
                   <div>
                     <span className="text-muted-foreground">{t("fieldClient.gate")}</span>{" "}
@@ -173,7 +173,9 @@ export function FieldClientView({
             )}
 
             {(p.parking_notes || p.access_notes || p.hazard_notes || flags.length > 0) && (
-              <div className="space-y-2 text-sm">
+              // A note can end in a link with no space in it; it breaks
+              // rather than push the page sideways at 360 (#729 sweep).
+              <div className="space-y-2 text-sm [overflow-wrap:anywhere]">
                 {p.parking_notes && (
                   <p>
                     <span className="font-medium">{t("fieldClient.parking")}</span>{" "}
@@ -231,7 +233,9 @@ export function FieldClientView({
                           )}
                         </div>
                         {d.vaccine_status && (
-                          <span className="inline-block rounded-md border px-2 py-1 text-xs">{t(`vaccineStatus.${d.vaccine_status}`)}</span>
+                          <span className="inline-block rounded-md border px-2 py-1 text-xs">
+                            {t(`vaccineStatus.${d.vaccine_status}`)}
+                          </span>
                         )}
                         {details.length > 0 && (
                           <div className="text-xs text-muted-foreground">
