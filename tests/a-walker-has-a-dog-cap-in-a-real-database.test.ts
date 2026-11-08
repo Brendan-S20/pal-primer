@@ -75,7 +75,7 @@ describe.skipIf(!reachable)("a walker's dog cap in a real database", () => {
     const out = `${r.stdout}\n${r.stderr}`;
     expect(r.status, out).toBe(0);
     expect(out).not.toMatch(/PROOF FAILED/);
-    expect(out.match(/NOTICE:\s+ok: /g)?.length, out).toBe(6);
+    expect(out.match(/NOTICE:\s+ok: /g)?.length, out).toBe(7);
     expect(out).toMatch(/ALL DOG CAP PROOFS PASSED/);
     const left = spawnSync(
       psql!,

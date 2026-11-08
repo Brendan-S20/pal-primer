@@ -88,6 +88,16 @@ function argsOf(route: Route): Record<string, any> {
 
 export type Stub = unknown | ((args: Record<string, any>) => unknown);
 
+/**
+ * Thrown by a stub to make the server function fail, the way a refused write
+ * fails in production: the browser gets a non-JSON 500 whose text becomes the
+ * Error's message (serverFnFetcher: `if (!response.ok) throw new Error(await
+ * response.text())`), and the page shows it however it shows a real refusal.
+ * Use the database's own wording, so the spec measures the message a person
+ * would actually read.
+ */
+export class StubRefusal extends Error {}
+
 const ok = { ok: true };
 
 /** The end-of-day step's wording for a business that does not run pet waste
@@ -2092,10 +2102,15 @@ export async function installStubBackend(
     let value: unknown = null;
     if (name in STUBS) {
       const stub = STUBS[name];
-      value =
-        typeof stub === "function"
-          ? (stub as (a: Record<string, any>) => unknown)(argsOf(route))
-          : stub;
+      try {
+        value =
+          typeof stub === "function"
+            ? (stub as (a: Record<string, any>) => unknown)(argsOf(route))
+            : stub;
+      } catch (refusal) {
+        if (!(refusal instanceof StubRefusal)) throw refusal;
+        return route.fulfill({ status: 500, contentType: "text/plain", body: refusal.message });
+      }
     } else {
       const label = `${name || id.slice(0, 24)}  (${file})`;
       if (!report.unstubbed.includes(label)) report.unstubbed.push(label);

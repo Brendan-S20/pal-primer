@@ -16,7 +16,11 @@
 --      changes that group;
 --   5. a completed walk stops counting, so a place it held can be taken;
 --   6. each member is still its own client's visit, so the group bills five
---      clients once each and nothing about billing changed.
+--      clients once each and nothing about billing changed;
+--   7. the billing run itself, on a shared walk three clients finished: each
+--      client's invoice gets exactly one line for their own visit, at that
+--      visit's price, never a line for another client's dogs, and a second
+--      run bills nothing again.
 --
 -- Everything is inside one transaction, ROLLED BACK at the end, the migration
 -- included.
@@ -211,6 +215,102 @@ BEGIN
     RAISE EXCEPTION 'PROOF FAILED [billing]: nothing stops a visit being billed twice';
   END IF;
   RAISE NOTICE 'ok: each member is its own client''s visit, billed at most once';
+END $$;
+
+-- ── 7. The billing run bills each client of a shared walk once ────────────
+-- Three clients' postpaid walks share one group walk three days ago, with Bo.
+-- All three are completed. The ordinary run (admin_generate_invoice_for_client)
+-- bills each client; then it runs again.
+INSERT INTO public.subscriptions (id, organization_id, client_id, property_id, account_type, frequency,
+                                  price_cents, dog_count, started_on, service_id, billing_cadence)
+SELECT ('d7310000-0000-4000-8000-0000000000b' || x.k)::uuid, '07310000-0000-4000-8000-0000000000aa',
+       ('c7310000-0000-4000-8000-0000000000a' || x.k)::uuid,
+       ('e7310000-0000-4000-8000-0000000000a' || x.k)::uuid,
+       'residential', 'weekly', x.price, x.dogs, p.d - 50, '55731000-0000-4000-8000-0000000000a1', 'postpaid'
+  FROM proof_day p, (VALUES ('1', 2, 2600), ('2', 1, 2400), ('3', 2, 3100)) AS x(k, dogs, price);
+CREATE TEMP TABLE bill_day ON COMMIT DROP AS
+  SELECT (now() AT TIME ZONE 'America/Chicago')::date - 3 AS p,
+         (now() AT TIME ZONE 'America/Chicago')::date AS today;
+-- Whatever a plan generated for P is not ours.
+DELETE FROM public.visits
+ WHERE organization_id = '07310000-0000-4000-8000-0000000000aa'
+   AND scheduled_on = (SELECT p FROM bill_day);
+INSERT INTO public.visits (id, organization_id, subscription_id, client_id, property_id, service_id,
+                           scheduled_on, status, price_cents)
+SELECT ('f7310000-0000-4000-8000-0000000000b' || x.k)::uuid, '07310000-0000-4000-8000-0000000000aa',
+       ('d7310000-0000-4000-8000-0000000000b' || x.k)::uuid,
+       ('c7310000-0000-4000-8000-0000000000a' || x.k)::uuid,
+       ('e7310000-0000-4000-8000-0000000000a' || x.k)::uuid,
+       '55731000-0000-4000-8000-0000000000a1', b.p, 'scheduled', x.price
+  FROM bill_day b, (VALUES ('1', 2600), ('2', 2400), ('3', 3100)) AS x(k, price);
+INSERT INTO public.walk_groups (id, organization_id, service_id, scheduled_on, assigned_staff_id)
+SELECT '97310000-0000-4000-8000-0000000000b3', '07310000-0000-4000-8000-0000000000aa',
+       '55731000-0000-4000-8000-0000000000a1', b.p, '5e731000-0000-4000-8000-0000000000a3'
+  FROM bill_day b;
+UPDATE public.visits SET walk_group_id = '97310000-0000-4000-8000-0000000000b3'
+ WHERE id IN ('f7310000-0000-4000-8000-0000000000b1', 'f7310000-0000-4000-8000-0000000000b2',
+              'f7310000-0000-4000-8000-0000000000b3');
+UPDATE public.visits SET status = 'completed', completed_at = now()
+ WHERE id IN ('f7310000-0000-4000-8000-0000000000b1', 'f7310000-0000-4000-8000-0000000000b2',
+              'f7310000-0000-4000-8000-0000000000b3');
+
+DO $$
+DECLARE
+  _today date := (SELECT today FROM bill_day);
+  _k text;
+  _client uuid;
+  _visit uuid;
+  _inv uuid;
+  _lines int;
+  _amount int;
+  _foreign int;
+  _price constant jsonb := '{"1": 2600, "2": 2400, "3": 3100}';
+BEGIN
+  IF (SELECT count(*) FROM public.visits WHERE walk_group_id = '97310000-0000-4000-8000-0000000000b3'
+        AND status = 'completed') <> 3 THEN
+    RAISE EXCEPTION 'PROOF FAILED [bill]: the shared walk does not hold three completed client visits';
+  END IF;
+  FOREACH _k IN ARRAY ARRAY['1', '2', '3'] LOOP
+    _client := ('c7310000-0000-4000-8000-0000000000a' || _k)::uuid;
+    _visit := ('f7310000-0000-4000-8000-0000000000b' || _k)::uuid;
+    _inv := public.admin_generate_invoice_for_client(_client, _today);
+    IF _inv IS NULL THEN
+      RAISE EXCEPTION 'PROOF FAILED [bill]: client % got no invoice for their shared walk', _k;
+    END IF;
+    IF (SELECT client_id FROM public.invoices WHERE id = _inv) IS DISTINCT FROM _client THEN
+      RAISE EXCEPTION 'PROOF FAILED [bill]: client %''s walk was invoiced to someone else', _k;
+    END IF;
+    SELECT count(*), max(amount_cents) INTO _lines, _amount
+      FROM public.invoice_line_items WHERE invoice_id = _inv AND visit_id = _visit;
+    IF _lines <> 1 OR _amount IS DISTINCT FROM (_price ->> _k)::int THEN
+      RAISE EXCEPTION 'PROOF FAILED [bill]: client % has % line(s) for their walk at % cents, not one at %',
+        _k, _lines, _amount, _price ->> _k;
+    END IF;
+    -- Nobody else's dogs on this client's bill.
+    SELECT count(*) INTO _foreign
+      FROM public.invoice_line_items li JOIN public.visits v ON v.id = li.visit_id
+     WHERE li.invoice_id = _inv AND v.client_id <> _client;
+    IF _foreign <> 0 THEN
+      RAISE EXCEPTION 'PROOF FAILED [bill]: client %''s invoice carries % line(s) for another client''s visit', _k, _foreign;
+    END IF;
+  END LOOP;
+
+  -- The run again, for every client: nothing is billed a second time.
+  FOREACH _k IN ARRAY ARRAY['1', '2', '3'] LOOP
+    PERFORM public.admin_generate_invoice_for_client(
+      ('c7310000-0000-4000-8000-0000000000a' || _k)::uuid, _today);
+  END LOOP;
+  IF EXISTS (
+    SELECT 1 FROM public.invoice_line_items
+     WHERE visit_id IN ('f7310000-0000-4000-8000-0000000000b1', 'f7310000-0000-4000-8000-0000000000b2',
+                        'f7310000-0000-4000-8000-0000000000b3')
+     GROUP BY visit_id HAVING count(*) <> 1
+  ) OR (SELECT count(*) FROM public.invoice_line_items
+         WHERE visit_id IN ('f7310000-0000-4000-8000-0000000000b1', 'f7310000-0000-4000-8000-0000000000b2',
+                            'f7310000-0000-4000-8000-0000000000b3')) <> 3 THEN
+    RAISE EXCEPTION 'PROOF FAILED [bill]: a second billing run billed a shared walk again';
+  END IF;
+  RAISE NOTICE 'ok: three clients on one shared walk get one line each, on their own invoice, once';
 END $$;
 
 ROLLBACK;
