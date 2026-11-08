@@ -255,18 +255,15 @@ describe("R2-53: the connection line says what the last request did", () => {
     expect(connectionLine({ online: false, pending: 1, lastOutcome: "ok" })).toBe("offline");
     expect(connectionLine({ online: true, pending: 0, lastOutcome: "failed" })).toBeNull();
     // The bug: the phone has a network, the server does not answer.
-    expect(connectionLine({ online: true, pending: 1, lastOutcome: "failed" })).toBe(
-      "unreachable",
-    );
+    expect(connectionLine({ online: true, pending: 1, lastOutcome: "failed" })).toBe("unreachable");
     expect(connectionLine({ online: true, pending: 1, lastOutcome: "ok" })).toBe("online");
     expect(connectionLine({ online: true, pending: 1, lastOutcome: null })).toBe("online");
   });
 
   it("a field action that cannot reach the server records a failure; one that is answered records ok", async () => {
     const { runOrQueue } = await import("@/lib/offline/run-or-queue");
-    const { lastRequestOutcome, __resetLastRequestOutcome, LAST_REQUEST_CHANGE } = await import(
-      "@/lib/offline/last-request"
-    );
+    const { lastRequestOutcome, __resetLastRequestOutcome, LAST_REQUEST_CHANGE } =
+      await import("@/lib/offline/last-request");
     __resetLastRequestOutcome();
     let events = 0;
     const onEvent = () => events++;
@@ -297,7 +294,12 @@ describe("R2-53: the connection line says what the last request did", () => {
         send: () => Promise.reject(new TypeError("Failed to fetch")),
         queue: async () => {},
       });
-      await runOrQueue({ online: true, label: "start", send: async () => 1, queue: async () => {} });
+      await runOrQueue({
+        online: true,
+        label: "start",
+        send: async () => 1,
+        queue: async () => {},
+      });
       expect(lastRequestOutcome()).toBe("ok");
       expect(events).toBe(4);
     } finally {
@@ -352,6 +354,8 @@ describe("R2-54: location denied, in the platform's own words, with a way to Set
       /nativeGeolocationErrorMessage\(r\.reason, platform\(\) === "android" \? "android" : "ios"\)/,
     );
     expect(src).toMatch(/setGeoDenied\(r\.reason === "denied"\)/);
-    expect(src).toMatch(/\{geoDenied && \([\s\S]{0,200}onClick=\{\(\) => void openAppSettings\(\)\}/);
+    expect(src).toMatch(
+      /\{geoDenied && \([\s\S]{0,200}onClick=\{\(\) => void openAppSettings\(\)\}/,
+    );
   });
 });

@@ -856,8 +856,8 @@ export function RouteMap({
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
             {/* min-w-0 so the message wraps inside the box instead of setting
                 its width — CLAUDE.md's flex-row rule. */}
-            <span className="min-w-0">
-              {geoError}
+            <div className="min-w-0 flex-1">
+              <span className="min-w-0">{geoError}</span>
               {geoDenied && (
                 <button
                   type="button"
@@ -867,7 +867,7 @@ export function RouteMap({
                   Open Settings
                 </button>
               )}
-            </span>
+            </div>
             <button
               type="button"
               onClick={() => {

@@ -426,6 +426,12 @@ function MyDay() {
 
   const { data, isLoading, isError, isFetching, dataUpdatedAt, refetch } = useQuery({
     queryKey: ["my-day", day, staffParam ?? ""],
+    // Coming back to the app in a dead zone is not a reason to ask the server
+    // for the day: the request can only fail. The saved copy now survives a
+    // failed refresh (lib/offline/last-good-copy.ts), but a refetch that cannot
+    // succeed only adds a failure. Focus while online, and the reconnect
+    // refetch, are unchanged.
+    refetchOnWindowFocus: () => !isDefinitelyOffline(),
     // Recorded for the connection line (R2-53): the load is the one request
     // My Day always makes, so it is the first to know the server is not
     // answering even though the phone says it is online.
@@ -439,12 +445,6 @@ function MyDay() {
         throw e;
       }
     },
-    // Coming back to the app in a dead zone is not a reason to ask the server
-    // for the day: the request can only fail. The saved copy now survives a
-    // failed refresh (lib/offline/last-good-copy.ts), but a refetch that cannot
-    // succeed only adds a failure. Focus while online, and the reconnect
-    // refetch, are unchanged.
-    refetchOnWindowFocus: () => !isDefinitelyOffline(),
   });
   // The first moments after opening, while a saved day's refresh is still
   // out: the banner waits for it rather than flashing (refreshInFlight).
@@ -714,7 +714,7 @@ function MyDay() {
               that truncates, with its action at the end. When the saved-copy
               line already says "Offline", the connection line is not drawn
               again: its pending count joins the saved-copy line instead. */}
-          {connection && !(freshness?.status === "cached" && !online) && (
+          {(!online || pending > 0) && !(freshness?.status === "cached" && !online) && (
             <div
               className={`flex min-h-9 items-center gap-2 rounded-md border ps-2.5 text-xs animate-fade-in ${
                 connection === "online"
