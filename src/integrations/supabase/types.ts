@@ -7329,6 +7329,7 @@ export type Database = {
           is_field_tech: boolean
           is_field_tech_overridden: boolean
           location_id: string | null
+          max_dogs_per_walk: number | null
           organization_id: string
           phone: string | null
           role: Database["public"]["Enums"]["staff_role"]
@@ -7352,6 +7353,7 @@ export type Database = {
           is_field_tech?: boolean
           is_field_tech_overridden?: boolean
           location_id?: string | null
+          max_dogs_per_walk?: number | null
           organization_id: string
           phone?: string | null
           role: Database["public"]["Enums"]["staff_role"]
@@ -7375,6 +7377,7 @@ export type Database = {
           is_field_tech?: boolean
           is_field_tech_overridden?: boolean
           location_id?: string | null
+          max_dogs_per_walk?: number | null
           organization_id?: string
           phone?: string | null
           role?: Database["public"]["Enums"]["staff_role"]
@@ -7693,6 +7696,7 @@ export type Database = {
       subscriptions: {
         Row: {
           account_type: Database["public"]["Enums"]["account_type"]
+          assigned_staff_id: string | null
           billing_cadence: Database["public"]["Enums"]["billing_cadence"]
           booked_via: string | null
           client_id: string
@@ -7733,6 +7737,7 @@ export type Database = {
         }
         Insert: {
           account_type: Database["public"]["Enums"]["account_type"]
+          assigned_staff_id?: string | null
           billing_cadence?: Database["public"]["Enums"]["billing_cadence"]
           booked_via?: string | null
           client_id: string
@@ -7773,6 +7778,7 @@ export type Database = {
         }
         Update: {
           account_type?: Database["public"]["Enums"]["account_type"]
+          assigned_staff_id?: string | null
           billing_cadence?: Database["public"]["Enums"]["billing_cadence"]
           booked_via?: string | null
           client_id?: string

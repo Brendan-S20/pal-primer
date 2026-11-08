@@ -2,7 +2,13 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { resolveCaller } from "@/lib/authz.server";
-import { dogsOnWalk, type WalkGroupVisit, type WalkGroupSummary } from "@/lib/walk-groups";
+import {
+  dogsOnWalk,
+  planWalkerCapacity,
+  type WalkerCapacity,
+  type WalkGroupVisit,
+  type WalkGroupSummary,
+} from "@/lib/walk-groups";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -21,72 +27,112 @@ async function requireWalkGroupOffice(supabase: SupabaseClient<Database>, userId
   return orgId;
 }
 
+/** Everyone a group could show as its walker, with their dog cap. Not only
+ *  the people who run routes: a group can already be held by someone who is
+ *  not (an owner who walks, a person since unticked), and the Walker select
+ *  has to be able to say who (R2-29). */
+export type WalkGroupStaff = {
+  id: string;
+  display_name: string | null;
+  is_field_tech: boolean;
+  active: boolean;
+  routingAvailable: boolean;
+  maxDogs: number | null;
+};
+
+/** The day's groups, the walks that could join them, and who could walk
+ *  them. Shared by the list and Assign by capacity, so both read one day the
+ *  same way. */
+async function readWalkGroupDay(supabase: SupabaseClient<Database>, orgId: string, day: string) {
+  const [groups, visits, people] = await Promise.all([
+    supabase
+      .from("walk_groups")
+      .select(
+        "id, service_id, assigned_staff_id, earliest_time, latest_time, services(name, max_dogs)",
+      )
+      .eq("organization_id", orgId)
+      .eq("scheduled_on", day)
+      .order("created_at"),
+    supabase
+      .from("visits")
+      .select(
+        "id, client_id, property_id, service_id, walk_group_id, status, assigned_staff_id, route_pinned, price_cents, subscriptions(dog_count, price_cents), clients(display_name), services(service_line)",
+      )
+      .eq("organization_id", orgId)
+      .eq("scheduled_on", day)
+      .or("status.in.(scheduled,in_progress),walk_group_id.not.is.null"),
+    supabase
+      .from("staff")
+      .select("id, display_name, is_field_tech, active, routing_available, max_dogs_per_walk")
+      .eq("organization_id", orgId)
+      .order("display_name"),
+  ]);
+  if (groups.error) throw new Error(groups.error.message);
+  if (visits.error) throw new Error(visits.error.message);
+  if (people.error) throw new Error(people.error.message);
+  const walks = (visits.data ?? []).filter(
+    (visit) => visit.services?.service_line === "dog_walking",
+  );
+  const propertyIds = [...new Set(walks.map((visit) => visit.property_id))];
+  const dogs = propertyIds.length
+    ? await supabase
+        .from("dogs")
+        .select("property_id, name")
+        .eq("organization_id", orgId)
+        .eq("active", true)
+        .eq("species", "dog")
+        .in("property_id", propertyIds)
+    : { data: [], error: null };
+  if (dogs.error) throw new Error(dogs.error.message);
+  const mapped: WalkGroupVisit[] = walks.map((visit) => {
+    const names = (dogs.data ?? [])
+      .filter((dog) => dog.property_id === visit.property_id)
+      .map((dog) => dog.name);
+    return {
+      id: visit.id,
+      serviceId: visit.service_id,
+      groupId: visit.walk_group_id,
+      client: visit.clients?.display_name ?? "Client",
+      clientId: visit.client_id,
+      dogs: names,
+      dogCount: dogsOnWalk(visit.subscriptions?.dog_count, names.length),
+      status: visit.status,
+      walkerId: visit.assigned_staff_id,
+      pinned: Boolean(visit.route_pinned),
+      priceCents: visit.price_cents ?? visit.subscriptions?.price_cents ?? null,
+    };
+  });
+  const summaries: WalkGroupSummary[] = (groups.data ?? []).map((group) => ({
+    id: group.id,
+    serviceId: group.service_id,
+    service: group.services?.name ?? "Group walk",
+    maxDogs: group.services?.max_dogs ?? 1,
+    walkerId: group.assigned_staff_id,
+    earliestTime: group.earliest_time,
+    latestTime: group.latest_time,
+    members: mapped.filter((visit) => visit.groupId === group.id),
+  }));
+  const staff: WalkGroupStaff[] = (people.data ?? []).map((p) => ({
+    id: p.id,
+    display_name: p.display_name,
+    is_field_tech: Boolean(p.is_field_tech),
+    active: p.active !== false,
+    routingAvailable: p.routing_available !== false,
+    maxDogs: p.max_dogs_per_walk ?? null,
+  }));
+  return { summaries, mapped, staff };
+}
+
 export const listWalkGroups = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ day: daySchema }).parse(d))
   .handler(async ({ data, context }) => {
     const { orgId } = await resolveCaller(context.supabase, context.userId);
-    const [groups, visits] = await Promise.all([
-      context.supabase
-        .from("walk_groups")
-        .select(
-          "id, service_id, assigned_staff_id, earliest_time, latest_time, services(name, max_dogs)",
-        )
-        .eq("organization_id", orgId)
-        .eq("scheduled_on", data.day)
-        .order("created_at"),
-      context.supabase
-        .from("visits")
-        .select(
-          "id, property_id, service_id, walk_group_id, status, subscriptions(dog_count), clients(display_name), services(service_line)",
-        )
-        .eq("organization_id", orgId)
-        .eq("scheduled_on", data.day)
-        .or("status.eq.scheduled,walk_group_id.not.is.null"),
-    ]);
-    if (groups.error) throw new Error(groups.error.message);
-    if (visits.error) throw new Error(visits.error.message);
-    const walks = (visits.data ?? []).filter(
-      (visit) => visit.services?.service_line === "dog_walking",
-    );
-    const propertyIds = [...new Set(walks.map((visit) => visit.property_id))];
-    const dogs = propertyIds.length
-      ? await context.supabase
-          .from("dogs")
-          .select("property_id, name")
-          .eq("organization_id", orgId)
-          .eq("active", true)
-          .eq("species", "dog")
-          .in("property_id", propertyIds)
-      : { data: [], error: null };
-    if (dogs.error) throw new Error(dogs.error.message);
-    const mapped: WalkGroupVisit[] = walks.map((visit) => {
-      const names = (dogs.data ?? [])
-        .filter((dog) => dog.property_id === visit.property_id)
-        .map((dog) => dog.name);
-      return {
-        id: visit.id,
-        serviceId: visit.service_id,
-        groupId: visit.walk_group_id,
-        client: visit.clients?.display_name ?? "Client",
-        dogs: names,
-        dogCount: dogsOnWalk(visit.subscriptions?.dog_count, names.length),
-        status: visit.status,
-      };
-    });
-    const summaries: WalkGroupSummary[] = (groups.data ?? []).map((group) => ({
-      id: group.id,
-      serviceId: group.service_id,
-      service: group.services?.name ?? "Group walk",
-      maxDogs: group.services?.max_dogs ?? 1,
-      walkerId: group.assigned_staff_id,
-      earliestTime: group.earliest_time,
-      latestTime: group.latest_time,
-      members: mapped.filter((visit) => visit.groupId === group.id),
-    }));
+    const { summaries, mapped, staff } = await readWalkGroupDay(context.supabase, orgId, data.day);
     return {
       groups: summaries,
       available: mapped.filter((visit) => visit.status === "scheduled" && !visit.groupId),
+      staff,
     };
   });
 
@@ -174,4 +220,120 @@ export const deleteWalkGroup = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     if (!rows?.length) throw new Error("That group walk was not found.");
     return { ok: true };
+  });
+
+/**
+ * Assign by capacity (#731): give each group that has no walker to the walker
+ * with room for its dogs and the lightest day. planWalkerCapacity decides;
+ * this reads the day and writes only what it decided.
+ *
+ * It never takes work from anyone (#609, D10). A group that names a walker,
+ * or whose walks are already held or pinned, is left as it is, and the write
+ * itself is conditional on the group still having no walker, so a dispatcher
+ * who assigns one while this runs wins. The database still checks each
+ * walker's cap (walk_groups_walker_cap) and availability on the visits.
+ */
+export const assignWalkGroupsByCapacity = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ day: daySchema }).parse(d))
+  .handler(async ({ data, context }) => {
+    const orgId = await requireWalkGroupOffice(context.supabase, context.userId);
+    const { summaries, mapped, staff } = await readWalkGroupDay(context.supabase, orgId, data.day);
+    // routable_staff's rule, read here because that function is service-role
+    // only: active, runs routes, available, not off that day.
+    const routable = staff.filter((p) => p.active && p.is_field_tech && p.routingAvailable);
+    const skills = routable.length
+      ? await context.supabase
+          .from("staff_services")
+          .select("staff_id, service_id")
+          .eq("organization_id", orgId)
+          .in(
+            "staff_id",
+            routable.map((p) => p.id),
+          )
+      : { data: [], error: null };
+    if (skills.error) throw new Error(skills.error.message);
+    const off = await Promise.all(
+      routable.map(async (p) => {
+        const { data: isOff, error } = await context.supabase.rpc("is_staff_off", {
+          _staff_id: p.id,
+          _day: data.day,
+        });
+        if (error) throw new Error(error.message);
+        return isOff ? p.id : null;
+      }),
+    );
+    const offIds = new Set(off.filter(Boolean));
+    const walkers: WalkerCapacity[] = routable
+      .filter((p) => !offIds.has(p.id))
+      .map((p) => ({
+        id: p.id,
+        name: p.display_name ?? "",
+        maxDogs: p.maxDogs,
+        services: (skills.data ?? []).filter((r) => r.staff_id === p.id).map((r) => r.service_id),
+      }));
+    // Dogs each walker already holds that day on solo walks.
+    const dayLoad: Record<string, number> = {};
+    for (const v of mapped)
+      if (!v.groupId && v.walkerId && (v.status === "scheduled" || v.status === "in_progress"))
+        dayLoad[v.walkerId] = (dayLoad[v.walkerId] ?? 0) + v.dogCount;
+    const decisions = planWalkerCapacity(summaries, walkers, dayLoad);
+    const assigned: Array<{ groupId: string; walkerId: string }> = [];
+    const kept: Array<{ groupId: string; reason: string }> = [];
+    for (const d of decisions) {
+      if (d.action === "keep") {
+        kept.push({ groupId: d.groupId, reason: d.reason });
+        continue;
+      }
+      const { data: rows, error } = await context.supabase
+        .from("walk_groups")
+        .update({ assigned_staff_id: d.walkerId })
+        .eq("id", d.groupId)
+        .eq("organization_id", orgId)
+        .is("assigned_staff_id", null)
+        .select("id");
+      if (error) throw new Error(error.message);
+      if (rows?.length) assigned.push({ groupId: d.groupId, walkerId: d.walkerId });
+      else kept.push({ groupId: d.groupId, reason: "has_walker" });
+    }
+    return { assigned, kept };
+  });
+
+/** A walker's dog cap, on Users & roles. Same permission as the routing
+ *  tickboxes beside it (setStaffRouting). null takes the cap away. */
+export const setWalkerDogCap = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        staffId: z.string().uuid(),
+        maxDogs: z.number().int().min(1).max(50).nullable(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { requirePermission } = await import("@/lib/authz.server");
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_users");
+    const { data: rows, error } = await context.supabase
+      .from("staff")
+      .update({ max_dogs_per_walk: data.maxDogs })
+      .eq("id", data.staffId)
+      .eq("organization_id", orgId)
+      .select("id");
+    if (error) throw new Error(error.message);
+    if (!rows?.length) throw new Error("That team member was not found.");
+    return { ok: true };
+  });
+
+/** Every team member's dog cap, for Users & roles. */
+export const listWalkerDogCaps = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { orgId } = await resolveCaller(context.supabase, context.userId);
+    const { data, error } = await context.supabase
+      .from("staff")
+      .select("id, max_dogs_per_walk")
+      .eq("organization_id", orgId);
+    if (error) throw new Error(error.message);
+    return { rows: (data ?? []).map((r) => ({ id: r.id, maxDogs: r.max_dogs_per_walk })) };
   });
