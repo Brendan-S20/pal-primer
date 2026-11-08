@@ -3,9 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { listMessageThreads } from "@/lib/messages.functions";
-import { listClients } from "@/lib/clients.functions";
+import { ClientSearchPicker } from "@/components/ClientSearchPicker";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { MessageSquarePlus } from "lucide-react";
 import { formatDateTime } from "@/lib/format";
 import { titleHead } from "@/lib/page-title";
@@ -20,58 +19,24 @@ export const Route = createFileRoute("/_authenticated/messages")({
 // Start-a-conversation picker (punch list #7): the Messages page previously
 // had no compose affordance — an owner had to know to go find the client's
 // detail page first.
+//
+// It searches on the server (gaps-r2-01): it used to load the whole roster
+// to filter eight names out of it, and matched only the exact characters of
+// a name, phone or email.
 function NewMessagePicker({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
-  const clientsFn = useServerFn(listClients);
-  const [q, setQ] = useState("");
-  const { data, isLoading } = useQuery({
-    queryKey: ["clients"],
-    queryFn: () => clientsFn(),
-  });
-  const needle = q.trim().toLowerCase();
-  const matches = (((data as any)?.clients as any[]) ?? [])
-    .filter(
-      (c: any) =>
-        !needle ||
-        c.display_name?.toLowerCase().includes(needle) ||
-        c.primary_phone?.toLowerCase().includes(needle) ||
-        c.primary_email?.toLowerCase().includes(needle),
-    )
-    .slice(0, 8);
-
   return (
     <div className="border-b p-3">
-      <Input
-        autoFocus
-        placeholder="Search clients…"
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
+      <ClientSearchPicker
+        id="new-message-client"
+        value={null}
+        activeOnly={false}
+        onChange={(c) => {
+          if (!c) return;
+          onClose();
+          navigate({ to: "/messages/$clientId", params: { clientId: c.id } });
+        }}
       />
-      <div className="mt-2 max-h-56 overflow-y-auto">
-        {isLoading && <p className="p-2 text-xs text-muted-foreground">Loading clients…</p>}
-        {!isLoading && matches.length === 0 && (
-          <p className="p-2 text-xs text-muted-foreground">No matching clients.</p>
-        )}
-        <ul>
-          {matches.map((c: any) => (
-            <li key={c.id}>
-              <button
-                type="button"
-                className="w-full rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
-                onClick={() => {
-                  onClose();
-                  navigate({ to: "/messages/$clientId", params: { clientId: c.id } });
-                }}
-              >
-                <span className="font-medium">{c.display_name}</span>
-                <span className="ml-2 text-xs text-muted-foreground">
-                  {c.primary_phone ?? "no phone"}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
     </div>
   );
 }

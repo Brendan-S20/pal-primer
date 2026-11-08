@@ -83,4 +83,21 @@ describe("every customer-facing charge site asks for the customer's wording", ()
       for (const c of calls) expect(c, c).toContain('audience: "customer"');
     });
   }
+
+  // invoices.functions.ts is mostly staff screens, so only its public pay
+  // link (/pay/i/{token}) is held to this; the staff charges keep theirs.
+  it("src/lib/invoices.functions.ts: the public pay link", () => {
+    const src = readFileSync("src/lib/invoices.functions.ts", "utf8");
+    const start = src.indexOf("export const createPublicInvoicePaymentIntent");
+    expect(start).toBeGreaterThan(-1);
+    const next = src.indexOf("\nexport ", start + 1);
+    const body = src.slice(start, next < 0 ? undefined : next);
+    const calls = body.match(/await requireOrgStripeAccount\([^)]*\)/g) ?? [];
+    expect(calls.length).toBeGreaterThan(0);
+    for (const c of calls) expect(c, c).toContain('audience: "customer"');
+    // And a staff charge in the same file still gets the owner's wording.
+    const staff = src.slice(0, start).match(/await requireOrgStripeAccount\([^)]*\)/g) ?? [];
+    expect(staff.length).toBeGreaterThan(0);
+    for (const c of staff) expect(c, c).not.toContain("audience");
+  });
 });
