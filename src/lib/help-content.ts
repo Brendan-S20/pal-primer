@@ -79,7 +79,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     title: "What each role can see and do",
     section: "Getting started",
     body: [
-      "**Owner:** everything, including billing and payouts. **Office manager:** day-to-day operations (clients, invoices, routes, settings) but not the business's own subscription billing. **Dispatcher:** the schedule, routes, weather, and the client directory. A dispatcher books one-off visits and grooms at the prices the business has set; only an owner or office manager can change a price. **Technician:** [My Day](article:my-day), the [waste log](article:waste-log), and field tools.",
+      "**Owner:** everything, including billing and payouts. **Office manager:** day-to-day operations (clients, invoices, routes, settings) but not the business's own subscription billing. **Dispatcher:** the schedule, routes, weather, clients, and messages. A dispatcher books one-off visits and grooms at the prices the business has set; only an owner or office manager can change a price. A dispatcher can add a client and start their plan at the set price, move a visit to another day or another technician, and text a client. Completing or canceling a visit from the office, invoices and payments, prices, settings, and who has access stay with the owner and office manager. **Technician:** [My Day](article:my-day), the [waste log](article:waste-log), and field tools.",
       "If someone can't see a page you expect them to, their role is usually why. Roles are set in [Users & roles](/settings/users).",
     ],
     appLink: { to: "/settings/users", label: "Open Users & roles" },

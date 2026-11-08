@@ -131,11 +131,15 @@ describe("R2-21: a commercial account is quoted and keeps its zone", () => {
   });
 
   it("the quote reads the zone's commercial rates and units and stations", () => {
+    // The quote itself moved to internal-quote.server.ts (#728), so the plan a
+    // dispatcher books is priced by the same code the wizard showed.
     const src = read("src/lib/clients.functions.ts");
-    const quote = src.slice(
+    const fn = src.slice(
       src.indexOf("const internalQuoteSchema"),
       src.indexOf("const onboardSchema"),
     );
+    expect(fn).toMatch(/internalQuote\(supabase, orgId, data\)/);
+    const quote = read("src/lib/internal-quote.server.ts");
     expect(quote).toMatch(/commercial_per_station_cents/);
     expect(quote).toMatch(/computeCommercialZonePrice/);
     expect(quote).toMatch(/stationCount: data\.stationCount/);
