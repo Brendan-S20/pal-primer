@@ -102,6 +102,7 @@ No code edits. Set three values, build, sync.
    ```bash
    # macOS / Linux
    set -a; . ~/houndstack-native-staging.env; set +a
+   unset CAP_SERVER_URL    # live reload would load a dev server, not the bundle
    npm run build:native:staging
    npx cap sync ios        # or: npx cap sync android
    ```
@@ -111,6 +112,7 @@ No code edits. Set three values, build, sync.
    Get-Content $HOME\houndstack-native-staging.env |
      Where-Object { $_ -match '^\s*[A-Z_]+=' } |
      ForEach-Object { $k, $v = $_ -split '=', 2; Set-Item "env:$($k.Trim())" $v.Trim() }
+   Remove-Item env:CAP_SERVER_URL -ErrorAction SilentlyContinue
    npm run build:native:staging
    npx cap sync android
    ```
@@ -150,6 +152,12 @@ curl -si -X OPTIONS "$S/_serverFn/probe" \
 
 # 2. The bundle names the staging host it will call.
 grep -rl "${S#https://}" dist-native/client | head -3
+
+# 3. The synced native config loads the bundle, not a remote page.
+#    Expect no output. A "url" under "server" means CAP_SERVER_URL was set
+#    at sync time and the app will ignore the staging bundle entirely.
+grep -n '"url"' ios/App/App/capacitor.config.json \
+  android/app/src/main/assets/capacitor.config.json 2>/dev/null
 ```
 
 If (1) returns no `access-control-allow-origin`, the host is a dev server, an
@@ -189,5 +197,6 @@ It does not prove:
 | App boots, every list is empty or "offline" with full signal            | Preflight refused: the API host is a dev server or an old deploy. Run check (1).                                                |
 | Some screens load, one action 404s on `/_serverFn/…`                    | The staging web app is a different commit from the bundle. Rebuild from its commit.                                             |
 | Sign-in works, the first screen says unauthenticated                    | Binary and staging server point at different Supabase projects. Compare `NATIVE_SUPABASE_URL` with the server's `SUPABASE_URL`. |
+| App shows a dev server's pages, or a blank screen with no network       | `CAP_SERVER_URL` was set when `npx cap sync` ran. Unset it and sync again; check (3) shows nothing.                             |
 | Sign-in fails with `Invalid login credentials` for a known staging user | The bundle is production: `cap:sync` (or another script that runs `build:native`) ran after the staging build.                  |
 | Build refuses with a production host                                    | Working as intended — one of the three values is production's.                                                                  |
