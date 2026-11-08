@@ -46,6 +46,7 @@ export function FieldClientView({
   dogs,
   grooming = false,
   petWaste = true,
+  petExtra,
 }: {
   client: any;
   properties: any[];
@@ -54,6 +55,9 @@ export function FieldClientView({
   /** Whether the business runs pet waste. Without it the hazards read in the
    *  words My Day's banner uses (#560): "close gate immediately" is a yard's. */
   petWaste?: boolean;
+  /** Drawn under each pet: the route passes the pet's safety log (#729).
+   *  A slot rather than an import, so this view stays free of data hooks. */
+  petExtra?: (dog: { id: string; name?: string | null }) => ReactNode;
 }) {
   const { t } = useTranslation();
   useDocumentTitle(
@@ -244,6 +248,7 @@ export function FieldClientView({
                             <bdi>{d.notes}</bdi>
                           </p>
                         )}
+                        {petExtra && <div className="mt-2">{petExtra(d)}</div>}
                       </li>
                     );
                   })}
