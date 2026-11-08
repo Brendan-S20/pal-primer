@@ -29,7 +29,7 @@ import { Trash2, Ban, Copy, Printer, ChevronDown, ChevronRight } from "lucide-re
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { formatDay } from "@/lib/format";
 import { getMyOrg } from "@/lib/org.functions";
-import { listClients } from "@/lib/clients.functions";
+import { ClientSearchPicker, type PickedClient } from "@/components/ClientSearchPicker";
 import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/settings/promotions")({
@@ -465,19 +465,13 @@ function GiftSection() {
   const voidFn = useServerFn(voidGiftCard);
   const redeemFn = useServerFn(redeemGiftCard);
   const orgFn = useServerFn(getMyOrg);
-  const clientsFn = useServerFn(listClients);
   const { data, isLoading } = useQuery({ queryKey: ["gift-cards"], queryFn: () => listFn() });
   const orgQ = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn(), staleTime: 60_000 });
   const orgName: string = orgQ.data?.organization?.name ?? "Gift card";
-  // Same picker data as the New-invoice dialog: a redemption credits a
-  // specific client's account, so the form needs the client roster.
-  const clientsQ = useQuery({
-    queryKey: ["clients", "picker"],
-    queryFn: () => clientsFn(),
-    staleTime: 60_000,
-  });
-  const clientOptions: Array<{ id: string; display_name: string; active: boolean }> =
-    (clientsQ.data as any)?.clients ?? [];
+  // The same picker as the New-invoice dialog: a redemption credits a
+  // specific client's account. It searches on the server (gaps-r2-01); a
+  // <select> of the whole roster was every client in one read.
+  const [redeemClient, setRedeemClient] = useState<PickedClient | null>(null);
 
   const emptyC = {
     amount: 50,
@@ -527,12 +521,12 @@ function GiftSection() {
         },
       }),
     onSuccess: (r) => {
-      const who =
-        clientOptions.find((c) => c.id === redeem.clientId)?.display_name ?? "the client";
+      const who = redeemClient?.display_name || "the client";
       toast.success(
         `Redeemed ${fmtMoney(r.redeemedCents)} to ${who}'s account credit. Remaining on card: ${fmtMoney(r.remainingCents)}`,
       );
       setRedeem({ code: "", amount: 0, clientId: "" });
+      setRedeemClient(null);
       qc.invalidateQueries({ queryKey: ["gift-cards"] });
       qc.invalidateQueries({ queryKey: ["clients"] });
     },
@@ -606,21 +600,15 @@ function GiftSection() {
               />
             </div>
             <div>
-              <Label>Client</Label>
-              <select
-                className="mt-1 h-10 w-full rounded-md border bg-background px-3 text-sm"
-                value={redeem.clientId}
-                onChange={(e) => setRedeem({ ...redeem, clientId: e.target.value })}
-              >
-                <option value="">Select a client…</option>
-                {clientOptions
-                  .filter((c) => c.active !== false)
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.display_name}
-                    </option>
-                  ))}
-              </select>
+              <Label htmlFor="gift-redeem-client">Client</Label>
+              <ClientSearchPicker
+                id="gift-redeem-client"
+                value={redeemClient}
+                onChange={(c) => {
+                  setRedeemClient(c);
+                  setRedeem({ ...redeem, clientId: c?.id ?? "" });
+                }}
+              />
               <p className="mt-1 text-2xs text-muted-foreground">
                 The redeemed amount is added to this client's account credit.
               </p>
