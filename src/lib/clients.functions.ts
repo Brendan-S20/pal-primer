@@ -1785,34 +1785,32 @@ export const onboardClient = createServerFn({ method: "POST" })
       const { normalizeWeekdays } = await import("@/lib/weekday-set");
       const weekdays =
         s.frequency === "weekly" && s.weekdays?.length ? normalizeWeekdays(s.weekdays) : null;
-      // The service role only for a plan at the set price, and only onto the
-      // client and property written above, in the caller's own business.
-      const planDb: any = planAtSetPrice
-        ? (await import("@/integrations/supabase/client.server")).supabaseAdmin
-        : supabase;
-      const { data: subRow, error: sErr } = await planDb
-        .from("subscriptions")
-        .insert({
-          organization_id: orgId,
-          client_id: clientId,
-          property_id: propertyId,
-          account_type: data.accountType,
-          frequency: s.frequency,
-          price_cents: s.priceCents,
-          dog_count: isRes ? (s.dogCount ?? data.dogs?.length ?? 1) : null,
-          unit_count: !isRes ? (s.unitCount ?? 1) : null,
-          // The zone the wizard quoted from; for a commercial plan with no
-          // quote, the zone the property is in, so the plan is not saved
-          // zoneless and flagged "No pricing zone recorded" (#658, R2-21).
-          zone_id: s.zoneId ?? (!isRes ? autoZoneId : null),
-          billing_cadence: s.billingCadence ?? "postpaid",
-          preferred_weekdays: !weekdays && s.preferredWeekdays?.length ? s.preferredWeekdays : null,
-          ...(s.startedOn ? { started_on: s.startedOn } : {}),
-          ...(s.serviceId ? { service_id: s.serviceId } : {}),
-          ...(weekdays ? { weekdays } : {}),
-        })
-        .select("id")
-        .single();
+      const planRow = {
+        organization_id: orgId,
+        client_id: clientId,
+        property_id: propertyId,
+        account_type: data.accountType,
+        frequency: s.frequency,
+        price_cents: s.priceCents,
+        dog_count: isRes ? (s.dogCount ?? data.dogs?.length ?? 1) : null,
+        unit_count: !isRes ? (s.unitCount ?? 1) : null,
+        // The zone the wizard quoted from; for a commercial plan with no
+        // quote, the zone the property is in, so the plan is not saved
+        // zoneless and flagged "No pricing zone recorded" (#658, R2-21).
+        zone_id: s.zoneId ?? (!isRes ? autoZoneId : null),
+        billing_cadence: s.billingCadence ?? "postpaid",
+        preferred_weekdays: !weekdays && s.preferredWeekdays?.length ? s.preferredWeekdays : null,
+        ...(s.startedOn ? { started_on: s.startedOn } : {}),
+        ...(s.serviceId ? { service_id: s.serviceId } : {}),
+        ...(weekdays ? { weekdays } : {}),
+      };
+      // A plan at the set price is written past the pricing policy, as the
+      // service role, by insertPlanAtSetPrice, which re-checks that the
+      // client and property written above are the caller's business's.
+      // Anyone who sets prices writes it with their own key, as before.
+      const { data: subRow, error: sErr } = planAtSetPrice
+        ? await (await import("@/lib/plan-set-price.server")).insertPlanAtSetPrice(planRow)
+        : await supabase.from("subscriptions").insert(planRow).select("id").single();
       if (sErr) {
         await undoClient();
         throw new Error(sErr.message);

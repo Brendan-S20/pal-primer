@@ -94,3 +94,44 @@ export async function planSetPriceCents(db: any, input: PlanSetPriceInput): Prom
   if (cents == null) return none(NO_PLAN_SET_PRICE_RATES);
   return { cents, zoneId: q.quote.zoneId, reason: null };
 }
+
+/**
+ * Write a plan at the set price, as the service role (#728).
+ *
+ * The subscriptions write policy is manage_pricing and stays so, so a
+ * dispatcher's own key cannot write this row. onboardClient calls this only
+ * after planSetPriceCents has fixed the price and zone, and only for the
+ * client and property it has just created with the caller's own key. The
+ * service role is not asked to trust that: the client and property are read
+ * back here and must both belong to the caller's business, and the property
+ * to the client, before anything is written.
+ */
+export async function insertPlanAtSetPrice(row: {
+  organization_id: string;
+  client_id: string;
+  property_id: string;
+  price_cents: number;
+  [column: string]: unknown;
+}): Promise<{ data: { id: string } | null; error: { message: string } | null }> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const admin = supabaseAdmin as any;
+  const [{ data: client, error: cErr }, { data: property, error: pErr }] = await Promise.all([
+    admin.from("clients").select("id, organization_id").eq("id", row.client_id).maybeSingle(),
+    admin
+      .from("properties")
+      .select("id, organization_id, client_id")
+      .eq("id", row.property_id)
+      .maybeSingle(),
+  ]);
+  if (cErr) return { data: null, error: cErr };
+  if (pErr) return { data: null, error: pErr };
+  if (
+    !client ||
+    !property ||
+    client.organization_id !== row.organization_id ||
+    property.organization_id !== row.organization_id ||
+    property.client_id !== row.client_id
+  )
+    return { data: null, error: { message: "That client is not in your organization" } };
+  return admin.from("subscriptions").insert(row).select("id").single();
+}

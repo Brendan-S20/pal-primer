@@ -37,6 +37,9 @@ type Insert = { db: string; table: string; row: any };
 const state = vi.hoisted(() => ({
   role: "dispatcher" as string,
   orgId: "org-1",
+  // Which business the client and property the request just wrote belong
+  // to, as the service role reads them back before writing the plan.
+  writtenInOrg: "org-1",
   inserts: [] as Array<{ db: string; table: string; row: any }>,
   rpcs: [] as Array<{ db: string; fn: string; args: any }>,
   set: { cents: 4000, zoneId: "zone-1", reason: null } as
@@ -83,6 +86,17 @@ function fakeDb(tag: string): any {
       maybeSingle: async () => {
         if (table === "organizations")
           return { data: { timezone: "America/Chicago" }, error: null };
+        if (table === "clients")
+          return { data: { id: "clients-new", organization_id: state.writtenInOrg }, error: null };
+        if (table === "properties")
+          return {
+            data: {
+              id: "properties-new",
+              organization_id: state.writtenInOrg,
+              client_id: "clients-new",
+            },
+            error: null,
+          };
         if (table === "visits")
           return { data: { ...state.visit, assigned_staff_id: null }, error: null };
         return { data: null, error: null };
@@ -199,6 +213,7 @@ const newClient = (subscription: Record<string, unknown> | undefined) =>
 beforeEach(() => {
   state.role = "dispatcher";
   state.orgId = "org-1";
+  state.writtenInOrg = "org-1";
   state.inserts.length = 0;
   state.rpcs.length = 0;
   state.set = { cents: 4000, zoneId: "zone-1", reason: null };
@@ -256,6 +271,12 @@ describe("a dispatcher's new client with a plan (gaps-r2-02)", () => {
     // The household itself is written with the dispatcher's own key, so RLS
     // still decides which business it lands in.
     expect(clientInserts()[0].db).toBe(USER_DB_TAG);
+  });
+
+  it("the service role writes no plan onto a client that is not the caller's business's", async () => {
+    state.writtenInOrg = "org-2";
+    await expect(newClient({})).rejects.toThrow("That client is not in your organization");
+    expect(subscriptionInserts()).toEqual([]);
   });
 
   it("is refused a price that is not the set price, before anything is written", async () => {
