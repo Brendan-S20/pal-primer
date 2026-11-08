@@ -169,7 +169,9 @@ describe("every office path uses the per-visit factor", () => {
   const PRICING_FILES = [
     "src/lib/quote-pricing.ts",
     "src/lib/pricing-drift.ts",
-    "src/lib/clients.functions.ts",
+    // The new-client quote, moved out of clients.functions.ts by #728 so a
+    // dispatcher's plan is priced by the code the wizard showed.
+    "src/lib/internal-quote.server.ts",
     "src/lib/properties.functions.ts",
     "src/lib/subscriptions.functions.ts",
     "src/components/client-detail/ServicesTab.tsx",
