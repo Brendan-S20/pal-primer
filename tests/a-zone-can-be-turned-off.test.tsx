@@ -105,7 +105,8 @@ describe("zone detection skips a zone that is off", () => {
     for (const f of [
       "src/lib/address.functions.ts",
       "src/lib/properties.functions.ts",
-      "src/lib/clients.functions.ts",
+      // The new-client quote (getInternalQuote), moved here by #728.
+      "src/lib/internal-quote.server.ts",
       "src/lib/receptionist-booking-store.server.ts",
       // /leads and the public quote request read zones here (R2-25).
       "src/lib/lead-service-area.server.ts",

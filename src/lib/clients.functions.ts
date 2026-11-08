@@ -1403,107 +1403,8 @@ export const getInternalQuote = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
-    const { data: org, error: oErr } = await supabase
-      .from("organizations")
-      .select("currency, frequency_multipliers")
-      .eq("id", orgId)
-      .single();
-    if (oErr) throw new Error(oErr.message);
-
-    const { data: zones, error: zErr } = await supabase
-      .from("zones")
-      .select(
-        "id, name, priority, account_type, postal_prefix, zip_codes, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, area_max_charge_cents, commercial_base_cents, commercial_per_unit_cents, commercial_per_acre_cents, commercial_per_station_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, enabled",
-      )
-      .eq("organization_id", orgId);
-    if (zErr) throw new Error(zErr.message);
-
-    const { matchZone } = await import("@/lib/zone-match");
-    const z = matchZone((zones ?? []) as any[], {
-      postalCode: data.postalCode,
-      point:
-        data.latitude != null && data.longitude != null
-          ? { lat: data.latitude, lng: data.longitude }
-          : null,
-      accountType: data.accountType ?? null,
-    });
-
-    if (!z) return { available: false as const };
-    const { perVisitMultiplier } = await import("@/lib/frequency-multipliers");
-    const mult = perVisitMultiplier(org.frequency_multipliers as any, data.frequency);
-    const mode = (z.pricing_mode ?? "flat") as "flat" | "per_sqft" | "per_acre";
-
-    // A commercial account (an HOA, a park) is priced from the zone's
-    // commercial rates: base + per unit + per acre + per station, then the
-    // frequency multiplier. The wizard used to ask for a quote only for a
-    // residential account, so a commercial plan was saved with no zone and a
-    // price somebody typed (#658, R2-21).
-    if (data.accountType === "commercial") {
-      const { computeCommercialZonePrice, zoneHasCommercialPricing } =
-        await import("@/lib/pricing");
-      const rated = zoneHasCommercialPricing(z as any);
-      const price = rated
-        ? computeCommercialZonePrice(z as any, {
-            unitCount: data.unitCount ?? 0,
-            stationCount: data.stationCount ?? 0,
-            boundaryAreaSqm: data.boundaryAreaSqm,
-            multiplier: mult,
-          })
-        : null;
-      return {
-        available: true as const,
-        quote: {
-          zoneId: z.id as string,
-          zoneName: z.name as string,
-          pricingMode: "commercial" as const,
-          areaBasisCents: price?.acreageCents ?? null,
-          basePriceCents: price?.perVisitCents ?? null,
-          perDogAddlCents: 0,
-          // null: the zone has no commercial rates, so the office sets the
-          // price; the zone is still the plan's.
-          recurringPriceCents: price?.recurringCents ?? null,
-          initialCleanupCents: z.initial_cleanup_cents ?? 0,
-          currency: org.currency as string,
-          commercial: price
-            ? {
-                baseCents: price.baseCents,
-                unitCents: price.unitCents,
-                acreageCents: price.acreageCents,
-                stationCents: price.stationCents,
-              }
-            : null,
-        },
-      };
-    }
-
-    const { computeZoneVisitPrice } = await import("@/lib/pricing");
-    const price = computeZoneVisitPrice(
-      {
-        base_price_cents: z.base_price_cents,
-        per_dog_addl_cents: z.per_dog_addl_cents,
-        pricing_mode: mode,
-        price_per_sqft_cents: Number(z.price_per_sqft_cents ?? 0),
-        price_per_acre_cents: z.price_per_acre_cents,
-        area_min_charge_cents: z.area_min_charge_cents,
-        area_max_charge_cents: z.area_max_charge_cents,
-      },
-      { dogCount: data.dogCount, boundaryAreaSqm: data.boundaryAreaSqm, multiplier: mult },
-    );
-    return {
-      available: true as const,
-      quote: {
-        zoneId: z.id as string,
-        zoneName: z.name as string,
-        pricingMode: mode,
-        areaBasisCents: price.areaBasisCents,
-        basePriceCents: price.perVisitCents,
-        perDogAddlCents: z.per_dog_addl_cents ?? 0,
-        recurringPriceCents: price.recurringCents,
-        initialCleanupCents: z.initial_cleanup_cents ?? 0,
-        currency: org.currency as string,
-        commercial: null,
-      },
-    };
+    const { internalQuote } = await import("@/lib/internal-quote.server");
+    return internalQuote(supabase, orgId, data);
   });
 
 // ---------- Composite onboarding: client + property + dogs + subscription ----------
@@ -1633,6 +1534,52 @@ export const onboardClient = createServerFn({ method: "POST" })
     // than after a client exists with half of what they asked for.
     if (data.firstCleanup) {
       await requirePermission(supabase, userId, "manage_client_billing");
+    }
+
+    // A plan is booking (#728). Someone who sets prices types any price, as
+    // before. Anyone else who books (a dispatcher) books the plan at the set
+    // price the server works out here from the business's own zones and
+    // services, the price the wizard showed; a different price, or billing in
+    // advance, is refused BEFORE anything is written, never quietly replaced.
+    // The subscriptions write policy stays manage_pricing, so that plan is
+    // written as the service role, onto the client and property this request
+    // has just created in the caller's own business.
+    let planAtSetPrice: { cents: number; zoneId: string | null } | null = null;
+    if (data.subscription) {
+      const caller = await requirePermission(supabase, userId, "booking");
+      if (caller.orgId !== orgId) throw new Error("Not authorized");
+      const { hasPermission } = await import("@/lib/permissions");
+      if (!hasPermission(caller.role, "manage_pricing")) {
+        const s = data.subscription;
+        const { PLAN_CADENCE_IS_BILLING, planSetPriceCents } =
+          await import("@/lib/plan-set-price.server");
+        const { priceOverrideRefusal } = await import("@/lib/booking-price.server");
+        if (
+          (s.billingCadence ?? "postpaid") !== "postpaid" &&
+          !hasPermission(caller.role, "manage_client_billing")
+        )
+          throw new Error(PLAN_CADENCE_IS_BILLING);
+        const isRes = data.accountType === "residential";
+        const set = await planSetPriceCents(supabase, {
+          orgId,
+          accountType: data.accountType,
+          frequency: s.frequency,
+          serviceId: s.serviceId ?? null,
+          postalCode: data.postalCode,
+          latitude: data.latitude,
+          longitude: data.longitude,
+          boundaryAreaSqm: data.boundaryAreaSqm,
+          dogCount: isRes ? (s.dogCount ?? Math.max(1, data.dogs?.length ?? 1)) : 1,
+          unitCount: isRes ? undefined : (s.unitCount ?? 1),
+          stationCount: isRes ? undefined : (data.stationCount ?? 0),
+        });
+        if (set.cents == null) throw new Error(set.reason);
+        if (s.priceCents !== set.cents) throw new Error(priceOverrideRefusal(set.cents));
+        // The zone is the quote's, not one the browser names.
+        if (s.zoneId && set.zoneId && s.zoneId !== set.zoneId)
+          throw new Error(priceOverrideRefusal(set.cents));
+        planAtSetPrice = { cents: set.cents, zoneId: set.zoneId };
+      }
     }
 
     // 0) the lead this client is converted from, if any. Checked BEFORE the
@@ -1810,7 +1757,16 @@ export const onboardClient = createServerFn({ method: "POST" })
     // 4) subscription
     let firstVisitOn: string | null = null;
     if (data.subscription) {
-      const s = data.subscription;
+      // At the set price (#728): the price and zone the server worked out
+      // above, never the browser's.
+      const s = planAtSetPrice
+        ? {
+            ...data.subscription,
+            priceCents: planAtSetPrice.cents,
+            zoneId: planAtSetPrice.zoneId ?? undefined,
+            billingCadence: "postpaid" as const,
+          }
+        : data.subscription;
       const isRes = data.accountType === "residential";
       if (s.startedOn) {
         const { data: orgRow } = await supabase
@@ -1829,7 +1785,12 @@ export const onboardClient = createServerFn({ method: "POST" })
       const { normalizeWeekdays } = await import("@/lib/weekday-set");
       const weekdays =
         s.frequency === "weekly" && s.weekdays?.length ? normalizeWeekdays(s.weekdays) : null;
-      const { data: subRow, error: sErr } = await supabase
+      // The service role only for a plan at the set price, and only onto the
+      // client and property written above, in the caller's own business.
+      const planDb: any = planAtSetPrice
+        ? (await import("@/integrations/supabase/client.server")).supabaseAdmin
+        : supabase;
+      const { data: subRow, error: sErr } = await planDb
         .from("subscriptions")
         .insert({
           organization_id: orgId,
