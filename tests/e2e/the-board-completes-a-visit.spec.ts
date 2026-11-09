@@ -36,14 +36,14 @@ const businessToday = (orgId: string) => sharedBusinessToday(serviceDb(), orgId)
 async function completedToday(orgId: string) {
   const db = serviceDb();
   const today = await businessToday(orgId);
-  const { count, error } = await db
+  const { data, error } = await db
     .from("visits")
-    .select("*", { count: "exact", head: true })
+    .select("id, completed_at, completion_source, completion_photo_waived_reason")
     .eq("organization_id", orgId)
     .eq("scheduled_on", today)
     .eq("status", "completed");
   if (error) throw new Error(`counting completed visits: ${error.message}`);
-  return count ?? 0;
+  return data ?? [];
 }
 
 test("Complete on a board card flips the visit in Postgres and logs the action", async ({
@@ -54,6 +54,7 @@ test("Complete on a board card flips the visit in Postgres and logs the action",
   const db = serviceDb();
   const orgId = await e2eOrgId(db);
   const doneBefore = await completedToday(orgId);
+  const alreadyCompleted = new Set(doneBefore.map((visit) => visit.id));
 
   await signIn(page);
   await page.goto("/routes");
@@ -103,17 +104,17 @@ test("Complete on a board card flips the visit in Postgres and logs the action",
     .toBe(offeredBefore - 1);
 
   // Postgres: one more completed visit today, with completed_at actually set.
-  await expect.poll(() => completedToday(orgId), { timeout: 20_000 }).toBe(doneBefore + 1);
-  const today = await businessToday(orgId);
-  const { data: fresh } = await db
-    .from("visits")
-    .select("completed_at, completion_source, completion_photo_waived_reason")
-    .eq("organization_id", orgId)
-    .eq("scheduled_on", today)
-    .eq("status", "completed")
-    .order("completed_at", { ascending: false })
-    .limit(1)
-    .single();
+  await expect
+    .poll(async () => (await completedToday(orgId)).length, { timeout: 20_000 })
+    .toBe(doneBefore.length + 1);
+  // Identify the transition, not the latest timestamp. seed_demo_org puts
+  // today's demo completions at fixed morning times, which can still be in
+  // the future during an early CI run. Those rows are legitimately tech_live.
+  const newlyCompleted = (await completedToday(orgId)).filter(
+    (visit) => !alreadyCompleted.has(visit.id),
+  );
+  expect(newlyCompleted).toHaveLength(1);
+  const [fresh] = newlyCompleted;
   expect(fresh?.completed_at).toBeTruthy();
   expect(fresh?.completion_source).toBe("office");
   // The reason is on the visit where the photo was the thing missing, in the
