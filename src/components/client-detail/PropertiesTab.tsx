@@ -52,6 +52,7 @@ import {
   deletePropertyIfNoHistory,
 } from "@/lib/properties.functions";
 import { PetVaccines } from "@/components/client-detail/PetVaccines";
+import { PetSafetyLog } from "@/components/PetSafetyLog";
 import { listDogsForClient } from "@/lib/clients.functions";
 import { addDog, updateDog } from "@/lib/dogs.functions";
 import { deriveYardSize, YARD_SIZE_LABELS } from "@/lib/yard-size";
@@ -986,6 +987,7 @@ export function DogsSection({
             </span>
            </div>
             <PetVaccines dogId={d.id} name={d.name} />
+            <PetSafetyLog dogId={d.id} name={d.name} />
             {sitting && careFor !== d.id && careSummary(careData?.care?.[d.id]) && (
               <p className="mt-1 text-xs text-muted-foreground">
                 Care: {careSummary(careData?.care?.[d.id])}
