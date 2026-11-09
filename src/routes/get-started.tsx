@@ -637,7 +637,7 @@ function JoinTeamPage({ token }: { token: string }) {
                 Join <bdi className="break-words">{invite.organization_name ?? "your team"}</bdi>
               </h1>
               <p className="text-sm text-muted-foreground">
-                You were invited as {humanizeRole(invite.role ?? "")}. Create your account to join.
+                You were invited as {invite.role_label ?? humanizeRole(invite.role ?? "")}. Create your account to join.
               </p>
             </div>
             <div className="space-y-2">

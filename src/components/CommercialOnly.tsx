@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getMyOrgFeatures } from "@/lib/org-features.functions";
+import { humanizeRole } from "@/lib/humanize";
 import {
   DEFAULT_SERVICE_LINES,
   runsPetWaste,
@@ -79,6 +80,14 @@ export function useServiceLines(): {
   // that is not a usable list all read as {pet_waste}.
   const lines = serviceLinesOrDefault(q.isError ? null : q.data?.serviceLines);
   return { lines, petWaste: runsPetWaste(lines), known: true };
+}
+
+/** humanizeRole with the business's lines: "Trainer" for a technician in a
+ *  training-only business (train-17). Until the lines are known, the usual
+ *  word. */
+export function useRoleLabel(): (role: string | null | undefined) => string {
+  const { lines, known } = useServiceLines();
+  return (role) => humanizeRole(role, known ? lines : null);
 }
 
 /** The lines a service picker filters by (RC3): the business's, once they

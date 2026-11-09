@@ -172,7 +172,11 @@ export function FieldClientView({
               </div>
             )}
 
-            {(p.parking_notes || p.access_notes || p.hazard_notes || flags.length > 0) && (
+            {(p.parking_notes ||
+              p.access_notes ||
+              p.hazard_notes ||
+              flags.length > 0 ||
+              (grooming && (p.van_power_available || p.van_water_available))) && (
               // A note can end in a link with no space in it; it breaks
               // rather than push the page sideways at 360 (#729 sweep).
               <div className="space-y-2 text-sm [overflow-wrap:anywhere]">
@@ -180,6 +184,17 @@ export function FieldClientView({
                   <p>
                     <span className="font-medium">{t("fieldClient.parking")}</span>{" "}
                     <bdi>{p.parking_notes}</bdi>
+                  </p>
+                )}
+                {grooming && (p.van_power_available || p.van_water_available) && (
+                  <p>
+                    <span className="font-medium">{t("groom.vanLabel")}</span>{" "}
+                    {[
+                      p.van_power_available ? t("groom.vanPower") : null,
+                      p.van_water_available ? t("groom.vanWater") : null,
+                    ]
+                      .filter(Boolean)
+                      .join(t("fieldClient.listSeparator"))}
                   </p>
                 )}
                 {p.access_notes && (

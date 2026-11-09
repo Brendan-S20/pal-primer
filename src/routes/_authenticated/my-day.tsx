@@ -1,6 +1,6 @@
 import { isVaccineStartBlocked, petsMissingVaccines, type MissingVaccine } from "@/lib/pet-safety";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { humanizeRole } from "@/lib/humanize";
+import { roleLabelKey, techIsTrainer } from "@/lib/humanize";
 import { daysBetweenOrgDays, orgLocalDay, orgLocalDayTime, orgLocalTime } from "@/lib/org-day";
 import { visitEta } from "@/lib/visit-eta";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
@@ -351,6 +351,10 @@ function MyDay() {
   }, []);
   const pending = usePendingCount();
   const { t } = useTranslation();
+  // A training-only business calls its technicians trainers (train-17).
+  const { lines: orgLines, known: orgLinesKnown } = useServiceLines();
+  const trainerWords = orgLinesKnown && techIsTrainer(orgLines);
+  const roleLabel = (role: string) => t(roleLabelKey(role, orgLinesKnown ? orgLines : null));
   // In the language this device reads. The route's head is English because
   // it runs before i18n has read the device's choice.
   useDocumentTitle(pageTitle(t("nav.item.my-day")));
@@ -821,7 +825,7 @@ function MyDay() {
               {previewing || !staff ? (
                 <p className="truncate text-xs text-muted-foreground">
                   {staff
-                    ? `${staff.display_name}${staff.role ? ` · ${humanizeRole(staff.role)}` : ""}`
+                    ? `${staff.display_name}${staff.role ? ` · ${roleLabel(staff.role)}` : ""}`
                     : t("myDay.notOnStaff")}
                 </p>
               ) : null}
@@ -1040,12 +1044,12 @@ function MyDay() {
                 className="h-9 min-w-0 max-w-full rounded-md border bg-background px-2 text-sm touch:min-h-11"
               >
                 <option value="">
-                  {data?.staff && !previewing ? t("myDay.title") : t("myDay.selectTechnician")}
+                  {data?.staff && !previewing ? t("myDay.title") : t(trainerWords ? "myDay.selectTrainer" : "myDay.selectTechnician")}
                 </option>
                 {fieldStaff.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.display_name}
-                    {s.role ? ` · ${humanizeRole(s.role)}` : ""}
+                    {s.role ? ` · ${roleLabel(s.role)}` : ""}
                   </option>
                 ))}
               </select>
@@ -1083,7 +1087,7 @@ function MyDay() {
 
         {!staff && isOfficeRole && (
           <div className="rounded-lg border bg-card p-(--card-pad) text-center text-sm text-muted-foreground">
-            {fieldStaff.length === 0 ? t("myDay.noTechnicians") : t("myDay.pickTechnician")}
+            {fieldStaff.length === 0 ? t(trainerWords ? "myDay.noTrainers" : "myDay.noTechnicians") : t(trainerWords ? "myDay.pickTrainer" : "myDay.pickTechnician")}
           </div>
         )}
 
