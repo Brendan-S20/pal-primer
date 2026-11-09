@@ -1,35 +1,41 @@
-// Which outside service draws the map, measures the roads, finds an address
-// and forecasts the weather -- chosen by configuration, not by code.
+// Which outside service draws the map, measures the roads and finds an
+// address -- chosen by configuration, not by code.
 //
 // ── WHY ──────────────────────────────────────────────────────────────────
 //
-// All four run today on free public services: OpenStreetMap tiles (the
-// fallback basemap), the OSRM demo router, Nominatim (behind Geocodio when a
-// key is set) and Open-Meteo's free tier. Each of them has a usage policy
-// that a commercial app can outgrow (issue #529), and moving off one should
-// be a variable and a key in the hosting secrets, not an edit to four files.
+// Until #529 routing and geocoding ran on free public services -- the OSRM
+// demo router and Nominatim (behind Geocodio when a key was set) -- and the
+// fallback basemap still draws OpenStreetMap tiles. Each has a usage policy a
+// commercial app can outgrow. The owner's decision (2026-11-09) is Google Maps
+// Platform for geocoding and routing for now, and OSRM later when volume makes
+// a self-hosted router cheaper. So switching has to be a variable and a key in
+// the hosting secrets, not an edit to several files. (Weather was dropped from
+// #529 on the same day and is not behind this setting.)
 //
 // So each service has a small ADAPTER type, a registry of adapters keyed by
 // id, and one environment variable that picks one. Unset, every service picks
 // exactly what it used before this file existed: behaviour is unchanged until
-// somebody sets a variable.
+// somebody sets a variable -- except that a configured Google server key
+// (GOOGLE_MAPS_API_KEY) now selects Google for routing and geocoding, which
+// is the decision above. Set ROUTING_PROVIDER=osrm / GEOCODING_PROVIDER=... to
+// override it.
 //
 // ── THE VARIABLES ────────────────────────────────────────────────────────
 //
 //   service     picks the adapter            key                 base URL
 //   ---------   ---------------------------  ------------------  -----------------
-//   routing     ROUTING_PROVIDER   (osrm)    ROUTING_API_KEY     ROUTING_URL
-//   geocoding   GEOCODING_PROVIDER (*)       GEOCODING_API_KEY   GEOCODING_URL
+//   routing     ROUTING_PROVIDER   (*)       ROUTING_API_KEY     ROUTING_URL
+//   geocoding   GEOCODING_PROVIDER (**)      GEOCODING_API_KEY   GEOCODING_URL
 //               GEOCODING_FALLBACK (nominatim, or "none")
-//   weather     WEATHER_PROVIDER   (open-meteo) WEATHER_API_KEY   WEATHER_URL
 //   map tiles   VITE_MAP_TILES_PROVIDER (osm) VITE_MAP_TILES_KEY VITE_MAP_TILES_URL
 //
-//   (*) unset: "geocodio" when GEOCODIO_API_KEY is set, else "nominatim" --
-//       the rule geocode.server.ts has always followed.
+//   (*)  unset: "google" when GOOGLE_MAPS_API_KEY is set, else "osrm".
+//   (**) unset: "google" when GOOGLE_MAPS_API_KEY is set, else "geocodio"
+//        when GEOCODIO_API_KEY is set, else "nominatim".
 //
-// The existing service-specific names keep working and keep their meaning:
-// OSRM_URL / OSRM_ENDPOINTS / OSRM_MAX_TABLE for the osrm adapter,
-// GEOCODIO_API_KEY for the geocodio adapter.
+// The service-specific names keep working and keep their meaning:
+// GOOGLE_MAPS_API_KEY for both google adapters, OSRM_URL / OSRM_ENDPOINTS /
+// OSRM_MAX_TABLE for the osrm adapter, GEOCODIO_API_KEY for geocodio.
 //
 // Tiles are VITE_-prefixed because the fallback basemap is drawn in the
 // browser and only VITE_ names are inlined into the bundle. A tile key is a
@@ -37,20 +43,20 @@
 //
 // ── A NAME NOBODY REGISTERED IS AN ERROR, NOT A DEFAULT ──────────────────
 //
-// `WEATHER_PROVIDER=open-meteo-comercial` (sic) must not quietly fall back to
-// the free public service: that is the very request a paid provider was set
-// up to stop. pickProvider throws ProviderConfigError, naming the variable
+// `ROUTING_PROVIDER=gogle` (sic) must not quietly fall back to the free
+// public demo: that is the very request a configured provider was set up to
+// stop. pickProvider throws ProviderConfigError, naming the variable
 // and the ids it would have accepted. Each caller decides what that costs:
-// routing and weather report a failure (and the planner / the forecast cache
-// already degrade around one); geocoding logs it and returns no point, which
-// is the same answer as an address that did not match.
+// routing reports a failure (and the planner already degrades to estimates);
+// geocoding logs it and returns no point, which is the same answer as an
+// address that did not match.
 //
 // This file names no host and holds no key. It is imported by browser and
 // server code alike.
 
 export type ProviderEnv = Readonly<Record<string, string | undefined>>;
 
-export type ProviderService = "routing" | "geocoding" | "weather" | "map-tiles";
+export type ProviderService = "routing" | "geocoding" | "map-tiles";
 
 export class ProviderConfigError extends Error {
   readonly service: ProviderService;
@@ -65,14 +71,12 @@ export class ProviderConfigError extends Error {
 export const PROVIDER_VARIABLE: Record<ProviderService, string> = {
   routing: "ROUTING_PROVIDER",
   geocoding: "GEOCODING_PROVIDER",
-  weather: "WEATHER_PROVIDER",
   "map-tiles": "VITE_MAP_TILES_PROVIDER",
 };
 
 const PREFIX: Record<ProviderService, string> = {
   routing: "ROUTING",
   geocoding: "GEOCODING",
-  weather: "WEATHER",
   "map-tiles": "VITE_MAP_TILES",
 };
 

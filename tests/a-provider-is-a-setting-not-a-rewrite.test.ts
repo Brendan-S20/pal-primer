@@ -1,17 +1,18 @@
 // A provider is a setting, not a rewrite (#529).
 //
-// Routing, geocoding, weather and the fallback map tiles all run on free
-// public services today, and each of those services has a usage policy a
-// commercial app can outgrow. Moving off one has to be a variable and a key in
-// the hosting secrets -- so each service has an adapter registry and one
-// variable that picks from it (src/lib/providers/config.ts).
+// Routing, geocoding and the fallback map tiles ran on free public services,
+// each with a usage policy a commercial app can outgrow. The owner's decision
+// (2026-11-09): Google Maps Platform for geocoding and routing for now, OSRM
+// later -- so each service has an adapter registry and one variable that
+// picks from it (src/lib/providers/config.ts), and a Google server key selects
+// Google. Weather was dropped from #529 and is not here.
 //
 // Two things are pinned here, by BEHAVIOUR (fetch is faked, nothing reaches a
 // network, no key exists anywhere):
 //
-//   1. UNSET, every service asks exactly whom it asked before: the OSRM demo,
-//      Geocodio-then-Nominatim (or Nominatim alone with no key), public
-//      Open-Meteo with no key, OpenStreetMap tiles.
+//   1. With NO KEY and nothing set, every service asks exactly whom it asked
+//      before: the OSRM demo, Geocodio-then-Nominatim (or Nominatim alone),
+//      OpenStreetMap tiles. With GOOGLE_MAPS_API_KEY set, Google, counted.
 //   2. SET, the variable moves the request -- to a registered adapter, with
 //      the generic key and URL handed to it -- and a name nobody registered is
 //      an error, never a quiet fall back to the free public service.
@@ -51,12 +52,10 @@ import {
   type GeocodingAdapter,
 } from "@/lib/geocode.server";
 import {
-  fetchForecast,
-  registerWeatherProvider,
-  unregisterWeatherProvider,
-  weatherProvider,
-  type WeatherAdapter,
-} from "@/lib/weather.functions";
+  googleMapsUsage,
+  recordGoogleMapsUsage,
+  resetGoogleMapsUsage,
+} from "@/lib/providers/google-usage.server";
 import { resolveStreetTiles } from "@/lib/map-tiles";
 
 // ── The world, faked ────────────────────────────────────────────────────────
@@ -80,12 +79,7 @@ const VARS = [
   "GEOCODING_API_KEY",
   "GEOCODING_URL",
   "GEOCODIO_API_KEY",
-  "WEATHER_PROVIDER",
-  "WEATHER_API_KEY",
-  "WEATHER_URL",
-  "SUPABASE_URL",
-  "SERVICE_ROLE_KEY",
-  "SUPABASE_SERVICE_ROLE_KEY",
+  "GOOGLE_MAPS_API_KEY",
 ];
 
 beforeEach(() => {
@@ -121,35 +115,35 @@ describe("the provider setting", () => {
   ]);
 
   it("picks the default when the variable is unset or blank", () => {
-    expect(pickProvider("weather", {}, registry, "free").id).toBe("free");
-    expect(pickProvider("weather", { WEATHER_PROVIDER: "  " }, registry, "free").id).toBe("free");
+    expect(pickProvider("routing", {}, registry, "free").id).toBe("free");
+    expect(pickProvider("routing", { ROUTING_PROVIDER: "  " }, registry, "free").id).toBe("free");
   });
 
   it("picks what the variable names, whatever its case", () => {
-    expect(pickProvider("weather", { WEATHER_PROVIDER: "Paid" }, registry, "free").id).toBe("paid");
+    expect(pickProvider("routing", { ROUTING_PROVIDER: "Paid" }, registry, "free").id).toBe("paid");
   });
 
   it("refuses a name nobody registered, naming the variable and the choices", () => {
     let err: unknown;
     try {
-      pickProvider("weather", { WEATHER_PROVIDER: "paid-typo" }, registry, "free");
+      pickProvider("routing", { ROUTING_PROVIDER: "paid-typo" }, registry, "free");
     } catch (e) {
       err = e;
     }
     expect(err).toBeInstanceOf(ProviderConfigError);
-    expect(String((err as Error).message)).toContain('WEATHER_PROVIDER="paid-typo"');
+    expect(String((err as Error).message)).toContain('ROUTING_PROVIDER="paid-typo"');
     expect(String((err as Error).message)).toContain("free, paid");
   });
 
   it("hands each adapter its service's key and base URL, and nothing of another's", () => {
     const env = {
-      WEATHER_API_KEY: "w-key",
-      WEATHER_URL: "https://w.example",
-      ROUTING_API_KEY: "r",
+      ROUTING_API_KEY: "r-key",
+      ROUTING_URL: "https://r.example",
+      VITE_MAP_TILES_KEY: "t",
     };
-    expect(providerContext("weather", env)).toMatchObject({
-      key: "w-key",
-      url: "https://w.example",
+    expect(providerContext("routing", env)).toMatchObject({
+      key: "r-key",
+      url: "https://r.example",
     });
     expect(providerContext("geocoding", env)).toMatchObject({ key: null, url: null });
   });
@@ -158,7 +152,6 @@ describe("the provider setting", () => {
     expect(PROVIDER_VARIABLE).toEqual({
       routing: "ROUTING_PROVIDER",
       geocoding: "GEOCODING_PROVIDER",
-      weather: "WEATHER_PROVIDER",
       "map-tiles": "VITE_MAP_TILES_PROVIDER",
     });
   });
@@ -303,6 +296,110 @@ describe("routing", () => {
   });
 });
 
+// ── Google routing (the decision of 2026-11-09) ─────────────────────────────
+
+/** What Compute Route Matrix streams back: one element per pair, indexes
+ *  omitted when 0 (proto3), durations as "123s". */
+function googleMatrix(n: number) {
+  const out: Array<Record<string, unknown>> = [];
+  for (let i = 0; i < n; i++)
+    for (let j = 0; j < n; j++) {
+      const el: Record<string, unknown> = {
+        duration: i === j ? "0s" : `${600 + i}s`,
+        condition: "ROUTE_EXISTS",
+        status: {},
+      };
+      if (i) el.originIndex = i;
+      if (j) el.destinationIndex = j;
+      if (i !== j) el.distanceMeters = 5000 + j;
+      out.push(el);
+    }
+  return out;
+}
+
+describe("routing on Google", () => {
+  beforeEach(() => {
+    world = { written: [] };
+    h.admin = adminFor(world);
+    setRoadLegTiming({ paceDemo: false, sleep: async () => {} });
+    resetGoogleMapsUsage();
+  });
+  afterEach(() => setRoadLegTiming(null));
+
+  it("a Google server key selects Google; ROUTING_PROVIDER=osrm still overrides it", () => {
+    expect(routingProvider({ GOOGLE_MAPS_API_KEY: "k" }).id).toBe("google");
+    expect(routingProvider({ GOOGLE_MAPS_API_KEY: "k", ROUTING_PROVIDER: "osrm" }).id).toBe("osrm");
+    expect(routingProvider({}).id).toBe("osrm");
+  });
+
+  it("asks Compute Route Matrix once, key in a header and not the URL, and records Google legs", async () => {
+    vi.stubEnv("GOOGLE_MAPS_API_KEY", "google-test-key");
+    reply = () => json(googleMatrix(STOPS.length));
+    const r = await refreshRoadLegs("org", "2026-11-10");
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe("https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix");
+    expect(calls[0].url).not.toContain("google-test-key");
+    expect(calls[0].init?.method).toBe("POST");
+    const headers = calls[0].init?.headers as Record<string, string>;
+    expect(headers["X-Goog-Api-Key"]).toBe("google-test-key");
+    expect(headers["X-Goog-FieldMask"]).toContain("duration");
+    const body = JSON.parse(String(calls[0].init?.body));
+    expect(body.routingPreference).toBe("TRAFFIC_UNAWARE");
+    expect(body.origins).toHaveLength(3);
+    expect(body.origins[0].waypoint.location.latLng).toEqual({
+      latitude: STOPS[0][0],
+      longitude: STOPS[0][1],
+    });
+
+    expect(r).toMatchObject({ measured: 6, problem: null });
+    expect(new Set(world.written.map((row) => row.source))).toEqual(new Set(["google"]));
+    const leg = world.written.find(
+      (row) => row.from_lat === STOPS[0][0] && row.to_lat === STOPS[1][0],
+    );
+    expect(leg).toMatchObject({ seconds: 600, meters: 5001 });
+    // 3 points is 9 billed elements.
+    expect(googleMapsUsage()["route-matrix-elements"]).toBe(9);
+  });
+
+  it("a pair Google cannot route stays on the estimate; the rest are measured", async () => {
+    vi.stubEnv("GOOGLE_MAPS_API_KEY", "google-test-key");
+    const m = googleMatrix(STOPS.length).map((el) =>
+      el.originIndex === 1 && el.destinationIndex === 2
+        ? { ...el, condition: "ROUTE_NOT_FOUND" }
+        : el,
+    );
+    reply = () => json(m);
+    const r = await refreshRoadLegs("org", "2026-11-10");
+    expect(r.measured).toBe(5);
+  });
+
+  it("a refused key leaves the day on estimates and never falls back to the OSRM demo", async () => {
+    vi.stubEnv("GOOGLE_MAPS_API_KEY", "google-test-key");
+    reply = () =>
+      json(
+        { error: { code: 403, status: "PERMISSION_DENIED", message: "Routes API not enabled" } },
+        403,
+      );
+    const r = await refreshRoadLegs("org", "2026-11-10");
+    expect(r.problem).toBe("router_error");
+    expect(calls.map((c) => host(c.url))).toEqual(["routes.googleapis.com"]);
+  });
+
+  it("a day of more than 25 points (625 elements) is not sent to Google", () => {
+    expect(
+      routingProvider({ GOOGLE_MAPS_API_KEY: "k" }).maxPoints(providerContext("routing", {})),
+    ).toBe(25);
+  });
+
+  it("ROUTING_PROVIDER=google with no key is an estimate, not a request", async () => {
+    vi.stubEnv("ROUTING_PROVIDER", "google");
+    const r = await refreshRoadLegs("org", "2026-11-10");
+    expect(r.problem).toBe("router_error");
+    expect(calls).toHaveLength(0);
+  });
+});
+
 // ── Geocoding ───────────────────────────────────────────────────────────────
 
 const NOMINATIM_HOUSE = [
@@ -411,109 +508,140 @@ describe("geocoding", () => {
   });
 });
 
-// ── Weather ─────────────────────────────────────────────────────────────────
+// ── Google geocoding (the decision of 2026-11-09) ───────────────────────────
 
-const OPEN_METEO_DAY = {
-  daily: {
-    time: ["2026-11-10"],
-    precipitation_sum: [0.3],
-    precipitation_probability_max: [80],
-    wind_speed_10m_max: [12],
-    temperature_2m_max: [48],
-    temperature_2m_min: [35],
-    weather_code: [61],
-  },
+const GOOGLE_ROOFTOP = {
+  status: "OK",
+  results: [
+    {
+      address_components: [
+        { long_name: "Detroit", short_name: "Detroit", types: ["locality", "political"] },
+        { long_name: "United States", short_name: "US", types: ["country", "political"] },
+      ],
+      geometry: { location: { lat: 42.3314, lng: -83.0458 }, location_type: "ROOFTOP" },
+      types: ["street_address"],
+    },
+  ],
 };
 
-const fakeWeather: WeatherAdapter = {
-  id: "paid-wx",
-  request: ({ lat, lon, from, to }, ctx) => ({
-    url: `${ctx.url}/daily?lat=${lat}&lon=${lon}&from=${from}&to=${to}`,
-    headers: { "X-Api-Key": String(ctx.key) },
-  }),
-  parse: (body) =>
-    (body as { days: Array<{ d: string; hi: number }> }).days.map((x) => ({
-      date: x.d,
-      precip_in: 0,
-      precip_prob: 0,
-      wind_max: 0,
-      temp_max: x.hi,
-      temp_min: x.hi - 10,
-      weathercode: 0,
-    })),
-};
+describe("geocoding on Google", () => {
+  beforeEach(() => resetGoogleMapsUsage());
 
-describe("weather", () => {
-  afterEach(() => unregisterWeatherProvider(fakeWeather.id));
+  it("a Google server key selects Google ahead of Geocodio, with Nominatim still the fallback", () => {
+    expect(geocodingProviders({ GOOGLE_MAPS_API_KEY: "k", GEOCODIO_API_KEY: "g" })).toMatchObject({
+      primary: { id: "google" },
+      fallback: { id: "nominatim" },
+    });
+    expect(
+      geocodingProviders({ GOOGLE_MAPS_API_KEY: "k", GEOCODING_PROVIDER: "geocodio" }).primary.id,
+    ).toBe("geocodio");
+  });
 
-  it("unset, asks public Open-Meteo with no key, in imperial units, as before", async () => {
-    expect(weatherProvider({}).id).toBe("open-meteo");
-    reply = () => json(OPEN_METEO_DAY);
-    const days = await fetchForecast(42.33, -83.04, "2026-11-10", "2026-11-10");
+  it("asks the Geocoding API, reads a rooftop as a house, and counts the request", async () => {
+    vi.stubEnv("GOOGLE_MAPS_API_KEY", "google-test-key");
+    reply = () => json(GOOGLE_ROOFTOP);
+    const r = await geocodeAddress(ADDRESS);
     expect(calls).toHaveLength(1);
     const u = new URL(calls[0].url);
-    expect(u.hostname).toBe("api.open-meteo.com");
-    expect(u.pathname).toBe("/v1/forecast");
-    expect(u.searchParams.get("temperature_unit")).toBe("fahrenheit");
-    expect(u.searchParams.has("apikey")).toBe(false);
-    expect(days[0]).toMatchObject({ date: "2026-11-10", precip_in: 0.3, risky: true });
+    expect(u.origin + u.pathname).toBe("https://maps.googleapis.com/maps/api/geocode/json");
+    expect(u.searchParams.get("address")).toBe("1 Main St, Detroit, MI, US");
+    expect(r).toEqual({
+      latitude: 42.3314,
+      longitude: -83.0458,
+      precision: "house",
+      place: "Detroit",
+    });
+    expect(googleMapsUsage().geocoding).toBe(1);
   });
 
-  it("WEATHER_URL and WEATHER_API_KEY point the open-meteo adapter at another host, keyed", async () => {
-    vi.stubEnv("WEATHER_URL", "https://weather-host.example/");
-    vi.stubEnv("WEATHER_API_KEY", "wx-test-key");
-    reply = () => json(OPEN_METEO_DAY);
-    await fetchForecast(42.33, -83.04, "2026-11-10", "2026-11-10");
-    const u = new URL(calls[0].url);
-    expect(u.origin + u.pathname).toBe("https://weather-host.example/v1/forecast");
-    expect(u.searchParams.get("apikey")).toBe("wx-test-key");
+  it("a partial match is a street, a road centre is a street, an approximate point is an area", async () => {
+    vi.stubEnv("GOOGLE_MAPS_API_KEY", "google-test-key");
+    const variant = (geometry: object, extra: object = {}) => ({
+      status: "OK",
+      results: [{ ...GOOGLE_ROOFTOP.results[0], ...extra, geometry: { ...geometry } }],
+    });
+    const loc = { lat: 1, lng: 2 };
+    for (const [body, want] of [
+      [variant({ location: loc, location_type: "ROOFTOP" }, { partial_match: true }), "street"],
+      [
+        variant({ location: loc, location_type: "GEOMETRIC_CENTER" }, { types: ["route"] }),
+        "street",
+      ],
+      [variant({ location: loc, location_type: "APPROXIMATE" }, { types: ["locality"] }), "area"],
+    ] as const) {
+      reply = () => json(body);
+      expect((await geocodeAddress(ADDRESS))?.precision).toBe(want);
+    }
   });
 
-  it("an error never carries the key", async () => {
-    vi.stubEnv("WEATHER_API_KEY", "wx-test-key");
-    reply = () => json({ reason: "bad apikey wx-test-key" }, 401);
-    const err = await fetchForecast(42.33, -83.04, "2026-11-10", "2026-11-10").catch((e) => e);
-    expect(String(err.message)).toContain("401");
-    expect(String(err.message)).not.toContain("wx-test-key");
-  });
-
-  it("WEATHER_PROVIDER moves the request to the registered adapter, and the risk rules still apply", async () => {
-    registerWeatherProvider(fakeWeather);
-    vi.stubEnv("WEATHER_PROVIDER", "paid-wx");
-    vi.stubEnv("WEATHER_URL", "https://wx.example");
-    vi.stubEnv("WEATHER_API_KEY", "wx-test-key");
-    reply = () => json({ days: [{ d: "2026-11-10", hi: 20 }] });
-    const days = await fetchForecast(42.33, -83.04, "2026-11-10", "2026-11-10");
+  it("ZERO_RESULTS is no point and asks nobody else; REQUEST_DENIED falls back, and the key is never logged", async () => {
+    vi.stubEnv("GOOGLE_MAPS_API_KEY", "google-test-key");
+    reply = () => json({ status: "ZERO_RESULTS", results: [] });
+    expect(await geocodeAddress(ADDRESS)).toBeNull();
     expect(calls).toHaveLength(1);
-    expect(host(calls[0].url)).toBe("wx.example");
-    expect((calls[0].init?.headers as Record<string, string>)["X-Api-Key"]).toBe("wx-test-key");
-    expect(days).toEqual([
-      expect.objectContaining({
-        date: "2026-11-10",
-        temp_max: 20,
-        risky: true,
-        reasons: ["hard freeze"],
-      }),
+
+    calls = [];
+    reply = (c) =>
+      host(c.url) === "maps.googleapis.com"
+        ? json({ status: "REQUEST_DENIED", error_message: "key google-test-key not authorised" })
+        : json(NOMINATIM_HOUSE);
+    const r = await geocodeAddress(ADDRESS);
+    expect(calls.map((c) => host(c.url))).toEqual([
+      "maps.googleapis.com",
+      "nominatim.openstreetmap.org",
     ]);
+    expect(r).toMatchObject({ latitude: 42.33 });
+    const logged = vi.mocked(console.error).mock.calls.flat().join(" ");
+    expect(logged).toContain("REQUEST_DENIED");
+    expect(logged).not.toContain("google-test-key");
   });
 
-  it("a provider the relay does not mirror is never relayed through the Open-Meteo function", async () => {
-    registerWeatherProvider(fakeWeather);
-    vi.stubEnv("WEATHER_PROVIDER", "paid-wx");
-    vi.stubEnv("WEATHER_URL", "https://wx.example");
-    vi.stubEnv("SUPABASE_URL", "https://project.example");
-    vi.stubEnv("SERVICE_ROLE_KEY", "service-test");
-    reply = () => json({}, 503);
-    await expect(fetchForecast(42.33, -83.04, "2026-11-10", "2026-11-10")).rejects.toThrow("503");
-    expect(calls.map((c) => host(c.url))).toEqual(["wx.example"]);
+  it("a batch is answered in input order", async () => {
+    vi.stubEnv("GOOGLE_MAPS_API_KEY", "google-test-key");
+    reply = (c) => {
+      const n = Number(new URL(c.url).searchParams.get("address")!.split(" ")[0]);
+      return json({
+        status: "OK",
+        results: [
+          {
+            ...GOOGLE_ROOFTOP.results[0],
+            geometry: { location: { lat: n, lng: -n }, location_type: "ROOFTOP" },
+          },
+        ],
+      });
+    };
+    const list = Array.from({ length: 20 }, (_, i) => ({
+      street: `${i + 1} Main St`,
+      city: "Detroit",
+    }));
+    const out = await geocodeAddresses(list);
+    expect(out.map((r) => r?.latitude)).toEqual(list.map((_, i) => i + 1));
+    expect(googleMapsUsage().geocoding).toBe(20);
   });
+});
 
-  it("an unknown WEATHER_PROVIDER is an error, not public Open-Meteo", async () => {
-    vi.stubEnv("WEATHER_PROVIDER", "open-meteo-comercial");
-    await expect(fetchForecast(42.33, -83.04, "2026-11-10", "2026-11-10")).rejects.toBeInstanceOf(
-      ProviderConfigError,
-    );
-    expect(calls).toHaveLength(0);
+// ── Counting Google calls ───────────────────────────────────────────────────
+
+describe("Google usage counting", () => {
+  beforeEach(() => resetGoogleMapsUsage());
+
+  it("counts per API per UTC month, and logs the first call and every 500 units", () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const nov = new Date("2026-11-09T12:00:00Z");
+    recordGoogleMapsUsage("geocoding", 1, nov);
+    for (let i = 0; i < 499; i++) recordGoogleMapsUsage("geocoding", 1, nov);
+    recordGoogleMapsUsage("route-matrix-elements", 576, nov);
+    recordGoogleMapsUsage("geocoding", 1, new Date("2026-12-01T00:00:00Z"));
+
+    expect(googleMapsUsage("2026-11")).toEqual({ geocoding: 500, "route-matrix-elements": 576 });
+    expect(googleMapsUsage("2026-12")).toEqual({ geocoding: 1 });
+    const lines = info.mock.calls.map((c) => String(c[0]));
+    expect(lines).toEqual([
+      expect.stringContaining("month=2026-11 api=geocoding units_this_process=1 "),
+      expect.stringContaining("month=2026-11 api=geocoding units_this_process=500 "),
+      expect.stringContaining("month=2026-11 api=route-matrix-elements units_this_process=576 "),
+      expect.stringContaining("month=2026-12 api=geocoding units_this_process=1 "),
+    ]);
   });
 });
 

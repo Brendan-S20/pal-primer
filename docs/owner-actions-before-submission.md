@@ -30,9 +30,11 @@ from. Each line says where the detail is.
    the iOS app (HOUNDSTACK-1) and the server (HOUNDSTACK-2), with no name,
    email or IP. Crash Data is declared in App Privacy. Errors from the
    platform console now carry the admin's user id too (#329).
-4. **Decide where routing and geocoding run** (item 11). Still the public OSRM
-   demo server and public Nominatim unless `OSRM_URL` and `GEOCODIO_API_KEY`
-   are set in Lovable, which nothing here can read.
+4. **Routing and geocoding: decided 2026-11-09, Google Maps Platform for now**
+   (item 11, #529). What is left is yours: set `GOOGLE_MAPS_API_KEY` (Geocoding
+   API + Routes API only), create the $25/month budget alert, and read the
+   caching terms -- all in `docs/google-maps-spend.md`. Until the key is set,
+   the app still uses the OSRM demo and Nominatim/Geocodio.
 5. **The `Mac0s` runner** (item 12): still 16 GB, swap 83% used on
    2026-10-04, Supabase CLI still v2.78.1 against v2.119.0.
 6. **Check the Google map once in the iOS app, and confirm the budget alert**
@@ -516,7 +518,17 @@ mine is that it adds an unattended Stripe API call per organization per night,
 every night, forever. That is an operating cost and a rate-limit surface, and it
 should be chosen rather than arrive in a commit.
 
-## 11. Decide where the routing engine runs — still open
+## 11. Decide where the routing engine runs — DECIDED 2026-11-09: Google, for now
+
+**Decision (Brendan, 2026-11-09, #529):** geocoding and routing run on Google
+Maps Platform (Geocoding API, Routes API Compute Route Matrix) for now, instead
+of Geocodio plus a self-hosted OSRM server. No self-hosted router and no new
+paid vendor. Spend over $25/month must alert. The provider sits behind one
+setting (`ROUTING_PROVIDER` / `GEOCODING_PROVIDER`, src/lib/providers/config.ts)
+so routing can move to OSRM when volume makes it cheaper. Weather is out of
+scope. The owner steps -- server key, budget alert, caching terms -- are in
+`docs/google-maps-spend.md`. The history below is kept for context.
+
 
 **What changed by 2026-10-04, none of which decides it.** The planner's search
 moved out of Postgres into `src/lib/route-solver.ts` (#298); the app now skips
@@ -926,8 +938,11 @@ Places/server key):
         Do NOT add `https://*.lovable.app/*`: that lets every Lovable app on
         the internet spend your quota.
 - [x] **No Map ID is needed.** Pins are HTML overlays, not Advanced Markers.
-- [ ] **A budget alert** on the billing account (not confirmed either way) (say $10/month). Not a quota
-      that would stop maps for your users — an email if something is wrong.
+- [ ] **A budget alert** on the billing account (not confirmed either way):
+      **$25/month**, the figure decided on 2026-11-09, covering geocoding and
+      routing as well as maps. Step by step in `docs/google-maps-spend.md`.
+      Not a quota that would stop maps for your users — an email if something
+      is wrong. It does not exist until someone creates it there.
 - [x] **Where the key comes from.** Either is enough, and the app tries both:
       the Lovable Google Maps connector's
       `VITE_LOVABLE_CONNECTOR_GOOGLE_MAPS_BROWSER_KEY` (inlined at build), or a

@@ -14,11 +14,14 @@
 // request URL is a secret. It is never logged, and every message built from a
 // Geocodio response goes through redact() first.
 //
-// Since #529 both are ADAPTERS (GeocodingAdapter, below), chosen by
-// configuration -- see src/lib/providers/config.ts:
+// Since #529 these are ADAPTERS (GeocodingAdapter, below), chosen by
+// configuration -- see src/lib/providers/config.ts -- and Google's Geocoding
+// API is a third, per the owner's decision of 2026-11-09 (Google Maps
+// Platform for now, rather than Geocodio):
 //
-//   GEOCODING_PROVIDER  unset: "geocodio" when GEOCODIO_API_KEY is set, else
-//                       "nominatim" -- the rule this file always followed.
+//   GEOCODING_PROVIDER  unset: "google" when GOOGLE_MAPS_API_KEY is set, else
+//                       "geocodio" when GEOCODIO_API_KEY is set, else
+//                       "nominatim".
 //   GEOCODING_FALLBACK  who is asked when the first provider fails to answer.
 //                       Unset: "nominatim", as before. "none": nobody; the
 //                       address simply gets no point.
@@ -35,6 +38,7 @@ import {
   type ProviderContext,
   type ProviderEnv,
 } from "@/lib/providers/config";
+import { googleServerKey, recordGoogleMapsUsage } from "@/lib/providers/google-usage.server";
 
 /** How precisely the geocoder actually matched.
  *
@@ -150,7 +154,35 @@ const nominatim: GeocodingAdapter = {
   single: (address) => geocodeWithNominatim(address),
 };
 
+const googleGeocoder: GeocodingAdapter = {
+  id: "google",
+  async single(address, parts, ctx) {
+    const key = ctx.key ?? googleServerKey(ctx.env);
+    if (!key) {
+      console.error("[geocode] google selected but no GOOGLE_MAPS_API_KEY / GEOCODING_API_KEY; falling back");
+      return GEOCODER_FAILED;
+    }
+    return googleSingle(address, geocodioCountry(parts), key, ctx.url);
+  },
+  // No batch endpoint, so a bounded number of single requests in flight at
+  // once: a 1,000-row import is about 1,000 / GOOGLE_CONCURRENCY round trips
+  // rather than 1,000, well inside Google's 3,000-a-minute default quota.
+  async batch(addresses, ctx) {
+    const out: GeocoderAnswer[] = addresses.map(() => GEOCODER_FAILED);
+    let next = 0;
+    const worker = async () => {
+      while (next < addresses.length) {
+        const i = next++;
+        out[i] = await googleGeocoder.single(addresses[i], {}, ctx);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(GOOGLE_CONCURRENCY, addresses.length) }, worker));
+    return out;
+  },
+};
+
 const GEOCODING_PROVIDERS = new Map<string, GeocodingAdapter>([
+  [googleGeocoder.id, googleGeocoder],
   [geocodio.id, geocodio],
   [nominatim.id, nominatim],
 ]);
@@ -165,7 +197,9 @@ export function registerGeocodingProvider(adapter: GeocodingAdapter): void {
  *  built-ins stay. */
 export function unregisterGeocodingProvider(id: string): void {
   const k = id.toLowerCase();
-  if (k !== geocodio.id && k !== nominatim.id) GEOCODING_PROVIDERS.delete(k);
+  if (k !== geocodio.id && k !== nominatim.id && k !== googleGeocoder.id) {
+    GEOCODING_PROVIDERS.delete(k);
+  }
 }
 
 /** Who is asked first, and who is asked when that one does not answer.
@@ -177,7 +211,15 @@ export function geocodingProviders(env: ProviderEnv = serverEnv()): {
   const primary = adapterFor(
     "geocoding",
     GEOCODING_PROVIDERS,
-    requestedProvider("geocoding", env, envValue(env, "GEOCODIO_API_KEY") ? geocodio.id : nominatim.id),
+    requestedProvider(
+      "geocoding",
+      env,
+      googleServerKey(env)
+        ? googleGeocoder.id
+        : envValue(env, "GEOCODIO_API_KEY")
+          ? geocodio.id
+          : nominatim.id,
+    ),
   );
   const fb = (envValue(env, "GEOCODING_FALLBACK") ?? nominatim.id).toLowerCase();
   if (fb === "none" || fb === "off" || fb === primary.id) return { primary, fallback: null };
@@ -305,7 +347,7 @@ function geocodioKey(ctx: ProviderContext): string | null {
  *  cannot leak it. */
 function redact(text: string): string {
   let out = text;
-  for (const name of ["GEOCODIO_API_KEY", "GEOCODING_API_KEY"]) {
+  for (const name of ["GEOCODIO_API_KEY", "GEOCODING_API_KEY", "GOOGLE_MAPS_API_KEY"]) {
     const key = envValue(serverEnv(), name);
     if (key) out = out.split(key).join("[redacted]");
   }
@@ -497,6 +539,108 @@ async function geocodioBatch(
     }
     return pickGeocodio(address, response.results);
   });
+}
+
+// ── Google Geocoding API ────────────────────────────────────────────────────
+//
+// The key travels as the `key` QUERY PARAMETER, as with Geocodio, so the
+// request URL is a secret: it is never logged, and every message built from a
+// response goes through redact(). Billed per request (recordGoogleMapsUsage).
+
+const GOOGLE_GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json";
+const GOOGLE_CONCURRENCY = 8;
+
+type GoogleGeocodeResult = {
+  address_components?: Array<{ long_name?: string; short_name?: string; types?: string[] }>;
+  geometry?: { location?: { lat?: number; lng?: number }; location_type?: string };
+  types?: string[];
+  partial_match?: boolean;
+};
+
+/** Google's location_type on the same three-step scale as the others.
+ *
+ *    house   ROOFTOP, RANGE_INTERPOLATED -- this house number (the second is
+ *            interpolated along the block, like Geocodio's range match).
+ *    street  either of those with partial_match (Google matched SOMETHING
+ *            near what was asked, not necessarily this house), or
+ *            GEOMETRIC_CENTER of a road.
+ *    area    APPROXIMATE, and the centre of anything that is not a road. */
+function googlePrecision(r: GoogleGeocodeResult): GeocodePrecision {
+  const type = r.geometry?.location_type ?? "";
+  if (type === "ROOFTOP" || type === "RANGE_INTERPOLATED") {
+    return r.partial_match ? "street" : "house";
+  }
+  if (type === "GEOMETRIC_CENTER" && (r.types ?? []).includes("route")) return "street";
+  return "area";
+}
+
+async function googleSingle(
+  address: string,
+  country: "US" | "CA" | null,
+  key: string,
+  base: string | null,
+): Promise<GeocoderAnswer> {
+  const params = new URLSearchParams({ address, key });
+  // A bias, not a filter: Google's `components=country:` takes one country,
+  // and the product serves two. The US/Canada filter is applied below.
+  params.set("region", (country ?? "US").toLowerCase());
+  let res: Response;
+  try {
+    res = await fetch(`${base ?? GOOGLE_GEOCODE_URL}?${params}`, {
+      headers: { Accept: "application/json" },
+    });
+  } catch (err) {
+    console.error(
+      `[geocode] google network error for "${address}"; falling back:`,
+      redact(String((err as Error)?.message ?? err)),
+    );
+    return GEOCODER_FAILED;
+  }
+  recordGoogleMapsUsage("geocoding");
+  let data: { status?: string; error_message?: string; results?: GoogleGeocodeResult[] } | null;
+  try {
+    data = await res.json();
+  } catch {
+    console.error(`[geocode] google sent invalid JSON (${res.status}) for "${address}"; falling back`);
+    return GEOCODER_FAILED;
+  }
+  const status = data?.status ?? String(res.status);
+  if (status === "ZERO_RESULTS") {
+    console.warn(`[geocode] google: no result for "${address}"`);
+    return null;
+  }
+  if (!res.ok || status !== "OK") {
+    // REQUEST_DENIED (bad key, API not enabled), OVER_QUERY_LIMIT, OVER_DAILY_LIMIT,
+    // UNKNOWN_ERROR: all "ask somebody else", not "this address does not exist".
+    console.error(
+      `[geocode] google ${status} for "${address}"; falling back: ${redact(String(data?.error_message ?? "")).slice(0, 300)}`,
+    );
+    return GEOCODER_FAILED;
+  }
+  for (const r of data?.results ?? []) {
+    const comps = r.address_components ?? [];
+    const find = (t: string) => comps.find((c) => c.types?.includes(t));
+    const c = (find("country")?.short_name ?? "").toUpperCase();
+    if (c !== "US" && c !== "CA") continue;
+    const lat = Number(r.geometry?.location?.lat);
+    const lon = Number(r.geometry?.location?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    const precision = googlePrecision(r);
+    if (precision !== "house") {
+      console.warn(
+        `[geocode] ${precision}-level match only for "${address}" (google ${r.geometry?.location_type ?? "?"}${r.partial_match ? ", partial" : ""})`,
+      );
+    }
+    const place =
+      find("locality")?.long_name ??
+      find("postal_town")?.long_name ??
+      find("sublocality")?.long_name ??
+      find("neighborhood")?.long_name ??
+      null;
+    return { latitude: lat, longitude: lon, precision, place };
+  }
+  console.warn(`[geocode] google: no US/Canada result for "${address}"`);
+  return null;
 }
 
 // ── Nominatim ───────────────────────────────────────────────────────────────

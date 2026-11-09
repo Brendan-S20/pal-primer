@@ -39,6 +39,7 @@ import {
   type ProviderContext,
   type ProviderEnv,
 } from "@/lib/providers/config";
+import { googleServerKey, recordGoogleMapsUsage } from "@/lib/providers/google-usage.server";
 
 const OSRM_URL = process.env.OSRM_URL ?? "https://router.project-osrm.org";
 
@@ -101,9 +102,12 @@ type Point = { lat: number; lon: number };
 // whatever comes back into that shape, so the snap guard, the cache and the
 // planner never learn there is more than one router.
 //
-// ROUTING_PROVIDER picks it (see src/lib/providers/config.ts); unset is
-// "osrm", which is OSRM_URL / OSRM_ENDPOINTS / the public demo exactly as
-// before. A paid provider is a new entry in ROUTING_PROVIDERS reading
+// ROUTING_PROVIDER picks it (see src/lib/providers/config.ts). Unset, it is
+// "google" when GOOGLE_MAPS_API_KEY is set -- the owner's decision of
+// 2026-11-09: Google Maps Platform for now, OSRM when volume grows -- and
+// otherwise "osrm", which is OSRM_URL / OSRM_ENDPOINTS / the public demo
+// exactly as before. Switching back is ROUTING_PROVIDER=osrm plus OSRM_URL.
+// Another provider is a new entry in ROUTING_PROVIDERS reading
 // ROUTING_API_KEY and ROUTING_URL from its context -- and nothing else here.
 
 /** OSRM's Table response, which every adapter's answer is normalised to. */
@@ -121,6 +125,8 @@ export type RoutingTable = {
 
 export type RoutingRequest = {
   url: string;
+  method?: "GET" | "POST";
+  body?: string;
   headers?: Record<string, string>;
   /** What may be written to a log. NEVER contains a key: a key that travels
    *  in the query string makes `url` itself a secret. */
@@ -134,8 +140,9 @@ export type RoutingAdapter = {
   /** The most points one request may carry. */
   maxPoints(ctx: ProviderContext): number;
   tableRequest(points: Point[], ctx: ProviderContext): RoutingRequest;
-  /** The response body as OSRM's Table, or null when it is not one. */
-  parseTable(json: unknown): RoutingTable | null;
+  /** The response body as OSRM's Table, or null when it is not one.
+   *  `points` are the ones the request was built from, in the same order. */
+  parseTable(json: unknown, points: Point[]): RoutingTable | null;
 };
 
 const osrm: RoutingAdapter = {
@@ -156,7 +163,105 @@ const osrm: RoutingAdapter = {
   parseTable: (json) => (json && typeof json === "object" ? (json as RoutingTable) : null),
 };
 
-const ROUTING_PROVIDERS = new Map<string, RoutingAdapter>([[osrm.id, osrm]]);
+// ── Google Maps Platform: Routes API, Compute Route Matrix ───────────────
+//
+// One POST for every pair, the key in a header (never in the URL), and a
+// field mask so only the four fields read here are returned -- and billed at
+// the Essentials tier. TRAFFIC_UNAWARE because it is both the cheapest tier
+// and the only one that allows 625 elements (25 x 25) per request; a planner
+// costing tomorrow's route has no use for this minute's traffic anyway.
+//
+// BILLED PER ELEMENT, origins x destinations: a 24-point day is 576 elements.
+// That is the reason for the $25 budget alert in docs/google-maps-spend.md,
+// and the reason every request is counted by recordGoogleMapsUsage. Days
+// whose legs are all cached and fresh never reach this (everyLegIsFresh).
+//
+// Google has no "snap distance": it routes any point on land to the nearest
+// road without saying how far that was. sources/destinations are reported as
+// 0, so the wrong-region guard below is a no-op for Google -- correctly, as
+// Google's graph is not a regional extract that can be the wrong one.
+const GOOGLE_MATRIX_URL = "https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix";
+/** 25 x 25 = 625, the per-request element ceiling for TRAFFIC_UNAWARE. */
+const GOOGLE_MAX_POINTS = 25;
+
+type GoogleMatrixElement = {
+  originIndex?: number;
+  destinationIndex?: number;
+  duration?: string;
+  distanceMeters?: number;
+  condition?: string;
+  status?: { code?: number; message?: string };
+};
+
+const google: RoutingAdapter = {
+  id: "google",
+  label: "Google Routes",
+  maxPoints: () => GOOGLE_MAX_POINTS,
+  tableRequest(points, ctx) {
+    const key = ctx.key ?? googleServerKey(ctx.env);
+    if (!key) throw new Error("ROUTING_PROVIDER=google needs GOOGLE_MAPS_API_KEY (or ROUTING_API_KEY)");
+    const waypoints = points.map((p) => ({
+      waypoint: { location: { latLng: { latitude: p.lat, longitude: p.lon } } },
+    }));
+    const url = ctx.url ?? GOOGLE_MATRIX_URL;
+    return {
+      url,
+      method: "POST",
+      body: JSON.stringify({
+        origins: waypoints,
+        destinations: waypoints,
+        travelMode: "DRIVE",
+        routingPreference: "TRAFFIC_UNAWARE",
+      }),
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": key,
+        "X-Goog-FieldMask": "originIndex,destinationIndex,duration,distanceMeters,condition,status",
+      },
+      endpoint: url,
+    };
+  },
+  parseTable(json, points) {
+    // An error is an object ({error: {code, message, status}}), never an array.
+    if (!Array.isArray(json)) {
+      const e = (json as { error?: { status?: string; message?: string } } | null)?.error;
+      return {
+        code: e?.status ?? "NotAMatrix",
+        message: e?.message ?? "",
+        durations: [],
+        distances: [],
+      };
+    }
+    const n = points.length;
+    recordGoogleMapsUsage("route-matrix-elements", n * n);
+    const empty = () => Array.from({ length: n }, () => Array<number | null>(n).fill(null));
+    const durations = empty();
+    const distances = empty();
+    for (let i = 0; i < n; i++) {
+      durations[i][i] = 0;
+      distances[i][i] = 0;
+    }
+    for (const el of json as GoogleMatrixElement[]) {
+      const i = el.originIndex ?? 0; // proto3 omits a zero index
+      const j = el.destinationIndex ?? 0;
+      if (i < 0 || j < 0 || i >= n || j >= n || i === j) continue;
+      if (el.status?.code) continue; // a per-element error
+      if (el.condition !== "ROUTE_EXISTS") continue; // no road between them
+      const seconds = Number.parseFloat(String(el.duration ?? "").replace(/s$/, ""));
+      const meters = Number(el.distanceMeters ?? 0); // omitted when 0
+      if (!Number.isFinite(seconds) || !Number.isFinite(meters)) continue;
+      durations[i][j] = seconds;
+      distances[i][j] = meters;
+    }
+    const snapped = points.map(() => ({ distance: 0 }));
+    return { code: "Ok", durations, distances, sources: snapped, destinations: snapped };
+  },
+};
+
+const ROUTING_PROVIDERS = new Map<string, RoutingAdapter>([
+  [osrm.id, osrm],
+  [google.id, google],
+]);
 
 /** Add (or replace) a routing adapter. For a provider added in its own file,
  *  and for tests; ROUTING_PROVIDER then selects it by id. */
@@ -164,15 +269,17 @@ export function registerRoutingProvider(adapter: RoutingAdapter): void {
   ROUTING_PROVIDERS.set(adapter.id.toLowerCase(), adapter);
 }
 
-/** Remove an adapter registered with registerRoutingProvider. "osrm" stays. */
+/** Remove an adapter registered with registerRoutingProvider. The built-ins
+ *  stay. */
 export function unregisterRoutingProvider(id: string): void {
-  if (id.toLowerCase() !== osrm.id) ROUTING_PROVIDERS.delete(id.toLowerCase());
+  const k = id.toLowerCase();
+  if (k !== osrm.id && k !== google.id) ROUTING_PROVIDERS.delete(k);
 }
 
 /** The adapter the environment selects. Throws ProviderConfigError for a
  *  ROUTING_PROVIDER nobody registered -- never the demo server instead. */
 export function routingProvider(env: ProviderEnv = serverEnv()): RoutingAdapter {
-  return pickProvider("routing", env, ROUTING_PROVIDERS, osrm.id);
+  return pickProvider("routing", env, ROUTING_PROVIDERS, googleServerKey(env) ? google.id : osrm.id);
 }
 
 /** Rounded exactly as the table stores them, so a lookup cannot miss by a tick. */
@@ -555,13 +662,22 @@ async function measureDay(
     return failed("too_many_points");
   }
 
-  const request = provider.tableRequest(points, ctx);
+  let request: RoutingRequest;
+  try {
+    request = provider.tableRequest(points, ctx);
+  } catch (err) {
+    // A provider chosen without what it needs (a key, a URL).
+    console.error("[road-legs]", (err as Error).message, "Leaving this day on estimates.");
+    return failed("router_error");
+  }
   const base = request.endpoint;
   const who = provider.label;
 
   const ask = async () => {
     await paceFor(request.url);
     return fetch(request.url, {
+      method: request.method ?? "GET",
+      body: request.body,
       headers: request.headers,
       signal: AbortSignal.timeout(20_000),
     });
@@ -590,7 +706,7 @@ async function measureDay(
       console.error(`[road-legs] ${who} ${res.status} for ${orgId} ${day}`);
       return failed("router_error");
     }
-    json = provider.parseTable(await res.json());
+    json = provider.parseTable(await res.json(), points);
   } catch (err) {
     console.error(`[road-legs] ${who} unreachable`, (err as Error).message);
     return failed("router_unreachable");

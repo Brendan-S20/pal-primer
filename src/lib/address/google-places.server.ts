@@ -11,6 +11,7 @@ import type {
   AddressSuggestion,
   AddressDetails,
 } from "@/lib/address/provider.server";
+import { recordGoogleMapsUsage } from "@/lib/providers/google-usage.server";
 
 const AUTOCOMPLETE_URL = "https://places.googleapis.com/v1/places:autocomplete";
 const DETAILS_URL = "https://places.googleapis.com/v1/places";
@@ -67,6 +68,7 @@ export const googlePlacesProvider: AddressProvider = {
       },
       body: JSON.stringify(body),
     });
+    recordGoogleMapsUsage("places-autocomplete");
     if (!res.ok) {
       console.warn("places autocomplete failed:", res.status, await res.text().catch(() => ""));
       return [];
@@ -110,6 +112,7 @@ export const googlePlacesProvider: AddressProvider = {
         "X-Goog-FieldMask": "addressComponents,location,formattedAddress",
       },
     });
+    recordGoogleMapsUsage("places-details");
     if (!res.ok) {
       console.warn("places details failed:", res.status, await res.text().catch(() => ""));
       return null;

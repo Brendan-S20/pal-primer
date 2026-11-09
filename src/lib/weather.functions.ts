@@ -2,13 +2,6 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { resolveCaller } from "@/lib/authz.server";
-import {
-  pickProvider,
-  providerContext,
-  serverEnv,
-  type ProviderContext,
-  type ProviderEnv,
-} from "@/lib/providers/config";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   // Through the shared gate, so a person whose access is turned off is
@@ -74,129 +67,51 @@ function assessRisk(day: Omit<DayForecast, "risky" | "reasons">): {
  *  indefinitely through the stale-on-error fallback. */
 const FORECAST_UNITS = "imperial";
 
-// ── THE WEATHER PROVIDER ──────────────────────────────────────────────────
-//
-// WEATHER_PROVIDER picks an adapter (src/lib/providers/config.ts). Unset is
-// "open-meteo" against the public api.open-meteo.com with no key -- the
-// request this file always made. An adapter builds one daily-forecast request
-// in imperial units and turns the reply into days; assessRisk, the cache and
-// every screen stay the same whoever answered.
-//
-// The open-meteo adapter also honours WEATHER_URL and WEATHER_API_KEY (sent
-// as `apikey`, Open-Meteo's customer-API parameter), so a different
-// Open-Meteo host is configuration alone. The key is never logged and never
-// appears in an error: errors name the provider and the status, not the URL.
-
-export type ForecastQuery = { lat: number; lon: number; from: string; to: string };
-export type WeatherRequest = { url: string; headers?: Record<string, string> };
-export type DayForecastBase = Omit<DayForecast, "risky" | "reasons">;
-
-export type WeatherAdapter = {
-  id: string;
-  /** One request for every day from `from` to `to`, in °F, mph and inches. */
-  request(q: ForecastQuery, ctx: ProviderContext): WeatherRequest;
-  /** The reply as days, in those units. */
-  parse(json: unknown): DayForecastBase[];
-  /** True when the `weather-forecast` Edge Function mirrors this provider's
-   *  request, so it may be used as a relay when the direct fetch fails. */
-  relay?: boolean;
-};
-
-const OPEN_METEO_PUBLIC = "https://api.open-meteo.com";
-
-const openMeteo: WeatherAdapter = {
-  id: "open-meteo",
-  relay: true,
-  request({ lat, lon, from, to }, ctx) {
-    const base = (ctx.url ?? OPEN_METEO_PUBLIC).replace(/\/+$/, "");
-    const url = new URL(`${base}/v1/forecast`);
-    url.searchParams.set("latitude", String(lat));
-    url.searchParams.set("longitude", String(lon));
-    // Open-Meteo's current daily variable names are snake_case with underscores
-    // (weather_code, wind_speed_10m_max). The legacy names (weathercode,
-    // windspeed_10m_max) return HTTP 400 "invalid variable", which was being
-    // swallowed and shown as an empty "No forecast available" (finding #15).
-    url.searchParams.set(
-      "daily",
-      "precipitation_sum,precipitation_probability_max,wind_speed_10m_max,temperature_2m_max,temperature_2m_min,weather_code",
-    );
-    // See the units note above. Open-Meteo converts server-side, so nothing
-    // downstream has to know a conversion happened.
-    //
-    // These three lines are duplicated in supabase/functions/weather-forecast,
-    // which relays this exact request and is the path that actually runs in
-    // production. If only one of the two is changed, the units of the forecast
-    // depend on which network route succeeded — the same board showing °F or °C
-    // depending on the day. The old "keep in sync with the server" comment was
-    // not a mechanism; tests/a-forecast-in-degrees-nobody-here-uses.test.ts is.
-    url.searchParams.set("temperature_unit", "fahrenheit");
-    url.searchParams.set("wind_speed_unit", "mph");
-    url.searchParams.set("precipitation_unit", "inch");
-    url.searchParams.set("timezone", "auto");
-    url.searchParams.set("start_date", from);
-    url.searchParams.set("end_date", to);
-    if (ctx.key) url.searchParams.set("apikey", ctx.key);
-    return { url: url.toString() };
-  },
-  parse(json) {
-    const d = (json as any)?.daily;
-    const out: DayForecastBase[] = [];
-    for (let i = 0; i < (d?.time?.length ?? 0); i++) {
-      out.push({
-        date: d.time[i],
-        precip_in: Number(d.precipitation_sum?.[i] ?? 0),
-        precip_prob: Number(d.precipitation_probability_max?.[i] ?? 0),
-        wind_max: Number(d.wind_speed_10m_max?.[i] ?? 0),
-        temp_max: Number(d.temperature_2m_max?.[i] ?? 0),
-        temp_min: Number(d.temperature_2m_min?.[i] ?? 0),
-        weathercode: Number(d.weather_code?.[i] ?? 0),
-      });
-    }
-    return out;
-  },
-};
-
-const WEATHER_PROVIDERS = new Map<string, WeatherAdapter>([[openMeteo.id, openMeteo]]);
-
-/** Add (or replace) a weather adapter; WEATHER_PROVIDER then selects it. */
-export function registerWeatherProvider(adapter: WeatherAdapter): void {
-  WEATHER_PROVIDERS.set(adapter.id.toLowerCase(), adapter);
-}
-
-/** Remove an adapter registered with registerWeatherProvider. */
-export function unregisterWeatherProvider(id: string): void {
-  if (id.toLowerCase() !== openMeteo.id) WEATHER_PROVIDERS.delete(id.toLowerCase());
-}
-
-/** The adapter the environment selects. Throws ProviderConfigError for a
- *  WEATHER_PROVIDER nobody registered -- never the free service instead. */
-export function weatherProvider(env: ProviderEnv = serverEnv()): WeatherAdapter {
-  return pickProvider("weather", env, WEATHER_PROVIDERS, openMeteo.id);
-}
-
-/** One forecast from the configured provider. Server-only. Exported for the
- *  provider tests; everything else reaches it through cachedForecast. */
-export async function fetchForecast(
+async function fetchForecast(
   lat: number,
   lon: number,
   from: string,
   to: string,
 ): Promise<DayForecast[]> {
-  const provider = weatherProvider();
-  const req = provider.request({ lat, lon, from, to }, providerContext("weather", serverEnv()));
+  const url = new URL("https://api.open-meteo.com/v1/forecast");
+  url.searchParams.set("latitude", String(lat));
+  url.searchParams.set("longitude", String(lon));
+  // Open-Meteo's current daily variable names are snake_case with underscores
+  // (weather_code, wind_speed_10m_max). The legacy names (weathercode,
+  // windspeed_10m_max) return HTTP 400 "invalid variable", which was being
+  // swallowed and shown as an empty "No forecast available" (finding #15).
+  url.searchParams.set(
+    "daily",
+    "precipitation_sum,precipitation_probability_max,wind_speed_10m_max,temperature_2m_max,temperature_2m_min,weather_code",
+  );
+  // See the units note above. Open-Meteo converts server-side, so nothing
+  // downstream has to know a conversion happened.
+  //
+  // These three lines are duplicated in supabase/functions/weather-forecast,
+  // which relays this exact request and is the path that actually runs in
+  // production. If only one of the two is changed, the units of the forecast
+  // depend on which network route succeeded — the same board showing °F or °C
+  // depending on the day. The old "keep in sync with the server" comment was
+  // not a mechanism; tests/a-forecast-in-degrees-nobody-here-uses.test.ts is.
+  url.searchParams.set("temperature_unit", "fahrenheit");
+  url.searchParams.set("wind_speed_unit", "mph");
+  url.searchParams.set("precipitation_unit", "inch");
+  url.searchParams.set("timezone", "auto");
+  url.searchParams.set("start_date", from);
+  url.searchParams.set("end_date", to);
 
   // The app server's egress cannot always reach open-meteo directly (the
   // forecast cache had NEVER been populated in production — every zone card
   // errored). Try direct first, then fall through to the weather-forecast
   // Supabase Edge Function, which has unrestricted egress and mirrors this
-  // exact request -- for a provider it mirrors, which today is Open-Meteo.
+  // exact request.
   let resp: Response | null = null;
   try {
-    resp = await fetch(req.url, { headers: req.headers, signal: AbortSignal.timeout(8_000) });
+    resp = await fetch(url.toString(), { signal: AbortSignal.timeout(8_000) });
   } catch {
     resp = null;
   }
-  if ((!resp || !resp.ok) && provider.relay) {
+  if (!resp || !resp.ok) {
     const supabaseUrl = process.env.SUPABASE_URL;
     // Same precedence as client.server.ts (SUPABASE_* prefix is reserved in
     // Lovable secrets, so the user-managed name comes first).
@@ -222,15 +137,24 @@ export async function fetchForecast(
   if (!resp) throw new Error("Weather API unreachable");
   if (!resp.ok) {
     const body = await resp.text().catch(() => "");
-    throw new Error(`Weather API ${resp.status}${body ? `: ${redactKey(body.slice(0, 200))}` : ""}`);
+    throw new Error(`Weather API ${resp.status}${body ? `: ${body.slice(0, 200)}` : ""}`);
   }
-  return provider.parse(await resp.json()).map((base) => ({ ...base, ...assessRisk(base) }));
-}
-
-/** WEATHER_API_KEY out of anything that becomes an error message. */
-function redactKey(text: string): string {
-  const key = providerContext("weather", serverEnv()).key;
-  return key ? text.split(key).join("[redacted]") : text;
+  const j: any = await resp.json();
+  const d = j.daily;
+  const out: DayForecast[] = [];
+  for (let i = 0; i < (d?.time?.length ?? 0); i++) {
+    const base = {
+      date: d.time[i],
+      precip_in: Number(d.precipitation_sum?.[i] ?? 0),
+      precip_prob: Number(d.precipitation_probability_max?.[i] ?? 0),
+      wind_max: Number(d.wind_speed_10m_max?.[i] ?? 0),
+      temp_max: Number(d.temperature_2m_max?.[i] ?? 0),
+      temp_min: Number(d.temperature_2m_min?.[i] ?? 0),
+      weathercode: Number(d.weather_code?.[i] ?? 0),
+    };
+    out.push({ ...base, ...assessRisk(base) });
+  }
+  return out;
 }
 
 // Open-Meteo's free tier rate-limits daily; in production every zone card
