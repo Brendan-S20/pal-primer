@@ -7459,6 +7459,7 @@ export type Database = {
           is_field_tech: boolean
           is_field_tech_overridden: boolean
           location_id: string | null
+          max_dogs_per_walk: number | null
           organization_id: string
           phone: string | null
           role: Database["public"]["Enums"]["staff_role"]
@@ -7482,6 +7483,7 @@ export type Database = {
           is_field_tech?: boolean
           is_field_tech_overridden?: boolean
           location_id?: string | null
+          max_dogs_per_walk?: number | null
           organization_id: string
           phone?: string | null
           role: Database["public"]["Enums"]["staff_role"]
@@ -7505,6 +7507,7 @@ export type Database = {
           is_field_tech?: boolean
           is_field_tech_overridden?: boolean
           location_id?: string | null
+          max_dogs_per_walk?: number | null
           organization_id?: string
           phone?: string | null
           role?: Database["public"]["Enums"]["staff_role"]
@@ -7823,6 +7826,7 @@ export type Database = {
       subscriptions: {
         Row: {
           account_type: Database["public"]["Enums"]["account_type"]
+          assigned_staff_id: string | null
           billing_cadence: Database["public"]["Enums"]["billing_cadence"]
           booked_via: string | null
           client_id: string
@@ -7863,6 +7867,7 @@ export type Database = {
         }
         Insert: {
           account_type: Database["public"]["Enums"]["account_type"]
+          assigned_staff_id?: string | null
           billing_cadence?: Database["public"]["Enums"]["billing_cadence"]
           booked_via?: string | null
           client_id: string
@@ -7903,6 +7908,7 @@ export type Database = {
         }
         Update: {
           account_type?: Database["public"]["Enums"]["account_type"]
+          assigned_staff_id?: string | null
           billing_cadence?: Database["public"]["Enums"]["billing_cadence"]
           booked_via?: string | null
           client_id?: string
@@ -9452,6 +9458,10 @@ export type Database = {
         }
         Returns: number
       }
+      assign_walk_group_if_open: {
+        Args: { _group_id: string; _walker_id: string }
+        Returns: string
+      }
       book_training_package_plan: {
         Args: {
           _client_package_id: string
@@ -10939,6 +10949,10 @@ export type Database = {
       set_groom_addon_done: {
         Args: { _addon_service_id: string; _done: boolean; _visit_id: string }
         Returns: string[]
+      }
+      set_plan_walker: {
+        Args: { _subscription_id: string; _walker_id: string | null }
+        Returns: undefined
       }
       set_route_windows: {
         Args: { _org_id: string; _policy: string }
