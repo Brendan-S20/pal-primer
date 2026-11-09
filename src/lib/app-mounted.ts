@@ -94,13 +94,23 @@ export function isAppMounted(): boolean {
 //   <- triggerOnReady <- (setTimeout)
 //
 // Rather than chase each caller, guard the one function they all reach.
-// <Transitioner> assigns router.startTransition during its render; a call to
-// THAT function before the app's first commit is exactly the setState on a
-// fiber that never mounted. guardRouterStartTransition holds such calls until
-// the first commit and then runs them in order. Everything else is untouched:
-// before <Transitioner> has rendered, the router's own default (run the
-// function now) still runs synchronously, which hydration depends on; after
-// the first commit every call goes straight through.
+// <Transitioner> assigns router.startTransition during its render, closing
+// over its own setState; a call to THAT function before the app's first
+// commit is exactly the setState on a fiber that never mounted.
+//
+// Before the first commit, guardRouterStartTransition therefore runs the
+// router's update itself, the way router-core's own default does before any
+// <Transitioner> exists (`(fn) => fn()`), and leaves Transitioner's setState
+// out of it. Nothing is held back or queued. That matters: an earlier version
+// of this guard (c1ed7ce6) waited for the first commit instead, and waiting is
+// a deadlock whenever the first commit cannot happen without the very update
+// being held (a root route still pending in a build with no server render,
+// the native app). Running the update now cannot wait on anything.
+//
+// What is skipped is only Transitioner's `isTransitioning` flag for a
+// transition that started before it committed: router state itself is
+// updated at once, and every store subscriber reads it when it mounts. After
+// the first commit every call goes to Transitioner's function, unchanged.
 
 type StartTransition = (fn: () => void) => void;
 
@@ -115,17 +125,18 @@ export function guardRouterStartTransition<R extends { startTransition: StartTra
   if (marked.__startTransitionGuarded) return router;
   marked.__startTransitionGuarded = true;
   // The router's constructor default, used until <Transitioner> replaces it.
-  let current: StartTransition = router.startTransition;
+  const routerDefault: StartTransition = router.startTransition;
+  let current: StartTransition = routerDefault;
   let fromRender = false;
   Object.defineProperty(router, "startTransition", {
     configurable: true,
     enumerable: true,
     get(): StartTransition {
       return (fn) => {
-        if (!fromRender || mounted) return current(fn);
-        // Assigned by a render that has not committed: wait for the commit,
-        // then call whichever function the committed render left in place.
-        void untilTheAppHasMounted().then(() => current(fn));
+        // Assigned by a render that has not committed: do the router's work
+        // now, without that render's setState.
+        if (fromRender && !mounted) return routerDefault(fn);
+        return current(fn);
       };
     },
     set(next: StartTransition) {

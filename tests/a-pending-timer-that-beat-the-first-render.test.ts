@@ -7,8 +7,10 @@
 //   dispatchSetState <- Transitioner.router.startTransition <- onReady
 //   <- triggerOnReady <- (setTimeout: router-core setupPendingTimeout)
 //
-// Reproduced on main at 6 of 16 hard loads, and on this branch at 4 of 16;
-// 0 of 48 with the guard. It is the third path into the race lib/app-mounted.ts
+// Reproduced on main at 6 of 16 hard loads, and on this branch at 4 of 16.
+// The guard runs such a call's update directly instead of through the render
+// that has not committed. An earlier version WAITED for the first commit,
+// which can never come if that commit needs the update (see app-mounted.ts). It is the third path into the race lib/app-mounted.ts
 // describes, after the hydration pendingMinMs timer
 // (a-timer-that-beat-the-first-render.test.ts) and the beforeLoad's own answer
 // (a-shell-that-answered-before-the-first-render.test.ts).
@@ -68,20 +70,27 @@ describe("router.startTransition before and after the first commit", () => {
     expect(ran).toEqual(["hydrate"]);
   });
 
-  it("holds a call to Transitioner's function until the first commit, then runs it in order", async () => {
+  it("before the first commit, does the router's work at once without Transitioner's setState", () => {
     const router = guardRouterStartTransition(fakeRouter());
     const log: string[] = [];
     transitionerAssigns(router, log, "render-1");
     // The pending timer fires before the commit, twice.
     router.startTransition(() => log.push("show-pending"));
     router.startTransition(() => log.push("settle"));
+    // Applied immediately, in order, and no setState reached the render that
+    // has not committed. Nothing waits, so nothing can wait forever.
+    expect(log).toEqual(["show-pending", "settle"]);
+  });
+
+  it("never waits for a commit: the update runs even if the app never mounts", async () => {
+    const router = guardRouterStartTransition(fakeRouter());
+    const log: string[] = [];
+    transitionerAssigns(router, log, "render-1");
+    router.startTransition(() => log.push("leave-pending"));
     await flush();
-    expect(log, "nothing reached a setState before the commit").toEqual([]);
-    // A second render replaced the function before committing.
-    transitionerAssigns(router, log, "render-2");
-    markAppMounted();
-    await flush();
-    expect(log).toEqual(["setState:render-2", "show-pending", "setState:render-2", "settle"]);
+    // markAppMounted() is never called here, as when the first commit draws a
+    // pending root: the update the root was waiting for has still happened.
+    expect(log).toEqual(["leave-pending"]);
   });
 
   it("goes straight through after the first commit", () => {
