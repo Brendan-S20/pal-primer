@@ -153,17 +153,22 @@ after 30 days, to comply with Google Maps Platform's caching terms.
 - **A daily job does the refresh and the purge.** It is
   `/api/public/hooks/google-cache-expiry`, scheduled by pg_cron at 07:23 UTC
   in `20261109200100_google-derived-data-is-kept-thirty-days.sql`. It:
-  - deletes `road_legs` rows with `source = 'google'` that are older than 30
+  - deletes `road_legs` rows with `source = 'google'` that are older than 29
     days. Other sources keep the existing weekly 90-day prune.
-  - re-geocodes Google-sourced pins from 23 days old, and clears a pin if a
+  - re-geocodes Google-sourced pins from 22 days old, and clears a pin if a
     provider answers that there is no match.
   - if no provider answers (an outage, a refused key, or a mistyped
     `GEOCODING_PROVIDER`), keeps the pin and retries it daily while it is
-    under 30 days old. At 30 days the pin is cleared whatever the geocoder
-    says, so no Google pin is kept past 30 days. The week of retries sits
-    inside the 30, at the cost of refreshing each Google pin about every 23
-    days instead of every 30, which is roughly 30% more geocode calls on those
-    pins.
+    under 29 days old. At 29 days the pin is cleared whatever the geocoder
+    says. The week of retries sits inside the limit, at the cost of
+    refreshing each Google pin about every 22 days instead of every 30, which
+    is roughly 35% more geocode calls on those pins.
+  - **Why 29 and not 30:** the job runs once a day. With the limit at 30,
+    something written one second after a run would first be removed at the
+    run 31 days later. Removing at 29 means the run on day 30 always removes
+    it, so nothing Google-derived reaches 30 days. If the schedule becomes
+    less frequent than daily, the margin in `src/lib/geocode-source.ts` has
+    to grow to match.
   - never touches any other source, or a pin of unknown source.
 - **The rule lives in one file**, `src/lib/geocode-source.ts`. The tests are in
   `tests/google-derived-data-is-kept-thirty-days.test.ts`.

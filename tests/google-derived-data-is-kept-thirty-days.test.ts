@@ -124,15 +124,17 @@ function fakeAdmin(tables: Record<string, Row[]>) {
 
 describe("which Google-derived values are due", () => {
   it("is thirty days at most, and refresh starts a week inside that", () => {
-    expect(GOOGLE_CACHE_DAYS).toBe(30);
-    expect(GOOGLE_REFRESH_DAYS).toBe(23);
+    // 29, not 30: one daily run's margin inside the 30-day terms
+    // (Product review 5830897980).
+    expect(GOOGLE_CACHE_DAYS).toBe(29);
+    expect(GOOGLE_REFRESH_DAYS).toBe(22);
   });
 
-  it("a Google pin is due for refresh from 23 days, not 30", () => {
+  it("a Google pin is due for refresh from 22 days", () => {
     expect(isGoogleGeocodeDue({ geocode_source: "google", geocoded_at: daysAgo(24) }, NOW)).toBe(
       true,
     );
-    expect(isGoogleGeocodeDue({ geocode_source: "google", geocoded_at: daysAgo(22) }, NOW)).toBe(
+    expect(isGoogleGeocodeDue({ geocode_source: "google", geocoded_at: daysAgo(21) }, NOW)).toBe(
       false,
     );
   });
@@ -170,7 +172,7 @@ describe("the road-leg purge", () => {
     const legs: Row[] = [
       { id: "g-old", source: "google", fetched_at: daysAgo(31) },
       { id: "g-much-older", source: "google", fetched_at: daysAgo(89) },
-      { id: "g-new", source: "google", fetched_at: daysAgo(29) },
+      { id: "g-new", source: "google", fetched_at: daysAgo(28) },
       { id: "osrm-old", source: "osrm", fetched_at: daysAgo(60) },
       { id: "osrm-new", source: "osrm", fetched_at: daysAgo(1) },
     ];
@@ -312,7 +314,7 @@ describe("the pin refresh", () => {
   // would have blanked every due pin that morning.
   it("keeps a due pin under 30 days and retries it tomorrow when nobody answered", async () => {
     const table = pins();
-    // 25 days old: due (23+) but inside the 30-day limit.
+    // 25 days old: due (22+) but inside the 29-day removal age.
     Object.assign(
       table.find((p) => p.id === "places-old")!,
       { geocoded_at: daysAgo(25) },
@@ -344,6 +346,26 @@ describe("the pin refresh", () => {
     expect(table.find((p) => p.id === "google-old")).toMatchObject(CLEARED);
     expect(table.find((p) => p.id === "places-old")).toMatchObject(CLEARED);
     expect(r).toMatchObject({ pinsCleared: 2, pinsRetrying: 0 });
+  });
+
+  // Product review 5830897980: with the limit AT 30 and a daily run, a value
+  // written one second after a run is 29d 23:59:59 at the day-30 run and
+  // survived to the day-31 run. The day-30 run must remove it.
+  it("a pin and a road leg written one second after a run are gone at the run 30 days later", async () => {
+    const justAfterARun = new Date(NOW.getTime() - (30 * 86_400_000 - 1_000)).toISOString();
+    const table = pins();
+    Object.assign(
+      table.find((p) => p.id === "google-new")!,
+      { geocoded_at: justAfterARun },
+    );
+    const legs: Row[] = [{ id: "g-edge", source: "google", fetched_at: justAfterARun }];
+    const { admin } = fakeAdmin({ properties: table, road_legs: legs });
+    await expireGoogleDerivedData(admin, {
+      now: () => NOW,
+      geocode: async () => ({ point: null, source: null, failed: true }),
+    });
+    expect(table.find((p) => p.id === "google-new")).toMatchObject(CLEARED);
+    expect(legs).toEqual([]);
   });
 
   it("selects a 24-day Google pin for refresh, and refreshes it when the geocoder answers", async () => {
@@ -425,7 +447,7 @@ describe("the daily run", () => {
       geocode: async () => found(1),
     });
     expect(s).toEqual({
-      cutoff: daysAgo(30),
+      cutoff: daysAgo(29),
       roadLegsDeleted: 1,
       pinsDue: 2,
       pinsRefreshed: 2,
