@@ -1,3 +1,4 @@
+import { isVaccineStartBlocked, petsMissingVaccines, type MissingVaccine } from "@/lib/pet-safety";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { humanizeRole } from "@/lib/humanize";
 import { daysBetweenOrgDays, orgLocalDay, orgLocalDayTime, orgLocalTime } from "@/lib/org-day";
@@ -1998,7 +1999,13 @@ function VisitCard({
     mutationFn: () => actions.start(),
     onSuccess: (r) => {
       haptic("select");
-      toast.success(r.queued ? t("visit.startQueued") : t("visit.started"));
+      // The owner's vaccine Start rule is "warn" (#729): started, and said so.
+      const missing = petsMissingVaccines(
+        (r.result as { vaccineWarnings?: MissingVaccine[] } | undefined)?.vaccineWarnings,
+      );
+      if (missing.length > 0)
+        toast.warning(t("visit.vaccineStartWarn", { pets: missing.join(", ") }));
+      else toast.success(r.queued ? t("visit.startQueued") : t("visit.started"));
       if (!r.queued) invalidate();
       // The button moves on to its next step now, not when the refetch (or
       // the queue's change event) lands. It does NOT open the camera: that
@@ -2007,7 +2014,12 @@ function VisitCard({
     },
     onError: (e: Error) => {
       haptic("error");
-      toast.error(readableError(e, t("common.notSaved")));
+      // The owner's vaccine Start rule is "block" (#729).
+      toast.error(
+        isVaccineStartBlocked(e)
+          ? t("visit.vaccineStartBlocked")
+          : readableError(e, t("common.notSaved")),
+      );
     },
   });
   const completeToast = (r: { queued: boolean; result?: unknown }) => {
