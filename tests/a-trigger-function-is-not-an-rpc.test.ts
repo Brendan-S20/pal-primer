@@ -300,11 +300,17 @@ describe("no trigger function is executable by a signed-in user", () => {
     // the owner's set_vaccine_start_rule(). Both revoked from PUBLIC, anon
     // and authenticated in their files.
     //
-    // 101 -> 105 (#731, walker groups): enforce_walker_dog_cap_on_member and
+    // 101 -> 103 (20261108153700, a portal change waits for the owner, #730):
+    // tg_orgs_portal_change_owner_only (only an owner changes the portal
+    // change policy or the fee auto-charge switch) and
+    // tg_orgs_log_portal_change_settings (the activity_log row naming who).
+    // Each revoked from PUBLIC, anon and authenticated there.
+    //
+    // 103 -> 107 (#731, walker groups): enforce_walker_dog_cap_on_member and
     // enforce_walker_dog_cap_on_group (20261108170000, a walker's dog cap),
     // validate_plan_walker and fill_visit_walker (20261108170100, a walk plan
     // has a walker). Each revoked from PUBLIC, anon and authenticated there.
-    expect(triggerFunctions().size).toBe(105);
+    expect(triggerFunctions().size).toBe(107);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

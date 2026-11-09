@@ -1559,6 +1559,9 @@ export const BASE_STUBS: Record<string, Stub> = {
   // of the card's two states ("Needs a price first") and the dialog's note
   // that this one is the office's to price.
   getPortalBookingSettings: fx.PORTAL_BOOKING_SETTINGS,
+  // #730: the owner's choice and the approval queue.
+  getPortalChangeSettings: fx.PORTAL_CHANGE_SETTINGS,
+  listPortalChangeRequests: fx.PORTAL_CHANGE_REQUESTS,
   // "Create link" answers with a URL the length production makes: the app
   // origin, the path, 43 base64url characters and `.ics`. A short fixture URL
   // would never test the box it is shown in.
@@ -1673,6 +1676,8 @@ export const PORTAL_STUBS: Record<string, Stub> = {
   }),
   portalGetClient: pfx.PORTAL_CLIENT,
   portalListUpcomingVisits: pfx.PORTAL_UPCOMING_VISITS,
+  // #730: the client's reschedules and skips, with the business's answers.
+  portalListMyChangeRequests: pfx.PORTAL_CHANGE_REQUESTS,
   portalListRecentVisits: pfx.PORTAL_RECENT_VISITS,
   portalListInvoices: pfx.PORTAL_INVOICES,
   portalListPrepaidSubs: pfx.PORTAL_SUBS,
