@@ -78,18 +78,22 @@ Uses Stripe **test** keys only. No live charge.
 - **iOS**: `com.apple.developer.proximity-reader.payment.acceptance` in
   `App.entitlements`; `NSBluetoothAlwaysUsageDescription` (the Stripe SDK links
   CoreBluetooth for hardware readers); the location purpose string says Stripe
-  checks location on a tap. **A signed build fails until Apple grants the
-  development (then distribution) entitlement to the app ID.** The simulator
-  launch in CI builds unsigned and is unaffected.
+  checks location on a tap. Apple granted the Tap to Pay on iPhone
+  entitlement to the HoundStack developer account on 2026-11-09. A signed
+  build needs a provisioning profile that includes the Tap to Pay on iPhone
+  capability (regenerate the profile after enabling it on the app ID); a
+  profile without it fails to sign. The simulator launch in CI builds
+  unsigned and is unaffected.
 - **Android**: `NFC` permission and `android.hardware.nfc` as
   `required="false"`; `minSdkVersion` 24 to 26, the Stripe Terminal SDK's
   floor. The plugin's manifest merges `BLUETOOTH_CONNECT`.
 
 ## Still needs a person
 
-- A physical iPhone with the development entitlement, a physical Android 13+
-  phone with Developer options **off** (Stripe refuses a phone with them on).
+- A physical iPhone build signed with a provisioning profile that includes
+  the Tap to Pay on iPhone capability; a physical Android 13+ phone with
+  Developer options **off** (Stripe refuses a phone with them on).
 - One live $1 charge, refunded, after Brendan approves.
-- Apple entitlement request; confirmation that Terminal is enabled for Connect
-  direct charges on the live platform; a decision on who absorbs Stripe's
-  per-tap Terminal fee.
+- Confirmation that Terminal is enabled for Connect direct charges on the live
+  platform, and a decision on who absorbs Stripe's per-tap Terminal fee.
+  (The Apple entitlement request is done: granted 2026-11-09.)
