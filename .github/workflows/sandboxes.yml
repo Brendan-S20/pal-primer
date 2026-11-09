@@ -24,10 +24,14 @@ name: Sandboxes
 # Both jobs are minutes slower than the whole of `verify`, and both need
 # software the runner may not have (Docker, the Supabase CLI, a browser). Tying
 # PR feedback to them would make the common case wait on the rare one. So this
-# runs on main and on demand, and reports its prerequisites loudly instead of
-# dying on a confusing ENOENT three steps in — the same shape as the `Find
+# runs on main, on demand, on a batch/* branch through batch.yml, and on a
+# pull request only once it is out of draft. It reports its prerequisites
+# loudly instead of dying on a confusing ENOENT three steps in — the same shape as the `Find
 # psql` step in ci.yml, and for the same reason.
 on:
+  # By hand, and from batch.yml on a batch/* branch: on a dispatch both heavy
+  # jobs run unconditionally (the gate below says so), which is what a batch
+  # of several approved PRs merged together needs exactly once.
   workflow_dispatch:
   push:
     branches: [main]
@@ -90,6 +94,14 @@ on:
       - "tests/viewports/**"
       - "playwright.config.ts"
       - ".github/workflows/sandboxes.yml"
+    # ── DRAFT, THEN READY ───────────────────────────────────────────────────
+    #
+    # The three defaults plus ready_for_review, so marking a PR "Ready for
+    # review" starts this workflow even with no new push. On a DRAFT the gate
+    # job below still runs and says what the change would affect, then answers
+    # false for both heavy jobs; from Ready on, every push runs them as it
+    # always did. Merging needs Ready, so a merge is never gated on a draft run.
+    types: [opened, synchronize, reopened, ready_for_review]
 
 # ── CANCEL SUPERSEDED PULL-REQUEST RUNS, NEVER main ─────────────────────
 #
@@ -173,6 +185,7 @@ jobs:
         shell: bash
         env:
           EVENT: ${{ github.event_name }}
+          DRAFT: ${{ github.event.pull_request.draft }}
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
@@ -220,6 +233,15 @@ jobs:
               .github/workflows/sandboxes.yml)             database=true; viewports=true ;;
             esac
           done <<< "$changed"
+
+          # A draft gets the answer, not the run. Both jobs are reported as
+          # what they WOULD be, so the log says what Ready for review will
+          # start, and then both are switched off until it is pressed.
+          if [ "$DRAFT" = "true" ]; then
+            echo "draft pull request: would run database=$database, viewports=$viewports once marked Ready for review; neither runs now."
+            database=false
+            viewports=false
+          fi
 
           for v in "$database" "$viewports"; do
             case "$v" in

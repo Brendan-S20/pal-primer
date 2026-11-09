@@ -3,6 +3,7 @@
 // the route file during the client-detail refactor (Stage 2) so the page
 // itself stays a thin shell.
 import { linkUrl } from "@/lib/app-origin";
+import { TextingNotLiveText, TextingStateBadge } from "@/components/TextingNotLive";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -19,8 +20,7 @@ import { formatDay } from "@/lib/format";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { humanizeEnum } from "@/lib/humanize";
 import { useClientTexting } from "@/hooks/useClientTexting";
-import { ComingSoonBadge } from "@/components/ComingSoonBadge";
-import { TEXTING_COMING_SOON_LINE } from "@/lib/client-texting";
+import { TEXTING_NOT_LIVE_TAIL } from "@/lib/client-texting";
 
 export function MessageComposer({ client, bare = false }: { client: any; bare?: boolean }) {
   const qc = useQueryClient();
@@ -62,7 +62,7 @@ export function MessageComposer({ client, bare = false }: { client: any; bare?: 
       {!bare && (
         <h2 className="flex flex-wrap items-center gap-2 text-sm font-medium">
           Messages
-          {!texting && <ComingSoonBadge />}
+          {!texting && <TextingStateBadge />}
         </h2>
       )}
       {messages.length > 0 && (
@@ -114,7 +114,7 @@ export function MessageComposer({ client, bare = false }: { client: any; bare?: 
             </span>
           ) : (
             <span className="min-w-0 text-xs text-muted-foreground">
-              {TEXTING_COMING_SOON_LINE}
+              <TextingNotLiveText tail={TEXTING_NOT_LIVE_TAIL} />
             </span>
           )}
           <Button
@@ -271,9 +271,9 @@ export function ReviewsReferralPanel({ client }: { client: any }) {
           </div>
           {!texting && (
             <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <ComingSoonBadge />
+              <TextingStateBadge />
               <span className="min-w-0">
-                Texting your clients is coming soon. Until then, review requests go by email.
+                <TextingNotLiveText tail="Until then, review requests go by email." />
               </span>
             </p>
           )}

@@ -1,3 +1,11 @@
+import {
+  MANAGED_TEXTING_SLUG,
+  UNDER_REVIEW_LABEL,
+  textingBadgeLabel,
+  textingNotLiveSentence,
+  type ManagedTextingState,
+} from "@/lib/managed-texting";
+
 /**
  * Which add-ons may be bought, decided in code rather than in a database row.
  *
@@ -35,6 +43,9 @@
  * Managed texting launched on 2026-10-29, once BUILD-3 (#585) gave every
  * business its own registered subaccount; its row went `active` in
  * 20261029170000. It stays in this map so turning it back off is one line.
+ * Since 2026-11-08 (site-r2-05) a business that buys it and submits its
+ * details reads "Under review, usually ready shortly" until a HoundStack
+ * admin activates it (lib/managed-texting).
  */
 export type HeldAddonSlug =
   | "ai-receptionist"
@@ -120,6 +131,26 @@ export function addonCardState(a: {
   if (!a.subscribed) return "for_sale";
   if (a.waivedReason) return "included";
   return a.billing_interval === "one_time" ? "purchased" : "active";
+}
+
+/**
+ * site-r2-05: a subscribed Managed texting card that is not sending yet. The
+ * badge and the sentence under it, or null when the card should read as
+ * `addonCardState` says (Active once texting is live; for sale when not on
+ * the plan). Billing reads this so the card never says Active about texting
+ * that is still under review.
+ */
+export function managedTextingCard(a: {
+  slug: string | null | undefined;
+  subscribed: boolean;
+  textingState?: ManagedTextingState | null;
+}): { label: string; line: string } | null {
+  if (a.slug !== MANAGED_TEXTING_SLUG || !a.subscribed || !a.textingState) return null;
+  if (a.textingState === "active") return null;
+  return {
+    label: textingBadgeLabel(a.textingState) ?? UNDER_REVIEW_LABEL,
+    line: textingNotLiveSentence(a.textingState),
+  };
 }
 
 /** The line under a held add-on that is already on a plan. */

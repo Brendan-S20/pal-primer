@@ -48,6 +48,11 @@ const createPropSchema = z.object({
   // editor who could not load the codes does not wipe it.
   gateCode: z.string().max(ACCESS_CODE_MAX).nullable().optional(),
   parkingNotes: z.string().max(1000).optional(),
+  // Mobile grooming (#412): whether the van can plug in or fill up here.
+  // Absent leaves the stored flag alone, so a drawer that does not draw them
+  // (a business that does not groom) never clears them.
+  vanPowerAvailable: z.boolean().optional(),
+  vanWaterAvailable: z.boolean().optional(),
   // Absent leaves the stored access notes alone; null clears them (#680).
   accessNotes: z.string().max(ACCESS_NOTES_MAX).nullable().optional(),
   // Provider-resolved coordinates (skip Nominatim when present) + whether
@@ -178,6 +183,8 @@ export const createProperty = createServerFn({ method: "POST" })
         postal_code: data.postalCode,
         gate_code: data.gateCode || null,
         parking_notes: data.parkingNotes || null,
+        van_power_available: data.vanPowerAvailable === true,
+        van_water_available: data.vanWaterAvailable === true,
         access_notes: data.accessNotes?.trim() || null,
         address_source: data.addressSource ?? "manual",
         auto_zone_id: autoZoneId,
@@ -361,6 +368,12 @@ export const updateProperty = createServerFn({ method: "POST" })
         postal_code: data.postalCode,
         ...(gateCodeSent ? { gate_code: nextGateCode } : {}),
         parking_notes: data.parkingNotes || null,
+        ...(data.vanPowerAvailable !== undefined
+          ? { van_power_available: data.vanPowerAvailable }
+          : {}),
+        ...(data.vanWaterAvailable !== undefined
+          ? { van_water_available: data.vanWaterAvailable }
+          : {}),
         ...(data.accessNotes !== undefined
           ? { access_notes: data.accessNotes?.trim() || null }
           : {}),
@@ -654,7 +667,7 @@ export const listPropertiesForClient = createServerFn({ method: "GET" })
     const { data: rows, error } = await supabase
       .from("properties")
       .select(
-        "id, label, street, city, region, postal_code, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, visit_contact_name, visit_contact_phone, visit_contact_email, boundary, boundary_area_sqm, archived_at, account_type, commercial_sections, building_labels, has_units, total_units, auto_zone_id, zone_id, zone_override_reason, est_override_reason, est_override_at, parking_notes, access_notes, latitude, longitude, unit, address_source, access_method, key_held",
+        "id, label, street, city, region, postal_code, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, earliest_service_time, latest_service_time, service_duration_min, visit_contact_name, visit_contact_phone, visit_contact_email, boundary, boundary_area_sqm, archived_at, account_type, commercial_sections, building_labels, has_units, total_units, auto_zone_id, zone_id, zone_override_reason, est_override_reason, est_override_at, parking_notes, van_power_available, van_water_available, access_notes, latitude, longitude, unit, address_source, access_method, key_held",
       )
       .eq("client_id", data.clientId)
       .order("created_at");

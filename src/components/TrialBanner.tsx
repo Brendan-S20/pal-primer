@@ -8,6 +8,7 @@ import { TRIAL_COPY } from "@/lib/trial";
 import type { TrialState } from "@/lib/trial";
 import { useMyRole } from "@/hooks/useMyRole";
 import { useDismissed } from "@/lib/dismissible";
+import { nonOwnerLockedNotice } from "@/lib/account-lock";
 import { DismissButton } from "@/components/DismissButton";
 
 /**
@@ -87,6 +88,14 @@ export function shownToRole(s: { phase: TrialState["phase"]; canManageBilling: b
   return s.canManageBilling || s.phase === "expired" || s.phase === "lapsed";
 }
 
+/** The non-owner's one line once the trial or plan has ended, the same words
+ *  the lock shell uses; null while the trial is still running. */
+export function nonOwnerEndedNotice(phase: TrialState["phase"]): string | null {
+  if (phase === "expired") return nonOwnerLockedNotice("trial_ended");
+  if (phase === "lapsed") return nonOwnerLockedNotice("plan_ended");
+  return null;
+}
+
 export function TrialBanner() {
   const [showWhy, setShowWhy] = useState(false);
   const { role, orgId } = useMyRole();
@@ -116,6 +125,10 @@ export function TrialBanner() {
   if (dismissed) return null;
 
   const copy = TRIAL_COPY[data.phase];
+  // Brendan, 2026-11-09: once the trial has ended, somebody who cannot
+  // subscribe reads "This account's trial has ended. Ask the owner to
+  // subscribe." and nothing else.
+  const nonOwnerLine = data.canManageBilling ? null : nonOwnerEndedNotice(data.phase);
   const warn = copy.tone === "warn";
 
   return (
@@ -129,31 +142,39 @@ export function TrialBanner() {
       {/* The notice itself, wrapping as it always did. `min-w-0` so it wraps
           beside the X rather than pushing it off the edge. */}
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
-        <Clock className={`h-4 w-4 shrink-0 ${warn ? "text-amber-600" : "text-muted-foreground"}`} />
-        <span className="font-medium">{copy.headline(data)}</span>
+        <Clock
+          className={`h-4 w-4 shrink-0 ${warn ? "text-amber-600" : "text-muted-foreground"}`}
+        />
+        <span className="font-medium">{nonOwnerLine ?? copy.headline(data)}</span>
         {data.canManageBilling ? (
           <Link to="/settings/billing" className="font-medium text-primary hover:underline">
             Set up billing
           </Link>
         ) : (
-          <span className="text-muted-foreground">Ask an owner to set up billing.</span>
+          !nonOwnerLine && (
+            <span className="text-muted-foreground">Ask an owner to set up billing.</span>
+          )
         )}
-        <button
-          type="button"
-          onClick={() => setShowWhy((v) => !v)}
-          aria-expanded={showWhy}
-          className="inline-flex min-h-11 items-center gap-1 text-muted-foreground underline-offset-2 hover:underline sm:hidden"
-        >
-          What this means
-          {showWhy ? (
-            <ChevronUp className="h-4 w-4 shrink-0" aria-hidden="true" />
-          ) : (
-            <ChevronDown className="h-4 w-4 shrink-0" aria-hidden="true" />
-          )}
-        </button>
-        <div className={`w-full ${showWhy ? "" : "hidden sm:block"}`}>
-          <span className="text-muted-foreground">{copy.body}</span>
-          {/* There used to be a second line here, GROWTH_PAUSED_NOTE, shown
+        {/* A non-owner whose trial has ended reads one line and nothing to
+            unfold: the body below is the owner's ("Choose a plan"). */}
+        {!nonOwnerLine && (
+          <>
+            <button
+              type="button"
+              onClick={() => setShowWhy((v) => !v)}
+              aria-expanded={showWhy}
+              className="inline-flex min-h-11 items-center gap-1 text-muted-foreground underline-offset-2 hover:underline sm:hidden"
+            >
+              What this means
+              {showWhy ? (
+                <ChevronUp className="h-4 w-4 shrink-0" aria-hidden="true" />
+              ) : (
+                <ChevronDown className="h-4 w-4 shrink-0" aria-hidden="true" />
+              )}
+            </button>
+            <div className={`w-full ${showWhy ? "" : "hidden sm:block"}`}>
+              <span className="text-muted-foreground">{copy.body}</span>
+              {/* There used to be a second line here, GROWTH_PAUSED_NOTE, shown
               whenever growthPausedFor() was true. That is exactly the expired
               and lapsed phases, and the body for both already says the same
               thing word for word ("Everything you already have keeps running:
@@ -161,7 +182,9 @@ export function TrialBanner() {
               customer portal"), so a paused tenant read the same sentence
               twice in one banner. The body carries the ratified definition;
               tests/paused-means-growth-not-the-whole-account.test.ts pins it. */}
-        </div>
+            </div>
+          </>
+        )}
       </div>
       {/* Pulled into the banner's own padding so a 44px target does not make
           a one-line notice taller than it was. */}

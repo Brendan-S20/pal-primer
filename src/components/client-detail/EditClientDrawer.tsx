@@ -2,6 +2,7 @@
 // contact channel, referral source, communication preferences. Billing
 // addresses live in Stripe and are intentionally absent.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { TextingNotLiveText, TextingStateBadge } from "@/components/TextingNotLive";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -15,7 +16,6 @@ import { useCommercialAccounts, useServiceLines } from "@/components/CommercialO
 import { runsPetSitting } from "@/lib/pets";
 import { centsToDollarInput, parseDollarsToCents } from "@/lib/services";
 import { useClientTexting } from "@/hooks/useClientTexting";
-import { ComingSoonBadge } from "@/components/ComingSoonBadge";
 import { clientNameFormDefaults } from "@/lib/client-name";
 import { toastSaveError } from "@/lib/stale-write-toast";
 
@@ -424,11 +424,11 @@ export function EditClientDrawer({
               onChange={(e) => set("smsOptOut", !e.target.checked)}
             />
             <span className={texting ? "" : "text-muted-foreground"}>Send text notifications</span>
-            {!texting && <ComingSoonBadge />}
+            {!texting && <TextingStateBadge />}
           </label>
           {!texting && (
             <p className="ml-6 text-xs text-muted-foreground">
-              Texting your clients is coming soon. Until then, notifications go by email.
+              <TextingNotLiveText tail="Until then, notifications go by email." />
             </p>
           )}
           {texting && !form.smsOptOut && !form.primaryPhone.trim() && (
