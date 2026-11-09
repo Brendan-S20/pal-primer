@@ -10,6 +10,42 @@ import type { Translations } from "./en";
  * English or shorter; the long ones are sentences in blocks that wrap.
  */
 const es: Translations = {
+  petSafety: {
+    open: "Registro de seguridad",
+    title: "Registro de seguridad",
+    description: "Notas de seguridad e incidentes de esta mascota, con cuándo, quién lo reportó y la foto si hay. Las entradas no se pueden editar ni borrar; agrega una nueva para corregir un error.",
+    entryType: "Tipo de entrada",
+    type: {
+      incident: "Incidente",
+      note: "Nota de seguridad",
+    },
+    kind: {
+      bite: "Mordida",
+      scratch: "Arañazo",
+      aggression: "Agresión",
+      escape: "Escape o se soltó de la correa",
+      injury_to_pet: "La mascota se lastimó",
+      injury_to_person: "Una persona se lastimó",
+      illness: "Enfermedad",
+      property_damage: "Daño a la propiedad",
+      other: "Otro",
+    },
+    kindLabel: "Tipo",
+    when: "Cuándo ocurrió",
+    whatHappened: "Qué pasó",
+    note: "Nota",
+    photo: "Foto (opcional)",
+    photoAlt: "Foto del incidente",
+    save: "Agregar al registro",
+    saved: "Agregado al registro de seguridad",
+    notSaved: "No se guardó. Inténtalo de nuevo.",
+    loading: "Cargando…",
+    loadFailed: "No se pudo cargar el registro de seguridad.",
+    empty: "Todavía no hay nada registrado para esta mascota.",
+    reportedBy: "Reportado por",
+    incidentCount_one: "{{count}} incidente",
+    incidentCount_other: "{{count}} incidentes",
+  },
   vaccineStatus: {
     ok: "Al día",
     expiring: "Vence pronto",
@@ -562,6 +598,8 @@ const es: Translations = {
     clientInfo: "Info del cliente",
     started: "Iniciada",
     startQueued: "En cola. Se inicia cuando haya conexión",
+    vaccineStartWarn: "Iniciada. Vacuna faltante o vencida: {{pets}}",
+    vaccineStartBlocked: "No iniciada. Falta una vacuna obligatoria o está vencida, y este negocio no inicia la visita hasta que se actualice. Consulta con la oficina.",
     completed: "Completada",
     completedWithNotices: "Completada. Avisos al cliente: {{notices}}.",
     completedWithNoticesPending:

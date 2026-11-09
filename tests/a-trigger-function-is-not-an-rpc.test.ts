@@ -293,11 +293,18 @@ describe("no trigger function is executable by a signed-in user", () => {
     // 98 -> 99 (20261102190000, gaps-r2-07): tg_stays_invoice_period, an
     // unpaid stay invoice's period follows the stay's dates. Revoked there.
     //
-    // 99 -> 100 (20261102172500, a lesson series skips closed days and can
+    // 99 -> 101 (#729): pet_safety_entries_before_write (20261108152900)
+    // derives a safety entry's tenant from its pet, stamps who reported it
+    // and keeps the log append-only; organizations_guard_vaccine_start_rule
+    // (20261108153100) refuses any write to vaccine_start_rule that is not
+    // the owner's set_vaccine_start_rule(). Both revoked from PUBLIC, anon
+    // and authenticated in their files.
+    //
+    // 101 -> 102 (20261102172500, a lesson series skips closed days and can
     // stop, R2-49): visits_follow_series_rules, which leaves out a series
     // visit on a closed or holiday date, or past the series' session count.
     // Revoked from PUBLIC, anon and authenticated there.
-    expect(triggerFunctions().size).toBe(100);
+    expect(triggerFunctions().size).toBe(102);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

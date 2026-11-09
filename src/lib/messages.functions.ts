@@ -74,10 +74,12 @@ export const sendSmsToClient = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     // Sending a free-form SMS to a client (which reads their phone number and
-    // dispatches Twilio) is a client-directory/messaging action — reject a
-    // technician token BEFORE any provider side-effect (I7). Lifecycle "on my
-    // way" texts have their own tech-appropriate path (sendVisitStatusSms).
-    await requirePermission(supabase, userId, "view_client_directory");
+    // dispatches Twilio) is a messaging action — reject a technician token
+    // BEFORE any provider side-effect (I7). Lifecycle "on my way" texts have
+    // their own tech-appropriate path (sendVisitStatusSms). Its own
+    // permission since #728, held by owner, office manager and dispatcher;
+    // it used to borrow view_client_directory, a read.
+    await requirePermission(supabase, userId, "message_clients");
 
     const { data: client, error: cErr } = await supabase
       .from("clients")
