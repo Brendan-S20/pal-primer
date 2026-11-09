@@ -94,7 +94,11 @@ The bundled web app has no server of its own, so server functions are sent to
 an absolute origin baked in at build time:
 
 - default: `https://app.houndstack.com`
-- override: `NATIVE_API_ORIGIN=https://staging.example.com npm run cap:sync`
+- staging: `npm run build:native:staging` with `NATIVE_API_ORIGIN`,
+  `NATIVE_SUPABASE_URL` and `NATIVE_SUPABASE_PUBLISHABLE_KEY` set, then
+  `npx cap sync ios`. Not `npm run cap:sync`, which rebuilds for production
+  first. What the staging host has to be, and why a dev server cannot stand
+  in for it, is in `docs/native-qa-staging.md`.
 
 Auth, Supabase and Stripe all behave exactly as they do on the web.
 

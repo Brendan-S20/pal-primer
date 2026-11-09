@@ -16,6 +16,8 @@ Two habits follow from it:
 
 - **Screenshot every visual claim.** A claim with no image is an opinion.
 - **Say which build.** `git rev-parse --short HEAD` at the start of the run.
+  And which backend: a store-style bundle talks to production unless it was
+  built with `npm run build:native:staging` (`docs/native-qa-staging.md`).
 
 ## Setup
 
