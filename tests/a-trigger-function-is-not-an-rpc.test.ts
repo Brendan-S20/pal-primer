@@ -299,7 +299,13 @@ describe("no trigger function is executable by a signed-in user", () => {
     // (20261108153100) refuses any write to vaccine_start_rule that is not
     // the owner's set_vaccine_start_rule(). Both revoked from PUBLIC, anon
     // and authenticated in their files.
-    expect(triggerFunctions().size).toBe(101);
+    //
+    // 101 -> 103 (20261108153700, a portal change waits for the owner, #730):
+    // tg_orgs_portal_change_owner_only (only an owner changes the portal
+    // change policy or the fee auto-charge switch) and
+    // tg_orgs_log_portal_change_settings (the activity_log row naming who).
+    // Each revoked from PUBLIC, anon and authenticated there.
+    expect(triggerFunctions().size).toBe(103);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {
