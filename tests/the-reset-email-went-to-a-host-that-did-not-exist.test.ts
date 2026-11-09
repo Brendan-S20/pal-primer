@@ -10,11 +10,16 @@
 // host that actually broke, on a host that can never exist, and that it does
 // not print a secret while doing so.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
+  EXPECTED_SEND_EMAIL_HOOK_URI,
+  PROD_SUPABASE_REF,
+  fetchAuthConfig,
+  liveHooks,
+  main,
   checkHookUri,
   hookUrisFromEnv,
   redactUri,
@@ -213,5 +218,245 @@ describe("what it checks by default", () => {
     expect(JSON.parse(read("package.json")).scripts["check:auth-hooks"]).toBe(
       "node scripts/check-auth-hook-hosts.mjs",
     );
+  });
+});
+
+// ── The live setting, not the assumed one (Product review on #800) ─────────
+//
+// Probing a default would have stayed green for the whole outage: the code and
+// env said app.houndstack.com while the LIVE Auth config said www. These run
+// the production path (`--live`) against a MOCKED Management API.
+
+const WWW = "https://www.app.houndstack.com/email/auth/webhook";
+const TOKEN = "sbp_TEST_TOKEN_MUST_NOT_BE_PRINTED_91c3";
+
+/** The shape GET /v1/projects/{ref}/config/auth returns, trimmed to hooks. */
+const liveConfig = (uri: string, extra: Record<string, unknown> = {}) => ({
+  site_url: "https://app.houndstack.com",
+  hook_send_email_enabled: true,
+  hook_send_email_uri: uri,
+  hook_send_email_secrets: "v1,whsec_LIVE_SECRET_IN_RESPONSE",
+  hook_custom_access_token_enabled: false,
+  hook_custom_access_token_uri: "https://disabled.invalid/x",
+  ...extra,
+});
+
+function capture() {
+  const lines: string[] = [];
+  const push = (...a: unknown[]) => lines.push(a.map(String).join(" "));
+  vi.spyOn(console, "log").mockImplementation(push);
+  vi.spyOn(console, "error").mockImplementation(push);
+  return () => lines.join("\n");
+}
+
+describe("--live reads the hook Auth is actually configured with", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("FAILS when the live config holds the old www URI (the #764 outage)", async () => {
+    const out = capture();
+    const code = await main(
+      ["--live"],
+      { SUPABASE_ACCESS_TOKEN: TOKEN },
+      {
+        fetchAuthConfig: async () => liveConfig(WWW),
+        lookup: nxdomain,
+        probe: answers(401),
+      },
+    );
+    expect(code).toBe(1);
+    expect(out()).toMatch(
+      /hook_send_email_uri is https:\/\/www\.app\.houndstack\.com\/email\/auth\/webhook, expected https:\/\/app\.houndstack\.com\/email\/auth\/webhook/,
+    );
+    expect(out()).toMatch(/www\.app\.houndstack\.com does not resolve \(ENOTFOUND\)/);
+  });
+
+  it("fails on the wrong host even when that host resolves and answers", async () => {
+    const out = capture();
+    const code = await main(
+      ["--live"],
+      { SUPABASE_ACCESS_TOKEN: TOKEN },
+      {
+        fetchAuthConfig: async () =>
+          liveConfig("https://staging.houndstack.com/email/auth/webhook"),
+        lookup: resolves,
+        probe: answers(401),
+      },
+    );
+    expect(code).toBe(1);
+    expect(out()).toMatch(/expected https:\/\/app\.houndstack\.com\/email\/auth\/webhook/);
+  });
+
+  it("passes when the live config holds the expected URI and the route answers 401", async () => {
+    const out = capture();
+    const code = await main(
+      ["--live"],
+      { SUPABASE_ACCESS_TOKEN: TOKEN },
+      {
+        fetchAuthConfig: async () => liveConfig(EXPECTED_SEND_EMAIL_HOOK_URI),
+        lookup: resolves,
+        probe: answers(401),
+      },
+    );
+    expect(code).toBe(0);
+    expect(out()).toMatch(
+      /✓ live hook send_email https:\/\/app\.houndstack\.com\/email\/auth\/webhook resolves and answers \(401\)/,
+    );
+  });
+
+  it.each([
+    ["NXDOMAIN", nxdomain, answers(401), /does not resolve/],
+    ["5xx", resolves, answers(500), /answered 500/],
+    [
+      "a redirect off host",
+      resolves,
+      answers(307, { location: "https://elsewhere.example/" }),
+      /redirects/,
+    ],
+  ])("fails on the expected URI when the route has %s", async (_n, lookup, probe, re) => {
+    const out = capture();
+    const code = await main(
+      ["--live"],
+      { SUPABASE_ACCESS_TOKEN: TOKEN },
+      {
+        fetchAuthConfig: async () => liveConfig(EXPECTED_SEND_EMAIL_HOOK_URI),
+        lookup,
+        probe,
+      },
+    );
+    expect(code).toBe(1);
+    expect(out()).toMatch(re);
+  });
+
+  it("fails when the send-email hook is switched off", () => {
+    const r = liveHooks(
+      liveConfig(EXPECTED_SEND_EMAIL_HOOK_URI, { hook_send_email_enabled: false }),
+    );
+    expect(r.problems).toEqual([expect.stringMatching(/send-email hook is not enabled/)]);
+  });
+
+  it("checks every ENABLED http hook, skips disabled ones and pg-functions hooks", () => {
+    const r = liveHooks(
+      liveConfig(EXPECTED_SEND_EMAIL_HOOK_URI, {
+        hook_mfa_verification_attempt_enabled: true,
+        hook_mfa_verification_attempt_uri: "pg-functions://postgres/public/mfa_hook",
+      }),
+    );
+    expect(r.problems).toEqual([]);
+    expect(r.hooks.map((h) => h.name).sort()).toEqual(["mfa_verification_attempt", "send_email"]);
+  });
+
+  it("never prints the token, the hook secret or the config body", async () => {
+    const out = capture();
+    await main(
+      ["--live"],
+      { SUPABASE_ACCESS_TOKEN: TOKEN },
+      {
+        fetchAuthConfig: async () => liveConfig(WWW),
+        lookup: nxdomain,
+        probe: answers(401),
+      },
+    );
+    await main(
+      ["--live"],
+      { SUPABASE_ACCESS_TOKEN: TOKEN },
+      {
+        fetchAuthConfig: async () => {
+          throw new Error("Management API answered 401 for the auth config");
+        },
+      },
+    );
+    expect(out()).not.toContain("sbp_");
+    expect(out()).not.toContain("MUST_NOT_BE_PRINTED");
+    expect(out()).not.toContain("whsec_");
+    expect(out()).not.toContain("site_url");
+  });
+
+  it("a missing token or an unreadable config is exit 2, never a pass", async () => {
+    capture();
+    expect(await main(["--live"], {}, {})).toBe(2);
+    expect(
+      await main(
+        ["--live"],
+        { SUPABASE_ACCESS_TOKEN: TOKEN },
+        {
+          fetchAuthConfig: async () => {
+            throw new Error("Management API answered 403 for the auth config");
+          },
+        },
+      ),
+    ).toBe(2);
+  });
+
+  it("with a token and no URI override, live is the DEFAULT path (no --live needed)", async () => {
+    capture();
+    let read = false;
+    const code = await main(
+      [],
+      { SUPABASE_ACCESS_TOKEN: TOKEN },
+      {
+        fetchAuthConfig: async () => {
+          read = true;
+          return liveConfig(WWW);
+        },
+        lookup: nxdomain,
+        probe: answers(401),
+      },
+    );
+    expect(read).toBe(true);
+    expect(code).toBe(1);
+  });
+
+  it("fetchAuthConfig is a read-only GET of the prod project's auth config, token only in the header", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return new Response(JSON.stringify(liveConfig(WWW)), { status: 200 });
+    }) as unknown as typeof fetch;
+    const cfg = await fetchAuthConfig({ ref: PROD_SUPABASE_REF, token: TOKEN, fetchImpl });
+    expect(cfg.hook_send_email_uri).toBe(WWW);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe(
+      "https://api.supabase.com/v1/projects/vsxzrbxublqrcfnxfwcu/config/auth",
+    );
+    expect(calls[0].init.method).toBe("GET");
+    expect(calls[0].init.body).toBeUndefined();
+    expect((calls[0].init.headers as Record<string, string>).authorization).toBe(`Bearer ${TOKEN}`);
+    expect(calls[0].url).not.toContain(TOKEN);
+
+    const refused = (async () =>
+      new Response('{"message":"secret-ish body"}', { status: 401 })) as unknown as typeof fetch;
+    await expect(
+      fetchAuthConfig({ ref: PROD_SUPABASE_REF, token: TOKEN, fetchImpl: refused }),
+    ).rejects.toThrow(/^Management API answered 401 for the auth config$/);
+  });
+
+  it("the script never writes Auth config: no PUT/PATCH/POST to the Management API", () => {
+    const src = readFileSync(SCRIPT, "utf8");
+    expect(src).not.toMatch(/method:\s*"(PUT|PATCH|DELETE)"/);
+    // the only POST is the unsigned probe of the hook route itself
+    expect(src.match(/method:\s*"POST"/g) ?? []).toHaveLength(1);
+    expect(src).toMatch(/\/v1\/projects\/\$\{encodeURIComponent\(ref\)\}\/config\/auth/);
+    expect(PROD_SUPABASE_REF).toBe("vsxzrbxublqrcfnxfwcu");
+  });
+});
+
+describe("a daily scheduled workflow runs the live check and fails loudly", () => {
+  const wf = readFileSync(
+    fileURLToPath(new URL("../.github/workflows/auth-hook-health.yml", import.meta.url)),
+    "utf8",
+  );
+
+  it("runs on a daily cron and by hand", () => {
+    expect(wf).toMatch(/schedule:\s*\n\s*#[^\n]*\n\s*- cron: "\d+ \d+ \* \* \*"/);
+    expect(wf).toMatch(/workflow_dispatch:/);
+  });
+
+  it("runs the LIVE check with the Management API token from secrets, and never softens a failure", () => {
+    expect(wf).toContain("node scripts/check-auth-hook-hosts.mjs --live");
+    expect(wf).toContain("SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}");
+    expect(wf).not.toMatch(/continue-on-error/);
+    expect(wf).not.toMatch(/--dns-only/);
+    expect(wf).not.toMatch(/AUTH_HOOK_URIS|AUTH_SEND_EMAIL_HOOK_URI/);
+    expect(wf).toMatch(/permissions:\s*\n\s*contents: read/);
   });
 });

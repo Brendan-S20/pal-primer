@@ -717,11 +717,12 @@ jobs:
         # #764 criterion 6. The Send Email hook pointed at
         # www.app.houndstack.com for three months after that host went
         # NXDOMAIN, and every password reset failed. The hook URI is a remote
-        # Supabase Auth setting this job does not read (that needs a token
-        # that can also write); it checks the URI it is given, defaulting to
-        # the value prod was set to on 2026-11-09. Prints host and path only.
+        # Supabase Auth setting: with SUPABASE_ACCESS_TOKEN present the script
+        # reads it (Management API GET only) and checks the LIVE value; without
+        # it, the expected URI. The daily alert is auth-hook-health.yml; this
+        # is the same check on every push to main. Prints host and path only.
         env:
-          AUTH_HOOK_URIS: ${{ vars.AUTH_HOOK_URIS }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: node scripts/check-auth-hook-hosts.mjs
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         if: always() && steps.psql.conclusion == 'success'
