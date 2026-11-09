@@ -12,6 +12,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({ rows: [] as any[] }));
 
+// The account lock is its own test
+// (a-trial-that-ended-suspends-the-account-for-everyone.test.tsx). Here it is
+// open, so the row queue below answers only the Stripe account lookups.
+vi.mock("@/lib/account-lock.server", () => ({ refuseChargesIfLocked: async () => {} }));
+
 vi.mock("@/integrations/supabase/client.server", () => {
   // A queue rather than a single row: resolving a franchise location reads the
   // location and then its parent, and a mock that answers both with the same
