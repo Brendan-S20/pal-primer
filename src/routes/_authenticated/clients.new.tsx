@@ -61,7 +61,9 @@ import {
   serviceDaysPerWeek,
 } from "@/lib/weekday-set";
 import { defaultPlanWeekdays, planStartsSkipped, propertyHazardsFor } from "@/lib/new-client-plan";
-import { toastServerError } from "@/lib/server-outcome";
+import { serverErrorMessage } from "@/lib/server-outcome";
+import { createFailedMessage } from "@/lib/create-client-error";
+import { typedPriceCents } from "@/lib/typed-price";
 import { useFormDraft } from "@/hooks/useFormDraft";
 import { DraftRestoredNotice } from "@/components/DraftRestoredNotice";
 import { newClientDraftForm } from "@/lib/form-drafts";
@@ -749,8 +751,8 @@ function NewClientWizardForm({
   // showed a grey placeholder that looked like a suggestion.
   const priceCents = (() => {
     if (!setsPrices) return suggestedCents;
-    const override = parseFloat(priceOverride);
-    if (!isNaN(override) && override > 0) return Math.round(override * 100);
+    const override = typedPriceCents(priceOverride);
+    if (override != null) return override;
     if (suggestedCents != null) return suggestedCents;
     return null;
   })();
@@ -884,6 +886,12 @@ function NewClientWizardForm({
     reset: onDiscarded,
   });
 
+  // Why the last Create client did not finish, kept on the page under the
+  // button until the next try (#784). The toast alone was gone in four
+  // seconds, after which the wizard read exactly as if the press had done
+  // nothing: still open, button enabled, no client.
+  const [createError, setCreateError] = useState<string | null>(null);
+
   const mutation = useMutation({
     mutationFn: () =>
       onboardFn({
@@ -964,6 +972,13 @@ function NewClientWizardForm({
       leadLinked,
       firstCleanupInvoiced,
     }) => {
+      // A 200 with no client in it is not a client.
+      if (!id) {
+        const msg = createFailedMessage(null);
+        setCreateError(msg);
+        toast.error(msg);
+        return;
+      }
       draft.clear();
       const parts = ["Client created."];
       if (firstVisitOn) parts.push(`First visit ${formatDay(firstVisitOn)}.`);
@@ -1025,13 +1040,19 @@ function NewClientWizardForm({
     // A role the subscriptions policy refuses (a dispatcher at the plan step)
     // gets the policy's own words back, which name a table and not a reason
     // (#662).
-    onError: (e) =>
-      toastServerError(e, {
+    onError: (e) => {
+      const opts = {
         fallback: "The client could not be saved. Try again.",
         refused: planSkipped
           ? undefined
           : 'Your role is not allowed to set up this subscription. Tick "Skip subscription for now" to save the client without one, and ask the owner to add it.',
-      }),
+      };
+      // One sentence, in the toast and under the button: the server's reason,
+      // or, when no answer came, a word to check before pressing again.
+      const msg = createFailedMessage(e, serverErrorMessage(e, opts));
+      toast.error(msg);
+      setCreateError(msg);
+    },
   });
 
   // The lead's email already belongs to a client. The old one-tap conversion
@@ -1999,6 +2020,7 @@ function NewClientWizardForm({
                 type="button"
                 disabled={mutation.isPending || linkMutation.isPending || needsPrice || needsDays}
                 onClick={() => {
+                  setCreateError(null);
                   // Not disabled: a groom lead's last step IS Dogs, and a
                   // restored draft can open on Plan with none named. Either
                   // way the press lands on Dogs with the inline alert.
@@ -2025,6 +2047,15 @@ function NewClientWizardForm({
               {!needsPrice && !needsDays && needsDog && current !== "Dogs" && (
                 <p className="text-xs text-muted-foreground">
                   Add a {sitting ? "pet" : "dog"} on the {sitting ? "Pets" : "Dogs"} step first.
+                </p>
+              )}
+              {createError && !mutation.isPending && (
+                <p
+                  role="alert"
+                  data-testid="create-client-error"
+                  className="max-w-md break-words text-end text-sm text-destructive"
+                >
+                  {createError}
                 </p>
               )}
             </div>
