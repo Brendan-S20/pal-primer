@@ -138,13 +138,13 @@ describe("the pages", () => {
       /const taken = takeExistingAccount\(\);[\s\S]{0,120}setEmail\(taken\);\s*setStage\("password"\);\s*setOfferReset\(true\);/,
     );
     expect(read("src/routes/auth.tsx")).toMatch(
-      /offerReset && stage === "password"[\s\S]{0,250}onClick=\{forgotPassword\}[\s\S]{0,120}Email me a reset link/,
+      /offerReset && stage === "password"[\s\S]{0,300}void forgotPassword\(\)[\s\S]{0,250}Email me a reset link/,
     );
   });
 
   it("the password step still has Forgot password? beside the field", () => {
     expect(read("src/routes/auth.tsx")).toMatch(
-      /onClick=\{forgotPassword\}[\s\S]{0,300}Forgot password\?/,
+      /void forgotPassword\(\)[\s\S]{0,600}Forgot password\?/,
     );
   });
 

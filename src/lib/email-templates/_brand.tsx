@@ -4,12 +4,14 @@
 //
 // - System mail (sign-in links, recovery, email change, team invites, the
 //   weekly digest) comes from HoundStack. It opens with the HoundStack band
-//   and closes with SystemFooter, which names The North Consulting LLC as
-//   the operator in the same words as the public site and the carrier filing.
+//   and closes with SystemFooter, whose body is CompanySignature: the
+//   company version of the team's Gmail signature (logo, tagline, support,
+//   web, and the legal line naming The North Consulting LLC). No person's
+//   name, ever: it is the company signing, not a founder.
 // - Tenant mail (invoices, visit notes, reminders, campaigns) is sent AS the
 //   business. It opens with that business's logo, or its name, over a stripe
-//   in its brand colour, and closes with OrgFooter, whose last line is
-//   "Powered by HoundStack".
+//   in its brand colour, and closes with OrgFooter, which ends "Powered by
+//   HoundStack" over the signature's support, web and legal lines.
 //
 // Every piece is a table, not flex or grid: this is email, and Outlook is
 // still Outlook. Colours a tenant typed in are checked before they reach a
@@ -44,10 +46,49 @@ export const BRAND = {
   rule: "#e2e8f0",
 };
 
+/** The operator's address, cased as the toll-free filing and PublicFooter.tsx
+ *  have it: "STE A", no comma before it. Never "Ste A". */
+export const OPERATOR_ADDRESS = "2222 West Grand River Avenue STE A, Okemos, MI 48864";
+
 /** Word for word with OperatorIdentity in PublicFooter.tsx, which has to match
  *  the toll-free filing. Kept here as a copy because email cannot import a
- *  component that renders Tailwind classes. */
-export const OPERATOR_LINE = `${APP_NAME} is operated by The North Consulting LLC, 2222 West Grand River Avenue STE A, Okemos, MI 48864.`;
+ *  component that renders Tailwind classes. It is the legal line of the
+ *  company signature below, so email and the public site name the operator
+ *  in the same words. */
+export const OPERATOR_LINE = `${APP_NAME} is operated by The North Consulting LLC, ${OPERATOR_ADDRESS}.`;
+
+/** The company signature every system email closes with, and the HoundStack
+ *  part of every tenant email's close (Nov 2026). It is the company version
+ *  of the team's Gmail signature: the same logo, navy, tagline, support
+ *  address, web link and legal line, and deliberately no person's name. The
+ *  logo is the absolute PNG the Gmail signature uses, 60x60. */
+export const COMPANY = {
+  logoUrl: "https://www.houndstack.com/icon-192.png",
+  logoSize: 60,
+  tagline: "Business software for route-based pet service businesses",
+  webLabel: "houndstack.com",
+  /** OPERATOR_LINE itself, not a second spelling of it. */
+  legalLine: OPERATOR_LINE,
+  /** The signature's own colours (Gmail signature, Nov 2026). */
+  ink: "#111827",
+  grey: "#6b7280",
+  link: "#1f2937",
+  faint: "#9ca3af",
+  divider: "#d1d5db",
+  hairline: "#e5e7eb",
+} as const;
+
+/** The same signature as plain text, for the text/plain part of mail whose
+ *  HTML is built by hand. Mail rendered with react-email derives its text
+ *  part from the HTML (EMAIL_TEXT_OPTIONS), so it carries the same lines. */
+export const COMPANY_SIGNATURE_TEXT = [
+  APP_NAME,
+  COMPANY.tagline,
+  `Email: ${SUPPORT_EMAIL}`,
+  `Web: ${COMPANY.webLabel} (${HOUNDSTACK_URL})`,
+  "",
+  COMPANY.legalLine,
+].join("\n");
 
 /** A #rgb or #rrggbb colour, lower-cased and expanded, or null. Anything else
  *  a tenant saved (a name, an rgb(), a stray quote) is dropped, not passed
@@ -143,8 +184,210 @@ export function SystemHeader() {
   );
 }
 
+const ARIAL = "Arial, Helvetica, sans-serif";
+const sigCell = { fontFamily: ARIAL, fontSize: "12px", lineHeight: "18px", padding: 0 };
+const sigLabel = {
+  ...sigCell,
+  color: BRAND.navy,
+  fontWeight: "bold" as const,
+  padding: "0 8px 0 0",
+  width: "44px",
+};
+const sigLink = { fontFamily: ARIAL, color: COMPANY.link, textDecoration: "none" };
+const collapse = { borderCollapse: "collapse" as const };
+
+/** "Email support@houndstack.com" and "Web houndstack.com", labelled in navy,
+ *  as in the Gmail signature. Shared by the system signature and the
+ *  HoundStack close on tenant mail. The hs-sig-* classes are for the text
+ *  part only (EMAIL_TEXT_OPTIONS), so each row reads "Email: support@…" on
+ *  one line rather than a label and its value on two. */
+function CompanyContactRows() {
+  return (
+    <table role="presentation" cellPadding={0} cellSpacing={0} border={0} style={collapse}>
+      <tbody>
+        <tr className="hs-sig-row">
+          <td width={44} className="hs-sig-key" style={sigLabel}>
+            Email
+          </td>
+          <td className="hs-sig-value" style={sigCell}>
+            <a href={`mailto:${SUPPORT_EMAIL}`} style={sigLink}>
+              {SUPPORT_EMAIL}
+            </a>
+          </td>
+        </tr>
+        <tr className="hs-sig-row">
+          <td width={44} className="hs-sig-key" style={sigLabel}>
+            Web
+          </td>
+          <td className="hs-sig-value" style={sigCell}>
+            <a href={HOUNDSTACK_URL} style={sigLink}>
+              {COMPANY.webLabel}
+            </a>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  );
+}
+
+/** The legal line under a hairline: OPERATOR_LINE, who operates HoundStack
+ *  and where, in the filing's words. */
+function CompanyLegal() {
+  return (
+    <table
+      role="presentation"
+      cellPadding={0}
+      cellSpacing={0}
+      border={0}
+      width="100%"
+      style={{ ...collapse, width: "100%" }}
+    >
+      <tbody>
+        <tr>
+          <td
+            style={{
+              fontFamily: ARIAL,
+              fontSize: "10px",
+              lineHeight: "15px",
+              color: COMPANY.faint,
+              padding: "10px 0 0 0",
+              borderTop: `1px solid ${COMPANY.hairline}`,
+            }}
+          >
+            {COMPANY.legalLine}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  );
+}
+
+/**
+ * The company signature: the HoundStack logo beside the name, tagline,
+ * support address and web link, then the legal line. The company version of
+ * the team's Gmail signature, markup and all (tables, inline styles, an
+ * absolute PNG), with no person's name in it. Every system email closes with
+ * this, through SystemFooter, SystemLayout and systemFooterHtml, so there is
+ * one copy of it and no template carries its own.
+ *
+ * The outer table is 100% wide up to 520px rather than a fixed 520, so it
+ * fits a 320px phone; Outlook, which ignores max-width, gets the card's own
+ * width.
+ */
+export function CompanySignature() {
+  return (
+    <table
+      role="presentation"
+      cellPadding={0}
+      cellSpacing={0}
+      border={0}
+      width="100%"
+      style={{
+        fontFamily: ARIAL,
+        width: "100%",
+        maxWidth: "520px",
+        ...collapse,
+        // Outlook's own table spacing, as in the Gmail signature. Not in
+        // React's CSSProperties, so cast; React hyphenates it as written.
+        ...({ msoTableLspace: "0pt", msoTableRspace: "0pt" } as React.CSSProperties),
+      }}
+    >
+      <tbody>
+        <tr>
+          <td style={{ padding: 0 }}>
+            <table role="presentation" cellPadding={0} cellSpacing={0} border={0} style={collapse}>
+              <tbody>
+                <tr>
+                  <td valign="middle" style={{ padding: "0 18px 0 0", verticalAlign: "middle" }}>
+                    <a
+                      href={HOUNDSTACK_URL}
+                      className="hs-sig-logo"
+                      style={{ textDecoration: "none" }}
+                    >
+                      <img
+                        src={COMPANY.logoUrl}
+                        width={COMPANY.logoSize}
+                        height={COMPANY.logoSize}
+                        alt={APP_NAME}
+                        style={{
+                          display: "block",
+                          width: `${COMPANY.logoSize}px`,
+                          height: `${COMPANY.logoSize}px`,
+                          border: 0,
+                          outline: "none",
+                          textDecoration: "none",
+                        }}
+                      />
+                    </a>
+                  </td>
+                  <td
+                    valign="top"
+                    style={{
+                      padding: "2px 0 2px 18px",
+                      borderLeft: `1px solid ${COMPANY.divider}`,
+                      verticalAlign: "top",
+                    }}
+                  >
+                    <table
+                      role="presentation"
+                      cellPadding={0}
+                      cellSpacing={0}
+                      border={0}
+                      style={collapse}
+                    >
+                      <tbody>
+                        <tr>
+                          <td
+                            style={{
+                              fontFamily: ARIAL,
+                              fontSize: "16px",
+                              lineHeight: "20px",
+                              fontWeight: "bold" as const,
+                              color: COMPANY.ink,
+                              padding: 0,
+                            }}
+                          >
+                            {APP_NAME}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td
+                            style={{
+                              fontFamily: ARIAL,
+                              fontSize: "12px",
+                              lineHeight: "17px",
+                              color: COMPANY.grey,
+                              padding: "2px 0 8px 0",
+                            }}
+                          >
+                            {COMPANY.tagline}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style={{ padding: 0 }}>
+                            <CompanyContactRows />
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style={{ padding: "14px 0 0 0" }}>
+            <CompanyLegal />
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  );
+}
+
 /** Bottom of every system email. `note` is the email's own last line (why
- *  it was sent, how to stop it), printed above the operator line.
+ *  it was sent, how to stop it), printed above the company signature.
  *  `poweredBy` is for system mail that carries a business's header (the
  *  weekly digest): it closes with PoweredByHoundStack, as tenant mail does.
  *  `onCanvas` is for mail laid out as a card on the grey canvas: the footer
@@ -160,73 +403,40 @@ export function SystemFooter({
   onCanvas?: boolean;
 }) {
   if (onCanvas) return <CanvasFooter note={note} />;
-  if (poweredBy) {
-    // The weekly digest: system mail about a business. Its note, then the
-    // same close tenant mail ends with.
-    return (
-      <>
-        <table
-          role="presentation"
-          cellPadding={0}
-          cellSpacing={0}
-          style={{ ...table, margin: "32px 0 0", borderTop: `1px solid ${BRAND.rule}` }}
-        >
-          <tbody>
-            {note ? (
-              <tr>
-                <td style={{ ...small, padding: "16px 0 0" }}>{note}</td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-        <PoweredByHoundStack />
-      </>
-    );
-  }
   return (
-    <table
-      role="presentation"
-      cellPadding={0}
-      cellSpacing={0}
-      style={{ ...table, margin: "32px 0 0", borderTop: `1px solid ${BRAND.rule}` }}
-    >
-      <tbody>
-        {note ? (
-          <tr>
-            <td style={{ ...small, padding: "16px 0 0" }}>{note}</td>
-          </tr>
-        ) : null}
-        <tr>
-          <td
-            style={{
-              ...small,
-              padding: "12px 0 0",
-              fontWeight: "bold" as const,
-              color: BRAND.navy,
-            }}
-          >
-            {APP_NAME}
-          </td>
-        </tr>
-        <tr>
-          <td style={{ ...small, padding: "2px 0 0" }}>{OPERATOR_LINE}</td>
-        </tr>
-      </tbody>
-    </table>
+    <>
+      <table
+        role="presentation"
+        cellPadding={0}
+        cellSpacing={0}
+        style={{ ...table, margin: "32px 0 0", borderTop: `1px solid ${BRAND.rule}` }}
+      >
+        <tbody>
+          {note ? (
+            <tr>
+              <td style={{ ...small, padding: "16px 0 0" }}>{note}</td>
+            </tr>
+          ) : null}
+          {poweredBy ? null : (
+            <tr>
+              <td style={{ padding: "24px 0 0" }}>
+                <CompanySignature />
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      {/* The weekly digest: system mail about a business. Its note, then the
+          same close tenant mail ends with. */}
+      {poweredBy ? <PoweredByHoundStack /> : null}
+    </>
   );
 }
 
-const footerLink = { color: BRAND.navy, textDecoration: "none", fontWeight: "bold" as const };
-
 /** The short sage rule that opens every HoundStack close, system or tenant. */
-function SageRule({ centred }: { centred?: boolean }) {
+function SageRule() {
   return (
-    <table
-      role="presentation"
-      cellPadding={0}
-      cellSpacing={0}
-      style={centred ? { margin: "0 auto" } : { margin: 0 }}
-    >
+    <table role="presentation" cellPadding={0} cellSpacing={0} style={{ margin: 0 }}>
       <tbody>
         <tr>
           <td
@@ -246,26 +456,15 @@ function SageRule({ centred }: { centred?: boolean }) {
   );
 }
 
-/** Where to reach HoundStack. */
-function ReachLinks() {
-  return (
-    <>
-      <a href={HOUNDSTACK_URL} style={footerLink}>
-        houndstack.com
-      </a>
-      {"  ·  "}
-      <a href={`mailto:${SUPPORT_EMAIL}`} style={footerLink}>
-        {SUPPORT_EMAIL}
-      </a>
-    </>
-  );
-}
+/** How far the signature under the card sits in from the card's edge.
+ *  Narrower than the card's own 36px text inset on purpose: the signature's
+ *  narrowest row (logo, rule, "Email support@houndstack.com") is about 290px
+ *  and cannot wrap, so at 36px a side it pushed a 360px phone sideways. */
+const SIGNATURE_INSET = "16px";
 
 /** The footer under a system email's card: the email's own note, a short
- *  sage rule, the HoundStack name, the operator line and where to reach
- *  HoundStack, centred on the canvas. */
+ *  sage rule, then the company signature. */
 function CanvasFooter({ note }: { note?: React.ReactNode }) {
-  const centred = { ...small, textAlign: "center" as const };
   return (
     <table
       role="presentation"
@@ -276,29 +475,19 @@ function CanvasFooter({ note }: { note?: React.ReactNode }) {
       <tbody>
         {note ? (
           <tr>
-            <td style={{ ...centred, padding: `0 ${SYSTEM.inset} 20px`, color: "#475569" }}>
+            <td style={{ ...small, padding: `0 ${SYSTEM.inset} 20px`, color: "#475569" }}>
               {note}
             </td>
           </tr>
         ) : null}
         <tr>
-          <td align="center" style={{ padding: "0 0 16px" }}>
-            <SageRule centred />
+          <td style={{ padding: `0 ${SIGNATURE_INSET} 18px` }}>
+            <SageRule />
           </td>
         </tr>
         <tr>
-          <td
-            style={{ ...centred, fontSize: "13px", fontWeight: "bold" as const, color: BRAND.navy }}
-          >
-            {APP_NAME}
-          </td>
-        </tr>
-        <tr>
-          <td style={{ ...centred, padding: `4px ${SYSTEM.inset} 0` }}>{OPERATOR_LINE}</td>
-        </tr>
-        <tr>
-          <td style={{ ...centred, padding: "10px 0 0" }}>
-            <ReachLinks />
+          <td style={{ padding: `0 ${SIGNATURE_INSET}` }}>
+            <CompanySignature />
           </td>
         </tr>
       </tbody>
@@ -438,9 +627,10 @@ export function TenantHeader({ orgName, orgLogoUrl, orgBrandColor }: TenantBrand
  * The close of every email sent as a business, and of the weekly digest
  * (#577). The business's own name and contact lines come first (OrgFooter);
  * this follows them as its own block, left-aligned like the rest of the
- * email: a short sage rule, "Powered by HoundStack", the operator line, and
- * where to reach HoundStack. The same pieces, in the same order, as the
- * footer under system mail, so the two read as one family.
+ * email: a short sage rule, "Powered by HoundStack", the tagline, and the
+ * same support, web and legal lines as the company signature, so the two
+ * read as one family. No logo: the business's own opens the email, and a
+ * second, bigger one at the bottom would compete with it.
  */
 export function PoweredByHoundStack() {
   return (
@@ -457,7 +647,7 @@ export function PoweredByHoundStack() {
           </td>
         </tr>
         <tr>
-          <td style={{ ...small, fontSize: "13px", color: BRAND.sage }}>
+          <td style={{ ...small, fontFamily: ARIAL, fontSize: "13px", color: BRAND.sage }}>
             Powered by{" "}
             <a
               href={HOUNDSTACK_URL}
@@ -468,11 +658,26 @@ export function PoweredByHoundStack() {
           </td>
         </tr>
         <tr>
-          <td style={{ ...small, padding: "4px 0 0" }}>{OPERATOR_LINE}</td>
+          <td
+            style={{
+              fontFamily: ARIAL,
+              fontSize: "12px",
+              lineHeight: "17px",
+              color: COMPANY.grey,
+              padding: "2px 0 8px 0",
+            }}
+          >
+            {COMPANY.tagline}
+          </td>
         </tr>
         <tr>
-          <td style={{ ...small, padding: "8px 0 0" }}>
-            <ReachLinks />
+          <td style={{ padding: 0 }}>
+            <CompanyContactRows />
+          </td>
+        </tr>
+        <tr>
+          <td style={{ padding: "12px 0 0" }}>
+            <CompanyLegal />
           </td>
         </tr>
       </tbody>
@@ -491,4 +696,10 @@ export function systemHeaderHtml(): string {
 
 export function systemFooterHtml(note?: string): string {
   return renderToStaticMarkup(<SystemFooter note={note} onCanvas />);
+}
+
+/** The text/plain twin of systemFooterHtml: the note, a signature
+ *  separator, and the company signature as lines. */
+export function systemFooterText(note?: string): string {
+  return [note ? `${note}\n` : "", "-- ", COMPANY_SIGNATURE_TEXT].join("\n").replace(/^\n/, "");
 }

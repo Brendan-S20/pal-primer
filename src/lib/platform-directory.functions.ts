@@ -262,6 +262,9 @@ export type DirectoryScan = {
    * subtracting it would report every member the filter excluded as unattached.
    */
   unattached: number | null;
+  /** Accounts skipped because GoTrue cannot read their NULL token columns
+   *  (#767). Each is a data repair, not something this page can fix. */
+  unreadableAccounts?: number;
 };
 
 /**
@@ -312,6 +315,9 @@ const MAX_ACCOUNT_PAGES = 50;
 // getUserById per unresolved member is the cheaper of the two.
 const MAX_DIRECT_LOOKUPS = 2000;
 const LOOKUP_CONCURRENCY = 20;
+/** Extra listUsers calls allowed to isolate NULL-token rows (#767): about
+ *  twenty per bad row at ACCOUNT_PAGE_SIZE 1000. */
+const MAX_BISECT_CALLS = 200;
 
 type MembershipRow = { user_id: string; role: string; organization_id: string | null };
 
@@ -413,21 +419,60 @@ export async function loadAccounts(
    *  Returned because "how many accounts exist" is only answerable then — see
    *  `unattached` on DirectoryScan. */
   exhausted: boolean;
+  /** Accounts GoTrue could not read at all because of NULL token columns
+   *  (#767). They are skipped, not fatal; the screen reports the count. */
+  unreadable: number;
 }> {
   const byId = new Map<string, AccountInfo>();
   let scannedPages = 0;
   let exhausted = false;
+  let unreadable = 0;
+  let bisectCalls = 0;
+
+  // One window of `auth.users`, returned as how many SLOTS it covered (rows
+  // read plus rows GoTrue could not read), so callers' "short page means the
+  // end" arithmetic is unchanged.
+  //
+  // #767: a single row with a NULL token column makes GoTrue answer the
+  // whole page with a 500 Scan error. Rather than lose every account on that
+  // page — which is how an orphaned owner became unfindable — re-read the
+  // window in smaller pieces until the bad rows are isolated at perPage 1,
+  // count them, and keep everything else. Only for that exact error, and only
+  // within MAX_BISECT_CALLS; anything else still throws to the #446 fallback.
+  const readWindow = async ({
+    page,
+    perPage,
+  }: {
+    page: number;
+    perPage: number;
+  }): Promise<number> => {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+    if (!error) {
+      const users = (data?.users ?? []) as any[];
+      for (const u of users) byId.set(u.id, accountInfo(u));
+      return users.length;
+    }
+    if (!isNullTokenScanError(error.message)) throw new Error(error.message);
+    if (perPage === 1) {
+      unreadable += 1;
+      return 1;
+    }
+    const k = smallestFactor(perPage);
+    const size = perPage / k;
+    let slots = 0;
+    for (let j = 0; j < k; j++) {
+      if (++bisectCalls > MAX_BISECT_CALLS) throw new Error(error.message);
+      const n = await readWindow({ page: (page - 1) * k + j + 1, perPage: size });
+      slots += n;
+      if (n < size) break; // past the end of auth.users
+    }
+    return slots;
+  };
 
   const readPage = async (page: number) => {
-    const { data, error } = await supabaseAdmin.auth.admin.listUsers({
-      page,
-      perPage: ACCOUNT_PAGE_SIZE,
-    });
-    if (error) throw new Error(error.message);
-    const users = (data?.users ?? []) as any[];
-    for (const u of users) byId.set(u.id, accountInfo(u));
+    const n = await readWindow({ page, perPage: ACCOUNT_PAGE_SIZE });
     scannedPages += 1;
-    return users.length;
+    return n;
   };
 
   // The list endpoint is one all-or-nothing call: a single account it cannot
@@ -479,7 +524,35 @@ export async function loadAccounts(
     missing = stillMissing();
   }
 
-  return { byId, accounts: byId.size, complete: missing.length === 0, exhausted };
+  if (unreadable) {
+    console.warn(
+      `[platform directory] ${unreadable} account(s) skipped: NULL token columns in auth.users (#767)`,
+    );
+  }
+  return { byId, accounts: byId.size, complete: missing.length === 0, exhausted, unreadable };
+}
+
+/**
+ * GoTrue's answer when an `auth.users` row has NULL in a token column it scans
+ * into a Go string (confirmation_token, recovery_token, email_change_token_new,
+ * email_change...). Rows inserted with raw SQL instead of the admin API get
+ * that way (#767).
+ */
+export function isNullTokenScanError(message: string | null | undefined): boolean {
+  return /Scan error on column .*converting NULL to string is unsupported/i.test(message ?? "");
+}
+
+/** What the platform admin is told instead of the Go scan error. */
+export function nullTokenAccountMessage(): string {
+  return (
+    "The auth service cannot read this account: its row in auth.users has empty " +
+    "(NULL) token fields, usually from a SQL seed. It needs a data repair (#767)."
+  );
+}
+
+function smallestFactor(n: number): number {
+  for (let f = 2; f * f <= n; f++) if (n % f === 0) return f;
+  return n;
 }
 
 /** What the directory calls an account with no membership. Searching for it
@@ -577,6 +650,7 @@ export const listPlatformUsers = createServerFn({ method: "GET" })
             accounts: 0,
             complete: true,
             exhausted: false,
+            unreadable: 0,
           }),
       filtered ? Promise.resolve(new Set<string>()) : loadPlatformAdminIds(supabaseAdmin),
     ]);
@@ -639,6 +713,7 @@ export const listPlatformUsers = createServerFn({ method: "GET" })
         membershipsComplete: memberships.complete,
         accounts: accounts.accounts,
         accountsComplete: accounts.complete,
+        unreadableAccounts: accounts.unreadable,
         unattached: unattachedCount({
           exhausted: accounts.exhausted,
           membershipsComplete: memberships.complete,
@@ -685,7 +760,11 @@ export const getPlatformUserDetail = createServerFn({ method: "GET" })
       supabaseAdmin.auth.admin.mfa.listFactors({ userId: data.userId }),
       supabaseAdmin.from("user_roles").select("organization_id, role").eq("user_id", data.userId),
     ]);
-    if (userErr) throw new Error(userErr.message);
+    if (userErr) {
+      throw new Error(
+        isNullTokenScanError(userErr.message) ? nullTokenAccountMessage() : userErr.message,
+      );
+    }
     const user = userRes.user;
     if (!user) throw new Error("User not found");
 

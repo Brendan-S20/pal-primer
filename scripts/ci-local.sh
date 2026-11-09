@@ -103,6 +103,22 @@ else
   printf '  A 2xx there means the host is fine and this run was the environment.\n'
 fi
 
+step "Auth hooks point at a host that exists"
+# #764: the Supabase Auth Send Email hook pointed at www.app.houndstack.com
+# for three months after that host stopped resolving, and every password
+# reset died as 422 hook_timeout_after_retry. The URI is a remote Auth
+# setting: with SUPABASE_ACCESS_TOKEN set this reads the LIVE value
+# (Management API GET only); without it, the expected URI. The daily
+# alert is .github/workflows/auth-hook-health.yml.
+# Warning, not a gate, for the same reason as the origin check above: its
+# verdict depends on this machine's DNS and network.
+if node scripts/check-auth-hook-hosts.mjs; then
+  report 0 "check-auth-hook-hosts"
+else
+  printf '\033[33m! check-auth-hook-hosts failed — confirm with: dig +short <host>, then\n'
+  printf '    curl -s -o /dev/null -w "%%{http_code}\\n" -X POST <hook uri>   (401 = alive)\033[0m\n'
+fi
+
 # ── Lint is opt-in, and that is not laziness ──────────────────────────────
 #
 # `eslint .` over this repo takes minutes — measured, not guessed: the first
