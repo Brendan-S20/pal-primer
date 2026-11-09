@@ -55,6 +55,7 @@ import {
   blankSubscriptionFormValues,
   scheduleChoiceFromRecord,
   scheduleChoiceToFields,
+  sessionLimitProblem,
   formatFrequency,
   isServiceEnded,
   serviceScheduleState,
@@ -93,6 +94,7 @@ import { WORK_WEEK, normalizeWeekdays, offersSetDays } from "@/lib/weekday-set";
 import { servicePriceCents } from "@/lib/services";
 import { useIntlLocale } from "@/lib/i18n";
 import { createWalkPlans } from "@/lib/walk-plans.functions";
+import { getTrainingSessionRules } from "@/lib/training-packages.functions";
 import { PlanWalker } from "@/components/client-detail/PlanWalker";
 import { walkWindowsProblem, type WalkWindow } from "@/lib/subscription-form";
 import { isDog } from "@/lib/pets";
@@ -1070,6 +1072,18 @@ function ServiceDetailDrawer({
             <dt className="text-xs text-muted-foreground">Ends</dt>
             <dd>{s.ends_on ? formatDay(s.ends_on) : "Open-ended"}</dd>
           </div>
+          {s.session_limit != null && (
+            <div>
+              <dt className="text-xs text-muted-foreground">Stops after</dt>
+              <dd>{s.session_limit} lessons</dd>
+            </div>
+          )}
+          {s.skip_closed_days === false && (
+            <div>
+              <dt className="text-xs text-muted-foreground">Closed days</dt>
+              <dd>Books lessons on holidays</dd>
+            </div>
+          )}
           {s.end_reason && (
             <div className="col-span-2">
               <dt className="text-xs text-muted-foreground">End reason</dt>
@@ -1257,6 +1271,19 @@ function ServiceDrawer({
       (x) => x.id === effectiveServiceId(form.serviceId, orgServices, pickerLines),
     ) ?? null;
   const creatingWalk = !subscription && chosenService?.service_line === "dog_walking";
+  // A recurring training plan that is not a package's: a lesson series, which
+  // can skip closed days and stop after a number of lessons (R2-49).
+  const lessonSeries =
+    chosenService?.service_line === "training" &&
+    form.choice !== "one_time" &&
+    !subscription?.client_package_id;
+  const rulesFn = useServerFn(getTrainingSessionRules);
+  const seriesRules = useQuery({
+    queryKey: ["training-session-rules"],
+    queryFn: () => rulesFn(),
+    enabled: open && lessonSeries,
+  });
+  const skipClosed = form.skipClosedDays ?? seriesRules.data?.seriesSkipClosed ?? true;
   const walkWindows = [
     { earliestTime: form.earliestTime, latestTime: form.latestTime },
     ...extraWalkWindows,
@@ -1294,6 +1321,10 @@ function ServiceDrawer({
   if (!form.propertyId) errors.propertyId = "Choose a property";
   if (form.choice === "set_days" && form.weekdays.length === 0)
     errors.weekdays = "Choose at least one day";
+  if (lessonSeries) {
+    const problem = sessionLimitProblem(form.sessionLimit ?? "");
+    if (problem) errors.sessionLimit = problem;
+  }
   if (form.earliestTime && form.latestTime && form.earliestTime >= form.latestTime)
     errors.window = "The earliest arrival must be before the latest arrival";
   if (creatingWalk && extraWalkWindows.length > 0) {
@@ -1537,6 +1568,13 @@ function ServiceDrawer({
         earliestTime: form.earliestTime || null,
         latestTime: form.latestTime || null,
         serviceId: effectiveServiceId(form.serviceId, orgServices, pickerLines) ?? undefined,
+        // Written only for a lesson series; any other plan keeps what it has.
+        ...(lessonSeries
+          ? {
+              skipClosedDays: skipClosed,
+              sessionLimit: form.sessionLimit?.trim() ? parseInt(form.sessionLimit, 10) : null,
+            }
+          : {}),
       };
       const run = subscription
         ? updateFn({ data: { subscriptionId: subscription.id, ...common } })
@@ -1877,6 +1915,48 @@ function ServiceDrawer({
             />
           )}
         </div>
+
+        {lessonSeries && (
+          <div className="space-y-3 rounded-md border p-3" data-testid="lesson-series-rules">
+            <label className="flex min-h-11 items-center gap-3 text-sm">
+              <input
+                type="checkbox"
+                className="h-4 w-4 shrink-0"
+                checked={skipClosed}
+                onChange={(e) => set("skipClosedDays", e.target.checked)}
+              />
+              <span className="min-w-0">Skip holidays and closed days</span>
+            </label>
+            <p className="text-xs text-muted-foreground">
+              No lesson is booked on a holiday date (Settings, Services) or a blackout date
+              (Settings, Blackouts). The series skips that week rather than moving the lesson.
+            </p>
+            <div className="max-w-xs space-y-1">
+              <Label htmlFor="lesson-series-limit">Stop after</Label>
+              <div className="flex min-w-0 items-center gap-2">
+                <Input
+                  id="lesson-series-limit"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={520}
+                  className="w-24 shrink-0"
+                  value={form.sessionLimit ?? ""}
+                  placeholder="Any"
+                  onChange={(e) => set("sessionLimit", e.target.value)}
+                />
+                <span className="min-w-0 text-sm text-muted-foreground">lessons</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Leave empty for an open-ended series. A lesson canceled without a charge does not
+                count.
+              </p>
+              {showErrors && errors.sessionLimit && (
+                <p className="text-xs text-destructive">{errors.sessionLimit}</p>
+              )}
+            </div>
+          </div>
+        )}
 
         <div>
           <div className="grid gap-3 sm:grid-cols-2">

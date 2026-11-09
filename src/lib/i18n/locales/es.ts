@@ -234,6 +234,9 @@ const es: Translations = {
     previewReadOnly: "Vista previa · solo lectura",
     noTechnicians: "Todavía no hay técnicos activos en tu organización.",
     pickTechnician: "Elige un técnico arriba para ver su día.",
+    selectTrainer: "(Selecciona un entrenador)",
+    noTrainers: "Todavía no hay entrenadores activos en tu organización.",
+    pickTrainer: "Elige un entrenador arriba para ver su día.",
     previewNothingScheduled: "{{name}} no tiene nada programado el {{day}}.",
     viewMySchedule: "Ver mi calendario",
     myRoute: "Mi ruta",
@@ -390,6 +393,15 @@ const es: Translations = {
     after: "Después de {{time}}",
     by: "Antes de {{time}}",
     over8h: "Más de 8 h · empezó {{time}}",
+  },
+  role: {
+    owner: "Propietario",
+    office_manager: "Gerente de oficina",
+    dispatcher: "Despachador",
+    tech: "Técnico",
+    trainer: "Entrenador",
+    platform_admin: "Administrador de la plataforma",
+    other: "Miembro del equipo",
   },
   serviceLine: {
     pet_waste: "Recolección de desechos",
@@ -1279,6 +1291,9 @@ const es: Translations = {
     chooseDog: "Elija un perro",
     dogRequiredHint: "Este hogar tiene más de un perro. El progreso y la tarea se guardan por perro.",
     shareProgress: "Compartir las notas y la tarea de cada clase con los clientes",
+    seriesSkipClosed: "Las nuevas series de clases se saltan los festivos y los días cerrados",
+    seriesSkipClosedHint:
+      "Una serie semanal no reserva clase en un día festivo o de cierre. Cada serie puede cambiarlo al crearla o editarla.",
     shareProgressHint:
       "Los clientes ven la nota y la tarea de cada clase en la página de entrenamiento de su portal. Las puntuaciones, las fechas y las sesiones restantes se muestran siempre.",
   },

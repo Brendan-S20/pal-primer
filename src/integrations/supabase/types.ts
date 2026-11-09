@@ -4319,6 +4319,7 @@ export type Database = {
           training_late_cancel_hours: number
           training_missed_uses_session: boolean
           training_share_progress: boolean
+          training_series_skip_closed: boolean
           trial_ends_at: string | null
           updated_at: string
           vaccine_rule: string
@@ -4481,6 +4482,7 @@ export type Database = {
           training_late_cancel_hours?: number
           training_missed_uses_session?: boolean
           training_share_progress?: boolean
+          training_series_skip_closed?: boolean
           trial_ends_at?: string | null
           updated_at?: string
           vaccine_rule?: string
@@ -4643,6 +4645,7 @@ export type Database = {
           training_late_cancel_hours?: number
           training_missed_uses_session?: boolean
           training_share_progress?: boolean
+          training_series_skip_closed?: boolean
           trial_ends_at?: string | null
           updated_at?: string
           vaccine_rule?: string
@@ -7852,6 +7855,8 @@ export type Database = {
           priced_from_zone_id: string | null
           property_id: string
           service_id: string | null
+          skip_closed_days: boolean | null
+          session_limit: number | null
           started_on: string
           status: Database["public"]["Enums"]["subscription_status"]
           stay_id: string | null
@@ -7893,6 +7898,8 @@ export type Database = {
           priced_from_zone_id?: string | null
           property_id: string
           service_id?: string | null
+          skip_closed_days?: boolean | null
+          session_limit?: number | null
           started_on?: string
           status?: Database["public"]["Enums"]["subscription_status"]
           stay_id?: string | null
@@ -7934,6 +7941,8 @@ export type Database = {
           priced_from_zone_id?: string | null
           property_id?: string
           service_id?: string | null
+          skip_closed_days?: boolean | null
+          session_limit?: number | null
           started_on?: string
           status?: Database["public"]["Enums"]["subscription_status"]
           stay_id?: string | null
@@ -10967,6 +10976,10 @@ export type Database = {
           _missed_uses_session: boolean
           _org_id: string
         }
+        Returns: undefined
+      }
+      set_training_series_skip_closed: {
+        Args: { _org_id: string; _skip: boolean }
         Returns: undefined
       }
       set_training_share_progress: {
