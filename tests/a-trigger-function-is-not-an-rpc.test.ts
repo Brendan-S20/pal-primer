@@ -306,11 +306,21 @@ describe("no trigger function is executable by a signed-in user", () => {
     // tg_orgs_log_portal_change_settings (the activity_log row naming who).
     // Each revoked from PUBLIC, anon and authenticated there.
     //
-    // 103 -> 104 (20261102172500, a lesson series skips closed days and can
+    // 103 -> 107 (#731, walker groups): enforce_walker_dog_cap_on_member and
+    // enforce_walker_dog_cap_on_group (20261108170000, a walker's dog cap),
+    // validate_plan_walker and fill_visit_walker (20261108170100, a walk plan
+    // has a walker). Each revoked from PUBLIC, anon and authenticated there.
+    //
+    // Still 107 after #716 (20261102171500): its training_progress_row_guard
+    // is a CREATE OR REPLACE of the function 20261023100000 already defines,
+    // so it adds no new name. main alone counts 103; main plus #733 counts
+    // 107, not 104/108.
+    //
+    // 107 -> 108 (20261102172500, a lesson series skips closed days and can
     // stop, R2-49): visits_follow_series_rules, which leaves out a series
     // visit on a closed or holiday date, or past the series' session count.
     // Revoked from PUBLIC, anon and authenticated there.
-    expect(triggerFunctions().size).toBe(104);
+    expect(triggerFunctions().size).toBe(108);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {
