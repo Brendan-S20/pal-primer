@@ -120,7 +120,8 @@ describe("setup step 1 with a ?service= request (#710) and without", () => {
 
   it("#711's draft keeps only what was touched, so a restore wins over the start", () => {
     const setup = read("src/routes/_authenticated/setup.tsx");
-    expect(setup).toMatch(/value: \{ lines, name, phone, address, tz \}/);
+    // #769 added the workday, kept the same way: null until touched.
+    expect(setup).toMatch(/value: \{ lines, name, phone, address, tz, dayStart, dayEnd \}/);
     expect(setup).toMatch(/setLines\(d\.lines\)/);
   });
 });
@@ -150,7 +151,9 @@ describe("the client wizard asks about a yard only of a business that scoops", (
 
   it("the wizard draws the list from it", () => {
     const wizard = read("src/routes/_authenticated/clients.new.tsx");
-    expect(wizard).toMatch(/propertyHazardsFor\(lines, hz\)\.map/);
+    // #768: and from the plan's line, so a walk client of a business that
+    // also scoops is not asked about the yard.
+    expect(wizard).toMatch(/propertyHazardsFor\(lines, hz, planLine\)\.map/);
     expect(wizard).not.toMatch(/\["beesWasps", "Bees \/ wasps"\]/);
   });
 });
