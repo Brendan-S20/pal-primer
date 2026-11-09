@@ -31,6 +31,9 @@ export const TECH_SCREENS: { file: string; only?: string[] }[] = [
   // A groom's pets at the top of the card: handling flags, vaccines on the
   // day, each pet's last grooms and this groom's notes.
   { file: "src/components/my-day/GroomPetPanel.tsx" },
+  // Below them: the van's power and water at the address, and the booked
+  // add-ons the groomer ticks off (#412).
+  { file: "src/components/my-day/GroomVisitExtras.tsx" },
   // A dog walk's card (#410): length and group, how the walker gets in, the
   // minutes out, and the walk report (pee, poo, the note for the client).
   { file: "src/components/my-day/WalkParts.tsx" },

@@ -1,7 +1,8 @@
 // The top of a groom's card, one block per pet: how to handle it, whether its
 // vaccines are good on this groom's date, what was done at its last few
 // grooms, and (while the groom is under way) this groom's blade, style and
-// problems for the next groomer to read.
+// problems for the next groomer to read. Below the pets, the van's hookups at
+// the address and the booked add-ons to tick off (GroomVisitExtras).
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -15,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatDay } from "@/lib/format";
 import type { GroomPetFacts } from "@/lib/groom-pets";
 import { savePetGroomNote } from "@/lib/pet-groom-notes.functions";
+import { GroomVisitExtras } from "@/components/my-day/GroomVisitExtras";
 
 export type GroomPetDog = {
   id?: string | null;
@@ -61,7 +63,6 @@ export function GroomPetPanel({
   const list = (Array.isArray(dogs) ? (dogs as GroomPetDog[]) : []).filter(
     (d) => d?.id && (!booked || booked.includes(d.id)),
   );
-  if (list.length === 0) return null;
   return (
     <div className="mt-2.5 space-y-2">
       {list.map((dog) => (
@@ -74,6 +75,7 @@ export function GroomPetPanel({
           canWrite={canWrite}
         />
       ))}
+      <GroomVisitExtras visitId={visitId} canWrite={canWrite} />
     </div>
   );
 }

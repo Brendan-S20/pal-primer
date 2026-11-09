@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PortalVaccines } from "@/components/portal/PortalVaccines";
+import { GroomReportsSection } from "@/components/portal/GroomReports";
 import { usePortalCtx, EmptyBox, fmtDayShort, money } from "@/lib/portal-ui";
 import { portalGetGrooming, portalRequestGroom } from "@/lib/portal-groom.functions";
 import {
@@ -27,7 +28,8 @@ import { addDaysToDay } from "@/lib/reclean";
 
 // The client's grooming: ask for a groom for one of their pets, see what it
 // costs and how long it takes by the same pricing the office books with, see
-// what became of earlier requests, and keep vaccine records current. The
+// what became of earlier requests, read each finished groom's report with its
+// before and after photos (GroomReports), and keep vaccine records current. The
 // office confirms the start time and the groomer; nothing here books a visit.
 // Asking is off while mobile grooming is not a line a customer can request
 // (customerCanRequestService); the page is then vaccine records, and earlier
@@ -86,6 +88,7 @@ function PortalGrooming() {
         </p>
       )}
       {(page.canRequest || page.requests.length > 0) && <GroomRequests page={page} />}
+      <GroomReportsSection />
       <PortalVaccines token={token} />
       <p className="text-center text-xs text-muted-foreground">
         <Link
