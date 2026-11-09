@@ -31,8 +31,15 @@ function fakeStripe(
     retrieveError?: Error;
     detachError?: Error;
     cards?: string[];
+    /** The customer's invoice default and the subscription's default. */
+    customerDefault?: string | null;
+    subDefault?: string | null;
   } = {},
 ) {
+  const state = {
+    customerDefault: opts.customerDefault === undefined ? "pm_1" : opts.customerDefault,
+    subDefault: opts.subDefault === undefined ? "pm_1" : opts.subDefault,
+  };
   // What is attached right now; a successful detach takes the card off it.
   const cards = [...(opts.cards ?? ["pm_1"])];
   const calls = {
@@ -54,16 +61,24 @@ function fakeStripe(
       }),
     },
     customers: {
-      retrieve: vi.fn(async () => ({ id: CUS })),
+      retrieve: vi.fn(async () => ({
+        id: CUS,
+        invoice_settings: { default_payment_method: state.customerDefault },
+      })),
       listPaymentMethods: vi.fn(async () => ({ data: cards.map((id) => ({ id, card: {} })) })),
       update: vi.fn(async (_id: string, p: object) => {
         calls.customerUpdate.push(p);
+        state.customerDefault = (
+          p as { invoice_settings: { default_payment_method: string } }
+        ).invoice_settings.default_payment_method;
         return {};
       }),
     },
     subscriptions: {
+      retrieve: vi.fn(async () => ({ default_payment_method: state.subDefault })),
       update: vi.fn(async (_id: string, p: object) => {
         calls.subUpdate.push(p);
+        state.subDefault = (p as { default_payment_method: string }).default_payment_method;
         return {};
       }),
     },
@@ -182,6 +197,28 @@ describe("a locked owner removing their saved card", () => {
     expect(calls.customerUpdate).toEqual([
       { invoice_settings: { default_payment_method: "pm_2" } },
     ]);
+    expect(calls.subUpdate).toEqual([{ default_payment_method: "pm_2" }]);
+  });
+
+  it("a retry finishes a subscription default the first attempt left on the detached card", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    // Last time: pm_1 detached, the customer moved to pm_2, the subscription
+    // update failed. The customer default is valid; the subscription's is not.
+    const { stripe, calls } = fakeStripe({
+      attachedTo: null,
+      cards: ["pm_2"],
+      customerDefault: "pm_2",
+      subDefault: "pm_1",
+    });
+    await removeOrgCard({
+      stripe,
+      customerId: CUS,
+      subscriptionId: "sub_1",
+      billingStatus: "active",
+      paymentMethodId: "pm_1",
+      defaultIdFor: async () => "pm_2",
+    });
+    expect(calls.customerUpdate).toEqual([]);
     expect(calls.subUpdate).toEqual([{ default_payment_method: "pm_2" }]);
   });
 
