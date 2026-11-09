@@ -98,6 +98,7 @@
                 <data android:pathPrefix="/settings/business" />
                 <data android:pathPrefix="/settings/client-portal" />
                 <data android:pathPrefix="/settings/deep-clean" />
+                <data android:pathPrefix="/settings/directory" />
                 <data android:pathPrefix="/settings/emails" />
                 <data android:pathPrefix="/settings/franchise" />
                 <data android:pathPrefix="/settings/invoicing" />

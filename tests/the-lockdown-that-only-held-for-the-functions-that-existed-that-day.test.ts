@@ -73,7 +73,7 @@ const codeOnly = (sql: string) =>
 
 // ── the intended anonymous surface, with a caller for each ────────────────
 //
-// Seven entries. An eighth must be added here, with a reason, before it can pass.
+// Nine entries. A tenth must be added here, with a reason, before it can pass.
 const ALLOWED_FOR_ANON: Record<string, string> = {
   public_get_org_by_slug:
     "signup.functions.ts resolves a tenant from a public slug before any account exists",
@@ -86,6 +86,10 @@ const ALLOWED_FOR_ANON: Record<string, string> = {
     "the anon INSERT policy on `leads` calls it, so the querying role needs EXECUTE",
   roadmap_vote_counts: "the marketing roadmap reads counts from the browser",
   cast_roadmap_vote: "the marketing roadmap writes a vote from the browser",
+  directory_search:
+    "directory.functions.ts (searchDirectory) finds published directory profiles by service and ZIP for a visitor (#630); published rows of live businesses only, public columns only, no organization id",
+  directory_profiles_by_slug:
+    "directory.functions.ts (getDirectoryProfiles) reads up to three published directory profiles for the profile, compare and quote pages (#630); same shape and gate as directory_search",
 };
 
 /** A migration that sweeps the whole catalog rather than naming functions —
@@ -96,7 +100,7 @@ const isSweep = (sql: string) =>
   /FROM\s+pg_proc/i.test(sql) && /REVOKE\s+ALL\s+ON\s+FUNCTION\s+%s\s+FROM\s+PUBLIC/i.test(sql);
 
 describe("the anonymous surface is a list, not an accident", () => {
-  it("is exactly the seven functions that have a caller, and no others", () => {
+  it("is exactly the nine functions that have a caller, and no others", () => {
     const files = migrations();
     const lastSweep = files.map((f) => isSweep(f.sql)).lastIndexOf(true);
     expect(
@@ -118,7 +122,8 @@ describe("the anonymous surface is a list, not an accident", () => {
       for (const m of code.matchAll(
         /GRANT\s+(?:ALL|EXECUTE)[^;]*?\bON\s+FUNCTION\s+public\.([a-z0-9_]+)\s*\([^;]*?\)\s*TO\s+([^;]*);/gi,
       )) {
-        if (/\banon\b/i.test(m[2])) events.push({ at: m.index!, fn: m[1].toLowerCase(), grant: true });
+        if (/\banon\b/i.test(m[2]))
+          events.push({ at: m.index!, fn: m[1].toLowerCase(), grant: true });
       }
       for (const m of code.matchAll(
         /REVOKE\s+(?:ALL|EXECUTE)[^;]*?\bON\s+FUNCTION\s+public\.([a-z0-9_]+)\s*\([^;]*?\)\s*FROM\s+([^;]*);/gi,
