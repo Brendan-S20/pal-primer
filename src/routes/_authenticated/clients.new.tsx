@@ -43,6 +43,7 @@ import { getEmailSendStatus } from "@/lib/notifications.functions";
 import { reportQueuedSend } from "@/lib/send-report";
 import { useOrgToday } from "@/hooks/useOrgToday";
 import { getMyOrg } from "@/lib/org.functions";
+import { getEmailSettings } from "@/lib/email-settings.functions";
 import { WelcomeEmailOptIn } from "@/components/client-detail/WelcomeEmailOptIn";
 import { WELCOME_EMAIL_DEFAULT_CHECKED } from "@/lib/welcome-email";
 import { formatDay } from "@/lib/format";
@@ -501,6 +502,15 @@ function NewClientWizardForm({
     queryFn: () => orgFn(),
     staleTime: 60_000,
   });
+  // The owner's Welcome toggle (Settings, Emails). Off, the box is disabled
+  // and says why rather than promising a send the server will refuse.
+  const emailSettingsFn = useServerFn(getEmailSettings);
+  const { data: emailSettings } = useQuery({
+    queryKey: ["email-settings"],
+    queryFn: () => emailSettingsFn(),
+    staleTime: 60_000,
+  });
+  const welcomeTurnedOffInSettings = emailSettings?.notify_email_welcome === false;
   const [officeNote, setOfficeNote] = useState(prefill.officeNote);
 
   // property
@@ -874,7 +884,7 @@ function NewClientWizardForm({
           accountType,
           primaryEmail: primaryEmail || undefined,
           primaryPhone: primaryPhone || undefined,
-          sendWelcome: sendWelcome && !!primaryEmail.trim(),
+          sendWelcome: sendWelcome && !welcomeTurnedOffInSettings && !!primaryEmail.trim(),
           street,
           city,
           region: region || undefined,
@@ -1947,6 +1957,7 @@ function NewClientWizardForm({
             orgName={(orgData?.organization as { name?: string } | null | undefined)?.name}
             checked={sendWelcome}
             onCheckedChange={setSendWelcome}
+            turnedOffInSettings={welcomeTurnedOffInSettings}
           />
         )}
 

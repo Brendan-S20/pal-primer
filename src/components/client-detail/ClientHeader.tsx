@@ -30,6 +30,7 @@ import {
   deleteClientIfNoHistory,
   listClientHolds,
   previewClientPortal,
+  sendClientWelcomeEmail,
 } from "@/lib/clients.functions";
 import { usePermissions } from "@/hooks/useMyRole";
 import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
@@ -38,6 +39,10 @@ import { pauseSubscription } from "@/lib/subscriptions.functions";
 import { isServiceEnded } from "@/lib/subscription-form";
 import { getMyOrg } from "@/lib/org.functions";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { getEmailSettings } from "@/lib/email-settings.functions";
+import { getEmailSendStatus } from "@/lib/notifications.functions";
+import { reportQueuedSend, toastNotSent } from "@/lib/send-report";
+import { confirmThenSendWelcome } from "@/lib/welcome-email";
 // Its own chunk, with the 71KB date picker inside it: a client page draws its
 // header on every visit and opens this drawer on very few, so the picker is
 // not parsed before the page can draw (see tabLoaders in clients.$clientId.tsx,
@@ -121,6 +126,49 @@ export function ClientHeader({
   const previewFn = useServerFn(previewClientPortal);
   const { can } = usePermissions();
   const texting = useClientTexting();
+
+  // "Send welcome email" (onboarding audit 2026-11-09, D4): the wizard no
+  // longer sends it unasked, so this is how a client gets their portal invite
+  // later. Offered only when it can go: someone who may message clients, an
+  // address, no email opt-out, and welcome emails on in Settings.
+  const welcomeFn = useServerFn(sendClientWelcomeEmail);
+  const emailStatusFn = useServerFn(getEmailSendStatus);
+  const emailSettingsFn = useServerFn(getEmailSettings);
+  const { data: emailSettings } = useQuery({
+    queryKey: ["email-settings"],
+    queryFn: () => emailSettingsFn(),
+    staleTime: 60_000,
+    enabled: can("message_clients"),
+  });
+  const welcomeEmail = (client.primary_email as string | null | undefined)?.trim() || null;
+  const canSendWelcome =
+    can("message_clients") &&
+    !!welcomeEmail &&
+    !client.email_opt_out &&
+    emailSettings?.notify_email_welcome !== false;
+  const welcomeMut = useMutation({
+    mutationFn: () => welcomeFn({ data: { clientId } }),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
+      if (!r.ok && r.reason === "org_toggle_off") {
+        toast.warning("Welcome emails are off in Settings, Emails. Nothing was sent.");
+        return;
+      }
+      if (!r.ok && r.reason === "client_opted_out") {
+        toast.warning("This client opted out of email. Nothing was sent.");
+        return;
+      }
+      if (!r.ok && !r.statusHandle) {
+        toastNotSent("Welcome email", r.recipient, r.link);
+        return;
+      }
+      void reportQueuedSend(
+        { ok: r.ok, statusHandle: r.statusHandle, recipient: r.recipient, link: r.link },
+        { what: "Welcome email", poll: emailStatusFn },
+      );
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
   const { data: holdsData } = useQuery({
     queryKey: ["client-holds", clientId],
     queryFn: () => listHoldsFn({ data: { clientId } }),
@@ -429,6 +477,33 @@ export function ClientHeader({
                     Copy portal link
                   </DropdownMenuItem>
                 </>
+              )}
+              {canSendWelcome && (
+                <DropdownMenuItem
+                  disabled={welcomeMut.isPending}
+                  onClick={() =>
+                    void confirmThenSendWelcome({
+                      email: welcomeEmail!,
+                      orgName: (orgData?.organization as { name?: string } | null | undefined)
+                        ?.name,
+                      confirm,
+                      send: () => welcomeMut.mutate(),
+                      describe: (what) => (
+                        <>
+                          <p>
+                            To <bdi className="break-all">{what.email}</bdi>
+                          </p>
+                          <p>
+                            Subject: <strong>{what.subject}</strong>
+                          </p>
+                          <p>{what.summary}</p>
+                        </>
+                      ),
+                    })
+                  }
+                >
+                  Send welcome email
+                </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
               {client.active === false ? (

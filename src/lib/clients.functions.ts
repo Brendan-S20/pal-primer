@@ -1255,6 +1255,69 @@ export const regeneratePortalLink = createServerFn({ method: "POST" })
   });
 
 /**
+ * Send the welcome email (and portal link) to an existing client, on a
+ * person's click. Since the wizard stopped sending it unasked (onboarding
+ * audit 2026-11-09, D4), this is how a client created without it gets their
+ * invite later. Same template, same portal link, and the same refusals as
+ * every other send: the owner's Welcome toggle in Settings, the client's
+ * email opt-out and the suppression list all still apply (enqueueAppEmail).
+ * A manual send, so an imported client's comms hold does not stop it.
+ */
+export const sendClientWelcomeEmail = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) => getClientSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { orgId } = await requirePermission(supabase, userId, "message_clients");
+    const { data: c, error } = await supabase
+      .from("clients")
+      .select("id, organization_id, primary_email, portal_token")
+      .eq("id", data.clientId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!c || c.organization_id !== orgId) throw new Error("That client was not found.");
+    const recipient = (c.primary_email as string | null)?.trim() || null;
+    if (!recipient) throw new Error("This client has no email address.");
+
+    const { buildPortalLink } = await import("@/lib/portal-links.server");
+    const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
+    const link = (await buildPortalLink(orgId, c.portal_token as string | null)) ?? null;
+    const sent = await enqueueAppEmail({
+      organizationId: orgId,
+      clientId: data.clientId,
+      templateName: "welcome",
+      notifyKey: "notify_email_welcome",
+      requireProvider: true,
+      manual: true,
+      templateData: { portalUrl: link ?? undefined },
+    });
+    let statusHandle: string | null = null;
+    if (sent.ok && sent.messageId) {
+      const { signEmailStatusHandle } = await import("@/lib/email/status-handle.server");
+      statusHandle = signEmailStatusHandle(
+        orgId,
+        { kind: "client", id: data.clientId },
+        sent.messageId,
+      );
+      const { logActivity } = await import("@/lib/activity.server");
+      await logActivity(supabase, {
+        orgId,
+        clientId: data.clientId,
+        actorUserId: userId,
+        kind: "client.welcome_sent",
+        summary: `Sent the welcome email to ${recipient}`,
+      });
+    }
+    return {
+      ok: sent.ok,
+      reason: sent.reason ?? null,
+      statusHandle,
+      recipient,
+      link,
+    };
+  });
+
+/**
  * Read (mint) a one-time verification code for a client, so the office can
  * read it aloud when a client can't receive SMS/email. This is a sensitive
  * account-takeover-adjacent action (it hands out a valid sign-in code), so it

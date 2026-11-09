@@ -30,3 +30,31 @@ export function welcomeEmailPreview(orgName: string | null | undefined): {
       "A short welcome from your business with their private portal link, where they see upcoming visits and invoices.",
   };
 }
+
+/**
+ * The client page's "Send welcome email": ask first, naming the recipient
+ * and the subject, and send only on yes. Nothing is sent from a click alone.
+ */
+export async function confirmThenSendWelcome<D>({
+  email,
+  orgName,
+  confirm,
+  send,
+  describe,
+}: {
+  email: string;
+  orgName: string | null | undefined;
+  confirm: (opts: { title: string; description: D; confirmLabel: string }) => Promise<boolean>;
+  send: () => void;
+  /** Builds the dialog's body from what will be sent. */
+  describe: (what: { email: string; subject: string; summary: string }) => D;
+}): Promise<boolean> {
+  const preview = welcomeEmailPreview(orgName);
+  const ok = await confirm({
+    title: "Send the welcome email?",
+    description: describe({ email, ...preview }),
+    confirmLabel: "Send welcome email",
+  });
+  if (ok) send();
+  return ok;
+}
