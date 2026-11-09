@@ -24,6 +24,7 @@ import { ClientSearchPicker, type PickedClient } from "@/components/ClientSearch
 import { saveQuoteDraft, sendQuote } from "@/lib/quotes.functions";
 import { getFirstCleanupPricing } from "@/lib/first-cleanup.functions";
 import { LAST_CLEANED_QUESTION, firstCleanupQuoteLine } from "@/lib/first-cleanup";
+import { oneTimeCleanupQuoteLine } from "@/lib/one-time-cleanup";
 import { addOnExampleFor, runsPetWaste, type ServiceLine } from "@/lib/service-lines";
 import { defaultServiceLine, serviceNamePlaceholder, withArticle } from "@/lib/services";
 import { getQuotePricing } from "@/lib/quote-pricing.functions";
@@ -118,6 +119,8 @@ export type QuotePricingData = {
   subject: QuoteSubject | null;
   /** The plan the client is on now, when there is one. */
   currentPlan?: QuoteCurrentPlan | null;
+  /** A one-time cleanup's visit price (organizations.one_off_price_cents). */
+  oneTimeVisitCents?: number | null;
 };
 
 export const quotePricingKey = (clientId: string | null, leadId: string | null) =>
@@ -258,6 +261,22 @@ export function QuoteEditor({
     });
     setFcOpen(false);
     setFcChoice("");
+  };
+
+  // "Add one-time cleanup" (D12): the visit as a one-time line at the
+  // owner's extra-visit price, then the first-cleanup picker above when the
+  // owner charges one, so the quote lists both and its One-time total is
+  // their sum: what "Invoice the one-time charges" bills.
+  const addOneTimeCleanup = () => {
+    const line = {
+      ...blankEditorLine(false),
+      ...oneTimeCleanupQuoteLine(pricing?.oneTimeVisitCents ?? null),
+    };
+    setV((s) => {
+      const onlyBlank = s.lines.length === 1 && isBlankLine(s.lines[0]);
+      return { ...s, lines: onlyBlank ? [line] : [...s.lines, line] };
+    });
+    if (fcPricing && fcPricing.mode !== "off") setFcOpen(true);
   };
 
   // ── Pricing the service line from what the owner already set ──────────
@@ -727,6 +746,17 @@ export function QuoteEditor({
               onClick={openService}
             >
               <Tag className="mr-1 h-3.5 w-3.5 shrink-0" /> Add service from pricing
+            </Button>
+          )}
+          {runsPetWaste(orgLines) && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={v.lines.length >= QUOTE_LIMITS.maxLines}
+              onClick={addOneTimeCleanup}
+            >
+              <Plus className="mr-1 h-3.5 w-3.5 shrink-0" /> Add one-time cleanup
             </Button>
           )}
           {fcPricing && fcPricing.mode !== "off" && (
