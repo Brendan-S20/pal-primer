@@ -75,14 +75,10 @@ and among its solutions:
 > Make sure the contact details you submit belong to that business
 > representative, **including `businessContactEmail`**.
 
-Using `support@houndstack.com` for `BusinessContactEmail` could swap a 30482
-rejection for a 30483 rejection. That address is already visible in the
-screenshot, but a shared mailbox is not the named representative's address.
-
-**Use a person's address on the business domain**, matching the
-`businessContactFirstName` / `businessContactLastName` on the same submission.
-`support@` is the right address for the HELP response and the wrong one for this
-field.
+Owner's decision (Nov 8, 2026): `BusinessContactEmail` is `support@houndstack.com`,
+matching the site's operator line word for word. Twilio's 30483 guidance prefers
+a named representative's address, so the contact name on the same submission
+must still be Brendan's own name, never "Support" or "Admin".
 
 This is inference from two error pages read together, not something Twilio
 states as a rule. Using the named representative's address avoids this risk.
@@ -214,7 +210,7 @@ A mismatch between the form and the page can cause another rejection (30507).
 Use these exactly as the site shows them. The footer of www.houndstack.com and
 app.houndstack.com, and the top of every /legal page, carry the same sentence:
 "HoundStack is operated by The North Consulting LLC, 2222 West Grand River
-Avenue STE A, Okemos, MI 48864. Contact: brendan@houndstack.com".
+Avenue STE A, Okemos, MI 48864. Contact: support@houndstack.com".
 
 | Field | Value |
 |---|---|
@@ -223,11 +219,11 @@ Avenue STE A, Okemos, MI 48864. Contact: brendan@houndstack.com".
 | Street address | 2222 West Grand River Avenue STE A |
 | City, state, ZIP | Okemos, MI 48864 |
 | Website | https://www.houndstack.com |
-| BusinessContactEmail | brendan@houndstack.com |
+| BusinessContactEmail | support@houndstack.com |
 | Contact name | Brendan, the named representative. Use the person's own name, not "Support" or "Admin" (see the 30483 trap above). |
 
-Do not put `support@houndstack.com` in `BusinessContactEmail`. It stays as the
-HELP contact. No business phone number is published on the site, deliberately.
+`support@houndstack.com` is both the `BusinessContactEmail` and the HELP contact.
+No business phone number is published on the site, deliberately.
 Use whatever the form requires there, but do not add one to the site.
 
 ### Use case description
