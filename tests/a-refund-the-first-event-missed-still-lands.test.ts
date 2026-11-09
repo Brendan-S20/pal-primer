@@ -35,7 +35,7 @@ const ROOT = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 const HOOK = read("src/routes/api/public/hooks/stripe.ts");
 const BACKFILL = read(
-  "supabase/migrations/20261109120000_a-signup-refunded-before-the-fix-says-so.sql",
+  "supabase/migrations/20261109140000_a-signup-refunded-before-the-fix-says-so.sql",
 );
 
 const at = "2026-11-01T22:32:00.000Z";
