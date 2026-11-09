@@ -18,7 +18,11 @@ import { useMyProfile } from "@/hooks/useMyProfile";
 import { useFormDraft } from "@/hooks/useFormDraft";
 import { DraftRestoredNotice } from "@/components/DraftRestoredNotice";
 import {
-  getOnboardingStatus,
+  invalidateOnboardingStatus,
+  ONBOARDING_STATUS_KEY,
+  useOnboardingStatus,
+} from "@/hooks/useOnboardingStatus";
+import {
   ONBOARDING_STEP_IDS,
   type OnboardingStep,
   type OnboardingStepId,
@@ -93,8 +97,7 @@ function SetupPage() {
   const { step: stepParam } = Route.useSearch();
   const guide = useSetupGuide();
   const qc = useQueryClient();
-  const statusFn = useServerFn(getOnboardingStatus);
-  const { data } = useQuery({ queryKey: ["onboarding-status"], queryFn: () => statusFn() });
+  const { data } = useOnboardingStatus();
 
   const steps = useMemo(() => stepsFor(data?.steps ?? [], role), [data, role]);
   const current = useMemo(() => {
@@ -167,8 +170,8 @@ function SetupPage() {
   // with parts is done when the server says every part is, never because one
   // form on it saved.
   const saved = async () => {
-    await qc.invalidateQueries({ queryKey: ["onboarding-status"] });
-    const fresh = qc.getQueryData<typeof data>(["onboarding-status"]);
+    await invalidateOnboardingStatus(qc);
+    const fresh = qc.getQueryData<typeof data>(ONBOARDING_STATUS_KEY);
     const list = stepsFor(fresh?.steps ?? steps, role).map((s) =>
       s.id === current.id && !s.parts ? { ...s, done: true } : s,
     );
@@ -575,8 +578,8 @@ function PricesPanel({
   // stay here while walks, stays, grooms or lessons are still open; move on
   // only once the server says every part is done.
   const areaSaved = async () => {
-    await qc.invalidateQueries({ queryKey: ["onboarding-status"] });
-    const fresh = qc.getQueryData<{ steps: OnboardingStep[] }>(["onboarding-status"]);
+    await invalidateOnboardingStatus(qc);
+    const fresh = qc.getQueryData<{ steps: OnboardingStep[] }>(ONBOARDING_STATUS_KEY);
     const now = fresh?.steps.find((s) => s.id === step.id);
     if (now?.parts?.every((p) => p.done)) onSaved();
   };
@@ -861,6 +864,7 @@ function StaffPanel({ onSaved }: { onSaved: () => void }) {
     mutationFn: () => routingFn({ data: { staffId: me!.id, isFieldTech: true } }),
     onSuccess: () => {
       toast.success("You're on the schedule");
+      void invalidateOnboardingStatus(qc);
       qc.invalidateQueries({ queryKey: ["staff-addresses"] });
       qc.invalidateQueries({ queryKey: ["staff"] });
       onSaved();
@@ -877,6 +881,7 @@ function StaffPanel({ onSaved }: { onSaved: () => void }) {
       if (r.emailSent) toast.success(`Invite sent to ${to}`);
       else toastNotSent("Invite", to, r.link);
       setEmail("");
+      void invalidateOnboardingStatus(qc);
       qc.invalidateQueries({ queryKey: ["org-invites"] });
       onSaved();
     },

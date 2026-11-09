@@ -41,6 +41,7 @@ import {
   readDraft,
   returnHereAfterSignIn,
 } from "@/lib/signed-out";
+import { invalidateOnboardingStatus } from "@/hooks/useOnboardingStatus";
 
 const USERS_PAGE = "/settings/users";
 type AddressDraft = { start: string; end: string };
@@ -405,6 +406,7 @@ function InvitePanel() {
       if (!r || "replaceQuestion" in r) return;
       reportSend(email.trim(), r, r.resent ? "resent" : "created");
       setEmail("");
+      void invalidateOnboardingStatus(qc);
       qc.invalidateQueries({ queryKey: ["org-invites"] });
     },
     onError: (e) => toastServerError(e, { fallback: "Couldn't send the invite. Try again." }),
@@ -521,6 +523,7 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
       routingFn({ data: v }),
     onSuccess: () => {
       toast.success("Routing updated");
+      void invalidateOnboardingStatus(qc);
       qc.invalidateQueries({ queryKey: ["staff-addresses"] });
       qc.invalidateQueries({ queryKey: ["staff"] });
     },

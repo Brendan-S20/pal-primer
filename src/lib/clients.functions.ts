@@ -1756,6 +1756,7 @@ export const onboardClient = createServerFn({ method: "POST" })
 
     // 4) subscription
     let firstVisitOn: string | null = null;
+    let soloOwner: { assigned: number; putOnRoutes: boolean } | null = null;
     if (data.subscription) {
       // At the set price (#728): the price and zone the server worked out
       // above, never the browser's.
@@ -1832,6 +1833,15 @@ export const onboardClient = createServerFn({ method: "POST" })
         .limit(1)
         .maybeSingle();
       firstVisitOn = first?.scheduled_on ?? null;
+
+      // D13: in a business whose only person is the owner saving this, the
+      // visits are theirs; there is nobody else they could go to.
+      const { giveSoloOwnerThePlan } = await import("@/lib/solo-owner-route.server");
+      soloOwner = await giveSoloOwnerThePlan(supabase, {
+        orgId,
+        userId,
+        subscriptionId: subRow!.id,
+      });
     }
 
     // 5) office note. The client and everything under it already exist, so a
@@ -1953,6 +1963,10 @@ export const onboardClient = createServerFn({ method: "POST" })
       officeNoteSaved,
       leadLinked,
       firstCleanupInvoiced,
+      // How many of the plan's visits went to the owner because nobody else
+      // is in the business, and whether that put them on routes (D13).
+      soloOwnerAssigned: soloOwner?.assigned ?? 0,
+      soloOwnerPutOnRoutes: soloOwner?.putOnRoutes ?? false,
     };
   });
 

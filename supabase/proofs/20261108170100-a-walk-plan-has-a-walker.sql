@@ -18,8 +18,10 @@
 --      unassigned rather than going to someone the plan did not name;
 --   4. changing the plan's walker moves no visit that already exists;
 --   5. a plan cannot name a walker from another business;
---   6. in S, a new dog walk with no walker on its plan goes to the owner; a
---      cleanup does not; and once S has a second person, a walk does not.
+--   6. in S, a new dog walk with no walker on its plan goes to the owner; so,
+--      since 20261109200000 (D13, onboarding audit), does a cleanup: a
+--      one-person scooping business runs its own route too. Once S has a
+--      second person, a walk does not.
 --
 -- Everything is inside one transaction, ROLLED BACK at the end.
 
@@ -191,8 +193,11 @@ BEGIN
   END IF;
   _got := pg_temp.new_visit('f7320000-0000-4000-8000-0000000000b2', _org,
     'd7320000-0000-4000-8000-0000000000b2', _cl, _pr, _d);
-  IF _got IS NOT NULL THEN
-    RAISE EXCEPTION 'PROOF FAILED [solo-line]: a cleanup was given to the owner by the walk rule';
+  -- Was "a cleanup does not". 20261109200000 extends the one-person rule to
+  -- pet waste, because an owner-operator's first scooping plan arrived with
+  -- every visit Unassigned and nobody else it could go to.
+  IF _got IS DISTINCT FROM _owner THEN
+    RAISE EXCEPTION 'PROOF FAILED [solo-line]: a one-person business''s cleanup went to %, not its owner', _got;
   END IF;
   SET LOCAL app.allow_protected_org_write = '1';
   INSERT INTO public.user_roles (user_id, organization_id, role) VALUES
@@ -207,7 +212,7 @@ BEGIN
   IF _got IS NOT NULL THEN
     RAISE EXCEPTION 'PROOF FAILED [solo-two]: with two people a walk was still given to %', _got;
   END IF;
-  RAISE NOTICE 'ok: a one-person business walks its own walks, and only walks, and only while it is one person';
+  RAISE NOTICE 'ok: a one-person business walks its own walks and runs its own cleanups, only while it is one person';
 END $$;
 
 -- ── 7. Mutation: without the trigger, nothing fills the walker ─────────

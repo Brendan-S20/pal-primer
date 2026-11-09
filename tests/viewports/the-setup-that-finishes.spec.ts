@@ -157,7 +157,13 @@ for (const size of SIZES) {
       const banner = page.getByTestId("setup-guide-banner");
       await expect(banner).toBeVisible({ timeout: FIRST_PAINT_MS });
       await expect(page.getByRole("dialog")).toHaveCount(0);
-      await banner.getByRole("link", { name: "Start setup" }).click();
+      // Three of the fixture's six steps are already done, so the banner
+      // says so on a device that has never opened /setup: "Start setup"
+      // here was D5 (onboarding audit 2026-11-09), "5 of 6 steps done" on
+      // the dashboard under a banner offering to start.
+      await expect(banner).toContainText("Setup: 3 of 6 done.");
+      await expect(banner).not.toContainText("Start setup");
+      await banner.getByRole("link", { name: "Continue setup (3 of 6)" }).click();
 
       // The first step still open in the fixture, not step 1: the owner is
       // taken to the next thing to do.
