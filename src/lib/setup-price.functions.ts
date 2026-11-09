@@ -31,7 +31,6 @@ export const adoptSetupAreaPrice = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { requirePermission } = await import("@/lib/authz.server");
     const { orgId } = await requirePermission(supabase, userId, "manage_pricing");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the untyped supabase-js builder, as elsewhere in src/lib
     const db = supabase as any;
 
     // ── Standard pricing ──

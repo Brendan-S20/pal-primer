@@ -25,7 +25,6 @@
 // that column is the reply-to on customer email -- replies went to noreply@.
 
 /** The service-role client, typed only as far as this file uses it. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- the untyped supabase-js builder, as elsewhere in src/lib
 export type AdminClient = { from: (table: string) => any };
 
 /** The sign-up address as the business's contact email, where none is set. */
