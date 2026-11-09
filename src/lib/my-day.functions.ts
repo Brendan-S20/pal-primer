@@ -1,3 +1,4 @@
+import type { MissingVaccine } from "@/lib/pet-safety";
 import { createServerFn } from "@tanstack/react-start";
 import { orgToday } from "@/lib/org-day";
 import { formatDay } from "@/lib/format";
@@ -435,7 +436,21 @@ export const startVisit = createServerFn({ method: "POST" })
     // The same line the lock screen's Start writes (visit-activity.server.ts).
     const { logVisitStarted } = await import("@/lib/visit-activity.server");
     await logVisitStarted(context.supabase, { visitId: data.visitId, actorUserId: context.userId });
-    return { ok: true };
+    // The owner's vaccine Start rule (#729). Under "block" the RPC above has
+    // already refused; under "warn" (the default) the Start went ahead and
+    // the tech is told which pet is missing what. A failed lookup never
+    // undoes a Start that happened: it only means no warning is shown.
+    let vaccineWarnings: MissingVaccine[] = [];
+    try {
+      const { data: rows, error: gapError } = await context.supabase.rpc("visit_missing_vaccines", {
+        _visit_id: data.visitId,
+      });
+      if (gapError) throw gapError;
+      vaccineWarnings = rows ?? [];
+    } catch (e) {
+      console.warn("visit_missing_vaccines failed; the Start shows no vaccine warning", e);
+    }
+    return { ok: true, vaccineWarnings };
   });
 
 export const completeVisit = createServerFn({ method: "POST" })
