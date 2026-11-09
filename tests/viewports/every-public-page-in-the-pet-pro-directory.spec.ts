@@ -107,6 +107,16 @@ const PROFILES = [
   },
 ];
 
+const APPROVED_REVIEWS = [
+  {
+    rating: 5,
+    body: "They have not missed a single Tuesday in two years, and they always latch the side gate behind them. Our two shepherds love the walker.",
+    reviewed_at: "2026-10-12T15:00:00Z",
+  },
+  { rating: 4, body: "Good value.", reviewed_at: "2026-09-02T15:00:00Z" },
+  { rating: 5, body: "Fast, friendly, thorough.", reviewed_at: "2026-08-20T15:00:00Z" },
+];
+
 type Report = { leadPosts: Array<Record<string, unknown>> };
 
 /** The two directory server functions by name, and the lead POST. Anything
@@ -135,6 +145,9 @@ async function stubDirectory(context: BrowserContext): Promise<Report> {
     const raw = decodeURIComponent(route.request().url());
     let result: unknown = null;
     if (name === "searchDirectory") result = { profiles: PROFILES };
+    // What directory_public_reviews returns: APPROVED reviews only, with no
+    // reviewer identity. Three, so the written-out average is drawn too.
+    if (name === "getDirectoryReviews") result = { reviews: APPROVED_REVIEWS };
     if (name === "getDirectoryProfiles") {
       result = {
         profiles: PROFILES.filter((p) => raw.includes(`"${p.slug}"`) || raw.includes(p.slug)),
@@ -156,7 +169,7 @@ const PAGES = [
     path: "/pros/compare?slugs=wagging-tails,doo-be-gone,motor-city-scoop&line=pet_waste",
     marker: "Motor City Scoop",
   },
-  { key: "profile", path: "/pros/wagging-tails", marker: "Spring deep clean" },
+  { key: "profile", path: "/pros/wagging-tails", marker: "4.7 out of 5 from 3 reviews" },
   { key: "quote", path: "/pros/wagging-tails/quote?line=pet_waste", marker: "Send quote request" },
 ] as const;
 

@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { searchDirectory } from "@/lib/directory.functions";
 import {
   DIRECTORY_LINE_LABEL,
-  DIRECTORY_NAME,
   DIRECTORY_SEARCH_LINES,
   MAX_COMPARE,
   cleanZip,
@@ -22,7 +21,7 @@ import {
   type DirectoryProfile,
   type DirectorySearchLine,
 } from "@/lib/directory";
-import { appOrigin } from "@/lib/app-origin";
+import { DIRECTORY_BRAND, directoryOrigin } from "@/lib/directory-site";
 import { pageTitle } from "@/lib/page-title";
 
 // HoundStack's directory, the search (#630, phase 1): pick a service, type a
@@ -56,11 +55,11 @@ export const Route = createFileRoute("/pros/")({
   },
   head: () =>
     directoryHead({
-      title: pageTitle(DIRECTORY_NAME),
+      title: pageTitle("Find a pet pro", DIRECTORY_BRAND),
       description:
         "Find a pet service business near you, compare up to three, and ask for a quote. Every business listed is a HoundStack customer that chose to be listed.",
       path: "/pros",
-      origin: appOrigin(),
+      origin: directoryOrigin(),
     }),
   component: DirectorySearch,
 });

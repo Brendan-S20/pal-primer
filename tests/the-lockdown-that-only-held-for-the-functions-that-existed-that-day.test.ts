@@ -73,7 +73,7 @@ const codeOnly = (sql: string) =>
 
 // ── the intended anonymous surface, with a caller for each ────────────────
 //
-// Nine entries. A tenth must be added here, with a reason, before it can pass.
+// Ten entries. An eleventh must be added here, with a reason, before it can pass.
 const ALLOWED_FOR_ANON: Record<string, string> = {
   public_get_org_by_slug:
     "signup.functions.ts resolves a tenant from a public slug before any account exists",
@@ -90,6 +90,8 @@ const ALLOWED_FOR_ANON: Record<string, string> = {
     "directory.functions.ts (searchDirectory) finds published directory profiles by service and ZIP for a visitor (#630); published rows of live businesses only, public columns only, no organization id",
   directory_profiles_by_slug:
     "directory.functions.ts (getDirectoryProfiles) reads up to three published directory profiles for the profile, compare and quote pages (#630); same shape and gate as directory_search",
+  directory_public_reviews:
+    "directory-reviews.functions.ts (getDirectoryReviews) shows a visitor a profile's reviews (#630); APPROVED reviews of a published profile only, rating, text and date, no reviewer identity",
 };
 
 /** A migration that sweeps the whole catalog rather than naming functions —
@@ -100,7 +102,7 @@ const isSweep = (sql: string) =>
   /FROM\s+pg_proc/i.test(sql) && /REVOKE\s+ALL\s+ON\s+FUNCTION\s+%s\s+FROM\s+PUBLIC/i.test(sql);
 
 describe("the anonymous surface is a list, not an accident", () => {
-  it("is exactly the nine functions that have a caller, and no others", () => {
+  it("is exactly the ten functions that have a caller, and no others", () => {
     const files = migrations();
     const lastSweep = files.map((f) => isSweep(f.sql)).lastIndexOf(true);
     expect(

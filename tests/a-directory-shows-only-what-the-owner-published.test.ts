@@ -139,7 +139,7 @@ describe("the migration", () => {
     expect(body).toMatch(/AND s\.organization_id = _org/);
   });
 
-  it("is off by default, and builds nothing for reviews (phase 2)", () => {
+  it("is off by default, and leaves reviews to the next migration", () => {
     const s = sql();
     expect(s).toMatch(/published boolean NOT NULL DEFAULT false/);
     expect(s).not.toMatch(/CREATE TABLE[^;]*directory_review/);

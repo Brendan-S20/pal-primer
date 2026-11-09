@@ -35,7 +35,8 @@
 --   * directory_org_for_quote (service role only): the server's lookup from a
 --     published slug to the business a quote is for.
 --
--- REVIEWS ARE PHASE 2 and nothing for them is created here.
+-- REVIEWS are not created here: 20261110120100 adds them, held for
+-- moderation.
 --
 -- Replays into an empty database: tables, functions, policies and grants,
 -- then assertions about what this file creates. No rows are read or written.
@@ -388,7 +389,7 @@ BEGIN
     RAISE EXCEPTION 'a public directory function returns a private column';
   END IF;
   IF to_regclass('public.directory_reviews') IS NOT NULL THEN
-    RAISE WARNING 'directory_reviews exists; reviews are phase 2 and were not created by this file';
+    RAISE NOTICE 'directory_reviews already exists (20261110120100 creates it)';
   END IF;
 END
 $check$;

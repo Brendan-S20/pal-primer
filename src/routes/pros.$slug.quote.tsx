@@ -10,7 +10,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { getDirectoryProfiles } from "@/lib/directory.functions";
 import {
-  DIRECTORY_NAME,
   directoryHead,
   directoryLineLabel,
   directoryQuoteBody,
@@ -20,7 +19,7 @@ import {
   type DirectorySearchLine,
 } from "@/lib/directory";
 import { CALM_REFUSAL, ELAPSED_FIELD, HONEYPOT_FIELD } from "@/lib/public-form-guard";
-import { appOrigin } from "@/lib/app-origin";
+import { DIRECTORY_BRAND, directoryOrigin } from "@/lib/directory-site";
 import { pageTitle } from "@/lib/page-title";
 
 // Ask one directory business for a quote (#630, phase 1).
@@ -52,10 +51,10 @@ export const Route = createFileRoute("/pros/$slug/quote")({
   head: ({ loaderData, params }) => {
     const name = loaderData?.profile?.display_name;
     return directoryHead({
-      title: pageTitle("Request a quote", name, DIRECTORY_NAME),
+      title: pageTitle("Request a quote", name, DIRECTORY_BRAND),
       description: "Ask a pet service business for a quote through HoundStack's directory.",
       path: `/pros/${encodeURIComponent(params.slug)}/quote`,
-      origin: appOrigin(),
+      origin: directoryOrigin(),
     });
   },
   component: QuotePage,

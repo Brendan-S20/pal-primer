@@ -10,7 +10,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { getDirectoryProfiles } from "@/lib/directory.functions";
 import {
-  DIRECTORY_NAME,
   MAX_COMPARE,
   compareSlugs,
   directoryHead,
@@ -21,7 +20,7 @@ import {
   type DirectoryProfile,
   type DirectorySearchLine,
 } from "@/lib/directory";
-import { appOrigin } from "@/lib/app-origin";
+import { DIRECTORY_BRAND, directoryOrigin } from "@/lib/directory-site";
 import { pageTitle } from "@/lib/page-title";
 
 // Compare up to three directory profiles side by side (#630, phase 1).
@@ -54,10 +53,10 @@ export const Route = createFileRoute("/pros/compare")({
   },
   head: () =>
     directoryHead({
-      title: pageTitle("Compare", DIRECTORY_NAME),
+      title: pageTitle("Compare", DIRECTORY_BRAND),
       description: `Compare up to ${MAX_COMPARE} pet service businesses side by side.`,
       path: "/pros/compare",
-      origin: appOrigin(),
+      origin: directoryOrigin(),
     }),
   component: ComparePage,
 });

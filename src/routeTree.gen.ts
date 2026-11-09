@@ -40,6 +40,7 @@ import { Route as PlatformOverviewRouteImport } from './routes/platform.overview
 import { Route as PlatformInvoicesRouteImport } from './routes/platform.invoices'
 import { Route as PlatformInvitesRouteImport } from './routes/platform.invites'
 import { Route as PlatformHealthRouteImport } from './routes/platform.health'
+import { Route as PlatformDirectoryReviewsRouteImport } from './routes/platform.directory-reviews'
 import { Route as PlatformCouponsRouteImport } from './routes/platform.coupons'
 import { Route as PlatformAuditRouteImport } from './routes/platform.audit'
 import { Route as PlatformAnnouncementsRouteImport } from './routes/platform.announcements'
@@ -329,6 +330,12 @@ const PlatformHealthRoute = PlatformHealthRouteImport.update({
   path: '/health',
   getParentRoute: () => PlatformRoute,
 } as any)
+const PlatformDirectoryReviewsRoute =
+  PlatformDirectoryReviewsRouteImport.update({
+    id: '/directory-reviews',
+    path: '/directory-reviews',
+    getParentRoute: () => PlatformRoute,
+  } as any)
 const PlatformCouponsRoute = PlatformCouponsRouteImport.update({
   id: '/coupons',
   path: '/coupons',
@@ -1115,6 +1122,7 @@ export interface FileRoutesByFullPath {
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
+  '/platform/directory-reviews': typeof PlatformDirectoryReviewsRoute
   '/platform/health': typeof PlatformHealthRoute
   '/platform/invites': typeof PlatformInvitesRoute
   '/platform/invoices': typeof PlatformInvoicesRoute
@@ -1273,6 +1281,7 @@ export interface FileRoutesByTo {
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
+  '/platform/directory-reviews': typeof PlatformDirectoryReviewsRoute
   '/platform/health': typeof PlatformHealthRoute
   '/platform/invites': typeof PlatformInvitesRoute
   '/platform/invoices': typeof PlatformInvoicesRoute
@@ -1438,6 +1447,7 @@ export interface FileRoutesById {
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
+  '/platform/directory-reviews': typeof PlatformDirectoryReviewsRoute
   '/platform/health': typeof PlatformHealthRoute
   '/platform/invites': typeof PlatformInvitesRoute
   '/platform/invoices': typeof PlatformInvoicesRoute
@@ -1605,6 +1615,7 @@ export interface FileRouteTypes {
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
+    | '/platform/directory-reviews'
     | '/platform/health'
     | '/platform/invites'
     | '/platform/invoices'
@@ -1763,6 +1774,7 @@ export interface FileRouteTypes {
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
+    | '/platform/directory-reviews'
     | '/platform/health'
     | '/platform/invites'
     | '/platform/invoices'
@@ -1927,6 +1939,7 @@ export interface FileRouteTypes {
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
+    | '/platform/directory-reviews'
     | '/platform/health'
     | '/platform/invites'
     | '/platform/invoices'
@@ -2306,6 +2319,13 @@ declare module '@tanstack/react-router' {
       path: '/health'
       fullPath: '/platform/health'
       preLoaderRoute: typeof PlatformHealthRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/directory-reviews': {
+      id: '/platform/directory-reviews'
+      path: '/directory-reviews'
+      fullPath: '/platform/directory-reviews'
+      preLoaderRoute: typeof PlatformDirectoryReviewsRouteImport
       parentRoute: typeof PlatformRoute
     }
     '/platform/coupons': {
@@ -3484,6 +3504,7 @@ interface PlatformRouteChildren {
   PlatformAnnouncementsRoute: typeof PlatformAnnouncementsRoute
   PlatformAuditRoute: typeof PlatformAuditRoute
   PlatformCouponsRoute: typeof PlatformCouponsRoute
+  PlatformDirectoryReviewsRoute: typeof PlatformDirectoryReviewsRoute
   PlatformHealthRoute: typeof PlatformHealthRoute
   PlatformInvitesRoute: typeof PlatformInvitesRoute
   PlatformInvoicesRoute: typeof PlatformInvoicesRoute
@@ -3504,6 +3525,7 @@ const PlatformRouteChildren: PlatformRouteChildren = {
   PlatformAnnouncementsRoute: PlatformAnnouncementsRoute,
   PlatformAuditRoute: PlatformAuditRoute,
   PlatformCouponsRoute: PlatformCouponsRoute,
+  PlatformDirectoryReviewsRoute: PlatformDirectoryReviewsRoute,
   PlatformHealthRoute: PlatformHealthRoute,
   PlatformInvitesRoute: PlatformInvitesRoute,
   PlatformInvoicesRoute: PlatformInvoicesRoute,

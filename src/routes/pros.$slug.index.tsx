@@ -9,13 +9,11 @@ import {
 } from "@/components/directory/DirectoryProfileParts";
 import { Button } from "@/components/ui/button";
 import { getDirectoryProfiles } from "@/lib/directory.functions";
-import {
-  DIRECTORY_NAME,
-  directoryHead,
-  directoryLineLabel,
-  type DirectoryProfile,
-} from "@/lib/directory";
-import { appOrigin } from "@/lib/app-origin";
+import { getDirectoryReviews } from "@/lib/directory-reviews.functions";
+import type { PublicDirectoryReview } from "@/lib/directory-reviews";
+import { DirectoryReviews } from "@/components/directory/DirectoryReviews";
+import { directoryHead, directoryLineLabel, type DirectoryProfile } from "@/lib/directory";
+import { DIRECTORY_BRAND, directoryOrigin } from "@/lib/directory-site";
 import { pageTitle } from "@/lib/page-title";
 
 // One business's directory profile (#630, phase 1). Server-rendered, so the
@@ -25,8 +23,8 @@ import { pageTitle } from "@/lib/page-title";
 // business is the quote form, which lands in their /leads.
 //
 // noindex + self-canonical (directoryHead), whatever the root says. No
-// structured data and no stars: reviews are phase 2, and stars wait for 3+
-// published reviews even then.
+// structured data and no star graphic. Reviews show only once a HoundStack
+// moderator approves them; an average is written out from 3+ approved reviews.
 
 export const Route = createFileRoute("/pros/$slug/")({
   loader: async ({ params }) => {
@@ -35,20 +33,28 @@ export const Route = createFileRoute("/pros/$slug/")({
       const r = await getDirectoryProfiles({ data: { slugs: [params.slug] } });
       profile = r.profiles[0] ?? null;
     } catch {
-      return { profile: null as DirectoryProfile | null, failed: true };
+      return { profile: null as DirectoryProfile | null, reviews: null, failed: true };
     }
     if (!profile) throw notFound();
-    return { profile, failed: false };
+    // Approved reviews only; a failed read is "ask again in the browser",
+    // never "no reviews".
+    let reviews: PublicDirectoryReview[] | null = null;
+    try {
+      reviews = (await getDirectoryReviews({ data: { slug: params.slug } })).reviews;
+    } catch {
+      reviews = null;
+    }
+    return { profile, reviews, failed: false };
   },
   head: ({ loaderData, params }) => {
     const name = loaderData?.profile?.display_name;
     return directoryHead({
-      title: pageTitle(name, DIRECTORY_NAME),
+      title: pageTitle(name, DIRECTORY_BRAND),
       description: name
         ? `${name}: services, prices from, and the area they cover. Ask for a quote through HoundStack.`
         : "A pet service business listed in HoundStack's directory.",
       path: `/pros/${encodeURIComponent(params.slug)}`,
-      origin: appOrigin(),
+      origin: directoryOrigin(),
     });
   },
   component: DirectoryProfilePage,
@@ -63,6 +69,14 @@ function DirectoryProfilePage() {
     queryKey: ["directory-profile", slug],
     queryFn: () => fetchProfiles({ data: { slugs: [slug] } }).then((r) => r.profiles[0] ?? null),
     initialData: loaded.profile ?? undefined,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const fetchReviews = useServerFn(getDirectoryReviews);
+  const reviewsQ = useQuery({
+    queryKey: ["directory-reviews", slug],
+    queryFn: () => fetchReviews({ data: { slug } }).then((r) => r.reviews),
+    initialData: loaded.reviews ?? undefined,
     staleTime: 60_000,
     retry: false,
   });
@@ -124,6 +138,7 @@ function DirectoryProfilePage() {
                 business.
               </p>
             </section>
+            {reviewsQ.data ? <DirectoryReviews reviews={reviewsQ.data} /> : null}
           </div>
           <aside className="min-w-0 space-y-2">
             <h2 className="text-lg font-semibold">Where they work</h2>

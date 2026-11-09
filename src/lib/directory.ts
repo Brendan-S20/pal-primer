@@ -7,7 +7,7 @@
 // supabase/migrations/20261110120000_a-pet-owner-can-find-compare-and-ask-a-business-that-opted-in.sql.
 //
 // Phase 1: opt-in profiles, search by service + ZIP, compare up to three,
-// request a quote. Reviews are phase 2 and nothing here stands in for them.
+// request a quote. Reviews, held for moderation, are in lib/directory-reviews.ts.
 
 import { SERVICE_LINE_LABEL, type ServiceLine } from "@/lib/service-lines";
 
@@ -76,8 +76,6 @@ export const DIRECTORY_DISCLOSURE =
   "Every business listed here is a HoundStack customer that chose to be listed. " +
   "Profiles show only what each business confirmed. HoundStack is not affiliated with Angi or any other directory, " +
   "and businesses do not pay for placement.";
-
-export const DIRECTORY_NAME = "Find a pet pro";
 
 /** A ZIP as the search takes it: five digits, or null. */
 export function cleanZip(raw: unknown): string | null {
@@ -158,11 +156,12 @@ export function coverageLabel(
  * than leaning on the root's app-wide noindex: when a city is switched on for
  * search engines, it is this function, not __root.tsx, that changes.
  *
- * `indexable` is the per-city INDEXABLE flag, and it is OFF everywhere in
- * phase 1: no city has enough opted-in businesses for "compare" to mean
- * something yet (Detroit has one), and the domain is Brendan's call. Nothing
- * in phase 1 passes `true`; tests/a-directory-is-houndstacks-own.test.ts pins
- * that.
+ * `indexable` is the per-city INDEXABLE flag. It is off everywhere for now
+ * and nothing passes `true` (tests/a-directory-shows-only-what-the-owner-published.test.ts
+ * pins that); turning a city on is a separate, deliberate change. There is
+ * NO minimum number of businesses per city for listing: every business that
+ * opts in is listed and searchable (Brendan, 2026-11-09: "list as many
+ * businesses as possible"). The flag is only about search engines.
  */
 export function directoryHead(input: {
   title: string;

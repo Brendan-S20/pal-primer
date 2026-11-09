@@ -98,3 +98,72 @@ for (const { w, h, label } of WIDTHS) {
     }
   });
 }
+
+// The review moderation queue (#630): platform admins only, so the stub says
+// this session is one. A review long enough to wrap, and all three states.
+const QUEUE = [
+  {
+    id: "7d000000-0000-4000-8000-000000000001",
+    business_name: "Wagging Tails Professional Pet Waste Services",
+    profile_slug: "wagging-tails",
+    rating: 2,
+    body: "They skipped two weeks in October and nobody called. When they did come it was great, but I'd like a text when a visit is missed.",
+    status: "pending",
+    rejection_reason: null,
+    created_at: "2026-11-01T12:00:00Z",
+    updated_at: "2026-11-03T12:00:00Z",
+    moderated_at: null,
+    moderated_by: null,
+  },
+  {
+    id: "7d000000-0000-4000-8000-000000000002",
+    business_name: "Doo Be Gone",
+    profile_slug: "doo-be-gone",
+    rating: 5,
+    body: "Great.",
+    status: "pending",
+    rejection_reason: null,
+    created_at: "2026-11-02T12:00:00Z",
+    updated_at: "2026-11-02T12:00:00Z",
+    moderated_at: null,
+    moderated_by: null,
+  },
+];
+
+for (const { w, h, label } of WIDTHS) {
+  test(`${label}: the review moderation queue fits, keeps its controls, clips nothing`, async ({
+    page,
+    context,
+  }) => {
+    await installSignedInSession(context);
+    await installStubBackend(context, {
+      overrides: {
+        getPlatformContext: {
+          isPlatformAdmin: true,
+          userId: "00000000-0000-4000-8000-000000000001",
+        },
+        listDirectoryReviewQueue: { reviews: QUEUE },
+      },
+    });
+    await page.setViewportSize({ width: w, height: h });
+    await page.goto("/platform/directory-reviews");
+    await expect(page.getByRole("heading", { name: "Directory reviews" })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(page.getByText("They skipped two weeks in October")).toBeVisible();
+    await page.waitForTimeout(300);
+
+    const overflow = await measurePageOverflow(page);
+    expect(
+      overflow.scrollW,
+      `/platform/directory-reviews at ${w}px scrolls sideways`,
+    ).toBeLessThanOrEqual(overflow.innerW + 1);
+    expect(await findControlsOffTheSide(page)).toEqual([]);
+    expect(await findSilentlyClippedText(page)).toEqual([]);
+
+    if (SHOTS) {
+      mkdirSync(SHOTS, { recursive: true });
+      await page.screenshot({ path: join(SHOTS, `moderation-${w}.png`), fullPage: true });
+    }
+  });
+}

@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { Logo } from "@/components/Logo";
 import { PublicFooter } from "@/components/PublicFooter";
-import { DIRECTORY_DISCLOSURE, DIRECTORY_NAME } from "@/lib/directory";
+import { DIRECTORY_DISCLOSURE } from "@/lib/directory";
+import { DIRECTORY_BRAND } from "@/lib/directory-site";
 
 /**
  * The frame of every directory page (#630): HoundStack's mark linking back to
@@ -22,11 +23,11 @@ export function DirectoryShell({ children }: { children: ReactNode }) {
           <Link
             to="/pros"
             className="inline-flex min-h-11 min-w-0 items-center gap-3"
-            aria-label={`HoundStack: ${DIRECTORY_NAME}`}
+            aria-label={`${DIRECTORY_BRAND}, by HoundStack: search`}
           >
             <Logo variant="landscape" className="h-7 shrink-0 text-primary" />
             <span className="min-w-0 truncate text-sm font-medium text-muted-foreground">
-              {DIRECTORY_NAME}
+              {DIRECTORY_BRAND}
             </span>
           </Link>
         </div>
