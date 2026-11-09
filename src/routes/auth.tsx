@@ -12,7 +12,8 @@ import {
 } from "@/lib/ensure-workspace";
 import { checkEmailAccount } from "@/lib/auth-entry.functions";
 import { lookupInviteByToken } from "@/lib/platform-onboarding.functions";
-import { handOffSignupEmail } from "@/lib/signup-email";
+import { handOffSignupEmail, takeExistingAccount } from "@/lib/signup-email";
+import { clearRecovery, recoveryPending } from "@/lib/password-recovery";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -162,6 +163,21 @@ function AuthPage() {
     setStage("email");
   };
   const setInfo = (text: string) => setAlert({ kind: "info", text });
+  // Set when the person came from a sign-up form whose address already has an
+  // account (#765): the reset is offered as a button in the message, not only
+  // as the small link beside the password label.
+  const [offerReset, setOfferReset] = useState(false);
+  useEffect(() => {
+    const taken = takeExistingAccount();
+    if (!taken) return;
+    setEmail(taken);
+    setStage("password");
+    setOfferReset(true);
+    setAlert({
+      kind: "info",
+      text: "That email already has an account. Sign in with its password, or reset it if you don't know it.",
+    });
+  }, []);
 
   // An invitation link lands here as /auth?invite=<token>. Kept before
   // anything else runs: the OAuth round-trip returns to the site root with
@@ -237,6 +253,15 @@ function AuthPage() {
           });
         }
         return;
+      }
+
+      // A password-reset link is a sign-in, and it is not for landing (#765).
+      // Routed by membership it went to /no-workspace or a dashboard and the
+      // password was never asked for. Handed over BEFORE anything below reads
+      // user_roles: a password belongs to the account, not to a business.
+      if (identity.verified && recoveryPending()) {
+        clearRecovery();
+        return navigate({ to: "/reset-password" });
       }
 
       // Bootstrap is a write and needs a live user object and a network; both
@@ -476,15 +501,22 @@ function AuthPage() {
     }
   };
 
+  // Asks nothing about memberships, and must not: an account with no business
+  // is exactly who needs this most (#765).
   const forgotPassword = async () => {
     setAlert(null);
+    setOfferReset(false);
+    if (!emailValid) return setError("Enter your email address first.");
     setLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
       redirectTo: `${window.location.origin}/reset-password`,
     });
     setLoading(false);
-    if (error) setError(error.message);
-    else setInfo("Check your email for a reset link.");
+    if (error) {
+      setError(
+        `We couldn't send a reset email (${error.message}). Try again in a minute, or contact support.`,
+      );
+    } else setInfo(`Check ${email.trim()} for a reset link.`);
   };
 
   return (
@@ -555,6 +587,7 @@ function AuthPage() {
                 setStage("email");
                 setPassword("");
                 setAlert(null);
+                setOfferReset(false);
               }}
               className="w-full text-center text-xs text-muted-foreground underline underline-offset-2 hover:text-primary"
             >
@@ -700,6 +733,17 @@ function AuthPage() {
             {inviteRefused && (
               <Button type="button" variant="outline" size="sm" onClick={switchAccounts}>
                 Sign out and switch accounts
+              </Button>
+            )}
+            {offerReset && stage === "password" && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={forgotPassword}
+                disabled={loading}
+              >
+                Email me a reset link
               </Button>
             )}
           </div>

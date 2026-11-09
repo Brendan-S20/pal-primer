@@ -109,6 +109,14 @@ export const bootstrapOrganization = createServerFn({ method: "POST" })
     });
     if (error) throw new Error(error.message);
 
+    // The signup is finished: from here on an empty user_roles means the
+    // person was taken off a business, not that theirs was never built
+    // (#765, lib/signup-marker.ts).
+    if (orgId) {
+      const { clearSignupMarker } = await import("@/lib/signup-marker");
+      await clearSignupMarker(supabaseAdmin, userId);
+    }
+
     // The line the visitor came for (site-r2-03 / F-06). Only for somebody who
     // had no business before this call -- an idempotent re-run for an existing
     // org is not a signup -- and never at the cost of the signup: a failure

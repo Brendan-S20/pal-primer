@@ -21,11 +21,15 @@ import { appOrigin, appUrl } from "@/lib/app-origin";
 import { THEME_BOOT_SCRIPT, applyTheme, followSystemTheme, readThemePref } from "@/lib/theme";
 import { RootRecovery } from "@/components/RootRecovery";
 import { markAppMounted } from "@/lib/app-mounted";
+import { noteRecoveryFromUrl } from "@/lib/password-recovery";
 
 // Error monitoring starts here, at module load on the client, so it is armed
 // before hydration rather than after the first effect. Off (no download, no
 // request) in dev and test; see lib/monitoring/config.ts.
 if (typeof window !== "undefined") initClientMonitoring();
+// Before supabase-js clears the hash: a reset link's session must reach
+// /reset-password, not the membership routing on /auth (#765).
+noteRecoveryFromUrl();
 
 function NotFoundComponent() {
   return (
