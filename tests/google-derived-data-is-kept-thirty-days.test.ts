@@ -22,6 +22,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   GOOGLE_CACHE_DAYS,
+  GOOGLE_REFRESH_DAYS,
   inferClientPointSource,
   isGoogleGeocodeDue,
   isGoogleRoadLegDue,
@@ -122,8 +123,18 @@ function fakeAdmin(tables: Record<string, Row[]>) {
 // ── The rule itself ─────────────────────────────────────────────────────────
 
 describe("which Google-derived values are due", () => {
-  it("is thirty days", () => {
+  it("is thirty days at most, and refresh starts a week inside that", () => {
     expect(GOOGLE_CACHE_DAYS).toBe(30);
+    expect(GOOGLE_REFRESH_DAYS).toBe(23);
+  });
+
+  it("a Google pin is due for refresh from 23 days, not 30", () => {
+    expect(isGoogleGeocodeDue({ geocode_source: "google", geocoded_at: daysAgo(24) }, NOW)).toBe(
+      true,
+    );
+    expect(isGoogleGeocodeDue({ geocode_source: "google", geocoded_at: daysAgo(22) }, NOW)).toBe(
+      false,
+    );
   });
 
   it("a Google pin older than 30 days is due; a newer one is not", () => {
@@ -133,7 +144,7 @@ describe("which Google-derived values are due", () => {
     expect(
       isGoogleGeocodeDue({ geocode_source: "google_places", geocoded_at: daysAgo(45) }, NOW),
     ).toBe(true);
-    expect(isGoogleGeocodeDue({ geocode_source: "google", geocoded_at: daysAgo(29) }, NOW)).toBe(
+    expect(isGoogleGeocodeDue({ geocode_source: "google", geocoded_at: daysAgo(5) }, NOW)).toBe(
       false,
     );
   });
@@ -299,9 +310,14 @@ describe("the pin refresh", () => {
   // Product review 5828450331: the first version cleared on ANY failure, so
   // one typo in GEOCODING_PROVIDER, or a Google outage on the 07:23 run,
   // would have blanked every due pin that morning.
-  it("keeps a due pin and retries it tomorrow when nobody answered, within the 7-day grace", async () => {
+  it("keeps a due pin under 30 days and retries it tomorrow when nobody answered", async () => {
     const table = pins();
-    const before = { ...table.find((p) => p.id === "places-old")! }; // 31 days old
+    // 25 days old: due (23+) but inside the 30-day limit.
+    Object.assign(
+      table.find((p) => p.id === "places-old")!,
+      { geocoded_at: daysAgo(25) },
+    );
+    const before = { ...table.find((p) => p.id === "places-old")! };
     const { admin } = fakeAdmin({ properties: table });
     let n = 0;
     const r = await refreshGooglePins(admin, {
@@ -316,17 +332,33 @@ describe("the pin refresh", () => {
     expect(r.pinsRetrying).toBe(1);
   });
 
-  it("clears a pin past 30 + 7 days even while the geocoder is failing", async () => {
+  // Product review 5829303569: the grace used to run 7 days PAST the 30.
+  it("clears a pin at 30 days even while the geocoder is failing -- never kept past 30", async () => {
     const table = pins();
     const { admin } = fakeAdmin({ properties: table });
     const r = await refreshGooglePins(admin, {
       now: () => NOW,
       geocode: async () => ({ point: null, source: null, failed: true }),
     });
-    // google-old is 40 days old: past the grace. places-old (31) is not.
+    // google-old is 40 days old and places-old 31: both past the limit.
     expect(table.find((p) => p.id === "google-old")).toMatchObject(CLEARED);
-    expect(table.find((p) => p.id === "places-old")).toMatchObject({ latitude: 2 });
-    expect(r).toMatchObject({ pinsCleared: 1, pinsRetrying: 1 });
+    expect(table.find((p) => p.id === "places-old")).toMatchObject(CLEARED);
+    expect(r).toMatchObject({ pinsCleared: 2, pinsRetrying: 0 });
+  });
+
+  it("selects a 24-day Google pin for refresh, and refreshes it when the geocoder answers", async () => {
+    const table = pins();
+    Object.assign(
+      table.find((p) => p.id === "google-new")!,
+      { geocoded_at: daysAgo(24) },
+    );
+    const { admin } = fakeAdmin({ properties: table });
+    const r = await refreshGooglePins(admin, { now: () => NOW, geocode: async () => found(7) });
+    expect(r.pinsRefreshed).toBe(3);
+    expect(table.find((p) => p.id === "google-new")).toMatchObject({
+      latitude: 7,
+      geocoded_at: NOW.toISOString(),
+    });
   });
 
   it("never touches a newer Google pin or a pin from any other source", async () => {

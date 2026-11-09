@@ -16,7 +16,9 @@
 //     geocode.server.ts) and "google_places" (a Places Details lookup, the
 //     address search box). Routes API drive times are road_legs rows with
 //     source "google".
-//   * Expiry is 30 days after the value was fetched.
+//   * Nothing Google-derived is kept past 30 days after it was fetched. A pin
+//     is refreshed from 23 days on, so a failing geocoder gets a week of
+//     daily retries INSIDE the 30; at 30 it is cleared regardless.
 //   * Everything else is NEVER touched by expiry: Geocodio, Nominatim, a pin a
 //     person placed ("manual"), the demo seed, and -- deliberately -- a point
 //     whose source is unknown (NULL: every row written before this column
@@ -41,25 +43,30 @@ export const GOOGLE_GEOCODE_SOURCES: readonly GeocodeSource[] = ["google", "goog
 /** road_legs.source for a Routes API answer (the routing adapter's id). */
 export const GOOGLE_ROAD_LEG_SOURCE = "google";
 
-/** How long a Google-derived value may be kept before it is refreshed or dropped. */
+/** The most a Google-derived value is ever kept. A HARD limit: Google road
+ *  legs are deleted at it, and a Google pin is cleared at it whatever the
+ *  geocoder is doing. */
 export const GOOGLE_CACHE_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** How long a due Google pin may wait for a geocoder that is FAILING (an
- *  outage, a refused key, an invalid setting) before it is cleared anyway.
- *  A pin is retried daily in that window rather than blanked on the first bad
- *  morning; past it, the 30-day rule wins over keeping the point. */
-export const GOOGLE_RETRY_GRACE_DAYS = 7;
+/** When a Google pin starts being refreshed: 7 days BEFORE the limit, so a
+ *  failing geocoder (an outage, a refused key, an invalid setting) gets a
+ *  week of daily retries inside the 30 days rather than after them.
+ *
+ *  Product review 5829303569: the previous version put that week AFTER the
+ *  30 days (pins due at 30, kept to 37 while failing), which knowingly held
+ *  Google data past the limit during an outage. The window is inside now.
+ *  The cost is a refresh every ~23 days instead of every 30. */
+export const GOOGLE_REFRESH_DAYS = GOOGLE_CACHE_DAYS - 7;
 
-/** The instant before which a due pin is cleared even if the geocoder is
- *  failing: 30 + 7 days. */
+/** The instant before which a Google-derived value must be gone: 30 days. */
 export function googleHardCutoff(now: Date = new Date()): Date {
-  return new Date(now.getTime() - (GOOGLE_CACHE_DAYS + GOOGLE_RETRY_GRACE_DAYS) * DAY_MS);
+  return new Date(now.getTime() - GOOGLE_CACHE_DAYS * DAY_MS);
 }
 
-/** The instant before which a Google-derived value is due. */
+/** The instant before which a Google pin is due for refresh: 23 days. */
 export function googleCacheCutoff(now: Date = new Date()): Date {
-  return new Date(now.getTime() - GOOGLE_CACHE_DAYS * DAY_MS);
+  return new Date(now.getTime() - GOOGLE_REFRESH_DAYS * DAY_MS);
 }
 
 /** A known source string, or null for anything else (an unregistered
@@ -75,8 +82,8 @@ export function isGoogleGeocodeSource(v: unknown): boolean {
   return (GOOGLE_GEOCODE_SOURCES as readonly unknown[]).includes(v);
 }
 
-/** Is this stored property point due for refresh-or-clear? Exactly the filter
- *  the daily job's query applies (google-cache-expiry.server.ts). */
+/** Is this stored property point due for refresh (23 days)? Exactly the
+ *  filter the daily job's query applies (google-cache-expiry.server.ts). */
 export function isGoogleGeocodeDue(
   row: { geocode_source?: string | null; geocoded_at?: string | null },
   now: Date = new Date(),
@@ -94,7 +101,7 @@ export function isGoogleRoadLegDue(
 ): boolean {
   if (row.source !== GOOGLE_ROAD_LEG_SOURCE || !row.fetched_at) return false;
   const at = Date.parse(row.fetched_at);
-  return Number.isFinite(at) && at < googleCacheCutoff(now).getTime();
+  return Number.isFinite(at) && at < googleHardCutoff(now).getTime();
 }
 
 /** The provenance columns to write alongside a new point. `source` null means

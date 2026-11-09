@@ -12,18 +12,21 @@
 //                 keeps its existing rule (prune_road_legs, 90 days, weekly).
 //
 //   properties    A pin with geocode_source 'google' or 'google_places' and
-//                 geocoded_at more than 30 days ago is RE-GEOCODED with the
+//                 geocoded_at more than 23 days ago is RE-GEOCODED with the
 //                 configured provider. Found: new point, new source, new
 //                 clock. A provider ANSWERED "no match": the point is
 //                 CLEARED (latitude, longitude, source and time to NULL), and
 //                 "Geocode addresses" on the Routes page will look for it
 //                 again like any unpinned property. Nobody answered (an
 //                 outage, a refused key, an invalid GEOCODING_PROVIDER, a
-//                 thrown error): the pin is left and retried tomorrow, for up
-//                 to GOOGLE_RETRY_GRACE_DAYS (7) past its 30 days; after
-//                 that it is cleared anyway. Product review 5828450331
-//                 caught the first version clearing on any failure, which
-//                 let one typo in a setting blank 500 pins in a morning. A pin from any other source -- Geocodio,
+//                 thrown error): the pin is left and retried tomorrow while it
+//                 is under 30 days old, and cleared at 30 whatever the
+//                 geocoder says, so no Google pin is ever kept past 30 days.
+//                 Product review 5828450331 caught the first version
+//                 clearing on any failure (one typo in a setting would blank
+//                 500 pins in a morning); 5829303569 caught the second
+//                 holding failing pins to 37 days. The retry week is now
+//                 inside the 30: refresh starts at 23 (GOOGLE_REFRESH_DAYS). A pin from any other source -- Geocodio,
 //                 Nominatim, a person, the demo seed, or unknown -- is never
 //                 selected.
 //
@@ -37,8 +40,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   GOOGLE_GEOCODE_SOURCES,
   GOOGLE_ROAD_LEG_SOURCE,
-  googleCacheCutoff,
   googleHardCutoff,
+  googleCacheCutoff,
   provenancePatch,
 } from "@/lib/geocode-source";
 import type { AddressParts, SourcedGeocode } from "@/lib/geocode.server";
@@ -53,8 +56,8 @@ export type ExpirySummary = {
   pinsCleared: number;
   /** Changed by somebody else between the read and the write: left alone. */
   pinsSkipped: number;
-  /** The geocoder did not answer; kept, and retried tomorrow (within the
-   *  7-day grace). */
+  /** The geocoder did not answer; kept, and retried tomorrow (only while
+   *  the pin is under 30 days old). */
   pinsRetrying: number;
   /** Due, but the run's time budget ran out first: still due tomorrow. */
   pinsDeferred: number;
@@ -70,7 +73,7 @@ export async function purgeGoogleRoadLegs(
     .from("road_legs")
     .delete({ count: "exact" })
     .eq("source", GOOGLE_ROAD_LEG_SOURCE)
-    .lt("fetched_at", googleCacheCutoff(now).toISOString());
+    .lt("fetched_at", googleHardCutoff(now).toISOString());
   return { deleted: count ?? 0, error: error?.message ?? null };
 }
 
@@ -158,7 +161,7 @@ export async function refreshGooglePins(
         out.pinsRetrying += 1;
         continue;
       }
-      // Past the grace: the 30-day rule wins over keeping the point.
+      // At 30 days the limit wins over keeping the point.
     }
     const patch = found.point
       ? {
@@ -197,7 +200,7 @@ export async function expireGoogleDerivedData(
   const legs = await purgeGoogleRoadLegs(admin, now);
   const pins = await refreshGooglePins(admin, deps);
   return {
-    cutoff: googleCacheCutoff(now).toISOString(),
+    cutoff: googleHardCutoff(now).toISOString(),
     roadLegsDeleted: legs.deleted,
     ...pins,
     errors: [...(legs.error ? [`road_legs: ${legs.error}`] : []), ...pins.errors],
