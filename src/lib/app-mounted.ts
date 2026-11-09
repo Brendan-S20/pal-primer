@@ -72,6 +72,81 @@ export async function settleAfterFirstCommit<T>(work: () => Promise<T>): Promise
   }
 }
 
+/** Has React committed the app's first render? */
+export function isAppMounted(): boolean {
+  return mounted;
+}
+
+// ── THE THIRD PATH, AND ONE FIX FOR ALL OF THEM ──────────────────────────
+//
+// Two paths into the same race were closed one at a time: the hydration
+// pendingMinMs timer (a-timer-that-beat-the-first-render.test.ts, 2026-10-08)
+// and the beforeLoad's own answer (settleAfterFirstCommit above, 2026-10-10).
+// A third is still open, and the second fix widens it: while a route's
+// beforeLoad is still pending after `pendingMs`, router-core's
+// setupPendingTimeout fires triggerOnReady -> onReady -> router.startTransition
+// to show the pending component. _authenticated's beforeLoad now waits for the
+// first commit, so on a slow first render that timer fires first. The stack,
+// captured on 2026-11-09 in the QA-list E2E spec (#733) and reproduced on main
+// at 6 of 16 hard loads of /my-schedule and /review:
+//
+//   dispatchSetState <- Transitioner.router.startTransition <- onReady
+//   <- triggerOnReady <- (setTimeout)
+//
+// Rather than chase each caller, guard the one function they all reach.
+// <Transitioner> assigns router.startTransition during its render, closing
+// over its own setState; a call to THAT function before the app's first
+// commit is exactly the setState on a fiber that never mounted.
+//
+// Before the first commit, guardRouterStartTransition therefore runs the
+// router's update itself, the way router-core's own default does before any
+// <Transitioner> exists (`(fn) => fn()`), and leaves Transitioner's setState
+// out of it. Nothing is held back or queued. That matters: an earlier version
+// of this guard (c1ed7ce6) waited for the first commit instead, and waiting is
+// a deadlock whenever the first commit cannot happen without the very update
+// being held (a root route still pending in a build with no server render,
+// the native app). Running the update now cannot wait on anything.
+//
+// What is skipped is only Transitioner's `isTransitioning` flag for a
+// transition that started before it committed: router state itself is
+// updated at once, and every store subscriber reads it when it mounts. After
+// the first commit every call goes to Transitioner's function, unchanged.
+
+type StartTransition = (fn: () => void) => void;
+
+/**
+ * Install the guard on a router (client only; see above). Returns the router.
+ * Idempotent per router.
+ */
+export function guardRouterStartTransition<R extends { startTransition: StartTransition }>(
+  router: R,
+): R {
+  const marked = router as R & { __startTransitionGuarded?: boolean };
+  if (marked.__startTransitionGuarded) return router;
+  marked.__startTransitionGuarded = true;
+  // The router's constructor default, used until <Transitioner> replaces it.
+  const routerDefault: StartTransition = router.startTransition;
+  let current: StartTransition = routerDefault;
+  let fromRender = false;
+  Object.defineProperty(router, "startTransition", {
+    configurable: true,
+    enumerable: true,
+    get(): StartTransition {
+      return (fn) => {
+        // Assigned by a render that has not committed: do the router's work
+        // now, without that render's setState.
+        if (fromRender && !mounted) return routerDefault(fn);
+        return current(fn);
+      };
+    },
+    set(next: StartTransition) {
+      current = next;
+      fromRender = true;
+    },
+  });
+  return router;
+}
+
 /** Test seam: back to "nothing has committed". */
 export function resetAppMountedForTests(): void {
   mounted = false;
