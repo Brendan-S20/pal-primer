@@ -9,7 +9,16 @@ import {
   Preview,
   Text,
 } from "@react-email/components";
-import { styles, fmtMoney, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
+import {
+  styles,
+  fmtMoney,
+  OrgFooter,
+  type OrgContact,
+  TenantHeader,
+  howToReach,
+  cap,
+  sentence,
+} from "./_shared";
 import type { TemplateEntry } from "./registry";
 
 // A quote, sent by the office pressing Send. The email is a cover note and a
@@ -67,7 +76,7 @@ const QuoteSent = ({
             <>
               Hi {clientName}, a reminder that your quote from {orgName}
               {title ? <> for {title}</> : null} ({quoteLabel}) is still waiting for an answer.
-              Questions? Just reply to this email.
+              Questions? {sentence(cap(howToReach({ ...orgContact, orgName })))}
             </>
           ) : (
             <>

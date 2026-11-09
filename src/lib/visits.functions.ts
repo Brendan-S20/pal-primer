@@ -4,7 +4,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
 import { resolveCaller } from "@/lib/authz.server";
-import { canOfficeComplete } from "@/lib/visit-lifecycle";
+import { canOfficeComplete, officeCompleteOverrideAsk } from "@/lib/visit-lifecycle";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   // Through the shared gate, so a person whose access is turned off is
@@ -37,7 +37,7 @@ export const listVisitsForDay = createServerFn({ method: "GET" })
     let q = supabase
       .from("visits")
       .select(
-        "id, scheduled_on, status, sequence, assigned_staff_id, zone_id, property_id, client_id, subscription_id, start_time, duration_min, eta_start, eta_end, travel_km, travel_min, window_violated, weather_flagged, weather_note, skip_reason, skip_reason_code, clients(display_name), properties(street, city, postal_code, latitude, longitude, earliest_service_time, latest_service_time, service_duration_min), zones(name, postal_prefix), staff(display_name), subscriptions(price_cents, account_type, frequency, weekdays, preferred_time_of_day, earliest_time, latest_time, stay_id, stays(kind, starts_on, ends_on)), service_id, services(name, service_line, default_duration_min)",
+        "id, scheduled_on, status, sequence, assigned_staff_id, zone_id, property_id, client_id, subscription_id, start_time, duration_min, eta_start, eta_end, travel_km, travel_min, window_violated, weather_flagged, weather_note, skip_reason, skip_reason_code, clients(display_name), properties(street, city, postal_code, latitude, longitude, earliest_service_time, latest_service_time, service_duration_min), zones(name, postal_prefix), staff(display_name), subscriptions(price_cents, account_type, frequency, weekdays, preferred_time_of_day, earliest_time, latest_time, stay_id, stays(kind, starts_on, ends_on), groom_addons), service_id, services(name, service_line, default_duration_min)",
       )
       .eq("organization_id", orgId);
     q =
@@ -607,13 +607,26 @@ export const correctVisitTimestamps = createServerFn({ method: "POST" })
 // TECH (and complete requires a photo). These office variants call the
 // office_* SQL functions (can_write_org inside) and log to the timeline.
 
-async function loadVisitForOfficeAction(supabase: any, userId: string, visitId: string) {
+async function loadVisitForOfficeAction(
+  supabase: any,
+  userId: string,
+  visitId: string,
+  // Complete and Cancel can bill (office_complete_visit invoices a completed
+  // visit, office_skip_visit applies the business's skip-charge rules), so
+  // they stay manage_client_billing. A move bills nothing and keeps the
+  // visit's price, so it asks for manage_schedule, which a dispatcher holds
+  // (#728). The default is the strict one: a new caller that forgets to say
+  // is refused, not let through.
+  permission: "manage_client_billing" | "manage_schedule" = "manage_client_billing",
+) {
   const { requirePermission } = await import("@/lib/authz.server");
-  await requirePermission(supabase, userId, "manage_client_billing");
+  const caller = await requirePermission(supabase, userId, permission);
   const { data: v, error } = await supabase
     .from("visits")
     .select("id, organization_id, client_id, property_id, scheduled_on, status, updated_at")
     .eq("id", visitId)
+    // The caller's own business, said out loud as well as left to RLS.
+    .eq("organization_id", caller.orgId)
     .single();
   if (error) throw new Error(error.message);
   return v as {
@@ -638,6 +651,10 @@ export const completeVisitFromOffice = createServerFn({ method: "POST" })
         visitId: z.string().uuid(),
         /** The person confirmed a visit on a later day was done early (#654). */
         confirmedEarly: z.boolean().optional(),
+        /** Why the office is completing a visit with no completion photo, or
+         *  with required checklist items nobody checked (#658, F-15). Asked
+         *  only when the database says one is missing. */
+        overrideReason: z.string().trim().min(1).max(250).optional(),
       })
       .parse(d),
   )
@@ -669,8 +686,15 @@ export const completeVisitFromOffice = createServerFn({ method: "POST" })
     const pushRoutes = await watchRouteLiveActivities([data.visitId]);
     const { error } = await (supabase as any).rpc("office_complete_visit", {
       _visit_id: data.visitId,
+      ...(data.overrideReason ? { _override_reason: data.overrideReason } : {}),
     });
-    if (error) throw new Error(error.message);
+    if (error) {
+      // No photo, or a required checklist item unchecked: the same gate the
+      // tech's Complete has. Not an error to the person; a question (#658).
+      const ask = officeCompleteOverrideAsk(error.message);
+      if (ask && !data.overrideReason) return { ok: false as const, needsOverride: ask };
+      throw new Error(error.message);
+    }
     await watch.finish();
     await pushRoutes();
     const { logActivity } = await import("@/lib/activity.server");
@@ -680,12 +704,15 @@ export const completeVisitFromOffice = createServerFn({ method: "POST" })
       propertyId: v.property_id,
       actorUserId: userId,
       kind: "visit.completed",
-      summary: `Marked the visit on ${v.scheduled_on} completed from the office`,
+      summary: data.overrideReason
+        ? `Marked the visit on ${v.scheduled_on} completed from the office without its photo or checklist: ${data.overrideReason}`
+        : `Marked the visit on ${v.scheduled_on} completed from the office`,
+      ...(data.overrideReason ? { meta: { override_reason: data.overrideReason } } : {}),
     });
     // A lesson that leaves one session on its package. Never throws.
     const { afterLessonSessionChange } = await import("@/lib/training-portal.server");
     await afterLessonSessionChange(data.visitId);
-    return { ok: true };
+    return { ok: true as const };
   });
 
 /** Move a scheduled visit to a new date. Wraps the reschedule_visit RPC
@@ -704,7 +731,8 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
+    // Routes are the dispatcher's job (#728): a move takes manage_schedule.
+    const v = await loadVisitForOfficeAction(supabase, userId, data.visitId, "manage_schedule");
     // Somebody else changed the visit since this drawer loaded it: refused
     // before anyone is told about a move (#655).
     refuseIfChanged(v.updated_at, data.expectedUpdatedAt);

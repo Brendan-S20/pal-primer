@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { appOrigin } from "@/lib/app-origin";
+import { linkOrigin } from "@/lib/app-origin";
 import { titleHead } from "@/lib/page-title";
 import {
   Select,
@@ -76,9 +76,10 @@ export const Route = createFileRoute("/_authenticated/settings/online-signup")({
   component: SignupAndQuoteFormSettings,
 });
 
-const APP_ORIGIN = appOrigin();
-
 function SignupAndQuoteFormSettings() {
+  // linkOrigin(), read at render: the host this app is running on, so the
+  // link and embed code on a dev or staging build point at that build.
+  const APP_ORIGIN = linkOrigin();
   const qc = useQueryClient();
   const getFn = useServerFn(getSignupSettings);
   const setFn = useServerFn(setSignupSettings);

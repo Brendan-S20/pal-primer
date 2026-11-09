@@ -1,5 +1,6 @@
 import * as React from "react";
 import { render } from "react-email";
+import { EMAIL_TEXT_OPTIONS } from "@/lib/email/plain-text";
 import { Webhook } from "standardwebhooks";
 import { createClient } from "@supabase/supabase-js";
 import { createFileRoute } from "@tanstack/react-router";
@@ -158,7 +159,7 @@ export const Route = createFileRoute("/email/auth/webhook")({
 
         const element = React.createElement(EmailTemplate, templateProps);
         const html = await render(element);
-        const text = await render(element, { plainText: true });
+        const text = await render(element, EMAIL_TEXT_OPTIONS);
 
         const supabaseServiceKey =
           process.env.SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;

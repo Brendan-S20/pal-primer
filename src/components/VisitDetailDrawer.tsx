@@ -1,4 +1,5 @@
 import i18n from "@/lib/i18n";
+import { completeFromOffice, useOfficeCompleteOverride } from "@/components/OfficeCompleteOverride";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
@@ -178,6 +179,10 @@ export function VisitDetailDrawer({
   // business runs.
   const { petWaste: businessRunsPetWaste } = useServiceLines();
   const canActFromOffice = can("manage_client_billing");
+  // Moving a visit to another day is routes work, not billing (#728):
+  // rescheduleVisitFromOffice asks for manage_schedule, which a dispatcher
+  // holds. Complete and Cancel can bill and stay on canActFromOffice.
+  const canMoveDay = can("manage_schedule");
 
   // Q-12, narrowest useful answer. Below 768px the dnd board is display:none
   // and there is no other way to move a visit, so a dispatcher on a phone
@@ -186,11 +191,11 @@ export function VisitDetailDrawer({
   //
   // Reassign for every office role: reassign_visit authorizes on
   // can_write_org, which all three pass. Moving the day is here too since
-  // 2026-09-28, for the roles that hold manage_client_billing (which
-  // rescheduleVisitFromOffice requires, so a dispatcher still does not see
-  // it). Before that it said "is on desktop", and an owner in a driveway with
-  // a customer asking for Thursday had no way to do it. Reorder stays on the
-  // board; it has no meaning without one.
+  // 2026-09-28, and for a dispatcher since #728 (manage_schedule, which
+  // rescheduleVisitFromOffice requires). Before that it said "is on
+  // desktop", and an owner in a driveway with a customer asking for Thursday
+  // had no way to do it. Reorder stays on the board; it has no meaning
+  // without one.
   const doReassign = useServerFn(reassignVisit);
   const listStaffFn = useServerFn(listStaff);
   const { data: staffData } = useQuery({
@@ -358,10 +363,17 @@ export function VisitDetailDrawer({
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // No photo or checklist: the office says why, or the visit stays open (#658).
+  const { askWhy, dialog: overrideDialog } = useOfficeCompleteOverride();
   const completeMut = useMutation({
     mutationFn: (confirmedEarly: boolean) =>
-      doComplete({ data: { visitId: visitId!, confirmedEarly } }),
-    onSuccess: () => {
+      completeFromOffice(
+        (overrideReason) =>
+          doComplete({ data: { visitId: visitId!, confirmedEarly, overrideReason } }),
+        askWhy,
+      ),
+    onSuccess: (done) => {
+      if (!done) return;
       toast.success("Visit completed");
       invalidate();
       onOpenChange(false);
@@ -422,6 +434,7 @@ export function VisitDetailDrawer({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       {earlyDialog}
+      {overrideDialog}
       {/* Safe area, top and bottom. Measured on an iPhone 17 Pro 2026-08-25:
           Close occupied y 8-52 and the title y 24-52 against a 54pt status
           bar, so the clock printed through the client name and the battery
@@ -706,7 +719,7 @@ export function VisitDetailDrawer({
                     </span>
                   </button>
                 )}
-                {canActFromOffice && (
+                {canMoveDay && (
                   <form
                     className="space-y-1 pt-2"
                     onSubmit={(e) => {

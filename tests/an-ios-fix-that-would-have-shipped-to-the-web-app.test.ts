@@ -154,8 +154,9 @@ describe("what the hosted app still gets", () => {
     }
   });
 
-  it("the sign-in bounce it always had", () => {
-    const src = codeOnly(read("src/routes/auth.tsx"));
-    expect(src).toMatch(/supabase\.auth\.getUser\(\)\s*\.then/);
-  });
+  // "The sign-in bounce it always had" was pinned here until #661. That bounce
+  // was a bare getUser() that stopped on a failed request, which parked a
+  // signed-in web user on /auth with the API down until a reload. The web now
+  // lands through the shared resolver; see
+  // tests/a-web-cold-start-with-the-api-down.test.ts.
 });

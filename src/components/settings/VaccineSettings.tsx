@@ -8,6 +8,7 @@ import { REQUIRED_VACCINES, VACCINE_LABELS, type VaccineRule } from "@/lib/vacci
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { VaccineStartRuleSettings } from "@/components/settings/VaccineStartRuleSettings";
 
 export function VaccineSettings() {
   const get = useServerFn(getVaccineSettings);
@@ -19,11 +20,14 @@ export function VaccineSettings() {
       </p>
     );
   return q.data?.enabled ? (
-    <VaccineSettingsForm
-      key={`${q.data.rule}:${q.data.required.join(",")}:${q.data.bufferMin}`}
-      initial={q.data}
-      refresh={() => q.refetch()}
-    />
+    <>
+      <VaccineSettingsForm
+        key={`${q.data.rule}:${q.data.required.join(",")}:${q.data.bufferMin}`}
+        initial={q.data}
+        refresh={() => q.refetch()}
+      />
+      <VaccineStartRuleSettings />
+    </>
   ) : null;
 }
 

@@ -52,6 +52,7 @@ import {
   deletePropertyIfNoHistory,
 } from "@/lib/properties.functions";
 import { PetVaccines } from "@/components/client-detail/PetVaccines";
+import { PetSafetyLog } from "@/components/PetSafetyLog";
 import { listDogsForClient } from "@/lib/clients.functions";
 import { addDog, updateDog } from "@/lib/dogs.functions";
 import { deriveYardSize, YARD_SIZE_LABELS } from "@/lib/yard-size";
@@ -647,6 +648,14 @@ function PropertyCard({
                   ) : (
                     <span>No gate code</span>
                   )}
+                  {p.access_notes && (
+                    <span
+                      className="min-w-0 max-w-full [overflow-wrap:anywhere]"
+                      data-testid="property-access-notes"
+                    >
+                      Access notes: <bdi className="text-foreground">{p.access_notes}</bdi>
+                    </span>
+                  )}
                   {isAccessMethod(p.access_method) && (
                     <span>
                       Way in:{" "}
@@ -978,6 +987,7 @@ export function DogsSection({
             </span>
            </div>
             <PetVaccines dogId={d.id} name={d.name} />
+            <PetSafetyLog dogId={d.id} name={d.name} />
             {sitting && careFor !== d.id && careSummary(careData?.care?.[d.id]) && (
               <p className="mt-1 text-xs text-muted-foreground">
                 Care: {careSummary(careData?.care?.[d.id])}

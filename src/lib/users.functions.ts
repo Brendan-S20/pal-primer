@@ -33,13 +33,39 @@ export const listOrgUsers = createServerFn({ method: "GET" })
     return { users: data ?? [] };
   });
 
+/**
+ * D7 (#659, decided by Brendan 2026-11-02): only an owner turns a person on
+ * or off, or changes anybody's role -- and so only an owner can make somebody
+ * an owner. Settings -> Users already showed these controls to the owner
+ * alone; setStaffActive did not ask at all, so an office manager could
+ * deactivate any teammate through it. The database refuses the same things
+ * (set_staff_active, change_user_role, and the restrictive policies on staff
+ * in 20261102140000); this is the readable sentence, not the only lock.
+ */
+export const ONLY_AN_OWNER_TURNS_PEOPLE_ON_OR_OFF = "Only an owner can turn people on or off.";
+export const ONLY_AN_OWNER_CHANGES_ROLES = "Only an owner can change roles.";
+
+async function requireOwner(
+  supabase: unknown,
+  userId: string,
+  refusal: string,
+): Promise<{ orgId: string }> {
+  const caller = await resolveCaller(supabase, userId);
+  if (caller.role !== "owner") throw new Error(refusal);
+  return { orgId: caller.orgId };
+}
+
 const roleEnum = z.enum(["owner", "office_manager", "dispatcher", "tech"]);
 
 export const changeUserRole = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ userId: z.string().uuid(), role: roleEnum }).parse(d))
   .handler(async ({ data, context }) => {
-    const orgId = await resolveOrgId(context.supabase, context.userId);
+    const { orgId } = await requireOwner(
+      context.supabase,
+      context.userId,
+      ONLY_AN_OWNER_CHANGES_ROLES,
+    );
     const { error } = await context.supabase.rpc("change_user_role", {
       _org_id: orgId,
       _user_id: data.userId,
@@ -67,12 +93,17 @@ export const setStaffActive = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ staffId: z.string().uuid(), active: z.boolean() }).parse(d))
   .handler(async ({ data, context }) => {
+    // Owner only (D7, #659), asked before anything is read or written.
+    const { orgId } = await requireOwner(
+      context.supabase,
+      context.userId,
+      ONLY_AN_OWNER_TURNS_PEOPLE_ON_OR_OFF,
+    );
     // Enabling somebody past the plan's team-size cap is refused here, before
     // the write, with the sentence the owner needs (NP-10). The database
     // trigger staff_team_size_cap refuses it too, for callers that reach the
     // RPC without this function. Turning somebody OFF is never refused.
     if (data.active) {
-      const orgId = await resolveOrgId(context.supabase, context.userId);
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
       const { data: row } = await (supabaseAdmin as any)
         .from("staff")
@@ -107,7 +138,6 @@ export const setStaffActive = createServerFn({ method: "POST" })
     // than theirs.
     let seats: SeatOutcome = { state: "unknown" };
     try {
-      const orgId = await resolveOrgId(context.supabase, context.userId);
       const { syncOrgSeatQuantity } = await import("@/lib/seat-sync.server");
       const r = await syncOrgSeatQuantity(orgId);
       seats =
@@ -184,16 +214,118 @@ async function inviteLink(token: string): Promise<string> {
   return appUrl(`/invite/${encodeURIComponent(token)}`);
 }
 
+/**
+ * Renew a pending invite to a full lifetime and email its link again. Shared
+ * by Resend and by Send invite for an address that already has a pending
+ * invite under the same role (R2-32): that is a resend, not a new link.
+ */
+async function renewAndResend(
+  supabase: any,
+  orgId: string,
+  invite: { id: string; email: string; role: string; token: string; expires_at: string | null },
+): Promise<{ emailSent: boolean; expiresAt: string; link: string }> {
+  // Renew to a full lifetime, the same 14 days a new invite gets, and never
+  // earlier than it already had: this used to set now + 7 days, so pressing
+  // Resend on a day-old invite took a week off it (gaps-r2-10).
+  const { resentInviteExpiry } = await import("@/lib/invite-copy");
+  const expiresAt = resentInviteExpiry(invite.expires_at);
+  const { error: renewError } = await supabase
+    .from("org_invites")
+    .update({ expires_at: expiresAt })
+    .eq("id", invite.id)
+    .eq("organization_id", orgId);
+  if (renewError) throw new Error(renewError.message);
+
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("name")
+    .eq("id", orgId)
+    .maybeSingle();
+  // The token matters most on THIS path: resend is what somebody presses when
+  // the first email did not arrive, and an invitee whose account already
+  // existed can only join through the link.
+  const emailSent = await sendInviteEmail(
+    (org as any)?.name ?? "HoundStack",
+    invite.email,
+    invite.role,
+    invite.token,
+  );
+  return { emailSent, expiresAt, link: await inviteLink(invite.token) };
+}
+
+type TeamMember = { email: string | null; role: string | null; active: boolean | null };
+
+/** The people already on this team, by email, for the R2-32 refusal: the same
+ *  list Settings -> Users draws. manage_users is owner or office manager, the
+ *  two roles list_org_users answers. */
+async function teamMembers(supabase: any, orgId: string): Promise<TeamMember[]> {
+  const { data, error } = await supabase.rpc("list_org_users", { _org_id: orgId });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as TeamMember[];
+}
+
 export const createOrgInvite = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
-    z.object({ email: z.string().trim().email().max(255), role: inviteRoleEnum }).parse(d),
+    z
+      .object({
+        email: z.string().trim().email().max(255),
+        role: inviteRoleEnum,
+        // Set only after the person answered yes to "Replace it with ...?".
+        replace: z.boolean().optional(),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     const { requirePermission } = await import("@/lib/authz.server");
-    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_users");
+    const { orgId, role: callerRole } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "manage_users",
+    );
     const email = data.email.toLowerCase();
+
+    // R2-32: refuse the inviter's own address and anyone already on the team,
+    // and never replace a pending invite under another role without asking.
+    // Decided here and not only on the Team page, so every caller gets it.
+    const { inviteDecision } = await import("@/lib/invite-copy");
+    // The token's own email. If a token ever lacks one, the member check below
+    // still refuses: the inviter is on this team.
+    const callerEmail = (context.claims as { email?: unknown } | undefined)?.email;
+    const { data: pendingRows, error: pendingError } = await (context.supabase as any)
+      .from("org_invites")
+      .select("id, email, role, token, expires_at, created_at")
+      .eq("organization_id", orgId)
+      .eq("status", "pending");
+    if (pendingError) throw new Error(pendingError.message);
+    const decision = inviteDecision({
+      email,
+      role: data.role,
+      callerEmail: typeof callerEmail === "string" ? callerEmail : null,
+      callerIsOwner: callerRole === "owner",
+      members: await teamMembers(context.supabase, orgId),
+      // Compared without case: an older row may have been stored as typed.
+      pending: (pendingRows ?? []) as any[],
+      replace: data.replace === true,
+    });
+    if (decision.kind === "refuse") throw new Error(decision.message);
+    if (decision.kind === "ask") {
+      // Nothing written. The Team page asks, and calls again with replace.
+      return {
+        replaceQuestion: { email, currentRole: decision.invite.role, role: data.role },
+      };
+    }
+
     await requireDemoInviteAddress(context.supabase, orgId, email);
+
+    if (decision.kind === "resend") {
+      // Same address, same role: the invite they already have, sent again
+      // with 14 more days, rather than a new link that kills the first.
+      const invite = decision.invite as any;
+      const r = await renewAndResend(context.supabase, orgId, invite);
+      return { id: invite.id as string, resent: true, ...r };
+    }
+
     // No invite past the plan's team-size cap (NP-10): the person would
     // arrive to an account with no room for them.
     const { assertRoomForAnotherUser } = await import("@/lib/team-size.server");
@@ -201,13 +333,17 @@ export const createOrgInvite = createServerFn({ method: "POST" })
     const crypto = await import("node:crypto");
     const token = crypto.randomBytes(24).toString("hex");
 
-    // Supersede any existing pending invite for this email in this org.
-    await (context.supabase as any)
-      .from("org_invites")
-      .update({ status: "revoked" })
-      .eq("organization_id", orgId)
-      .eq("email", email)
-      .eq("status", "pending");
+    // Supersede the pending invite for this address, which the person has
+    // just agreed to replace (decision.supersede is empty otherwise).
+    for (const old of decision.supersede) {
+      const { error: revokeError } = await (context.supabase as any)
+        .from("org_invites")
+        .update({ status: "revoked" })
+        .eq("id", old.id)
+        .eq("organization_id", orgId)
+        .eq("status", "pending");
+      if (revokeError) throw new Error(revokeError.message);
+    }
 
     const { data: row, error } = await (context.supabase as any)
       .from("org_invites")
@@ -234,7 +370,12 @@ export const createOrgInvite = createServerFn({ method: "POST" })
       data.role,
       row.token as string,
     );
-    return { id: row.id as string, emailSent, link: await inviteLink(row.token as string) };
+    return {
+      id: row.id as string,
+      resent: false,
+      emailSent,
+      link: await inviteLink(row.token as string),
+    };
   });
 
 // Re-send the invite email for a still-pending invite and refresh its expiry.
@@ -246,7 +387,7 @@ export const resendOrgInvite = createServerFn({ method: "POST" })
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_users");
     const { data: invite, error } = await (context.supabase as any)
       .from("org_invites")
-      .select("email, role, status, token")
+      .select("email, role, status, token, expires_at")
       .eq("id", data.id)
       .eq("organization_id", orgId)
       .maybeSingle();
@@ -254,29 +395,8 @@ export const resendOrgInvite = createServerFn({ method: "POST" })
     if (!invite) throw new Error("Invite not found");
     if (invite.status !== "pending") throw new Error("Only pending invites can be resent");
     await requireDemoInviteAddress(context.supabase, orgId, invite.email as string);
-
-    // Push the expiry out so a resent invite isn't immediately stale.
-    await (context.supabase as any)
-      .from("org_invites")
-      .update({ expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() })
-      .eq("id", data.id)
-      .eq("organization_id", orgId);
-
-    const { data: org } = await context.supabase
-      .from("organizations")
-      .select("name")
-      .eq("id", orgId)
-      .maybeSingle();
-    // The token matters most on THIS path: resend is what somebody presses when
-    // the first email did not arrive, and an invitee whose account already
-    // existed can only join through the link.
-    const emailSent = await sendInviteEmail(
-      (org as any)?.name ?? "HoundStack",
-      invite.email as string,
-      invite.role as string,
-      invite.token as string,
-    );
-    return { ok: true, emailSent, link: await inviteLink(invite.token as string) };
+    const r = await renewAndResend(context.supabase, orgId, { ...invite, id: data.id });
+    return { ok: true, ...r };
   });
 
 export const listOrgInvites = createServerFn({ method: "GET" })

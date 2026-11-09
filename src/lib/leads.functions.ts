@@ -4,8 +4,6 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { LEAD_SOURCE, normalizeFormConfig } from "@/lib/new-customer-form";
 import { DETAIL_ASKS, MAX_EARLIEST_START_DAYS } from "@/lib/booking-details";
-import type { ZoneMatchFields } from "@/lib/zone-match";
-import type { DrawnZoneZips } from "@/lib/lead-service-area";
 
 const FORM_SOURCES = [LEAD_SOURCE.quoteRequest, LEAD_SOURCE.onlineSignup];
 
@@ -124,10 +122,6 @@ export const setLeadFormConfig = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-function prefixed(b: { south: number; west: number; north: number; east: number }) {
-  return { _south: b.south, _west: b.west, _north: b.north, _east: b.east };
-}
-
 export const listLeads = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -148,61 +142,16 @@ export const listLeads = createServerFn({ method: "GET" })
     // its shape holds (src/lib/lead-service-area.ts). A failed zone read
     // leaves every lead "unknown", and a failed center lookup leaves that
     // zone unsure, so the list still loads and nothing is called outside on
-    // a guess.
-    const { data: zones, error: zonesErr } = await context.supabase
-      .from("zones")
-      .select(
-        "id, priority, account_type, postal_prefix, zip_codes, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, enabled",
-      )
-      .eq("organization_id", orgId);
-    if (zonesErr) console.error("leads service area lookup failed", orgId, zonesErr);
-    const { leadServiceArea, zoneShape, drawnZoneZips, zipFromLocation } =
-      await import("@/lib/lead-service-area");
-    const { searchBox, MAX_CANDIDATES } = await import("@/lib/zone-zip-fill");
-    // A zone that is turned off (#449) serves nobody new, so it does not make a
-    // lead "inside".
-    const zoneRows = ((zones ?? []) as unknown as ZoneMatchFields[]).filter(
-      (z) => z.enabled !== false,
+    // a guess. The reads live in lead-service-area.server.ts, which the
+    // public quote request uses too (R2-25).
+    const { leadServiceAreas } = await import("@/lib/lead-service-area.server");
+    const rows = data ?? [];
+    const areas = await leadServiceAreas(
+      context.supabase,
+      orgId,
+      rows.map((l) => l.location),
     );
-    const drawn = new Map<string, DrawnZoneZips | null>();
-    const anyLeadZip = (data ?? []).some((l) => zipFromLocation(l.location) != null);
-    if (!zonesErr && anyLeadZip) {
-      await Promise.all(
-        zoneRows.map(async (z) => {
-          const shape = zoneShape(z);
-          if (!shape) return;
-          const box = searchBox(shape);
-          if (!box || box.north - box.south > 10 || box.east - box.west > 10) {
-            drawn.set(z.id, null);
-            return;
-          }
-          const { data: rows, error: cErr } = await (context.supabase as any).rpc(
-            "zip_centroids_in_box",
-            { _org_id: orgId, ...prefixed(box), _limit: MAX_CANDIDATES },
-          );
-          if (cErr) {
-            console.error("leads zone ZIP centers lookup failed", z.id, cErr);
-            drawn.set(z.id, null);
-            return;
-          }
-          const centroids = (
-            (rows ?? []) as Array<{ zip: string; lat: number; lng: number; radius_m: number }>
-          ).map((r) => ({
-            zip: r.zip,
-            lat: Number(r.lat),
-            lng: Number(r.lng),
-            radiusM: Number(r.radius_m),
-          }));
-          drawn.set(z.id, drawnZoneZips(shape, centroids, centroids.length >= MAX_CANDIDATES));
-        }),
-      );
-    }
-    return (data ?? []).map((l) => ({
-      ...l,
-      service_area: zonesErr
-        ? ("unknown" as const)
-        : leadServiceArea(l.location, zoneRows, drawn),
-    }));
+    return rows.map((l, i) => ({ ...l, service_area: areas[i] }));
   });
 
 // Converting a lead opens the new-client wizard started from it

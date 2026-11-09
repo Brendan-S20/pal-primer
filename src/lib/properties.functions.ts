@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   ACCESS_CODE_MAX,
+  ACCESS_NOTES_MAX,
   ACCESS_METHODS,
   ALARM_NOTES_MAX,
   KEY_TAG_MAX,
@@ -41,6 +42,8 @@ const createPropSchema = z.object({
   // editor who could not load the codes does not wipe it.
   gateCode: z.string().max(ACCESS_CODE_MAX).nullable().optional(),
   parkingNotes: z.string().max(1000).optional(),
+  // Absent leaves the stored access notes alone; null clears them (#680).
+  accessNotes: z.string().max(ACCESS_NOTES_MAX).nullable().optional(),
   // Provider-resolved coordinates (skip Nominatim when present) + whether
   // the address came from the search provider or manual entry.
   latitude: z.number().min(-90).max(90).optional(),
@@ -159,6 +162,7 @@ export const createProperty = createServerFn({ method: "POST" })
         postal_code: data.postalCode,
         gate_code: data.gateCode || null,
         parking_notes: data.parkingNotes || null,
+        access_notes: data.accessNotes?.trim() || null,
         address_source: data.addressSource ?? "manual",
         auto_zone_id: autoZoneId,
         zone_id: autoZoneId,
@@ -321,6 +325,9 @@ export const updateProperty = createServerFn({ method: "POST" })
         postal_code: data.postalCode,
         ...(gateCodeSent ? { gate_code: nextGateCode } : {}),
         parking_notes: data.parkingNotes || null,
+        ...(data.accessNotes !== undefined
+          ? { access_notes: data.accessNotes?.trim() || null }
+          : {}),
         address_source: data.addressSource ?? "manual",
         ...zonePatch,
         invisible_fence: !!data.invisibleFence,

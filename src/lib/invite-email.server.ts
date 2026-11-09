@@ -62,6 +62,7 @@ export async function sendInviteEmail(
     const label = role.replace(/_/g, " ");
     const React = await import("react");
     const { render } = await import("react-email");
+    const { EMAIL_TEXT_OPTIONS } = await import("@/lib/email/plain-text");
     const { TeamInviteEmail } = await import("@/lib/email-templates/team-invite");
     const element = React.createElement(TeamInviteEmail, {
       orgName,
@@ -70,7 +71,7 @@ export async function sendInviteEmail(
       link,
     });
     const html = await render(element);
-    const text = await render(element, { plainText: true });
+    const text = await render(element, EMAIL_TEXT_OPTIONS);
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },

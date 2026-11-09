@@ -117,7 +117,9 @@ describe("the workflow runs on the files it tests", () => {
 
   it("admits every integration DB test and the script that runs them", () => {
     const paths = pullRequestPaths();
-    expect(paths).toEqual(expect.arrayContaining(["tests/integration/*.db.test.ts", "tests/run-db-tests.sh"]));
+    expect(paths).toEqual(
+      expect.arrayContaining(["tests/integration/*.db.test.ts", "tests/run-db-tests.sh"]),
+    );
 
     const script = read("tests/run-db-tests.sh");
     const uncovered = readdirSync(join(root, "tests/integration"))
@@ -126,6 +128,31 @@ describe("the workflow runs on the files it tests", () => {
       .filter((f) => !script.includes(f) && !script.includes("tests/integration/*.db.test.ts"));
 
     expect(uncovered).toEqual([]);
+  });
+
+  it("admits and routes every support module a DB test imports (#683)", () => {
+    // A DB test's outcome is decided by what it imports as much as by its
+    // own file: every-select-embed-resolves sends whatever select-embeds.ts
+    // collects. A change to one of these has to start the database job.
+    const paths = pullRequestPaths();
+    const gate = gateScript();
+    const imported = new Set<string>();
+    for (const f of readdirSync(join(root, "tests/integration"))) {
+      if (!f.endsWith(".db.test.ts")) continue;
+      for (const m of read(`tests/integration/${f}`).matchAll(/from "\.\.\/support\/([\w-]+)"/g))
+        imported.add(`tests/support/${m[1]}.ts`);
+    }
+    expect(imported.size).toBeGreaterThanOrEqual(4);
+    expect(imported).toContain("tests/support/select-embeds.ts");
+    const missing = [...imported].filter(
+      (f) =>
+        !paths.includes(f) ||
+        !new RegExp(`(^|[\\s|])${f.replace(/[.]/g, "\\.")}[|)]`, "m").test(gate),
+    );
+    expect(
+      missing,
+      `${missing.join(", ")}: not admitted by the trigger or not routed to the database job`,
+    ).toEqual([]);
   });
 
   it("lets the browser sweep reach a pull request", () => {

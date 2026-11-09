@@ -13,6 +13,13 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <!-- native-r2-01: DayNight follows system dark mode, which gives LIGHT
+             status-bar icons. The page under them is the cream/white sign-in
+             screen until JS boots and initStatusBar() takes over, so in dark
+             mode the clock was white on white. Dark icons from the first frame;
+             initStatusBar() still switches them if the app itself is dark. -->
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">@color/splashBackground</item>
     </style>
 
 

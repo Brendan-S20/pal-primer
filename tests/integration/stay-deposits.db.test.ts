@@ -65,11 +65,47 @@ async function credit(clientId: string) {
   return r.data?.credit_balance_cents;
 }
 
-const payDeposit = async (id: string) =>
+/** Marks an invoice paid with no payment row: what "the rest, in cash" meant
+ *  to these tests before payments had a ledger. */
+const markPaid = async (id: string) =>
   expect(
     (await org.admin.from("invoices").update({ status: "paid", paid_at: new Date().toISOString() }).eq("id", id))
       .error,
   ).toBeNull();
+
+/** Pays a deposit the way markInvoicePaidFromStripe does: the status, then
+ *  the payment row. Since D3 (#653) the payment row is what counts: a linked
+ *  deposit's payment is part payment of its stay invoice, not account credit. */
+const payDeposit = async (id: string) => {
+  await markPaid(id);
+  const inv = await org.admin.from("invoices").select("total_cents").eq("id", id).single();
+  expect(
+    (
+      await org.admin.from("payments").insert({
+        invoice_id: id,
+        organization_id: org.orgId,
+        amount_cents: inv.data!.total_cents,
+        currency: "usd",
+        status: "succeeded",
+        paid_at: new Date().toISOString(),
+        stripe_payment_intent_id: `pi_deposit_${randomUUID()}`,
+      })
+    ).error,
+  ).toBeNull();
+};
+
+/** A deposit as it was before D3 (#653): not linked to its stay, so paying it
+ *  posts account credit. Deposits paid before 20261102160000 are left like
+ *  this, so the credit cases below still describe real money. */
+const legacy = async (depositId: string) =>
+  expect(
+    (await org.admin.from("invoices").update({ deposit_for_invoice_id: null }).eq("id", depositId)).error,
+  ).toBeNull();
+
+async function paidOn(id: string) {
+  const r = await org.admin.from("invoices").select("amount_paid_cents").eq("id", id).single();
+  return r.data?.amount_paid_cents;
+}
 
 describe.skipIf(!dbEnabled)("a stay deposit when the stay is canceled", () => {
   beforeAll(async () => {
@@ -124,7 +160,10 @@ describe.skipIf(!dbEnabled)("a stay deposit when the stay is canceled", () => {
   it("canceled later, a paid deposit pays the fee from the client's credit", async () => {
     const s = await booked(3);
     await payDeposit(s.depositId);
-    expect(await credit(s.clientId)).toBe(10000);
+    // D3: the paid deposit is part payment of the stay, not credit, until the
+    // cancel releases it to credit, which then pays the fee.
+    expect(await credit(s.clientId)).toBe(0);
+    expect(await paidOn(s.invoiceId)).toBe(10000);
     const r = await org.owner.client.rpc("cancel_stay", { _stay_id: s.stayId });
     expect(r.error).toBeNull();
     const feeId = (r.data as any).fee_invoice_id as string;
@@ -160,7 +199,10 @@ describe.skipIf(!dbEnabled)("a stay deposit when the stay is canceled", () => {
     ).toBeNull();
   });
 
-  describe("when the deposit's credit was already spent", () => {
+  // Deposits paid before D3 (#653) became account credit and stay that way:
+  // the backfill links only deposits not yet paid. These cases are that money,
+  // so each deposit is unlinked first.
+  describe("when the deposit's credit was already spent (a deposit paid before D3)", () => {
     /** What the client still has to pay: open and draft invoices, less the
      *  credit already applied to them. */
     async function owed(clientId: string) {
@@ -208,6 +250,7 @@ describe.skipIf(!dbEnabled)("a stay deposit when the stay is canceled", () => {
 
     it("spent on another invoice, a late cancel keeps the deposit once: the other invoice was paid with it", async () => {
       const s = await booked(3);
+      await legacy(s.depositId);
       await payDeposit(s.depositId);
       const other = await otherInvoice(s.clientId);
       await applyCredit(other, 10000);
@@ -230,6 +273,7 @@ describe.skipIf(!dbEnabled)("a stay deposit when the stay is canceled", () => {
 
     it("spent on another invoice, an early cancel gives nothing back a second time", async () => {
       const s = await booked(10);
+      await legacy(s.depositId);
       await payDeposit(s.depositId);
       const other = await otherInvoice(s.clientId);
       await applyCredit(other, 10000);
@@ -245,6 +289,7 @@ describe.skipIf(!dbEnabled)("a stay deposit when the stay is canceled", () => {
 
     it("spent on another invoice, the office refunding anyway does not mint credit", async () => {
       const s = await booked(3);
+      await legacy(s.depositId);
       await payDeposit(s.depositId);
       await applyCredit(await otherInvoice(s.clientId), 10000);
       expect(await cancel(s.stayId, true)).toEqual({ deposit: "refunded", fee_invoice_id: null });
@@ -254,6 +299,7 @@ describe.skipIf(!dbEnabled)("a stay deposit when the stay is canceled", () => {
 
     it("partly spent on another invoice, a late cancel bills only the part that is gone", async () => {
       const s = await booked(3);
+      await legacy(s.depositId);
       await payDeposit(s.depositId);
       const other = await otherInvoice(s.clientId, 4000);
       await applyCredit(other, 4000);
@@ -270,6 +316,7 @@ describe.skipIf(!dbEnabled)("a stay deposit when the stay is canceled", () => {
 
     it("applied to the stay invoice, a late cancel keeps the deposit and bills nothing", async () => {
       const s = await booked(3);
+      await legacy(s.depositId);
       await payDeposit(s.depositId);
       await applyCredit(s.invoiceId, 10000);
       expect(await owed(s.clientId)).toBe(STAY_TOTAL - 10000);
@@ -286,6 +333,7 @@ describe.skipIf(!dbEnabled)("a stay deposit when the stay is canceled", () => {
 
     it("applied to the stay invoice, an early cancel returns the deposit as credit once", async () => {
       const s = await booked(10);
+      await legacy(s.depositId);
       await payDeposit(s.depositId);
       await applyCredit(s.invoiceId, 10000);
 
@@ -304,9 +352,10 @@ describe.skipIf(!dbEnabled)("a stay deposit when the stay is canceled", () => {
 
     it("applied to a stay invoice paid in full, a late cancel credits the stay less the kept deposit", async () => {
       const s = await booked(3);
+      await legacy(s.depositId);
       await payDeposit(s.depositId);
       await applyCredit(s.invoiceId, 10000);
-      await payDeposit(s.invoiceId); // the rest, in cash
+      await markPaid(s.invoiceId); // the rest, in cash
 
       const r = await cancel(s.stayId);
       expect(r.deposit).toBe("kept");
@@ -319,9 +368,10 @@ describe.skipIf(!dbEnabled)("a stay deposit when the stay is canceled", () => {
 
     it("applied to a stay invoice paid in full, an early cancel credits the stay once", async () => {
       const s = await booked(10);
+      await legacy(s.depositId);
       await payDeposit(s.depositId);
       await applyCredit(s.invoiceId, 10000);
-      await payDeposit(s.invoiceId);
+      await markPaid(s.invoiceId);
 
       expect(await cancel(s.stayId)).toEqual({ deposit: "refunded", fee_invoice_id: null });
       expect(await credit(s.clientId)).toBe(STAY_TOTAL);

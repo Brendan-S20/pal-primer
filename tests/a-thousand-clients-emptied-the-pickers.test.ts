@@ -7,7 +7,8 @@
 // One-off visit pickers. A 1,000-row import took 19 min 47 s.
 //
 // The acceptance this pins:
-//   * at 1,000 and 5,000 clients /clients answers in under 2 s;
+//   * at 1,000 and 5,000 clients /clients answers in under 2 s, which is
+//     asserted as round trips counted, not as time on the test machine;
 //   * the pickers find clients (not empty);
 //   * no request URL is over 2 KB;
 //   * a 1,000-row import is minutes at most, not twenty.
@@ -16,7 +17,7 @@
 // that answers like PostgREST, so the URLs measured are the URLs production
 // sends, not a reconstruction of them.
 
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
@@ -65,6 +66,7 @@ import {
   clientMatchesQuery,
   clientSearchOrFilter,
   fold,
+  searchAnchor,
 } from "@/lib/client-search";
 import { filterRoster, rosterStats, rosterTags } from "@/lib/client-roster";
 import { fetchAllPagesConcurrently, idChunks } from "@/lib/supabase-paging.server";
@@ -106,6 +108,10 @@ function book(n: number) {
       organization_id: "org",
       client_id: c.id,
       street: i === 7 ? "4400 N Ravenswood Ave" : `${100 + i} Oak Street`,
+      // R2-27: a ZIP and a town are searched too. One client has them, so a
+      // search by either has one answer.
+      postal_code: i === 7 ? "60640" : null,
+      city: i === 7 ? "Chicago" : null,
       created_at: c.created_at,
       archived_at: null,
     },
@@ -192,6 +198,25 @@ async function firstLoad() {
 
 const timings: string[] = [];
 
+// Every handler here loads its helpers with `await import(...)` before its
+// first request. Cold, on a loaded runner, one of those can take longer than
+// the fake's latency, so the summary's first request went out after the
+// page's had been answered and roundTrips read 2 where production makes 1
+// (#683: "expected 2 to be 1" at 1,000 clients, the first case in the file,
+// cleared by re-running). A server process loads these once, so the
+// question is about a warm one. Loaded here, once, on a small book; after
+// this nothing between a handler starting and its requests leaving waits on
+// a timer, so which requests go out side by side is decided by the code
+// alone and not by how fast the machine is.
+beforeAll(async () => {
+  useBook(60);
+  await firstLoad();
+  await listClientsPage({ data: { q: "client 4", status: "outstanding" } });
+  await listClients();
+  await searchClients({ data: {} });
+  await searchClients({ data: { q: "street 4" } });
+});
+
 describe("/clients at 1,000 and 5,000 clients", () => {
 
   it.each([1_000, 5_000])("opens in under 2 s at %i clients", async (n) => {
@@ -207,8 +232,8 @@ describe("/clients at 1,000 and 5,000 clients", () => {
     // side by side: one round trip, and a second only when the tags run past
     // a thousand rows. Counted, not timed: a wall-clock ceiling near the
     // fake's latency failed on a loaded CI runner (609 ms against 480) with
-    // the same requests, because it also measured this fake's own CPU.
-    expect(took).toBeLessThan(2_000);
+    // the same requests, because it also measured this fake's own CPU. The
+    // 2 s is what this count buys in production; the time is logged below.
     expect(roundTrips(seen)).toBe(n > 1_000 ? 2 : 1);
     expect(seen.filter((r) => r.url.includes("limit=50"))).toHaveLength(1);
     expect(tablesRead()).toEqual(["clients", "invoices"]);
@@ -255,7 +280,7 @@ describe("/clients at 1,000 and 5,000 clients", () => {
     // Two round trips: the candidates (by name and by street, side by side),
     // then the page's rows.
     expect(seen).toHaveLength(3);
-    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(roundTrips(seen)).toBe(2);
   });
 
   it("'Has balance' reads the clients with an open invoice, not the book", async () => {
@@ -284,6 +309,10 @@ describe("/clients at 1,000 and 5,000 clients", () => {
       { q: "second lot" },
       { q: "ravenswood" },
       { q: "555-0199" },
+      { q: "60640" },
+      { q: "chicago" },
+      { q: "#48213" },
+      { q: "job48213" },
       { status: "no_plan", type: "residential", q: "oak" },
     ];
     for (const f of cases) {
@@ -444,6 +473,10 @@ describe("the pickers and Cmd-K search on the server", () => {
     ["3125550199", "a phone number as bare digits"],
     ["job-48213", "the id a Jobber import carried"],
     ["4400 ravenswood", "a street number and name"],
+    ["60640", "the ZIP"],
+    ["Chicago", "the town"],
+    ["#48213", "the id with a hash in front"],
+    ["JOB48213", "the id without its dash"],
   ])("finds a client by %s (%s)", async (q) => {
     useBook(5_000);
     const r = await searchClients({ data: { q, limit: 6 } });
@@ -456,12 +489,12 @@ describe("the pickers and Cmd-K search on the server", () => {
     // "street" (the longest word, so the one the database filters on) is on
     // every address. "4999" is on one: client 4899's, far down the list by
     // name. A fixed first batch of 80 never reached it.
-    const started = Date.now();
     const r = await searchClients({ data: { q: "street 4999", limit: 6 } });
     expect(r.clients.map((c: any) => c.street)).toContain("4999 Oak Street");
     // Batches that double: a handful of round trips, not one per 80 rows.
+    // Counted, so a slow machine cannot fail it (it read 9 sequential trips
+    // when this was written, about 1.1 s against a 60 ms database).
     expect(seen.length).toBeLessThanOrEqual(12);
-    expect(Date.now() - started).toBeLessThan(2_000);
   });
 
   it("keeps the longest possible query under 2 KB", async () => {
@@ -471,8 +504,41 @@ describe("the pickers and Cmd-K search on the server", () => {
     expect(longestUrl()).toBeLessThan(2_048);
   });
 
-  it("the two pickers and Cmd-K use it, not the whole roster", () => {
-    for (const f of ["src/components/OneOffVisitDialog.tsx", "src/routes/_authenticated/invoices.index.tsx"]) {
+  it("finds 'Name 0999' among a thousand clients called Name", async () => {
+    const tables = book(1_000);
+    tables.clients.forEach((c, i) => (c.display_name = `Sampleton Name ${String(i).padStart(4, "0")}`));
+    useBook(1_000, tables);
+    const r = await searchClients({ data: { q: "Name 0999", limit: 6 } });
+    expect(r.clients.map((c: any) => c.display_name)).toEqual(["Sampleton Name 0999"]);
+    // The database filters on the word with a digit, so this is one read of
+    // a handful of rows, not every "Name".
+    expect(seen.length).toBeLessThanOrEqual(2);
+  });
+
+  it("finds a client by ZIP from the /clients list too", async () => {
+    useBook(5_000);
+    const page = await listClientsPage({ data: { q: "60640" } });
+    expect(page.rows.map((r: any) => r.display_name)).toEqual(["José Núñez"]);
+    expect(longestUrl()).toBeLessThan(2_048);
+  });
+
+  it("opens a picker already holding a client by reading that one client", async () => {
+    useBook(5_000);
+    const id = "00000000-0000-4000-8000-000000000007";
+    const r = await searchClients({ data: { id, limit: 1 } });
+    expect(r.clients.map((c: any) => c.display_name)).toEqual(["José Núñez"]);
+    expect(seen).toHaveLength(1);
+    expect(rowsRead()).toBe(1);
+  });
+
+  it("every client picker searches on the server, not the whole roster", () => {
+    for (const f of [
+      "src/components/OneOffVisitDialog.tsx",
+      "src/routes/_authenticated/invoices.index.tsx",
+      "src/components/quotes/QuoteEditor.tsx",
+      "src/routes/_authenticated/settings.promotions.tsx",
+      "src/routes/_authenticated/messages.tsx",
+    ]) {
       const src = read(f);
       expect(src, f).toContain("<ClientSearchPicker");
       expect(src, f).not.toContain("listClients");
@@ -508,13 +574,24 @@ describe("the search rule", () => {
     streets: ["4400 N Ravenswood"],
     tags: ["Tuesday"],
   };
-  it.each(["jose", "josé nunez", "nuñ", "555-0199", "5550199", "job-482", "4400", "ravens", "tues"])(
+  it.each(["jose", "josé nunez", "nuñ", "555-0199", "5550199", "job-482", "4400", "ravens", "tues", "#48213", "job48213", "JOB 48213", "nunez,"])(
     "matches %s",
     (q) => expect(clientMatchesQuery(jose, q)).toBe(true),
   );
   it.each(["maria", "5551234", "999", "jose smith"])("does not match %s", (q) =>
     expect(clientMatchesQuery(jose, q)).toBe(false),
   );
+  it("matches a ZIP or a town through the client's addresses", () => {
+    const withPlace = { ...jose, streets: ["4400 N Ravenswood", "60640", "Chicago"] };
+    expect(clientMatchesQuery(withPlace, "60640")).toBe(true);
+    expect(clientMatchesQuery(withPlace, "chicago ravens")).toBe(true);
+    expect(clientMatchesQuery(jose, "60640")).toBe(false);
+  });
+  it("filters on the word with a digit when two are as long", () => {
+    expect(searchAnchor("Name 0999")).toBe("0999");
+    expect(searchAnchor("0999 Name")).toBe("0999");
+    expect(searchAnchor("street 4999")).toBe("street");
+  });
   it("folds accents and case", () => {
     expect(fold("José NÚÑEZ")).toBe("jose nunez");
     expect(new RegExp(accentPattern("jose"), "i").test("José")).toBe(true);

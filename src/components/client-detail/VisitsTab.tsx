@@ -1,11 +1,12 @@
 import i18n from "@/lib/i18n";
+import { completeFromOffice, useOfficeCompleteOverride } from "@/components/OfficeCompleteOverride";
 import { warnLessonClashes } from "@/components/training/lessonClashWarning";
 // Visits tab (spec): scheduled window and actual timing are separate,
 // clearly labeled things. Missing timestamps say so instead of blurring
 // estimates into facts. Rows open a detail drawer (QA follow-up 2.3) with
 // permission-gated timestamp correction; >10 visits group Upcoming/Past
 // with status + property filters.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -48,6 +49,8 @@ import {
 } from "@/components/training/ClientCalledAtField";
 import { orgToday } from "@/lib/org-day";
 import { toastSaveError } from "@/lib/stale-write-toast";
+import { visitBookedCents } from "@/lib/booked-value";
+import { visitServiceLabel } from "@/lib/subscription-form";
 
 /** A skip's reason as words: a code through the office's labels, free text
  *  (from before reasons were codes) as it was typed. */
@@ -94,12 +97,18 @@ export function VisitsTab({
   clientId,
   subscriptions = [],
   canCorrect = false,
+  pendingGroom = null,
+  onPendingGroomConsumed,
 }: {
   visits: any[];
   isLoading: boolean;
   clientId: string;
   subscriptions?: any[];
   canCorrect?: boolean;
+  /** A grooming lead just converted (#657): open Book a groom once, with
+   *  the lead's service and start day and every pet at the address. */
+  pendingGroom?: { serviceId: string | null; scheduledOn: string | null } | null;
+  onPendingGroomConsumed?: () => void;
 }) {
   const tz = useOrgTimezone();
   const [statusFilter, setStatusFilter] = useState("all");
@@ -118,11 +127,35 @@ export function VisitsTab({
   // see it.
   const [oneOffOpen, setOneOffOpen] = useState(false);
   const [groomOpen, setGroomOpen] = useState(false);
-  const { can } = usePermissions();
+  const { can, loading: roleLoading } = usePermissions();
   // Booking, not pricing (#616): a dispatcher books here at the set price.
   const canBookOneOff = can("booking");
-  const { lines } = useServiceLines();
+  const { lines, known: linesKnown } = useServiceLines();
   const runsGrooming = lines.includes("mobile_grooming");
+  // Held for the dialog's whole open life, then dropped, so a later "Book a
+  // groom" from the button opens blank as it always has.
+  const [groomStart, setGroomStart] = useState<{
+    serviceId: string | null;
+    scheduledOn: string | null;
+  } | null>(null);
+  useEffect(() => {
+    if (!pendingGroom || roleLoading || !linesKnown) return;
+    onPendingGroomConsumed?.();
+    // Somebody who may add clients but not book (or a business whose lines
+    // no longer include grooming) is told, rather than landing on an empty
+    // Visits tab with a client that has no plan and no groom.
+    if (!runsGrooming || !canBookOneOff) {
+      toast.warning(
+        !canBookOneOff
+          ? "The client was created without a plan. Ask someone who can book to schedule the groom."
+          : "The client was created without a plan. Grooming isn't turned on for this business, so the groom could not be opened.",
+        { duration: 10000 },
+      );
+      return;
+    }
+    setGroomStart(pendingGroom);
+    setGroomOpen(true);
+  }, [pendingGroom, roleLoading, linesKnown, runsGrooming, canBookOneOff]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Vacation hold banner (QA round 8): an active or upcoming hold explains
   // why no visits exist in a range. Managed from the header's ••• menu.
@@ -307,9 +340,13 @@ export function VisitsTab({
       {runsGrooming && (
         <BookGroomDialog
           open={groomOpen}
-          onOpenChange={setGroomOpen}
+          onOpenChange={(o) => {
+            setGroomOpen(o);
+            if (!o) setGroomStart(null);
+          }}
           clientId={clientId}
           onCreated={booked}
+          startFrom={groomStart}
         />
       )}
     </>
@@ -749,16 +786,12 @@ function VisitTable({
                     />
                   )}
                   {v.status === "skipped" && (v.skip_reason_code || v.skip_reason) && (
-                    <span className="ml-1 text-xs text-muted-foreground">
-                      {skipReasonText(v)}
-                    </span>
+                    <span className="ml-1 text-xs text-muted-foreground">{skipReasonText(v)}</span>
                   )}
                   {v.is_deepclean && <MetaChip className="ml-1">Deep clean</MetaChip>}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">
-                  {service
-                    ? `${service.frequency === "one_time" ? "One time" : "Recurring"} service`
-                    : "-"}
+                  {visitServiceLabel(service)}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">
                   {v.properties?.street ?? "-"}
@@ -1028,6 +1061,12 @@ function VisitDetailDrawer({
   const [calledAt, setCalledAt] = useState("");
   const [newStaffId, setNewStaffId] = useState("");
 
+  // Moving and reassigning a visit is routes work (#728): manage_schedule,
+  // which a dispatcher holds. Completing and canceling can bill, so they stay
+  // with canCorrect (manage_client_billing). The server asks the same.
+  const { can: canDo } = usePermissions();
+  const canSchedule = canDo("manage_schedule");
+
   const completeFn = useServerFn(completeVisitFromOffice);
   const rescheduleFn = useServerFn(rescheduleVisitFromOffice);
   const cancelFn = useServerFn(cancelVisitFromOffice);
@@ -1042,7 +1081,7 @@ function VisitDetailDrawer({
   const { data: staffData } = useQuery({
     queryKey: ["org-staff"],
     queryFn: () => listStaffFn(),
-    enabled: canCorrect && scheduled,
+    enabled: (canCorrect || canSchedule) && scheduled,
     staleTime: 60_000,
   });
   const staff = ((staffData as any)?.staff ?? []).filter((s: any) => s.is_field_tech !== false);
@@ -1059,10 +1098,17 @@ function VisitDetailDrawer({
     onClose();
   };
 
+  // No photo or checklist: the office says why, or the visit stays open (#658).
+  const { askWhy, dialog: overrideDialog } = useOfficeCompleteOverride();
   const completeMut = useMutation({
     mutationFn: (confirmedEarly: boolean) =>
-      completeFn({ data: { visitId: v.id, confirmedEarly } }),
-    onSuccess: () => afterAction("Visit marked completed"),
+      completeFromOffice(
+        (overrideReason) => completeFn({ data: { visitId: v.id, confirmedEarly, overrideReason } }),
+        askWhy,
+      ),
+    onSuccess: (done) => {
+      if (done) afterAction("Visit marked completed");
+    },
     onError: (e) => toast.error((e as Error).message),
   });
   const rescheduleMut = useMutation({
@@ -1202,7 +1248,7 @@ function VisitDetailDrawer({
           {service && (
             <div className="flex items-center justify-between">
               <dt className="text-muted-foreground">Service</dt>
-              <dd>${(service.price_cents / 100).toFixed(2)} /visit</dd>
+              <dd>${(visitBookedCents(service) / 100).toFixed(2)} /visit</dd>
             </div>
           )}
           {(v.skip_reason_code || v.skip_reason) && (
@@ -1214,8 +1260,9 @@ function VisitDetailDrawer({
         </dl>
 
         {confirmDialog}
+        {overrideDialog}
 
-        {canCorrect && (canComplete || canReschedule) && (
+        {((canCorrect && canComplete) || (canSchedule && canReschedule)) && (
           <div className="space-y-3 rounded-md border bg-muted/20 p-3">
             {missed && neverOnARoute && (
               <p className="text-xs text-muted-foreground">
@@ -1231,7 +1278,7 @@ function VisitDetailDrawer({
               </p>
             )}
             <div className="flex flex-wrap items-center gap-1.5">
-              {canComplete && (
+              {canCorrect && canComplete && (
                 <Button
                   size="sm"
                   disabled={completeMut.isPending}
@@ -1256,7 +1303,7 @@ function VisitDetailDrawer({
                   {completeMut.isPending ? "Completing…" : "Mark completed"}
                 </Button>
               )}
-              {canReschedule && (
+              {canSchedule && canReschedule && (
                 <Button
                   size="sm"
                   variant={action === "reschedule" ? "default" : "outline"}
@@ -1268,15 +1315,17 @@ function VisitDetailDrawer({
                   Reschedule…
                 </Button>
               )}
-              {scheduled && (
+              {scheduled && canSchedule && (
+                <Button
+                  size="sm"
+                  variant={action === "reassign" ? "default" : "outline"}
+                  onClick={() => setAction(action === "reassign" ? null : "reassign")}
+                >
+                  Reassign…
+                </Button>
+              )}
+              {scheduled && canCorrect && (
                 <>
-                  <Button
-                    size="sm"
-                    variant={action === "reassign" ? "default" : "outline"}
-                    onClick={() => setAction(action === "reassign" ? null : "reassign")}
-                  >
-                    Reassign…
-                  </Button>
                   <Button
                     size="sm"
                     variant={action === "cancel" ? "destructive" : "outline"}
@@ -1292,7 +1341,7 @@ function VisitDetailDrawer({
               )}
             </div>
 
-            {action === "reschedule" && canReschedule && (
+            {action === "reschedule" && canReschedule && canSchedule && (
               <form
                 className="space-y-2"
                 onSubmit={(e) => {
@@ -1323,7 +1372,7 @@ function VisitDetailDrawer({
               </form>
             )}
 
-            {action === "reassign" && scheduled && (
+            {action === "reassign" && scheduled && canSchedule && (
               <form
                 className="space-y-2"
                 onSubmit={(e) => {
@@ -1359,7 +1408,7 @@ function VisitDetailDrawer({
               </form>
             )}
 
-            {action === "cancel" && scheduled && (
+            {action === "cancel" && scheduled && canCorrect && (
               <form
                 className="space-y-2"
                 onSubmit={(e) => {

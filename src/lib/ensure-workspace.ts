@@ -275,6 +275,7 @@ export async function ensureBootstrapped(
       displayName,
       refCode: attribution.ref,
       utm: attribution.utm,
+      serviceLine: attribution.service,
       promoCode: attribution.promo,
       timezone: browserTimezone(),
     },

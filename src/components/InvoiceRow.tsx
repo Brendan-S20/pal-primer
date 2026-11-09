@@ -22,7 +22,8 @@ import { isInvoiceOverdue } from "@/lib/overdue";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
 import { formatDay } from "@/lib/format";
 import { invoiceKindLabel, invoiceNumberLabel } from "@/lib/invoice-labels";
-import { appUrl } from "@/lib/app-origin";
+import { linkUrl } from "@/lib/app-origin";
+import { invoiceStatusChip } from "@/lib/refund-outcome";
 
 export type InvoiceRowData = {
   id: string;
@@ -33,6 +34,9 @@ export type InvoiceRowData = {
   /** For the balance on a partly paid invoice. Absent reads as none. */
   credit_applied_cents?: number | null;
   amount_paid_cents?: number | null;
+  /** Money on a paid invoice that went back to the customer (#674). Absent
+   *  reads as none, and the chip says the stored status. */
+  amount_refunded_cents?: number | null;
   period_start: string | null;
   period_end: string | null;
   due_on: string | null;
@@ -118,10 +122,9 @@ function useInvoiceMenuActions(invoice: InvoiceRowData, actions: RowAction[]): R
           {
             label: "Copy pay link",
             onSelect: () => {
-              // appUrl(), not window.location.origin — same reason as the
-              // drawer's copy: the link is for a customer, so it has to name
-              // the host the product lives at, not the one staff are on.
-              const url = appUrl(`/pay/i/${invoice.public_token}`);
+              // linkUrl(), not a raw window.location.origin: same reason as
+              // the drawer's copy. See src/lib/app-origin.ts (#660).
+              const url = linkUrl(`/pay/i/${invoice.public_token}`);
               navigator.clipboard.writeText(url).then(
                 () => toast.success("Pay link copied to clipboard"),
                 () => toast.error("Copy failed"),
@@ -244,7 +247,7 @@ export function InvoiceRow({
             narrow as the status itself and the client floor has room. The
             drawer still says all of it. */}
         <span className="inline-flex flex-wrap items-center gap-1.5 max-xl:flex-nowrap">
-          <StatusChip status={invoice.status} className="whitespace-nowrap" />
+          <StatusChip {...invoiceStatusChip(invoice)} className="whitespace-nowrap" />
           {isPartiallyPaid(invoice) && (
             <MetaChip className="whitespace-nowrap">Partially paid</MetaChip>
           )}
@@ -381,7 +384,7 @@ export function InvoiceCard({
             </div>
           )}
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            <StatusChip status={invoice.status} />
+            <StatusChip {...invoiceStatusChip(invoice)} />
             {isPartiallyPaid(invoice) && (
               <MetaChip className="whitespace-nowrap">Partially paid</MetaChip>
             )}

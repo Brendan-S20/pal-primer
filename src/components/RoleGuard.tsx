@@ -1,15 +1,21 @@
 import { useEffect } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { useMyRole, canAccess, ROUTE_ROLES } from "@/hooks/useMyRole";
+import { useMyRole, deniedRouteDestination } from "@/hooks/useMyRole";
 import { toast } from "sonner";
 
 /**
  * Redirects the user away from routes they lack permission for.
- * Techs land on /my-day; everyone else on /dashboard.
+ *
+ * Reads the RESOLVED location, once the router is idle (#682). The router
+ * sets the location as soon as a navigation starts, and navigating from here
+ * at that moment ran over a load still in flight. The shell draws neither
+ * itself nor the page while this decides; see AppShell.
  */
 export function RoleGuard() {
   const navigate = useNavigate();
-  const pathname = useRouterState({ select: (r) => r.location.pathname });
+  const pathname = useRouterState({
+    select: (r) => (r.status === "idle" ? r.resolvedLocation?.pathname : undefined),
+  });
   const { role, loading, accessTurnedOff } = useMyRole();
 
   // Turned off while already inside: the shell's check ran when the app
@@ -21,18 +27,11 @@ export function RoleGuard() {
   }, [accessTurnedOff, navigate]);
 
   useEffect(() => {
-    if (loading || !role) return;
-    // Only guard known routes
-    const guarded = Object.keys(ROUTE_ROLES).some(
-      (k) => pathname === k || pathname.startsWith(k + "/"),
-    );
-    if (!guarded) return;
-    if (!canAccess(role, pathname)) {
-      const dest = role === "tech" ? "/my-day" : "/dashboard";
-      if (pathname !== dest) {
-        toast.error("You don't have access to that page.");
-        navigate({ to: dest, replace: true });
-      }
+    if (loading || !role || !pathname) return;
+    const dest = deniedRouteDestination(role, pathname);
+    if (dest) {
+      toast.error("You don't have access to that page.");
+      navigate({ to: dest, replace: true });
     }
   }, [role, loading, pathname, navigate]);
 

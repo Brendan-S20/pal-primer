@@ -91,11 +91,28 @@ export async function resolveOrgStripeAccount(orgId: string): Promise<OrgStripeA
   };
 }
 
+/** What a CUSTOMER reads when the business can't take cards yet (R2-42). The
+ *  staff wording ("Connect one on the Payments page") is an instruction to the
+ *  owner; shown in the portal or on the booking link it tells a customer to do
+ *  something they cannot. */
+export const CUSTOMER_CARDS_UNAVAILABLE =
+  "This business isn't taking card payments online yet. Please contact them to pay another way.";
+
 /** For charge sites: require a charge-ready connected account or throw a clear
  *  error. NEVER falls back to the platform account — that would put tenant
- *  charges on HoundStack's own Stripe. */
-export async function requireOrgStripeAccount(orgId: string): Promise<OrgStripeAccount> {
+ *  charges on HoundStack's own Stripe.
+ *
+ *  `audience: "customer"` is for the portal and the booking link: the same
+ *  refusal, worded for the person paying rather than the owner. */
+export async function requireOrgStripeAccount(
+  orgId: string,
+  opts: { audience?: "staff" | "customer" } = {},
+): Promise<OrgStripeAccount> {
   const acct = await resolveOrgStripeAccount(orgId);
+  if (opts.audience === "customer") {
+    if (!acct || !acct.chargesEnabled) throw new Error(CUSTOMER_CARDS_UNAVAILABLE);
+    return acct;
+  }
   if (!acct) {
     // BUILD-6: for a location whose franchise collects, "connect your Stripe
     // account" is advice the franchisee cannot act on — it is the franchise's

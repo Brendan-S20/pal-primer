@@ -313,6 +313,17 @@ export interface FillResult {
   removed: string[];
 }
 
+/** Whether a shape lookup is a baseline (say what the area holds, offer to
+ *  fill, add nothing) rather than a fill (R2-38). A shape nobody drew adds no
+ *  ZIPs: the first shape an existing zone reports, and a circle seeded around
+ *  a typed ZIP's center. */
+export function isBaselineLookup(input: {
+  existingZoneFirstLookup: boolean;
+  autoPlaced: boolean;
+}): boolean {
+  return input.existingZoneFirstLookup || input.autoPlaced;
+}
+
 /** The shape changed and now holds `inside`. Add what is new (unless the
  *  owner removed it), drop what only the old shape held, keep everything the
  *  owner typed. With `explicit`, a removed chip comes back too. */

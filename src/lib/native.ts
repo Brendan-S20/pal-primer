@@ -236,9 +236,10 @@ function stopPushListeners() {
  * Ask for notification permission and register this device for push.
  *
  * WHEN: called from the signed-in shell (src/routes/_authenticated/route.tsx),
- * never from the root — so the system prompt appears after sign-in, when the
- * token has a user to belong to, and never on the sign-in screen of a fresh
- * install. After the first answer iOS never shows the prompt again; later
+ * never from the root — so a token always has a user to belong to. Since
+ * R2-35 the shell passes `ask: false`: the system prompt itself is raised
+ * only from NativePushExplainer or the Preferences card, after a tap on a
+ * button that says why. After the first answer iOS never shows it again; later
  * launches only re-register, which is how a rotated token reaches the server.
  * The "Notifications on this phone" card in Settings → Preferences calls it
  * too, through turnOnPushNotifications, for a person who wants to answer now.
@@ -265,6 +266,7 @@ export async function registerPushNotifications(
 
 async function registerPush(
   onToken: (token: string) => void,
+  ask = true,
 ): Promise<{ permission: PushPermission | null; cleanup: () => void }> {
   if (!isNative()) return { permission: null, cleanup: () => {} };
 
@@ -298,6 +300,13 @@ async function registerPush(
   // Check first and only ASK while asking is still possible. After a denial
   // requestPermissions() is a silent no-op on iOS; the way back is Settings.
   const before = (await PushNotifications.checkPermissions()).receive;
+  // Not asking (the shell on launch, R2-35): a phone that has not answered
+  // yet is left unanswered and unreported, so the system prompt only ever
+  // follows the in-app explainer (NativePushExplainer) or the Preferences
+  // card, both a tap on a button that says what it is for.
+  if (!ask && permissionFrom(before) === "prompt") {
+    return { permission: "prompt", cleanup: () => {} };
+  }
   let after = before;
   if (before === "prompt" || before === "prompt-with-rationale") {
     after = (await PushNotifications.requestPermissions()).receive;
@@ -384,13 +393,17 @@ async function registerPush(
  * `isCancelled` is the shell's: a token that arrives after the shell has
  * unmounted (sign-out mid-registration) belongs to nobody and is not saved.
  *
+ * `ask: false` is the shell's too (R2-35): register a phone that already
+ * said yes, but never raise the system prompt from a launch. Asking is the
+ * explainer's and the Preferences card's, after a tap.
+ *
  * Returns where permission ended up (null on web) and the cleanup. The
  * Preferences button ignores the cleanup on purpose: the token may arrive
  * after the person has left the page, and the shell's own teardown removes
  * the listeners on sign-out.
  */
 export async function turnOnPushNotifications(
-  opts: { isCancelled?: () => boolean } = {},
+  opts: { isCancelled?: () => boolean; ask?: boolean } = {},
 ): Promise<{ permission: PushPermission | null; cleanup: () => void }> {
   return registerPush(async (token) => {
     if (opts.isCancelled?.()) return;
@@ -411,7 +424,7 @@ export async function turnOnPushNotifications(
       const { reportClientError } = await import("@/lib/monitoring/client");
       reportClientError(e, { area: "native_push", step: "save_token" });
     }
-  });
+  }, opts.ask ?? true);
 }
 
 /**
@@ -667,25 +680,19 @@ export async function initBackButton(): Promise<() => void> {
  *
  * Cold start is covered by the same listener: Capacitor's App plugin retains
  * the launch URL event until a listener attaches, so this must not ALSO read
- * getLaunchUrl(), or a cold-start link would navigate twice.
+ * getLaunchUrl(), or a cold-start link would navigate twice. But Capacitor
+ * hands a retained event to the FIRST listener only, so nothing else in the
+ * app may add its own appUrlOpen listener: everything subscribes through
+ * lib/app-url-open.ts, which keeps a cold-start link for the subscriber of
+ * its kind (#621).
  *
- * Anything that is not one of our https links is ignored, in particular the
- * custom-scheme OAuth hand-back, which src/routes/auth.tsx owns.
+ * Anything that is not one of our https links is ignored here, in particular
+ * the custom-scheme OAuth hand-back, which src/routes/auth.tsx owns.
  */
 export async function initAppLinks(onNavigate: (path: string) => void): Promise<() => void> {
   if (!isNative()) return () => {};
-  const [{ App }, { appLinkTarget }, { liveActivityLinkTarget }] = await Promise.all([
-    import("@capacitor/app"),
-    import("@/lib/android-app-links"),
-    import("@/lib/live-activity-links"),
-  ]);
-  const handle = await App.addListener("appUrlOpen", ({ url }) => {
-    const path = appLinkTarget(url) ?? liveActivityLinkTarget(url);
-    if (path) onNavigate(path);
-  });
-  return () => {
-    void handle.remove();
-  };
+  const { onAppUrl } = await import("@/lib/app-url-open");
+  return onAppUrl("path", onNavigate);
 }
 
 /**

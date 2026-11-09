@@ -429,7 +429,7 @@ async function loadPortalInvoices(token: string, session: PortalSession) {
     // the PDF, the email and the pay link (C-03). It used to number rows by
     // their position in the list.
     .select(
-      "id, number, due_on, credit_applied_cents, amount_paid_cents, tax_cents, tax_rate_bps, tax_label",
+      "id, number, due_on, credit_applied_cents, amount_paid_cents, tax_cents, tax_rate_bps, tax_label, deposit_for_invoice_id",
     )
     .eq("client_id", session.clientId);
   if (dueErr) throw new Error(dueErr.message);
@@ -444,6 +444,7 @@ async function loadPortalInvoices(token: string, session: PortalSession) {
         tax_cents?: number | null;
         tax_rate_bps?: number | null;
         tax_label?: string | null;
+        deposit_for_invoice_id?: string | null;
       }>
     ).map((r) => [r.id, r]),
   );
@@ -471,6 +472,9 @@ async function loadPortalInvoices(token: string, session: PortalSession) {
       tax_cents: Number(extra?.tax_cents ?? 0),
       tax_rate_bps: Number(extra?.tax_rate_bps ?? 0),
       tax_label: (extra?.tax_label ?? null) as string | null,
+      // A stay deposit is part payment of its stay invoice (D3, #653): listed,
+      // and payable, but not added to the open total on top of the stay.
+      deposit_for_invoice_id: (extra?.deposit_for_invoice_id ?? null) as string | null,
       // What the client still owes on this invoice, net of applied credit
       // (B7) and of any partial payment.
       amount_due_cents: invoiceOutstandingCents({
@@ -822,7 +826,7 @@ export const portalCancelAddon = createServerFn({ method: "POST" })
 // Tenant->client card ops run on the org's own connected Stripe account.
 async function loadStripe(orgId: string): Promise<{ stripe: any; stripeAccount: string }> {
   const { requireOrgStripeAccount, connectStripe } = await import("@/lib/stripe-connect.server");
-  const acct = await requireOrgStripeAccount(orgId);
+  const acct = await requireOrgStripeAccount(orgId, { audience: "customer" });
   const stripe = await connectStripe();
   return { stripe, stripeAccount: acct.accountId };
 }
@@ -848,7 +852,7 @@ export const portalCreateSetupIntent = createServerFn({ method: "POST" })
       connectPublishableKey,
       verifyClientStripeCustomer,
     } = await import("@/lib/stripe-connect.server");
-    const acct = await requireOrgStripeAccount(session.organizationId);
+    const acct = await requireOrgStripeAccount(session.organizationId, { audience: "customer" });
     const stripe = await connectStripe();
     const opts = { stripeAccount: acct.accountId };
 
@@ -900,7 +904,7 @@ export const portalFinalizeCardSetup = createServerFn({ method: "POST" })
     const session = await requirePortalSession(data.token);
     const supabaseAdmin = await admin();
     const { requireOrgStripeAccount, connectStripe } = await import("@/lib/stripe-connect.server");
-    const acct = await requireOrgStripeAccount(session.organizationId);
+    const acct = await requireOrgStripeAccount(session.organizationId, { audience: "customer" });
     const stripe = await connectStripe();
     const opts = { stripeAccount: acct.accountId };
 
@@ -2194,7 +2198,7 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
 
     const { requireOrgStripeAccount, connectStripe, verifyClientStripeCustomer } =
       await import("@/lib/stripe-connect.server");
-    const acct = await requireOrgStripeAccount(invoice.organization_id);
+    const acct = await requireOrgStripeAccount(invoice.organization_id, { audience: "customer" });
     const stripe = await connectStripe();
     const opts = { stripeAccount: acct.accountId };
 

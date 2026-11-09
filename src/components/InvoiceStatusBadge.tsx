@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import type { InvoiceRefundState } from "@/lib/refund-outcome";
 
 /**
  * One palette for invoice status everywhere. Before this, four surfaces
@@ -30,8 +31,33 @@ const STYLES: Record<string, { label: string; className: string }> = {
   },
 };
 
-export function InvoiceStatusBadge({ status }: { status: string }) {
-  const s = STYLES[status];
+/** A paid invoice whose money went back (#674). "Paid" there would say the
+ *  money was kept; these say it was not, in the same palette: gray for all of
+ *  it back, amber for some. */
+const REFUND_STYLES: Record<
+  Exclude<InvoiceRefundState, null>,
+  { label: string; className: string }
+> = {
+  refunded: {
+    label: "Refunded",
+    className: "border-transparent bg-muted text-muted-foreground hover:bg-muted",
+  },
+  partly_refunded: {
+    label: "Partly refunded",
+    className:
+      "border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-400 hover:bg-amber-500/15",
+  },
+};
+
+export function InvoiceStatusBadge({
+  status,
+  refund = null,
+}: {
+  status: string;
+  /** From `invoiceRefundState`; absent reads as no refund. */
+  refund?: InvoiceRefundState;
+}) {
+  const s = (refund ? REFUND_STYLES[refund] : null) ?? STYLES[status];
   if (!s) return <Badge variant="secondary">{status}</Badge>;
   return (
     <Badge variant={status === "void" ? "outline" : "secondary"} className={s.className}>

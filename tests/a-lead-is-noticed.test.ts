@@ -481,7 +481,8 @@ describe("a quote request, through the shipped endpoint", () => {
   it("writes one new lead with the service role and tells the office once", async () => {
     staff();
     const r = await postLead(QUOTE);
-    expect(r).toEqual({ status: 201, body: { ok: true } });
+    // serviceArea (R2-25): this fake has no zones to say yes or no.
+    expect(r).toEqual({ status: 201, body: { ok: true, serviceArea: "unknown" } });
     expect(h.leads).toHaveLength(1);
     expect(h.leads[0]).toMatchObject({
       organization_id: ORG,

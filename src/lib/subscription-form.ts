@@ -170,6 +170,20 @@ export function formatFrequency(
   }
 }
 
+/** The SERVICE column of a client's visit list: what was booked ("Bath &
+ *  brush", "Weekly cleanup"), not only whether it repeats. A groom used to
+ *  read "One time service" there with its real name only in the sub-line
+ *  (R2-31, groom-r2-08). Falls back to the cadence when the plan has no
+ *  catalog service. */
+export function visitServiceLabel(
+  s: { frequency?: string | null; services?: { name?: string | null } | null } | null | undefined,
+): string {
+  if (!s) return "-";
+  const name = s.services?.name?.trim();
+  if (name) return name;
+  return `${s.frequency === "one_time" ? "One time" : "Recurring"} service`;
+}
+
 /**
  * Single source of truth for "this service is over" (UX round 4: ended
  * services kept showing as active). A service is ended when its status is
@@ -184,6 +198,73 @@ export function isServiceEnded(
 ): boolean {
   if (s.status === "canceled") return true;
   return s.ends_on != null && s.ends_on !== "" && s.ends_on <= today;
+}
+
+// ── ending a service (#676) ────────────────────────────────────────────────
+//
+// "End service…" used to be offered only once a service had started. A
+// one_time visit (often prepaid) has started_on = the visit date, so until
+// that day the card offered Delete — which the server refuses as soon as
+// the service has history (a canceled visit, a prepaid invoice) with "End
+// it instead of deleting", pointing at a control that was not there. And
+// the server refused an end date before started_on, so even a hand-built
+// request could not end it.
+//
+// Now every service that has not ended can be ended, and a service that has
+// not started yet can be ended before its start date: it simply never runs.
+
+/** Whether the card offers "End service…". Any service that is not over. */
+export function canEndService(
+  s: { status?: string | null; ends_on?: string | null },
+  today: string,
+): boolean {
+  return !isServiceEnded(s, today);
+}
+
+/**
+ * What endSubscription writes, or why it refuses. `today` is an ISO date.
+ * - A started service cannot end before it started (that would rewrite
+ *   history the visits already describe).
+ * - A service that has not started yet may end on any day from today: no
+ *   visit of it has happened, so nothing is rewritten.
+ * - The status is canceled at once when the end is today or earlier, or
+ *   when it falls before the start (the service will never run, so nothing
+ *   is left for it to bill). Otherwise it stays active until the end date.
+ */
+export function endServiceDecision(input: {
+  startedOn: string | null;
+  effectiveDate: string;
+  today: string;
+}): { ok: true; status: "canceled" | "active" } | { ok: false; error: string } {
+  const { startedOn, effectiveDate, today } = input;
+  const hasStarted = !!startedOn && startedOn <= today;
+  if (startedOn && effectiveDate < startedOn) {
+    if (hasStarted) return { ok: false, error: "End date can't be before the service started" };
+    if (effectiveDate < today) return { ok: false, error: "End date can't be in the past" };
+    return { ok: true, status: "canceled" };
+  }
+  return { ok: true, status: effectiveDate <= today ? "canceled" : "active" };
+}
+
+/**
+ * The words on the End service drawer. Says what happens to visits, to
+ * billing, and — for a prepaid service — to money already paid, because
+ * "end" next to a payment reads like "refund" to an owner and it is not.
+ */
+export function endServiceCopy(s: {
+  billing_cadence?: string | null;
+  frequency?: string | null;
+}): { description: string; money: string } {
+  const visits =
+    s.frequency === "one_time"
+      ? "The visit is removed if it hasn't happened by the end date"
+      : "Scheduled visits after the end date are removed";
+  const description = `${visits}, and the service stops billing. Its history stays on the client. Nothing is deleted.`;
+  const money =
+    s.billing_cadence === "prepaid"
+      ? "Money already paid is not refunded automatically. It stays on the client's account; to give it back, refund the payment from its invoice on the Billing tab."
+      : "Visits already completed are still billed as usual. Nothing is refunded automatically.";
+  return { description, money };
 }
 
 /** Hydrate the form from an existing subscription — every field mirrors the record.

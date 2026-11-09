@@ -30,6 +30,13 @@ export type ApiProbeResult = "verified" | "rejected" | "unreachable";
 /** Fast at first (a blip), settling at half a minute (an outage). */
 export const RECOVERY_DELAYS_MS = [3_000, 6_000, 12_000, 20_000, 30_000] as const;
 
+/** One probe may take this long. Past it, the probe counts as unreachable
+ *  and the loop goes on. On the web build getUser() has no deadline of its
+ *  own and can wait on the auth lock behind a refresh that is retrying; a
+ *  probe that never settles would otherwise stop this loop for good, since
+ *  the next ask only happens after the last one answered. */
+export const PROBE_DEADLINE_MS = 10_000;
+
 /** Broadcast once the API has answered again, so work that waits on it (the
  *  offline queue's replay) can go at once rather than at the next reconnect,
  *  which in this case never comes. */
@@ -77,10 +84,18 @@ export function startApiRecovery(opts: {
     if (isOffline()) return schedule();
     inFlight = true;
     let result: ApiProbeResult = "unreachable";
+    let deadline: unknown = null;
     try {
-      result = await probe();
+      result = await Promise.race([
+        probe(),
+        new Promise<ApiProbeResult>((resolve) => {
+          deadline = target.setTimeout(() => resolve("unreachable"), PROBE_DEADLINE_MS);
+        }),
+      ]);
     } catch {
       result = "unreachable";
+    } finally {
+      if (deadline !== null) target.clearTimeout(deadline);
     }
     inFlight = false;
     if (stopped) return;

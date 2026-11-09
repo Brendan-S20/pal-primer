@@ -164,13 +164,16 @@ describe("the pay link names the host the product lives at", () => {
   const drawer = read("src/components/InvoiceDrawer.tsx");
   const row = read("src/components/InvoiceRow.tsx");
 
-  it("uses appUrl in the drawer", () => {
-    expect(drawer).toMatch(/appUrl\(`\/pay\/i\/\$\{inv\.public_token\}`\)/);
+  // linkUrl (#660) is appUrl's browser half: this page's origin, the API
+  // origin in a native build, and the canonical host on a Lovable preview,
+  // which is the case this block was written for.
+  it("uses linkUrl in the drawer", () => {
+    expect(drawer).toMatch(/linkUrl\(`\/pay\/i\/\$\{inv\.public_token\}`\)/);
     expect(codeOnly(drawer)).not.toMatch(/window\.location\.origin\}\/pay/);
   });
 
-  it("uses appUrl in the row menu", () => {
-    expect(row).toMatch(/appUrl\(`\/pay\/i\/\$\{invoice\.public_token\}`\)/);
+  it("uses linkUrl in the row menu", () => {
+    expect(row).toMatch(/linkUrl\(`\/pay\/i\/\$\{invoice\.public_token\}`\)/);
     expect(codeOnly(row)).not.toMatch(/window\.location\.origin\}\/pay/);
   });
 });

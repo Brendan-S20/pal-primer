@@ -46,7 +46,11 @@ export function TrainingPackagesCard({
     days: string;
   } | null>(null);
   const [error, setError] = useState("");
-  const refresh = () => qc.invalidateQueries({ queryKey: ["service-packages"] });
+  // A priced package is half of setup's price step for a trainer (R2-47).
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["service-packages"] });
+    qc.invalidateQueries({ queryKey: ["onboarding-status"] });
+  };
   const save = useMutation({
     mutationFn: async () => {
       if (!form) return;

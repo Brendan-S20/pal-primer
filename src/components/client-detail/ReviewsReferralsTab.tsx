@@ -1,7 +1,7 @@
 // Reviews & referrals tab (QA round 8): engagement blocks split out of
 // Communication, which now holds messaging only. This tab owns the portal
 // status panel, review requests, and referrals.
-import { appUrl } from "@/lib/app-origin";
+import { linkUrl } from "@/lib/app-origin";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -62,9 +62,9 @@ function PortalStatusPanel({ client, clientId }: { client: any; clientId: string
     staleTime: 60_000,
   });
   const slug = (orgData?.organization as any)?.portal_slug as string | undefined;
-  // appUrl(), not the page origin — this goes to a customer and the native
+  // linkUrl(), not the page origin — this goes to a customer and the native
   // binary's origin is `capacitor://localhost`.
-  const url = appUrl(slug ? `/portal/${slug}/${token}` : `/portal/${token}`);
+  const url = linkUrl(slug ? `/portal/${slug}/${token}` : `/portal/${token}`);
 
   const regenMut = useMutation({
     mutationFn: () => regenFn({ data: { clientId } }),

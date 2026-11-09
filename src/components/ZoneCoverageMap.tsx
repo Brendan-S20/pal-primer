@@ -5,6 +5,7 @@ import type { PolygonGeoJSON } from "@/components/BoundarySketch";
 import { DRIVE_M_PER_MIN } from "@/lib/zone-match";
 import { useMapRenderer } from "@/lib/maps/use-map-renderer";
 import { OverlayGroup, US_VIEW, circleBoundsPoints, type LatLng } from "@/lib/maps/types";
+import { clickMap, clickVertex, undoDraft, type PolygonDraft } from "@/lib/zone-drawing";
 
 export type CoverageMode = "polygon" | "radius" | "drive_time";
 
@@ -59,6 +60,15 @@ export function ZoneCoverageMap({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const pointsRef = useRef<LatLng[]>(fromPolygon(initial.polygon));
+  // True once the first corner is clicked again: the shape is finished, and
+  // map clicks stop adding corners until Undo reopens it or Clear empties it.
+  const closedRef = useRef(false);
+  const applyDraft = (f: (d: PolygonDraft) => PolygonDraft) => {
+    const next = f({ points: pointsRef.current, closed: closedRef.current });
+    pointsRef.current = next.points;
+    closedRef.current = next.closed;
+    setTick((t) => t + 1);
+  };
   const centerRef = useRef<LatLng | null>(
     initial.centerLat != null && initial.centerLng != null
       ? { lat: initial.centerLat, lng: initial.centerLng }
@@ -88,10 +98,10 @@ export function ZoneCoverageMap({
       // per map, so closing over the initial `mode` state would misroute
       // clicks after the user switches tabs.
       if (modeRef.current === "polygon") {
-        pointsRef.current = [...pointsRef.current, p];
-      } else {
-        centerRef.current = p;
+        applyDraft((d) => clickMap(d, p));
+        return;
       }
+      centerRef.current = p;
       setTick((t) => t + 1);
     });
   }, [map]);
@@ -126,16 +136,16 @@ export function ZoneCoverageMap({
             html: `<div style="background:${i === 0 ? "#f59e0b" : "#2563eb"};color:white;border:2px solid white;border-radius:9999px;width:12px;height:12px;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>`,
             size: [12, 12],
             anchor: [6, 6],
-            title: `Coverage point ${i + 1}`,
+            title:
+              i === 0 && pts.length >= 3 && !closedRef.current
+                ? "Coverage point 1 (click to close the shape)"
+                : `Coverage point ${i + 1}`,
             draggable: true,
             onDrag: (ll) => {
               pointsRef.current = pointsRef.current.map((q, idx) => (idx === i ? ll : q));
             },
             onDragEnd: () => setTick((t) => t + 1),
-            onClick: () => {
-              pointsRef.current = pointsRef.current.filter((_, idx) => idx !== i);
-              setTick((t) => t + 1);
-            },
+            onClick: () => applyDraft((d) => clickVertex(d, i)),
           }),
         );
       });
@@ -261,25 +271,14 @@ export function ZoneCoverageMap({
           </Button>
           {mode === "polygon" && (
             <>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  pointsRef.current = pointsRef.current.slice(0, -1);
-                  setTick((t) => t + 1);
-                }}
-              >
+              <Button type="button" size="sm" variant="ghost" onClick={() => applyDraft(undoDraft)}>
                 <Undo2 className="mr-1 h-3.5 w-3.5 shrink-0" /> Undo
               </Button>
               <Button
                 type="button"
                 size="sm"
                 variant="ghost"
-                onClick={() => {
-                  pointsRef.current = [];
-                  setTick((t) => t + 1);
-                }}
+                onClick={() => applyDraft(() => ({ points: [], closed: false }))}
               >
                 <Trash2 className="mr-1 h-3.5 w-3.5 shrink-0" /> Clear
               </Button>
@@ -333,7 +332,10 @@ export function ZoneCoverageMap({
         className="isolate rounded-lg border overflow-hidden z-0 touch:[&_.leaflet-control-zoom_a]:!h-11 touch:[&_.leaflet-control-zoom_a]:!w-11 touch:[&_.leaflet-control-zoom_a]:!leading-[2.75rem]"
       />
       <p className="text-xs text-muted-foreground">
-        {mode === "polygon" && "Click to add vertices around the coverage area. Drag or click a point to adjust."}
+        {mode === "polygon" &&
+          (closedRef.current
+            ? "Shape closed. Drag a point to move it, click one to remove it, or Undo to reopen the shape."
+            : "Click to add corners around the coverage area, then click the first (orange) point to close the shape. Drag a point to move it, or click one to remove it.")}
         {mode === "radius" && "New addresses within this radius from the center are considered in-zone."}
         {mode === "drive_time" && "Approximate: visualized at ~30 mph (800 m/min) from the center. New addresses inside this circle match."}
       </p>

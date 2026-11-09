@@ -60,6 +60,7 @@ export function BookGroomDialog({
   clientId,
   onCreated,
   prefill = null,
+  startFrom = null,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -69,6 +70,10 @@ export function BookGroomDialog({
    *  add-ons, day and the start of the window they asked for. The office
    *  still checks the time and picks the groomer. */
   prefill?: GroomBookingPrefill | null;
+  /** A client just made from a grooming lead (#657): the lead's service and
+   *  the day it asked for, and every pet at the address picked, since those
+   *  are the pets the lead named. The price is groomQuote's, as always. */
+  startFrom?: { serviceId: string | null; scheduledOn: string | null } | null;
 }) {
   const qc = useQueryClient();
   const { t } = useTranslation();
@@ -91,11 +96,13 @@ export function BookGroomDialog({
   const [acknowledgeWarning, setAcknowledgeWarning] = useState(false);
   // A prefilled address's parking notes are read once, after the options load.
   const parkingFilled = useRef(false);
+  // A new client's pets are all picked once, after the options load.
+  const petsFilled = useRef(false);
 
   useEffect(() => {
     if (!open) return;
     setPropertyId(prefill?.propertyId ?? "");
-    setServiceId(prefill?.serviceId ?? "");
+    setServiceId(prefill?.serviceId ?? startFrom?.serviceId ?? "");
     setPetIds(prefill?.petIds ?? []);
     setAddonQty(
       Object.fromEntries(
@@ -104,13 +111,17 @@ export function BookGroomDialog({
     );
     // A prefill from a past request opens on today, not on a refused day (#654).
     setScheduledOn(notBeforeToday(prefill?.scheduledOn, today));
+    // A converted lead's asked day (#657), under the same floor.
+    if (!prefill && startFrom?.scheduledOn)
+      setScheduledOn(notBeforeToday(startFrom.scheduledOn, today));
     setStartTime(prefill?.startTime ?? "");
     setEveryWeeks("");
     setStaffId("");
     setParkingNotes("");
     setAcknowledgeWarning(false);
     parkingFilled.current = false;
-  }, [open, clientId, prefill, today]);
+    petsFilled.current = false;
+  }, [open, clientId, prefill, startFrom, today]);
 
   const { data, isLoading, error } = useQuery({
     enabled: open,
@@ -132,7 +143,11 @@ export function BookGroomDialog({
       );
     }
     if (!serviceId && options.services.length === 1) setServiceId(options.services[0].id);
-  }, [open, options, propertyId, serviceId, prefill]);
+    if (startFrom && !prefill && !petsFilled.current && propertyId) {
+      petsFilled.current = true;
+      setPetIds(options.pets.filter((p) => p.property_id === propertyId).map((p) => p.id));
+    }
+  }, [open, options, propertyId, serviceId, prefill, startFrom]);
 
   const petsHere = useMemo(
     () => (options?.pets ?? []).filter((p) => p.property_id === propertyId),

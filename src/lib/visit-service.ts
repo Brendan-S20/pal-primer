@@ -11,7 +11,7 @@
  */
 
 import { PET_WASTE_SERVICE_NAME, type Service } from "@/lib/services";
-import { SERVICE_LINES, type ServiceLine } from "@/lib/service-lines";
+import { SERVICE_LINES, runsPetWaste, type ServiceLine } from "@/lib/service-lines";
 
 /** What the planner assumes when neither the service nor the yard says:
  *  the `8` in `stop_service_min` and in properties.service_duration_min's
@@ -57,6 +57,7 @@ type PickableService = Pick<Service, "id" | "name" | "service_line" | "active">;
 export function servicePickerOptions<T extends PickableService>(
   services: readonly T[],
   currentId?: string | null,
+  lines?: readonly ServiceLine[],
 ): T[] {
   const lineIndex = (l: string) => {
     const i = (SERVICE_LINES as readonly string[]).indexOf(l);
@@ -64,21 +65,40 @@ export function servicePickerOptions<T extends PickableService>(
   };
   return services
     .filter((s) => s.active || s.id === currentId)
+    .filter((s) => s.id === currentId || !hidesPetWasteService(s, lines))
     .sort(
       (a, b) =>
         lineIndex(a.service_line) - lineIndex(b.service_line) || a.name.localeCompare(b.name),
     );
 }
 
+/** RC3 (F-04, F-05): a business that does not run pet waste still has the
+ *  "Pet waste removal" every business is seeded with, often still active (it
+ *  was made while the column said {pet_waste}). It is not offered in that
+ *  business's pickers and never starts one. Hiding only: the row is
+ *  untouched, a plan that already has it keeps it (`currentId`), and with no
+ *  `lines` (an answer nobody read) nothing is hidden, so an unreadable
+ *  answer is still pet waste. */
+export function hidesPetWasteService(
+  s: Pick<PickableService, "service_line">,
+  lines: readonly ServiceLine[] | undefined,
+): boolean {
+  return !!lines && s.service_line === "pet_waste" && !runsPetWaste(lines);
+}
+
 /**
  * What a NEW plan's picker starts on: the business's pet-waste removal when
  * it sells it (the seeded name first, then any active pet-waste service it was
- * renamed to), else the first active service. Null when there is nothing to
- * pick, in which case the server leaves service_id unset and the database
- * gives the plan the business's default (ensure_default_services).
+ * renamed to), else the first active service. Given `lines` without pet
+ * waste, its first other service (hidesPetWasteService). Null when there is
+ * nothing to pick, in which case the server leaves service_id unset and the
+ * database gives the plan the business's default (ensure_default_services).
  */
-export function defaultServiceId(services: readonly PickableService[]): string | null {
-  const active = services.filter((s) => s.active);
+export function defaultServiceId(
+  services: readonly PickableService[],
+  lines?: readonly ServiceLine[],
+): string | null {
+  const active = services.filter((s) => s.active && !hidesPetWasteService(s, lines));
   const named = active.find(
     (s) => s.name.trim().toLowerCase() === PET_WASTE_SERVICE_NAME.toLowerCase(),
   );

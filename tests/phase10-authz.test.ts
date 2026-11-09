@@ -18,9 +18,10 @@ import type { AppRole } from "@/hooks/useMyRole";
  *    org.recordSmsConsent  → manage_settings (owner/office_manager only)
  *  - users.setStaffAddresses → manage_users
  *  - churn.scoreChurnHeuristic / listAtRiskClients / sendWinBack → view_financials
- *  - messages.listMessageThreads / listClientMessages / sendSmsToClient,
+ *  - messages.listMessageThreads / listClientMessages,
  *    reviews.getReferralStats → view_client_directory (dispatcher/office/owner;
- *    techs rejected)
+ *    techs rejected). sendSmsToClient → message_clients since #728, held by
+ *    the same three roles (a-dispatcher-runs-routes-clients-and-messages.test.ts)
  *  - neighbors.seedNeighborsForClient → view_client_directory (reads a client's
  *    property address to canvass around it), but the individual-lead writes
  *    (add/update/deleteNeighborLead) require only org membership: door-to-door

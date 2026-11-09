@@ -278,7 +278,28 @@ describe("no trigger function is executable by a signed-in user", () => {
     // 93 -> 94 (20261029180000, a zone can be turned off, #449):
     // tg_zones_enabled_owner_only, which refuses anyone but an owner turning a
     // zone on or off. Revoked from PUBLIC, anon and authenticated there.
-    expect(triggerFunctions().size).toBe(94);
+    //
+    // 94 -> 95 (20261102140000, only an owner changes staff, #659):
+    // tg_log_staff_authority_change, which writes the activity_log row naming
+    // who turned a person on or off or changed their role. Revoked from
+    // PUBLIC, anon and authenticated there.
+    //
+    // 95 -> 98 (20261102160000, a deposit is part payment of its stay, #653):
+    // tg_invoices_guard_deposit_link (nobody signed in moves a deposit's link),
+    // tg_invoices_deposit_follows (a deposit follows its stay invoice) and
+    // tg_stays_deposit_link (the stay sets and releases the link). Each
+    // revoked from PUBLIC, anon and authenticated there.
+    //
+    // 98 -> 99 (20261102190000, gaps-r2-07): tg_stays_invoice_period, an
+    // unpaid stay invoice's period follows the stay's dates. Revoked there.
+    //
+    // 99 -> 101 (#729): pet_safety_entries_before_write (20261108152900)
+    // derives a safety entry's tenant from its pet, stamps who reported it
+    // and keeps the log append-only; organizations_guard_vaccine_start_rule
+    // (20261108153100) refuses any write to vaccine_start_rule that is not
+    // the owner's set_vaccine_start_rule(). Both revoked from PUBLIC, anon
+    // and authenticated in their files.
+    expect(triggerFunctions().size).toBe(101);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

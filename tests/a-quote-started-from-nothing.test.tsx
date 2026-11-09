@@ -22,7 +22,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 vi.mock("@tanstack/react-start", () => ({ useServerFn: (f: unknown) => f }));
-vi.mock("@/lib/clients.functions", () => ({ listClients: vi.fn() }));
+vi.mock("@/lib/clients.functions", () => ({ listClients: vi.fn(), searchClients: vi.fn() }));
 vi.mock("@/lib/quotes.functions", () => ({ saveQuoteDraft: vi.fn(), sendQuote: vi.fn() }));
 vi.mock("@/lib/first-cleanup.functions", () => ({ getFirstCleanupPricing: vi.fn() }));
 vi.mock("@/lib/quote-pricing.functions", () => ({ getQuotePricing: vi.fn() }));
@@ -98,8 +98,19 @@ function render(pricing: QuotePricingData | null, values: QuoteEditorValues = VA
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
   qc.setQueryData(["first-cleanup-pricing"], { pricing: null, zones: [] });
-  qc.setQueryData(["clients", "picker"], {
-    clients: [{ id: CLIENT, display_name: "Marisol Whitfield-Ramirez", active: true }],
+  // The editor reads the client it opens holding by id (searchClients), not
+  // the roster.
+  qc.setQueryData(["client-search", "id", CLIENT], {
+    clients: [
+      {
+        id: CLIENT,
+        display_name: "Marisol Whitfield-Ramirez",
+        active: true,
+        primary_email: null,
+        primary_phone: null,
+        street: null,
+      },
+    ],
   });
   if (pricing) qc.setQueryData(quotePricingKey(CLIENT, null), pricing);
   return renderToStaticMarkup(

@@ -20,7 +20,9 @@ import { convertTarget, quoteConversion, quoteToWizardPrefill } from "@/lib/quot
 import {
   BLANK_DOG,
   EMPTY_PREFILL,
+  leadBooksAGroom,
   leadConversionState,
+  leadStartDate,
   leadToWizardPrefill,
   type WizardDog as Dog,
   type WizardPrefill,
@@ -47,10 +49,21 @@ import {
   ServicePicker,
   useOrgServices,
 } from "@/components/client-detail/ServicePicker";
+import { usePickerLines } from "@/components/CommercialOnly";
 import { WeekdayPicker } from "@/components/client-detail/WeekdayPicker";
 import { servicePickerOptions } from "@/lib/visit-service";
 import { isZonePriced, servicePriceCents } from "@/lib/services";
-import { normalizeWeekdays, WORK_WEEK } from "@/lib/weekday-set";
+import {
+  normalizeWeekdays,
+  pickServiceDay,
+  serviceDaysFor,
+  serviceDaysPerWeek,
+} from "@/lib/weekday-set";
+import { defaultPlanWeekdays, planStartsSkipped, propertyHazardsFor } from "@/lib/new-client-plan";
+import { toastServerError } from "@/lib/server-outcome";
+import { useFormDraft } from "@/hooks/useFormDraft";
+import { DraftRestoredNotice } from "@/components/DraftRestoredNotice";
+import { newClientDraftForm } from "@/lib/form-drafts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -76,12 +89,16 @@ type FromLead = {
 /**
  * The wizard, started either blank or from a lead.
  *
- * The wizard's state is plain useState, seeded once at mount, and it keeps no
- * draft anywhere (no localStorage, no query cache). So the one way for one
- * lead's answers to show up under another's is a remount that does not
- * happen: TanStack keeps this component mounted when only the search string
- * changes. The `key` below is what makes /clients/new?fromLead=A to
- * ?fromLead=B, or to a blank /clients/new, start again from nothing.
+ * The wizard's state is plain useState, seeded once at mount. TanStack keeps
+ * this component mounted when only the search string changes, so the `key`
+ * below is what makes /clients/new?fromLead=A to ?fromLead=B, or to a blank
+ * /clients/new, start again from nothing.
+ *
+ * Since gaps-r2-12 the wizard also keeps a draft on the device, per user and
+ * organization (useFormDraft), so a reload or Android back no longer loses
+ * the step and the values. Its form name carries the lead or quote id
+ * (newClientDraftForm), so one lead's draft can never open under another's,
+ * nor under a blank wizard.
  */
 function NewClientPage() {
   const { fromLead, fromQuote } = Route.useSearch();
@@ -356,6 +373,21 @@ function money(cents: number, currency = "USD") {
   return new Intl.NumberFormat("en-US", { style: "currency", currency }).format((cents ?? 0) / 100);
 }
 
+/** "Base $40.00 + 8 stations $48.00" for a commercial quote's line. */
+function commercialBasis(
+  c: { baseCents: number; unitCents: number; acreageCents: number; stationCents: number } | null,
+  units: number,
+  stations: number,
+): string {
+  const n = (k: number, one: string) => `${k} ${one}${k === 1 ? "" : "s"}`;
+  if (!c) return `Based on ${n(units, "unit")} and ${n(stations, "station")}`;
+  const parts = [`Base ${money(c.baseCents)}`];
+  if (c.unitCents) parts.push(`${n(units, "unit")} ${money(c.unitCents)}`);
+  if (c.stationCents) parts.push(`${n(stations, "station")} ${money(c.stationCents)}`);
+  if (c.acreageCents) parts.push(`grounds ${money(c.acreageCents)}`);
+  return parts.join(" + ");
+}
+
 function polyAreaSqm(g: PolygonGeoJSON): number {
   const ring = g.coordinates[0];
   if (!ring || ring.length < 4) return 0;
@@ -375,15 +407,31 @@ function polyAreaSqm(g: PolygonGeoJSON): number {
   return Math.abs(a / 2);
 }
 
-function NewClientWizard({
-  prefill,
-  fromLead,
-  fromQuote = null,
-}: {
+type WizardProps = {
   prefill: WizardPrefill;
   fromLead: FromLead | null;
   fromQuote?: FromQuote | null;
-}) {
+};
+
+/** "Discard draft" puts the wizard back to how it opened by remounting it:
+ *  thirty-odd fields and the step, all seeded at mount. */
+function NewClientWizard(props: WizardProps) {
+  const [generation, setGeneration] = useState(0);
+  return (
+    <NewClientWizardForm
+      key={generation}
+      {...props}
+      onDiscarded={() => setGeneration((g) => g + 1)}
+    />
+  );
+}
+
+function NewClientWizardForm({
+  prefill,
+  fromLead,
+  fromQuote = null,
+  onDiscarded,
+}: WizardProps & { onDiscarded: () => void }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const onboardFn = useServerFn(onboardClient);
@@ -394,10 +442,27 @@ function NewClientWizard({
   const linkFn = useServerFn(linkLeadToExistingClient);
 
   const [step, setStep] = useState(0);
-  const { petWaste, lines } = useServiceLines();
+  const { petWaste, lines, known: linesKnown } = useServiceLines();
+  const pickerLines = usePickerLines();
   const sitting = lines.includes("pet_sitting");
   const grooming = lines.includes("mobile_grooming");
-  const steps = newClientWizardSteps(petWaste);
+  // A grooming lead books a groom, priced from the size grid, once the
+  // client exists; the recurring Plan step would price it as a weekly plan
+  // at the service's base price (#657). Settled once the services have
+  // loaded, since the lead's service is what decides. The owner can still
+  // choose a recurring plan instead.
+  const { services: orgServices, isLoading: servicesLoading } = useOrgServices();
+  const leadServiceLine = prefill.serviceId
+    ? (orgServices.find((x) => x.id === prefill.serviceId)?.service_line ?? null)
+    : null;
+  const groomLead =
+    !!fromLead &&
+    !fromQuote &&
+    !(prefill.serviceId && servicesLoading) &&
+    leadBooksAGroom(leadServiceLine, lines);
+  const [groomInstead, setGroomInstead] = useState(true);
+  const booksGroom = groomLead && groomInstead;
+  const steps = newClientWizardSteps(petWaste).filter((s) => !(booksGroom && s === "Plan"));
   // Clamped: if the answer arrives while somebody is on the last step, the
   // list can be one shorter than the index they were on.
   const current: NewClientStep = steps[Math.min(step, steps.length - 1)];
@@ -432,6 +497,8 @@ function NewClientWizard({
   const [region, setRegion] = useState(prefill.region);
   const [postalCode, setPostalCode] = useState(prefill.postalCode);
   const [gateCode, setGateCode] = useState("");
+  // The lead's "Gate code or access notes" (#657), for properties.access_notes.
+  const [accessNotes, setAccessNotes] = useState(prefill.accessNotes);
   const [parkingNotes, setParkingNotes] = useState("");
   const [hazardNotes, setHazardNotes] = useState("");
   // P3.5 optional on-site visit contact (tenant/property manager)
@@ -541,18 +608,36 @@ function NewClientWizard({
   );
   const [billingCadence, setBillingCadence] = useState<"postpaid" | "prepaid">("postpaid");
   const [unitCount, setUnitCount] = useState("1");
+  // A commercial property's waste stations: created with the client, and
+  // counted by the zone's per-station rate (#658).
+  const [stationCount, setStationCount] = useState("");
+  const unitsN = Math.max(1, parseInt(unitCount, 10) || 1);
+  const stationsN = Math.min(200, Math.max(0, parseInt(stationCount, 10) || 0));
   // From a quote, the price the customer accepted, not the zone's.
   const [priceOverride, setPriceOverride] = useState<string>(() =>
     fromQuote?.priceCents != null ? (fromQuote.priceCents / 100).toFixed(2) : "",
   );
-  const [skipPlan, setSkipPlan] = useState(false);
+  // null until the owner touches it: then the line decides (F-04). A business
+  // that only sits, grooms or trains books the stay, groom or lesson after
+  // the client exists, so the box starts ticked; a scooping or walking
+  // business starts on a plan, as before.
+  const [skipPlanChoice, setSkipPlan] = useState<boolean | null>(null);
+  const skipPlan = skipPlanChoice ?? planStartsSkipped(lines, linesKnown);
+  // No subscription is written for a groom lead: the groom is booked next.
+  const planSkipped = skipPlan || booksGroom;
   // When the service starts, on the business's calendar. Tomorrow by default:
   // today, created in the evening, meant a visit that night after the route
   // had ended, with nobody on it and nobody told (persona review, 2026-09-27).
+  // From a lead, the day it asked to start (#657), unless that has passed.
   const orgTodayStr = useOrgToday();
-  const [startedOn, setStartedOn] = useState(() => tomorrowOf(orgTodayStr));
+  const [startedOn, setStartedOn] = useState(() =>
+    leadStartDate(prefill.startDate, orgTodayStr, tomorrowOf(orgTodayStr)),
+  );
+  const askedStartPassed = !!prefill.startDate && prefill.startDate < orgTodayStr;
   const [serviceDays, setServiceDays] = useState<number[] | null>(null);
-  const effectiveServiceDays = serviceDays ?? [weekdayOf(startedOn)];
+  // What the chips show is what is saved: no more days than the cadence runs
+  // on (R2-44), even after switching from Twice weekly to Weekly.
+  const effectiveServiceDays = serviceDaysFor(serviceDays ?? [weekdayOf(startedOn)], frequency);
 
   // ── Which service (the catalog) ─────────────────────────────────────────
   // A business that sells more than one thing picks it here; one that sells
@@ -560,22 +645,34 @@ function NewClientWizard({
   // takes the business's default on insert, exactly as before the catalog.
   // Started from a lead, the service the lead asked for, when it is one of
   // the business's; the plan form's picker (ServicesTab) is the same control.
-  const { services: orgServices, isLoading: servicesLoading } = useOrgServices();
   const [serviceId, setServiceId] = useState<string>(prefill.serviceId ?? "");
-  const offersServicePicker = servicePickerOptions(orgServices).length > 1;
-  const chosenService = offersServicePicker
-    ? (orgServices.find((x) => x.id === effectiveServiceId(serviceId, orgServices)) ?? null)
-    : null;
+  // A business without pet waste is not offered (or started on) the seeded
+  // "Pet waste removal" it still has (RC3), and its one service is the plan's
+  // service even with no picker to show: a walker with one walk was quoted
+  // from a zone, as a cleanup.
+  const offersServicePicker = servicePickerOptions(orgServices, null, pickerLines).length > 1;
+  const chosenService =
+    offersServicePicker || (linesKnown && !petWaste)
+      ? (orgServices.find(
+          (x) => x.id === effectiveServiceId(serviceId, orgServices, pickerLines),
+        ) ?? null)
+      : null;
   // A walk, a sit or a groom: priced from its service through the one rule
   // (servicePriceCents), never from a zone, and sold by the day of the week.
   const walkLike = !!chosenService && !isZonePriced(chosenService);
   const serviceCents = walkLike ? servicePriceCents(chosenService!, { pets: dogCount }) : null;
-  // The days a weekly walk runs on: Monday to Friday until the owner says.
-  const [weekdays, setWeekdays] = useState<number[]>([...WORK_WEEK]);
+  // The days a weekly plan runs on until the owner says: Monday to Friday
+  // for a walk, the first visit's weekday for anything else (F-04).
+  const [weekdayChoice, setWeekdays] = useState<number[] | null>(null);
+  const weekdays =
+    weekdayChoice ?? defaultPlanWeekdays(chosenService?.service_line, weekdayOf(startedOn));
   const setDays = walkLike && frequency === "weekly";
-  const needsDays = !skipPlan && setDays && weekdays.length === 0;
+  const needsDays = !planSkipped && setDays && weekdays.length === 0;
 
-  // Auto-quote (residential)
+  // Auto-quote. Residential from dogs; commercial from units and stations
+  // (#658, R2-21: a commercial account was never quoted, and its plan was
+  // saved with no zone).
+  const commercial = accountType === "commercial";
   const quoteKey = useMemo(
     () => ({
       postalCode: postalCode.trim(),
@@ -583,16 +680,16 @@ function NewClientWizard({
       dogCount,
       frequency: frequency === "one_time" ? "weekly" : frequency,
       boundaryAreaSqm: boundaryAreaSqm ?? undefined,
+      ...(commercial ? { unitCount: unitsN, stationCount: stationsN } : {}),
     }),
-    [postalCode, accountType, dogCount, frequency, boundaryAreaSqm],
+    [postalCode, accountType, dogCount, frequency, boundaryAreaSqm, commercial, unitsN, stationsN],
   );
 
   const quoteQ = useQuery({
     enabled:
       current === "Plan" &&
-      !skipPlan &&
+      !planSkipped &&
       !walkLike &&
-      accountType === "residential" &&
       quoteKey.postalCode.length >= 3 &&
       frequency !== "one_time",
     queryKey: ["internal-quote", quoteKey],
@@ -606,20 +703,28 @@ function NewClientWizard({
 
   const suggestedCents = walkLike
     ? serviceCents
-    : accountType === "residential" && zoneQuote
-      ? (zoneQuote.recurringPriceCents as number)
+    : zoneQuote
+      ? ((zoneQuote.recurringPriceCents as number | null) ?? null)
       : null;
+
+  // Booking, not pricing (#728): a dispatcher starts a plan at the set price,
+  // the one shown above, and the server refuses any other. Billing it in
+  // advance is a billing decision, which stays with whoever manages billing.
+  const { can: canPlan } = usePermissions();
+  const setsPrices = canPlan("manage_pricing");
+  const billsClients = canPlan("manage_client_billing");
 
   // No zone quote and nothing typed means no price, not $25. The old
   // fallback saved $25.00 for anyone who left the box empty, while the box
   // showed a grey placeholder that looked like a suggestion.
   const priceCents = (() => {
+    if (!setsPrices) return suggestedCents;
     const override = parseFloat(priceOverride);
     if (!isNaN(override) && override > 0) return Math.round(override * 100);
     if (suggestedCents != null) return suggestedCents;
     return null;
   })();
-  const needsPrice = !skipPlan && priceCents == null;
+  const needsPrice = !planSkipped && priceCents == null;
 
   // ── The first cleanup ────────────────────────────────────────────────────
   // Offered when the owner prices one, to someone who may bill, and not when
@@ -665,6 +770,90 @@ function NewClientWizard({
       ? (fcPricing.tiers.find((t) => t.id === fcChoice)?.label ?? null)
       : null;
 
+  // ── The draft (gaps-r2-12) ───────────────────────────────────────────────
+  // Everything typed, and the step, kept on this device for this user and
+  // this business. Not the gate code: an access code does not sit in browser
+  // storage (lib/form-drafts.ts strips one by name as well). Not the geocode
+  // status either; it follows from the pin.
+  const draft = useFormDraft({
+    form: newClientDraftForm(fromLead, fromQuote),
+    value: {
+      step,
+      groomInstead,
+      displayName,
+      accountType,
+      primaryEmail,
+      primaryPhone,
+      officeNote,
+      street,
+      city,
+      region,
+      postalCode,
+      accessNotes,
+      parkingNotes,
+      hazardNotes,
+      vcName,
+      vcPhone,
+      vcEmail,
+      hz,
+      boundary,
+      geo,
+      dogs,
+      frequency,
+      billingCadence,
+      unitCount,
+      stationCount,
+      priceOverride,
+      // The owner's own choices (null until touched), not the values the line
+      // derives (F-04), so a restored draft starts from the line again.
+      skipPlan: skipPlanChoice,
+      startedOn,
+      serviceDays,
+      serviceId,
+      weekdays: weekdayChoice,
+      fcChoice,
+      fcOverride,
+    },
+    restore: (d) => {
+      setStep(d.step);
+      setGroomInstead(d.groomInstead);
+      setDisplayName(d.displayName);
+      setAccountType(d.accountType);
+      setPrimaryEmail(d.primaryEmail);
+      setPrimaryPhone(d.primaryPhone);
+      setOfficeNote(d.officeNote);
+      setStreet(d.street);
+      setCity(d.city);
+      setRegion(d.region);
+      setPostalCode(d.postalCode);
+      setAccessNotes(d.accessNotes);
+      setParkingNotes(d.parkingNotes);
+      setHazardNotes(d.hazardNotes);
+      setVcName(d.vcName);
+      setVcPhone(d.vcPhone);
+      setVcEmail(d.vcEmail);
+      setHz(d.hz);
+      setBoundary(d.boundary);
+      setGeo(d.geo);
+      setGeoStatus(d.geo ? "ok" : "idle");
+      setDogs(d.dogs);
+      setFrequency(d.frequency);
+      setBillingCadence(d.billingCadence);
+      setUnitCount(d.unitCount);
+      setStationCount(d.stationCount);
+      setPriceOverride(d.priceOverride);
+      setSkipPlan(d.skipPlan);
+      // A start day that has passed since the draft was kept is not offered.
+      if (d.startedOn >= orgTodayStr) setStartedOn(d.startedOn);
+      setServiceDays(d.serviceDays);
+      setServiceId(d.serviceId);
+      setWeekdays(d.weekdays);
+      setFcChoice(d.fcChoice);
+      setFcOverride(d.fcOverride);
+    },
+    reset: onDiscarded,
+  });
+
   const mutation = useMutation({
     mutationFn: () =>
       onboardFn({
@@ -684,6 +873,7 @@ function NewClientWizard({
           longitude: geo?.lng,
           gateCode: gateCode || undefined,
           parkingNotes: parkingNotes || undefined,
+          accessNotes: accessNotes.trim() || undefined,
           hazardNotes: hazardNotes || undefined,
           visitContactName: vcName || undefined,
           visitContactPhone: vcPhone || undefined,
@@ -691,6 +881,7 @@ function NewClientWizard({
           hazards: hz,
           boundary: boundary ?? undefined,
           boundaryAreaSqm: boundaryAreaSqm ?? undefined,
+          stationCount: accountType === "commercial" && stationsN > 0 ? stationsN : undefined,
           dogs: validDogs.length
             ? validDogs.map((d) => ({
                 name: d.name.trim(),
@@ -706,7 +897,7 @@ function NewClientWizard({
                 notes: d.notes || undefined,
               }))
             : undefined,
-          subscription: skipPlan
+          subscription: planSkipped
             ? undefined
             : {
                 frequency,
@@ -720,17 +911,14 @@ function NewClientWizard({
                 // business's plan takes its default on insert, as always.
                 serviceId: chosenService?.id,
                 dogCount: accountType === "residential" ? dogCount : undefined,
-                unitCount:
-                  accountType === "commercial"
-                    ? Math.max(1, parseInt(unitCount, 10) || 1)
-                    : undefined,
+                unitCount: accountType === "commercial" ? unitsN : undefined,
                 zoneId: zoneQuote ? (zoneQuote.zoneId as string) : undefined,
-                billingCadence,
+                billingCadence: billsClients ? billingCadence : "postpaid",
               },
           officeNote: officeNote.trim() || undefined,
           fromLeadId: fromLead?.id,
           firstCleanup:
-            !skipPlan && fcCents != null && fcCents > 0
+            !planSkipped && fcCents != null && fcCents > 0
               ? { priceCents: fcCents, description: firstCleanupDescription(fcTierLabel, dogCount) }
               : undefined,
         },
@@ -746,6 +934,7 @@ function NewClientWizard({
       leadLinked,
       firstCleanupInvoiced,
     }) => {
+      draft.clear();
       const parts = ["Client created."];
       if (firstVisitOn) parts.push(`First visit ${formatDay(firstVisitOn)}.`);
       if (firstCleanupInvoiced) parts.push("First cleanup invoiced.");
@@ -785,9 +974,34 @@ function NewClientWizard({
           )
           .finally(() => qc.invalidateQueries({ queryKey: ["quotes"] }));
       }
+      if (booksGroom) {
+        // Book a groom opens on the client's Visits tab with the lead's
+        // service, every pet and the day it asked for; the price is the
+        // size grid's, read there (#657).
+        navigate({
+          to: "/clients/$clientId",
+          params: { clientId: id },
+          search: {
+            tab: "visits",
+            bookGroom: true,
+            groomService: leadServiceLine === "mobile_grooming" ? prefill.serviceId! : undefined,
+            groomOn: startedOn,
+          },
+        });
+        return;
+      }
       navigate({ to: "/clients/$clientId", params: { clientId: id } });
     },
-    onError: (e) => toast.error((e as Error).message),
+    // A role the subscriptions policy refuses (a dispatcher at the plan step)
+    // gets the policy's own words back, which name a table and not a reason
+    // (#662).
+    onError: (e) =>
+      toastServerError(e, {
+        fallback: "The client could not be saved. Try again.",
+        refused: planSkipped
+          ? undefined
+          : 'Your role is not allowed to set up this subscription. Tick "Skip subscription for now" to save the client without one, and ask the owner to add it.',
+      }),
   });
 
   // The lead's email already belongs to a client. The old one-tap conversion
@@ -795,6 +1009,7 @@ function NewClientWizard({
   const linkMutation = useMutation({
     mutationFn: (clientId: string) => linkFn({ data: { leadId: fromLead!.id, clientId } }),
     onSuccess: ({ clientId }) => {
+      draft.clear();
       toast.success("Lead linked to the existing client");
       qc.invalidateQueries({ queryKey: ["leads"] });
       navigate({ to: "/clients/$clientId", params: { clientId } });
@@ -814,6 +1029,7 @@ function NewClientWizard({
 
   return (
     <WizardShell backTo={fromQuote ? "quotes" : fromLead ? "leads" : "clients"}>
+      {draft.restored && <DraftRestoredNotice onDiscard={draft.discard} />}
       {fromQuote && (
         <div role="status" className="space-y-1 rounded-md border bg-primary/5 p-3 text-sm">
           <p className="break-words">
@@ -837,6 +1053,22 @@ function NewClientWizard({
             Started from the lead <strong>{fromLead.name}</strong>. Check each step: nothing is
             saved until you press Create client, and the lead is marked converted when you do.
           </p>
+          {groomLead && (
+            <label className="flex min-h-11 items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-5 w-5 shrink-0"
+                checked={groomInstead}
+                onChange={(e) => setGroomInstead(e.target.checked)}
+              />
+              <span className="min-w-0">
+                Book the groom next. The client is created without a recurring plan, then Book a
+                groom opens with these pets
+                {prefill.startDate ? `, on ${formatDay(startedOn)},` : ""} at the size grid&apos;s
+                price.
+              </span>
+            </label>
+          )}
           {fromLead.existingClient && (
             <div
               role="status"
@@ -1114,6 +1346,18 @@ function NewClientWizard({
                   className="min-h-11 w-full rounded-md border bg-background px-3 py-2 text-sm"
                 />
               </div>
+              <div className="min-w-0 space-y-2 sm:col-span-2">
+                <Label htmlFor="access">Access notes (optional)</Label>
+                <textarea
+                  id="access"
+                  rows={2}
+                  maxLength={500}
+                  value={accessNotes}
+                  onChange={(e) => setAccessNotes(e.target.value)}
+                  placeholder="How to get in: side gate, key box, which door"
+                  className="min-h-11 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                />
+              </div>
               {/* No yard-size picker. It is derived from the property
                   boundary by a database trigger, and properties.functions.ts
                   says so where it stopped writing the field: "yard_size is
@@ -1175,18 +1419,9 @@ function NewClientWizard({
                 Safety & access
               </div>
               <div className="mt-2 grid gap-1 text-sm sm:grid-cols-2">
-                {(
-                  [
-                    ["doNotEnterIfDogOut", "Do NOT enter if dog is outside"],
-                    ["aggressiveDog", "Aggressive dog"],
-                    ["escapeRisk", "Escape risk (close gate)"],
-                    ["invisibleFence", "Invisible fence"],
-                    ["dogInYardDuringService", "Dog in yard during service"],
-                    ["beesWasps", "Bees / wasps"],
-                    ["sharpObjects", "Sharp objects"],
-                    ["slipperySurfaces", "Slippery surfaces"],
-                  ] as const
-                ).map(([k, label]) => (
+                {/* The yard's hazards are asked of a business that scoops
+                    (F-06); propertyHazardsFor keeps one that is ticked. */}
+                {propertyHazardsFor(lines, hz).map(({ key: k, label }) => (
                   <label key={k} className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -1378,6 +1613,7 @@ function NewClientWizard({
                     services={orgServices}
                     isLoading={servicesLoading}
                     onChange={setServiceId}
+                    lines={pickerLines}
                   />
                 )}
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -1398,24 +1634,46 @@ function NewClientWizard({
                   <div className="space-y-2">
                     <Label>Billing</Label>
                     <select
-                      value={billingCadence}
+                      value={billsClients ? billingCadence : "postpaid"}
                       onChange={(e) => setBillingCadence(e.target.value as any)}
+                      disabled={!billsClients}
                       className="h-10 w-full rounded-md border bg-background px-3 text-sm"
                     >
                       <option value="postpaid">Bill after each visit</option>
-                      <option value="prepaid">Prepaid credits</option>
+                      {billsClients && <option value="prepaid">Prepaid credits</option>}
                     </select>
                   </div>
                   {accountType === "commercial" && (
-                    <div className="space-y-2">
-                      <Label>Units / stations</Label>
-                      <Input
-                        type="number"
-                        min={1}
-                        value={unitCount}
-                        onChange={(e) => setUnitCount(e.target.value)}
-                      />
-                    </div>
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="nc-units">Units</Label>
+                        <Input
+                          id="nc-units"
+                          type="number"
+                          inputMode="numeric"
+                          min={1}
+                          value={unitCount}
+                          onChange={(e) => setUnitCount(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="nc-stations">Waste stations</Label>
+                        <Input
+                          id="nc-stations"
+                          type="number"
+                          inputMode="numeric"
+                          min={0}
+                          max={200}
+                          placeholder="0"
+                          value={stationCount}
+                          onChange={(e) => setStationCount(e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Added as Station 1, Station 2… Rename them on the client&apos;s Stations
+                          tab.
+                        </p>
+                      </div>
+                    </>
                   )}
                 </div>
 
@@ -1433,6 +1691,12 @@ function NewClientWizard({
                     <p className="text-xs text-muted-foreground">
                       If that isn&apos;t a work day or a service day, it moves to the next one.
                     </p>
+                    {askedStartPassed && (
+                      <p className="text-xs text-muted-foreground">
+                        The lead asked to start on {formatDay(prefill.startDate!)}, which has
+                        passed.
+                      </p>
+                    )}
                   </div>
                   {setDays && (
                     <div className="min-w-0 space-y-2">
@@ -1452,7 +1716,14 @@ function NewClientWizard({
                   )}
                   {frequency !== "one_time" && !setDays && (
                     <fieldset className="space-y-2">
-                      <legend className="text-sm font-medium">Service day</legend>
+                      <legend className="text-sm font-medium">
+                        {serviceDaysPerWeek(frequency) === 2 ? "Service days" : "Service day"}
+                      </legend>
+                      <p id="nc-service-day-hint" className="text-xs text-muted-foreground">
+                        {serviceDaysPerWeek(frequency) === 2
+                          ? "Pick the two days each week."
+                          : "One visit on this day. For more days a week, choose Twice weekly."}
+                      </p>
                       <div className="flex flex-wrap gap-1.5">
                         {WEEKDAYS.map((label, d) => {
                           const on = effectiveServiceDays.includes(d);
@@ -1461,12 +1732,9 @@ function NewClientWizard({
                               key={label}
                               type="button"
                               aria-pressed={on}
-                              onClick={() => {
-                                const next = on
-                                  ? effectiveServiceDays.filter((x) => x !== d)
-                                  : [...effectiveServiceDays, d].sort((a, b) => a - b);
-                                setServiceDays(next.length ? next : [weekdayOf(startedOn)]);
-                              }}
+                              onClick={() =>
+                                setServiceDays(pickServiceDay(effectiveServiceDays, d, frequency))
+                              }
                               className={`h-9 min-w-11 shrink-0 rounded-md border px-2 text-sm touch:min-h-11 ${
                                 on
                                   ? "border-primary bg-primary text-primary-foreground"
@@ -1482,10 +1750,10 @@ function NewClientWizard({
                   )}
                 </div>
 
-                {accountType === "residential" && (
+                {(accountType === "residential" || !walkLike) && (
                   <div className="rounded-md border bg-primary/5 p-4">
-                    <div className="flex items-baseline justify-between">
-                      <div>
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <div className="min-w-0">
                         <div className="text-xs uppercase tracking-wide text-muted-foreground">
                           Suggested price / visit
                         </div>
@@ -1502,7 +1770,9 @@ function NewClientWizard({
                           quoteQ.data &&
                           !("quote" in (quoteQ.data as any)) && (
                             <div className="text-sm text-amber-600">
-                              No zone matches ZIP {postalCode}. Set price manually below.
+                              {setsPrices
+                                ? `No zone matches ZIP ${postalCode}. Set price manually below.`
+                                : `No zone matches ZIP ${postalCode}, so there is no set price.`}
                             </div>
                           )}
                         {walkLike && serviceCents == null && (
@@ -1511,6 +1781,15 @@ function NewClientWizard({
                             Services.
                           </div>
                         )}
+                        {commercial &&
+                          !quoteQ.isFetching &&
+                          zoneQuote &&
+                          suggestedCents == null && (
+                            <div className="text-sm text-amber-600">
+                              {zoneQuote.zoneName} has no commercial rates. Set the price below, or
+                              add them in Settings → Zones & pricing.
+                            </div>
+                          )}
                       </div>
                       {zoneQuote && <Badge variant="secondary">Zone: {zoneQuote.zoneName}</Badge>}
                       {walkLike && serviceCents != null && (
@@ -1518,8 +1797,10 @@ function NewClientWizard({
                       )}
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Based on {dogCount} dog
-                      {dogCount === 1 ? "" : "s"} ·{" "}
+                      {commercial
+                        ? commercialBasis(zoneQuote?.commercial ?? null, unitsN, stationsN)
+                        : `Based on ${dogCount} dog${dogCount === 1 ? "" : "s"}`}{" "}
+                      ·{" "}
                       {setDays
                         ? `${weekdays.length} day${weekdays.length === 1 ? "" : "s"} a week`
                         : FREQS.find((f) => f.value === frequency)?.label}
@@ -1532,29 +1813,49 @@ function NewClientWizard({
                   </div>
                 )}
 
-                <div className="space-y-2">
-                  <Label htmlFor="po">
-                    {suggestedCents != null ? "Price per visit (override)" : "Price per visit"}
-                  </Label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">$</span>
-                    <Input
-                      id="po"
-                      inputMode="decimal"
-                      placeholder={
-                        suggestedCents != null ? (suggestedCents / 100).toFixed(2) : "Enter a price"
-                      }
-                      value={priceOverride}
-                      onChange={(e) => setPriceOverride(e.target.value)}
-                      className="max-w-[160px]"
-                    />
-                    {priceCents != null && (
-                      <span className="text-xs text-muted-foreground">
-                        Final: <strong>{money(priceCents)}</strong> / visit
-                      </span>
+                {!setsPrices ? (
+                  <div className="space-y-1 text-sm">
+                    {suggestedCents != null ? (
+                      <p>
+                        Price per visit: <strong>{money(suggestedCents)}</strong>, the set price.
+                        Only an owner or office manager can change it.
+                      </p>
+                    ) : (
+                      !quoteQ.isFetching && (
+                        <p role="alert" className="text-amber-600">
+                          There is no set price for this plan. Tick "Skip subscription for now" to
+                          save the client, and ask an owner or office manager to add the plan.
+                        </p>
+                      )
                     )}
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="po">
+                      {suggestedCents != null ? "Price per visit (override)" : "Price per visit"}
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">$</span>
+                      <Input
+                        id="po"
+                        inputMode="decimal"
+                        placeholder={
+                          suggestedCents != null
+                            ? (suggestedCents / 100).toFixed(2)
+                            : "Enter a price"
+                        }
+                        value={priceOverride}
+                        onChange={(e) => setPriceOverride(e.target.value)}
+                        className="max-w-[160px]"
+                      />
+                      {priceCents != null && (
+                        <span className="text-xs text-muted-foreground">
+                          Final: <strong>{money(priceCents)}</strong> / visit
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {offersFirstCleanup && fcPricing && (
                   <div className="space-y-3 rounded-md border p-4">
@@ -1659,7 +1960,11 @@ function NewClientWizard({
                 disabled={mutation.isPending || linkMutation.isPending || needsPrice || needsDays}
                 onClick={() => mutation.mutate()}
               >
-                {mutation.isPending ? "Creating…" : "Create client"}
+                {mutation.isPending
+                  ? "Creating…"
+                  : booksGroom
+                    ? "Create and book groom"
+                    : "Create client"}
               </Button>
               {needsPrice && (
                 <p className="text-xs text-muted-foreground">Set a price per visit first.</p>

@@ -7,8 +7,16 @@
 // DownloadPdfButton: calls a server function (which carries the office's
 // bearer token or the portal's session) and saves the bytes it returns. From
 // the native app a blob download goes nowhere (WKWebView has no downloads
-// folder), so when the document also has a public link the native build opens
-// that in the system browser sheet instead, which has Share and Save.
+// folder, Android's WebView drops it), so the native build writes the same
+// bytes to the app's cache and opens the system share sheet, which has Save
+// to Files / Drive, Print, Mail and every other app.
+//
+// It used to open the document's public PDF link in the system browser. That
+// left the app for Chrome on Android, and the link was built from the
+// production host whatever API the build talked to, so a dev or staging build
+// sent local tokens to production (#660). The share sheet needs no link and no
+// second host: the bytes come from the server function this build already
+// calls.
 //
 // Both are ui/button, so both are on the 44px touch floor (`touch:min-h-11`)
 // at every width, and neither sets a width, so a narrow row wraps them.
@@ -17,6 +25,7 @@ import { FileDown, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button, type ButtonProps } from "@/components/ui/button";
 import { isNative } from "@/lib/native";
+import { nativePdfName } from "@/lib/pdf-file-name";
 
 type Common = {
   label?: string;
@@ -58,17 +67,36 @@ function saveBase64Pdf(filename: string, base64: string) {
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
+/** Native: write the PDF to the app's cache and open the share sheet. A
+ *  dismissed sheet is not an error. */
+async function shareNativePdf(filename: string, base64: string) {
+  const [{ Filesystem, Directory }, { Share }] = await Promise.all([
+    import("@capacitor/filesystem"),
+    import("@capacitor/share"),
+  ]);
+  const name = nativePdfName(filename);
+  const { uri } = await Filesystem.writeFile({
+    path: `pdf/${name}`,
+    data: base64,
+    directory: Directory.Cache,
+    recursive: true,
+  });
+  try {
+    await Share.share({ title: name, files: [uri], dialogTitle: name });
+  } catch (e) {
+    if (/cancel/i.test((e as Error)?.message ?? "")) return;
+    throw e;
+  }
+}
+
 export function DownloadPdfButton({
   load,
-  nativeUrl,
   label = "Download PDF",
   variant = "outline",
   size,
   className,
 }: Common & {
   load: () => Promise<{ filename: string; base64: string }>;
-  /** The public PDF route for this document, when it has one. */
-  nativeUrl?: string | null;
 }) {
   const [busy, setBusy] = useState(false);
   return (
@@ -81,13 +109,9 @@ export function DownloadPdfButton({
       onClick={async () => {
         setBusy(true);
         try {
-          if (nativeUrl && isNative()) {
-            const { Browser } = await import("@capacitor/browser");
-            await Browser.open({ url: nativeUrl });
-            return;
-          }
           const file = await load();
-          saveBase64Pdf(file.filename, file.base64);
+          if (isNative()) await shareNativePdf(file.filename, file.base64);
+          else saveBase64Pdf(file.filename, file.base64);
         } catch (e) {
           toast.error((e as Error).message || "The PDF could not be made. Please try again.");
         } finally {

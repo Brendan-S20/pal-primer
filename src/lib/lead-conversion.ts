@@ -49,6 +49,15 @@ export type ConvertibleLead = {
    *  column is read defensively, so a lead from before it exists, or a
    *  database without it yet, is a lead with no service. */
   service_id?: string | null;
+  /** What the booking link asked for the first visit (#527): the pets as
+   *  [{name, breed}], the gate code or access notes, and the day to start.
+   *  Optional for the same reason as service_id. Until #657 conversion read
+   *  none of the three, so a lead that named Waffles and Mochi, said how to
+   *  get through the gate and asked to start on November 9 became a client
+   *  with two unnamed dogs, no access note and a start of tomorrow. */
+  pets?: { name?: string | null; breed?: string | null }[] | null;
+  access_notes?: string | null;
+  preferred_start_date?: string | null;
 };
 
 export type WizardDog = {
@@ -87,6 +96,13 @@ export type WizardPrefill = {
    *  The wizard prefills the price from it through the one pricing rule
    *  (servicePriceCents) when the business sells more than one thing. */
   serviceId: string | null;
+  /** properties.access_notes: the line My Day and the visit drawer show the
+   *  tech under Access. */
+  accessNotes: string;
+  /** The day the lead asked to start (YYYY-MM-DD), as asked. The wizard
+   *  clamps it to the first day it may book; it is not clamped here, because
+   *  this file does not know what day it is. */
+  startDate: string | null;
   officeNote: string;
 };
 
@@ -102,6 +118,8 @@ export const EMPTY_PREFILL: WizardPrefill = {
   dogs: [BLANK_DOG],
   frequency: null,
   serviceId: null,
+  accessNotes: "",
+  startDate: null,
   officeNote: "",
 };
 
@@ -235,6 +253,81 @@ export function parseLeadLocation(raw: string | null | undefined): ParsedLocatio
   return out;
 }
 
+// ── Pets ─────────────────────────────────────────────────────────────────
+
+/** The booking link's second box is "Breed or size", so "Large" is a size
+ *  and "Lab, large" is both. A word that petSize reads as a size goes to the
+ *  size the groom grid prices from; the rest stays the breed. */
+const SIZE_WORDS = /\b(x-?large|extra[\s-]?large|giant|xl|small|sm|medium|med|large|lg)\b/i;
+
+export function splitBreedAndSize(raw: string | null | undefined): {
+  breed: string;
+  weightClass: string;
+} {
+  const text = (raw ?? "").trim();
+  if (!text) return { breed: "", weightClass: "" };
+  const m = SIZE_WORDS.exec(text);
+  if (!m) return { breed: text, weightClass: "" };
+  const word = m[1].toLowerCase().replace(/[\s-]+/g, "");
+  const weightClass =
+    word === "small" || word === "sm"
+      ? "small"
+      : word === "medium" || word === "med"
+        ? "medium"
+        : word === "large" || word === "lg"
+          ? "large"
+          : "xlarge";
+  const breed = (text.slice(0, m.index) + text.slice(m.index + m[0].length))
+    .replace(/\(\s*\)/g, "")
+    .replace(/\s*[,/;-]\s*$/g, "")
+    .replace(/^\s*[,/;-]\s*/g, "")
+    .replace(/\b(dog|sized?)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return { breed, weightClass };
+}
+
+/** `leads.pets`, read defensively: a JSON array of {name, breed}, or anything
+ *  else, which is no pets. Rows that say nothing are dropped. */
+export function leadPets(raw: unknown): { name: string; breed: string }[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((p) => {
+      const row = p && typeof p === "object" ? (p as Record<string, unknown>) : {};
+      return {
+        name: typeof row.name === "string" ? row.name.trim().slice(0, 80) : "",
+        breed: typeof row.breed === "string" ? row.breed.trim().slice(0, 120) : "",
+      };
+    })
+    .filter((p) => p.name || p.breed)
+    .slice(0, MAX_WIZARD_DOGS);
+}
+
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** The first day the wizard may start a lead's service on: the day it asked
+ *  for, unless that has already gone (a lead read a week late), when the
+ *  fallback the wizard would have used anyway. */
+export function leadStartDate(asked: string | null, firstBookable: string, fallback: string) {
+  return asked && ISO_DAY.test(asked) && asked >= firstBookable ? asked : fallback;
+}
+
+// ── Where a lead goes ─────────────────────────────────────────────────────
+
+/** A grooming lead books a groom; it does not take the recurring plan step.
+ *  That step prices from the service's own base price and a weekly schedule
+ *  (it showed "Full groom, weekly, Mon-Fri, $80"), while a groom is priced
+ *  per pet from the size grid and add-ons, which only Book a groom reads
+ *  (#657). The lead's service decides; a lead with none is a groom only at a
+ *  business that runs nothing else. */
+export function leadBooksAGroom(
+  leadServiceLine: string | null | undefined,
+  orgLines: readonly string[],
+): boolean {
+  if (leadServiceLine) return leadServiceLine === "mobile_grooming";
+  return orgLines.length === 1 && orgLines[0] === "mobile_grooming";
+}
+
 // ── Email ────────────────────────────────────────────────────────────────
 
 /** The AI receptionist files SMS callers under a made-up `<digits>@sms.lead`
@@ -254,11 +347,15 @@ export function isSyntheticLeadEmail(email: string | null | undefined): boolean 
  * a tech reading "Dog 2" in a driveway has been told nothing. The wizard prices
  * the plan from the number of rows, so the count survives even if the owner
  * names none of them yet; a row left unnamed is simply not saved as a dog.
+ * Where the lead named its pets (the booking link, #527), the rows start with
+ * those names, and a size typed in the "Breed or size" box starts as the
+ * pet's size, which is what a groom is priced from (#657).
  */
 export function leadToWizardPrefill(lead: ConvertibleLead): WizardPrefill {
   const loc = parseLeadLocation(lead.location);
+  const pets = leadPets(lead.pets);
   const reported = lead.dog_count ?? 0;
-  const rows = Math.min(Math.max(reported, 1), MAX_WIZARD_DOGS);
+  const rows = Math.min(Math.max(reported, pets.length, 1), MAX_WIZARD_DOGS);
   const frequency = normalizeLeadFrequency(lead.frequency);
 
   // Everything the lead said that has no field of its own. The message first,
@@ -278,11 +375,23 @@ export function leadToWizardPrefill(lead: ConvertibleLead): WizardPrefill {
     city: loc.city,
     region: loc.region,
     postalCode: loc.postalCode,
-    dogs: Array.from({ length: rows }, () => ({ ...BLANK_DOG })),
+    // The pets the lead named, in the order named, then a blank row for each
+    // dog it counted but did not name.
+    dogs: Array.from({ length: rows }, (_, i) => {
+      const pet = pets[i];
+      if (!pet) return { ...BLANK_DOG };
+      const { breed, weightClass } = splitBreedAndSize(pet.breed);
+      return { ...BLANK_DOG, name: pet.name, breed, weightClass };
+    }),
     frequency,
     // Read defensively: a lead row without the column is a lead with no
     // service, never an error.
     serviceId: typeof lead.service_id === "string" && lead.service_id ? lead.service_id : null,
+    accessNotes: (lead.access_notes ?? "").trim().slice(0, 500),
+    startDate:
+      typeof lead.preferred_start_date === "string" && ISO_DAY.test(lead.preferred_start_date)
+        ? lead.preferred_start_date
+        : null,
     officeNote: note ? `From the lead:\n${note}` : "",
   };
 }

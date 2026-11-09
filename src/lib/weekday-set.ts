@@ -38,6 +38,42 @@ export function toggleWeekday(days: readonly number[], day: number): number[] {
     : normalizeWeekdays([...days, day]);
 }
 
+/** How many service days a plan of `frequency` runs on each week it runs.
+ *  Twice weekly is two; every other cadence (weekly, every 2 weeks, monthly)
+ *  lands on ONE day, the first of preferred_weekdays. */
+export function serviceDaysPerWeek(frequency: string): number {
+  return frequency === "twice_weekly" ? 2 : 1;
+}
+
+/**
+ * The new-client wizard's Service day chips after a tap. A weekly plan saved
+ * with Fri and Sat read "Fri Sat" on the client's Services but generated
+ * Fridays only, because a weekly plan lands on the first preferred day
+ * (R2-44, waste-r2-08). So a one-day cadence picks ONE day: a tap moves the
+ * day rather than adding a second one. Twice weekly keeps up to two; a third
+ * tap drops the pair's first day in the week. Never empty: tapping the only day
+ * leaves it on.
+ */
+export function pickServiceDay(
+  current: readonly number[],
+  day: number,
+  frequency: string,
+): number[] {
+  const max = serviceDaysPerWeek(frequency);
+  const now = normalizeWeekdays(current).slice(0, max);
+  if (now.includes(day)) {
+    const left = now.filter((d) => d !== day);
+    return left.length ? left : [day];
+  }
+  if (max === 1) return [day];
+  return normalizeWeekdays([...(now.length >= max ? now.slice(1) : now), day]);
+}
+
+/** The days a plan of `frequency` is saved with: no more than it runs on. */
+export function serviceDaysFor(days: readonly number[], frequency: string): number[] {
+  return normalizeWeekdays(days).slice(0, serviceDaysPerWeek(frequency));
+}
+
 // 2023-01-01 was a Sunday, so day d of that week is Jan 1 + d.
 const dayDate = (d: number) => new Date(Date.UTC(2023, 0, 1 + d));
 

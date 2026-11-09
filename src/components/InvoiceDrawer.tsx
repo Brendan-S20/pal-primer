@@ -25,13 +25,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
+import { invoiceRefundState } from "@/lib/refund-outcome";
 import { MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { StaffInvoicePayForm } from "@/components/StaffInvoicePayForm";
 import { DownloadPdfButton } from "@/components/DownloadPdfButton";
 import { downloadInvoicePdf } from "@/lib/document-pdf.functions";
 import { RefundPaymentAction } from "@/components/RefundPaymentAction";
-import { canOfferRefund } from "@/lib/refunds";
+import { ManualRefundAction } from "@/components/ManualRefundAction";
+import { canOfferRefund, canRecordManualRefund } from "@/lib/refunds";
 import { usePermissions } from "@/hooks/useMyRole";
 import { describePaymentSplit, formatDateTime, formatDay, surchargeSplit } from "@/lib/format";
 import {
@@ -53,7 +55,7 @@ import { isInvoiceOverdue } from "@/lib/overdue";
 import { toastSaveError } from "@/lib/stale-write-toast";
 import { invoiceDueCents, isPartiallyPaid } from "@/lib/ar";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
-import { appUrl } from "@/lib/app-origin";
+import { linkUrl } from "@/lib/app-origin";
 
 function fmtCents(c: number | null | undefined, currency = "usd") {
   return new Intl.NumberFormat("en-US", {
@@ -143,6 +145,7 @@ export function InvoiceDrawer({
       } else {
         toast.success("Payment recorded. Invoice paid");
       }
+      if (r.tipFailed) toast.error("The payment was recorded, but the tip was not saved.");
       if (r.intentStillLive?.length) {
         toast.warning(
           "The payment link for this invoice is still live. Cancel it in Stripe, or the client can still be charged.",
@@ -160,6 +163,7 @@ export function InvoiceDrawer({
   const creditCents = inv?.credit_applied_cents ?? 0;
   const paidCents = inv?.amount_paid_cents ?? 0;
   const dueCents = inv ? invoiceDueCents(inv) : 0;
+  const refundedCents = inv?.amount_refunded_cents ?? 0;
 
   const recordPayment = async () => {
     if (!inv) return;
@@ -187,11 +191,12 @@ export function InvoiceDrawer({
 
   const copyPayLink = () => {
     if (!inv) return;
-    // appUrl(), not window.location.origin: this link goes to a CUSTOMER, and
-    // the origin the staffer happens to be on is not necessarily the host the
-    // product lives at — a Lovable preview URL would produce a pay link that
-    // works today and 404s next week. See src/lib/app-origin.ts.
-    const url = appUrl(`/pay/i/${inv.public_token}`);
+    // linkUrl(), not a raw window.location.origin: this link goes to a
+    // CUSTOMER. linkUrl names the host this build runs on (#660), except a
+    // Lovable preview, which would give a pay link that 404s next week, and a
+    // native bundle, whose own origin nobody else can open. See
+    // src/lib/app-origin.ts.
+    const url = linkUrl(`/pay/i/${inv.public_token}`);
     navigator.clipboard.writeText(url).then(
       () => {
         setCopied(true);
@@ -272,7 +277,7 @@ export function InvoiceDrawer({
           <div className="space-y-5 text-sm">
             {/* Status line */}
             <div className="flex flex-wrap items-center gap-2">
-              <InvoiceStatusBadge status={inv.status} />
+              <InvoiceStatusBadge status={inv.status} refund={invoiceRefundState(inv)} />
               {isPartiallyPaid(inv) && <MetaChip>Partially paid</MetaChip>}
               {overdue && (
                 <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-medium text-destructive">
@@ -364,15 +369,7 @@ export function InvoiceDrawer({
               )}
               {/* Every status, not only open: a paid invoice's PDF is the
                   receipt a bookkeeper asks for. */}
-              <DownloadPdfButton
-                size="sm"
-                load={() => pdfFn({ data: { invoiceId: inv.id } })}
-                nativeUrl={
-                  inv.public_token
-                    ? appUrl(`/api/public/invoice-pdf?token=${inv.public_token}`)
-                    : null
-                }
-              />
+              <DownloadPdfButton size="sm" load={() => pdfFn({ data: { invoiceId: inv.id } })} />
               {open && (
                 <Button
                   size="sm"
@@ -454,12 +451,22 @@ export function InvoiceDrawer({
                   <span>-{fmtCents(paidCents, inv.currency ?? "usd")}</span>
                 </div>
               )}
-              {(creditCents > 0 || paidCents > 0) && inv.status !== "void" && (
-                <div className="mt-2 flex items-center justify-between border-t pt-2 font-medium">
-                  <span>Balance due</span>
-                  <span>{fmtCents(dueCents, inv.currency ?? "usd")}</span>
+              {refundedCents > 0 && (
+                <div className="mt-2 flex items-center justify-between text-muted-foreground">
+                  <span>Refunded</span>
+                  <span>{fmtCents(refundedCents, inv.currency ?? "usd")}</span>
                 </div>
               )}
+              {/* A paid invoice with money given back owes nothing: the
+                  refund was the business's choice, not a balance (#674). */}
+              {(creditCents > 0 || paidCents > 0) &&
+                inv.status !== "void" &&
+                !invoiceRefundState(inv) && (
+                  <div className="mt-2 flex items-center justify-between border-t pt-2 font-medium">
+                    <span>Balance due</span>
+                    <span>{fmtCents(dueCents, inv.currency ?? "usd")}</span>
+                  </div>
+                )}
             </div>
 
             {/* Payments */}
@@ -514,7 +521,9 @@ export function InvoiceDrawer({
                       {/* Its own line under the payment, not squeezed into the
                         row: at 320px the row already holds a date, a chip and
                         a two-line amount. */}
-                      {(p.refunded_cents > 0 || canOfferRefund(role, p)) && (
+                      {(p.refunded_cents > 0 ||
+                        canOfferRefund(role, p) ||
+                        canRecordManualRefund(role, p)) && (
                         <div className="mt-1 flex items-center justify-between gap-2">
                           <span className="min-w-0 text-2xs text-muted-foreground">
                             {p.refunded_cents > 0
@@ -527,6 +536,13 @@ export function InvoiceDrawer({
                             currency={inv.currency}
                             customerName={client?.display_name}
                             onRefunded={onChanged}
+                          />
+                          <ManualRefundAction
+                            payment={p}
+                            invoiceId={inv.id}
+                            currency={inv.currency}
+                            customerName={client?.display_name}
+                            onRecorded={onChanged}
                           />
                         </div>
                       )}

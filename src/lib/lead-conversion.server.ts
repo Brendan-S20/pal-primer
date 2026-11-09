@@ -4,7 +4,7 @@
 // (onboardClient in clients.functions.ts), so the rule for "already converted"
 // is the one in lead-conversion.ts, asked in one place.
 
-import { leadConversionState, type ConvertibleLead } from "@/lib/lead-conversion";
+import { leadConversionState, leadPets, type ConvertibleLead } from "@/lib/lead-conversion";
 
 export const CONVERTIBLE_LEAD_COLUMNS =
   "id, organization_id, name, email, phone, company, location, dog_count, frequency, message, source, status, converted_client_id";
@@ -33,6 +33,12 @@ export async function loadLeadForConversion(
   const lead: Record<string, unknown> = {};
   for (const k of CONVERTIBLE_LEAD_KEYS) if (k !== "organization_id") lead[k] = data[k] ?? null;
   lead.service_id = typeof data.service_id === "string" ? data.service_id : null;
+  // The first visit's three answers (#527), read the same defensive way, so
+  // the wizard can start from them (#657).
+  lead.pets = leadPets(data.pets);
+  lead.access_notes = typeof data.access_notes === "string" ? data.access_notes : null;
+  lead.preferred_start_date =
+    typeof data.preferred_start_date === "string" ? data.preferred_start_date : null;
   return lead as unknown as ConvertibleLead;
 }
 

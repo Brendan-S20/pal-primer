@@ -14,6 +14,9 @@
 // - FileTimestamp, C617.1: @capacitor/camera's ion-ios-camera reads the
 //   creation date of the photo it just wrote to NSTemporaryDirectory. That
 //   library has its own manifest, but its Package.swift does not ship it.
+//   @capacitor/filesystem (#660, saving a PDF to share) reads creation and
+//   modification dates of files in the app's own cache: same category, same
+//   reason.
 // When a native dependency is added or upgraded, rescan it.
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";

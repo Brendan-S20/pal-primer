@@ -8,7 +8,8 @@ import type { Database } from "@/integrations/supabase/types";
 import { appOrigin } from "@/lib/app-origin";
 import { platformFeeCents } from "@/lib/platform-fee";
 import { taxShareCents } from "@/lib/sales-tax";
-import { tipChoiceSchema, tipMetadata, tippedCharge } from "@/lib/tips";
+import { TIP_CUSTOM_MAX_CENTS, tipChoiceSchema, tipMetadata, tippedCharge } from "@/lib/tips";
+import { officeTipProblem } from "@/lib/office-tip";
 import { invoiceNumberLabel, invoiceRef } from "@/lib/invoice-labels";
 import {
   MANUAL_PAYMENT_METHODS,
@@ -20,7 +21,12 @@ import {
 import { DEFAULT_ORG_TIMEZONE } from "@/lib/org-day";
 import { invoiceDueCents } from "@/lib/ar";
 import { formatCents } from "@/lib/digest-alerts";
-import { QUANTITY_MAX, lineTotalCents } from "@/lib/invoice-lines";
+import {
+  QUANTITY_MAX,
+  discountLineProblem,
+  lineTotalCents,
+  manualLinesProblem,
+} from "@/lib/invoice-lines";
 
 /** Each payment row with how much of it has been refunded, from the reversal
  *  ledger — so the invoice can say "$30.00 refunded" and hide the Refund button
@@ -69,7 +75,7 @@ export const listInvoices = createServerFn({ method: "GET" })
     const { data, error } = await supabase
       .from("invoices")
       .select(
-        "id, number, client_id, status, kind, subtotal_cents, total_cents, credit_applied_cents, amount_paid_cents, currency, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, updated_at, clients(display_name)",
+        "id, number, client_id, status, kind, subtotal_cents, total_cents, credit_applied_cents, amount_paid_cents, amount_refunded_cents, deposit_for_invoice_id, currency, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, updated_at, clients(display_name)",
       )
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
@@ -221,7 +227,9 @@ const manualInvoiceSchema = z.object({
       z
         .object({
           description: z.string().min(1).max(300),
-          amountCents: z.number().int().min(0).max(10_000_000),
+          // Below zero is a discount line (#653): "Loyalty discount -$5.00".
+          // It used to be dropped by the form before it got here.
+          amountCents: z.number().int().min(-10_000_000).max(10_000_000),
           // The visit or the pending add-on this line bills (#605). Linking is
           // what keeps the billing run from billing the same work again.
           visitId: z.string().uuid().optional(),
@@ -235,8 +243,12 @@ const manualInvoiceSchema = z.object({
         })
         // A $0 line only when it names a visit: a skip the business does not
         // charge for is still work the invoice covers.
-        .refine((i) => i.amountCents >= 1 || i.visitId !== undefined, {
+        .refine((i) => i.amountCents !== 0 || i.visitId !== undefined, {
           message: "A line needs an amount",
+        })
+        .superRefine((i, ctx) => {
+          const problem = discountLineProblem(i);
+          if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem });
         })
         .refine((i) => !(i.visitId && i.addonChargeId), {
           message: "A line bills a visit or an add-on, not both",
@@ -253,7 +265,12 @@ const manualInvoiceSchema = z.object({
         ),
     )
     .min(1)
-    .max(25),
+    .max(25)
+    // Discounts may not take the invoice to $0 or below (#653).
+    .superRefine((items, ctx) => {
+      const problem = manualLinesProblem(items);
+      if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem });
+    }),
   notes: z.string().max(500).optional(),
   // Minted once each time the dialog opens and sent with every attempt, so a
   // double click or a retry after a lost response makes one invoice (#607).
@@ -482,6 +499,9 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
         /** Less than the balance is a partial payment; more is refused. One
          *  invoice only. Absent means the whole balance, as it always did. */
         amountCents: z.number().int().min(1).max(100_000_000).optional(),
+        /** A tip handed to the office with cash or a check (#653, F-09). One
+         *  invoice only. Written beside the payment, never inside it. */
+        tipCents: z.number().int().min(1).max(TIP_CUSTOM_MAX_CENTS).optional(),
         /** What getInvoice / getInvoiceDetail returned as `version`. One
          *  invoice only: a page that saw the invoice before somebody else
          *  saved it is refused (#655). */
@@ -515,6 +535,8 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
     // those payments in the same transaction. What is left for this loop is
     // the activity line and the pay-page intent for each invoice it touched.
     type Recorded = {
+      /** Null when nothing was written (a $0 balance). */
+      payment_id?: string | null;
       invoice_id: string;
       organization_id: string;
       client_id: string;
@@ -532,6 +554,8 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
     if (data.amountCents != null && (data.ids.length !== 1 || data.fieldCollectionId)) {
       throw new Error("An amount can only be recorded against one invoice at a time");
     }
+    const tipProblem = officeTipProblem(data);
+    if (tipProblem) throw new Error(tipProblem);
     if (data.expectedVersion !== undefined) {
       if (data.ids.length !== 1) throw new Error("A version can only be checked on one invoice");
       await refuseIfInvoiceChanged(supabase, data.ids[0], data.expectedVersion);
@@ -594,6 +618,29 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
         recorded.push(r as unknown as Recorded);
       }
     }
+    // The office's cash tip goes on the payment row it came with, beside the
+    // amount (tests/a-customer-could-not-leave-a-tip.test.ts: no SQL path
+    // writes or reads the tip column, so this is the one TypeScript write).
+    // Payments have no UPDATE policy; the caller's billing permission was
+    // checked above and the row is the one record_invoice_payment just wrote.
+    //
+    // A failure here is reported, not thrown: the payment IS recorded, and a
+    // thrown error reads as "try again", which would record it twice.
+    let tipFailed = false;
+    if (data.tipCents && recorded[0]?.payment_id) {
+      try {
+        const { recordOfficeTip } = await import("@/lib/office-tip.server");
+        await recordOfficeTip({
+          orgId,
+          invoiceId: recorded[0].invoice_id,
+          paymentId: recorded[0].payment_id,
+          tipCents: data.tipCents,
+        });
+      } catch (e) {
+        console.error("[mark-paid] the payment was recorded but its tip was not", e);
+        tipFailed = true;
+      }
+    }
     for (const r of recorded) {
       const how = describeManualPayment(method, reference);
       const label = await invoiceRef(supabase, r.invoice_id);
@@ -640,7 +687,7 @@ export const bulkMarkInvoicesPaid = createServerFn({ method: "POST" })
 
       ok++;
     }
-    return { ok, failed, partial, refusal, intentStillLive };
+    return { ok, failed, partial, refusal, intentStillLive, tipFailed };
   });
 
 // In-app payment (Payment Element): staff take a card or ACH payment right on
@@ -1282,7 +1329,7 @@ export const getClientBillingSummary = createServerFn({ method: "GET" })
       supabase
         .from("invoices")
         .select(
-          "id, number, status, kind, currency, subtotal_cents, total_cents, credit_applied_cents, amount_paid_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, created_at",
+          "id, number, status, kind, currency, subtotal_cents, total_cents, credit_applied_cents, amount_paid_cents, amount_refunded_cents, deposit_for_invoice_id, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, checkout_url, created_at",
         )
         .eq("client_id", data.clientId)
         .order("created_at", { ascending: false })
@@ -1354,7 +1401,7 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
       supabase
         .from("invoices")
         .select(
-          "id, number, client_id, status, kind, currency, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, credit_applied_cents, amount_paid_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, voided_at, notes, checkout_url, created_at, updated_at, clients(id, display_name, primary_email, default_payment_method_id, default_card_brand, default_card_last4)",
+          "id, number, client_id, status, kind, currency, subtotal_cents, tax_cents, tax_rate_bps, tax_label, total_cents, credit_applied_cents, amount_paid_cents, amount_refunded_cents, period_start, period_end, issued_at, paid_at, due_on, send_after, sent_at, public_token, voided_at, notes, checkout_url, created_at, updated_at, clients(id, display_name, primary_email, default_payment_method_id, default_card_brand, default_card_last4)",
         )
         .eq("id", data.invoiceId)
         .single(),
@@ -1617,7 +1664,8 @@ export const createPublicInvoicePaymentIntent = createServerFn({ method: "POST" 
 
     const { requireOrgStripeAccount, connectStripe, verifyClientStripeCustomer } =
       await import("@/lib/stripe-connect.server");
-    const acct = await requireOrgStripeAccount(invoice.organization_id);
+    // The customer on /pay/i/{token} reads this, not the owner (R2-42).
+    const acct = await requireOrgStripeAccount(invoice.organization_id, { audience: "customer" });
     const stripe = await connectStripe();
     const opts = { stripeAccount: acct.accountId };
 

@@ -10,7 +10,7 @@ import {
   Section,
   Text,
 } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
+import { styles, OrgFooter, type OrgContact, TenantHeader, howToReach, sentence } from "./_shared";
 import type { TemplateEntry } from "./registry";
 
 // "On my way", for a customer who cannot be texted: no consent on file yet,
@@ -96,8 +96,8 @@ const OnMyWay = ({
           ) : null}
           <Text style={styles.text}>
             {yard === false
-              ? "If anything has changed, or there is anything we should know, reply to this email."
-              : "If there is a dog out in the yard, or anything the tech should know, reply to this email."}
+              ? `If anything has changed, or there is anything we should know, ${sentence(howToReach({ ...orgContact, orgName }))}`
+              : `If there is a dog out in the yard, or anything the tech should know, ${sentence(howToReach({ ...orgContact, orgName }))}`}
           </Text>
           <OrgFooter {...orgContact} orgName={orgName} />
         </Container>
@@ -148,8 +148,8 @@ const WalkOnMyWay = ({
           </Section>
         ) : null}
         <Text style={styles.text}>
-          If anything has changed about getting in, or the walker should know something, reply to
-          this email.
+          If anything has changed about getting in, or the walker should know something,{" "}
+          {sentence(howToReach({ ...orgContact, orgName }))}
         </Text>
         <OrgFooter {...orgContact} orgName={orgName} />
       </Container>

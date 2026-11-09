@@ -5,10 +5,7 @@
 // math — including net-of-credit balances (B7) — lives in ar.ts.
 // Pure functions — unit-tested in tests/overdue.test.ts (I13 #13).
 
-import {
-  invoiceOutstandingCents,
-  isInvoiceOverdue as arIsInvoiceOverdue,
-} from "@/lib/ar";
+import { invoiceOutstandingCents, isInvoiceOverdue as arIsInvoiceOverdue } from "@/lib/ar";
 import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
 
 /** Calendar date (YYYY-MM-DD) in the ORGANIZATION's timezone. `due_on` is a
@@ -54,11 +51,15 @@ export function summarizeOpenInvoices(
     status: string;
     total_cents: number | null;
     credit_applied_cents?: number | null;
+    amount_paid_cents?: number | null;
     due_on?: string | null;
+    deposit_for_invoice_id?: string | null;
   }>,
   today: string = todayISO(),
 ): OpenInvoiceSummary {
-  const open = invoices.filter((i) => i.status === "open");
+  // A linked stay deposit is part of its stay invoice, which is counted. The
+  // portal said "3 open invoices, $1,050" for two stays and a deposit (R2-11).
+  const open = invoices.filter((i) => i.status === "open" && !i.deposit_for_invoice_id);
   const dues = open
     .map((i) => i.due_on)
     .filter((d): d is string => !!d)

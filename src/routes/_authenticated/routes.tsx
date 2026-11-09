@@ -1,4 +1,5 @@
 import { createFileRoute, Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { completeFromOffice, useOfficeCompleteOverride } from "@/components/OfficeCompleteOverride";
 import { warnLessonClashes } from "@/components/training/lessonClashWarning";
 import { humanizeRole } from "@/lib/humanize";
 import { orgLocalTime } from "@/lib/org-day";
@@ -87,6 +88,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { GripVertical } from "lucide-react";
 import { titleHead } from "@/lib/page-title";
 import { visitStayDates } from "@/lib/stays";
+import { bookedCentsOf } from "@/lib/booked-value";
 import { skipReasonText } from "@/lib/skip-reason-text";
 import { earlyCompleteConfirm, isFutureVisit } from "@/lib/booking-dates";
 
@@ -413,10 +415,16 @@ function RoutesPage() {
   const doComplete = useServerFn(completeVisitFromOffice);
   const qc = useQueryClient();
 
+  // No photo or checklist: the office says why, or the visit stays open (#658).
+  const { askWhy, dialog: overrideDialog } = useOfficeCompleteOverride();
   const completeMut = useMutation({
     mutationFn: ({ visitId, confirmedEarly }: { visitId: string; confirmedEarly: boolean }) =>
-      doComplete({ data: { visitId, confirmedEarly } }),
-    onSuccess: () => {
+      completeFromOffice(
+        (overrideReason) => doComplete({ data: { visitId, confirmedEarly, overrideReason } }),
+        askWhy,
+      ),
+    onSuccess: (done) => {
+      if (!done) return;
       toast.success("Visit marked complete");
       setLocalColumns(null);
       qc.invalidateQueries({ queryKey: ["visits", day] });
@@ -1013,6 +1021,7 @@ function RoutesPage() {
   return (
     <>
       {moveDialog}
+      {overrideDialog}
       {visitsData?.clash && (
         <p
           role="alert"
@@ -2257,7 +2266,8 @@ function Column({
   layout?: "columns" | "rows";
 }) {
   const { setNodeRef, isOver } = useDroppable({ id, disabled: notRoutable });
-  const totalCents = items.reduce((sum, v) => sum + (v.subscriptions?.price_cents ?? 0), 0);
+  // Plan price plus each groom's booked add-ons (R2-31).
+  const totalCents = bookedCentsOf(items);
   // Inset in the columns layout: the lane row scrolls sideways, and a
   // scroller clips on both axes, so a ring drawn outside the lane loses its
   // top, bottom and outer edges to the row it sits in.
@@ -2693,7 +2703,7 @@ function HeatmapPanel({ visits, staff }: { visits: any[]; staff: any[] }) {
     // refunds. Named bookedValue rather than revenue so a dispatch board figure
     // can't be mistaken for a financial one; the same formula on /analytics is
     // labelled the same way.
-    const bookedValue = mine.reduce((sum, v) => sum + (v.subscriptions?.price_cents ?? 0), 0);
+    const bookedValue = bookedCentsOf(mine);
     const withEta = mine
       .map((v) => v.eta_end)
       .filter(Boolean)

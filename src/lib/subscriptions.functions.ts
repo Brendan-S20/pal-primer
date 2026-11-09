@@ -5,6 +5,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { formatWeekdaySet, normalizeWeekdays } from "@/lib/weekday-set";
 import { MAX_MULTIPLIER, MIN_MULTIPLIER } from "@/lib/frequency-multipliers";
+import { endServiceDecision } from "@/lib/subscription-form";
 
 // Scheduling model (client detail refactor): the five UI choices map to
 //   Weekly            -> weekly (interval_weeks null/1)
@@ -299,6 +300,19 @@ const updateSubSchema = z
     message: "The window's earliest time must be before its latest time",
   });
 
+/** dog_count / unit_count for an update, shaped by the plan's account type.
+ *  Exported for tests. */
+export function countsFor(
+  before: { account_type?: string | null; dog_count?: number | null; unit_count?: number | null } | null,
+  data: { dogCount?: number; unitCount?: number },
+): { dog_count: number | null; unit_count: number | null } {
+  if (before?.account_type === "commercial")
+    return { dog_count: null, unit_count: data.unitCount ?? before.unit_count ?? 1 };
+  if (before?.account_type === "residential")
+    return { dog_count: data.dogCount ?? before.dog_count ?? 1, unit_count: null };
+  return { dog_count: data.dogCount ?? null, unit_count: data.unitCount ?? null };
+}
+
 export const updateSubscription = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => updateSubSchema.parse(d))
@@ -311,7 +325,7 @@ export const updateSubscription = createServerFn({ method: "POST" })
     const { data: before } = await supabase
       .from("subscriptions")
       .select(
-        "organization_id, client_id, price_cents, frequency, weekdays, started_on, ends_on, status, service_id, earliest_time, latest_time",
+        "organization_id, client_id, account_type, dog_count, unit_count, price_cents, frequency, weekdays, started_on, ends_on, status, service_id, earliest_time, latest_time",
       )
       .eq("id", data.subscriptionId)
       .single();
@@ -342,8 +356,11 @@ export const updateSubscription = createServerFn({ method: "POST" })
         property_id: data.propertyId,
         frequency: data.frequency,
         price_cents: data.priceCents,
-        dog_count: data.dogCount ?? null,
-        unit_count: data.unitCount ?? null,
+        // The count the plan's shape carries (subscriptions_account_shape_chk:
+        // dogs for residential, units for commercial, never both). A caller
+        // that omits it keeps the one on file rather than writing NULL, which
+        // the database refuses with the raw constraint name (#658, R2-20).
+        ...countsFor(before, data),
         zone_id: data.zoneId ?? null,
         // A person typed a different number. Stamped only on a real change, so
         // re-saving the drawer without touching the price does not manufacture
@@ -581,7 +598,7 @@ export const listSubscriptionsForClient = createServerFn({ method: "GET" })
     const { data: rows, error } = await supabase
       .from("subscriptions")
       .select(
-        "id, account_type, frequency, price_cents, priced_at, priced_from_zone_id, price_overridden_at, dog_count, unit_count, zone_id, status, started_on, ends_on, property_id, billing_cadence, preferred_weekdays, weekdays, interval_weeks, interval_days, paused_at, end_reason, end_notes, earliest_time, latest_time, service_id, services(name, service_line), stay_id",
+        "id, account_type, frequency, price_cents, priced_at, priced_from_zone_id, price_overridden_at, dog_count, unit_count, zone_id, status, started_on, ends_on, property_id, billing_cadence, preferred_weekdays, weekdays, interval_weeks, interval_days, paused_at, end_reason, end_notes, earliest_time, latest_time, service_id, services(name, service_line), stay_id, groom_addons",
       )
       .eq("client_id", data.clientId)
       .order("created_at");
@@ -693,15 +710,20 @@ export const endSubscription = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const sub = await loadSubForLifecycle(supabase, userId, data.subscriptionId);
-    if (data.effectiveDate < sub.started_on)
-      throw new Error("End date can't be before the service started");
 
     // ends_on drives generation (it stops there) and the DB trigger trims
     // future scheduled visits past it. Rows are never deleted here. Status
     // flips to canceled once the end date is reached; a future-dated end
     // stays active until then (visits through the end date still happen)
-    // and the isServiceEnded helper handles the flip in the UI.
+    // and the isServiceEnded helper handles the flip in the UI. A service
+    // that has not started may end before its start (#676): it never runs.
     const today = new Date().toISOString().slice(0, 10);
+    const decision = endServiceDecision({
+      startedOn: sub.started_on,
+      effectiveDate: data.effectiveDate,
+      today,
+    });
+    if (!decision.ok) throw new Error(decision.error);
     const { error } = await supabase
       .from("subscriptions")
       .update({
@@ -710,7 +732,7 @@ export const endSubscription = createServerFn({ method: "POST" })
         end_notes: data.notes || null,
         ended_by: userId,
         paused_at: null,
-        status: data.effectiveDate <= today ? "canceled" : "active",
+        status: decision.status,
       })
       .eq("id", sub.id);
     if (error) throw new Error(error.message);
@@ -747,7 +769,9 @@ export const deleteDraftSubscription = createServerFn({ method: "POST" })
       .eq("subscription_id", sub.id);
     if (lErr) throw new Error(lErr.message);
     if ((doneCount ?? 0) > 0 || (lineCount ?? 0) > 0)
-      throw new Error("This service has history. End it instead of deleting.");
+      throw new Error(
+        "This service has history, so it can't be deleted. Use End service… on the service instead.",
+      );
 
     const { error: dvErr } = await supabase
       .from("visits")

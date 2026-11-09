@@ -46,12 +46,12 @@ describe("the screen a cold native launch lands on", () => {
     expect(src, "auth.tsx no longer calls resolveIdentity").toMatch(/resolveIdentity\(\)/);
   });
 
-  it("gates the new bounce on the build, so the hosted app is untouched", () => {
-    // `main` deploys straight to app.houndstack.com. The web keeps the
-    // network-only bounce it has always had — a browser tab that lost the
-    // network could not have loaded this page anyway.
-    expect(src, "the landing bounce is no longer gated on the build").toMatch(/IS_NATIVE_BUNDLE/);
-    expect(src, "the web bounce was removed rather than preserved").toMatch(
+  it("takes the same path on the web, where a bare getUser() stopped the cold start (#661)", () => {
+    // The web used to ask getUser() and return when it failed. With the API
+    // unreachable that parked a signed-in user here until a reload. Both
+    // builds now resolve through the shared resolver; see
+    // tests/a-web-cold-start-with-the-api-down.test.tsx.
+    expect(src, "the web bounce on a bare getUser() is back").not.toMatch(
       /supabase\.auth\.getUser\(\)\s*\.then/,
     );
   });

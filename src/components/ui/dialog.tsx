@@ -61,8 +61,17 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 // `min()` with this one. `h-dvh` is the way to ask for the full safe height:
 // the cap clamps it. tests/viewports/what-the-iphone-showed.spec.ts reads
 // these rules out of the stylesheet, because Chromium's insets are 0 too.
+//
+// THE KEYBOARD IS A THIRD INSET (native-r2-11). On iOS it covers the layout
+// viewport rather than shrinking it, so on an iPad in landscape a ~400pt
+// keyboard sat over New invoice's Add line and Create invoice. In the app,
+// lib/keyboard-chrome.ts publishes --hs-vv-top / --hs-kb-bottom (how much of
+// the layout viewport is above and below what can be seen) while a field has
+// the keyboard up; the panel is capped to and centred in what is left, it
+// scrolls as before, and the focused field is scrolled into view in it. Both
+// are 0 at every other moment, and always on the web.
 const DIALOG_SAFE_FRAME =
-  "top-[calc(50%_+_(env(safe-area-inset-top)_-_env(safe-area-inset-bottom))_/_2)] max-h-[calc(100dvh_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom)_-_2rem)] overflow-y-auto overscroll-contain";
+  "top-[calc(50%_+_(env(safe-area-inset-top)_-_env(safe-area-inset-bottom)_+_var(--hs-vv-top,0px)_-_var(--hs-kb-bottom,0px))_/_2)] max-h-[calc(100dvh_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom)_-_var(--hs-vv-top,0px)_-_var(--hs-kb-bottom,0px)_-_2rem)] overflow-y-auto overscroll-contain";
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,

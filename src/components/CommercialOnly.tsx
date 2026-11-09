@@ -81,6 +81,14 @@ export function useServiceLines(): {
   return { lines, petWaste: runsPetWaste(lines), known: true };
 }
 
+/** The lines a service picker filters by (RC3): the business's, once they
+ *  are known. Until then nothing is hidden, so a pet-waste business never
+ *  loses its service from a picker while the answer loads. */
+export function usePickerLines(): readonly ServiceLine[] | undefined {
+  const { lines, known } = useServiceLines();
+  return known ? lines : undefined;
+}
+
 /** Children only for a business that runs pet waste. Nothing while the answer
  *  is unknown, like CommercialOnly; everything when the lookup fails. */
 export function PetWasteOnly({ children }: { children: ReactNode }) {

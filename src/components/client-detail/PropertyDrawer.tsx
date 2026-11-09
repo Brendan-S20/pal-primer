@@ -28,8 +28,10 @@ import {
   ACCESS_CODE_MAX,
   ACCESS_METHODS,
   ACCESS_METHOD_LABEL,
+  ACCESS_NOTES_MAX,
   ALARM_NOTES_MAX,
   KEY_TAG_MAX,
+  accessNotesSave,
   gateCodeSave,
   isAccessMethod,
   showsWalkAccess,
@@ -87,6 +89,7 @@ export function PropertyDrawer({
         | "commercial",
       gateCode: property?.gate_code ?? "",
       parkingNotes: property?.parking_notes ?? "",
+      accessNotes: (property?.access_notes ?? "") as string,
       hazardNotes: property?.hazard_notes ?? "",
       vcName: property?.visit_contact_name ?? "",
       vcPhone: property?.visit_contact_phone ?? "",
@@ -227,6 +230,9 @@ export function PropertyDrawer({
         // does not wipe the gate code (gateCodeSave).
         ...gateCodeSave(initial, form),
         parkingNotes: form.parkingNotes || undefined,
+        // Sent only when changed, so a save never wipes notes that came in
+        // from a lead or signup (#680).
+        ...accessNotesSave(initial, form),
         hazardNotes: form.hazardNotes || undefined,
         visitContactName: form.vcName || undefined,
         visitContactPhone: form.vcPhone || undefined,
@@ -398,6 +404,18 @@ export function PropertyDrawer({
               placeholder="Where the van should park"
               value={form.parkingNotes}
               onChange={(e) => set("parkingNotes", e.target.value)}
+              className="min-h-11 w-full rounded-md border bg-background px-3 py-2 text-sm"
+            />
+          </div>
+          <div className="sm:col-span-3">
+            <Label htmlFor="pd-access-notes">Access notes</Label>
+            <textarea
+              id="pd-access-notes"
+              rows={2}
+              maxLength={ACCESS_NOTES_MAX}
+              placeholder="How to get into the yard, e.g. side gate on the left"
+              value={form.accessNotes}
+              onChange={(e) => set("accessNotes", e.target.value)}
               className="min-h-11 w-full rounded-md border bg-background px-3 py-2 text-sm"
             />
           </div>

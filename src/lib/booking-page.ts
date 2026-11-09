@@ -81,6 +81,14 @@ export function outOfAreaAnswer(businessName: string | null | undefined, zip: st
   return `${who} doesn't list ${where} in its service area yet. Leave your details and they'll let you know if they can help.`;
 }
 
+/** The thank-you's word when no zone lists the ZIP a request was sent from
+ *  (R2-25). The details are already in, so it does not ask for them. */
+export function outOfAreaSentNote(businessName: string | null | undefined, zip: string): string {
+  const who = businessName?.trim() || "This business";
+  const where = zip.trim() || "your ZIP";
+  return `${who} doesn't list ${where} in its service area yet. They have your request and will let you know if they can help.`;
+}
+
 /** A phone number as a tap-to-call link: digits and a leading +, nothing a
  *  dialer would choke on. Null when there is nothing to dial. */
 export function telHref(phone: string | null | undefined): string | null {

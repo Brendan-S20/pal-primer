@@ -71,12 +71,20 @@ on:
   # playwright.config.ts is in the list for the same reason. It carries the
   # timeouts, the retry count and the dev-server wiring, so a change to it
   # changes the outcome of every spec without touching one.
+  #
+  # The tests/support files are what the DB tests import. #683 changed only
+  # select-embeds.ts, which decides every query every-select-embed-resolves
+  # sends; without them the fix to that test would not have run it.
   pull_request:
     paths:
       - "supabase/migrations/**"
       - "supabase/proofs/**"
       - "tests/integration/*.db.test.ts"
       - "tests/run-db-tests.sh"
+      - "tests/support/walk-db.ts"
+      - "tests/support/org-day.ts"
+      - "tests/support/select-embeds.ts"
+      - "tests/support/withheld-columns.ts"
       - "tests/e2e/**"
       - "playwright.e2e.config.ts"
       - "tests/viewports/**"
@@ -204,6 +212,8 @@ jobs:
               supabase/migrations/*|supabase/proofs/*)     database=true ;;
               tests/integration/*.db.test.ts)              database=true ;;
               tests/run-db-tests.sh)                       database=true ;;
+              tests/support/walk-db.ts|tests/support/org-day.ts) database=true ;;
+              tests/support/select-embeds.ts|tests/support/withheld-columns.ts) database=true ;;
               tests/e2e/*|playwright.e2e.config.ts)        database=true ;;
               tests/viewports/*|playwright.config.ts)      viewports=true ;;
               # The workflow itself changes what both jobs DO, so it runs both.
@@ -263,6 +273,48 @@ jobs:
           # does need the cache.
           cache: ${{ (vars.UNIX_RUNNER || vars.CI_RUNNER) == '' && 'npm' || '' }}
       - run: npm ci
+
+      # ── ON A GITHUB-HOSTED LINUX RUNNER, BRING WHAT THE MAC ALREADY HAS ─
+      #
+      # The Mac has Docker Desktop and a brew-installed Supabase CLI, and the
+      # check below was written for it. On 2026-11-07 UNIX_RUNNER moved to
+      # ubuntu-latest while the Mac was offline, and every run failed in that
+      # check with "Missing on this runner: supabase" (runs 42379608839,
+      # 41779015531, 41779020096): hosted Ubuntu has Docker running but no
+      # Supabase CLI. These two steps run on hosted Linux ONLY, so the Mac's
+      # preinstalled path and the refusal on Windows are both untouched, and
+      # the check below still runs everywhere and still decides.
+      #
+      # `latest` for the same reason backup.yml gives: the local stack must be
+      # at least as new as what config.toml is written for (#720).
+      - name: Install the Supabase CLI (GitHub-hosted Linux only)
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # The 15 GiB guard below is NOT lowered for hosted runners: a cold
+      # start really is the whole Supabase stack. A hosted image ships with
+      # toolchains this job never touches (.NET, Android SDK, GHC, CodeQL),
+      # and removing them is the room. Only when short, so a roomy image
+      # pays nothing; and psql, which the proofs and the E2E harness call,
+      # is installed if a future image drops it.
+      - name: Make room and fill gaps (GitHub-hosted Linux only)
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
+        run: |
+          avail_kb=$(df -Pk . | awk 'NR==2 {print $4}')
+          echo "$((avail_kb / 1048576)) GiB free before cleanup"
+          if [ "$avail_kb" -lt 15728640 ]; then
+            sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+              /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/share/swift
+            sudo docker image prune --all --force >/dev/null || true
+            avail_kb=$(df -Pk . | awk 'NR==2 {print $4}')
+            echo "$((avail_kb / 1048576)) GiB free after removing unused toolchains"
+          fi
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+          fi
+          psql --version
 
       - name: Find Docker and the Supabase CLI
         id: prereq
@@ -362,7 +414,12 @@ jobs:
             if [ "${st:-0}" -gt 0 ]; then
               pct=$(awk -v t="$st" -v f="$sf" 'BEGIN{printf "%d", (t-f)*100/t}')
               echo "swap ${pct}% used, load ${load1} on ${cores} cores"
-              [ "$pct" -ge 50 ] && echo "::warning::Swap is ${pct}% full on this runner, load ${load1} on ${cores} cores. Treat timeouts and SIGBUS here as suspect and re-run once. See docs/owner-actions-before-submission.md §12."
+              # `if`, not `[ ] && echo`: as the step's last command the
+              # latter exits 1 whenever swap is UNDER 50%, failing a check
+              # that is meant only to warn (first hit on hosted Linux).
+              if [ "$pct" -ge 50 ]; then
+                echo "::warning::Swap is ${pct}% full on this runner, load ${load1} on ${cores} cores. Treat timeouts and SIGBUS here as suspect and re-run once. See docs/owner-actions-before-submission.md §12."
+              fi
             else
               echo "no swap configured; load ${load1} on ${cores} cores"
             fi
@@ -700,7 +757,28 @@ jobs:
     # JSON) moves it without a commit:
     #   '["self-hosted","Windows","X64"]'  back to the PC only
     #   '"ubuntu-latest"'                  GitHub-hosted (billed minutes)
-    runs-on: ${{ fromJSON(vars.PORTABLE_RUNNER_JSON || '["self-hosted"]') }}
+    #
+    # ── 2026-11-02: PINNED TO THE MAC (#685) ─────────────────────────────
+    #
+    # On DESKTOP-JUC6SL1 this job failed on every run of the day, on main as
+    # well as on PRs (main c42f26d: 6 failed, "/no-workspace rendered only 0
+    # characters", "did not draw its fixture"). The pages were not the cause.
+    # Chromium there refused the dev server's module requests with
+    # net::ERR_INSUFFICIENT_RESOURCES, a Playwright worker died with
+    # 0xC0000409 (code=3221226505), and the one-off cases lost their dev
+    # server partway through (every later test ERR_CONNECTION_REFUSED). The
+    # same specs pass on the Mac and on Linux. So the job no longer takes
+    # plain `self-hosted`; it takes the `macOS` label, which only Mac0s has.
+    # VIEWPORTS_RUNNER_JSON (a repository variable, JSON) moves it without a
+    # commit, e.g. '["self-hosted"]' to let the PC take it again once that
+    # machine is fixed. PORTABLE_RUNNER_JSON is deliberately not consulted
+    # here, so pinning other jobs to the PC cannot pull this one back.
+    #
+    # The cost is the one measured above: the Mac is slower per job, and
+    # this job and viewport-cases now queue behind each other there. If the
+    # Mac runs time out, raise VIEWPORTS_TIMEOUT_MINUTES rather than moving
+    # the job back to a machine that cannot run it.
+    runs-on: ${{ fromJSON(vars.VIEWPORTS_RUNNER_JSON || '["self-hosted","macOS"]') }}
     # 45, raised from 30 on 2026-09-14 after this job was cancelled at 30m13s
     # with the last step mid-run. Raising a ceiling is usually how a real
     # slowdown gets hidden, so here is the arithmetic it was raised against,
@@ -1014,7 +1092,10 @@ jobs:
     # JSON) moves it without a commit:
     #   '["self-hosted","Windows","X64"]'  back to the PC only
     #   '"ubuntu-latest"'                  GitHub-hosted (billed minutes)
-    runs-on: ${{ fromJSON(vars.PORTABLE_RUNNER_JSON || '["self-hosted"]') }}
+    #
+    # 2026-11-02: pinned to the Mac with the viewports job above, for the
+    # reason written there (#685). Same VIEWPORTS_RUNNER_JSON override.
+    runs-on: ${{ fromJSON(vars.VIEWPORTS_RUNNER_JSON || '["self-hosted","macOS"]') }}
     # ~17.5 min of tests plus ~4.5 of setup on a quiet box (2026-10-09),
     # and 20.3 min of tests in the slowest hour measured. If this ever needs most of 45, the
     # cases have outgrown one job too -- split them again by file, as this
