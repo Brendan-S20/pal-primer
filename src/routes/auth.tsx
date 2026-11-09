@@ -28,6 +28,12 @@ import { rememberLandingPath, readLandingPath } from "@/lib/offline/read-cache";
 import { pageTitle } from "@/lib/page-title";
 import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
 import { takeLinkForLanding } from "@/lib/pending-deep-link";
+import {
+  clearRecoveryPending,
+  passwordResetRedirectHere,
+  recoveryRedirectTarget,
+  requestPasswordReset,
+} from "@/lib/password-recovery";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -218,6 +224,18 @@ function AuthPage() {
     let stopRecovery: (() => void) | null = null;
 
     const run = async () => {
+      // A password-recovery link is not a sign-in. Supabase sends one that
+      // is not on its redirect allow-list to the site root, the root sends
+      // it here, and supabase-js has usually already turned its hash into a
+      // session. Landing that session ran ensureBootstrapped for a person who
+      // had only forgotten their password (a removed member got a brand-new
+      // organization) and never let them set one. Nothing below runs until
+      // /reset-password has the new password.
+      const recovery = recoveryRedirectTarget(window.location.href);
+      if (recovery) {
+        router.history.replace(recovery);
+        return;
+      }
       const identity = await resolveIdentity();
       if (cancelled) return;
       if (!identity.ok) {
@@ -292,6 +310,8 @@ function AuthPage() {
       setLoading(false);
       return setError(error.message);
     }
+    // Signed in with a password: whatever reset this tab started is over.
+    clearRecoveryPending();
     let isNewOrg: boolean | typeof NEEDS_ORG_NAME = false;
     if (data.user) {
       try {
@@ -476,15 +496,17 @@ function AuthPage() {
     }
   };
 
+  // One helper for every reset request (lib/password-recovery.ts): the
+  // redirect is /reset-password on the canonical origin (the iOS app's own
+  // scheme in the iOS app), and a failed send says so instead of "check your
+  // email" for a message that is never coming.
   const forgotPassword = async () => {
     setAlert(null);
     setLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
+    const r = await requestPasswordReset(supabase, email, await passwordResetRedirectHere());
     setLoading(false);
-    if (error) setError(error.message);
-    else setInfo("Check your email for a reset link.");
+    if (!r.ok) setError(r.message);
+    else setInfo(`Check ${r.sentTo} for a reset link. It works once, for an hour.`);
   };
 
   return (

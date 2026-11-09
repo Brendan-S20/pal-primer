@@ -231,7 +231,9 @@ describe("Sign in with Apple is offered wherever the others are", () => {
   it("hands back through a scheme the app actually registers", () => {
     // A redirect the binary does not claim goes nowhere, and the failure looks
     // like a button that opens Safari and never returns.
-    const native = read("src/lib/native-oauth.ts");
+    // The constant lives in its own file so modules can name it without the
+    // Supabase client (lib/password-recovery.ts); native-oauth re-exports it.
+    const native = read("src/lib/native-oauth-redirect.ts");
     const plist = read("ios/App/App/Info.plist");
     const scheme = /NATIVE_OAUTH_REDIRECT = "([a-z0-9.\-]+):\/\//i.exec(native)?.[1];
     expect(scheme, "no scheme in NATIVE_OAUTH_REDIRECT").toBeTruthy();
