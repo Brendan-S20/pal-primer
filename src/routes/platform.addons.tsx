@@ -19,6 +19,10 @@ import { EmptyState } from "@/components/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Puzzle } from "lucide-react";
 import { titleHead } from "@/lib/page-title";
+import { Button } from "@/components/ui/button";
+import { formatDateTime } from "@/lib/format";
+import { activateTextingForOrg, listTextingReviews } from "@/lib/texting-ops.functions";
+import { opsQueueNote, UNDER_REVIEW_LINE } from "@/lib/managed-texting";
 
 export const Route = createFileRoute("/platform/addons")({
   head: () => titleHead("Add-ons", "Platform admin"),
@@ -144,6 +148,92 @@ function AddonsAdminPage() {
           </div>
         </CardContent>
       </Card>
+
+      <TextingReviewQueue />
     </div>
+  );
+}
+
+/**
+ * site-r2-05: Managed texting registrations under review. The business sees
+ * "Under review, usually ready shortly" until an admin presses Activate here;
+ * texting switches on once the carrier has approved too (either order).
+ * Stacked rows rather than a table, so it reads at 360px.
+ */
+function TextingReviewQueue() {
+  const qc = useQueryClient();
+  const listFn = useServerFn(listTextingReviews);
+  const activateFn = useServerFn(activateTextingForOrg);
+  const q = useQuery({ queryKey: ["platform", "texting-reviews"], queryFn: () => listFn() });
+  const activate = useMutation({
+    mutationFn: (organizationId: string) => activateFn({ data: { organizationId } }),
+    onSuccess: (r) => {
+      toast.success(
+        r.live
+          ? "Texting is live for this business"
+          : "Activated. It switches on as soon as the carrier approves",
+      );
+      qc.invalidateQueries({ queryKey: ["platform", "texting-reviews"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const rows = q.data?.rows ?? [];
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Managed texting: under review</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          Businesses that added Managed texting and submitted their details. Each one reads
+          &ldquo;{UNDER_REVIEW_LINE}&rdquo; until you activate it here. Texting switches on once the
+          carrier has approved as well.
+        </p>
+        {q.isLoading ? (
+          <Skeleton className="h-8 w-full" />
+        ) : q.isError ? (
+          <p className="text-sm text-destructive">Could not load the queue.</p>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground" data-testid="texting-review-empty">
+            Nothing under review.
+          </p>
+        ) : (
+          <ul className="divide-y rounded-lg border" data-testid="texting-review-queue">
+            {rows.map((r) => (
+              <li
+                key={r.organizationId}
+                className="flex flex-wrap items-center justify-between gap-3 p-3"
+              >
+                <div className="min-w-0">
+                  <div className="truncate font-medium">{r.businessName}</div>
+                  <div className="break-words text-xs text-muted-foreground">
+                    {r.legalName && r.legalName !== r.businessName ? `${r.legalName} · ` : ""}
+                    {r.phoneNumber ? <span dir="ltr">{r.phoneNumber}</span> : "No number yet"}
+                    {r.submittedAt ? ` · submitted ${formatDateTime(r.submittedAt)}` : ""}
+                  </div>
+                  <div className="mt-1 text-xs">{opsQueueNote(r.status, r.opsApprovedAt)}</div>
+                  {r.lastError && (
+                    <div className="mt-1 break-words text-xs text-destructive">{r.lastError}</div>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  disabled={activate.isPending || (Boolean(r.opsApprovedAt) && r.status !== "approved")}
+                  onClick={() => activate.mutate(r.organizationId)}
+                >
+                  {activate.isPending && activate.variables === r.organizationId
+                    ? "Activating…"
+                    : r.opsApprovedAt && r.status === "approved"
+                      ? "Retry switch-on"
+                      : r.opsApprovedAt
+                        ? "Activated"
+                        : "Activate"}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }

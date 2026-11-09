@@ -3960,6 +3960,8 @@ export type Database = {
           last_error: string | null
           legal_name: string | null
           number_type: string
+          ops_approved_at: string | null
+          ops_approved_by: string | null
           organization_id: string
           phone_number: string | null
           phone_number_sid: string | null
@@ -4005,6 +4007,8 @@ export type Database = {
           last_error?: string | null
           legal_name?: string | null
           number_type?: string
+          ops_approved_at?: string | null
+          ops_approved_by?: string | null
           organization_id: string
           phone_number?: string | null
           phone_number_sid?: string | null
@@ -4050,6 +4054,8 @@ export type Database = {
           last_error?: string | null
           legal_name?: string | null
           number_type?: string
+          ops_approved_at?: string | null
+          ops_approved_by?: string | null
           organization_id?: string
           phone_number?: string | null
           phone_number_sid?: string | null

@@ -10,6 +10,10 @@ import {
   type RegistrationStatus,
 } from "@/lib/texting-registration";
 
+/** What a submit without the add-on is told. */
+export const MANAGED_TEXTING_REQUIRED =
+  "Add Managed texting on Plan & billing first. Your details are kept.";
+
 // Settings → Texting (#538). The owner files the business's details here and
 // HoundStack does the rest with Twilio: lib/twilio-provisioning.server.
 //
@@ -30,7 +34,8 @@ export const getTextingRegistration = createServerFn({ method: "GET" })
     const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { orgCanTextClients } = await import("@/lib/twilio-credentials.server");
-    const [{ data: reg }, live, { data: org }] = await Promise.all([
+    const { orgHoldsManagedTexting } = await import("@/lib/managed-texting.server");
+    const [{ data: reg }, live, { data: org }, subscribed] = await Promise.all([
       (supabaseAdmin as any)
         .from("org_texting_registrations")
         .select(DETAIL_COLUMNS)
@@ -42,11 +47,15 @@ export const getTextingRegistration = createServerFn({ method: "GET" })
         .select("name, contact_email, contact_phone")
         .eq("id", orgId)
         .maybeSingle(),
+      orgHoldsManagedTexting(orgId),
     ]);
     return {
       registration: (reg ?? null) as null | (Record<string, any> & { status: RegistrationStatus }),
       /** True only once the verification is approved and activated. */
       live,
+      /** The Managed texting add-on is on the plan (site-r2-05): submitting
+       *  needs it, and Settings sends a business without it to Billing. */
+      subscribed,
       /** What the business already told HoundStack, to start the form from. */
       suggestions: {
         businessName: (org?.name as string | null) ?? "",
@@ -159,6 +168,11 @@ export const submitTextingRegistration = createServerFn({ method: "POST" })
       "manage_settings",
     );
     if (role !== "owner") throw new Error("Only the owner can submit the business's registration.");
+    // site-r2-05: the registration is what the add-on pays for. Without it,
+    // nothing goes to Twilio (and no number is bought on HoundStack's bill).
+    const { orgHoldsManagedTexting } = await import("@/lib/managed-texting.server");
+    if (!(await orgHoldsManagedTexting(orgId)))
+      throw new Error(MANAGED_TEXTING_REQUIRED);
     // A first check for a clear message; the provisioning claim is the one
     // that actually decides, atomically, who submits.
     const { status, updatedAt } = await currentStatus(orgId);
