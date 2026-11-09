@@ -2,13 +2,21 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { resolveCaller } from "@/lib/authz.server";
-import { progressText, scoreProblem } from "@/lib/training-progress";
+import {
+  progressText,
+  scoreProblem,
+  skillTrends,
+  type DatedScore,
+  type SkillTrend,
+} from "@/lib/training-progress";
 import type { TrainingDb } from "@/lib/training-packages.server";
 
 const id = z.string().uuid();
 
 const progressInput = z.object({
   visitId: id,
+  /** The dog this record is for. Omitted: the lesson's default dog. */
+  dogId: id.nullable().optional(),
   scores: z.array(z.object({ skillId: id, score: z.number().int().min(1).max(5) })).max(40),
   note: z.string().max(2000).default(""),
   trainerNote: z.string().max(2000).default(""),
@@ -55,9 +63,10 @@ async function trainingVisit(db: TrainingDb, userId: string, visitId: string): P
   };
 }
 
-/** The dog this lesson is for: the package's dog when it lives at the
- * lesson's property, otherwise the only active dog there. */
-async function lessonDog(db: TrainingDb, lesson: Lesson) {
+type Dog = { id: string; name: string };
+
+/** The active dogs at the lesson's property: the dogs a lesson is recorded for. */
+async function lessonDogs(db: TrainingDb, lesson: Lesson): Promise<Dog[]> {
   const { data, error } = await db
     .from("dogs")
     .select("id, name")
@@ -65,11 +74,34 @@ async function lessonDog(db: TrainingDb, lesson: Lesson) {
     .eq("organization_id", lesson.orgId)
     .eq("active", true);
   if (error) throw new Error(error.message);
-  const dogs = (data ?? []) as { id: string; name: string }[];
+  return ((data ?? []) as Dog[]).slice().sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** The dog a lesson opens on: the package's dog when it lives at the lesson's
+ *  property, otherwise the only active dog there, otherwise none. */
+function defaultDog(dogs: Dog[], lesson: Lesson): Dog | null {
   return dogs.find((d) => d.id === lesson.packageDogId) ?? (dogs.length === 1 ? dogs[0] : null);
 }
 
+export const CHOOSE_LESSON_DOG = "Choose which dog this progress is for.";
+
+/** The dog a save is about. A dog named by the caller must be at the lesson;
+ *  with none named, the default, and at a house of several dogs with no
+ *  default the caller has to choose. Null only where no dog is on file. */
+function pickDog(dogs: Dog[], lesson: Lesson, dogId: string | null | undefined): Dog | null {
+  if (dogId) {
+    const dog = dogs.find((d) => d.id === dogId);
+    if (!dog) throw new Error("Choose a dog at this lesson.");
+    return dog;
+  }
+  if (!dogs.length) return null;
+  const fallback = defaultDog(dogs, lesson);
+  if (!fallback) throw new Error(CHOOSE_LESSON_DOG);
+  return fallback;
+}
+
 const HISTORY_LESSONS = 3;
+const PROGRESS_ROWS = 500;
 
 export type LessonHistory = {
   visitId: string;
@@ -80,73 +112,109 @@ export type LessonHistory = {
   homework: string;
 };
 
-/** The dog's last few completed lessons before this one, across its
- * packages. Without a known dog, the lessons of this package. Read through
- * RLS, so a trainer sees the lessons they are allowed to read. */
-async function lessonHistory(
+type Embedded<T> = T | T[] | null;
+function one<T>(v: Embedded<T>): T | null {
+  return Array.isArray(v) ? (v[0] ?? null) : v;
+}
+type LessonRef = { scheduled_on: string };
+
+/** One record's rows for this dog, from its completed lessons before this
+ *  one. Keyed by the dog, so a lesson outside any package counts and a second
+ *  dog at the house is never mixed in. Without a dog on file, the
+ *  whole-lesson records at this property. */
+// The builder is typed per table; the filters are the same on all three.
+function priorRecords(query: any, lesson: Lesson, dogId: string | null) {
+  const base = query
+    .eq("organization_id", lesson.orgId)
+    .eq("visits.status", "completed")
+    .lte("visits.scheduled_on", lesson.scheduledOn)
+    .neq("visit_id", lesson.visitId);
+  const scoped = dogId
+    ? base.eq("dog_id", dogId)
+    : base.is("dog_id", null).eq("visits.property_id", lesson.propertyId);
+  return scoped.limit(PROGRESS_ROWS);
+}
+
+/** The dog's last few lessons in full, and every skill's scores over time.
+ *  Read through RLS, so a trainer sees the lessons they are allowed to read. */
+async function dogProgress(
   db: TrainingDb,
   lesson: Lesson,
   dogId: string | null,
-): Promise<LessonHistory[]> {
-  let packageIds: string[] = lesson.clientPackageId ? [lesson.clientPackageId] : [];
-  if (dogId) {
-    const { data, error } = await db
-      .from("client_packages")
-      .select("id")
-      .eq("organization_id", lesson.orgId)
-      .eq("dog_id", dogId);
-    if (error) throw new Error(error.message);
-    packageIds = [
-      ...new Set([...packageIds, ...((data ?? []) as { id: string }[]).map((p) => p.id)]),
-    ];
-  }
-  if (!packageIds.length) return [];
-  const { data: visits, error } = await db
-    .from("visits")
-    .select("id, scheduled_on")
-    .eq("organization_id", lesson.orgId)
-    .in("client_package_id", packageIds)
-    .eq("status", "completed")
-    .neq("id", lesson.visitId)
-    .lte("scheduled_on", lesson.scheduledOn)
-    .order("scheduled_on", { ascending: false })
-    .limit(HISTORY_LESSONS);
-  if (error) throw new Error(error.message);
-  const rows = (visits ?? []) as { id: string; scheduled_on: string }[];
-  if (!rows.length) return [];
-  const ids = rows.map((v) => v.id);
+): Promise<{ history: LessonHistory[]; trends: SkillTrend[] }> {
+  const visit = "visits!inner(scheduled_on, status, property_id)";
   const [scores, notes, homework] = await Promise.all([
-    db
-      .from("session_progress")
-      .select("visit_id, score, training_skills(name, sort_order)")
-      .in("visit_id", ids),
-    db.from("training_session_notes").select("visit_id, note, trainer_note").in("visit_id", ids),
-    db.from("homework").select("visit_id, body").in("visit_id", ids),
+    priorRecords(
+      db
+        .from("session_progress")
+        .select(`visit_id, score, training_skills(name, sort_order), ${visit}`),
+      lesson,
+      dogId,
+    ),
+    priorRecords(
+      db.from("training_session_notes").select(`visit_id, note, trainer_note, ${visit}`),
+      lesson,
+      dogId,
+    ),
+    priorRecords(db.from("homework").select(`visit_id, body, ${visit}`), lesson, dogId),
   ]);
   for (const result of [scores, notes, homework])
     if (result.error) throw new Error(result.error.message);
   type ScoreRow = {
     visit_id: string;
     score: number;
-    training_skills: { name: string; sort_order: number } | null;
+    training_skills: Embedded<{ name: string; sort_order: number }>;
+    visits: Embedded<LessonRef>;
   };
-  type NoteRow = { visit_id: string; note: string | null; trainer_note: string | null };
-  const noteFor = (visitId: string) =>
-    ((notes.data ?? []) as NoteRow[]).find((n) => n.visit_id === visitId);
-  return rows.map((v) => ({
-    visitId: v.id,
-    scheduledOn: v.scheduled_on,
-    scores: ((scores.data ?? []) as ScoreRow[])
-      .filter((s) => s.visit_id === v.id && s.training_skills)
-      .sort((a, b) => a.training_skills!.sort_order - b.training_skills!.sort_order)
-      .map((s) => ({ skill: s.training_skills!.name, score: s.score })),
-    note: noteFor(v.id)?.note ?? "",
-    trainerNote: noteFor(v.id)?.trainer_note ?? "",
-    homework:
-      ((homework.data ?? []) as { visit_id: string; body: string }[]).find(
-        (h) => h.visit_id === v.id,
-      )?.body ?? "",
-  }));
+  type NoteRow = {
+    visit_id: string;
+    note: string | null;
+    trainer_note: string | null;
+    visits: Embedded<LessonRef>;
+  };
+  type HomeworkRow = { visit_id: string; body: string; visits: Embedded<LessonRef> };
+  const scoreRows = (scores.data ?? []) as ScoreRow[];
+  const noteRows = (notes.data ?? []) as NoteRow[];
+  const homeworkRows = (homework.data ?? []) as HomeworkRow[];
+
+  const dated: DatedScore[] = scoreRows.flatMap((s) => {
+    const skill = one(s.training_skills);
+    const v = one(s.visits);
+    return skill && v
+      ? [
+          {
+            visitId: s.visit_id,
+            scheduledOn: v.scheduled_on,
+            skill: skill.name,
+            sortOrder: skill.sort_order,
+            score: s.score,
+          },
+        ]
+      : [];
+  });
+  const lessons = new Map<string, string>();
+  for (const row of [...scoreRows, ...noteRows, ...homeworkRows]) {
+    const v = one(row.visits);
+    if (v) lessons.set(row.visit_id, v.scheduled_on);
+  }
+  const recent = [...lessons.entries()]
+    .sort(([a, x], [b, y]) => y.localeCompare(x) || b.localeCompare(a))
+    .slice(0, HISTORY_LESSONS);
+  const history = recent.map(([visitId, scheduledOn]) => {
+    const note = noteRows.find((n) => n.visit_id === visitId);
+    return {
+      visitId,
+      scheduledOn,
+      scores: dated
+        .filter((d) => d.visitId === visitId)
+        .sort((a, b) => a.sortOrder - b.sortOrder || a.skill.localeCompare(b.skill))
+        .map((d) => ({ skill: d.skill, score: d.score })),
+      note: note?.note ?? "",
+      trainerNote: note?.trainer_note ?? "",
+      homework: homeworkRows.find((h) => h.visit_id === visitId)?.body ?? "",
+    };
+  });
+  return { history, trends: skillTrends(dated) };
 }
 
 function writeError(error: { code?: string; message: string }): Error {
@@ -206,12 +274,29 @@ export const saveTrainingSkill = createServerFn({ method: "POST" })
     return { id: result.data.id };
   });
 
+/** Narrow a per-record query to one dog, or to the whole-lesson record. */
+function forDog<Q>(query: Q, dogId: string | null): Q {
+  // Every per-record builder has eq and is; the generic keeps its own type.
+  const q = query as unknown as {
+    eq: (col: string, v: string) => Q;
+    is: (col: string, v: null) => Q;
+  };
+  return dogId ? q.eq("dog_id", dogId) : q.is("dog_id", null);
+}
+
 export const getSessionProgress = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ visitId: id }).parse(d))
+  .inputValidator((d) => z.object({ visitId: id, dogId: id.nullable().optional() }).parse(d))
   .handler(async ({ data, context }) => {
     const db = context.supabase as TrainingDb;
     const visit = await trainingVisit(db, context.userId, data.visitId);
+    const dogs = await lessonDogs(db, visit);
+    // A read never refuses: a house of several dogs with no default opens on
+    // the first, and the panel asks the trainer to choose.
+    const named = data.dogId ? dogs.find((d) => d.id === data.dogId) : null;
+    if (data.dogId && !named) throw new Error("Choose a dog at this lesson.");
+    const dog = named ?? defaultDog(dogs, visit) ?? dogs[0] ?? null;
+    const dogId = dog?.id ?? null;
     const [skills, scores, note, homework, org] = await Promise.all([
       db
         .from("training_skills")
@@ -220,19 +305,27 @@ export const getSessionProgress = createServerFn({ method: "GET" })
         .eq("active", true)
         .order("sort_order")
         .order("name"),
-      db.from("session_progress").select("skill_id, score").eq("visit_id", visit.visitId),
-      db
-        .from("training_session_notes")
-        .select("note, trainer_note")
-        .eq("visit_id", visit.visitId)
-        .maybeSingle(),
-      db.from("homework").select("body, due_on").eq("visit_id", visit.visitId).maybeSingle(),
+      forDog(
+        db.from("session_progress").select("skill_id, score").eq("visit_id", visit.visitId),
+        dogId,
+      ),
+      forDog(
+        db
+          .from("training_session_notes")
+          .select("note, trainer_note")
+          .eq("visit_id", visit.visitId),
+        dogId,
+      ).maybeSingle(),
+      forDog(
+        db.from("homework").select("body, due_on").eq("visit_id", visit.visitId),
+        dogId,
+      ).maybeSingle(),
       db.from("organizations").select("training_share_progress").eq("id", visit.orgId).single(),
     ]);
     for (const result of [skills, scores, note, homework, org]) {
       if (result.error) throw new Error(result.error.message);
     }
-    const dog = await lessonDog(db, visit);
+    const progress = await dogProgress(db, visit, dogId);
     return {
       skills: skills.data ?? [],
       scores: scores.data ?? [],
@@ -242,8 +335,13 @@ export const getSessionProgress = createServerFn({ method: "GET" })
       shared: org.data?.training_share_progress !== false,
       homework: homework.data?.body ?? "",
       homeworkDue: homework.data?.due_on ?? null,
+      /** Every dog at the lesson. More than one: the panel asks which. */
+      dogs,
       dog,
-      history: await lessonHistory(db, visit, dog?.id ?? null),
+      /** Whether the panel opened on a dog nobody chose (several dogs, no package dog). */
+      dogGuessed: !named && dogs.length > 1 && !defaultDog(dogs, visit),
+      history: progress.history,
+      trends: progress.trends,
     };
   });
 
@@ -263,6 +361,8 @@ export const saveSessionProgress = createServerFn({ method: "POST" })
     if (trainerNote.problem) throw new Error(trainerNote.problem);
     const homework = progressText(data.homework, 2000, "homework");
     if (homework.problem) throw new Error(homework.problem);
+    const dog = pickDog(await lessonDogs(db, visit), visit, data.dogId);
+    const dogId = dog?.id ?? null;
     const seen = new Set<string>();
     for (const row of data.scores) {
       if (seen.has(row.skillId)) throw new Error("Score each skill once.");
@@ -271,45 +371,55 @@ export const saveSessionProgress = createServerFn({ method: "POST" })
         {
           organization_id: visit.orgId,
           visit_id: visit.visitId,
+          dog_id: dogId,
           skill_id: row.skillId,
           score: row.score,
         },
-        { onConflict: "visit_id,skill_id" },
+        { onConflict: "visit_id,dog_id,skill_id" },
       );
       if (saved.error) throw writeError(saved.error);
     }
-    const drop = db.from("session_progress").delete().eq("visit_id", visit.visitId);
+    const drop = forDog(db.from("session_progress").delete().eq("visit_id", visit.visitId), dogId);
     const cleared =
       seen.size === 0 ? await drop : await drop.not("skill_id", "in", `(${[...seen].join(",")})`);
     if (cleared.error) throw writeError(cleared.error);
     if (note.text || trainerNote.text) {
-      const saved = await db.from("training_session_notes").upsert({
-        visit_id: visit.visitId,
-        organization_id: visit.orgId,
-        note: note.text || null,
-        trainer_note: trainerNote.text || null,
-      });
+      const saved = await db.from("training_session_notes").upsert(
+        {
+          visit_id: visit.visitId,
+          organization_id: visit.orgId,
+          dog_id: dogId,
+          note: note.text || null,
+          trainer_note: trainerNote.text || null,
+        },
+        { onConflict: "visit_id,dog_id" },
+      );
       if (saved.error) throw writeError(saved.error);
     } else {
-      const removed = await db
-        .from("training_session_notes")
-        .delete()
-        .eq("visit_id", visit.visitId);
+      const removed = await forDog(
+        db.from("training_session_notes").delete().eq("visit_id", visit.visitId),
+        dogId,
+      );
       if (removed.error) throw writeError(removed.error);
     }
     if (homework.text) {
-      const dog = await lessonDog(db, visit);
-      const saved = await db.from("homework").upsert({
-        visit_id: visit.visitId,
-        organization_id: visit.orgId,
-        dog_id: dog?.id ?? null,
-        body: homework.text,
-        due_on: data.homeworkDue ?? null,
-      });
+      const saved = await db.from("homework").upsert(
+        {
+          visit_id: visit.visitId,
+          organization_id: visit.orgId,
+          dog_id: dogId,
+          body: homework.text,
+          due_on: data.homeworkDue ?? null,
+        },
+        { onConflict: "visit_id,dog_id" },
+      );
       if (saved.error) throw writeError(saved.error);
     } else {
-      const removed = await db.from("homework").delete().eq("visit_id", visit.visitId);
+      const removed = await forDog(
+        db.from("homework").delete().eq("visit_id", visit.visitId),
+        dogId,
+      );
       if (removed.error) throw writeError(removed.error);
     }
-    return { ok: true };
+    return { ok: true, dogId };
   });

@@ -22,14 +22,46 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, MapPin, MoreHorizontal, Eye, Pencil } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import {
+  Plus,
+  MapPin,
+  MoreHorizontal,
+  Eye,
+  Pencil,
+  Trash2,
+  Search,
+  ChevronDown,
+  Map as MapIcon,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  DEFAULT_ZONE_QUERY,
+  filterAndSortZones,
+  zipOverlaps,
+  zipOverlapSentence,
+  zoneQueryIsFiltered,
+  zoneShapeDetail,
+  type ZoneListQuery,
+  type ZoneListRow,
+  type ZoneShapeFilter,
+  type ZoneSort,
+  type ZipOverlap,
+  type ZoneStatusFilter,
+} from "@/lib/zone-list";
 import { toast } from "sonner";
 import { useMyRole, usePermissions } from "@/hooks/useMyRole";
 import { useDismissed } from "@/lib/dismissible";
 import { DismissButton } from "@/components/DismissButton";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { ZoneDrawer } from "@/components/ZoneDrawer";
-import { MetaChip } from "@/components/client-detail/primitives";
 import {
   ZonesOverviewMap,
   ZONE_COLORS,
@@ -53,6 +85,10 @@ export const Route = createFileRoute("/_authenticated/zones")({
   staticData: { pageWidth: "wide" },
   component: ZonesPage,
 });
+
+// A row as listZones returns it. The select is untyped, so this names the
+// fields the list reads; the rest pass through to the card and the drawer.
+type ZoneRow = OverviewZone & ZoneListRow & Record<string, unknown>;
 
 const money = (cents: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format((cents ?? 0) / 100);
@@ -122,20 +158,49 @@ function ZonesPage() {
   // Set when the drawer was opened by a card's "Fill ZIPs from the area".
   const [fillOnOpen, setFillOnOpen] = useState(false);
 
-  const zones = data?.zones ?? [];
+  const zones = useMemo(() => (data?.zones ?? []) as ZoneRow[], [data]);
   const activeClientsKnown = data?.activeClientsKnown ?? false;
   // Zones that are off stay on the map, muted, unless this is unticked (#449).
   const [showOffOnMap, setShowOffOnMap] = useState(true);
-  const offCount = zones.filter((z: any) => z.enabled === false).length;
-  const mapZones = (showOffOnMap ? zones : zones.filter((z: any) => z.enabled !== false)).filter(
-    (z: any) => zoneHasGeo(z as OverviewZone),
+  const offCount = zones.filter((z) => z.enabled === false).length;
+  // Memoised: the map refits when this array changes, and hovering a row
+  // re-renders the page.
+  const mapZones = useMemo(
+    () =>
+      (showOffOnMap ? zones : zones.filter((z) => z.enabled !== false)).filter((z) =>
+        zoneHasGeo(z as OverviewZone),
+      ),
+    [zones, showOffOnMap],
   );
-  const noGeoZones = zones.filter((z: any) => !zoneHasGeo(z as OverviewZone));
+  const noGeoZones = zones.filter((z) => !zoneHasGeo(z as OverviewZone));
+  // One colour per zone, fixed by the zone's place in the full list, so a row's
+  // swatch and its shape on the map agree whatever the list is filtered to.
+  const zoneColors = useMemo(() => {
+    const out: Record<string, string> = {};
+    zones.forEach((z, i: number) => {
+      out[z.id] = ZONE_COLORS[i % ZONE_COLORS.length];
+    });
+    return out;
+  }, [zones]);
+  const swatchOf = (z: { id: string; enabled?: boolean | null }) =>
+    z.enabled === false ? OFF_ZONE_COLOR : zoneColors[z.id];
+
+  // Search, filter and sort (#450). Kept on the page, not in the URL: it is a
+  // way of looking at a short list, not a place to link to.
+  const [query, setQuery] = useState<ZoneListQuery>(DEFAULT_ZONE_QUERY);
+  const shown = useMemo(() => filterAndSortZones(zones, query), [zones, query]);
+  const filtered = zoneQueryIsFiltered(query);
+  // The zone a row is pointing at on the map: hover, or focus inside the row.
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  // Below lg the map is behind a toggle so the list comes first on a phone.
+  const [mapOpen, setMapOpen] = useState(false);
+  const hasMap = zones.some((z) => zoneHasGeo(z as OverviewZone));
 
   // Multi-select for bulk delete (Invoices-page pattern). Only offered to
   // roles that can edit zones — deleteZone is manage_pricing-gated anyway.
-  const visibleIds = useMemo(() => zones.map((z: any) => z.id as string), [zones]);
-  const sel = useRowSelection(visibleIds);
+  // Select all means the rows on screen; a filter change clears the selection.
+  const visibleIds = useMemo(() => shown.map((z) => z.id as string), [shown]);
+  const sel = useRowSelection(visibleIds, `${query.search}|${query.status}|${query.shape}`);
 
   // Bulk delete loops the existing per-zone deleteZone fn (same permission
   // gate + property re-detection as the card's Delete action).
@@ -188,38 +253,6 @@ function ZonesPage() {
         )}
       </div>
 
-      {/* All-zones overview: fits the map to the org's coverage. Zones still
-          missing map coverage (legacy ZIP-only) are called out by name below
-          the map until someone draws them. */}
-      {zones.some((z: any) => zoneHasGeo(z as OverviewZone)) && (
-        <div className="space-y-2">
-          <ZonesOverviewMap zones={mapZones as OverviewZone[]} />
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            {mapZones.map((z: any, i: number) => (
-              <span key={z.id} className="inline-flex items-center gap-1.5">
-                <span
-                  className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{
-                    background:
-                      z.enabled === false ? OFF_ZONE_COLOR : ZONE_COLORS[i % ZONE_COLORS.length],
-                  }}
-                />
-                {z.name}
-                {z.enabled === false ? " (off)" : ""}
-              </span>
-            ))}
-            {offCount > 0 && (
-              <label className="ms-auto inline-flex min-h-11 items-center gap-2">
-                <Checkbox
-                  checked={showOffOnMap}
-                  onCheckedChange={(v) => setShowOffOnMap(v === true)}
-                />
-                Show zones that are off ({offCount})
-              </label>
-            )}
-          </div>
-        </div>
-      )}
       {coverage?.problem && !coverageNotice.dismissed ? (
         <div
           role="status"
@@ -275,79 +308,214 @@ function ZonesPage() {
 
       {noGeoZones.length > 0 && (
         <p className="text-xs text-amber-700 dark:text-amber-400">
-          No map coverage yet: {noGeoZones.map((z: any) => `"${z.name}"`).join(", ")}. Open Edit to
-          draw coverage so these zones appear on the map and match by location.
+          No map coverage yet: {noGeoZones.map((z) => `"${z.name}"`).join(", ")}. Open Edit to draw
+          coverage so these zones appear on the map and match by location.
         </p>
       )}
 
-      {canEdit && zones.length > 0 && (
-        <label className="flex min-h-8 w-fit items-center gap-2 px-1 text-xs text-muted-foreground">
-          <Checkbox
-            checked={sel.allSelected}
-            onCheckedChange={sel.toggleAll}
-            aria-label="Select all zones"
-          />
-          Select all
-        </label>
-      )}
-
-      {/* Bulk action bar */}
-      {canEdit && sel.count > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-accent/40 px-4 py-2 text-sm shadow-sm">
-          <span className="font-medium">{sel.count} selected</span>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="destructive"
-              disabled={bulkDeleteM.isPending}
-              onClick={async () => {
-                if (
-                  await confirm({
-                    title: `Delete ${sel.count} zone${sel.count === 1 ? "" : "s"}?`,
-                    description:
-                      "This removes the zones and their pricing. Clients and properties are not deleted; their zone is re-detected and any that only matched these zones become unassigned. This can't be undone.",
-                    destructive: true,
-                    confirmLabel: "Delete zones",
-                  })
-                )
-                  bulkDeleteM.mutate(sel.selectedIds);
-              }}
-            >
-              {bulkDeleteM.isPending ? "Deleting…" : "Delete"}
-            </Button>
-            <Button size="sm" variant="ghost" onClick={sel.clear}>
-              Clear
-            </Button>
+      {/* Split view (#450): the list on the left, the map beside it from lg
+          up and sticky while the list scrolls. Below lg the list comes first
+          and the map opens from the toolbar, above the list. */}
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+        {hasMap && (
+          <div
+            data-testid="zones-map-panel"
+            className={cn(
+              "min-w-0 space-y-2 lg:sticky lg:top-4 lg:order-2 lg:block",
+              mapOpen ? "block" : "hidden",
+            )}
+          >
+            {/* All-zones overview: fits the map to the org's coverage. Zones
+                still missing map coverage (legacy ZIP-only) are called out by
+                name above the list until someone draws them. */}
+            <ZonesOverviewMap
+              zones={mapZones as OverviewZone[]}
+              colors={zoneColors}
+              highlightId={highlightId}
+              height={420}
+            />
+            {offCount > 0 && (
+              <label className="inline-flex min-h-11 items-center gap-2 text-xs text-muted-foreground">
+                <Checkbox
+                  checked={showOffOnMap}
+                  onCheckedChange={(v) => setShowOffOnMap(v === true)}
+                />
+                Show zones that are off ({offCount})
+              </label>
+            )}
           </div>
-        </div>
-      )}
-
-      <div className="grid gap-3">
-        {zones.map((z: any) => (
-          <ZoneCard
-            key={z.id}
-            zone={z}
-            canEdit={canEdit}
-            onEdit={() => {
-              setFillOnOpen(false);
-              setDrawer(z);
-            }}
-            onFillZips={() => {
-              setFillOnOpen(true);
-              setDrawer(z);
-            }}
-            showFirstCleanup={zoneFeeIsCharged}
-            activeClientsKnown={activeClientsKnown}
-            selected={sel.isSelected(z.id)}
-            onToggleSelect={canEdit ? (next) => sel.toggle(z.id, next) : undefined}
-          />
-        ))}
-        {data && zones.length === 0 && (
-          <Card className="p-10 text-center text-muted-foreground">
-            <MapPin className="mx-auto mb-2 h-8 w-8 opacity-50 shrink-0" />
-            No zones yet. Create your first zone to enable instant quoting.
-          </Card>
         )}
+
+        <div className="min-w-0 space-y-3 lg:order-1">
+          {zones.length > 1 && (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" data-testid="zones-toolbar">
+              <div className="relative col-span-2 min-w-0 sm:col-span-3">
+                <Search className="pointer-events-none absolute start-2.5 top-1/2 h-4 w-4 shrink-0 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={query.search}
+                  onChange={(e) => setQuery((q) => ({ ...q, search: e.target.value }))}
+                  placeholder="Search name or ZIP"
+                  aria-label="Search zones"
+                  className="ps-8"
+                />
+              </div>
+              <Select
+                value={query.sort}
+                onValueChange={(v) => setQuery((q) => ({ ...q, sort: v as ZoneSort }))}
+              >
+                <SelectTrigger aria-label="Sort zones" className="min-w-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name">Sort: Name</SelectItem>
+                  <SelectItem value="clients">Sort: Most clients</SelectItem>
+                  <SelectItem value="price">Sort: Highest price</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select
+                value={query.status}
+                onValueChange={(v) => setQuery((q) => ({ ...q, status: v as ZoneStatusFilter }))}
+              >
+                <SelectTrigger aria-label="Filter by status" className="min-w-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">On and off</SelectItem>
+                  <SelectItem value="on">On only</SelectItem>
+                  <SelectItem value="off">Off only</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select
+                value={query.shape}
+                onValueChange={(v) => setQuery((q) => ({ ...q, shape: v as ZoneShapeFilter }))}
+              >
+                <SelectTrigger aria-label="Filter by shape" className="min-w-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All shapes</SelectItem>
+                  <SelectItem value="polygon">Polygon</SelectItem>
+                  <SelectItem value="radius">Radius</SelectItem>
+                  <SelectItem value="drive_time">Drive time</SelectItem>
+                  <SelectItem value="zip">ZIP list</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {(zones.length > 0 || hasMap) && (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
+                {canEdit && shown.length > 0 && (
+                  <label className="flex min-h-11 w-fit items-center gap-2 px-1 text-xs text-muted-foreground">
+                    <Checkbox
+                      checked={sel.allSelected}
+                      onCheckedChange={sel.toggleAll}
+                      aria-label={filtered ? "Select all shown zones" : "Select all zones"}
+                    />
+                    {filtered ? "Select all shown" : "Select all"}
+                  </label>
+                )}
+                <span className="text-xs text-muted-foreground" data-testid="zones-count">
+                  {filtered
+                    ? `${shown.length} of ${zones.length} zones`
+                    : `${zones.length} ${zones.length === 1 ? "zone" : "zones"}`}
+                </span>
+              </div>
+              {hasMap && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="lg:hidden"
+                  aria-expanded={mapOpen}
+                  onClick={() => setMapOpen((o) => !o)}
+                >
+                  <MapIcon className="h-4 w-4 shrink-0" /> {mapOpen ? "Hide map" : "Show map"}
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* Bulk action bar */}
+          {canEdit && sel.count > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-accent/40 px-4 py-2 text-sm shadow-sm">
+              <span className="font-medium">{sel.count} selected</span>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={bulkDeleteM.isPending}
+                  onClick={async () => {
+                    if (
+                      await confirm({
+                        title: `Delete ${sel.count} zone${sel.count === 1 ? "" : "s"}?`,
+                        description:
+                          "This removes the zones and their pricing. Clients and properties are not deleted; their zone is re-detected and any that only matched these zones become unassigned. This can't be undone.",
+                        destructive: true,
+                        confirmLabel: "Delete zones",
+                      })
+                    )
+                      bulkDeleteM.mutate(sel.selectedIds);
+                  }}
+                >
+                  {bulkDeleteM.isPending ? "Deleting…" : "Delete"}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={sel.clear}>
+                  Clear
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <ul className="grid gap-2" aria-label="Zones">
+            {shown.map((z) => (
+              <li
+                key={z.id}
+                onMouseEnter={() => setHighlightId(z.id)}
+                onMouseLeave={() => setHighlightId((h) => (h === z.id ? null : h))}
+                onFocus={() => setHighlightId(z.id)}
+              >
+                <ZoneCard
+                  zone={z}
+                  swatch={swatchOf(z)}
+                  overlaps={zipOverlaps(z, zones)}
+                  highlighted={highlightId === z.id}
+                  canEdit={canEdit}
+                  onEdit={() => {
+                    setFillOnOpen(false);
+                    setDrawer(z);
+                  }}
+                  onFillZips={() => {
+                    setFillOnOpen(true);
+                    setDrawer(z);
+                  }}
+                  showFirstCleanup={zoneFeeIsCharged}
+                  activeClientsKnown={activeClientsKnown}
+                  selected={sel.isSelected(z.id)}
+                  onToggleSelect={canEdit ? (next) => sel.toggle(z.id, next) : undefined}
+                />
+              </li>
+            ))}
+          </ul>
+          {filtered && shown.length === 0 && zones.length > 0 && (
+            <Card className="p-6 text-center text-sm text-muted-foreground">
+              No zones match.{" "}
+              <Button
+                variant="link"
+                className="h-auto p-0"
+                onClick={() => setQuery(DEFAULT_ZONE_QUERY)}
+              >
+                Clear search and filters
+              </Button>
+            </Card>
+          )}
+          {data && zones.length === 0 && (
+            <Card className="p-10 text-center text-muted-foreground">
+              <MapPin className="mx-auto mb-2 h-8 w-8 opacity-50 shrink-0" />
+              No zones yet. Create your first zone to enable instant quoting.
+            </Card>
+          )}
+        </div>
       </div>
 
       {showFirstCleanup && <FirstCleanupPricingCard canEdit={canEdit} />}
@@ -380,8 +548,21 @@ function coverageSummary(zone: any): string {
   return "No map coverage yet";
 }
 
+function accountTypeLabel(t: string | null | undefined): string {
+  return t === "commercial" ? "Commercial" : t === "residential" ? "Residential" : "All accounts";
+}
+
+// One zone in the list (#450). The first line answers "which zone, what
+// shape, is it on, how many clients, what does it cost"; the ZIPs fold into a
+// count; anything that needs the owner's attention (a ZIP that matches
+// nothing, a drawn zone the signup page cannot quote, a ZIP two zones both
+// claim) is always shown, never behind the fold. Edit, coverage and delete
+// live in the row menu so "New zone" is the one primary action on the page.
 function ZoneCard({
   zone,
+  swatch,
+  overlaps = [],
+  highlighted = false,
   canEdit,
   onEdit,
   onFillZips,
@@ -391,6 +572,11 @@ function ZoneCard({
   onToggleSelect,
 }: {
   zone: any;
+  /** The colour this zone is drawn in on the map. */
+  swatch?: string;
+  overlaps?: ZipOverlap[];
+  /** The map is pointing at this zone. */
+  highlighted?: boolean;
   canEdit: boolean;
   onEdit: () => void;
   /** Open the drawer and fill the ZIP list from the zone's drawn area. */
@@ -434,13 +620,23 @@ function ZoneCard({
   // and claiming it here would send somebody looking for a chip that is not on
   // screen. Opening the zone still surfaces the rest.
   const deadZips = zipList.slice(0, 12).filter((z) => normalizeUsZip(z) !== z);
+  // The chips fold into "12 ZIPs" (#450), except when one of them is broken:
+  // the warning below names it, so it has to be on screen to be found.
+  const [zipsOpen, setZipsOpen] = useState(deadZips.length > 0);
+  const zipsId = `zone-zips-${zone.id}`;
   const hasGeo = zoneHasGeo(zone as OverviewZone);
   const summary = coverageSummary(zone);
   const isOff = zone.enabled === false;
-  const nameClass = isOff ? "font-semibold text-muted-foreground" : "font-semibold";
+  const nameClass = isOff
+    ? "min-w-0 break-words font-semibold text-muted-foreground"
+    : "min-w-0 break-words font-semibold";
+  const clients = Number(zone.active_clients ?? 0);
 
   return (
-    <Card className={isOff ? "bg-muted/40 p-5" : "p-5"}>
+    <Card
+      data-testid="zone-row"
+      className={cn("p-3 sm:p-4", isOff && "bg-muted/40", highlighted && "ring-2 ring-primary/40")}
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         {/* Below sm this column takes the whole row, so the price block wraps
             under it instead of squeezing the ZIP warning into a word per line
@@ -455,35 +651,51 @@ function ZoneCard({
               aria-label={`Select zone ${zone.name}`}
             />
           )}
+          <span
+            aria-hidden
+            className="mt-1.5 inline-block h-3 w-3 shrink-0 rounded-full border border-black/10"
+            style={{ background: swatch ?? OFF_ZONE_COLOR }}
+          />
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <h3 className={nameClass}>{zone.name}</h3>
               {isOff && <Badge variant="outline">Off</Badge>}
-              <MetaChip>
-                {zone.account_type === "commercial"
-                  ? "Commercial"
-                  : zone.account_type === "residential"
-                    ? "Residential"
-                    : "All accounts"}
-              </MetaChip>
-              {zone.postal_prefix && (
-                <Badge variant="outline" className="text-xs">
-                  prefix {zone.postal_prefix}
-                </Badge>
-              )}
-              {(zone.priority ?? 0) !== 0 && (
-                <Badge
-                  variant="outline"
-                  className="text-xs"
-                  title="When zones overlap at the same match level, the higher priority wins."
-                >
-                  priority {zone.priority}
-                </Badge>
-              )}
-              <Badge variant={hasGeo ? "secondary" : "outline"} className="text-xs">
-                {summary}
-              </Badge>
             </div>
+            {/* The facts, in one wrapping line of plain text rather than a
+                row of chips that all look equally important. */}
+            <p className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+              <span>{zoneShapeDetail(zone)}</span>
+              {activeClientsKnown && (
+                <span>
+                  {clients} active {clients === 1 ? "client" : "clients"}
+                </span>
+              )}
+              <span>{accountTypeLabel(zone.account_type)}</span>
+              {zone.postal_prefix && <span>ZIP prefix {zone.postal_prefix}</span>}
+              {(zone.priority ?? 0) !== 0 && (
+                <span title="When zones overlap at the same match level, the higher priority wins.">
+                  Priority {zone.priority}
+                </span>
+              )}
+            </p>
+            {zipList.length > 0 && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="-ms-2 mt-1 h-7 gap-1 px-2 text-xs"
+                aria-expanded={zipsOpen}
+                aria-controls={zipsId}
+                onClick={() => setZipsOpen((o) => !o)}
+              >
+                {zipList.length} {zipList.length === 1 ? "ZIP" : "ZIPs"}
+                <ChevronDown
+                  className={cn(
+                    "h-3.5 w-3.5 shrink-0 transition-transform",
+                    zipsOpen && "rotate-180",
+                  )}
+                />
+              </Button>
+            )}
             {/* A chip that cannot match anything must not look like one that can.
                 Zone matching is exact string equality against
                 `properties.postal_code`, so a stored value that is not a US
@@ -492,8 +704,8 @@ function ZoneCard({
                 properties. The drawer refuses these on save now, but a list you
                 never open is a list that never tells you, and this card is where
                 somebody looks to find out what a zone covers. */}
-            {zipList.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
+            {zipList.length > 0 && zipsOpen && (
+              <div id={zipsId} className="mt-1 flex flex-wrap gap-1">
                 {zipList.slice(0, 12).map((z) => (
                   <Badge
                     key={z}
@@ -526,6 +738,16 @@ function ZoneCard({
                 Edit the zone to correct {deadZips.length === 1 ? "it" : "them"}.
               </p>
             )}
+            {/* Two zones that list the same ZIP both match it at the exact-ZIP
+                level, so priority decides (src/lib/zone-match.ts). Said here,
+                beside the zone, rather than left for a quote to surprise. */}
+            {overlaps.length > 0 && (
+              <ul className="mt-2 space-y-0.5 text-xs text-amber-700 dark:text-amber-300">
+                {overlaps.map((o) => (
+                  <li key={o.otherId}>{zipOverlapSentence(o)}</li>
+                ))}
+              </ul>
+            )}
             {/* A drawn zone with no ZIPs quotes nobody on the signup page or the
                 lead form: public_quote matches a visitor by ZIP alone. Zones
                 drawn before 2026-10-01 were never filled, so say so and offer
@@ -533,10 +755,11 @@ function ZoneCard({
                 its area added, for the owner to look over and save. Not a
                 silent backfill: a ZIP list decides which zone an address goes
                 to, and that is the owner's call. Below sm the warning takes
-                its own full line and the button wraps under it. */}
+                its own full line and the button wraps under it; so it does
+                from lg to 2xl, where the list is half of a split view. */}
             {hasGeo && zipList.length < FEW_ZIPS && (
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <p className="min-w-0 grow basis-full text-xs text-amber-700 sm:basis-0 dark:text-amber-300">
+                <p className="min-w-0 grow basis-full text-xs text-amber-700 sm:basis-0 lg:basis-full 2xl:basis-0 dark:text-amber-300">
                   {zipList.length === 0
                     ? "No ZIPs listed, so the signup page and lead form can't quote this area."
                     : `Only ${zipList.length} ${zipList.length === 1 ? "ZIP" : "ZIPs"} listed. The signup page and lead form quote by ZIP.`}
@@ -563,8 +786,9 @@ function ZoneCard({
             )}
           </div>
         </div>
-        {/* On its own line below sm, so it reads from the left like the rest. */}
-        <div className="sm:text-right">
+        {/* On its own line below sm, so it reads from the left like the rest.
+            Indented to the name's edge there, past the checkbox and swatch. */}
+        <div className="min-w-0 ps-7 sm:ps-0 sm:text-end">
           {showsVisitPrice && (
             <>
               <div className="text-lg font-semibold">{money(zone.base_price_cents)}</div>
@@ -612,40 +836,42 @@ function ZoneCard({
         </div>
       </div>
 
-      {/* The switch on the left, actions on the right; below sm the actions
-          wrap under the switch rather than pushing it off the card. */}
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+      {/* The switch on the left, the row menu on the right. */}
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t pt-2">
         <ZoneEnabledSwitch zone={zone} activeClientsKnown={activeClientsKnown} />
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {hasGeo && (
-            <Button size="sm" variant="ghost" onClick={() => setViewingCoverage(true)}>
-              <Eye className="mr-1 h-3.5 w-3.5 shrink-0" /> View coverage
-            </Button>
-          )}
-          {canEdit && (
-            <>
-              <Button size="sm" variant="outline" onClick={onEdit}>
-                <Pencil className="mr-1 h-3.5 w-3.5 shrink-0" /> Edit
+        {(hasGeo || canEdit) && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="ghost" aria-label={`More actions for ${zone.name}`}>
+                <MoreHorizontal className="h-4 w-4 shrink-0" />
               </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button size="sm" variant="ghost" aria-label="More actions">
-                    <MoreHorizontal className="h-4 w-4 shrink-0" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem
-                    className="text-destructive focus:text-destructive"
-                    disabled={delMut.isPending}
-                    onClick={handleDelete}
-                  >
-                    Delete zone
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </>
-          )}
-        </div>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {canEdit && (
+                <DropdownMenuItem className="touch:min-h-11" onClick={onEdit}>
+                  <Pencil className="h-4 w-4 shrink-0" /> Edit zone
+                </DropdownMenuItem>
+              )}
+              {hasGeo && (
+                <DropdownMenuItem
+                  className="touch:min-h-11"
+                  onClick={() => setViewingCoverage(true)}
+                >
+                  <Eye className="h-4 w-4 shrink-0" /> View coverage
+                </DropdownMenuItem>
+              )}
+              {canEdit && (
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive touch:min-h-11"
+                  disabled={delMut.isPending}
+                  onClick={handleDelete}
+                >
+                  <Trash2 className="h-4 w-4 shrink-0" /> Delete zone
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
 
       {viewingCoverage && (

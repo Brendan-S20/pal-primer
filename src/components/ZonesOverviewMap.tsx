@@ -10,8 +10,16 @@ import { OverlayGroup, US_VIEW, circleBoundsPoints, type LatLng } from "@/lib/ma
 // legend the caller renders from the same palette.
 
 export const ZONE_COLORS = [
-  "#2563eb", "#dc2626", "#16a34a", "#d97706", "#7c3aed",
-  "#0891b2", "#db2777", "#65a30d", "#c026d3", "#0d9488",
+  "#2563eb",
+  "#dc2626",
+  "#16a34a",
+  "#d97706",
+  "#7c3aed",
+  "#0891b2",
+  "#db2777",
+  "#65a30d",
+  "#c026d3",
+  "#0d9488",
 ];
 
 /** A zone that is turned off (#449) draws in this grey, fainter and thinner. */
@@ -38,9 +46,25 @@ export function zoneHasGeo(z: OverviewZone): boolean {
   );
 }
 
-export function ZonesOverviewMap({ zones, height = 340 }: { zones: OverviewZone[]; height?: number }) {
+export function ZonesOverviewMap({
+  zones,
+  height = 340,
+  highlightId = null,
+  colors,
+}: {
+  zones: OverviewZone[];
+  height?: number;
+  /** A zone the list is pointing at (#450): drawn heavier, the rest fainter. */
+  highlightId?: string | null;
+  /** Colour per zone id, so a list beside the map can show the same swatch.
+   *  Without it the palette is assigned in order, as before. */
+  colors?: Record<string, string>;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const geoZones = useMemo(() => zones.filter(zoneHasGeo), [zones]);
+  // Fit the view when the set of zones changes, not when a highlight does:
+  // pointing at a row must not move the map out from under the person.
+  const fittedFor = useRef<{ map: unknown; zones: OverviewZone[] } | null>(null);
   // One map per mount. The zones are redrawn on it when they change.
   const map = useMapRenderer(containerRef, {
     initialView: US_VIEW,
@@ -54,9 +78,11 @@ export function ZonesOverviewMap({ zones, height = 340 }: { zones: OverviewZone[
     const bounds: LatLng[] = [];
     geoZones.forEach((z, i) => {
       const off = z.enabled === false;
-      const color = off ? OFF_ZONE_COLOR : ZONE_COLORS[i % ZONE_COLORS.length];
-      const weight = off ? 1 : 2;
-      const fillOpacity = off ? 0.04 : 0.12;
+      const color = off ? OFF_ZONE_COLOR : (colors?.[z.id] ?? ZONE_COLORS[i % ZONE_COLORS.length]);
+      const lit = highlightId === z.id;
+      const dim = highlightId != null && !lit;
+      const weight = lit ? 4 : off ? 1 : 2;
+      const fillOpacity = lit ? 0.3 : dim ? 0.04 : off ? 0.04 : 0.12;
       const popupHtml = `<div style="font-weight:600">${escapeHtml(z.name)}${off ? " (off)" : ""}</div>`;
       const ring = z.boundary?.coordinates?.[0];
       if (ring && ring.length >= 3) {
@@ -90,9 +116,13 @@ export function ZonesOverviewMap({ zones, height = 340 }: { zones: OverviewZone[
         bounds.push(center);
       }
     });
-    if (bounds.length > 0) map.fitBounds(bounds, { padding: 30, maxZoom: 13 });
+    const fitted = fittedFor.current;
+    if (bounds.length > 0 && (fitted?.map !== map || fitted.zones !== geoZones)) {
+      map.fitBounds(bounds, { padding: 30, maxZoom: 13 });
+      fittedFor.current = { map, zones: geoZones };
+    }
     return () => layer.clear();
-  }, [map, geoZones]);
+  }, [map, geoZones, highlightId, colors]);
 
   return (
     <div
@@ -104,7 +134,8 @@ export function ZonesOverviewMap({ zones, height = 340 }: { zones: OverviewZone[
 }
 
 function escapeHtml(s: string) {
-  return s.replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!,
+  return s.replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!,
   );
 }
