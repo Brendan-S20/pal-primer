@@ -24,7 +24,9 @@ name: iOS launch
 # On a pull request or a push to main that touches the native project, the
 # web bundle's native config, or this check. Weekly as well, because the
 # fault this exists for arrives with a NEW Xcode on an unchanged repo, and a
-# path filter cannot see that. And by hand.
+# path filter cannot see that. And by hand, which batch.yml does on a batch/*
+# branch whose diff against main touches the paths below. Not on a DRAFT
+# pull request: the run starts when the PR is marked Ready for review.
 #
 # ── WHERE ───────────────────────────────────────────────────────────────────
 #
@@ -47,6 +49,10 @@ on:
       - "package-lock.json"
       - "scripts/ios-launch-smoke.sh"
       - ".github/workflows/ios-launch.yml"
+    # The defaults plus ready_for_review: a DRAFT pull request does not start
+    # the Mac (see the job's `if:`); marking it Ready for review does, and so
+    # does every later push while it is not a draft.
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
     paths:
@@ -71,6 +77,9 @@ permissions:
 jobs:
   launch:
     name: The app launches on the newest Xcode
+    # Skipped (which reads as passing) on a draft; the ready_for_review run is
+    # the one a merge is gated on.
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ${{ fromJSON(vars.IOS_LAUNCH_RUNNER_JSON || '["self-hosted","macOS"]') }}
     timeout-minutes: 150
     steps:
