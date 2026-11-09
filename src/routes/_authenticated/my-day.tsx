@@ -876,6 +876,7 @@ function MyDay() {
                   (below) is the date control (Mobile Phase 2). */}
               <input
                 type="date"
+                aria-label={t("myDay.pickADay")}
                 value={day}
                 onChange={(e) => {
                   // Clearing the field (Backspace/Delete) yields an empty value.
@@ -953,12 +954,15 @@ function MyDay() {
                     screen); it is one tap away now, and the glyph says so. */}
                 <Popover>
                   <PopoverTrigger asChild>
+                    {/* Named "42% How progress is counted", not only the
+                        second half: an aria-label that drops the number on
+                        the button is axe's label-content-name-mismatch, and a
+                        voice-control user says what they see. */}
                     <button
                       type="button"
-                      aria-label={t("myDay.howProgressCounts")}
                       className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-md pe-2 ps-1 text-xs font-medium text-muted-foreground hover:text-foreground"
                     >
-                      {pct}%
+                      {pct}%<span className="sr-only"> {t("myDay.howProgressCounts")}</span>
                       <InfoIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                     </button>
                   </PopoverTrigger>
@@ -1453,10 +1457,12 @@ function serviceLineName(t: TFunction, line: ServiceLine): string {
 function statusBadge(status: string, queuedSync: LifecycleKind | undefined, t: TFunction) {
   const map: Record<string, string> = {
     scheduled: "bg-muted text-muted-foreground",
-    in_progress: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
-    completed: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-    skipped: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
-    canceled: "bg-destructive/15 text-destructive",
+    // 700/800 on a /15 tint: the 600s were 3.16 (emerald) and 4.39 (blue)
+    // on their own tints, and amber-700 4.48 (axe, gaps-r2-11 part 2).
+    in_progress: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
+    completed: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+    skipped: "bg-amber-500/15 text-amber-800 dark:text-amber-400",
+    canceled: "bg-destructive/10 text-destructive",
   };
   return (
     <span

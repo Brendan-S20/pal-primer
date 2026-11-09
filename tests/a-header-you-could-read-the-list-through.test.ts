@@ -44,8 +44,12 @@ describe("My Day's sticky header", () => {
     expect(popover).toBeGreaterThan(0);
     expect(rule, "the rule is still on the page").toBeGreaterThan(popover);
     expect(src.match(/t\("myDay\.progressRule"\)/g)).toHaveLength(1);
-    // The trigger has a name, and a 44px box with its label inside it.
-    expect(src).toMatch(/aria-label=\{t\("myDay\.howProgressCounts"\)\}/);
+    // The trigger has a name, and a 44px box with its label inside it. The
+    // name STARTS with the percentage it shows (an sr-only tail, not an
+    // aria-label that replaced the number: axe label-content-name-mismatch).
+    expect(src).toMatch(
+      /\{pct\}%<span className="sr-only"> \{t\("myDay\.howProgressCounts"\)\}<\/span>/,
+    );
     expect(src).toMatch(/className="inline-flex min-h-11 min-w-11 shrink-0[^"]*"/);
     // The missed count moved into the progress line rather than vanishing.
     expect(src).toContain('t("myDay.missedCount", { count: missedCount })');

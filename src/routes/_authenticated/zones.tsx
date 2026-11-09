@@ -274,7 +274,7 @@ function ZonesPage() {
       ) : null}
 
       {noGeoZones.length > 0 && (
-        <p className="text-xs text-amber-600">
+        <p className="text-xs text-amber-700 dark:text-amber-400">
           No map coverage yet: {noGeoZones.map((z: any) => `"${z.name}"`).join(", ")}. Open Edit to
           draw coverage so these zones appear on the map and match by location.
         </p>

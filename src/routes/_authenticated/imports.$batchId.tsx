@@ -379,7 +379,7 @@ function BatchDetail() {
 function ImportStatusBadge({ status }: { status: string }) {
   const cls: Record<string, string> = {
     committed: "border-transparent bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-400",
-    failed: "border-transparent bg-destructive/15 text-destructive hover:bg-destructive/15",
+    failed: "border-transparent bg-destructive/10 text-destructive hover:bg-destructive/10",
     cancelled: "text-muted-foreground",
   };
   return (

@@ -829,12 +829,12 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 // so the span-based StatusChip does not fit).
 const CHIP_TONES: Record<string, string> = {
   scheduled: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
-  in_progress: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  in_progress: "bg-amber-500/15 text-amber-800 dark:text-amber-400",
   completed: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
   missed: "bg-orange-500/15 text-orange-700 dark:text-orange-400",
   [NEVER_ON_A_ROUTE]: "bg-muted text-muted-foreground",
   skipped: "bg-muted text-muted-foreground",
-  canceled: "bg-destructive/15 text-destructive",
+  canceled: "bg-destructive/10 text-destructive",
 };
 
 /** Local YYYY-MM-DD key for a Date (no UTC parsing pitfalls). */

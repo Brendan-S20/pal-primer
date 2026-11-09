@@ -1000,6 +1000,17 @@ jobs:
       - name: Sweep 360 / 768 / 1280 / 1920 — signed-in routes
         run: npm run test:viewports:auth
 
+      # ── AXE, IN THE BROWSER THE SWEEPS ALREADY START ─────────────────────
+      #
+      # gaps-r2-11 part 2. Same surfaces, session and stub as the step above,
+      # at 1280 and 360, with axe-core's WCAG 2.1 A/AA rules over what
+      # rendered. Serious and critical fail. It needs a browser for the same
+      # reason the sweeps do: colour contrast is a computed foreground over a
+      # composited background, and jsdom (where part 1's scan runs) has no
+      # layout to compute either. Measured at 3.7 minutes for 92 tests.
+      - name: axe over the signed-in pages — names and contrast
+        run: npm run test:viewports:axe
+
       # ── ELEVEN REAL DEVICES, AND A POINTER THAT IS NOT A MOUSE ───────────
       #
       # The two steps above are a contract; this one is a census. rules.ts

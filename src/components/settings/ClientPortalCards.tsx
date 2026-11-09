@@ -87,6 +87,7 @@ export function PortalAddressCard() {
         <div className="flex flex-wrap items-center gap-1 text-sm">
           <span className="text-muted-foreground">{base.replace(/^https?:\/\//, "")}/portal/</span>
           <Input
+            aria-label="Portal address"
             value={slug}
             onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
             className="h-8 w-48"
@@ -196,8 +197,11 @@ export function BrandingCard() {
             Full width and first because it is the one field a customer is
             certain to read. */}
         <div>
-          <Label className="text-xs">Business name</Label>
+          <Label htmlFor="portal-org-name" className="text-xs">
+            Business name
+          </Label>
           <Input
+            id="portal-org-name"
             className="mt-1"
             value={orgName}
             onChange={(e) => setOrgName(e.target.value)}
@@ -211,15 +215,19 @@ export function BrandingCard() {
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <Label className="text-xs">Brand color</Label>
+            <Label htmlFor="portal-brand-color" className="text-xs">
+              Brand color
+            </Label>
             <div className="mt-1 flex gap-2">
               <Input
+                id="portal-brand-color"
                 type="color"
                 value={brandColor}
                 onChange={(e) => setBrandColor(e.target.value)}
                 className="h-10 w-14 p-1"
               />
               <Input
+                aria-label="Brand color, as a hex code"
                 value={brandColor}
                 onChange={(e) => setBrandColor(e.target.value)}
                 placeholder="#16a34a"
@@ -227,8 +235,11 @@ export function BrandingCard() {
             </div>
           </div>
           <div>
-            <Label className="text-xs">Logo URL</Label>
+            <Label htmlFor="portal-logo-url" className="text-xs">
+              Logo URL
+            </Label>
             <Input
+              id="portal-logo-url"
               className="mt-1"
               value={logoUrl}
               onChange={(e) => setLogoUrl(e.target.value)}
@@ -236,8 +247,11 @@ export function BrandingCard() {
             />
           </div>
           <div>
-            <Label className="text-xs">Office phone (tap-to-call in the portal)</Label>
+            <Label htmlFor="portal-phone" className="text-xs">
+              Office phone (tap-to-call in the portal)
+            </Label>
             <Input
+              id="portal-phone"
               className="mt-1"
               value={contactPhone}
               onChange={(e) => setContactPhone(e.target.value)}
@@ -245,8 +259,11 @@ export function BrandingCard() {
             />
           </div>
           <div>
-            <Label className="text-xs">Office email</Label>
+            <Label htmlFor="portal-email" className="text-xs">
+              Office email
+            </Label>
             <Input
+              id="portal-email"
               className="mt-1"
               value={contactEmail}
               onChange={(e) => setContactEmail(e.target.value)}
@@ -262,14 +279,16 @@ export function BrandingCard() {
                 Replies to invoices and reminders come back to this address.
               </p>
             ) : (
-              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+              <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
                 Add one. Invoices and reminders are sent from a no-reply address, so any client who
                 hits Reply today is writing to nobody.
               </p>
             )}
           </div>
           <div>
-            <Label className="text-xs">Business address</Label>
+            <Label htmlFor="portal-address" className="text-xs">
+              Business address
+            </Label>
             {/* Autocomplete over ONE free-text line, which is a deliberate
                 pair of decisions.
                   Autocomplete, because the claim in the note below that
@@ -285,6 +304,7 @@ export function BrandingCard() {
                 Splitting into street/city/state would lock them out for a
                 field that is mostly printed in an email footer. */}
             <AddressAutocomplete
+              id="portal-address"
               className="mt-1"
               value={contactAddress}
               onChangeText={setContactAddress}
@@ -299,8 +319,11 @@ export function BrandingCard() {
             </p>
           </div>
           <div>
-            <Label className="text-xs">Change cutoff (hours before visit)</Label>
+            <Label htmlFor="portal-cutoff" className="text-xs">
+              Change cutoff (hours before visit)
+            </Label>
             <Input
+              id="portal-cutoff"
               className="mt-1"
               type="number"
               min={0}
@@ -318,15 +341,27 @@ export function BrandingCard() {
           <p className="text-sm font-medium">Self-serve permissions</p>
           <div className="flex items-center justify-between">
             <div className="text-sm">Allow clients to reschedule visits</div>
-            <Switch checked={allowResched} onCheckedChange={setAllowResched} />
+            <Switch
+              checked={allowResched}
+              onCheckedChange={setAllowResched}
+              aria-label="Allow clients to reschedule visits"
+            />
           </div>
           <div className="flex items-center justify-between">
             <div className="text-sm">Allow clients to request vacation holds</div>
-            <Switch checked={allowHold} onCheckedChange={setAllowHold} />
+            <Switch
+              checked={allowHold}
+              onCheckedChange={setAllowHold}
+              aria-label="Allow clients to request vacation holds"
+            />
           </div>
           <div className="flex items-center justify-between">
             <div className="text-sm">Allow clients to change plan frequency</div>
-            <Switch checked={allowFreq} onCheckedChange={setAllowFreq} />
+            <Switch
+              checked={allowFreq}
+              onCheckedChange={setAllowFreq}
+              aria-label="Allow clients to change plan frequency"
+            />
           </div>
           <div className="flex items-center justify-between">
             <div>
@@ -335,7 +370,11 @@ export function BrandingCard() {
                 Off (default): the office reviews every change. On: changes take effect immediately.
               </div>
             </div>
-            <Switch checked={autoApply} onCheckedChange={setAutoApply} />
+            <Switch
+              checked={autoApply}
+              onCheckedChange={setAutoApply}
+              aria-label="Auto-apply requested changes"
+            />
           </div>
         </div>
 

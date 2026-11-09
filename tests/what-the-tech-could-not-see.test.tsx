@@ -160,7 +160,11 @@ describe("the yard outline, or plainly none", () => {
     ).toContain("Property outline · 6,458 sq ft");
     // No Leaflet container on the card: the map is the dialog's, and lazy.
     expect(html).not.toMatch(/leaflet/i);
-    expect(html).toMatch(/aria-label="Open the property outline on a map"/);
+    // Named by what it shows ("Property outline · 6,458 sq ft · Tap to see it
+    // on the map"), not by an aria-label that replaced that text: axe's
+    // label-content-name-mismatch, because a voice-control user says the
+    // words on the button (gaps-r2-11 part 2).
+    expect(html).not.toMatch(/<button[^>]*aria-label=/);
   });
 
   it("says so when nobody has sketched one, with no drawing and no map", async () => {
