@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DEBUG BUILDS ONLY (issue #521). Merged over src/main/AndroidManifest.xml for
+  the debug variant; a release build never sees this file.
+
+  The provider starts with the process, before any activity, and is how the
+  debug-only FakeReviewPlugin gets onto the Capacitor bridge without
+  MainActivity knowing about it. It registers the plugin only when the APK was
+  built with -Phoundstack.fakeReview=on|fail; otherwise it does nothing.
+  See docs/android-rating-prompt-qa.md.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <provider
+            android:name="consulting.thenorth.houndstack.review.FakeReviewInstaller"
+            android:authorities="${applicationId}.fakereview"
+            android:exported="false" />
+    </application>
+</manifest>
