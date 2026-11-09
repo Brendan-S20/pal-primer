@@ -1094,11 +1094,23 @@ export const portalRemoveCard = createServerFn({ method: "POST" })
       .eq("id", session.clientId)
       .single();
     if (cRow?.default_payment_method_id) {
-      try {
-        const { stripe, stripeAccount } = await loadStripe(session.organizationId);
-        await stripe.paymentMethods.detach(cRow.default_payment_method_id, {}, { stripeAccount });
-      } catch (e) {
-        console.warn("detach pm failed", e);
+      // Removing a card is not a charge, so it does not go through
+      // requireOrgStripeAccount (which refuses while the business is locked):
+      // the card is detached on the connected account whatever the business's
+      // own plan says. With no connected account there is nowhere it could be
+      // charged, so only our copy is cleared. A detach Stripe refuses is an
+      // error, and our copy is left as it was, rather than telling the client
+      // "removed" while the card stays chargeable (review on #748).
+      const { resolveOrgStripeAccount, connectStripe } = await import(
+        "@/lib/stripe-connect.server"
+      );
+      const acct = await resolveOrgStripeAccount(session.organizationId);
+      if (acct) {
+        const { detachPaymentMethod } = await import("@/lib/stripe-detach.server");
+        await detachPaymentMethod(await connectStripe(), cRow.default_payment_method_id, {
+          stripeAccount: acct.accountId,
+          context: "portal-remove-card",
+        });
       }
     }
     await supabaseAdmin

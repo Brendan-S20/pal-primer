@@ -9,6 +9,11 @@ import { readFileSync } from "node:fs";
 
 const h = vi.hoisted(() => ({ rows: [] as Array<Record<string, unknown>> }));
 
+// The account lock is its own test
+// (a-trial-that-ended-suspends-the-account-for-everyone.test.tsx). Here it is
+// open, so the row queue below answers only the Stripe account lookups.
+vi.mock("@/lib/account-lock.server", () => ({ refuseChargesIfLocked: async () => {} }));
+
 vi.mock("@/integrations/supabase/client.server", () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- a chainable query stub
   const p: any = {
