@@ -12,7 +12,9 @@
 //
 //   1. With NO KEY and nothing set, every service asks exactly whom it asked
 //      before: the OSRM demo, Geocodio-then-Nominatim (or Nominatim alone),
-//      OpenStreetMap tiles. With GOOGLE_MAPS_API_KEY set, Google, counted.
+//      OpenStreetMap tiles. A Google key ALONE changes none of that: Google
+//      is ROUTING_PROVIDER=google / GEOCODING_PROVIDER=google, set on purpose
+//      once the $25 budget exists. With those set, Google, counted.
 //   2. SET, the variable moves the request -- to a registered adapter, with
 //      the generic key and URL handed to it -- and a name nobody registered is
 //      an error, never a quiet fall back to the free public service.
@@ -326,14 +328,25 @@ describe("routing on Google", () => {
   });
   afterEach(() => setRoadLegTiming(null));
 
-  it("a Google server key selects Google; ROUTING_PROVIDER=osrm still overrides it", () => {
-    expect(routingProvider({ GOOGLE_MAPS_API_KEY: "k" }).id).toBe("google");
-    expect(routingProvider({ GOOGLE_MAPS_API_KEY: "k", ROUTING_PROVIDER: "osrm" }).id).toBe("osrm");
+  it("a Google key alone selects nothing; ROUTING_PROVIDER=google does", () => {
+    expect(routingProvider({ GOOGLE_MAPS_API_KEY: "k" }).id).toBe("osrm");
+    expect(routingProvider({ GOOGLE_MAPS_API_KEY: "k", ROUTING_PROVIDER: "google" }).id).toBe(
+      "google",
+    );
     expect(routingProvider({}).id).toBe("osrm");
+  });
+
+  it("with only the key in the environment, merging sends nothing to Google", async () => {
+    vi.stubEnv("GOOGLE_MAPS_API_KEY", "google-test-key");
+    reply = () => json(table(STOPS.length));
+    await refreshRoadLegs("org", "2026-11-10");
+    expect(calls.map((c) => host(c.url))).toEqual(["router.project-osrm.org"]);
+    expect(googleMapsUsage()).toEqual({});
   });
 
   it("asks Compute Route Matrix once, key in a header and not the URL, and records Google legs", async () => {
     vi.stubEnv("GOOGLE_MAPS_API_KEY", "google-test-key");
+    vi.stubEnv("ROUTING_PROVIDER", "google");
     reply = () => json(googleMatrix(STOPS.length));
     const r = await refreshRoadLegs("org", "2026-11-10");
 
@@ -364,6 +377,7 @@ describe("routing on Google", () => {
 
   it("a pair Google cannot route stays on the estimate; the rest are measured", async () => {
     vi.stubEnv("GOOGLE_MAPS_API_KEY", "google-test-key");
+    vi.stubEnv("ROUTING_PROVIDER", "google");
     const m = googleMatrix(STOPS.length).map((el) =>
       el.originIndex === 1 && el.destinationIndex === 2
         ? { ...el, condition: "ROUTE_NOT_FOUND" }
@@ -376,6 +390,7 @@ describe("routing on Google", () => {
 
   it("a refused key leaves the day on estimates and never falls back to the OSRM demo", async () => {
     vi.stubEnv("GOOGLE_MAPS_API_KEY", "google-test-key");
+    vi.stubEnv("ROUTING_PROVIDER", "google");
     reply = () =>
       json(
         { error: { code: 403, status: "PERMISSION_DENIED", message: "Routes API not enabled" } },
@@ -388,7 +403,7 @@ describe("routing on Google", () => {
 
   it("a day of more than 25 points (625 elements) is not sent to Google", () => {
     expect(
-      routingProvider({ GOOGLE_MAPS_API_KEY: "k" }).maxPoints(providerContext("routing", {})),
+      routingProvider({ ROUTING_PROVIDER: "google" }).maxPoints(providerContext("routing", {})),
     ).toBe(25);
   });
 
@@ -527,18 +542,27 @@ const GOOGLE_ROOFTOP = {
 describe("geocoding on Google", () => {
   beforeEach(() => resetGoogleMapsUsage());
 
-  it("a Google server key selects Google ahead of Geocodio, with Nominatim still the fallback", () => {
-    expect(geocodingProviders({ GOOGLE_MAPS_API_KEY: "k", GEOCODIO_API_KEY: "g" })).toMatchObject({
-      primary: { id: "google" },
-      fallback: { id: "nominatim" },
-    });
+  it("a Google key alone selects nothing; GEOCODING_PROVIDER=google does, with Nominatim still the fallback", () => {
+    expect(geocodingProviders({ GOOGLE_MAPS_API_KEY: "k" }).primary.id).toBe("nominatim");
+    expect(geocodingProviders({ GOOGLE_MAPS_API_KEY: "k", GEOCODIO_API_KEY: "g" }).primary.id).toBe(
+      "geocodio",
+    );
     expect(
-      geocodingProviders({ GOOGLE_MAPS_API_KEY: "k", GEOCODING_PROVIDER: "geocodio" }).primary.id,
-    ).toBe("geocodio");
+      geocodingProviders({ GOOGLE_MAPS_API_KEY: "k", GEOCODING_PROVIDER: "google" }),
+    ).toMatchObject({ primary: { id: "google" }, fallback: { id: "nominatim" } });
+  });
+
+  it("with only the key in the environment, an address is not sent to Google", async () => {
+    vi.stubEnv("GOOGLE_MAPS_API_KEY", "google-test-key");
+    reply = () => json(NOMINATIM_HOUSE);
+    await geocodeAddress(ADDRESS);
+    expect(calls.map((c) => host(c.url))).toEqual(["nominatim.openstreetmap.org"]);
+    expect(googleMapsUsage()).toEqual({});
   });
 
   it("asks the Geocoding API, reads a rooftop as a house, and counts the request", async () => {
     vi.stubEnv("GOOGLE_MAPS_API_KEY", "google-test-key");
+    vi.stubEnv("GEOCODING_PROVIDER", "google");
     reply = () => json(GOOGLE_ROOFTOP);
     const r = await geocodeAddress(ADDRESS);
     expect(calls).toHaveLength(1);
@@ -556,6 +580,7 @@ describe("geocoding on Google", () => {
 
   it("a partial match is a street, a road centre is a street, an approximate point is an area", async () => {
     vi.stubEnv("GOOGLE_MAPS_API_KEY", "google-test-key");
+    vi.stubEnv("GEOCODING_PROVIDER", "google");
     const variant = (geometry: object, extra: object = {}) => ({
       status: "OK",
       results: [{ ...GOOGLE_ROOFTOP.results[0], ...extra, geometry: { ...geometry } }],
@@ -576,6 +601,7 @@ describe("geocoding on Google", () => {
 
   it("ZERO_RESULTS is no point and asks nobody else; REQUEST_DENIED falls back, and the key is never logged", async () => {
     vi.stubEnv("GOOGLE_MAPS_API_KEY", "google-test-key");
+    vi.stubEnv("GEOCODING_PROVIDER", "google");
     reply = () => json({ status: "ZERO_RESULTS", results: [] });
     expect(await geocodeAddress(ADDRESS)).toBeNull();
     expect(calls).toHaveLength(1);
@@ -598,6 +624,7 @@ describe("geocoding on Google", () => {
 
   it("a batch is answered in input order", async () => {
     vi.stubEnv("GOOGLE_MAPS_API_KEY", "google-test-key");
+    vi.stubEnv("GEOCODING_PROVIDER", "google");
     reply = (c) => {
       const n = Number(new URL(c.url).searchParams.get("address")!.split(" ")[0]);
       return json({

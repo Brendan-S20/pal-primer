@@ -31,10 +31,12 @@ from. Each line says where the detail is.
    email or IP. Crash Data is declared in App Privacy. Errors from the
    platform console now carry the admin's user id too (#329).
 4. **Routing and geocoding: decided 2026-11-09, Google Maps Platform for now**
-   (item 11, #529). What is left is yours: set `GOOGLE_MAPS_API_KEY` (Geocoding
-   API + Routes API only), create the $25/month budget alert, and read the
-   caching terms -- all in `docs/google-maps-spend.md`. Until the key is set,
-   the app still uses the OSRM demo and Nominatim/Geocodio.
+   (item 11, #529). What is left is yours: create the $25/month budget alert,
+   read the caching terms, then turn Google on with `ROUTING_PROVIDER=google`
+   and `GEOCODING_PROVIDER=google` next to `GOOGLE_MAPS_API_KEY` (Geocoding
+   API + Routes API only) -- all in `docs/google-maps-spend.md`. Until those
+   two are set, the app still uses the OSRM demo and Nominatim/Geocodio, key
+   or no key.
 5. **The `Mac0s` runner** (item 12): still 16 GB, swap 83% used on
    2026-10-04, Supabase CLI still v2.78.1 against v2.119.0.
 6. **Check the Google map once in the iOS app, and confirm the budget alert**

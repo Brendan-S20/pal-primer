@@ -15,10 +15,15 @@
 // So each service has a small ADAPTER type, a registry of adapters keyed by
 // id, and one environment variable that picks one. Unset, every service picks
 // exactly what it used before this file existed: behaviour is unchanged until
-// somebody sets a variable -- except that a configured Google server key
-// (GOOGLE_MAPS_API_KEY) now selects Google for routing and geocoding, which
-// is the decision above. Set ROUTING_PROVIDER=osrm / GEOCODING_PROVIDER=... to
-// override it.
+// somebody sets a variable.
+//
+// Google is EXPLICIT: ROUTING_PROVIDER=google and GEOCODING_PROVIDER=google.
+// A Google server key being present selects nothing. It was the default for
+// one commit, and review caught what that meant: GOOGLE_MAPS_API_KEY was
+// already in the hosting secrets, so merging would have started billed
+// Google calls before the $25 budget alert existed. Turning Google on is a
+// deliberate step, taken after the budget is in place
+// (docs/google-maps-spend.md).
 //
 // ── THE VARIABLES ────────────────────────────────────────────────────────
 //
@@ -29,9 +34,9 @@
 //               GEOCODING_FALLBACK (nominatim, or "none")
 //   map tiles   VITE_MAP_TILES_PROVIDER (osm) VITE_MAP_TILES_KEY VITE_MAP_TILES_URL
 //
-//   (*)  unset: "google" when GOOGLE_MAPS_API_KEY is set, else "osrm".
-//   (**) unset: "google" when GOOGLE_MAPS_API_KEY is set, else "geocodio"
-//        when GEOCODIO_API_KEY is set, else "nominatim".
+//   (*)  unset: "osrm". "google" to use the Routes API.
+//   (**) unset: "geocodio" when GEOCODIO_API_KEY is set, else "nominatim".
+//        "google" to use the Geocoding API.
 //
 // The service-specific names keep working and keep their meaning:
 // GOOGLE_MAPS_API_KEY for both google adapters, OSRM_URL / OSRM_ENDPOINTS /

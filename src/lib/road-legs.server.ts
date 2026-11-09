@@ -102,11 +102,12 @@ type Point = { lat: number; lon: number };
 // whatever comes back into that shape, so the snap guard, the cache and the
 // planner never learn there is more than one router.
 //
-// ROUTING_PROVIDER picks it (see src/lib/providers/config.ts). Unset, it is
-// "google" when GOOGLE_MAPS_API_KEY is set -- the owner's decision of
-// 2026-11-09: Google Maps Platform for now, OSRM when volume grows -- and
-// otherwise "osrm", which is OSRM_URL / OSRM_ENDPOINTS / the public demo
-// exactly as before. Switching back is ROUTING_PROVIDER=osrm plus OSRM_URL.
+// ROUTING_PROVIDER picks it (see src/lib/providers/config.ts). The owner's
+// decision of 2026-11-09 is Google Maps Platform for now and OSRM when volume
+// grows: that is ROUTING_PROVIDER=google, set deliberately once the $25
+// budget alert exists -- a key being present selects nothing. Unset is
+// "osrm", which is OSRM_URL / OSRM_ENDPOINTS / the public demo exactly as
+// before. Switching back is ROUTING_PROVIDER=osrm plus OSRM_URL.
 // Another provider is a new entry in ROUTING_PROVIDERS reading
 // ROUTING_API_KEY and ROUTING_URL from its context -- and nothing else here.
 
@@ -279,7 +280,7 @@ export function unregisterRoutingProvider(id: string): void {
 /** The adapter the environment selects. Throws ProviderConfigError for a
  *  ROUTING_PROVIDER nobody registered -- never the demo server instead. */
 export function routingProvider(env: ProviderEnv = serverEnv()): RoutingAdapter {
-  return pickProvider("routing", env, ROUTING_PROVIDERS, googleServerKey(env) ? google.id : osrm.id);
+  return pickProvider("routing", env, ROUTING_PROVIDERS, osrm.id);
 }
 
 /** Rounded exactly as the table stores them, so a lookup cannot miss by a tick. */

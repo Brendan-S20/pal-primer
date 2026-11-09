@@ -19,9 +19,10 @@
 // API is a third, per the owner's decision of 2026-11-09 (Google Maps
 // Platform for now, rather than Geocodio):
 //
-//   GEOCODING_PROVIDER  unset: "google" when GOOGLE_MAPS_API_KEY is set, else
-//                       "geocodio" when GEOCODIO_API_KEY is set, else
-//                       "nominatim".
+//   GEOCODING_PROVIDER  "google" to use Google (explicit: a key alone selects
+//                       nothing). Unset: "geocodio" when GEOCODIO_API_KEY is
+//                       set, else "nominatim" -- the rule this file always
+//                       followed.
 //   GEOCODING_FALLBACK  who is asked when the first provider fails to answer.
 //                       Unset: "nominatim", as before. "none": nobody; the
 //                       address simply gets no point.
@@ -214,11 +215,7 @@ export function geocodingProviders(env: ProviderEnv = serverEnv()): {
     requestedProvider(
       "geocoding",
       env,
-      googleServerKey(env)
-        ? googleGeocoder.id
-        : envValue(env, "GEOCODIO_API_KEY")
-          ? geocodio.id
-          : nominatim.id,
+      envValue(env, "GEOCODIO_API_KEY") ? geocodio.id : nominatim.id,
     ),
   );
   const fb = (envValue(env, "GEOCODING_FALLBACK") ?? nominatim.id).toLowerCase();

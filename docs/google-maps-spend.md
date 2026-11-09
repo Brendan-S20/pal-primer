@@ -109,8 +109,10 @@ number.
 ## Keys (Needs Brendan, no secret goes in this repository)
 
 - **`GOOGLE_MAPS_API_KEY`**: the server key for the Geocoding API and the Routes
-  API. Setting it is what selects Google for geocoding and routing. Without it,
-  the app keeps its previous behavior: OSRM, and Geocodio or Nominatim.
+  API. **The key alone turns nothing on.** Google is used only once
+  `ROUTING_PROVIDER=google` and `GEOCODING_PROVIDER=google` are set (see
+  "Turning Google on" below). Until then the app keeps its previous behavior:
+  OSRM, and Geocodio or Nominatim.
   - Restrict it by API to the **Geocoding API** and **Routes API** only.
   - It has no referrer restriction, because it is used server-side. Never put
     it in a `VITE_` variable.
@@ -118,8 +120,21 @@ number.
 - **`GOOGLE_PLACES_API_KEY`** (address search) and the browser key
   `GOOGLE_MAPS_BROWSER_KEY` / `VITE_LOVABLE_CONNECTOR_GOOGLE_MAPS_BROWSER_KEY`
   (maps) are unchanged.
-- To force a provider regardless of keys, set `ROUTING_PROVIDER` (`google` or
-  `osrm`) and `GEOCODING_PROVIDER` (`google`, `geocodio` or `nominatim`).
+- `GOOGLE_MAPS_SERVER_KEY` is not read by anything in this repository.
+
+## Turning Google on (Needs Brendan, after the budget exists)
+
+Merging the code changes nothing in production. Google is enabled by two
+hosting secrets, in this order:
+
+1. Create the $25/month budget above, and tick its box in the checklist below.
+2. Set `GEOCODING_PROVIDER=google` and `ROUTING_PROVIDER=google`, alongside
+   `GOOGLE_MAPS_API_KEY`.
+3. Within a day, look for `[google-maps-usage]` lines in the server logs, and
+   for Geocoding and Routes rows in Google's billing report.
+
+To turn Google off again, remove both variables, or set them to `osrm` and
+`geocodio`/`nominatim`. Nothing else changes.
 
 ## Terms to check before relying on stored results (Needs Brendan)
 
@@ -139,5 +154,7 @@ whether the stored values need an expiry. Nothing in this change adds one.
 - [ ] Budget created at $25/month with the thresholds above. Date: ______, by: ______
 - [ ] `GOOGLE_MAPS_API_KEY` set in the hosting secrets, restricted to the
       Geocoding API and Routes API
+- [ ] Only after the budget: `ROUTING_PROVIDER=google` and
+      `GEOCODING_PROVIDER=google` set
 - [ ] Geocoding API and Routes API enabled on that project
 - [ ] Caching terms read, and a decision recorded on #529
