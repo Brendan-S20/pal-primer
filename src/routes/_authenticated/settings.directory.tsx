@@ -104,7 +104,7 @@ function DirectorySettings() {
   const zipList = useMemo(() => splitList(zips), [zips]);
   const badZips = zipList.filter((z) => !/^\d{5}$/.test(z));
   const cityList = useMemo(() => splitList(cities), [cities]);
-  const listedServices = (data?.services ?? []).filter((s) => choices[s.id]?.listed);
+  const listedServices = (data?.services ?? []).filter((s) => s.active && choices[s.id]?.listed);
   const slugOk = isDirectorySlug(slug.trim().toLowerCase());
 
   const save = useMutation({
@@ -360,14 +360,17 @@ function ServiceRow({
       <label htmlFor={id} className="flex min-h-11 min-w-0 flex-1 basis-56 items-center gap-3">
         <Checkbox
           id={id}
-          checked={choice.listed}
+          checked={choice.listed && s.active}
+          // A retired service cannot be listed: the directory shows what the
+          // business sells today, and the database drops it anyway.
+          disabled={!s.active}
           onCheckedChange={(v) => onChange({ ...choice, listed: v === true })}
         />
         <span className="min-w-0">
           <span className="block font-medium break-words">{s.name}</span>
           <span className="block text-xs text-muted-foreground">
             {directoryLineLabel(s.service_line)}
-            {s.active ? "" : " · not currently sold"}
+            {s.active ? "" : " · not currently sold, so it can't be listed"}
           </span>
         </span>
       </label>
@@ -380,7 +383,7 @@ function ServiceRow({
           inputMode="decimal"
           className="w-28"
           value={choice.price}
-          disabled={!choice.listed}
+          disabled={!choice.listed || !s.active}
           onChange={(e) => onChange({ ...choice, price: e.target.value })}
           placeholder="Ask"
         />

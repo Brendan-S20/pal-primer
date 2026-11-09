@@ -260,7 +260,7 @@ GRANT EXECUTE ON FUNCTION public.directory_org_for_quote(text) TO service_role;
 
 -- ── 4. The owner's opt-in ──────────────────────────────────────────────────
 -- _services: [{ "service_id": uuid, "price_from_cents": int|null }, ...] in
--- display order. Only this business's own services are kept; the label, line
+-- display order. Only this business's own ACTIVE services are kept; the label, line
 -- and unit are read from the service itself, the price-from is the owner's.
 CREATE OR REPLACE FUNCTION public.set_directory_profile(
   _org uuid,
@@ -323,6 +323,8 @@ BEGIN
     JOIN public.services s
       ON s.id = CASE WHEN (e.item->>'service_id') ~* '^[0-9a-f-]{36}$' THEN (e.item->>'service_id')::uuid END
      AND s.organization_id = _org
+     -- Only what the business sells today: a retired service is not listed.
+     AND s.active
   ON CONFLICT (organization_id, service_id) DO NOTHING;
 
   -- The lines a profile is found under are the lines of what it lists.

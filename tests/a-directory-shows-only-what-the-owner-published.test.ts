@@ -137,6 +137,8 @@ describe("the migration", () => {
     expect(body.indexOf("has_role")).toBeLessThan(body.indexOf("INSERT INTO"));
     // Only this business's own services can be listed.
     expect(body).toMatch(/AND s\.organization_id = _org/);
+    // ...and only ones it sells today.
+    expect(body).toMatch(/AND s\.active\b/);
   });
 
   it("is off by default, and leaves reviews to the next migration", () => {

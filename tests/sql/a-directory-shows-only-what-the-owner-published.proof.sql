@@ -46,6 +46,7 @@ SET LOCAL app.allow_protected_org_write = '';
 INSERT INTO public.services (id, organization_id, name, service_line, price_unit, base_price_cents, extra_pet_cents, default_duration_min, active) VALUES
   ('56300000-0000-4000-8000-0000000000a1', '06300000-0000-4000-8000-0000000000aa', 'Dir 30-minute walk', 'dog_walking', 'visit', 2500, 0, 30, true),
   ('56300000-0000-4000-8000-0000000000a2', '06300000-0000-4000-8000-0000000000aa', 'Dir hidden walk', 'dog_walking', 'visit', 9900, 0, 30, true),
+  ('56300000-0000-4000-8000-0000000000a3', '06300000-0000-4000-8000-0000000000aa', 'Dir retired walk', 'dog_walking', 'visit', 1000, 0, 30, false),
   ('56300000-0000-4000-8000-0000000000b1', '06300000-0000-4000-8000-0000000000bb', 'Dir B walk', 'dog_walking', 'visit', 1800, 0, 30, true),
   ('56300000-0000-4000-8000-0000000000c1', '06300000-0000-4000-8000-0000000000cc', 'Dir C walk', 'dog_walking', 'visit', 1800, 0, 30, true);
 
@@ -101,6 +102,7 @@ SELECT pg_temp.as_user('f6300000-0000-4000-8000-000000000a01');
 SELECT public.set_directory_profile('06300000-0000-4000-8000-0000000000aa', 'Dir-Proof-A ', 'Dir Proof A', 'We walk dogs.', true,
   ARRAY['48201', '48202', 'not-a-zip', '48201'], ARRAY['Detroit', ' '],
   '[{"service_id":"56300000-0000-4000-8000-0000000000a1","price_from_cents":2200},
+    {"service_id":"56300000-0000-4000-8000-0000000000a3","price_from_cents":1000},
     {"service_id":"56300000-0000-4000-8000-0000000000b1","price_from_cents":1}]'::jsonb, true);
 RESET ROLE;
 SELECT set_config('request.jwt.claims', '{}', true);
@@ -119,8 +121,8 @@ BEGIN
     RAISE EXCEPTION 'PROOF FAILED [write]: A''s profile reads %', row_to_json(_p);
   END IF;
   SELECT count(*) INTO _n FROM public.directory_profile_services WHERE organization_id = '06300000-0000-4000-8000-0000000000aa';
-  IF _n <> 1 THEN RAISE EXCEPTION 'PROOF FAILED [write]: A lists % services (want 1: the hidden walk and B''s id left out)', _n; END IF;
-  RAISE NOTICE 'ok: only an owner of the business writes its profile, through set_directory_profile only; ZIPs are cleaned, a hidden service is not listed, and another business''s service id is ignored';
+  IF _n <> 1 THEN RAISE EXCEPTION 'PROOF FAILED [write]: A lists % services (want 1: the hidden walk, the retired walk and B''s id left out)', _n; END IF;
+  RAISE NOTICE 'ok: only an owner of the business writes its profile, through set_directory_profile only; ZIPs are cleaned, a hidden service is not listed, a retired service cannot be listed, and another business''s service id is ignored';
 END $$;
 
 -- ── 2. What anon reads ─────────────────────────────────────────────────────
