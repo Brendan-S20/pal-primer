@@ -191,7 +191,7 @@ describe("/auth wiring", () => {
   const handleSignIn = src.slice(at, src.indexOf("\n  };\n", at));
 
   it("trusts the fresh sign-in before anything navigates", () => {
-    const trust = handleSignIn.indexOf("trustFreshSignIn(data.user)");
+    const trust = handleSignIn.indexOf("trustFreshSignIn(data.user);");
     expect(trust).toBeGreaterThan(handleSignIn.indexOf("signInWithPassword"));
     expect(trust).toBeLessThan(handleSignIn.indexOf("ensureBootstrapped"));
   });

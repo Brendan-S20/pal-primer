@@ -333,12 +333,12 @@ function AuthPage() {
       setLoading(false);
       return setError(error.message);
     }
-    // The auth server verified this user just now. Without this the guard
-    // asks it again on the next navigation, and a refusal there bounced a
-    // good password back to /auth with no word of why (#785).
-    if (data.user) trustFreshSignIn(data.user);
     let isNewOrg: boolean | typeof NEEDS_ORG_NAME = false;
     if (data.user) {
+      // The auth server verified this user just now. Without this the guard
+      // asks it again on the next navigation, and a refusal there bounced a
+      // good password back to /auth with no word of why (#785).
+      trustFreshSignIn(data.user);
       try {
         isNewOrg = await ensureBootstrapped(data.user as any, { requireOrgName: true });
         if (isNewOrg === true) forgetWorkspaceCache();
