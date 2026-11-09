@@ -16,7 +16,7 @@
 //   Any other fields are stored in payload as JSON.
 //
 // Notification email goes to WEBSITE_SUBMISSIONS_NOTIFY_EMAIL, falling back to
-// brendan@houndstack.com when the variable is unset or blank.
+// support@houndstack.com when the variable is unset or blank.
 import { createFileRoute } from "@tanstack/react-router";
 import { callerAddress } from "@/lib/public-form-guard";
 import {
@@ -25,7 +25,7 @@ import {
   validateWebsiteSubmission,
 } from "@/lib/website-submissions";
 
-const FALLBACK_NOTIFY_EMAIL = "brendan@houndstack.com";
+const FALLBACK_NOTIFY_EMAIL = "support@houndstack.com";
 const FROM_EMAIL = "HoundStack <noreply@notify.houndstack.com>";
 
 type ParsedBody = Record<string, unknown>;

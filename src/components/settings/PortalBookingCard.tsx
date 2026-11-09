@@ -29,12 +29,14 @@ import { Switch } from "@/components/ui/switch";
 import { getPortalBookingSettings, setPortalBookingSettings } from "@/lib/portal-booking.functions";
 import { useServiceLines } from "@/components/CommercialOnly";
 import { ONE_OFF_PRICE_SETTING_HASH } from "@/lib/services";
-import { portalExtraVisitPriceLabel } from "@/lib/service-lines";
+import { portalExtraVisitPriceLabel, runsPetWaste } from "@/lib/service-lines";
+import { ONE_TIME_CLEANUP_SETTING_HINT } from "@/lib/one-time-cleanup";
 
 export function PortalBookingCard() {
   const qc = useQueryClient();
   const { lines } = useServiceLines();
   const otherServices = lines.some((l) => l !== "pet_waste");
+  const petWaste = runsPetWaste(lines);
   // "an extra pet waste visit" told a trainer they scoop (F-06). The field
   // is named for pet waste only beside a business's other lines.
   const priceLabel = portalExtraVisitPriceLabel(lines);
@@ -103,6 +105,7 @@ export function PortalBookingCard() {
           <p className="mt-1 text-xs text-muted-foreground">
             Shown to the client when they ask, and filled in when you book one. Leave it blank to
             price each request yourself.
+            {petWaste && ` ${ONE_TIME_CLEANUP_SETTING_HINT}`}
             {otherServices &&
               " Your other services are offered at their own price from Settings → Services once their kind of service is bookable; one marked Coming soon, or with no price yet, is not offered."}
           </p>

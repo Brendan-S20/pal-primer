@@ -100,6 +100,7 @@ async function note(
     livemode?: boolean | null;
   } = {},
 ) {
+  // rpc-role: service (service-role client only; EXECUTE is granted to service_role, not authenticated)
   const { error } = await db.rpc("note_portal_change_fee_attempt", {
     _charge_id: charge.id,
     _status: status,
@@ -130,6 +131,7 @@ export async function chargePortalChangeFee(
     deps.db ?? ((await import("@/integrations/supabase/client.server")).supabaseAdmin as any);
   const env = deps.env ?? process.env;
 
+  // rpc-role: service (service-role client only; EXECUTE is granted to service_role, not authenticated)
   const { data: begun, error } = await db.rpc("begin_portal_change_fee", {
     _request_id: requestId,
   });
@@ -198,6 +200,7 @@ export async function chargePortalChangeFee(
     // so a webhook that arrives before this function stores the intent's id
     // is still matched (record_portal_change_fee_event). If this fails,
     // nothing has been sent to Stripe.
+    // rpc-role: service (service-role client only; EXECUTE is granted to service_role, not authenticated)
     const { error: prepErr } = await db.rpc("prepare_portal_change_fee", {
       _charge_id: charge.id,
       _account: stripeAccount,
@@ -271,6 +274,7 @@ export async function recordPortalChangeFeeEvent(
     return "ignored";
   }
   const pi = event.data.object;
+  // rpc-role: service (service-role client only; EXECUTE is granted to service_role, not authenticated)
   const { data, error } = await db.rpc("record_portal_change_fee_event", {
     _event_id: event.id,
     _event_type: event.type,

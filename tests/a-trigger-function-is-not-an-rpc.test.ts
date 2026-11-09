@@ -310,6 +310,11 @@ describe("no trigger function is executable by a signed-in user", () => {
     // enforce_walker_dog_cap_on_group (20261108170000, a walker's dog cap),
     // validate_plan_walker and fill_visit_walker (20261108170100, a walk plan
     // has a walker). Each revoked from PUBLIC, anon and authenticated there.
+    //
+    // Still 107 after #716 (20261102171500): its training_progress_row_guard
+    // is a CREATE OR REPLACE of the function 20261023100000 already defines,
+    // so it adds no new name. main alone counts 103; main plus #733 counts
+    // 107, not 104/108.
     expect(triggerFunctions().size).toBe(107);
   });
 
