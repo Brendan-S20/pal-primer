@@ -81,7 +81,6 @@ a named representative's address, so the contact name on the same submission
 must still be Brendan's own name, never "Support" or "Admin".
 
 This is inference from two error pages read together, not something Twilio
-states as a rule. Using the named representative's address avoids this risk.
 
 ## 30507: Opt-In Does Not Match the Use Case
 
