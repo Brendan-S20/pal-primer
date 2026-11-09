@@ -23,6 +23,8 @@ import {
   COMPANY,
   COMPANY_SIGNATURE_TEXT,
   HOUNDSTACK_URL,
+  OPERATOR_ADDRESS,
+  OPERATOR_LINE,
   SUPPORT_EMAIL,
   systemFooterHtml,
   systemFooterText,
@@ -36,7 +38,8 @@ import { ReauthenticationEmail } from "@/lib/email-templates/reauthentication";
 import { TeamInviteEmail } from "@/lib/email-templates/team-invite";
 
 const LOGO = "https://www.houndstack.com/icon-192.png";
-const LEGAL = "The North Consulting LLC, 2222 West Grand River Avenue, Ste A, Okemos, MI 48864";
+const ADDRESS = "2222 West Grand River Avenue STE A, Okemos, MI 48864";
+const LEGAL = `HoundStack is operated by The North Consulting LLC, ${ADDRESS}.`;
 const TAGLINE = "Business software for route-based pet service businesses";
 
 /** Nothing personal: no founder's name, no title. */
@@ -106,6 +109,8 @@ describe("the signature itself", () => {
     expect(COMPANY.logoUrl).toMatch(/^https:\/\/.+\.png$/);
     expect(COMPANY.tagline).toBe(TAGLINE);
     expect(COMPANY.legalLine).toBe(LEGAL);
+    expect(COMPANY.legalLine).toBe(OPERATOR_LINE);
+    expect(OPERATOR_ADDRESS).toBe(ADDRESS);
     expect(SUPPORT_EMAIL).toBe("support@houndstack.com");
     expect(HOUNDSTACK_URL).toBe("https://houndstack.com");
   });
@@ -211,20 +216,34 @@ describe("platform mail built by hand", () => {
 });
 
 describe("one copy", () => {
-  it("only _brand.tsx spells the legal line or the logo URL", () => {
-    const hits: string[] = [];
+  const sources = () => {
+    const out: Array<[string, string]> = [];
     const walk = (dir: string) => {
       for (const e of readdirSync(dir, { withFileTypes: true })) {
         const p = `${dir}/${e.name}`;
         if (e.isDirectory()) walk(p);
-        else if (/\.(ts|tsx)$/.test(e.name)) {
-          const src = readFileSync(p, "utf8");
-          if (src.includes("2222 West Grand River Avenue, Ste A") || src.includes("icon-192.png"))
-            hits.push(p);
-        }
+        else if (/\.(ts|tsx)$/.test(e.name)) out.push([p, readFileSync(p, "utf8")]);
       }
     };
     walk("src");
-    expect(hits).toEqual(["src/lib/email-templates/_brand.tsx"]);
+    return out;
+  };
+
+  it("only _brand.tsx spells the address or the logo URL in code that sends mail", () => {
+    const hits = sources()
+      .filter(([, src]) => src.includes("2222 West Grand River") || src.includes("icon-192.png"))
+      .map(([p]) => p)
+      .sort();
+    // PublicFooter.tsx is the public site's copy, which the filing test pins.
+    expect(hits).toEqual(["src/components/PublicFooter.tsx", "src/lib/email-templates/_brand.tsx"]);
+  });
+
+  it("the address is always cased STE A, never Ste A", () => {
+    const hits = sources()
+      .filter(([, src]) => /2222 West Grand River Avenue,?\s*Ste A/.test(src))
+      .map(([p]) => p);
+    expect(hits).toEqual([]);
+    expect(systemFooterHtml()).not.toContain("Ste A");
+    expect(COMPANY_SIGNATURE_TEXT).not.toContain("Ste A");
   });
 });

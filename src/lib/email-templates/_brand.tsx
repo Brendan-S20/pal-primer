@@ -46,6 +46,17 @@ export const BRAND = {
   rule: "#e2e8f0",
 };
 
+/** The operator's address, cased as the toll-free filing and PublicFooter.tsx
+ *  have it: "STE A", no comma before it. Never "Ste A". */
+export const OPERATOR_ADDRESS = "2222 West Grand River Avenue STE A, Okemos, MI 48864";
+
+/** Word for word with OperatorIdentity in PublicFooter.tsx, which has to match
+ *  the toll-free filing. Kept here as a copy because email cannot import a
+ *  component that renders Tailwind classes. It is the legal line of the
+ *  company signature below, so email and the public site name the operator
+ *  in the same words. */
+export const OPERATOR_LINE = `${APP_NAME} is operated by The North Consulting LLC, ${OPERATOR_ADDRESS}.`;
+
 /** The company signature every system email closes with, and the HoundStack
  *  part of every tenant email's close (Nov 2026). It is the company version
  *  of the team's Gmail signature: the same logo, navy, tagline, support
@@ -56,8 +67,8 @@ export const COMPANY = {
   logoSize: 60,
   tagline: "Business software for route-based pet service businesses",
   webLabel: "houndstack.com",
-  legalLead: `${APP_NAME} is a product of`,
-  legalLine: "The North Consulting LLC, 2222 West Grand River Avenue, Ste A, Okemos, MI 48864",
+  /** OPERATOR_LINE itself, not a second spelling of it. */
+  legalLine: OPERATOR_LINE,
   /** The signature's own colours (Gmail signature, Nov 2026). */
   ink: "#111827",
   grey: "#6b7280",
@@ -76,7 +87,6 @@ export const COMPANY_SIGNATURE_TEXT = [
   `Email: ${SUPPORT_EMAIL}`,
   `Web: ${COMPANY.webLabel} (${HOUNDSTACK_URL})`,
   "",
-  COMPANY.legalLead,
   COMPANY.legalLine,
 ].join("\n");
 
@@ -220,7 +230,8 @@ function CompanyContactRows() {
   );
 }
 
-/** The legal line under a hairline: who HoundStack belongs to and where. */
+/** The legal line under a hairline: OPERATOR_LINE, who operates HoundStack
+ *  and where, in the filing's words. */
 function CompanyLegal() {
   return (
     <table
@@ -243,8 +254,6 @@ function CompanyLegal() {
               borderTop: `1px solid ${COMPANY.hairline}`,
             }}
           >
-            {COMPANY.legalLead}
-            <br />
             {COMPANY.legalLine}
           </td>
         </tr>
