@@ -2,7 +2,6 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
-import { searchBox, classifyZipCentroids, MAX_CANDIDATES } from "@/lib/zone-zip-fill";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   return (await resolveCaller(supabase, userId)).orgId;
@@ -337,15 +336,25 @@ function hasGeometry(d: {
   return false;
 }
 
-const zoneCreateSchema = zoneWriteSchema.superRefine((d, ctx) => {
-  if (!hasGeometry(d)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message:
-        "Map coverage is required. Draw a polygon or set a center point with a radius or drive time.",
-    });
-  }
-});
+const zoneCreateSchema = zoneWriteSchema
+  .extend({
+    // Fill the ZIPs the drawn shape holds, on the server, before the row is
+    // written: the same fill as the Zones drawer's "Fill ZIPs from the area".
+    // Setup step 2 asks for it (onboarding audit 2026-11-09, D1: setup made a
+    // 10-mile circle that listed no ZIPs, so the signup page, the lead form
+    // and the first client's Plan step could not quote it). The drawer does
+    // not: it shows the owner each chip and sends the list they kept.
+    fillZipsFromShape: z.boolean().optional(),
+  })
+  .superRefine((d, ctx) => {
+    if (!hasGeometry(d)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "Map coverage is required. Draw a polygon or set a center point with a radius or drive time.",
+      });
+    }
+  });
 
 export const createZone = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -355,13 +364,17 @@ export const createZone = createServerFn({ method: "POST" })
     const { orgId } = await requirePermission(supabase, userId, "manage_pricing");
 
     requireAreaCeiling(data.pricingMode ?? "flat", data.areaMaxChargeCents);
+    const zipCodes = normalizeZips(data.zipCodes);
+    const zipsFilled = data.fillZipsFromShape
+      ? await fillZipsBestEffort(supabase, orgId, data, zipCodes)
+      : 0;
     const { data: row, error } = await (supabase as any)
       .from("zones")
       .insert({
         organization_id: orgId,
         priority: data.priority ?? 0,
         name: data.name,
-        zip_codes: normalizeZips(data.zipCodes),
+        zip_codes: zipCodes,
         postal_prefix: data.postalPrefix || null,
         account_type: data.accountType ?? null,
         price_note: data.priceNote || null,
@@ -392,8 +405,52 @@ export const createZone = createServerFn({ method: "POST" })
 
     // A new zone can capture existing properties immediately.
     const propertiesUpdated = await redetectBestEffort(supabase, orgId, userId);
-    return { id: row.id as string, propertiesUpdated };
+    return { id: row.id as string, propertiesUpdated, zipsFilled };
   });
+
+/**
+ * Add the ZIPs a new zone's drawn shape holds to `zipCodes`, in place, and
+ * say how many were added. Best effort: a lookup that fails leaves the list
+ * as the caller sent it and the zone is still saved, because an area with no
+ * ZIPs still quotes an address in it (internalQuote places a ZIP at its
+ * Census center) and Zones offers "Fill ZIPs from the area" afterwards.
+ */
+async function fillZipsBestEffort(
+  supabase: any,
+  orgId: string,
+  d: {
+    geoMatchMode?: string;
+    boundary?: { coordinates?: number[][][] } | null;
+    centerLatitude?: number | null;
+    centerLongitude?: number | null;
+    radiusMeters?: number | null;
+    driveTimeMinutes?: number | null;
+  },
+  zipCodes: string[],
+): Promise<number> {
+  if (!d.geoMatchMode || d.geoMatchMode === "zip") return 0;
+  try {
+    const { zipsInsideShape } = await import("@/lib/zone-zip-fill.server");
+    const fill = await zipsInsideShape(supabase, orgId, {
+      mode: d.geoMatchMode,
+      polygon: d.boundary ?? null,
+      centerLat: d.centerLatitude ?? null,
+      centerLng: d.centerLongitude ?? null,
+      radiusMeters: d.radiusMeters ?? null,
+      driveTimeMinutes: d.driveTimeMinutes ?? null,
+    });
+    let added = 0;
+    for (const zip of fill.inside) {
+      if (zipCodes.includes(zip)) continue;
+      zipCodes.push(zip);
+      added++;
+    }
+    return added;
+  } catch (e) {
+    console.error(`[zones] ZIP fill for a new zone failed for org ${orgId}:`, e);
+    return 0;
+  }
+}
 
 /**
  * An area-priced zone must declare a ceiling.
@@ -571,36 +628,8 @@ export const zipsInZoneShape = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
-    const box = searchBox(data);
-    if (!box)
-      return { inside: [], insideTotal: 0, edge: [], candidatesCapped: false, tooLarge: false };
-    if (box.north - box.south > 10 || box.east - box.west > 10) {
-      return { inside: [], insideTotal: 0, edge: [], candidatesCapped: false, tooLarge: true };
-    }
-    const { data: rows, error } = await (supabase as any).rpc("zip_centroids_in_box", {
-      _org_id: orgId,
-      _south: box.south,
-      _west: box.west,
-      _north: box.north,
-      _east: box.east,
-      _limit: MAX_CANDIDATES,
-    });
-    if (error) throw new Error(error.message);
-    const centroids = (
-      (rows ?? []) as Array<{ zip: string; lat: number; lng: number; radius_m: number }>
-    ).map((r) => ({
-      zip: r.zip,
-      lat: Number(r.lat),
-      lng: Number(r.lng),
-      radiusM: Number(r.radius_m),
-    }));
-    const result = classifyZipCentroids(data, centroids);
-    return {
-      ...result,
-      // The box was full, so ZIPs far from the middle were never looked at.
-      candidatesCapped: centroids.length >= MAX_CANDIDATES,
-      tooLarge: false,
-    };
+    const { zipsInsideShape } = await import("@/lib/zone-zip-fill.server");
+    return zipsInsideShape(supabase, orgId, data);
   });
 
 export const deleteZone = createServerFn({ method: "POST" })
