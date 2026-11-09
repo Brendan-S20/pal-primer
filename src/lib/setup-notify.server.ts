@@ -58,6 +58,7 @@
 // Nothing here reads, or writes to, a tenant's clients.
 
 import type { SetupWaivedReason } from "@/lib/done-for-you-setup";
+import { systemFooterHtml, systemFooterText } from "@/lib/email-templates/_brand";
 
 /** `app_notifications.type`. Not in NOTIFICATION_TYPES: that list is what a
  *  TENANT can mute in Settings, and this is never sent to a tenant. */
@@ -181,6 +182,8 @@ export function describeSetupAdded(f: SetupFacts): {
     `${headline} Reach out to schedule it.`,
     "",
     ...lines.map(([k, v]) => `${k}: ${v}`),
+    "",
+    systemFooterText(),
   ].join("\n");
   const esc = (s: string) =>
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -195,7 +198,8 @@ export function describeSetupAdded(f: SetupFacts): {
   <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08)">
     <p style="margin:0 0 16px;font-size:15px;line-height:1.5"><strong>${esc(headline)}</strong> Reach out to schedule it.</p>
     <table style="font-size:14px;line-height:1.4;border-collapse:collapse">${rows}</table>
-  </div></body></html>`;
+  </div>
+  <div style="max-width:560px;margin:0 auto">${systemFooterHtml()}</div></body></html>`;
   return { headline, subject: headline.replace(/\.$/, ""), lines, text, html };
 }
 
