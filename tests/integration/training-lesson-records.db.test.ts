@@ -114,7 +114,7 @@ describe.skipIf(!enabled)("training lesson records", () => {
       _visit_ids: [visitId, trainerOnlyId],
     });
     expect(error).toBeNull();
-    expect(data).toEqual([{ visit_id: visitId, note: "Recall at 20 feet." }]);
+    expect(data).toEqual([{ visit_id: visitId, dog_id: null, note: "Recall at 20 feet." }]);
     expect(JSON.stringify(data)).not.toContain("Owner skipped practice.");
     expect(JSON.stringify(data)).not.toContain("trainer_note");
 
@@ -183,7 +183,7 @@ describe.skipIf(!enabled)("training lesson records", () => {
       _visit_ids: [visitId, otherVisitId],
     });
     expect(mixed.error).toBeNull();
-    expect(mixed.data).toEqual([{ visit_id: visitId, note: "Recall at 20 feet." }]);
+    expect(mixed.data).toEqual([{ visit_id: visitId, dog_id: null, note: "Recall at 20 feet." }]);
 
     // The other client still reads their own.
     const own = await admin.rpc("portal_training_lesson_notes", {
@@ -192,7 +192,9 @@ describe.skipIf(!enabled)("training lesson records", () => {
       _visit_ids: [otherVisitId],
     });
     expect(own.error).toBeNull();
-    expect(own.data).toEqual([{ visit_id: otherVisitId, note: "Another family's lesson." }]);
+    expect(own.data).toEqual([
+      { visit_id: otherVisitId, dog_id: null, note: "Another family's lesson." },
+    ]);
   });
 
   it("the portal read is the service role's only", async () => {
@@ -235,6 +237,124 @@ describe.skipIf(!enabled)("training lesson records", () => {
       .from("session_progress")
       .insert({ organization_id: orgId, visit_id: visitId, skill_id: foreignSkill, score: 2 });
     expect(bad.error?.message).toContain("Choose a skill from this business.");
+  });
+
+  it("keeps one record per dog at the lesson, and refuses a dog from another house (R2-26)", async () => {
+    const puppyId = await insert("dogs", {
+      organization_id: orgId,
+      property_id: propertyId,
+      name: "Tilly",
+    });
+    for (const dog of [dogId, puppyId]) {
+      const saved = await admin
+        .from("session_progress")
+        .upsert(
+          { organization_id: orgId, visit_id: visitId, dog_id: dog, skill_id: skillId, score: 2 },
+          { onConflict: "visit_id,dog_id,skill_id" },
+        );
+      expect(saved.error).toBeNull();
+    }
+    // A second save for the same dog updates its row; the other dog's stays.
+    const again = await admin
+      .from("session_progress")
+      .upsert(
+        { organization_id: orgId, visit_id: visitId, dog_id: puppyId, skill_id: skillId, score: 5 },
+        { onConflict: "visit_id,dog_id,skill_id" },
+      );
+    expect(again.error).toBeNull();
+    const { data: rows } = await admin
+      .from("session_progress")
+      .select("dog_id, score")
+      .eq("visit_id", visitId)
+      .eq("skill_id", skillId);
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        { dog_id: dogId, score: 2 },
+        { dog_id: puppyId, score: 5 },
+      ]),
+    );
+
+    // Two dogs, two homework entries and two notes on one lesson.
+    for (const [dog, body] of [
+      [dogId, "Recall games."],
+      [puppyId, "Sit before meals."],
+    ] as const) {
+      const hw = await admin
+        .from("homework")
+        .upsert(
+          { organization_id: orgId, visit_id: visitId, dog_id: dog, body },
+          { onConflict: "visit_id,dog_id" },
+        );
+      expect(hw.error).toBeNull();
+      const note = await admin
+        .from("training_session_notes")
+        .upsert(
+          { organization_id: orgId, visit_id: visitId, dog_id: dog, note: body },
+          { onConflict: "visit_id,dog_id" },
+        );
+      expect(note.error).toBeNull();
+    }
+    const { data: notes } = await admin.rpc("portal_training_lesson_notes", {
+      _organization_id: orgId,
+      _client_id: clientId,
+      _visit_ids: [visitId],
+    });
+    expect(notes).toEqual(
+      expect.arrayContaining([
+        { visit_id: visitId, dog_id: puppyId, note: "Sit before meals." },
+        { visit_id: visitId, dog_id: dogId, note: "Recall games." },
+      ]),
+    );
+
+    // A whole-lesson record (no dog) is still one row: NULLS NOT DISTINCT.
+    const first = await admin
+      .from("homework")
+      .upsert(
+        { organization_id: orgId, visit_id: visitId, dog_id: null, body: "Whole lesson." },
+        { onConflict: "visit_id,dog_id" },
+      );
+    expect(first.error).toBeNull();
+    const second = await admin
+      .from("homework")
+      .upsert(
+        { organization_id: orgId, visit_id: visitId, dog_id: null, body: "Whole lesson, again." },
+        { onConflict: "visit_id,dog_id" },
+      );
+    expect(second.error).toBeNull();
+    const { count } = await admin
+      .from("homework")
+      .select("*", { count: "exact", head: true })
+      .eq("visit_id", visitId)
+      .is("dog_id", null);
+    expect(count).toBe(1);
+
+    // A dog that lives somewhere else is refused on every table.
+    const elsewhere = await insert("properties", {
+      organization_id: orgId,
+      client_id: clientId,
+      street: "9 Far St",
+      city: "Testville",
+      postal_code: "48000",
+    });
+    const strayId = await insert("dogs", {
+      organization_id: orgId,
+      property_id: elsewhere,
+      name: "Stray",
+    });
+    const bad = await admin
+      .from("session_progress")
+      .insert({
+        organization_id: orgId,
+        visit_id: visitId,
+        dog_id: strayId,
+        skill_id: skillId,
+        score: 1,
+      });
+    expect(bad.error?.message).toContain("Choose a dog at this lesson.");
+    const badNote = await admin
+      .from("training_session_notes")
+      .insert({ organization_id: orgId, visit_id: visitId, dog_id: strayId, note: "x" });
+    expect(badNote.error?.message).toContain("Choose a dog at this lesson.");
   });
 
   it("the nightly sweep marks a past package lesson missed with reason other, and it uses a session", async () => {
