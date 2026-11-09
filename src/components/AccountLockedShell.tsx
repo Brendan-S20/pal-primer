@@ -11,7 +11,7 @@ import { AccountMenu } from "@/components/AccountMenu";
 import { PageShell } from "@/components/PageShell";
 import { nativeTopBarStyle } from "@/lib/native-build";
 import { TRIAL_COPY } from "@/lib/trial";
-import type { AccountLockReason } from "@/lib/account-lock";
+import { nonOwnerLockedNotice, type AccountLockReason } from "@/lib/account-lock";
 
 export function AccountLockedShell({
   reason,
@@ -43,9 +43,19 @@ export function AccountLockedShell({
       >
         <Lock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
         <div className="min-w-0">
-          <p className="font-medium">{copy.headline({} as never)}</p>
-          <p>{copy.body}</p>
-          {!canChoosePlan && <p className="mt-1">Ask an owner to choose a plan.</p>}
+          {canChoosePlan ? (
+            <>
+              <p className="font-medium">{copy.headline({} as never)}</p>
+              <p>{copy.body}</p>
+            </>
+          ) : (
+            // Somebody who cannot subscribe gets one line that says whose move
+            // it is (Brendan, 2026-11-09). Nothing of the workspace is drawn
+            // beneath it: no routes, no visits, no Take payment.
+            <p className="font-medium" data-testid="non-owner-locked-notice">
+              {nonOwnerLockedNotice(reason)}
+            </p>
+          )}
         </div>
       </div>
       <main className="min-w-0 flex-1 pb-[calc(2rem+env(safe-area-inset-bottom))]">

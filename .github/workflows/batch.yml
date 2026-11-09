@@ -1,0 +1,119 @@
+name: Batch
+
+# ── WHAT THIS IS FOR ────────────────────────────────────────────────────────
+#
+# One button that runs every heavy check, once, on a batch/* branch: a branch
+# that merges several approved pull requests together. It starts nothing
+# itself except other workflows, by dispatching them on the same branch:
+#
+#   ci.yml          every job (`verify` in full; `windows-probe`). The two
+#                   jobs about LIVE state -- migrations applied to the live
+#                   database, and what the deployed site serves -- skip on
+#                   batch/*, because neither says anything about the branch.
+#   sandboxes.yml   both heavy jobs, unconditionally (a dispatch is not a
+#                   pull request, so its gate answers true for both).
+#   ios-launch.yml  only when the batch's diff against main touches the paths
+#                   that workflow's pull_request filter lists, kept in step
+#                   with it below. The Mac is the scarcest runner here.
+#
+# Each dispatched run appears under its own workflow, on the batch branch,
+# with the same job names as anywhere else.
+#
+# ── THE TRADEOFF ────────────────────────────────────────────────────────────
+#
+# A green batch run vouches for every PR in it. A red one does not say which
+# PR broke it: bisect by rebuilding the batch without half of them (or run a
+# suspect PR's own checks by marking it Ready for review).
+#
+# Dispatching from anything other than a batch/* branch fails on purpose; to
+# run one workflow by hand on another branch, dispatch that workflow directly.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: batch-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # createWorkflowDispatch. A dispatch made with GITHUB_TOKEN is the one kind
+  # of event that token is allowed to start a workflow with.
+  actions: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  dispatch:
+    name: Run the heavy checks on this batch
+    runs-on: ${{ fromJSON(vars.PORTABLE_RUNNER_JSON || '["self-hosted"]') }}
+    timeout-minutes: 10
+    steps:
+      - name: Put Git Bash on PATH
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\Git\bin'
+
+      - name: Only on a batch/* branch
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          case "$REF" in
+            refs/heads/batch/*) echo "batch branch: ${REF#refs/heads/}" ;;
+            *) echo "::error::$REF is not a batch/* branch. Dispatch a single workflow directly to run it elsewhere."; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Must fail rather than answer "no" when it cannot tell, the same rule
+      # as the gate in sandboxes.yml: a silent false would skip the Mac on a
+      # batch that changed the native project.
+      - id: ios
+        name: Does the batch touch what iOS launch tests
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          if ! changed=$(git diff --name-only origin/main...HEAD); then
+            echo "::error::git diff origin/main...HEAD failed, so which files changed is unknown"
+            exit 1
+          fi
+          ios=false
+          while IFS= read -r f; do
+            case "$f" in
+              # Keep in step with ios-launch.yml's pull_request paths.
+              ios/*|capacitor.config.ts|package.json|package-lock.json) ios=true ;;
+              scripts/ios-launch-smoke.sh|.github/workflows/ios-launch.yml) ios=true ;;
+            esac
+          done <<< "$changed"
+          echo "ios=$ios" >> "$GITHUB_OUTPUT"
+          echo "ios=$ios"
+
+      - name: Dispatch
+        uses: actions/github-script@v7
+        env:
+          IOS: ${{ steps.ios.outputs.ios }}
+        with:
+          script: |
+            const ref = context.ref.replace(/^refs\/heads\//, "");
+            const workflows = ["ci.yml", "sandboxes.yml"];
+            if (process.env.IOS === "true") workflows.push("ios-launch.yml");
+            else core.info("ios-launch.yml: the batch touches none of its paths, not dispatched");
+            for (const workflow_id of workflows) {
+              await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id,
+                ref,
+              });
+              core.info(`dispatched ${workflow_id} on ${ref}`);
+            }
+            await core.summary
+              .addHeading(`Heavy checks dispatched on ${ref}`)
+              .addList(workflows)
+              .addRaw("Each run is listed under its own workflow, on this branch. A red run does not name the PR that caused it: bisect the batch.")
+              .write();

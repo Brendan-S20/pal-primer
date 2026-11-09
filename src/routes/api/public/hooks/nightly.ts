@@ -1025,6 +1025,10 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
   const { resolveOrgStripeAccount, connectStripe } = await import("@/lib/stripe-connect.server");
   const acct = await resolveOrgStripeAccount(orgId);
   if (!acct || !acct.chargesEnabled) return 0;
+  // A locked account takes no payments until the owner subscribes, and that
+  // includes the saved cards autopay would charge tonight.
+  const { lockForOrg } = await import("@/lib/account-lock.server");
+  if ((await lockForOrg(orgId).catch(() => ({ locked: false }))).locked) return 0;
   const { data: org } = await supabaseAdmin
     .from("organizations")
     .select("dunning_retry_days, dunning_pause_after_failures, service_lines")
