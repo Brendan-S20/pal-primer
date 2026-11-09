@@ -29,6 +29,7 @@
     "check:migrations": "node scripts/check-migrations.mjs",
     "check:baseline-objects": "node scripts/check-baseline-objects.mjs",
     "check:app-origin": "node scripts/check-app-origin.mjs",
+    "check:auth-hooks": "node scripts/check-auth-hook-hosts.mjs",
     "check:stripe-catalog": "node scripts/check-stripe-catalog.mjs",
     "check:em-dashes": "node scripts/check-customer-facing-em-dashes.mjs",
     "check:dead-machinery": "node scripts/check-dead-machinery.mjs",
