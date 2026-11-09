@@ -13,6 +13,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { BrandingCard, PortalAddressCard } from "@/components/settings/ClientPortalCards";
 import { PortalBookingCard } from "@/components/settings/PortalBookingCard";
+import { PortalChangePolicyCard } from "@/components/settings/PortalChangePolicyCard";
 import { titleHead } from "@/lib/page-title";
 
 export const Route = createFileRoute("/_authenticated/settings/client-portal")({
@@ -25,6 +26,7 @@ function ClientPortalSettings() {
     <div className="space-y-6">
       <PortalAddressCard />
       <BrandingCard />
+      <PortalChangePolicyCard />
       <PortalBookingCard />
     </div>
   );
