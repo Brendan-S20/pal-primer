@@ -13,13 +13,21 @@ import {
 import { checkEmailAccount } from "@/lib/auth-entry.functions";
 import { lookupInviteByToken } from "@/lib/platform-onboarding.functions";
 import { handOffSignupEmail } from "@/lib/signup-email";
+import {
+  handOffSignIn,
+  signInLanded,
+  SIGN_IN_BOUNCED,
+  SIGN_IN_BOUNCED_MESSAGE,
+  takeBouncedSignIn,
+  watchSignInLanding,
+} from "@/lib/sign-in-handoff";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CheckCircle2 } from "lucide-react";
 import { APP_NAME, APP_DESCRIPTION } from "@/lib/scoop";
 import { PublicShell } from "@/components/PublicShell";
-import { probeIdentity, resolveIdentity } from "@/lib/offline/identity";
+import { probeIdentity, resolveIdentity, trustFreshSignIn } from "@/lib/offline/identity";
 import { startApiRecovery } from "@/lib/offline/api-recovery";
 import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { withDeadline } from "@/lib/offline/run-or-queue";
@@ -140,6 +148,12 @@ function AuthPage() {
   const [password, setPassword] = useState("");
   const [stage, setStage] = useState<"email" | "password">("email");
   const [loading, setLoading] = useState(false);
+  // Forgot password? has its own flag (#764). It shared `loading` with Sign
+  // in, so the primary button read "Signing in…" while a reset link was being
+  // asked for: a reset that looked like a sign-in attempt. `loading` is still
+  // set during the request (every button stays disabled, so two flows cannot
+  // start at once); this decides only which words are on which button.
+  const [resetting, setResetting] = useState(false);
   const [alert, setAlert] = useState<{ kind: "error" | "info"; text: string } | null>(null);
   const setError = (text: string | null) => setAlert(text ? { kind: "error", text } : null);
   // A refused invitation leaves the person signed in on a sign-in screen.
@@ -162,6 +176,28 @@ function AuthPage() {
     setStage("email");
   };
   const setInfo = (text: string) => setAlert({ kind: "info", text });
+
+  /** A sign-in this page handed on came back here signed out (#785). Put the
+   *  person back where they were, with what they typed and a reason, rather
+   *  than on an empty first step. False when there was nothing to put back. */
+  const restoreBouncedSignIn = (): boolean => {
+    const bounced = takeBouncedSignIn();
+    if (!bounced) return false;
+    setEmail(bounced.email);
+    if (bounced.password) setPassword(bounced.password);
+    setStage("password");
+    setLoading(false);
+    setError(SIGN_IN_BOUNCED_MESSAGE);
+    return true;
+  };
+
+  // The guard redirected the hand-off back to /auth while this page was still
+  // drawn (lib/sign-in-handoff.ts watches where that navigation resolves).
+  useEffect(() => {
+    const onBounced = () => void restoreBouncedSignIn();
+    window.addEventListener(SIGN_IN_BOUNCED, onBounced);
+    return () => window.removeEventListener(SIGN_IN_BOUNCED, onBounced);
+  }, []);
 
   // An invitation link lands here as /auth?invite=<token>. Kept before
   // anything else runs: the OAuth round-trip returns to the site root with
@@ -221,6 +257,9 @@ function AuthPage() {
       const identity = await resolveIdentity();
       if (cancelled) return;
       if (!identity.ok) {
+        // Drawn afresh (or reloaded) after a sign-in this page handed on, and
+        // nobody is signed in: say so, with the form as it was (#785).
+        restoreBouncedSignIn();
         // Could not ask, and nothing on this device says who is signed in.
         // Keep asking, and come back through here once the server answers,
         // rather than leaving this form as the only way on.
@@ -271,6 +310,8 @@ function AuthPage() {
         }
       }
       if (cancelled) return;
+      // Signed in after all: a hand-off still held is not a failure to report.
+      signInLanded();
       if (isNewOrg === NEEDS_ORG_NAME) return navigate({ to: "/no-workspace" });
       if (isNewOrg) return navigate({ to: "/onboarding" });
       const to = await landingPathForUser(identity.userId, identity.verified);
@@ -292,6 +333,10 @@ function AuthPage() {
       setLoading(false);
       return setError(error.message);
     }
+    // The auth server verified this user just now. Without this the guard
+    // asks it again on the next navigation, and a refusal there bounced a
+    // good password back to /auth with no word of why (#785).
+    if (data.user) trustFreshSignIn(data.user);
     let isNewOrg: boolean | typeof NEEDS_ORG_NAME = false;
     if (data.user) {
       try {
@@ -304,6 +349,12 @@ function AuthPage() {
       }
     }
     setLoading(false);
+    // From here it is the router's, and the guard's, call. If the navigation
+    // below resolves back on /auth, the page is told and puts the form back
+    // with a reason instead of looking like a first visit (#785,
+    // lib/sign-in-handoff.ts).
+    handOffSignIn(email, password);
+    watchSignInLanding((event, fn) => router.subscribe(event, fn));
     if (isNewOrg === NEEDS_ORG_NAME) return navigate({ to: "/no-workspace" });
     if (isNewOrg) return navigate({ to: "/onboarding" });
     land(data.user ? await landingPathForUser(data.user.id) : "/dashboard");
@@ -530,11 +581,15 @@ function AuthPage() {
                 <Label htmlFor="si-pw">Password</Label>
                 <button
                   type="button"
-                  onClick={forgotPassword}
+                  onClick={() => {
+                    setResetting(true);
+                    void forgotPassword().finally(() => setResetting(false));
+                  }}
                   disabled={loading}
+                  aria-busy={resetting || undefined}
                   className="text-xs text-muted-foreground underline underline-offset-2 hover:text-primary"
                 >
-                  Forgot password?
+                  {resetting ? "Sending reset link…" : "Forgot password?"}
                 </button>
               </div>
               <Input
@@ -547,7 +602,7 @@ function AuthPage() {
               />
             </div>
             <Button type="submit" disabled={loading} className="w-full">
-              {loading ? "Signing in…" : "Sign in"}
+              {loading && !resetting ? "Signing in…" : "Sign in"}
             </Button>
             <button
               type="button"
