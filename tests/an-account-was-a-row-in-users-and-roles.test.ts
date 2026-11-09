@@ -90,7 +90,9 @@ describe("the email change does not claim to have happened", () => {
   });
 
   it("passwords are reset by emailed link, not typed in place", () => {
-    expect(fns).toMatch(/resetPasswordForEmail/);
+    // Through the one helper every reset request uses (lib/password-recovery.ts,
+    // tests/a-password-reset-that-goes-somewhere.test.ts).
+    expect(fns).toMatch(/requestPasswordReset\(/);
     expect(page).toMatch(/somebody left unlocked cannot be used to change it/);
     expect(page).not.toMatch(/type="password"/);
   });
