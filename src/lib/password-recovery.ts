@@ -355,11 +355,13 @@ export function recoveryRedirectTarget(
   if (here) return here;
   if (bootLink) {
     const fromBoot = recoveryForwardPath(bootLink.href);
-    // The boot link is spent once supabase-js has turned it into a session;
-    // carrying a used hash would only replay it. Plain path then.
+    // An implicit-flow boot link is spent once supabase-js has turned it into
+    // a session; carrying the used tokens would only replay them. Every other
+    // shape (a code, a token_hash, an error saying why the link failed) is
+    // carried, because nothing else has read it.
+    const kind = bootLink.link.kind;
     bootLink = null;
-    if (fromBoot)
-      return fromBoot.startsWith(`${RESET_PASSWORD_PATH}#`) ? RESET_PASSWORD_PATH : fromBoot;
+    if (fromBoot) return kind === "implicit" ? RESET_PASSWORD_PATH : fromBoot;
   }
   return isRecoveryPending(store) ? RESET_PASSWORD_PATH : null;
 }

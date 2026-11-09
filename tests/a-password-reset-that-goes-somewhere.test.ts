@@ -325,6 +325,15 @@ describe("a tab mid-recovery is not landed", () => {
     expect(store.getItem("hs-password-recovery")).toBeNull();
   });
 
+  it("an expired link read at boot is carried to /reset-password, so it can say why", () => {
+    const store = memoryStore();
+    const hash = "#error=access_denied&error_code=otp_expired&error_description=x";
+    captureRecoveryFromUrl(`https://app.houndstack.com/auth${hash}`, store);
+    expect(recoveryRedirectTarget("https://app.houndstack.com/auth", store)).toBe(
+      `/reset-password${hash}`,
+    );
+  });
+
   it("an ordinary sign-in is not mistaken for one", () => {
     const store = memoryStore();
     expect(captureRecoveryFromUrl("https://app.houndstack.com/auth", store)).toBeNull();
@@ -433,6 +442,23 @@ describe("turning the link into a session", () => {
       ok: false,
       message: RESET_LINK_INVALID,
     });
+  });
+
+  // Found in a browser, not by the tests above: StrictMode runs the effect
+  // twice. The exchange ran once (right: tokens are single-use) but its
+  // answer was tied to the first run's `cancelled`, which the cleanup had
+  // already set, so every link sat on "Checking your reset link…" for good.
+  it("the answer reaches whichever run of the effect is still mounted", () => {
+    const page = read("src/routes/reset-password.tsx");
+    const effect = page.slice(
+      page.indexOf("useEffect(() => {"),
+      page.indexOf("const handleSubmit"),
+    );
+    expect(effect).toContain("if (!exchange.current) {");
+    const guardEnd = effect.indexOf("\n    }\n", effect.indexOf("if (!exchange.current) {"));
+    const listen = effect.indexOf("void exchange.current.then(");
+    expect(listen).toBeGreaterThan(guardEnd);
+    expect(effect).not.toContain("started.current");
   });
 
   it("the page offers a fresh link in that state, through the same helper", () => {

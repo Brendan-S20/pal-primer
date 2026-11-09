@@ -11,6 +11,7 @@ import {
   clearRecoveryPending,
   describeUpdatePasswordError,
   establishRecoverySession,
+  type EstablishResult,
   markRecoveryPending,
   passwordResetRedirectHere,
   requestPasswordReset,
@@ -44,7 +45,7 @@ function ResetPasswordPage() {
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const started = useRef(false);
+  const exchange = useRef<Promise<EstablishResult> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,25 +56,31 @@ function ResetPasswordPage() {
         setPhase({ kind: "ready" });
       }
     });
-    // Once only: a code or token is single-use, and StrictMode runs effects twice.
-    if (!started.current) {
-      started.current = true;
+    // The exchange runs ONCE (a code or token is single-use), but every run
+    // of this effect listens for its answer. StrictMode runs effects twice;
+    // with the exchange's result tied to the first run's `cancelled`, the
+    // answer arrived after that run was cleaned up and was dropped, and the
+    // page sat on "Checking your reset link…" for good.
+    if (!exchange.current) {
       const href = window.location.href;
-      void establishRecoverySession(supabase as never, href).then((r) => {
-        if (cancelled) return;
-        if (r.ok) {
-          markRecoveryPending();
-          setPhase({ kind: "ready" });
-        } else {
-          setPhase((p) => (p.kind === "ready" ? p : { kind: "invalid", message: r.message }));
-        }
+      exchange.current = establishRecoverySession(supabase as never, href).then((r) => {
         // Spent tokens off the address bar, so a reload or a shared
         // screenshot does not carry them.
         if (window.location.search || window.location.hash) {
           window.history.replaceState(window.history.state, "", RESET_PASSWORD_PATH);
         }
+        return r;
       });
     }
+    void exchange.current.then((r) => {
+      if (cancelled) return;
+      if (r.ok) {
+        markRecoveryPending();
+        setPhase({ kind: "ready" });
+      } else {
+        setPhase((p) => (p.kind === "ready" ? p : { kind: "invalid", message: r.message }));
+      }
+    });
     return () => {
       cancelled = true;
       sub.subscription.unsubscribe();
