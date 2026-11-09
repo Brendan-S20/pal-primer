@@ -200,6 +200,15 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
             } catch (error) {
               console.error("stay ending notices failed", org.id, error);
             }
+            // A stay whose last visit was skipped or just went missed (above)
+            // had no completion to send its summary from (#411). Once per
+            // stay, whichever path sends it.
+            try {
+              const { sendSettledStaySummaries } = await import("@/lib/sit-report.server");
+              perOrg.stay_summaries_emailed = await sendSettledStaySummaries(org.id, todayStr);
+            } catch (error) {
+              console.error("settled stay summaries failed", org.id, error);
+            }
           }
 
           if (org.auto_invoice_enabled) {

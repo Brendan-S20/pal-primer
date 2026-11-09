@@ -2,6 +2,7 @@ import { createServerFn, createServerOnlyFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { AuthedContext } from "@/lib/server-fn-context";
+import { serviceLinesOrDefault, type ServiceLine } from "@/lib/service-lines";
 
 // Reader/mutator server fns for the in-app notification center. All scoped to
 // the signed-in user via RLS (recipient_user_id = auth.uid()).
@@ -97,10 +98,26 @@ export const NOTIFICATION_TYPES: Array<{ type: string; label: string }> = [
   // Training (src/lib/training-portal.server.ts), to owners and office
   // managers: a package with one session left, or 14 days from expiry.
   { type: "training_package", label: "Training packages running low or expiring" },
-  // A sitter logged a medication as missed (src/lib/sit-notify.server.ts), to
-  // the owner, office managers and dispatchers.
-  { type: "missed_meds", label: "A sitter missed a medication" },
 ];
+
+/** A type only a business running this line can ever be sent. Settings
+ *  lists it only to such a business, so a pet-waste business is not offered
+ *  a switch for a sitter's missed medication (#411). Kept beside the list
+ *  rather than in it: tests/en-and-es-have-the-same-keys.test.ts reads the
+ *  entries above by their exact shape. A muted type stays muted either way. */
+export const NOTIFICATION_TYPE_LINE: Partial<Record<string, ServiceLine>> = {
+  missed_meds: "pet_sitting",
+};
+
+/** The types Settings offers a business that runs `lines`. */
+export function notificationTypesFor(
+  lines: readonly ServiceLine[],
+): Array<{ type: string; label: string }> {
+  return NOTIFICATION_TYPES.filter((t) => {
+    const line = NOTIFICATION_TYPE_LINE[t.type];
+    return !line || lines.includes(line);
+  });
+}
 
 export const getNotificationPrefs = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -110,7 +127,25 @@ export const getNotificationPrefs = createServerFn({ method: "GET" })
       .select("muted_types")
       .eq("user_id", context.userId)
       .maybeSingle();
-    return { mutedTypes: (data?.muted_types as string[]) ?? [], types: NOTIFICATION_TYPES };
+    // The caller's business; an answer that cannot be read is pet waste
+    // (serviceLinesOrDefault), the rule every menu uses.
+    let lines: unknown = null;
+    try {
+      const { resolveCaller } = await import("@/lib/authz.server");
+      const { orgId } = await resolveCaller(context.supabase, context.userId);
+      const { data: org } = await context.supabase
+        .from("organizations")
+        .select("service_lines")
+        .eq("id", orgId)
+        .maybeSingle();
+      lines = org?.service_lines;
+    } catch {
+      lines = null;
+    }
+    return {
+      mutedTypes: (data?.muted_types as string[]) ?? [],
+      types: notificationTypesFor(serviceLinesOrDefault(lines)),
+    };
   });
 
 export const setNotificationPrefs = createServerFn({ method: "POST" })
