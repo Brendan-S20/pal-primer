@@ -954,15 +954,17 @@ function MyDay() {
                     screen); it is one tap away now, and the glyph says so. */}
                 <Popover>
                   <PopoverTrigger asChild>
-                    {/* Named "42% How progress is counted", not only the
-                        second half: an aria-label that drops the number on
+                    {/* Named "How progress is counted 42%", not only the
+                        first half: an aria-label that drops the number on
                         the button is axe's label-content-name-mismatch, and a
-                        voice-control user says what they see. */}
+                        voice-control user says what they see. The number
+                        stays last, so the row's text still ends in "%". */}
                     <button
                       type="button"
                       className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-md pe-2 ps-1 text-xs font-medium text-muted-foreground hover:text-foreground"
                     >
-                      {pct}%<span className="sr-only"> {t("myDay.howProgressCounts")}</span>
+                      <span className="sr-only">{t("myDay.howProgressCounts")} </span>
+                      {pct}%
                       <InfoIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                     </button>
                   </PopoverTrigger>
