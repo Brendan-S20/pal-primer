@@ -13,6 +13,7 @@ import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { useServiceLines } from "@/components/CommercialOnly";
 import { ServiceLinesChoices } from "@/components/ServiceLinesChoices";
 import { DayEndPanel } from "@/components/SetupDayEndPanel";
+import { WalkPricesForm } from "@/components/SetupWalkPrices";
 import { useMyRole, usePermissions } from "@/hooks/useMyRole";
 import { useMyProfile } from "@/hooks/useMyProfile";
 import { useFormDraft } from "@/hooks/useFormDraft";
@@ -27,7 +28,8 @@ import {
 import { getOrgBranding, updateOrgBranding } from "@/lib/org.functions";
 import { countryFromAddress } from "@/lib/distance-unit";
 import { setServiceLines } from "@/lib/org-features.functions";
-import { setupAsksServiceLines, type ServiceLine } from "@/lib/service-lines";
+import { dayEndQuestion, setupAsksServiceLines, type ServiceLine } from "@/lib/service-lines";
+import { SETUP_WORKDAY_DEFAULTS, workdayField, workdayProblem } from "@/lib/setup-workday";
 import {
   preselectedServiceLines,
   requestedServiceLine,
@@ -326,8 +328,12 @@ function StepPanel({ step, onSaved }: { step: OnboardingStep; onSaved: () => voi
 }
 
 function PricingPanel({ step, onSaved }: { step: OnboardingStep; onSaved: () => void }) {
-  const { lines } = useServiceLines();
+  const { lines, petWaste } = useServiceLines();
   if (step.parts) return <PricesPanel step={step} parts={step.parts} onSaved={onSaved} />;
+  // A walking business prices its walks here, not on a page it has to be
+  // sent to (#769).
+  if (!petWaste && lines.includes("dog_walking") && !lines.includes("mobile_grooming"))
+    return <WalkPricesForm done={step.done} onSaved={onSaved} />;
   return lines.includes("mobile_grooming") ? (
     <Button asChild className="min-h-11">
       <Link to="/settings/services">Review grooming prices, vaccines and buffer</Link>
@@ -364,18 +370,22 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
   const [phone, setPhone] = useState<string | null>(null);
   const [address, setAddress] = useState<string | null>(null);
   const [tz, setTz] = useState<string | null>(null);
+  const [dayStart, setDayStart] = useState<string | null>(null);
+  const [dayEnd, setDayEnd] = useState<string | null>(null);
   // Kept on the device as it is typed (gaps-r2-12): a reload used to clear
   // the services ticked, the phone, the address and the zone. Only what was
   // touched is kept, the same null-means-untouched values as above.
   const draft = useFormDraft({
     form: "setup-business",
-    value: { lines, name, phone, address, tz },
+    value: { lines, name, phone, address, tz, dayStart, dayEnd },
     restore: (d) => {
       setLines(d.lines);
       setName(d.name);
       setPhone(d.phone);
       setAddress(d.address);
       setTz(d.tz);
+      setDayStart(d.dayStart ?? null);
+      setDayEnd(d.dayEnd ?? null);
     },
     reset: () => {
       setLines(null);
@@ -383,6 +393,8 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
       setPhone(null);
       setAddress(null);
       setTz(null);
+      setDayStart(null);
+      setDayEnd(null);
     },
   });
 
@@ -401,6 +413,14 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
       ? (savedTz ?? DEFAULT_ORG_TIMEZONE)
       : suggestSetupTimezone({ saved: savedTz, device: deviceTimezone(), address: addressVal }));
   const writeTz = tz !== null || !alreadyDone;
+  // The workday (#769): shown prefilled with what is stored (the column's
+  // 08:00-17:00 for a new business) and saved with the step, so the hours
+  // every arrival window is computed from are hours the owner has seen.
+  const dispatch = dispatchQ.data?.settings as
+    { workday_start?: string | null; workday_end?: string | null } | undefined;
+  const dayStartVal =
+    dayStart ?? workdayField(dispatch?.workday_start, SETUP_WORKDAY_DEFAULTS.start);
+  const dayEndVal = dayEnd ?? workdayField(dispatch?.workday_end, SETUP_WORKDAY_DEFAULTS.end);
   // A visitor who came for one line (?service=, site-r2-03) sees that line
   // ticked instead of the bare pet-waste default. Only once the stored answer
   // is actually known and before this step is done, so it can never write over
@@ -441,7 +461,13 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
           country,
         },
       });
-      if (writeTz) await saveDispatchFn({ data: { timezone: tzVal } });
+      await saveDispatchFn({
+        data: {
+          ...(writeTz ? { timezone: tzVal } : {}),
+          workday_start: dayStartVal,
+          workday_end: dayEndVal,
+        },
+      });
     },
     onSuccess: () => {
       draft.clear();
@@ -470,6 +496,11 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
         }
         if (!addressVal.trim()) {
           toast.error("Add your business address. Routes start from it.");
+          return;
+        }
+        const hours = workdayProblem(dayStartVal, dayEndVal);
+        if (hours) {
+          toast.error(hours);
           return;
         }
         m.mutate();
@@ -525,7 +556,7 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
           maxLength={300}
         />
         <p className="text-xs text-muted-foreground">
-          Where your trucks start the day, unless a tech has a start address of their own.
+          Where routes start each day, unless someone has a start address of their own.
         </p>
       </div>
       <div className={fieldClass}>
@@ -543,6 +574,33 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
           ))}
         </select>
       </div>
+      <fieldset className={fieldClass} data-setup-workday>
+        <legend className="text-sm font-medium">Your workday</legend>
+        <div className="grid gap-4 pt-1.5 sm:grid-cols-2">
+          <div className={fieldClass}>
+            <Label htmlFor="setup-workday-start">Starts</Label>
+            <Input
+              id="setup-workday-start"
+              type="time"
+              value={dayStartVal}
+              onChange={(e) => setDayStart(e.target.value)}
+            />
+          </div>
+          <div className={fieldClass}>
+            <Label htmlFor="setup-workday-end">Ends</Label>
+            <Input
+              id="setup-workday-end"
+              type="time"
+              value={dayEndVal}
+              onChange={(e) => setDayEnd(e.target.value)}
+            />
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Arrival windows start at the start of your workday, and a day that runs past the end is
+          flagged. You can change this later in Settings, Scheduling.
+        </p>
+      </fieldset>
       <Button type="submit" disabled={m.isPending} data-setup-action="save">
         {m.isPending ? "Saving…" : "Save and continue"}
       </Button>
@@ -568,13 +626,15 @@ function PricesPanel({
   onSaved: () => void;
 }) {
   const area = parts.find((p) => p.id === "area");
-  const rest = parts.filter((p) => p.id !== "area");
-  const othersOpen = rest.some((p) => !p.done);
+  const walks = parts.find((p) => p.id === "walks");
+  // Parts finished on Settings, Services: everything but the two asked here.
+  const linked = parts.filter((p) => p.id !== "area" && p.id !== "walks");
+  const openBesides = (id: PricePart["id"]) => parts.some((p) => p.id !== id && !p.done);
   const qc = useQueryClient();
-  // Saving the area finishes one part, not the step. Refresh the parts and
-  // stay here while walks, stays, grooms or lessons are still open; move on
-  // only once the server says every part is done.
-  const areaSaved = async () => {
+  // Saving the area or the walks finishes one part, not the step. Refresh the
+  // parts and stay here while the others are still open; move on only once
+  // the server says every part is done.
+  const partSaved = async () => {
     await qc.invalidateQueries({ queryKey: ["onboarding-status"] });
     const fresh = qc.getQueryData<{ steps: OnboardingStep[] }>(["onboarding-status"]);
     const now = fresh?.steps.find((s) => s.id === step.id);
@@ -603,7 +663,7 @@ function PricesPanel({
                 <p className="text-sm text-muted-foreground">{part.description}</p>
               </div>
             </div>
-            {part.id !== "area" && (
+            {part.id !== "area" && part.id !== "walks" && (
               <Button
                 asChild
                 size="sm"
@@ -616,19 +676,34 @@ function PricesPanel({
           </li>
         ))}
       </ul>
-      {rest.length > 0 && (
+      {linked.length > 0 && (
         <p className="text-xs text-muted-foreground">
           Each button opens Settings, Services. Come back here with the setup bar at the top of the
           page.
         </p>
       )}
+      {/* Walks are priced here, beside the area (#769): a button to
+          Settings was a detour an owner could miss, and setup then finished
+          with every walk unpriced. */}
+      {walks && (
+        <div className="space-y-3" data-setup-price-form="walks">
+          <h3 className="text-sm font-medium">{walks.label}</h3>
+          <WalkPricesForm
+            done={walks.done}
+            onSaved={partSaved}
+            saveLabel={openBesides("walks") ? "Save walk prices" : undefined}
+          />
+        </div>
+      )}
+      {/* Extension point for the area part's own fields (first cleanup,
+          schedule multipliers): they belong inside ServiceAreaPanel. */}
       {area && (
-        <div className="space-y-3">
+        <div className="space-y-3" data-setup-price-form="area">
           <h3 className="text-sm font-medium">{area.label}</h3>
           <ServiceAreaPanel
             step={{ ...step, done: area.done }}
-            onSaved={areaSaved}
-            saveLabel={othersOpen ? "Save area" : undefined}
+            onSaved={partSaved}
+            saveLabel={openBesides("area") ? "Save area" : undefined}
           />
         </div>
       )}
@@ -944,13 +1019,39 @@ function StaffPanel({ onSaved }: { onSaved: () => void }) {
 // route-runner's end point. getOnboardingStatus words the step's title from
 // the same column.
 
+//
+// #768: a business that scoops AND walks (dayEndQuestion "both") gets the
+// day-end question, with the dump site offered underneath as the pet-waste
+// half. It used to get the dump site alone, worded for a crew that unloads,
+// because `petWaste` was true.
+
 function EndOfDayPanel({ done, onSaved }: { done: boolean; onSaved: () => void }) {
-  const { petWaste, known } = useServiceLines();
+  const { lines, known } = useServiceLines();
+  const [dumpOpen, setDumpOpen] = useState(false);
   if (!known) return <p className="text-sm text-muted-foreground">Loading…</p>;
-  return petWaste ? (
-    <DumpSitePanel done={done} onSaved={onSaved} />
-  ) : (
-    <DayEndPanel done={done} onSaved={onSaved} />
+  const asks = dayEndQuestion(lines);
+  if (asks === "dump_site") return <DumpSitePanel done={done} onSaved={onSaved} />;
+  if (asks === "day_end") return <DayEndPanel done={done} onSaved={onSaved} />;
+  return (
+    <div className="space-y-5">
+      <DayEndPanel done={done} onSaved={onSaved} />
+      <div className="space-y-3 border-t pt-4" data-setup-pet-waste-day-end>
+        <p className="text-sm font-medium">For your pet waste routes</p>
+        {dumpOpen ? (
+          <DumpSitePanel done={false} onSaved={onSaved} />
+        ) : (
+          <>
+            <p className="text-xs text-muted-foreground">
+              If your pet waste routes unload at a landfill or transfer station, add it and those
+              routes can end there.
+            </p>
+            <Button type="button" variant="outline" onClick={() => setDumpOpen(true)}>
+              Add dump site
+            </Button>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
