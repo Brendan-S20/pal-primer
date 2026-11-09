@@ -16,6 +16,7 @@ import {
   saveSessionProgress,
   type LessonHistory,
 } from "@/lib/training-progress.functions";
+import type { SkillTrend } from "@/lib/training-progress";
 
 /** No lookup or UI for another service line. */
 export function TrainingSessionBadge({
@@ -109,6 +110,86 @@ function LessonHistoryList({
   );
 }
 
+/** At a house of several dogs, which one this record is for. Each dog keeps its own. */
+function DogPicker({
+  dogs,
+  selected,
+  guessed,
+  onPick,
+}: {
+  dogs: { id: string; name: string }[];
+  selected: string | null;
+  guessed: boolean;
+  onPick: (id: string) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="min-w-0 space-y-2" data-testid="training-dog-picker">
+      <p className="text-sm font-medium">{t("training.whichDog")}</p>
+      <div className="flex flex-wrap gap-2" role="group" aria-label={t("training.whichDog")}>
+        {dogs.map((dog) => {
+          const on = dog.id === selected;
+          return (
+            <button
+              key={dog.id}
+              type="button"
+              aria-pressed={on}
+              className={`inline-flex min-h-11 min-w-0 max-w-full items-center rounded-md border px-3 text-sm ${
+                on ? "border-primary bg-primary/10 font-medium text-primary" : "bg-background"
+              }`}
+              onClick={() => onPick(dog.id)}
+            >
+              <bdi className="break-words">{dog.name}</bdi>
+            </button>
+          );
+        })}
+      </div>
+      {guessed && <p className="text-sm text-muted-foreground">{t("training.chooseDogFirst")}</p>}
+    </div>
+  );
+}
+
+/** Each skill's scores for this dog, oldest to latest, from earlier lessons. */
+function SkillTrendList({
+  data,
+}: {
+  data: { dog: { name: string } | null; trends: SkillTrend[] };
+}) {
+  const { t } = useTranslation();
+  if (!data.trends.length) return null;
+  return (
+    <section className="min-w-0 space-y-2" data-testid="training-skill-trends">
+      <h4 className="text-sm font-medium">
+        {data.dog ? (
+          <Trans
+            i18nKey="training.skillProgressForDog"
+            components={{ dog: <bdi /> }}
+            values={{ dog: data.dog.name }}
+          />
+        ) : (
+          t("training.skillProgress")
+        )}
+      </h4>
+      <ul className="space-y-1 text-sm">
+        {data.trends.map((trend) => (
+          <li key={trend.skill} className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+            <span className="min-w-0 break-words font-medium">
+              <bdi>{trend.skill}</bdi>
+            </span>
+            <span
+              dir="ltr"
+              className="text-muted-foreground"
+              aria-label={t("training.skillTrendLabel", { skill: trend.skill })}
+            >
+              {trend.scores.join(" → ")}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /** Scores, a note and homework for one training lesson. Other lines render nothing. */
 export function TrainingProgressPanel({
   visitId,
@@ -126,10 +207,13 @@ function ProgressForm({ visitId }: { visitId: string }) {
   const qc = useQueryClient();
   const get = useServerFn(getSessionProgress);
   const saveFn = useServerFn(saveSessionProgress);
+  // Null until the trainer picks: the server opens on the lesson's own dog.
+  const [chosenDog, setChosenDog] = useState<string | null>(null);
   const q = useQuery({
-    queryKey: ["session-progress", visitId],
-    queryFn: () => get({ data: { visitId } }),
+    queryKey: ["session-progress", visitId, chosenDog],
+    queryFn: () => get({ data: { visitId, dogId: chosenDog } }),
   });
+  const dogId = q.data?.dog?.id ?? null;
   const [open, setOpen] = useState(false);
   const [scores, setScores] = useState<Record<string, number>>({});
   const [note, setNote] = useState("");
@@ -160,6 +244,7 @@ function ProgressForm({ visitId }: { visitId: string }) {
       return saveFn({
         data: {
           visitId,
+          dogId,
           scores: [...fromList, ...kept],
           note,
           trainerNote,
@@ -200,6 +285,15 @@ function ProgressForm({ visitId }: { visitId: string }) {
           {skills.length === 0 && !q.isLoading && (
             <p className="text-sm text-muted-foreground">{t("training.noSkills")}</p>
           )}
+          {q.data && q.data.dogs.length > 1 && (
+            <DogPicker
+              dogs={q.data.dogs}
+              selected={dogId}
+              guessed={q.data.dogGuessed && chosenDog === null}
+              onPick={setChosenDog}
+            />
+          )}
+          {q.data && <SkillTrendList data={q.data} />}
           {q.data && <LessonHistoryList data={q.data} />}
           <ul className="space-y-3">
             {skills.map((skill) => (
