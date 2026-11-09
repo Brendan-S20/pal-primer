@@ -136,7 +136,7 @@ function InvitePage() {
                     width. Wrapping is the only way this fits; the address still
                     needs somewhere to break when it is the whole line. */}
                 <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
-                  as <Badge variant="outline">{humanizeRole(q.data.role)}</Badge> · for <span className="break-all font-mono">{q.data.email}</span>
+                  as <Badge variant="outline">{q.data.role_label ?? humanizeRole(q.data.role)}</Badge> · for <span className="break-all font-mono">{q.data.email}</span>
                 </div>
               </div>
 
