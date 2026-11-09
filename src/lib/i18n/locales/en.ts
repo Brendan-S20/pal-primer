@@ -17,6 +17,42 @@
  * Arabic writes six forms for each, Chinese one — see TranslationsWithPlurals.
  */
 const en = {
+  petSafety: {
+    open: "Safety log",
+    title: "Safety log",
+    description: "Safety notes and incidents for this pet, with when, who reported it and any photo. Entries cannot be edited or deleted; add a new one to correct a mistake.",
+    entryType: "Entry type",
+    type: {
+      incident: "Incident",
+      note: "Safety note",
+    },
+    kind: {
+      bite: "Bite",
+      scratch: "Scratch",
+      aggression: "Aggression",
+      escape: "Escape or slipped lead",
+      injury_to_pet: "Pet was hurt",
+      injury_to_person: "Person was hurt",
+      illness: "Illness",
+      property_damage: "Property damage",
+      other: "Other",
+    },
+    kindLabel: "What kind",
+    when: "When it happened",
+    whatHappened: "What happened",
+    note: "Note",
+    photo: "Photo (optional)",
+    photoAlt: "Incident photo",
+    save: "Add to log",
+    saved: "Added to the safety log",
+    notSaved: "Not saved. Try again.",
+    loading: "Loading…",
+    loadFailed: "The safety log could not be loaded.",
+    empty: "Nothing logged for this pet yet.",
+    reportedBy: "Reported by",
+    incidentCount_one: "{{count}} incident",
+    incidentCount_other: "{{count}} incidents",
+  },
   vaccineStatus: {
     ok: "Up to date",
     expiring: "Expires soon",
@@ -205,6 +241,10 @@ const en = {
     viewMySchedule: "View my schedule",
     myRoute: "My route",
     aVisit: "a visit",
+    /** The folded line under the list: visits canceled today (gaps-r2-08). */
+    canceledStops_one: "{{count}} canceled visit",
+    canceledStops_other: "{{count}} canceled visits",
+    canceledStopsHint: "Not on your route. No need to go.",
     /** Between the weekday and the date on the day chip: "Tue, Oct 6". */
     weekdaySeparator: ", ",
   },
@@ -561,6 +601,8 @@ const en = {
     clientInfo: "Client info",
     started: "Started",
     startQueued: "Queued. Starts when back online",
+    vaccineStartWarn: "Started. Missing or expired vaccine: {{pets}}",
+    vaccineStartBlocked: "Not started. A required vaccine is missing or expired, and this business does not start a visit until it is updated. Ask the office.",
     completed: "Completed",
     completedWithNotices: "Completed. Client notices: {{notices}}.",
     completedWithNoticesPending:
@@ -824,6 +866,10 @@ const en = {
       "This phone said no. To turn them on, go to Settings › Apps › HoundStack › Notifications.",
     openSettings: "Open Settings",
     unavailable: "Notifications are not available in this version of the app.",
+    explainerTitle: "Get notified on this phone?",
+    explainerBody:
+      "We tell you when your route changes, a visit is added or the office messages you. Your phone asks next: choose Allow.",
+    notNow: "Not now",
   },
   nav: {
     primary: "Primary",

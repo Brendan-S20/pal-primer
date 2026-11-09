@@ -9,7 +9,15 @@ import {
   Text,
   Button,
 } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
+import {
+  styles,
+  OrgFooter,
+  type OrgContact,
+  TenantHeader,
+  howToReach,
+  sentence,
+  noEndPeriod,
+} from "./_shared";
 import type { TemplateEntry } from "./registry";
 
 interface Props extends OrgContact {
@@ -47,8 +55,8 @@ const WinBack = ({
         <TenantHeader {...orgContact} orgName={orgName} />
         <Heading style={styles.h1}>We miss you, {clientName}</Heading>
         <Text style={styles.text}>
-          It's been a while since we've seen you at {orgName}. We'd love to have you back. Here's{" "}
-          {discountAmount} of credit toward your next service.
+          It's been a while since we've seen you at {noEndPeriod(orgName)}. We'd love to have you
+          back. Here's {discountAmount} of credit toward your next service.
         </Text>
         <Text style={{ ...styles.amount, fontSize: 22 }}>
           Code: <strong>{promoCode}</strong>
@@ -63,8 +71,8 @@ const WinBack = ({
           </Button>
         )}
         <Text style={styles.small}>
-          If you had an issue with your service, just reply to this email. We'd like to make it
-          right.
+          If you had an issue with your service, just{" "}
+          {sentence(howToReach({ ...orgContact, orgName }))} We'd like to make it right.
         </Text>
         <OrgFooter {...orgContact} orgName={orgName} />
       </Container>

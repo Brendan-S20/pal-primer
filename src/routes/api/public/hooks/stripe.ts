@@ -1330,6 +1330,27 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               console.error("refund reconcile failed", { chargeId, piId }, e);
             }
 
+            // What went back, re-read from Stripe, so it REPLACES the stored
+            // figure: on the payment (which moves the invoice's amount paid
+            // and refunded) and on a provisioned signup it paid for.
+            {
+              const { recordRefundOnPayment, recordRefundOnSignup } =
+                await import("@/lib/refund-outcome.server");
+              await recordRefundOnPayment(supabaseAdmin, rpay, trueRefunded, {
+                authoritative: true,
+              });
+              await recordRefundOnSignup(
+                supabaseAdmin,
+                { organizationId: rpay.organization_id, paymentIntentId: piId },
+                {
+                  refundId: null,
+                  amountRefundedCents: trueRefunded,
+                  at: new Date().toISOString(),
+                  authoritative: true,
+                },
+              );
+            }
+
             // The payment's own status has to follow, or the charge path keeps
             // treating a payment as refunded when the money never went back.
             if (trueRefunded <= 0) {
@@ -1763,10 +1784,41 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               // separately. A refund is left alone here: it has its own status
               // already and no dispute outcome should overrule it.
               if (event.type === "charge.refunded") {
+                // How much of it went back, BEFORE the status flips: the
+                // payments trigger counts a refunded row as kept less this,
+                // so the invoice's amount paid drops by the refund and not by
+                // the whole payment, and it reads Refunded or Partly refunded
+                // rather than Paid (#674).
+                const { recordRefundOnPayment, recordRefundOnSignup } =
+                  await import("@/lib/refund-outcome.server");
+                await recordRefundOnPayment(supabaseAdmin, pay, amount);
                 await (supabaseAdmin as any)
                   .from("payments")
                   .update({ status: "refunded" })
                   .eq("id", pay.id);
+
+                // A signup the business provisioned and then refunded (#675).
+                // The refund's own id: on the event when Stripe expands it,
+                // else the charge's latest refund, asked of the account the
+                // charge lives on.
+                let refundId: string | null =
+                  (obj?.refunds?.data?.[0]?.id as string | undefined) ?? null;
+                if (!refundId && typeof obj?.id === "string") {
+                  try {
+                    const list = await stripe.refunds.list(
+                      { charge: obj.id, limit: 1 },
+                      event.account ? { stripeAccount: event.account } : undefined,
+                    );
+                    refundId = list?.data?.[0]?.id ?? null;
+                  } catch (e) {
+                    console.error("refund id lookup failed", { chargeId: obj.id }, e);
+                  }
+                }
+                await recordRefundOnSignup(
+                  supabaseAdmin,
+                  { organizationId: pay.organization_id, paymentIntentId },
+                  { refundId, amountRefundedCents: amount, at: new Date().toISOString() },
+                );
               } else {
                 const { DISPUTE_KINDS, disputesFrom, paymentIsReversedByDisputes } =
                   await import("@/lib/disputes");

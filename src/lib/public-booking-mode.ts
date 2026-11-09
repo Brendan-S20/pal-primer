@@ -101,10 +101,19 @@ export const PACKAGE_NEEDED = "Pick the package your booking link sells, or choo
 export const PACKAGE_AFTER_CREATE =
   "Add the service first, then set up its package and choose it here.";
 
-/** The public form's words for a service that is not a repeating plan. */
+/** The public form's words for a service that is not a repeating plan.
+ *
+ *  `howItWorks` takes the line's own word for one visit ("walk", "groom",
+ *  "session": BOOKING_COPY[line].visit) and whether the link can take a card
+ *  right now (R2-24). A walker's drop-in was "this session", and with no
+ *  Stripe account the link promised "You pay once" above a Request a quote
+ *  button; it now says the business confirms the price and payment. */
 export const ONE_TIME_COPY = {
   /** Where the Frequency select would be. */
-  howItWorks: "One visit. You pay once for this session.",
+  howItWorks: (visit = "visit", canPay = true): string =>
+    canPay
+      ? `One ${visit}. You pay once for this ${visit}.`
+      : `One ${visit}. We'll confirm the price and payment with you.`,
   /** The price line's label. */
   lineLabel: "This session",
   /** Under the price. */
@@ -113,9 +122,21 @@ export const ONE_TIME_COPY = {
   startButton: "Book and pay",
 } as const;
 
+/** `howItWorks` names the package and its price when it has them (R2-24: a
+ *  visitor read "A package of 6 sessions" and never the package's name or
+ *  its $780), and promises payment only when the link can take a card. */
 export const PACKAGE_COPY = {
-  howItWorks: (sessions: number) =>
-    `A package of ${sessions} session${sessions === 1 ? "" : "s"}. You pay once and we schedule each one with you.`,
+  howItWorks: (
+    sessions: number,
+    detail: { name: string; price: string } | null = null,
+    canPay = true,
+  ): string => {
+    const n = `${sessions} session${sessions === 1 ? "" : "s"}`;
+    const what = detail ? `${detail.name}: ${n} for ${detail.price}.` : `A package of ${n}.`;
+    return canPay
+      ? `${what} You pay once and we schedule each one with you.`
+      : `${what} We'll confirm payment and schedule each session with you.`;
+  },
   lineLabel: (name: string, sessions: number) =>
     `${name} (${sessions} session${sessions === 1 ? "" : "s"})`,
   chargedTodayLead: "Package total charged today:",
@@ -123,6 +144,36 @@ export const PACKAGE_COPY = {
     `Covers ${sessions} session${sessions === 1 ? "" : "s"}. We keep count of the sessions you have left.`,
   startButton: "Buy package",
 } as const;
+
+/** A quote request's message as the office reads it on the lead (R2-24):
+ *  the visitor's own note, then what the form knew and the lead row has no
+ *  column for, one line each. The package a visitor asked about was lost
+ *  (the lead said "Private lesson (60 min)" and nothing about the 6-pack),
+ *  and a stay's last night had nowhere to go but the note. */
+export function quoteRequestMessage(
+  message: string,
+  extra: {
+    pack?: { name: string; sessions_count: number; price: string } | null;
+    lastNight?: string | null;
+  },
+): string {
+  const lines: string[] = [];
+  if (extra.pack) {
+    const n = extra.pack.sessions_count;
+    lines.push(
+      `Asked about the package ${extra.pack.name} (${n} session${n === 1 ? "" : "s"}, ${extra.pack.price}).`,
+    );
+  }
+  if (extra.lastNight) lines.push(`Last night of the stay: ${extra.lastNight}.`);
+  // The lead endpoint takes 2,000 characters; the form's own lines are kept
+  // and a note long enough to push past that is shortened, not refused.
+  const tail = lines.map((l) => `\n\n${l}`).join("");
+  const own = message.trim().slice(0, Math.max(0, QUOTE_MESSAGE_MAX - tail.length));
+  return own ? `${own}${tail}` : tail.trimStart();
+}
+
+/** /api/public/leads' limit on `message`. */
+export const QUOTE_MESSAGE_MAX = 2000;
 
 /** The line on the Stripe charge, the invoice and the lead. */
 export function startedChargeDescription(

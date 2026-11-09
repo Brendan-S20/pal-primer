@@ -19,6 +19,41 @@ import type { TranslationsWithPlurals } from "./en";
  * half-width where the string is a number or a code.
  */
 const zh: TranslationsWithPlurals<"other"> = {
+  petSafety: {
+    open: "安全记录",
+    title: "安全记录",
+    description: "这只宠物的安全备注和事件记录，包括时间、报告人和照片（如有）。记录不能编辑或删除；如需更正，请新增一条。",
+    entryType: "记录类型",
+    type: {
+      incident: "事件",
+      note: "安全备注",
+    },
+    kind: {
+      bite: "咬伤",
+      scratch: "抓伤",
+      aggression: "攻击行为",
+      escape: "逃跑或挣脱牵引绳",
+      injury_to_pet: "宠物受伤",
+      injury_to_person: "有人受伤",
+      illness: "生病",
+      property_damage: "财物损坏",
+      other: "其他",
+    },
+    kindLabel: "类型",
+    when: "发生时间",
+    whatHappened: "发生了什么",
+    note: "备注",
+    photo: "照片（可选）",
+    photoAlt: "事件照片",
+    save: "添加到记录",
+    saved: "已添加到安全记录",
+    notSaved: "未保存，请重试。",
+    loading: "加载中…",
+    loadFailed: "无法加载安全记录。",
+    empty: "这只宠物还没有任何记录。",
+    reportedBy: "报告人",
+    incidentCount_other: "{{count}} 起事件",
+  },
   vaccineStatus: {
     ok: "有效",
     expiring: "即将到期",
@@ -202,6 +237,8 @@ const zh: TranslationsWithPlurals<"other"> = {
     viewMySchedule: "查看我的日程",
     myRoute: "我的路线",
     aVisit: "一次服务",
+    canceledStops_other: "{{count}} 次已取消的服务",
+    canceledStopsHint: "不在你的路线上，无需前往。",
     weekdaySeparator: "，",
   },
   cacheAge: {
@@ -536,6 +573,8 @@ const zh: TranslationsWithPlurals<"other"> = {
     clientInfo: "客户信息",
     started: "已开始",
     startQueued: "已排队，联网后开始",
+    vaccineStartWarn: "已开始。疫苗缺失或已过期：{{pets}}",
+    vaccineStartBlocked: "未开始。缺少必需疫苗或疫苗已过期，本商家在更新前不会开始上门。请联系办公室。",
     completed: "已完成",
     completedWithNotices: "已完成。客户通知：{{notices}}。",
     completedWithNoticesPending: "已完成。已发送客户通知：{{notices}}。还有通知仍在发送。",
@@ -781,6 +820,10 @@ const zh: TranslationsWithPlurals<"other"> = {
     deniedBodyAndroid: "这部手机选择了不允许。要打开通知，请前往 设置 › 应用 › HoundStack › 通知。",
     openSettings: "打开设置",
     unavailable: "此版本的应用不支持通知。",
+    explainerTitle: "在这部手机上接收通知？",
+    explainerBody:
+      "路线变更、新增服务或办公室给你发消息时，我们会通知你。接下来手机会询问：请选择“允许”。",
+    notNow: "以后再说",
   },
   nav: {
     primary: "主导航",

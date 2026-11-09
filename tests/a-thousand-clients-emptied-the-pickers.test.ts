@@ -66,6 +66,7 @@ import {
   clientMatchesQuery,
   clientSearchOrFilter,
   fold,
+  searchAnchor,
 } from "@/lib/client-search";
 import { filterRoster, rosterStats, rosterTags } from "@/lib/client-roster";
 import { fetchAllPagesConcurrently, idChunks } from "@/lib/supabase-paging.server";
@@ -107,6 +108,10 @@ function book(n: number) {
       organization_id: "org",
       client_id: c.id,
       street: i === 7 ? "4400 N Ravenswood Ave" : `${100 + i} Oak Street`,
+      // R2-27: a ZIP and a town are searched too. One client has them, so a
+      // search by either has one answer.
+      postal_code: i === 7 ? "60640" : null,
+      city: i === 7 ? "Chicago" : null,
       created_at: c.created_at,
       archived_at: null,
     },
@@ -304,6 +309,10 @@ describe("/clients at 1,000 and 5,000 clients", () => {
       { q: "second lot" },
       { q: "ravenswood" },
       { q: "555-0199" },
+      { q: "60640" },
+      { q: "chicago" },
+      { q: "#48213" },
+      { q: "job48213" },
       { status: "no_plan", type: "residential", q: "oak" },
     ];
     for (const f of cases) {
@@ -464,6 +473,10 @@ describe("the pickers and Cmd-K search on the server", () => {
     ["3125550199", "a phone number as bare digits"],
     ["job-48213", "the id a Jobber import carried"],
     ["4400 ravenswood", "a street number and name"],
+    ["60640", "the ZIP"],
+    ["Chicago", "the town"],
+    ["#48213", "the id with a hash in front"],
+    ["JOB48213", "the id without its dash"],
   ])("finds a client by %s (%s)", async (q) => {
     useBook(5_000);
     const r = await searchClients({ data: { q, limit: 6 } });
@@ -491,8 +504,41 @@ describe("the pickers and Cmd-K search on the server", () => {
     expect(longestUrl()).toBeLessThan(2_048);
   });
 
-  it("the two pickers and Cmd-K use it, not the whole roster", () => {
-    for (const f of ["src/components/OneOffVisitDialog.tsx", "src/routes/_authenticated/invoices.index.tsx"]) {
+  it("finds 'Name 0999' among a thousand clients called Name", async () => {
+    const tables = book(1_000);
+    tables.clients.forEach((c, i) => (c.display_name = `Sampleton Name ${String(i).padStart(4, "0")}`));
+    useBook(1_000, tables);
+    const r = await searchClients({ data: { q: "Name 0999", limit: 6 } });
+    expect(r.clients.map((c: any) => c.display_name)).toEqual(["Sampleton Name 0999"]);
+    // The database filters on the word with a digit, so this is one read of
+    // a handful of rows, not every "Name".
+    expect(seen.length).toBeLessThanOrEqual(2);
+  });
+
+  it("finds a client by ZIP from the /clients list too", async () => {
+    useBook(5_000);
+    const page = await listClientsPage({ data: { q: "60640" } });
+    expect(page.rows.map((r: any) => r.display_name)).toEqual(["José Núñez"]);
+    expect(longestUrl()).toBeLessThan(2_048);
+  });
+
+  it("opens a picker already holding a client by reading that one client", async () => {
+    useBook(5_000);
+    const id = "00000000-0000-4000-8000-000000000007";
+    const r = await searchClients({ data: { id, limit: 1 } });
+    expect(r.clients.map((c: any) => c.display_name)).toEqual(["José Núñez"]);
+    expect(seen).toHaveLength(1);
+    expect(rowsRead()).toBe(1);
+  });
+
+  it("every client picker searches on the server, not the whole roster", () => {
+    for (const f of [
+      "src/components/OneOffVisitDialog.tsx",
+      "src/routes/_authenticated/invoices.index.tsx",
+      "src/components/quotes/QuoteEditor.tsx",
+      "src/routes/_authenticated/settings.promotions.tsx",
+      "src/routes/_authenticated/messages.tsx",
+    ]) {
       const src = read(f);
       expect(src, f).toContain("<ClientSearchPicker");
       expect(src, f).not.toContain("listClients");
@@ -528,13 +574,24 @@ describe("the search rule", () => {
     streets: ["4400 N Ravenswood"],
     tags: ["Tuesday"],
   };
-  it.each(["jose", "josé nunez", "nuñ", "555-0199", "5550199", "job-482", "4400", "ravens", "tues"])(
+  it.each(["jose", "josé nunez", "nuñ", "555-0199", "5550199", "job-482", "4400", "ravens", "tues", "#48213", "job48213", "JOB 48213", "nunez,"])(
     "matches %s",
     (q) => expect(clientMatchesQuery(jose, q)).toBe(true),
   );
   it.each(["maria", "5551234", "999", "jose smith"])("does not match %s", (q) =>
     expect(clientMatchesQuery(jose, q)).toBe(false),
   );
+  it("matches a ZIP or a town through the client's addresses", () => {
+    const withPlace = { ...jose, streets: ["4400 N Ravenswood", "60640", "Chicago"] };
+    expect(clientMatchesQuery(withPlace, "60640")).toBe(true);
+    expect(clientMatchesQuery(withPlace, "chicago ravens")).toBe(true);
+    expect(clientMatchesQuery(jose, "60640")).toBe(false);
+  });
+  it("filters on the word with a digit when two are as long", () => {
+    expect(searchAnchor("Name 0999")).toBe("0999");
+    expect(searchAnchor("0999 Name")).toBe("0999");
+    expect(searchAnchor("street 4999")).toBe("street");
+  });
   it("folds accents and case", () => {
     expect(fold("José NÚÑEZ")).toBe("jose nunez");
     expect(new RegExp(accentPattern("jose"), "i").test("José")).toBe(true);

@@ -407,13 +407,19 @@ function ClientsList() {
           </div>
           <div className="mt-1 text-2xl font-semibold">{!summary ? <TileValueBone /> : stats.active}</div>
         </Card>
-        <Card className="min-w-0 p-4">
+        <Card className="@container min-w-0 p-4">
           <div className="text-xs text-muted-foreground">Outstanding</div>
           {/* A book of thousands owes six figures: "$340,125.00" in text-2xl is
-              wider than half a 360px phone. Smaller below sm, on the same 2rem
-              line box so the bone does not move, and allowed to wrap rather
-              than push the tile past the column. */}
-          <div className="mt-1 text-lg leading-8 font-semibold [overflow-wrap:anywhere] sm:text-2xl">
+              wider than half a 360px phone. On the same 2rem line box as the
+              bone, so the list under the tiles does not move when the number
+              lands — but only if the number stays on ONE line, and whether
+              it does depends on the font, which is the system's. In DejaVu
+              Sans (a stock Linux runner) it wrapped at 320, 360, 768 and
+              900px, and the list jumped 32px. So the size follows the tile's
+              own width (12cqi: an 11-character amount is ~7.7em in the
+              widest common sans), capped at text-lg / text-2xl. Wrapping
+              stays as the last resort for an amount longer than that. */}
+          <div className="mt-1 text-[length:min(1.125rem,12cqi)] leading-8 font-semibold [overflow-wrap:anywhere] sm:text-[length:min(1.5rem,12cqi)]">
             {!summary ? <TileValueBone /> : money(stats.owedTotal)}
           </div>
           <div className="text-xs text-muted-foreground">{!summary ? <Skeleton className="h-4 w-20" /> : `${stats.outstanding} clients`}</div>

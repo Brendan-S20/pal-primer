@@ -197,10 +197,15 @@ describe("the templates", () => {
 });
 
 describe("on my way", () => {
+  // Each with a contact email: since R2-50 "reply to this email" is said only
+  // when a reply-to exists, and that is the case the frozen copy was written
+  // for. Without one the line names the phone or the business instead
+  // (tests/a-reply-that-reaches-nobody.test.tsx).
   const PROPS: Record<string, unknown>[] = [
-    {},
-    { orgName: "Acme Scoop", clientName: "Jane", techName: "Sam" },
+    { orgEmail: "office@acme.test" },
+    { orgName: "Acme Scoop", clientName: "Jane", techName: "Sam", orgEmail: "office@acme.test" },
     {
+      orgEmail: "office@acme.test",
       orgName: "Acme Scoop",
       clientName: "Jane",
       techName: "Sam",

@@ -1,3 +1,4 @@
+import { isVaccineStartBlocked, petsMissingVaccines, type MissingVaccine } from "@/lib/pet-safety";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { humanizeRole } from "@/lib/humanize";
 import { daysBetweenOrgDays, orgLocalDay, orgLocalDayTime, orgLocalTime } from "@/lib/org-day";
@@ -60,6 +61,7 @@ import {
 import { runOrQueue } from "@/lib/offline/run-or-queue";
 import { useQueuedLifecycle } from "@/lib/offline/useQueuedLifecycle";
 import { dayAtAGlance } from "@/lib/my-day-progress";
+import { routeStops } from "@/lib/live-activity-state";
 import { withQueuedLifecycle, type LifecycleKind } from "@/lib/offline/queued-visit-state";
 import { resolveOfflineUserId } from "@/lib/offline/action-owner";
 import { confirmEndWithEmptyReport } from "@/lib/offline/walk-drafts";
@@ -488,9 +490,21 @@ function MyDay() {
   // all move on together. See lib/offline/queued-visit-state.ts.
   const queuedLifecycle = useQueuedLifecycle(dataUpdatedAt);
   const serverVisits = data?.visits;
-  const visits = useMemo(
+  const dayAsWorked = useMemo(
     () => withQueuedLifecycle(serverVisits ?? [], queuedLifecycle),
     [serverVisits, queuedLifecycle],
+  );
+  // A canceled visit is not a stop (gaps-r2-08). After an early return the
+  // stay's last nights are canceled, and they were drawn as full cards with
+  // Navigate, Call and the money due, and counted in "0 of 2 done", so a
+  // sitter could drive to a house the client had come back to. The cards,
+  // the count, the next stop and the map read `visits`; the canceled ones are
+  // folded under one line below the list. Same rule as the lock screen
+  // (routeStops in lib/live-activity-state.ts).
+  const visits = useMemo(() => routeStops(dayAsWorked), [dayAsWorked]);
+  const canceledVisits = useMemo(
+    () => dayAsWorked.filter((v: { status: string }) => v.status === "canceled"),
+    [dayAsWorked],
   );
   // List or map. Not in the URL: it is a way of looking at the day, not a
   // different day, and a tech who taps Map then reloads in a dead spot should
@@ -501,7 +515,7 @@ function MyDay() {
   // an effect has run, and a toast that says "and 2 others" with no names is
   // worse than one that says nothing.
   visitNames.current = new Map(
-    visits.map((v: { id: string; clients?: { display_name?: string | null } | null }) => [
+    dayAsWorked.map((v: { id: string; clients?: { display_name?: string | null } | null }) => [
       v.id,
       v.clients?.display_name ?? t("myDay.aVisit"),
     ]),
@@ -1125,6 +1139,23 @@ function MyDay() {
               />
             ))}
           </ol>
+        )}
+        {view === "list" && canceledVisits.length > 0 && (
+          <details className="rounded-lg border bg-card px-(--card-pad) text-sm text-muted-foreground">
+            <summary className="flex min-h-11 cursor-pointer items-center">
+              {t("myDay.canceledStops", { count: canceledVisits.length })}
+            </summary>
+            <p className="pb-2 text-xs">{t("myDay.canceledStopsHint")}</p>
+            <ul className="space-y-1 pb-3">
+              {canceledVisits.map(
+                (v: { id: string; clients?: { display_name?: string | null } | null }) => (
+                  <li key={v.id} className="min-w-0 truncate">
+                    <bdi>{v.clients?.display_name ?? t("myDay.aVisit")}</bdi>
+                  </li>
+                ),
+              )}
+            </ul>
+          </details>
         )}
       </div>
 
@@ -1968,7 +1999,13 @@ function VisitCard({
     mutationFn: () => actions.start(),
     onSuccess: (r) => {
       haptic("select");
-      toast.success(r.queued ? t("visit.startQueued") : t("visit.started"));
+      // The owner's vaccine Start rule is "warn" (#729): started, and said so.
+      const missing = petsMissingVaccines(
+        (r.result as { vaccineWarnings?: MissingVaccine[] } | undefined)?.vaccineWarnings,
+      );
+      if (missing.length > 0)
+        toast.warning(t("visit.vaccineStartWarn", { pets: missing.join(", ") }));
+      else toast.success(r.queued ? t("visit.startQueued") : t("visit.started"));
       if (!r.queued) invalidate();
       // The button moves on to its next step now, not when the refetch (or
       // the queue's change event) lands. It does NOT open the camera: that
@@ -1977,7 +2014,12 @@ function VisitCard({
     },
     onError: (e: Error) => {
       haptic("error");
-      toast.error(readableError(e, t("common.notSaved")));
+      // The owner's vaccine Start rule is "block" (#729).
+      toast.error(
+        isVaccineStartBlocked(e)
+          ? t("visit.vaccineStartBlocked")
+          : readableError(e, t("common.notSaved")),
+      );
     },
   });
   const completeToast = (r: { queued: boolean; result?: unknown }) => {

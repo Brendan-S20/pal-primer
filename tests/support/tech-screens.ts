@@ -41,6 +41,7 @@ export const TECH_SCREENS: { file: string; only?: string[] }[] = [
   // lock box codes, hazards and dogs. The office's client page is a different
   // component on the same route and stays in English.
   { file: "src/components/client-detail/FieldClientView.tsx" },
+  { file: "src/components/PetSafetyLog.tsx" },
   // (src/components/my-day/RouteLockScreen.tsx left this list on 2026-10-08:
   // its toggle and toasts are gone, and what remains draws nothing. The
   // card's words are built in the tech's language by live-activity-state.ts,
@@ -52,6 +53,9 @@ export const TECH_SCREENS: { file: string; only?: string[] }[] = [
   { file: "src/components/TimeClock.tsx" },
   { file: "src/components/VisitChecklistAnswers.tsx" },
   { file: "src/components/PushToggle.tsx" },
+  // The line in the shell that says what notifications are for, before the
+  // phone's own prompt (R2-35).
+  { file: "src/components/NativePushExplainer.tsx" },
   { file: "src/components/PhotoLightbox.tsx" },
   { file: "src/components/MobileTabBar.tsx" },
   { file: "src/components/AppSidebar.tsx" },

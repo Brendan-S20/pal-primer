@@ -42,6 +42,7 @@ import { ZoneEnabledSwitch } from "@/components/ZoneEnabledSwitch";
 import { offZoneNotice } from "@/lib/zone-enabled";
 import { FirstCleanupPricingCard } from "@/components/FirstCleanupPricingCard";
 import { useServiceLines } from "@/components/CommercialOnly";
+import { showsZoneVisitPrice } from "@/lib/service-lines";
 import { getFirstCleanupPricing } from "@/lib/first-cleanup.functions";
 import { titleHead } from "@/lib/page-title";
 
@@ -403,6 +404,10 @@ function ZoneCard({
   const qc = useQueryClient();
   const { confirm, dialog } = useConfirmDialog();
   const [viewingCoverage, setViewingCoverage] = useState(false);
+  // The per-visit price is a scooping plan's (R2-38), as in ZoneDrawer:
+  // shown to a business that runs pet waste, or while the zone prices a yard.
+  const { lines } = useServiceLines();
+  const showsVisitPrice = showsZoneVisitPrice(lines, zone);
 
   const delMut = useMutation({
     mutationFn: () => del({ data: { id: zone.id } }),
@@ -560,10 +565,14 @@ function ZoneCard({
         </div>
         {/* On its own line below sm, so it reads from the left like the rest. */}
         <div className="sm:text-right">
-          <div className="text-lg font-semibold">{money(zone.base_price_cents)}</div>
-          <div className="text-xs text-muted-foreground">
-            base + {money(zone.per_dog_addl_cents)} / extra dog
-          </div>
+          {showsVisitPrice && (
+            <>
+              <div className="text-lg font-semibold">{money(zone.base_price_cents)}</div>
+              <div className="text-xs text-muted-foreground">
+                base + {money(zone.per_dog_addl_cents)} / extra dog
+              </div>
+            </>
+          )}
           {showFirstCleanup && zone.initial_cleanup_cents > 0 && (
             <div className="text-xs text-muted-foreground">
               First cleanup: {money(zone.initial_cleanup_cents)}

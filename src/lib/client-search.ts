@@ -10,7 +10,11 @@
 // What matches, for every word typed (all words have to match somewhere):
 //   * the name, company, first and last name, email, tags, street and the
 //     external id from an import, ignoring case and accents;
-//   * a phone number by its digits, whatever punctuation either side used.
+//   * a phone number by its digits, whatever punctuation either side used;
+//   * the ZIP or town of any of the client's addresses (R2-27: "80210" found
+//     nobody, because only the street was searched);
+//   * the external id without its punctuation, so "#5004", "SP004" and
+//     "sp-004" all find "SP-004" (R2-27).
 //
 // Pure, so the browser, the server and a test all run the same function.
 
@@ -33,13 +37,27 @@ export type SearchableClient = {
   primary_phone?: string | null;
   import_external_id?: string | null;
   street?: string | null;
+  /** Every live address of the client: streets, and their ZIPs and towns
+   *  (placesOf). */
   streets?: readonly (string | null)[] | null;
   tags?: readonly string[] | null;
 };
 
-/** The words of a query, folded. Empty when there is nothing to search for. */
+/** Letters and digits only: "SP-004" -> "sp004". */
+export function compact(s: string): string {
+  return fold(s).replace(/[^\p{L}\p{N}]/gu, "");
+}
+
+/**
+ * The words of a query, folded. Empty when there is nothing to search for.
+ * Punctuation at either end of a word is not part of it: "#5004" is "5004",
+ * "smith," is "smith". Inside a word it stays ("o'brien", "sp-004").
+ */
 export function queryWords(q: string): string[] {
-  return fold(q).split(/\s+/).filter(Boolean);
+  return fold(q)
+    .split(/\s+/)
+    .map((w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""))
+    .filter(Boolean);
 }
 
 /** Does this client match every word of the query? An empty query matches. */
@@ -63,8 +81,12 @@ export function clientMatchesQuery(c: SearchableClient, q: string): boolean {
       .join(" "),
   );
   const phone = digitsOf(c.primary_phone ?? "");
+  const externalId = compact(c.import_external_id ?? "");
   return words.every((w) => {
     if (hay.includes(w)) return true;
+    // An old system's id typed with other punctuation, or none.
+    const cw = compact(w);
+    if (cw.length >= 3 && externalId.includes(cw)) return true;
     // A phone typed with different punctuation: three digits or more, so
     // "12" does not match every number on the books.
     const d = digitsOf(w);
@@ -91,9 +113,21 @@ const VARIANTS: Record<string, string> = {
   y: "yýÿ",
 };
 
-/** The longest word of a query, the one the database filters on. */
+/**
+ * The longest word of a query, the one the database filters on. Between two
+ * words of the same length, the one with a digit in it: "Name 0999" filters
+ * on "0999", which one client has, rather than "name", which a thousand
+ * imported clients called "Name 0001"... "Name 0999" all have.
+ */
 export function searchAnchor(q: string): string {
-  return queryWords(q).reduce((a, b) => (b.length > a.length ? b : a), "").slice(0, 16);
+  const hasDigit = (w: string) => /\p{N}/u.test(w);
+  return queryWords(q)
+    .reduce(
+      (a, b) =>
+        b.length > a.length || (b.length === a.length && hasDigit(b) && !hasDigit(a)) ? b : a,
+      "",
+    )
+    .slice(0, 16);
 }
 
 /**
@@ -156,16 +190,54 @@ export function clientSearchOrFilter(q: string): string | null {
   const like = likeWord(anchor);
   // first_name and last_name are not searched separately: display_name is
   // built from them, and every column here costs the pattern's length again.
-  return [
+  const terms = [
     `display_name.imatch.${rx}`,
     `company.imatch.${rx}`,
     `primary_email.ilike.*${like}*`,
     `import_external_id.ilike.*${like}*`,
-  ].join(",");
+  ];
+  // The external id with anything (or nothing) between its letters, so
+  // "sp004" reaches "SP-004"; clientMatchesQuery then compares them compact.
+  const bare = compact(anchor);
+  if (bare.length >= 3) terms.push(`import_external_id.imatch.${bare.split("").join(".?")}`);
+  return terms.join(",");
 }
 
 /** The `ilike` pattern for a street search, or null when there is no word. */
 export function streetSearchPattern(q: string): string | null {
   const anchor = looksLikePhone(q) ? digitsOf(q).slice(0, 10) : searchAnchor(q);
   return anchor ? `%${likeWord(anchor)}%` : null;
+}
+
+/**
+ * The `or=(...)` filter on a client's addresses (the `hit` embed), or null
+ * when there is no word: the street, the ZIP and the town, so "80210" and
+ * "pearl st" both find somebody (R2-27).
+ */
+export function placeSearchOrFilter(q: string): string | null {
+  const anchor = looksLikePhone(q) ? digitsOf(q).slice(0, 10) : searchAnchor(q);
+  if (!anchor) return null;
+  const like = likeWord(anchor);
+  return [`street.ilike.*${like}*`, `postal_code.ilike.*${like}*`, `city.ilike.*${like}*`].join(
+    ",",
+  );
+}
+
+type Place = {
+  street?: string | null;
+  postal_code?: string | null;
+  city?: string | null;
+  archived_at?: string | null;
+};
+
+/** What a search can match of a client's live addresses: each street, ZIP
+ *  and town. The `streets` that clientMatchesQuery reads. */
+export function placesOf(props: readonly Place[] | Place | null | undefined): string[] {
+  const list: readonly Place[] = Array.isArray(props) ? props : props ? [props as Place] : [];
+  const out: string[] = [];
+  for (const p of list) {
+    if (p.archived_at) continue;
+    for (const v of [p.street, p.postal_code, p.city]) if (v) out.push(v);
+  }
+  return out;
 }

@@ -105,9 +105,11 @@ describe("zone detection skips a zone that is off", () => {
     for (const f of [
       "src/lib/address.functions.ts",
       "src/lib/properties.functions.ts",
-      "src/lib/clients.functions.ts",
+      // The new-client quote (getInternalQuote), moved here by #728.
+      "src/lib/internal-quote.server.ts",
       "src/lib/receptionist-booking-store.server.ts",
-      "src/lib/leads.functions.ts",
+      // /leads and the public quote request read zones here (R2-25).
+      "src/lib/lead-service-area.server.ts",
       "src/lib/quote-pricing.functions.ts",
       "src/lib/zones-redetect.server.ts",
       "src/lib/zone-coverage.functions.ts",
@@ -193,7 +195,7 @@ describe("lead quotes skip a zone that is off", () => {
   it("the leads list does not call a lead inside an off zone", () => {
     const off = ZIP_ZONE({ enabled: false });
     expect(leadServiceArea("Troy, MI 48067", [ZIP_ZONE()])).toBe("inside");
-    const src = read("src/lib/leads.functions.ts");
+    const src = read("src/lib/lead-service-area.server.ts");
     expect(src).toMatch(/\.filter\(\s*\(z\) => z\.enabled !== false,?\s*\)/);
     expect(
       leadServiceArea(

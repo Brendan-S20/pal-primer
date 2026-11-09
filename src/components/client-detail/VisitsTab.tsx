@@ -49,6 +49,8 @@ import {
 } from "@/components/training/ClientCalledAtField";
 import { orgToday } from "@/lib/org-day";
 import { toastSaveError } from "@/lib/stale-write-toast";
+import { visitBookedCents } from "@/lib/booked-value";
+import { visitServiceLabel } from "@/lib/subscription-form";
 
 /** A skip's reason as words: a code through the office's labels, free text
  *  (from before reasons were codes) as it was typed. */
@@ -784,16 +786,12 @@ function VisitTable({
                     />
                   )}
                   {v.status === "skipped" && (v.skip_reason_code || v.skip_reason) && (
-                    <span className="ml-1 text-xs text-muted-foreground">
-                      {skipReasonText(v)}
-                    </span>
+                    <span className="ml-1 text-xs text-muted-foreground">{skipReasonText(v)}</span>
                   )}
                   {v.is_deepclean && <MetaChip className="ml-1">Deep clean</MetaChip>}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">
-                  {service
-                    ? `${service.frequency === "one_time" ? "One time" : "Recurring"} service`
-                    : "-"}
+                  {visitServiceLabel(service)}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">
                   {v.properties?.street ?? "-"}
@@ -1063,6 +1061,12 @@ function VisitDetailDrawer({
   const [calledAt, setCalledAt] = useState("");
   const [newStaffId, setNewStaffId] = useState("");
 
+  // Moving and reassigning a visit is routes work (#728): manage_schedule,
+  // which a dispatcher holds. Completing and canceling can bill, so they stay
+  // with canCorrect (manage_client_billing). The server asks the same.
+  const { can: canDo } = usePermissions();
+  const canSchedule = canDo("manage_schedule");
+
   const completeFn = useServerFn(completeVisitFromOffice);
   const rescheduleFn = useServerFn(rescheduleVisitFromOffice);
   const cancelFn = useServerFn(cancelVisitFromOffice);
@@ -1077,7 +1081,7 @@ function VisitDetailDrawer({
   const { data: staffData } = useQuery({
     queryKey: ["org-staff"],
     queryFn: () => listStaffFn(),
-    enabled: canCorrect && scheduled,
+    enabled: (canCorrect || canSchedule) && scheduled,
     staleTime: 60_000,
   });
   const staff = ((staffData as any)?.staff ?? []).filter((s: any) => s.is_field_tech !== false);
@@ -1099,8 +1103,7 @@ function VisitDetailDrawer({
   const completeMut = useMutation({
     mutationFn: (confirmedEarly: boolean) =>
       completeFromOffice(
-        (overrideReason) =>
-          completeFn({ data: { visitId: v.id, confirmedEarly, overrideReason } }),
+        (overrideReason) => completeFn({ data: { visitId: v.id, confirmedEarly, overrideReason } }),
         askWhy,
       ),
     onSuccess: (done) => {
@@ -1245,7 +1248,7 @@ function VisitDetailDrawer({
           {service && (
             <div className="flex items-center justify-between">
               <dt className="text-muted-foreground">Service</dt>
-              <dd>${(service.price_cents / 100).toFixed(2)} /visit</dd>
+              <dd>${(visitBookedCents(service) / 100).toFixed(2)} /visit</dd>
             </div>
           )}
           {(v.skip_reason_code || v.skip_reason) && (
@@ -1259,7 +1262,7 @@ function VisitDetailDrawer({
         {confirmDialog}
         {overrideDialog}
 
-        {canCorrect && (canComplete || canReschedule) && (
+        {((canCorrect && canComplete) || (canSchedule && canReschedule)) && (
           <div className="space-y-3 rounded-md border bg-muted/20 p-3">
             {missed && neverOnARoute && (
               <p className="text-xs text-muted-foreground">
@@ -1275,7 +1278,7 @@ function VisitDetailDrawer({
               </p>
             )}
             <div className="flex flex-wrap items-center gap-1.5">
-              {canComplete && (
+              {canCorrect && canComplete && (
                 <Button
                   size="sm"
                   disabled={completeMut.isPending}
@@ -1300,7 +1303,7 @@ function VisitDetailDrawer({
                   {completeMut.isPending ? "Completing…" : "Mark completed"}
                 </Button>
               )}
-              {canReschedule && (
+              {canSchedule && canReschedule && (
                 <Button
                   size="sm"
                   variant={action === "reschedule" ? "default" : "outline"}
@@ -1312,15 +1315,17 @@ function VisitDetailDrawer({
                   Reschedule…
                 </Button>
               )}
-              {scheduled && (
+              {scheduled && canSchedule && (
+                <Button
+                  size="sm"
+                  variant={action === "reassign" ? "default" : "outline"}
+                  onClick={() => setAction(action === "reassign" ? null : "reassign")}
+                >
+                  Reassign…
+                </Button>
+              )}
+              {scheduled && canCorrect && (
                 <>
-                  <Button
-                    size="sm"
-                    variant={action === "reassign" ? "default" : "outline"}
-                    onClick={() => setAction(action === "reassign" ? null : "reassign")}
-                  >
-                    Reassign…
-                  </Button>
                   <Button
                     size="sm"
                     variant={action === "cancel" ? "destructive" : "outline"}
@@ -1336,7 +1341,7 @@ function VisitDetailDrawer({
               )}
             </div>
 
-            {action === "reschedule" && canReschedule && (
+            {action === "reschedule" && canReschedule && canSchedule && (
               <form
                 className="space-y-2"
                 onSubmit={(e) => {
@@ -1367,7 +1372,7 @@ function VisitDetailDrawer({
               </form>
             )}
 
-            {action === "reassign" && scheduled && (
+            {action === "reassign" && scheduled && canSchedule && (
               <form
                 className="space-y-2"
                 onSubmit={(e) => {
@@ -1403,7 +1408,7 @@ function VisitDetailDrawer({
               </form>
             )}
 
-            {action === "cancel" && scheduled && (
+            {action === "cancel" && scheduled && canCorrect && (
               <form
                 className="space-y-2"
                 onSubmit={(e) => {

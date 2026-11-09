@@ -59,6 +59,16 @@ export function canRunSetup(role: AppRole | null): boolean {
   return canAccess(role, SETUP_PATH);
 }
 
+/** Who is PROMPTED to set the business up: the banner on every page and the
+ *  dashboard's Get started card. The owner only (R2-51). An office manager
+ *  can still open /setup and do the steps their role allows, but was shown a
+ *  "5 short steps" prompt beside the owner's six, with a different done-count
+ *  for the same business, on every page. Setting the business up is the
+ *  owner's job; the prompt is the owner's. */
+export function promptsSetup(role: AppRole | null): boolean {
+  return role === "owner" && canRunSetup(role);
+}
+
 /** The steps this person can actually do, in the server's order. */
 export function stepsFor<T extends { gate?: string }>(
   steps: readonly T[],
@@ -214,7 +224,11 @@ export function useSetupGuide(): State {
   useEffect(() => {
     resolvePhase();
   }, []);
-  return useSyncExternalStore(subscribe, () => state, () => SERVER_STATE);
+  return useSyncExternalStore(
+    subscribe,
+    () => state,
+    () => SERVER_STATE,
+  );
 }
 
 /** Test seam: start every test from "unknown". */

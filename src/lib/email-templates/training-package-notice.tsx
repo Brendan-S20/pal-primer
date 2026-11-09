@@ -9,7 +9,7 @@ import {
   Preview,
   Text,
 } from "@react-email/components";
-import { styles, OrgFooter, type OrgContact, TenantHeader } from "./_shared";
+import { styles, OrgFooter, type OrgContact, TenantHeader, howToReach, cap } from "./_shared";
 import type { TemplateEntry } from "./registry";
 
 // Sent once per package for each notice: when a used session leaves one
@@ -73,7 +73,9 @@ const TrainingPackageNotice = ({
               </Button>
             </>
           ) : (
-            <Text style={styles.text}>Reply to this email to book your next lesson.</Text>
+            <Text style={styles.text}>
+              {cap(howToReach({ ...orgContact, orgName }))} to book your next lesson.
+            </Text>
           )}
           <OrgFooter {...orgContact} orgName={orgName} />
         </Container>

@@ -6,6 +6,7 @@
 
 import * as React from "react";
 import { render } from "react-email";
+import { EMAIL_TEXT_OPTIONS } from "@/lib/email/plain-text";
 import { TEMPLATES } from "@/lib/email-templates/registry";
 import { appUrl } from "@/lib/app-origin";
 import { emailProviderConfigured } from "@/lib/email/provider.server";
@@ -315,7 +316,7 @@ export async function enqueueAppEmail(params: EnqueueParams): Promise<EnqueueRes
   try {
     const element = React.createElement(entry.component, mergedData);
     html = await render(element);
-    text = await render(element, { plainText: true });
+    text = await render(element, EMAIL_TEXT_OPTIONS);
   } catch (e) {
     console.error("email render failed", params.templateName, e);
     return { ok: false, reason: "render_failed" };

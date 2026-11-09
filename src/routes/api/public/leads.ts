@@ -315,7 +315,20 @@ export const Route = createFileRoute("/api/public/leads")({
           serviceName: service?.name ?? null,
         });
 
-        return new Response(JSON.stringify({ ok: true }), {
+        // Whether a zone lists this ZIP (R2-25), so the thank-you can say so
+        // rather than leave an out-of-area visitor waiting for a call. The
+        // office's own verdict on /leads, read the same way; any doubt is
+        // "unknown" and the visitor reads the usual thank-you. The lead is
+        // saved either way: this is a word to the visitor, not a refusal.
+        let serviceArea: "inside" | "outside" | "unknown" = "unknown";
+        try {
+          const { leadServiceAreas } = await import("@/lib/lead-service-area.server");
+          [serviceArea] = await leadServiceAreas(supabaseAdmin, orgId, [location]);
+        } catch (e) {
+          console.error("public lead service area check failed", orgId, e);
+        }
+
+        return new Response(JSON.stringify({ ok: true, serviceArea }), {
           status: 201,
           headers: jsonHeaders,
         });

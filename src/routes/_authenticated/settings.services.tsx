@@ -216,7 +216,12 @@ function ServicesPage() {
   const [form, setForm] = useState<FormState | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const refresh = () => qc.invalidateQueries({ queryKey: ["services"] });
+  // The setup checklist's price step is done from this page (R2-47): a walk
+  // priced here left "Next: Price your walks" up until its cache ran out.
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["services"] });
+    qc.invalidateQueries({ queryKey: ["onboarding-status"] });
+  };
 
   const save = useMutation({
     mutationFn: async (f: FormState) => {

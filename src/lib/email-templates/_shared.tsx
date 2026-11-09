@@ -53,6 +53,38 @@ export interface OrgContact extends TenantBrand {
   orgAddress?: string | null;
 }
 
+/** A business name with its own closing period taken off, for the end of a
+ *  sentence: "Thanks for choosing Summit Paws Co." rather than "Co.." (R2-50). */
+export function noEndPeriod(s: string): string {
+  return s.trim().replace(/\.+$/, "");
+}
+
+/** Close a sentence with exactly one period, whatever it ended with. */
+export function sentence(s: string): string {
+  return `${noEndPeriod(s)}.`;
+}
+
+/** First letter upper case, for a phrase that starts a sentence. */
+export function cap(s: string): string {
+  return s ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
+/**
+ * How a customer gets an answer, as a phrase to finish a sentence with.
+ *
+ * Mail sent as a business comes from noreply@ and carries a reply-to only when
+ * the business has a contact email (enqueue.server.ts, BUILD-5). Without one,
+ * "reply to this email" sends the customer's answer to a mailbox nobody reads
+ * (R2-50). So the phrase follows what is on file: reply when a reply arrives
+ * somewhere, the phone when there is one, and the business by name otherwise.
+ */
+export function howToReach(c: OrgContact): string {
+  if ((c.orgEmail ?? "").trim()) return "reply to this email";
+  const phone = (c.orgPhone ?? "").trim();
+  if (phone) return `call ${phone}`;
+  return `contact ${noEndPeriod(c.orgName ?? "") || "us"}`;
+}
+
 /**
  * Who sent this, and how to reach them.
  *

@@ -139,7 +139,8 @@ describe("the clients list counts the dogs the client page counts", () => {
   it("excludes inactive dogs and archived properties", () => {
     const src = codeOnly(read("src/lib/clients.functions.ts"));
     expect(src).toMatch(
-      /\.select\("id, client_id, street, created_at, dogs\(id, active, species\)"\)/,
+      // postal_code and city since R2-27: a search finds a client by ZIP or town.
+      /\.select\("id, client_id, street, postal_code, city, created_at, dogs\(id, active, species\)"\)/,
     );
     expect(src).toMatch(/\.is\("archived_at", null\)/);
     // Counted through activeDogCount since #429, the helper PropertiesTab

@@ -94,7 +94,7 @@ async function loadClientRoster(supabase: any, orgId: string, seesInvoices: bool
     fetchAllPagesConcurrently<any>((a, b) =>
       supabase
         .from("properties")
-        .select("id, client_id, street, created_at, dogs(id, active, species)")
+        .select("id, client_id, street, postal_code, city, created_at, dogs(id, active, species)")
         .eq("organization_id", orgId)
         .is("archived_at", null)
         .order("created_at", { ascending: true })
@@ -117,7 +117,9 @@ async function loadClientRoster(supabase: any, orgId: string, seesInvoices: bool
       ? fetchAllPagesConcurrently<any>((a, b) =>
           supabase
             .from("invoices")
-            .select("client_id, total_cents, credit_applied_cents, amount_paid_cents, status")
+            .select(
+              "client_id, total_cents, credit_applied_cents, amount_paid_cents, deposit_for_invoice_id, status",
+            )
             .eq("organization_id", orgId)
             .eq("status", "open")
             .order("id")
@@ -204,6 +206,8 @@ async function decorateClients(clients: any[], props: any[], subs: any[], invs: 
     id: string;
     client_id: string;
     street: string | null;
+    postal_code?: string | null;
+    city?: string | null;
     dogs: Array<{ active?: boolean | null; species?: string | null }> | null;
   }>) {
     if (!p.client_id) continue;
@@ -213,8 +217,10 @@ async function decorateClients(clients: any[], props: any[], subs: any[], invs: 
     );
     talliesByClient.set(p.client_id, [...(talliesByClient.get(p.client_id) ?? []), tally]);
     if (p.street && !streetByClient.has(p.client_id)) streetByClient.set(p.client_id, p.street);
-    if (p.street)
-      streetsByClient.set(p.client_id, [...(streetsByClient.get(p.client_id) ?? []), p.street]);
+    // With its ZIP and town, so a search by either finds the client (R2-27).
+    const words = [p.street, p.postal_code, p.city].filter((w): w is string => !!w);
+    if (words.length)
+      streetsByClient.set(p.client_id, [...(streetsByClient.get(p.client_id) ?? []), ...words]);
   }
 
   // Same AR math as Dashboard "AR Open" and Reports "Outstanding" (finding #7).
@@ -272,12 +278,12 @@ const CLIENT_ROW_SELECT_NO_INVOICES =
  *  a dispatcher's request does not ask for invoices at all. */
 const CLIENT_ROW_SELECT =
   CLIENT_ROW_SELECT_NO_INVOICES +
-  ", invoices(total_cents, credit_applied_cents, amount_paid_cents, status)";
+  ", invoices(total_cents, credit_applied_cents, amount_paid_cents, deposit_for_invoice_id, status)";
 
 /** What a search or a balance is checked against: a client's own words and
  *  every street, nothing the list shows but does not search. */
 const CLIENT_MATCH_SELECT =
-  "id, created_at, display_name, company, first_name, last_name, primary_email, primary_phone, import_external_id, tags, active, churn_score, properties(street, archived_at)";
+  "id, created_at, display_name, company, first_name, last_name, primary_email, primary_phone, import_external_id, tags, active, churn_score, properties(street, postal_code, city, archived_at)";
 
 /** A client's services that have not ended, for the "No service plan"
  *  anti-join. On every clients select that applyClientFilters narrows, and
@@ -285,7 +291,7 @@ const CLIENT_MATCH_SELECT =
 const RUNNING_EMBED = ", running:subscriptions(id)";
 /** The open invoices of a client with any, for "Has balance". */
 const OWED_EMBED =
-  ", owed:invoices!inner(client_id, total_cents, credit_applied_cents, amount_paid_cents, status)";
+  ", owed:invoices!inner(client_id, total_cents, credit_applied_cents, amount_paid_cents, deposit_for_invoice_id, status)";
 /** The properties whose street a search matched. */
 const STREET_HIT_EMBED = ", hit:properties!inner(street, archived_at)";
 
@@ -376,7 +382,7 @@ async function matchingClientIds(
   today: string,
 ): Promise<string[]> {
   const { fetchAllPagesConcurrently } = await import("@/lib/supabase-paging.server");
-  const { clientMatchesQuery, clientSearchOrFilter, streetSearchPattern } =
+  const { clientMatchesQuery, clientSearchOrFilter, placeSearchOrFilter, placesOf } =
     await import("@/lib/client-search");
   const { outstandingByClient } = await import("@/lib/ar");
   const q = (f.q ?? "").trim();
@@ -402,11 +408,11 @@ async function matchingClientIds(
   if (!q) candidates = await read(false, (b) => b);
   else {
     const or = clientSearchOrFilter(q);
-    const street = streetSearchPattern(q);
+    const place = placeSearchOrFilter(q);
     const [byClient, byStreet] = await Promise.all([
       or ? read(false, (b) => b.or(or)) : Promise.resolve([]),
-      street
-        ? read(true, (b) => b.ilike("hit.street", street).is("hit.archived_at", null))
+      place
+        ? read(true, (b) => b.or(place, { referencedTable: "hit" }).is("hit.archived_at", null))
         : Promise.resolve([]),
     ]);
     const byId = new Map<string, any>();
@@ -418,10 +424,7 @@ async function matchingClientIds(
     .filter((c) => {
       if (owing && !((outstandingByClient(c.owed ?? []).get(c.id) ?? 0) > 0)) return false;
       if (!q) return true;
-      const streets = ((c.properties ?? []) as any[])
-        .filter((p) => !p.archived_at)
-        .map((p) => p.street);
-      return clientMatchesQuery({ ...c, streets }, q);
+      return clientMatchesQuery({ ...c, streets: placesOf(c.properties) }, q);
     })
     .sort(byNewest)
     .map((c) => c.id as string);
@@ -560,7 +563,9 @@ export const listClientsSummary = createServerFn({ method: "GET" })
         : fetchAllPagesConcurrently<any>((a, b) =>
             supabase
               .from("invoices")
-              .select("client_id, total_cents, credit_applied_cents, amount_paid_cents, status")
+              .select(
+                "client_id, total_cents, credit_applied_cents, amount_paid_cents, deposit_for_invoice_id, status",
+              )
               .eq("organization_id", orgId)
               .eq("status", "open")
               .order("id")
@@ -608,6 +613,9 @@ const searchClientsSchema = z.object({
   limit: z.number().int().min(1).max(50).optional(),
   /** Leave archived clients out (the pickers); Cmd-K finds them too. */
   activeOnly: z.boolean().optional(),
+  /** One client by id: the one a picker opens already holding (a draft
+   *  quote's client), so it can show the name without the roster. */
+  id: z.string().uuid().optional(),
 });
 
 /**
@@ -627,7 +635,7 @@ export const searchClients = createServerFn({ method: "GET" })
   .inputValidator((d) => searchClientsSchema.parse(d ?? {}))
   .handler(async ({ data, context }) => {
     const { orgId, db: supabase } = await directoryReader(context.supabase, context.userId);
-    const { clientMatchesQuery, clientSearchOrFilter, streetSearchPattern } =
+    const { clientMatchesQuery, clientSearchOrFilter, placeSearchOrFilter, placesOf } =
       await import("@/lib/client-search");
     const q = (data.q ?? "").trim();
     const limit = data.limit ?? 20;
@@ -654,6 +662,16 @@ export const searchClients = createServerFn({ method: "GET" })
       street: firstStreet(c.properties),
     });
 
+    if (data.id) {
+      const { data: rows, error } = await scoped(
+        `${cols}, properties(street, archived_at, created_at)`,
+      )
+        .eq("id", data.id)
+        .limit(1);
+      if (error) throw new Error(error.message);
+      return { clients: ((rows ?? []) as any[]).map(shape) };
+    }
+
     if (!q) {
       const { data: rows, error } = await scoped(
         `${cols}, properties(street, archived_at, created_at)`,
@@ -665,7 +683,7 @@ export const searchClients = createServerFn({ method: "GET" })
     }
 
     const or = clientSearchOrFilter(q);
-    const street = streetSearchPattern(q);
+    const place = placeSearchOrFilter(q);
     // The SQL filter is a superset built from one word, and clientMatchesQuery
     // has the last word. So candidates are read a batch at a time until there
     // are `limit` real matches or nothing is left: a fixed first batch could
@@ -681,18 +699,18 @@ export const searchClients = createServerFn({ method: "GET" })
     const sources = [
       or
         ? (from: number, size: number) =>
-            scoped(`${cols}, properties(street, archived_at, created_at)`)
+            scoped(`${cols}, properties(street, postal_code, city, archived_at, created_at)`)
               .or(or)
               .order("display_name")
               .order("id")
               .range(from, from + size - 1)
         : null,
-      street
+      place
         ? (from: number, size: number) =>
             scoped(
-              `${cols}, properties(street, archived_at, created_at), hit:properties!inner(street, archived_at)`,
+              `${cols}, properties(street, postal_code, city, archived_at, created_at), hit:properties!inner(street, archived_at)`,
             )
-              .ilike("hit.street", street)
+              .or(place, { referencedTable: "hit" })
               .is("hit.archived_at", null)
               .order("display_name")
               .order("id")
@@ -715,10 +733,7 @@ export const searchClients = createServerFn({ method: "GET" })
         if (rows.length < size) done[k] = true;
         for (const c of rows) {
           if (byId.has(c.id)) continue;
-          const streets = (Array.isArray(c.properties) ? c.properties : [])
-            .filter((p: any) => !p.archived_at)
-            .map((p: any) => p.street);
-          const entry = { ...c, streets };
+          const entry = { ...c, streets: placesOf(c.properties) };
           byId.set(c.id, entry);
           if (clientMatchesQuery(entry, q)) hitIds.add(c.id);
         }
@@ -1388,107 +1403,8 @@ export const getInternalQuote = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
-    const { data: org, error: oErr } = await supabase
-      .from("organizations")
-      .select("currency, frequency_multipliers")
-      .eq("id", orgId)
-      .single();
-    if (oErr) throw new Error(oErr.message);
-
-    const { data: zones, error: zErr } = await supabase
-      .from("zones")
-      .select(
-        "id, name, priority, account_type, postal_prefix, zip_codes, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, area_max_charge_cents, commercial_base_cents, commercial_per_unit_cents, commercial_per_acre_cents, commercial_per_station_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, enabled",
-      )
-      .eq("organization_id", orgId);
-    if (zErr) throw new Error(zErr.message);
-
-    const { matchZone } = await import("@/lib/zone-match");
-    const z = matchZone((zones ?? []) as any[], {
-      postalCode: data.postalCode,
-      point:
-        data.latitude != null && data.longitude != null
-          ? { lat: data.latitude, lng: data.longitude }
-          : null,
-      accountType: data.accountType ?? null,
-    });
-
-    if (!z) return { available: false as const };
-    const { perVisitMultiplier } = await import("@/lib/frequency-multipliers");
-    const mult = perVisitMultiplier(org.frequency_multipliers as any, data.frequency);
-    const mode = (z.pricing_mode ?? "flat") as "flat" | "per_sqft" | "per_acre";
-
-    // A commercial account (an HOA, a park) is priced from the zone's
-    // commercial rates: base + per unit + per acre + per station, then the
-    // frequency multiplier. The wizard used to ask for a quote only for a
-    // residential account, so a commercial plan was saved with no zone and a
-    // price somebody typed (#658, R2-21).
-    if (data.accountType === "commercial") {
-      const { computeCommercialZonePrice, zoneHasCommercialPricing } =
-        await import("@/lib/pricing");
-      const rated = zoneHasCommercialPricing(z as any);
-      const price = rated
-        ? computeCommercialZonePrice(z as any, {
-            unitCount: data.unitCount ?? 0,
-            stationCount: data.stationCount ?? 0,
-            boundaryAreaSqm: data.boundaryAreaSqm,
-            multiplier: mult,
-          })
-        : null;
-      return {
-        available: true as const,
-        quote: {
-          zoneId: z.id as string,
-          zoneName: z.name as string,
-          pricingMode: "commercial" as const,
-          areaBasisCents: price?.acreageCents ?? null,
-          basePriceCents: price?.perVisitCents ?? null,
-          perDogAddlCents: 0,
-          // null: the zone has no commercial rates, so the office sets the
-          // price; the zone is still the plan's.
-          recurringPriceCents: price?.recurringCents ?? null,
-          initialCleanupCents: z.initial_cleanup_cents ?? 0,
-          currency: org.currency as string,
-          commercial: price
-            ? {
-                baseCents: price.baseCents,
-                unitCents: price.unitCents,
-                acreageCents: price.acreageCents,
-                stationCents: price.stationCents,
-              }
-            : null,
-        },
-      };
-    }
-
-    const { computeZoneVisitPrice } = await import("@/lib/pricing");
-    const price = computeZoneVisitPrice(
-      {
-        base_price_cents: z.base_price_cents,
-        per_dog_addl_cents: z.per_dog_addl_cents,
-        pricing_mode: mode,
-        price_per_sqft_cents: Number(z.price_per_sqft_cents ?? 0),
-        price_per_acre_cents: z.price_per_acre_cents,
-        area_min_charge_cents: z.area_min_charge_cents,
-        area_max_charge_cents: z.area_max_charge_cents,
-      },
-      { dogCount: data.dogCount, boundaryAreaSqm: data.boundaryAreaSqm, multiplier: mult },
-    );
-    return {
-      available: true as const,
-      quote: {
-        zoneId: z.id as string,
-        zoneName: z.name as string,
-        pricingMode: mode,
-        areaBasisCents: price.areaBasisCents,
-        basePriceCents: price.perVisitCents,
-        perDogAddlCents: z.per_dog_addl_cents ?? 0,
-        recurringPriceCents: price.recurringCents,
-        initialCleanupCents: z.initial_cleanup_cents ?? 0,
-        currency: org.currency as string,
-        commercial: null,
-      },
-    };
+    const { internalQuote } = await import("@/lib/internal-quote.server");
+    return internalQuote(supabase, orgId, data);
   });
 
 // ---------- Composite onboarding: client + property + dogs + subscription ----------
@@ -1618,6 +1534,52 @@ export const onboardClient = createServerFn({ method: "POST" })
     // than after a client exists with half of what they asked for.
     if (data.firstCleanup) {
       await requirePermission(supabase, userId, "manage_client_billing");
+    }
+
+    // A plan is booking (#728). Someone who sets prices types any price, as
+    // before. Anyone else who books (a dispatcher) books the plan at the set
+    // price the server works out here from the business's own zones and
+    // services, the price the wizard showed; a different price, or billing in
+    // advance, is refused BEFORE anything is written, never quietly replaced.
+    // The subscriptions write policy stays manage_pricing, so that plan is
+    // written as the service role, onto the client and property this request
+    // has just created in the caller's own business.
+    let planAtSetPrice: { cents: number; zoneId: string | null } | null = null;
+    if (data.subscription) {
+      const caller = await requirePermission(supabase, userId, "booking");
+      if (caller.orgId !== orgId) throw new Error("Not authorized");
+      const { hasPermission } = await import("@/lib/permissions");
+      if (!hasPermission(caller.role, "manage_pricing")) {
+        const s = data.subscription;
+        const { PLAN_CADENCE_IS_BILLING, planSetPriceCents } =
+          await import("@/lib/plan-set-price.server");
+        const { priceOverrideRefusal } = await import("@/lib/booking-price.server");
+        if (
+          (s.billingCadence ?? "postpaid") !== "postpaid" &&
+          !hasPermission(caller.role, "manage_client_billing")
+        )
+          throw new Error(PLAN_CADENCE_IS_BILLING);
+        const isRes = data.accountType === "residential";
+        const set = await planSetPriceCents(supabase, {
+          orgId,
+          accountType: data.accountType,
+          frequency: s.frequency,
+          serviceId: s.serviceId ?? null,
+          postalCode: data.postalCode,
+          latitude: data.latitude,
+          longitude: data.longitude,
+          boundaryAreaSqm: data.boundaryAreaSqm,
+          dogCount: isRes ? (s.dogCount ?? Math.max(1, data.dogs?.length ?? 1)) : 1,
+          unitCount: isRes ? undefined : (s.unitCount ?? 1),
+          stationCount: isRes ? undefined : (data.stationCount ?? 0),
+        });
+        if (set.cents == null) throw new Error(set.reason);
+        if (s.priceCents !== set.cents) throw new Error(priceOverrideRefusal(set.cents));
+        // The zone is the quote's, not one the browser names.
+        if (s.zoneId && set.zoneId && s.zoneId !== set.zoneId)
+          throw new Error(priceOverrideRefusal(set.cents));
+        planAtSetPrice = { cents: set.cents, zoneId: set.zoneId };
+      }
     }
 
     // 0) the lead this client is converted from, if any. Checked BEFORE the
@@ -1795,7 +1757,16 @@ export const onboardClient = createServerFn({ method: "POST" })
     // 4) subscription
     let firstVisitOn: string | null = null;
     if (data.subscription) {
-      const s = data.subscription;
+      // At the set price (#728): the price and zone the server worked out
+      // above, never the browser's.
+      const s = planAtSetPrice
+        ? {
+            ...data.subscription,
+            priceCents: planAtSetPrice.cents,
+            zoneId: planAtSetPrice.zoneId ?? undefined,
+            billingCadence: "postpaid" as const,
+          }
+        : data.subscription;
       const isRes = data.accountType === "residential";
       if (s.startedOn) {
         const { data: orgRow } = await supabase
@@ -1814,29 +1785,32 @@ export const onboardClient = createServerFn({ method: "POST" })
       const { normalizeWeekdays } = await import("@/lib/weekday-set");
       const weekdays =
         s.frequency === "weekly" && s.weekdays?.length ? normalizeWeekdays(s.weekdays) : null;
-      const { data: subRow, error: sErr } = await supabase
-        .from("subscriptions")
-        .insert({
-          organization_id: orgId,
-          client_id: clientId,
-          property_id: propertyId,
-          account_type: data.accountType,
-          frequency: s.frequency,
-          price_cents: s.priceCents,
-          dog_count: isRes ? (s.dogCount ?? data.dogs?.length ?? 1) : null,
-          unit_count: !isRes ? (s.unitCount ?? 1) : null,
-          // The zone the wizard quoted from; for a commercial plan with no
-          // quote, the zone the property is in, so the plan is not saved
-          // zoneless and flagged "No pricing zone recorded" (#658, R2-21).
-          zone_id: s.zoneId ?? (!isRes ? autoZoneId : null),
-          billing_cadence: s.billingCadence ?? "postpaid",
-          preferred_weekdays: !weekdays && s.preferredWeekdays?.length ? s.preferredWeekdays : null,
-          ...(s.startedOn ? { started_on: s.startedOn } : {}),
-          ...(s.serviceId ? { service_id: s.serviceId } : {}),
-          ...(weekdays ? { weekdays } : {}),
-        })
-        .select("id")
-        .single();
+      const planRow = {
+        organization_id: orgId,
+        client_id: clientId,
+        property_id: propertyId,
+        account_type: data.accountType,
+        frequency: s.frequency,
+        price_cents: s.priceCents,
+        dog_count: isRes ? (s.dogCount ?? data.dogs?.length ?? 1) : null,
+        unit_count: !isRes ? (s.unitCount ?? 1) : null,
+        // The zone the wizard quoted from; for a commercial plan with no
+        // quote, the zone the property is in, so the plan is not saved
+        // zoneless and flagged "No pricing zone recorded" (#658, R2-21).
+        zone_id: s.zoneId ?? (!isRes ? autoZoneId : null),
+        billing_cadence: s.billingCadence ?? "postpaid",
+        preferred_weekdays: !weekdays && s.preferredWeekdays?.length ? s.preferredWeekdays : null,
+        ...(s.startedOn ? { started_on: s.startedOn } : {}),
+        ...(s.serviceId ? { service_id: s.serviceId } : {}),
+        ...(weekdays ? { weekdays } : {}),
+      };
+      // A plan at the set price is written past the pricing policy, as the
+      // service role, by insertPlanAtSetPrice, which re-checks that the
+      // client and property written above are the caller's business's.
+      // Anyone who sets prices writes it with their own key, as before.
+      const { data: subRow, error: sErr } = planAtSetPrice
+        ? await (await import("@/lib/plan-set-price.server")).insertPlanAtSetPrice(planRow)
+        : await supabase.from("subscriptions").insert(planRow).select("id").single();
       if (sErr) {
         await undoClient();
         throw new Error(sErr.message);

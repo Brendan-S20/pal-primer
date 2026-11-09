@@ -9,8 +9,8 @@ import { canAccess, useMyRole } from "@/hooks/useMyRole";
 import { getOnboardingStatus, dismissOnboarding } from "@/lib/onboarding.functions";
 import {
   SETUP_PATH,
-  canRunSetup,
   openSetupGuide,
+  promptsSetup,
   readRememberedStep,
   startingStep,
   stepsFor,
@@ -97,8 +97,8 @@ export function OnboardingChecklist({
   // The same six steps the guided setup walks, and only the ones this role
   // can do: a dispatcher was shown "Connect Stripe" and "Invite tech" with
   // buttons into pages that turned them away. Nobody who cannot run setup
-  // gets the card at all.
-  if (!canRunSetup(role)) return null;
+  // gets the card at all, and since R2-51 only the owner is prompted.
+  if (!promptsSetup(role)) return null;
   const steps = stepsFor(data.steps, role);
   if (steps.length === 0) return null;
   const completed = steps.filter((s) => s.done).length;

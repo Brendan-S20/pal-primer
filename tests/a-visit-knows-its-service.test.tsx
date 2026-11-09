@@ -197,7 +197,9 @@ describe("the plan's Service picker", () => {
     const tab = read("src/components/client-detail/ServicesTab.tsx");
     expect(tab).toMatch(/<ServicePicker/);
     expect(tab).toMatch(
-      /serviceId: effectiveServiceId\(form\.serviceId, orgServices\) \?\? undefined/,
+      // With the business's lines (RC3): a business that does not scoop is
+      // not started on its seeded pet-waste service.
+      /serviceId: effectiveServiceId\(form\.serviceId, orgServices, pickerLines\) \?\? undefined/,
     );
     const fns = read("src/lib/subscriptions.functions.ts");
     expect(fns.match(/serviceId: z\.string\(\)\.uuid\(\)\.optional\(\)/g)).toHaveLength(2);

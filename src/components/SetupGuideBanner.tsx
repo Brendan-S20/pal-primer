@@ -7,8 +7,8 @@ import { useMyRole } from "@/hooks/useMyRole";
 import { getOnboardingStatus } from "@/lib/onboarding.functions";
 import {
   SETUP_PATH,
-  canRunSetup,
   closeSetupGuide,
+  promptsSetup,
   readRememberedStep,
   startingStep,
   stepsFor,
@@ -38,7 +38,7 @@ export function SetupGuideBanner() {
   const { role } = useMyRole();
   const guide = useSetupGuide();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const allowed = canRunSetup(role);
+  const allowed = promptsSetup(role);
   const statusFn = useServerFn(getOnboardingStatus);
   const { data } = useQuery({
     queryKey: ["onboarding-status"],

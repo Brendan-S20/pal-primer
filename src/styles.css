@@ -819,3 +819,20 @@ html[data-nav-dir="none"]::view-transition-new(*) {
     stroke-dashoffset: var(--hs-dash);
   }
 }
+
+/*
+ * ── BOTTOM BARS STEP ASIDE WHILE THE KEYBOARD IS UP (native-r2-06) ───────
+ *
+ * src/lib/keyboard-chrome.ts sets data-keyboard="open" on <html> while a text
+ * field has focus on a touch screen (native app only). On a phone-sized
+ * screen, or a phone on its side, the tab bar and My Day's Next up / Resume
+ * bar would otherwise ride above the keyboard and cover the field being typed
+ * in: on the iPhone Duo's cover display they left two lines of the walk note.
+ * Every bar pinned to the bottom carries data-bottom-chrome. An iPad keeps
+ * its bars; it has the height. No transition: they are simply not there.
+ */
+@media (max-width: 767px), (max-height: 500px) {
+  :root[data-keyboard="open"] [data-bottom-chrome] {
+    display: none;
+  }
+}

@@ -3225,11 +3225,13 @@ export type Database = {
         Row: {
           accounting_remote_id: string | null
           amount_paid_cents: number
+          amount_refunded_cents: number
           checkout_url: string | null
           client_id: string
           created_at: string
           creation_key: string | null
           credit_applied_cents: number
+          deposit_for_invoice_id: string | null
           currency: string
           due_on: string | null
           id: string
@@ -3260,11 +3262,13 @@ export type Database = {
         Insert: {
           accounting_remote_id?: string | null
           amount_paid_cents?: number
+          amount_refunded_cents?: number
           checkout_url?: string | null
           client_id: string
           created_at?: string
           creation_key?: string | null
           credit_applied_cents?: number
+          deposit_for_invoice_id?: string | null
           currency?: string
           due_on?: string | null
           id?: string
@@ -3295,11 +3299,13 @@ export type Database = {
         Update: {
           accounting_remote_id?: string | null
           amount_paid_cents?: number
+          amount_refunded_cents?: number
           checkout_url?: string | null
           client_id?: string
           created_at?: string
           creation_key?: string | null
           credit_applied_cents?: number
+          deposit_for_invoice_id?: string | null
           currency?: string
           due_on?: string | null
           id?: string
@@ -4119,6 +4125,44 @@ export type Database = {
           },
         ]
       }
+      org_vaccine_policy_changes: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          id: string
+          new_value: string
+          old_value: string | null
+          organization_id: string
+          setting: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          new_value: string
+          old_value?: string | null
+          organization_id: string
+          setting: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          new_value?: string
+          old_value?: string | null
+          organization_id?: string
+          setting?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_vaccine_policy_changes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizations: {
         Row: {
           active_client_count: number
@@ -4275,6 +4319,8 @@ export type Database = {
           trial_ends_at: string | null
           updated_at: string
           vaccine_rule: string
+          vaccine_start_rule: string
+          vaccine_start_rule_set_at: string | null
           visit_checklist: Json
           work_days: number[]
           workday_end: string
@@ -4435,6 +4481,8 @@ export type Database = {
           trial_ends_at?: string | null
           updated_at?: string
           vaccine_rule?: string
+          vaccine_start_rule?: string
+          vaccine_start_rule_set_at?: string | null
           visit_checklist?: Json
           work_days?: number[]
           workday_end?: string
@@ -4595,6 +4643,8 @@ export type Database = {
           trial_ends_at?: string | null
           updated_at?: string
           vaccine_rule?: string
+          vaccine_start_rule?: string
+          vaccine_start_rule_set_at?: string | null
           visit_checklist?: Json
           work_days?: number[]
           workday_end?: string
@@ -4638,6 +4688,7 @@ export type Database = {
           paid_at: string | null
           raw_event: Json | null
           reference: string | null
+          refunded_cents: number
           status: Database["public"]["Enums"]["payment_status"]
           stripe_checkout_session_id: string | null
           stripe_payment_intent_id: string | null
@@ -4660,6 +4711,7 @@ export type Database = {
           paid_at?: string | null
           raw_event?: Json | null
           reference?: string | null
+          refunded_cents?: number
           status?: Database["public"]["Enums"]["payment_status"]
           stripe_checkout_session_id?: string | null
           stripe_payment_intent_id?: string | null
@@ -4682,6 +4734,7 @@ export type Database = {
           paid_at?: string | null
           raw_event?: Json | null
           reference?: string | null
+          refunded_cents?: number
           status?: Database["public"]["Enums"]["payment_status"]
           stripe_checkout_session_id?: string | null
           stripe_payment_intent_id?: string | null
@@ -4837,6 +4890,73 @@ export type Database = {
           },
           {
             foreignKeyName: "pet_groom_notes_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pet_safety_entries: {
+        Row: {
+          body: string
+          created_at: string
+          dog_id: string
+          entry_type: string
+          id: string
+          incident_kind: string | null
+          occurred_at: string
+          organization_id: string
+          reported_by: string | null
+          reporter_name: string
+          storage_path: string | null
+          visit_id: string | null
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          dog_id: string
+          entry_type: string
+          id?: string
+          incident_kind?: string | null
+          occurred_at?: string
+          organization_id: string
+          reported_by?: string | null
+          reporter_name: string
+          storage_path?: string | null
+          visit_id?: string | null
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          dog_id?: string
+          entry_type?: string
+          id?: string
+          incident_kind?: string | null
+          occurred_at?: string
+          organization_id?: string
+          reported_by?: string | null
+          reporter_name?: string
+          storage_path?: string | null
+          visit_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pet_safety_entries_dog_id_fkey"
+            columns: ["dog_id"]
+            isOneToOne: false
+            referencedRelation: "dogs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pet_safety_entries_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pet_safety_entries_visit_id_fkey"
             columns: ["visit_id"]
             isOneToOne: false
             referencedRelation: "visits"
@@ -9349,6 +9469,7 @@ export type Database = {
         Args: { _name: string; _write: boolean }
         Returns: boolean
       }
+      can_use_pet_safety_photo: { Args: { name: string }; Returns: boolean }
       can_use_vaccine_record: {
         Args: { name: string; write: boolean }
         Returns: boolean
@@ -9757,6 +9878,7 @@ export type Database = {
       }
       increment_unit_offense: { Args: { _unit_id: string }; Returns: undefined }
       invoice_paid_cents: { Args: { _invoice_id: string }; Returns: number }
+      invoice_refunded_cents: { Args: { _invoice_id: string }; Returns: number }
       invoice_stay: { Args: { _stay_id: string }; Returns: string }
       is_org_member: {
         Args: { _org_id: string; _user_id: string }
@@ -10562,6 +10684,15 @@ export type Database = {
         }
         Returns: Json
       }
+      refund_manual_payment: {
+        Args: {
+          _amount_cents: number
+          _payment_id: string
+          _reason: string
+          _reverse?: boolean
+        }
+        Returns: Json
+      }
       record_walk_report: {
         Args: {
           _pee: boolean
@@ -10784,6 +10915,10 @@ export type Database = {
       set_staff_active: {
         Args: { _active: boolean; _staff_id: string }
         Returns: undefined
+      }
+      set_vaccine_start_rule: {
+        Args: { _org_id: string; _rule: string }
+        Returns: string
       }
       set_training_session_rules: {
         Args: {
@@ -11030,6 +11165,22 @@ export type Database = {
       visit_completion_billing_blocker: {
         Args: { _visit_id: string }
         Returns: string
+      }
+      visit_missing_vaccines: {
+        Args: { _visit_id: string }
+        Returns: {
+          dog_id: string
+          dog_name: string
+          vaccine: string
+        }[]
+      }
+      visit_missing_vaccines_unchecked: {
+        Args: { _visit_id: string }
+        Returns: {
+          dog_id: string
+          dog_name: string
+          vaccine: string
+        }[]
       }
       void_addon_charge: { Args: { _charge_id: string }; Returns: undefined }
       void_invoice: { Args: { _invoice_id: string }; Returns: undefined }
