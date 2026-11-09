@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
 import { requirePermission } from "@/lib/authz.server";
+import { hasPermission } from "@/lib/permissions";
 import { readRequestedCare, type RequestedCareChange } from "@/lib/stays";
 
 export const confirmStay = createServerFn({ method: "POST" })
@@ -17,7 +18,12 @@ export const confirmStay = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    await requirePermission(context.supabase, context.userId, "manage_pricing");
+    // Booking, not pricing (#616): a dispatcher confirms a requested stay at
+    // the service's price. A deposit is a price decision (confirm_stay
+    // refuses it too, migration 20261109120000).
+    const { role } = await requirePermission(context.supabase, context.userId, "booking");
+    if (data.depositCents != null && !hasPermission(role, "manage_pricing"))
+      throw new Error("Only an owner or office manager can ask for a deposit.");
     const { data: invoiceId, error } = await context.supabase.rpc("confirm_stay", {
       _stay_id: data.stayId,
       _deposit_cents: data.depositCents,

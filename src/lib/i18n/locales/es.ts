@@ -1319,6 +1319,17 @@ const es: Translations = {
     couldNotCheck: "No se pudo comprobar ahora. Inténtalo de nuevo en un momento.",
     stillOff: "Sigue desactivado. Pide al dueño que te reactive.",
   },
+  staySummary: {
+    title: "Resúmenes de estancias",
+    description:
+      "Cuando la última visita de una estancia se omite o se pierde, el cliente igual recibe el resumen de la estancia la noche siguiente.",
+    catchUpLabel:
+      "Enviar resúmenes de estancias que terminaron antes de activar esto (últimos 7 días)",
+    catchUpHelp:
+      "Desactivado: solo las estancias que terminen a partir de ahora. Un resumen que ya se envió nunca se vuelve a enviar.",
+    saved: "Ajuste de resúmenes de estancias guardado",
+    onlyOwner: "Solo un dueño o un gerente de oficina puede cambiar esto.",
+  },
 };
 
 export default es;

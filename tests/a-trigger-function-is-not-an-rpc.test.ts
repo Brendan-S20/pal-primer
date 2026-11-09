@@ -320,7 +320,13 @@ describe("no trigger function is executable by a signed-in user", () => {
     // stop, R2-49): visits_follow_series_rules, which leaves out a series
     // visit on a closed or holiday date, or past the series' session count.
     // Revoked from PUBLIC, anon and authenticated there.
-    expect(triggerFunctions().size).toBe(108);
+    //
+    // 108 -> 109 (20261109170000, a stay summary catch-up is the owner's
+    // choice, #747): tg_orgs_stay_summary_settings refuses a signed-in write
+    // to stay_summary_catch_up or stay_summaries_live_at that is not
+    // set_stay_summary_catch_up(), and stamps the go-live moment when pet
+    // sitting is added. Revoked from PUBLIC, anon and authenticated there.
+    expect(triggerFunctions().size).toBe(109);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

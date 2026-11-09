@@ -13,13 +13,17 @@ export const getStayDepositRule = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { orgId } = await resolveCaller(context.supabase, context.userId);
-    const { data, error } = await context.supabase
+    // stay_summary_catch_up is newer than the generated types (20261109170000).
+    const { data, error } = await (context.supabase as any)
       .from("organizations")
-      .select("stay_deposit_refund_days")
+      .select("stay_deposit_refund_days, stay_summary_catch_up")
       .eq("id", orgId)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    return { refundDays: data?.stay_deposit_refund_days ?? DEFAULT_DEPOSIT_REFUND_DAYS };
+    return {
+      refundDays: (data?.stay_deposit_refund_days as number | null) ?? DEFAULT_DEPOSIT_REFUND_DAYS,
+      summaryCatchUp: data?.stay_summary_catch_up === true,
+    };
   });
 
 export const setStayDepositRule = createServerFn({ method: "POST" })
@@ -43,4 +47,30 @@ export const setStayDepositRule = createServerFn({ method: "POST" })
       .eq("id", orgId);
     if (error) throw new Error(error.message);
     return { ok: true };
+  });
+
+/** Who may change the stay summary catch-up: an owner or an office manager,
+ *  as set_stay_summary_catch_up itself checks (migration 20261109170000). */
+export const STAY_SUMMARY_CATCH_UP_ROLES = ["owner", "office_manager"] as const;
+
+export function canSetStaySummaryCatchUp(role: string | null | undefined): boolean {
+  return (STAY_SUMMARY_CATCH_UP_ROLES as readonly string[]).includes(role ?? "");
+}
+
+/** Whether the nightly catch sends summaries for stays that ended before it
+ *  went live for this business (#747). An owner or office manager; the
+ *  database refuses anyone else as well, so this check is the early answer,
+ *  not the only one. */
+export const setStaySummaryCatchUp = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ on: z.boolean() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { orgId, role } = await resolveCaller(context.supabase, context.userId);
+    if (!canSetStaySummaryCatchUp(role)) throw new Error("Not authorized");
+    const { error } = await (context.supabase as any).rpc("set_stay_summary_catch_up", {
+      _org_id: orgId,
+      _on: data.on,
+    });
+    if (error) throw new Error(error.message);
+    return { on: data.on };
   });
