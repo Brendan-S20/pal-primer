@@ -65,6 +65,7 @@ import { pathToFileURL } from "node:url";
 export const DEFAULT_SEND_EMAIL_HOOK_URI = "https://app.houndstack.com/email/auth/webhook";
 
 const PROBE_TIMEOUT_MS = 10_000;
+const RESERVED_TLD = /\.(invalid|test|example|localhost)\.?$/i;
 
 /** The URIs to check, from the environment or the default. */
 export function hookUrisFromEnv(env = process.env) {
@@ -122,6 +123,17 @@ export async function checkHookUri(uri, opts = {}) {
     problems.push(`the hook URI is ${url.protocol.replace(":", "")}, not https`);
   }
   const host = url.hostname;
+
+  // RFC 6761: `.invalid`, `.test`, `.example` and `.localhost` never name a
+  // public host, and applications are told to treat them so rather than ask
+  // a resolver — some resolvers (sinkholes, captive portals) answer anything.
+  if (RESERVED_TLD.test(host)) {
+    problems.push(
+      `host ${host} is a reserved name (RFC 6761) that does not resolve publicly. ` +
+        `Supabase Auth cannot reach this hook, so every email it carries is never sent (#764).`,
+    );
+    return { uri: shown, host, problems };
+  }
 
   let addresses = [];
   try {

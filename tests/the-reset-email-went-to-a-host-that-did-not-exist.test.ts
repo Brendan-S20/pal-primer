@@ -52,11 +52,24 @@ describe("a hook host that does not resolve fails the check", () => {
     expect(r.problems).toEqual([expect.stringMatching(/resolved to no address/)]);
   });
 
-  it("fails with REAL dns on a host that can never exist", async () => {
-    const r = await checkHookUri(NEVER, { dnsOnly: true });
+  it("fails on a host that can never exist, even behind a resolver that answers everything", async () => {
+    // A sinkholing resolver (seen on a reviewer's box: every name -> 198.18.0.1)
+    // must not turn the deterministic bad host into a pass. RFC 6761 names are
+    // refused before any lookup, so the resolver is never asked.
+    let asked = false;
+    const sinkhole = async () => {
+      asked = true;
+      return [{ address: "198.18.0.1", family: 4 }];
+    };
+    const r = await checkHookUri(NEVER, { lookup: sinkhole, probe: answers(401) });
+    expect(asked).toBe(false);
     expect(r.problems).toEqual([
-      expect.stringMatching(/this-host-does-not-exist\.houndstack\.invalid does not resolve/),
+      expect.stringMatching(/this-host-does-not-exist\.houndstack\.invalid is a reserved name/),
     ]);
+    for (const host of ["hooks.test", "hooks.example", "app.localhost"]) {
+      const x = await checkHookUri(`https://${host}/email/auth/webhook`, { lookup: sinkhole });
+      expect(x.problems).toEqual([expect.stringMatching(/reserved name/)]);
+    }
   });
 
   it("the CLI exits non-zero, loudly, and prints no secret", () => {
