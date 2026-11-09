@@ -49,6 +49,9 @@ export type BookGroomInput = {
   everyWeeks: number | null;
   staffId: string | null;
   parkingNotes: string | null;
+  /** Van hookups at the address (#412). Absent leaves them as they are. */
+  vanPower?: boolean;
+  vanWater?: boolean;
   acknowledgeWarning: boolean;
   /** The plan's billing. Absent, it follows the client's newest plan, as an
    *  office booking does. The booking link passes "prepaid": the first groom
@@ -275,10 +278,14 @@ export async function bookGroomAppointment(
     }
   }
 
-  if (input.parkingNotes != null) {
+  if (input.parkingNotes != null || input.vanPower != null || input.vanWater != null) {
     const { error } = await db
       .from("properties")
-      .update({ parking_notes: input.parkingNotes.trim() || null })
+      .update({
+        ...(input.parkingNotes != null ? { parking_notes: input.parkingNotes.trim() || null } : {}),
+        ...(input.vanPower != null ? { van_power_available: input.vanPower } : {}),
+        ...(input.vanWater != null ? { van_water_available: input.vanWater } : {}),
+      })
       .eq("id", input.propertyId)
       .eq("organization_id", input.orgId);
     if (error) throw new Error(error.message);

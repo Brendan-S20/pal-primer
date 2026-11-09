@@ -6006,6 +6006,8 @@ export type Database = {
           street: string
           total_units: number | null
           unit: string | null
+          van_power_available: boolean
+          van_water_available: boolean
           visit_contact_email: string | null
           visit_contact_name: string | null
           visit_contact_phone: string | null
@@ -6062,6 +6064,8 @@ export type Database = {
           street: string
           total_units?: number | null
           unit?: string | null
+          van_power_available?: boolean
+          van_water_available?: boolean
           visit_contact_email?: string | null
           visit_contact_name?: string | null
           visit_contact_phone?: string | null
@@ -6118,6 +6122,8 @@ export type Database = {
           street?: string
           total_units?: number | null
           unit?: string | null
+          van_power_available?: boolean
+          van_water_available?: boolean
           visit_contact_email?: string | null
           visit_contact_name?: string | null
           visit_contact_phone?: string | null
@@ -8473,6 +8479,7 @@ export type Database = {
           gate_reply: string | null
           gate_reply_at: string | null
           groom_dog_ids: string[] | null
+          groom_addons_not_done: string[]
           groom_summary: string | null
           id: string
           is_deepclean: boolean
@@ -8529,6 +8536,7 @@ export type Database = {
           gate_reply?: string | null
           gate_reply_at?: string | null
           groom_dog_ids?: string[] | null
+          groom_addons_not_done?: string[]
           groom_summary?: string | null
           id?: string
           is_deepclean?: boolean
@@ -8585,6 +8593,7 @@ export type Database = {
           gate_reply?: string | null
           gate_reply_at?: string | null
           groom_dog_ids?: string[] | null
+          groom_addons_not_done?: string[]
           groom_summary?: string | null
           id?: string
           is_deepclean?: boolean
@@ -10899,6 +10908,10 @@ export type Database = {
       set_org_commercial_accounts: {
         Args: { _enabled: boolean }
         Returns: Json
+      }
+      set_groom_addon_done: {
+        Args: { _addon_service_id: string; _done: boolean; _visit_id: string }
+        Returns: string[]
       }
       set_route_windows: {
         Args: { _org_id: string; _policy: string }
