@@ -281,26 +281,52 @@ describe("the pin refresh", () => {
     });
   });
 
-  it("clears a due pin when re-geocoding finds nothing or throws", async () => {
+  const CLEARED = { latitude: null, longitude: null, geocode_source: null, geocoded_at: null };
+
+  it("clears a due pin when a provider answers that there is no match", async () => {
     const table = pins();
+    const { admin } = fakeAdmin({ properties: table });
+    const r = await refreshGooglePins(admin, {
+      now: () => NOW,
+      geocode: async () => ({ point: null, source: null }),
+    });
+    expect(r).toMatchObject({ pinsCleared: 2, pinsRefreshed: 0, pinsRetrying: 0 });
+    for (const id of ["google-old", "places-old"]) {
+      expect(table.find((p) => p.id === id)).toMatchObject(CLEARED);
+    }
+  });
+
+  // Product review 5828450331: the first version cleared on ANY failure, so
+  // one typo in GEOCODING_PROVIDER, or a Google outage on the 07:23 run,
+  // would have blanked every due pin that morning.
+  it("keeps a due pin and retries it tomorrow when nobody answered, within the 7-day grace", async () => {
+    const table = pins();
+    const before = { ...table.find((p) => p.id === "places-old")! }; // 31 days old
     const { admin } = fakeAdmin({ properties: table });
     let n = 0;
     const r = await refreshGooglePins(admin, {
       now: () => NOW,
       geocode: async () => {
-        if (n++ === 0) return { point: null, source: null };
+        // An invalid setting, then a thrown outage.
+        if (n++ === 0) return { point: null, source: null, failed: true };
         throw new Error("Google said OVER_QUERY_LIMIT");
       },
     });
-    expect(r).toMatchObject({ pinsCleared: 2, pinsRefreshed: 0 });
-    for (const id of ["google-old", "places-old"]) {
-      expect(table.find((p) => p.id === id)).toMatchObject({
-        latitude: null,
-        longitude: null,
-        geocode_source: null,
-        geocoded_at: null,
-      });
-    }
+    expect(table.find((p) => p.id === "places-old")).toEqual(before);
+    expect(r.pinsRetrying).toBe(1);
+  });
+
+  it("clears a pin past 30 + 7 days even while the geocoder is failing", async () => {
+    const table = pins();
+    const { admin } = fakeAdmin({ properties: table });
+    const r = await refreshGooglePins(admin, {
+      now: () => NOW,
+      geocode: async () => ({ point: null, source: null, failed: true }),
+    });
+    // google-old is 40 days old: past the grace. places-old (31) is not.
+    expect(table.find((p) => p.id === "google-old")).toMatchObject(CLEARED);
+    expect(table.find((p) => p.id === "places-old")).toMatchObject({ latitude: 2 });
+    expect(r).toMatchObject({ pinsCleared: 1, pinsRetrying: 1 });
   });
 
   it("never touches a newer Google pin or a pin from any other source", async () => {
@@ -373,6 +399,7 @@ describe("the daily run", () => {
       pinsRefreshed: 2,
       pinsCleared: 0,
       pinsSkipped: 0,
+      pinsRetrying: 0,
       pinsDeferred: 0,
       errors: [],
     });
@@ -434,5 +461,27 @@ describe("the wiring", () => {
     );
     expect(src).toMatch(/authorizeCronRequest\(request\)/);
     expect(src).toMatch(/if \(!auth\.ok\) return cronUnauthorized/);
+  });
+});
+
+// ── "Nobody answered" is reported, not mistaken for "no match" ──────────────
+
+describe("the geocoder says when nobody answered", () => {
+  it("an invalid GEOCODING_PROVIDER is failed, not a miss", async () => {
+    const { vi } = await import("vitest");
+    vi.stubEnv("GEOCODING_PROVIDER", "gogle");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    try {
+      const { geocodeAddressSourced } = await import("@/lib/geocode.server");
+      const r = await geocodeAddressSourced({ street: "1 Main St", city: "Detroit" });
+      expect(r).toEqual({ point: null, source: null, failed: true });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    }
   });
 });

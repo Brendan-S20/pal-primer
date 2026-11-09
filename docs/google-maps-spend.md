@@ -156,7 +156,10 @@ after 30 days, to comply with Google Maps Platform's caching terms.
   - deletes `road_legs` rows with `source = 'google'` that are older than 30
     days. Other sources keep the existing weekly 90-day prune.
   - re-geocodes Google-sourced pins older than 30 days, and clears a pin if
-    the re-geocode finds nothing.
+    a provider answers that there is no match.
+  - if no provider answers (an outage, a refused key, or a mistyped
+    `GEOCODING_PROVIDER`), keeps the pin and retries it the next day, for up
+    to 7 days past its 30. After that the pin is cleared anyway.
   - never touches any other source, or a pin of unknown source.
 - **The rule lives in one file**, `src/lib/geocode-source.ts`. The tests are in
   `tests/google-derived-data-is-kept-thirty-days.test.ts`.

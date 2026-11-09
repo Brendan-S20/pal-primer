@@ -45,6 +45,18 @@ export const GOOGLE_ROAD_LEG_SOURCE = "google";
 export const GOOGLE_CACHE_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** How long a due Google pin may wait for a geocoder that is FAILING (an
+ *  outage, a refused key, an invalid setting) before it is cleared anyway.
+ *  A pin is retried daily in that window rather than blanked on the first bad
+ *  morning; past it, the 30-day rule wins over keeping the point. */
+export const GOOGLE_RETRY_GRACE_DAYS = 7;
+
+/** The instant before which a due pin is cleared even if the geocoder is
+ *  failing: 30 + 7 days. */
+export function googleHardCutoff(now: Date = new Date()): Date {
+  return new Date(now.getTime() - (GOOGLE_CACHE_DAYS + GOOGLE_RETRY_GRACE_DAYS) * DAY_MS);
+}
+
 /** The instant before which a Google-derived value is due. */
 export function googleCacheCutoff(now: Date = new Date()): Date {
   return new Date(now.getTime() - GOOGLE_CACHE_DAYS * DAY_MS);

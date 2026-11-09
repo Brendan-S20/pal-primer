@@ -75,7 +75,17 @@ export type GeocodeResult =
  *  that stores the point can store its provenance in
  *  properties.geocode_source. `source` is null when there is no point, and for
  *  an adapter whose id is not a known source. */
-export type SourcedGeocode = { point: GeocodeResult; source: GeocodeSource | null };
+export type SourcedGeocode = {
+  point: GeocodeResult;
+  source: GeocodeSource | null;
+  /** True when no point came back because nobody ANSWERED -- the geocoding
+   *  setting is invalid, or every configured provider failed (an outage, a
+   *  refused key, a 429) -- as opposed to a provider answering "no match".
+   *  The Google-cache expiry job retries the first and clears only on the
+   *  second. Nominatim reports its own errors as no match, so a Nominatim
+   *  outage reads as a miss. */
+  failed?: boolean;
+};
 
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 const USER_AGENT =
@@ -263,7 +273,7 @@ export async function geocodeAddressSourced(parts: AddressParts): Promise<Source
   if (!address) return none;
 
   const chain = chainOrNull();
-  if (!chain) return none;
+  if (!chain) return { ...none, failed: true };
   const ctx = providerContext("geocoding", serverEnv());
 
   const answer = await chain.primary.single(address, parts, ctx);
@@ -272,10 +282,12 @@ export async function geocodeAddressSourced(parts: AddressParts): Promise<Source
   // the fallback is slower, not wrong. Unless there is no fallback, by choice.
   if (!chain.fallback) {
     console.error(`[geocode] ${chain.primary.id} did not answer for "${address}" and GEOCODING_FALLBACK is none`);
-    return none;
+    return { ...none, failed: true };
   }
   const second = await chain.fallback.single(address, parts, ctx);
-  return second === GEOCODER_FAILED ? none : { point: second, source: sourceOf(second, chain.fallback) };
+  return second === GEOCODER_FAILED
+    ? { ...none, failed: true }
+    : { point: second, source: sourceOf(second, chain.fallback) };
 }
 
 /** Geocode many addresses, answers in the SAME ORDER as the input, one entry
