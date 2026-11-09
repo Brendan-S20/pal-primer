@@ -41,6 +41,7 @@ export const TECH_SCREENS: { file: string; only?: string[] }[] = [
   // lock box codes, hazards and dogs. The office's client page is a different
   // component on the same route and stays in English.
   { file: "src/components/client-detail/FieldClientView.tsx" },
+  { file: "src/components/PetSafetyLog.tsx" },
   // (src/components/my-day/RouteLockScreen.tsx left this list on 2026-10-08:
   // its toggle and toasts are gone, and what remains draws nothing. The
   // card's words are built in the tech's language by live-activity-state.ts,
