@@ -70,10 +70,7 @@ describe("Confirm skip says why it is disabled", () => {
   }
 
   it("My Day draws the row, so the hint is on the real skip panel", () => {
-    const src = readFileSync(
-      join(__dirname, "..", "src/routes/_authenticated/my-day.tsx"),
-      "utf8",
-    );
+    const src = readFileSync(join(__dirname, "..", "src/routes/_authenticated/my-day.tsx"), "utf8");
     expect(src).toMatch(/<SkipConfirmRow\s[^>]*reason=\{reason\}/);
     expect(src).not.toMatch(/disabled=\{!reason\.trim\(\) \|\| skip\.isPending\}/);
   });
