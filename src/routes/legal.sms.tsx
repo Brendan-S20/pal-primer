@@ -63,8 +63,8 @@ function SmsPolicyPage() {
       <section>
         <h2>What messages we send</h2>
         <p>
-          <strong>Text messaging is coming soon and is pending carrier registration.</strong> No
-          text messages are sent under this program until that registration is complete.
+          <strong>Texts from {APP_NAME}&apos;s own number start once its carrier registration is
+          complete.</strong> No text messages are sent under this program until then.
         </p>
         <p>
           Account holders who opt in may receive verification codes, security alerts, billing

@@ -103,10 +103,11 @@ function PrivacyPage() {
         <h2>Text messaging</h2>
         <p>
           {APP_NAME} sends two kinds of text. From {APP_NAME}&apos;s own number we text account
-          holders who opt in (below). Texting between a business and its own clients is coming soon
-          and is pending carrier registration. When it launches, those texts are sent from a
-          separate Twilio account that {APP_NAME} sets up for that business, and the business is
-          responsible for having its clients&apos; consent.
+          holders who opt in (below). A business can text its own clients through the Managed
+          texting add-on. Those texts start once the carriers approve that business&apos;s own
+          registration, and they are sent from a separate Twilio account that {APP_NAME} sets up
+          for that business, never from {APP_NAME}&apos;s own number. The business is responsible
+          for having its clients&apos; consent.
         </p>
         <p>
           We collect mobile numbers and SMS consent records only from {APP_NAME} account holders who
