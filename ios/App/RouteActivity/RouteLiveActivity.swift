@@ -35,9 +35,11 @@
 // iOS draws `SmallRouteView` there from the same content state. It has no
 // buttons -- nothing is started or completed from a wrist or a dashboard --
 // and a tap opens My Day on the phone at the stop, through the card's
-// `widgetURL`, which carries no action. It names the stop by its street with
-// no house number (`shortStop`), never the property's label or the customer.
-// The lock screen and the Dynamic Island are drawn exactly as before.
+// `widgetURL`, which carries no action. Its line is "Stop 2 of 7 · Margaret
+// Okonkwo…": the client's name, cut to fit in the app (`shortStop`), or the
+// street with no house number when there is no name. The client's name is
+// Brendan's call (2026-11-09) and is on these two surfaces only; the lock
+// screen and the Dynamic Island are drawn exactly as before, without it.
 
 import ActivityKit
 import AppIntents
@@ -277,34 +279,34 @@ private struct LockScreenView: View {
 }
 
 /// The Smart Stack on an Apple Watch and the CarPlay Dashboard (#454):
-/// "Stop 2 of 7", the street, the window, and a bar. No buttons and no
-/// links: the only thing a tap does is the card's `widgetURL`, My Day on the
-/// stop, with no action in it. Nothing here starts or completes a visit.
+/// "Stop 2 of 7 · Margaret Okonkwo…", the window, and a bar. No buttons and
+/// no links: the only thing a tap does is the card's `widgetURL`, My Day on
+/// the stop, with no action in it. Nothing here starts or completes a visit.
 ///
-/// The street is `shortStop`, "Elm St", never `nextStop`: `nextStop` is the
-/// office's label for the property when it has one, and a label is often
-/// the customer's name.
+/// The name is `shortStop`, already cut to SHORT_NAME_MAX characters in the
+/// app (src/lib/live-activity-state.ts clientShortName), or the street when
+/// the client has no name. Never `nextStop`, which is the lock screen's.
 struct SmallRouteView: View {
     let state: RouteActivityAttributes.ContentState
 
+    /// "Stop 2 of 7 · Margaret Okonkwo…", or "Stop 2 of 7" alone.
+    var shortLine: String {
+        guard !state.allDone, let who = state.shortStop else { return state.stopLabel }
+        return "\(state.stopLabel) · \(who)"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Image(systemName: state.allDone ? "checkmark.circle.fill" : Brand.glyph)
                     .font(.caption.weight(.semibold))
-                Text(state.stopLabel)
-                    .font(.caption.weight(.semibold))
-                    .monospacedDigit()
-                    .lineLimit(1)
+                Text(shortLine)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(2)
+                    .truncationMode(.tail)
                     .minimumScaleFactor(0.8)
             }
             if !state.allDone {
-                if let street = state.shortStop {
-                    Text(street)
-                        .font(.headline)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                }
                 if let window = state.window {
                     Text(window)
                         .font(.caption)
@@ -458,8 +460,9 @@ private struct ProgressRing: View {
 }
 
 #if DEBUG
-/// Xcode previews of the small family (#454): stop 2 of 7 in English, the
-/// same stop in Arabic, a stop with no street, and a finished route, at about
+/// Xcode previews of the small family (#454): stop 2 of 7 with a client's
+/// name, the same stop in Arabic, a client with no name (the street), a stop
+/// with neither, and a finished route, at about
 /// the size of an Apple Watch Smart Stack tile.
 struct SmallRouteView_Previews: PreviewProvider {
     private static func state(
@@ -468,7 +471,7 @@ struct SmallRouteView_Previews: PreviewProvider {
         .init(
             stopLabel: allDone ? "All stops done" : (rtl ? "المحطة \(position) من 7" : "Stop \(position) of 7"),
             nextLabel: allDone ? "Route finished" : "Next stop",
-            nextStop: allDone ? nil : "Smith residence",
+            nextStop: allDone ? nil : "412 Elm St",
             window: window,
             doneLabel: "\(position - 1) done",
             skippedLabel: "0 skipped",
@@ -484,13 +487,15 @@ struct SmallRouteView_Previews: PreviewProvider {
 
     static var previews: some View {
         Group {
-            SmallRouteView(state: state(position: 2, shortStop: "Elm St", window: "10:40–11:00 AM"))
+            SmallRouteView(state: state(position: 2, shortStop: "Margaret Okonkwo…", window: "10:40–11:00 AM"))
                 .previewDisplayName("Small, stop 2 of 7")
-            SmallRouteView(state: state(position: 2, shortStop: "Elm St", window: "10:40 ص–11:00 ص", rtl: true))
+            SmallRouteView(state: state(position: 2, shortStop: "مارغريت أوكونكو", window: "10:40 ص–11:00 ص", rtl: true))
                 .environment(\.layoutDirection, .rightToLeft)
                 .previewDisplayName("Small, Arabic")
+            SmallRouteView(state: state(position: 3, shortStop: "Elm St", window: "11:15–11:35 AM"))
+                .previewDisplayName("Small, no client name: the street")
             SmallRouteView(state: state(position: 4, shortStop: nil, window: nil))
-                .previewDisplayName("Small, no street or window")
+                .previewDisplayName("Small, neither, no window")
             SmallRouteView(state: state(position: 7, shortStop: nil, window: nil, allDone: true))
                 .previewDisplayName("Small, finished")
         }

@@ -6,10 +6,12 @@
 // content state the lock screen uses. Two things about those screens make
 // this its own file:
 //
-//   1. They are read by whoever is in the car or glances at a wrist, so the
-//      stop is named by its street with no house number -- "Elm St" -- and
-//      never by the office's label for the property, which is often the
-//      customer's name, and never by the customer.
+//   1. They name the client: "Stop 2 of 7 · Margaret Okonkwo…". That was
+//      Brendan's call on 2026-11-09, reversing the street-only default the
+//      PR first shipped. The name is cut to fit a watch in the app, falls
+//      back to the street (no house number) when the client has none, and
+//      appears on these surfaces ONLY -- the lock screen's `nextStop` still
+//      never carries it.
 //   2. Nothing on them starts or completes a visit. No buttons, no links; a
 //      tap opens My Day on the phone through the card's existing widgetURL,
 //      which carries no action.
@@ -25,7 +27,9 @@ import { join } from "node:path";
 import i18n from "@/lib/i18n";
 import {
   buildRouteActivityState,
+  clientShortName,
   routeChangePriority,
+  SHORT_NAME_MAX,
   stopStreet,
   type RouteActivityVisit,
 } from "@/lib/live-activity-state";
@@ -43,20 +47,20 @@ const ctx = (lang: string) => ({
 
 const CLIENT = "Margaret Okonkwo-Hargreaves";
 
-/** Seven stops, the first done, the second next. Every property is labelled
- *  with the customer's name, as offices do, and each visit carries the client
- *  record a wider query would bring along: neither may reach the short line. */
+/** Seven stops, the first done, the second next, each for a client with a
+ *  long name. The property label is the office's own text and must not be
+ *  what the short line uses. */
 function day(
-  street: (i: number) => string | null = (i) => `${400 + i} Elm St`,
+  name: string | null = CLIENT,
+  street: string | null = "412 Elm St",
 ): RouteActivityVisit[] {
   const out: RouteActivityVisit[] = [];
   for (let i = 1; i <= 7; i++) {
     out.push({
       id: `v${i}`,
       status: i === 1 ? "completed" : "scheduled",
-      properties: { label: `${CLIENT} residence`, street: street(i) },
-      // Not part of RouteActivityVisit; here to prove the builder ignores it.
-      ...({ clients: { name: CLIENT, display_name: CLIENT } } as object),
+      properties: { label: "Back gate, blue house", street },
+      clients: { display_name: name },
     });
   }
   out[1].eta_start = "2026-10-05T15:40:00Z";
@@ -64,51 +68,65 @@ function day(
   return out;
 }
 
+const short = (display_name: string | null) =>
+  clientShortName({ id: "x", status: "scheduled", clients: { display_name } });
+
 describe("the short label for the watch and the car", () => {
-  it("is the street with no house number, at stop 2 of 7", () => {
+  it("shows the client's name, truncated, at stop 2 of 7", () => {
     const s = buildRouteActivityState(day(), ctx("en"));
     expect(s.stopLabel).toBe("Stop 2 of 7");
-    expect(s.shortStop).toBe("Elm St");
+    expect(s.shortStop).toBe("Margaret Okonkwo…");
     expect(s.window).toBe("10:40 AM–11:00 AM");
-    // The lock screen's own line is unchanged: still the office's label.
-    expect(s.nextStop).toBe(`${CLIENT} residence`);
+    // The lock screen's own line is unchanged: the property, never the client.
+    expect(s.nextStop).toBe("Back gate, blue house");
+    expect(s.nextStop).not.toContain("Margaret");
   });
 
-  it("never contains the client's name, in any language, at any stop", () => {
-    const parts = CLIENT.split(/[\s-]+/);
+  it("shows the client's name in every language, at every stop", () => {
     for (const lang of ["en", "es", "ar", "zh"]) {
-      const visits = day();
-      for (let k = 0; k < visits.length; k++) {
+      const visits = day("Ana López");
+      for (let k = 1; k < visits.length; k++) {
         const s = buildRouteActivityState(visits, ctx(lang));
-        for (const part of parts) {
-          expect(s.shortStop ?? "").not.toContain(part);
-          expect(s.stopLabel).not.toContain(part);
-          expect(s.window ?? "").not.toContain(part);
-        }
+        expect(s.position).toBe(k + 1);
+        expect(s.shortStop).toBe("Ana López");
         visits[k].status = "completed";
       }
     }
   });
 
-  it("is null rather than falling back to the label when the stop has no street", () => {
-    const s = buildRouteActivityState(
-      day(() => null),
-      ctx("en"),
+  it("truncates a long name sensibly", () => {
+    // Fits: unchanged.
+    expect(short("Ana López")).toBe("Ana López");
+    expect(short("A".repeat(SHORT_NAME_MAX))).toBe("A".repeat(SHORT_NAME_MAX));
+    // At a whole word, a hyphen ending one, with an ellipsis.
+    expect(short(CLIENT)).toBe("Margaret Okonkwo…");
+    expect(short("Christopher Montgomery Smith")).toBe("Christopher…");
+    // A dangling joiner is not left before the ellipsis.
+    expect(short("Smith & Jones Property Management LLC")).toBe("Smith & Jones…");
+    // One word longer than the limit is cut mid-word.
+    expect(short("Wolfeschlegelsteinhausenberger")).toBe("Wolfeschlegelstei…");
+    // Whitespace collapsed before it is measured.
+    expect(short("  Ana    López ")).toBe("Ana López");
+    // Code points, so nothing is split in half.
+    expect(short("张伟明张伟明张伟明张伟明张伟明张伟明张伟明")).toBe(
+      "张伟明张伟明张伟明张伟明张伟明张伟…",
     );
-    expect(s.nextStop).toBe(`${CLIENT} residence`);
-    expect(s.shortStop).toBeNull();
+    for (const n of [CLIENT, "Smith & Jones Property Management LLC", "x".repeat(60)]) {
+      expect(Array.from(short(n) ?? "").length).toBeLessThanOrEqual(SHORT_NAME_MAX);
+    }
+    // An embedded row that arrives as a one-element array reads the same.
     expect(
-      buildRouteActivityState(
-        day(() => "   "),
-        ctx("en"),
-      ).shortStop,
-    ).toBeNull();
-    expect(
-      buildRouteActivityState(
-        day(() => "412"),
-        ctx("en"),
-      ).shortStop,
-    ).toBeNull();
+      clientShortName({ id: "x", status: "scheduled", clients: [{ display_name: "Ana López" }] }),
+    ).toBe("Ana López");
+  });
+
+  it("falls back to the street, with no house number, when the client has no name", () => {
+    for (const none of [null, "", "   "]) {
+      const s = buildRouteActivityState(day(none), ctx("en"));
+      expect(s.shortStop).toBe("Elm St");
+    }
+    // Never to the office's property label.
+    expect(buildRouteActivityState(day(null, null), ctx("en")).shortStop).toBeNull();
   });
 
   it("is null when the route is finished", () => {
@@ -116,7 +134,7 @@ describe("the short label for the watch and the car", () => {
     expect(buildRouteActivityState(v, ctx("en")).shortStop).toBeNull();
   });
 
-  it("drops the house and unit numbers", () => {
+  it("drops the house and unit numbers from the street fallback", () => {
     const cases: Array<[string, string | null]> = [
       ["412 Elm St", "Elm St"],
       ["12B Main Street", "Main Street"],
@@ -127,25 +145,23 @@ describe("the short label for the watch and the car", () => {
       ["412 5th Ave", "5th Ave"],
       ["North Rd", "North Rd"],
       ["Calle Mayor 12", "Calle Mayor 12"],
+      ["412", null],
     ];
     for (const [street, want] of cases) {
       expect(stopStreet({ id: "x", status: "scheduled", properties: { street } })).toBe(want);
     }
   });
 
-  it("reads only the street: a label or a client is never consulted", () => {
-    const src = codeOnly(read("src/lib/live-activity-state.ts"));
-    const fn = src.slice(
-      src.indexOf("export function stopStreet"),
-      src.indexOf("export function stopDestination"),
+  it("the server push loads the client's display name, so a push says the same", () => {
+    expect(read("src/lib/push-liveactivity.server.ts")).toMatch(
+      /eta_start, eta_end, clients\(display_name\), properties\(/,
     );
-    expect(fn).toMatch(/properties\?\.street/);
-    expect(fn).not.toMatch(/label|client|name/i);
+    expect(read("src/lib/my-day.functions.ts")).toMatch(/clients\(display_name/);
   });
 
-  it("a new street alone is a change worth sending", () => {
+  it("a new name alone is a change worth sending", () => {
     const a = buildRouteActivityState(day(), ctx("en"));
-    const b = { ...a, shortStop: "Birch Ave" };
+    const b = { ...a, shortStop: "Ana López" };
     expect(routeChangePriority(a, b)).toBe(5);
     expect(routeChangePriority(a, { ...a })).toBeNull();
   });
@@ -178,7 +194,7 @@ describe("the widget's small family", () => {
     expect(small).not.toMatch(
       /Button|Link|intent|actionURL|directionsURL|widgetURL|StartStopIntent/,
     );
-    expect(small).toMatch(/state\.shortStop/);
+    expect(small).toMatch(/"\\\(state\.stopLabel\) · \\\(who\)"/);
     expect(small).not.toMatch(/nextStop/);
     // The card's tap target: My Day on the stop, never with an action.
     expect(attrs).toMatch(

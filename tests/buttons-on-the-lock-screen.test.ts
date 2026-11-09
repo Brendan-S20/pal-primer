@@ -187,9 +187,12 @@ describe("the state carries what the buttons need", () => {
     expect(buildRouteActivityState(route(), ctx("ar")).navigateLabel).toBe("ملاحة");
   });
 
-  it("says nothing about the customer", () => {
-    const json = JSON.stringify(buildRouteActivityState(route(), ctx("en")));
-    expect(json).not.toMatch(/Jane|555-0100/);
+  it("says nothing about the customer outside the watch and car line", () => {
+    // shortStop names the client on an Apple Watch and a CarPlay Dashboard
+    // only (Brendan, #454, 2026-11-09); no other field may.
+    const { shortStop: _watchAndCar, ...rest } = buildRouteActivityState(route(), ctx("en"));
+    expect(JSON.stringify(rest)).not.toMatch(/Jane|555-0100/);
+    expect(JSON.stringify(buildRouteActivityState(route(), ctx("en")))).not.toMatch(/555-0100/);
   });
 
   it("every field is a plain value, so an unchanged route is still not pushed again", () => {
