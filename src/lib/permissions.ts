@@ -15,6 +15,16 @@ export type Permission =
   // It sets no price: a price that differs from the set one is still
   // manage_pricing, and the server refuses it to anyone without that.
   | "booking"
+  // Moving booked work on the schedule from the office (#728): a visit to
+  // another day, at the price it already has. Owner and office manager hold
+  // it with everything else; a dispatcher holds it because routes are their
+  // job. It moves no money and sets no price: completing or canceling a
+  // visit, which can bill, stays manage_client_billing.
+  | "manage_schedule"
+  // Writing to one client (#728): a text from the client's Messages tab or
+  // the inbox. Owner, office manager and dispatcher. A message to many
+  // clients at once is send_campaigns, which a dispatcher does not hold.
+  | "message_clients"
   | "manage_client_billing" // invoices, add-on charges/subscriptions, void, prepaid, credit
   | "view_financials" // dashboard revenue/AR KPIs, reports, analytics
   | "view_client_directory" // client names/addresses beyond the caller's own assigned work
@@ -42,6 +52,8 @@ export type Permission =
 export const ALL_PERMISSIONS: Permission[] = [
   "manage_pricing",
   "booking",
+  "manage_schedule",
+  "message_clients",
   "manage_client_billing",
   "view_financials",
   "view_client_directory",
@@ -64,7 +76,17 @@ export const ROLE_PERMISSIONS: Record<AppRole, readonly Permission[]> = {
   office_manager: ALL_PERMISSIONS.filter(
     (p) => p !== "manage_org_billing" && p !== "manage_franchise",
   ),
-  dispatcher: ["view_client_directory", "record_field_addons", "booking"],
+  // #728 (owner, 2026-11-08): "dispatcher role with its own permissions for
+  // routes, clients and messaging". Nothing here touches the business's own
+  // billing, security or who has access, and no price: manage_pricing,
+  // manage_client_billing, manage_users and manage_settings stay off.
+  dispatcher: [
+    "view_client_directory",
+    "record_field_addons",
+    "booking",
+    "manage_schedule",
+    "message_clients",
+  ],
   tech: ["record_field_addons"],
 };
 
