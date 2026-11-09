@@ -132,7 +132,11 @@ vi.mock("@/lib/service-line-availability.server", () => ({
 }));
 vi.mock("@/lib/portal-links.server", () => ({ buildPortalLink: async () => null }));
 vi.mock("@/lib/email/enqueue.server", () => ({
+  // Once per key, as the real queue is: a second send of the same
+  // idempotency key is "already_sent" and queues nothing.
   enqueueAppEmail: async (p: any) => {
+    if (p.oncePerKey && state.queued.some((q) => q.idempotencyKey === p.idempotencyKey))
+      return { ok: false, reason: "already_sent" };
     state.queued.push(p);
     return { ok: true };
   },
@@ -141,7 +145,8 @@ vi.mock("@/lib/email/enqueue.server", () => ({
 import { createStay, stayPriceRefusal } from "@/lib/stays.functions";
 import { confirmStay } from "@/lib/stay-booking.functions";
 import { portalAddPet, portalPetRow } from "@/lib/portal-stays.functions";
-import { sendSettledStaySummaries } from "@/lib/sit-report.server";
+import { sendSettledStaySummaries, staySummaryWindowStart } from "@/lib/sit-report.server";
+import { canSetStaySummaryCatchUp, setStaySummaryCatchUp } from "@/lib/stay-deposit.functions";
 import { NOTIFICATION_TYPES, notificationTypesFor } from "@/lib/notifications-center.functions";
 import { customerCanRequestStay } from "@/lib/service-lines";
 
@@ -413,6 +418,16 @@ describe("a stay that ended on a skipped visit still gets its summary", () => {
     state.tables.subscriptions = [{ id: "plan-1", stay_id: ids.stay }];
     state.tables.care_log = [];
     state.tables.clients = [{ id: ids.client, portal_token: null }];
+    // Live well before the stay ended, catch-up off: the ordinary case.
+    state.tables.organizations = [
+      {
+        id: "org-1",
+        service_lines: ["pet_sitting"],
+        timezone: "America/Chicago",
+        stay_summary_catch_up: false,
+        stay_summaries_live_at: "2026-10-01T12:00:00Z",
+      },
+    ];
   });
 
   it("sends it once nothing is left to do, though the last visit was skipped", async () => {
@@ -441,6 +456,65 @@ describe("a stay that ended on a skipped visit still gets its summary", () => {
     expect(state.queued).toEqual([]);
   });
 
+  describe("a stay that ended before the catch went live (#747)", () => {
+    const settled = () => [
+      visit("v1", "2026-11-05", "completed"),
+      visit("v2", "2026-11-06", "completed"),
+      visit("v3", "2026-11-07", "skipped"),
+    ];
+    beforeEach(() => {
+      state.tables.visits = settled();
+      // Went live the day after this stay ended (morning of the 8th, Chicago).
+      state.tables.organizations[0].stay_summaries_live_at = "2026-11-08T15:00:00Z";
+    });
+
+    it("sends nothing with catch-up off, the default", async () => {
+      expect(await sendSettledStaySummaries("org-1", "2026-11-09")).toBe(0);
+      expect(state.queued).toEqual([]);
+    });
+
+    it("sends it with catch-up on, within the 7 days", async () => {
+      state.tables.organizations[0].stay_summary_catch_up = true;
+      expect(await sendSettledStaySummaries("org-1", "2026-11-09")).toBe(1);
+      expect(state.queued[0]).toMatchObject({
+        templateName: "stay-summary",
+        idempotencyKey: `stay-summary-${ids.stay}`,
+      });
+    });
+
+    it("never sends one twice, whichever night finds it", async () => {
+      state.tables.organizations[0].stay_summary_catch_up = true;
+      expect(await sendSettledStaySummaries("org-1", "2026-11-09")).toBe(1);
+      expect(await sendSettledStaySummaries("org-1", "2026-11-10")).toBe(0);
+      expect(state.queued).toHaveLength(1);
+    });
+
+    it("still sends for a stay that ends after go-live with catch-up off", async () => {
+      state.tables.organizations[0].stay_summaries_live_at = "2026-11-06T15:00:00Z";
+      expect(await sendSettledStaySummaries("org-1", "2026-11-09")).toBe(1);
+    });
+  });
+
+  it("starts the window at go-live on the business's calendar, or 7 days back when caught up", () => {
+    const base = { today: "2026-11-20", timezone: "America/Chicago" };
+    expect(staySummaryWindowStart({ ...base, catchUp: true, liveAt: "2026-11-19T15:00:00Z" })).toBe(
+      "2026-11-13",
+    );
+    expect(
+      staySummaryWindowStart({ ...base, catchUp: false, liveAt: "2026-11-19T15:00:00Z" }),
+    ).toBe("2026-11-19");
+    // 03:00 UTC on the 18th is still the 17th in Chicago.
+    expect(
+      staySummaryWindowStart({ ...base, catchUp: false, liveAt: "2026-11-18T03:00:00Z" }),
+    ).toBe("2026-11-17");
+    // Live long ago: the 7 days are the limit either way.
+    expect(
+      staySummaryWindowStart({ ...base, catchUp: false, liveAt: "2026-01-01T00:00:00Z" }),
+    ).toBe("2026-11-13");
+    // Unreadable go-live: no backlog, only today.
+    expect(staySummaryWindowStart({ ...base, catchUp: false, liveAt: null })).toBe("2026-11-20");
+  });
+
   it("runs from the nightly job after missed visits are settled, for sitting businesses", () => {
     const nightly = read("src/routes/api/public/hooks/nightly.ts");
     const missed = nightly.indexOf('"admin_transition_missed_visits"');
@@ -465,5 +539,66 @@ describe("the missed medication switch", () => {
       "missed_meds",
     );
     expect(notificationTypesFor(["pet_waste"])).toHaveLength(NOTIFICATION_TYPES.length - 1);
+  });
+});
+
+describe("who may change the stay summary catch-up (#747)", () => {
+  it("refuses a tech and a dispatcher before the database is asked", async () => {
+    for (const role of ["tech", "dispatcher"]) {
+      state.role = role;
+      state.rpc = [];
+      await expect(setStaySummaryCatchUp({ data: { on: true } })).rejects.toThrow(/Not authorized/);
+      expect(state.rpc).toEqual([]);
+    }
+  });
+
+  it("lets an owner and an office manager through to set_stay_summary_catch_up", async () => {
+    for (const role of ["owner", "office_manager"]) {
+      state.role = role;
+      state.rpc = [];
+      expect(await setStaySummaryCatchUp({ data: { on: true } })).toEqual({ on: true });
+      expect(state.rpc).toEqual([
+        { fn: "set_stay_summary_catch_up", args: { _org_id: "org-1", _on: true } },
+      ]);
+    }
+    expect(
+      ["owner", "office_manager", "dispatcher", "tech", null].map(canSetStaySummaryCatchUp),
+    ).toEqual([true, true, false, false, false]);
+  });
+
+  it("is held to the same two roles in the database, and nobody PATCHes the column", () => {
+    const sql = read(
+      "supabase/migrations/20261109170000_a-stay-summary-catch-up-is-the-owners-choice.sql",
+    );
+    expect(sql).toContain(
+      "ADD COLUMN IF NOT EXISTS stay_summary_catch_up boolean NOT NULL DEFAULT false",
+    );
+    expect(sql).toMatch(
+      /public\.has_role\(\(select auth\.uid\(\)\), _org_id, 'owner'\)\s*OR public\.has_role\(\(select auth\.uid\(\)\), _org_id, 'office_manager'\)/,
+    );
+    expect(sql).toContain(
+      "REVOKE ALL ON FUNCTION public.set_stay_summary_catch_up(uuid, boolean) FROM PUBLIC, anon;",
+    );
+    expect(sql).toContain("BEFORE INSERT OR UPDATE ON public.organizations");
+    expect(sql).toContain("app.stay_summary_catch_up_writer");
+  });
+
+  it("shows the toggle on the pet sitting card, in all four languages", async () => {
+    const card = read("src/components/settings/StayDepositCard.tsx");
+    expect(card).toContain('t("staySummary.catchUpLabel")');
+    expect(read("src/routes/_authenticated/settings.services.tsx")).toContain(
+      '{lines.includes("pet_sitting") && <StayDepositCard canEdit={canEdit} />}',
+    );
+    const labels = await Promise.all(
+      ["en", "es", "ar", "zh"].map(async (l) => {
+        const mod = await import(`@/lib/i18n/locales/${l}`);
+        return (mod.default as any).staySummary?.catchUpLabel as string | undefined;
+      }),
+    );
+    expect(labels[0]).toBe(
+      "Send summaries for stays that ended before you turned this on (last 7 days)",
+    );
+    for (const l of labels) expect(l && l.length).toBeGreaterThan(10);
+    expect(new Set(labels).size).toBe(4);
   });
 });

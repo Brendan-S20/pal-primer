@@ -8,7 +8,10 @@
  *    sendSettledStaySummaries
  *                        the nightly catch for a stay whose last visit was
  *                        skipped or went missed rather than completed: no
- *                        completion ran, so no summary had been sent
+ *                        completion ran, so no summary had been sent. It
+ *                        looks back 7 days only when the business turned on
+ *                        stay_summary_catch_up; otherwise no further than
+ *                        the day the catch went live for it
  *
  *  Both return nothing for a visit that is not pet sitting, which is how a
  *  pet-waste or walking client is sent exactly what they were before. Neither
@@ -19,6 +22,7 @@
 import { DEFAULT_TIMEZONE } from "@/lib/route-window";
 import { formatDay } from "@/lib/format";
 import { addDays } from "@/lib/stays";
+import { orgLocalDay } from "@/lib/org-day";
 import {
   SIT_PUSH,
   missedMeds,
@@ -187,6 +191,26 @@ async function sendMissedMeds(sb: any, v: Row): Promise<void> {
  *  covers a nightly run that failed. */
 export const STAY_SUMMARY_LOOKBACK_DAYS = 7;
 
+/** The first day the nightly catch looks at (#747, Brendan via Product,
+ *  2026-11-09). With organizations.stay_summary_catch_up on, the full
+ *  STAY_SUMMARY_LOOKBACK_DAYS. Off (the default), never before the day the
+ *  catch went live for the business (organizations.stay_summaries_live_at,
+ *  on its own calendar): no backlog of summaries for stays that ended before
+ *  then. A go-live moment that cannot be read is treated as now, which sends
+ *  no backlog rather than a week of it. */
+export function staySummaryWindowStart(input: {
+  today: string;
+  catchUp: boolean;
+  liveAt: string | null | undefined;
+  timezone: string | null | undefined;
+}): string {
+  const lookback = addDays(input.today, -STAY_SUMMARY_LOOKBACK_DAYS);
+  if (input.catchUp) return lookback;
+  const live = input.liveAt ? orgLocalDay(input.liveAt, input.timezone || undefined) : "";
+  const liveDay = live || input.today;
+  return liveDay > lookback ? liveDay : lookback;
+}
+
 /** The nightly catch (#411). A stay's summary went out from
  *  afterSitCompleted, which only runs when a visit is COMPLETED. A stay
  *  whose last visit was skipped, or that the nightly job marked missed,
@@ -197,12 +221,26 @@ export const STAY_SUMMARY_LOOKBACK_DAYS = 7;
  *  Returns how many stays it queued a summary for. */
 export async function sendSettledStaySummaries(orgId: string, today: string): Promise<number> {
   const sb = await admin();
+  // How far back: the business's choice (migration 20261109170000). Read
+  // first, and a failed read sends nothing rather than a backlog.
+  const { data: org, error: orgError } = await sb
+    .from("organizations")
+    .select("timezone, stay_summary_catch_up, stay_summaries_live_at")
+    .eq("id", orgId)
+    .single();
+  if (orgError) throw new Error(orgError.message);
+  const from = staySummaryWindowStart({
+    today,
+    catchUp: org?.stay_summary_catch_up === true,
+    liveAt: org?.stay_summaries_live_at ?? null,
+    timezone: org?.timezone ?? null,
+  });
   const { data: stays, error } = await sb
     .from("stays")
     .select("id")
     .eq("organization_id", orgId)
     .in("status", ["confirmed", "completed"])
-    .gte("ends_on", addDays(today, -STAY_SUMMARY_LOOKBACK_DAYS))
+    .gte("ends_on", from)
     .lte("ends_on", today);
   if (error) throw new Error(error.message);
   let queued = 0;
