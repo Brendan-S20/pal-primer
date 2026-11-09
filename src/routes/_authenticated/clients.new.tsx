@@ -694,9 +694,25 @@ function NewClientWizardForm({
       dogCount,
       frequency: frequency === "one_time" ? "weekly" : frequency,
       boundaryAreaSqm: boundaryAreaSqm ?? undefined,
+      // The address's pin, when the picker or the Outline step found one: a
+      // drawn zone is matched by where the house is, not only by the ZIPs it
+      // lists. onboardClient prices the plan with the same pin, so what this
+      // step shows is what is booked (onboarding audit 2026-11-09, D1).
+      latitude: geo?.lat,
+      longitude: geo?.lng,
       ...(commercial ? { unitCount: unitsN, stationCount: stationsN } : {}),
     }),
-    [postalCode, accountType, dogCount, frequency, boundaryAreaSqm, commercial, unitsN, stationsN],
+    [
+      postalCode,
+      accountType,
+      dogCount,
+      frequency,
+      boundaryAreaSqm,
+      geo,
+      commercial,
+      unitsN,
+      stationsN,
+    ],
   );
 
   const quoteQ = useQuery({
