@@ -158,15 +158,17 @@ export const changeMyEmail = createServerFn({ method: "POST" })
 
 export const sendMyPasswordReset = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ redirectTo: z.string().url() }).parse(d))
+  .inputValidator((d) => z.object({ redirectTo: z.string().max(500).optional() }).parse(d ?? {}))
   .handler(async ({ data, context }) => {
     const { supabase } = context;
     const { data: current } = await supabase.auth.getUser();
     const email = current?.user?.email;
     if (!email) throw new Error("No email address on this account");
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: data.redirectTo,
-    });
-    if (error) throw new Error(error.message);
-    return { sentTo: email };
+    // Same helper, redirect rule and messages as the sign-in page's "Forgot
+    // password?" (lib/password-recovery.ts). This used to send the link to
+    // /auth, which has no idea what to do with a recovery session.
+    const { requestPasswordReset, safeResetRedirect } = await import("@/lib/password-recovery");
+    const r = await requestPasswordReset(supabase, email, safeResetRedirect(data.redirectTo));
+    if (!r.ok) throw new Error(r.message);
+    return { sentTo: r.sentTo };
   });
