@@ -65,6 +65,8 @@ import { toastServerError } from "@/lib/server-outcome";
 import { useFormDraft } from "@/hooks/useFormDraft";
 import { DraftRestoredNotice } from "@/components/DraftRestoredNotice";
 import { newClientDraftForm } from "@/lib/form-drafts";
+import { needsANamedDog } from "@/lib/new-client-dogs";
+import { NeedsANamedDogAlert } from "@/components/NeedsANamedDogAlert";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -607,6 +609,12 @@ function NewClientWizardForm({
   // one blank row, and wrong once a lead that said "3 dogs" opens it on three:
   // an owner who has not learned the names yet would have priced one dog.
   const dogCount = Math.max(1, dogs.length);
+  // But a residential client needs at least one of those rows NAMED: with
+  // none, nothing is saved as a dog while the plan bills for one, and the new
+  // client's Summary opened on "no dog is on file" (audit 2026-11-09, D2).
+  // Commercial / HOA may skip the step. lib/new-client-dogs; the server
+  // refuses the same thing.
+  const needsDog = needsANamedDog(accountType, dogs);
 
   // plan
   const [frequency, setFrequency] = useState<(typeof FREQS)[number]["value"]>(
@@ -1029,7 +1037,7 @@ function NewClientWizardForm({
     // (routing, zone pricing, geocoding all need it). Finding #13.
     if (current === "Property") return !!(street && city && region && postalCode);
     if (current === "Outline") return true; // outline sketch optional
-    if (current === "Dogs") return true;
+    if (current === "Dogs") return !needsDog;
     return true;
   })();
 
@@ -1491,17 +1499,23 @@ function NewClientWizardForm({
         {/* STEP 3 — Dogs */}
         {current === "Dogs" && (
           <div className="space-y-4">
-            {accountType === "commercial" && (
+            {accountType === "commercial" ? (
               <p className="text-sm text-muted-foreground">
                 Skip if this is a commercial/HOA account. Otherwise add any resident dogs.
               </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Add at least one {sitting ? "pet" : "dog"} by name. A residential client needs one
+                on file before a plan can bill for it.
+              </p>
             )}
+            {attempted && needsDog && <NeedsANamedDogAlert pets={sitting} />}
             {fromLead && (fromLead.dogCount ?? 0) > 0 && (
               <p className="text-sm text-muted-foreground">
                 The lead said {fromLead.dogCount} dog{fromLead.dogCount === 1 ? "" : "s"}, so there
-                {dogs.length === 1 ? " is a row" : ` are ${dogs.length} rows`} below. Name them now
-                or later: the plan is priced for one dog per row, and a row without a name is not
-                saved as a dog.
+                {dogs.length === 1 ? " is a row" : ` are ${dogs.length} rows`} below. Name at least
+                one now; the rest can wait. The plan is priced for one dog per row, and a row
+                without a name is not saved as a dog.
               </p>
             )}
             {dogs.map((d, i) => (
@@ -1511,6 +1525,10 @@ function NewClientWizardForm({
                     <Label className="text-xs">Name</Label>
                     <Input
                       value={d.name}
+                      aria-invalid={attempted && needsDog && i === 0 ? true : undefined}
+                      aria-describedby={
+                        attempted && needsDog && i === 0 ? "needs-a-named-dog" : undefined
+                      }
                       onChange={(e) => {
                         const next = [...dogs];
                         next[i] = { ...next[i], name: e.target.value };
@@ -1964,7 +1982,17 @@ function NewClientWizardForm({
               <Button
                 type="button"
                 disabled={mutation.isPending || linkMutation.isPending || needsPrice || needsDays}
-                onClick={() => mutation.mutate()}
+                onClick={() => {
+                  // Not disabled: a groom lead's last step IS Dogs, and a
+                  // restored draft can open on Plan with none named. Either
+                  // way the press lands on Dogs with the inline alert.
+                  if (needsDog) {
+                    setAttempted(true);
+                    setStep(steps.indexOf("Dogs"));
+                    return;
+                  }
+                  mutation.mutate();
+                }}
               >
                 {mutation.isPending
                   ? "Creating…"
@@ -1977,6 +2005,11 @@ function NewClientWizardForm({
               )}
               {!needsPrice && needsDays && (
                 <p className="text-xs text-muted-foreground">Choose at least one day first.</p>
+              )}
+              {!needsPrice && !needsDays && needsDog && current !== "Dogs" && (
+                <p className="text-xs text-muted-foreground">
+                  Add a {sitting ? "pet" : "dog"} on the {sitting ? "Pets" : "Dogs"} step first.
+                </p>
               )}
             </div>
           )}
