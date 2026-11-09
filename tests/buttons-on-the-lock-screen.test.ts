@@ -235,6 +235,9 @@ const NEW_KEYS = [
   "nextAction",
   "navigateLabel",
   "actionLabel",
+  // The watch and car line (#454), added after the buttons on the same
+  // terms: optional, absent from every older state.
+  "shortStop",
 ];
 
 /** Exactly what TestFlight build 261 sends and saves: the twelve keys. */

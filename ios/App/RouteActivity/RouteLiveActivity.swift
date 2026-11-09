@@ -28,6 +28,16 @@
 // A tap anywhere else on the card opens My Day on the stop (`widgetURL`), on
 // 16.2 too. On 16.2 to 16.x the card is drawn exactly as before, without the
 // buttons.
+//
+// On iOS 18 and later the same activity also shows on a paired Apple Watch's
+// Smart Stack (watchOS 11) and, on iOS 26, a CarPlay Dashboard, through the
+// small supplemental family (#454). There is no watch app and no CarPlay app:
+// iOS draws `SmallRouteView` there from the same content state. It has no
+// buttons -- nothing is started or completed from a wrist or a dashboard --
+// and a tap opens My Day on the phone at the stop, through the card's
+// `widgetURL`, which carries no action. It names the stop by its street with
+// no house number (`shortStop`), never the property's label or the customer.
+// The lock screen and the Dynamic Island are drawn exactly as before.
 
 import ActivityKit
 import AppIntents
@@ -45,7 +55,7 @@ private enum Brand {
 struct RouteLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: RouteActivityAttributes.self) { context in
-            LockScreenView(
+            ActivityContentView(
                 title: context.attributes.title,
                 routeDate: context.attributes.routeDate,
                 state: context.state
@@ -133,6 +143,55 @@ struct RouteLiveActivity: Widget {
             .keylineTint(Brand.cream)
             .widgetURL(s.cardURL(routeDate: routeDate))
         }
+        .smallSupplementalFamilyIfAvailable()
+    }
+}
+
+extension WidgetConfiguration {
+    /// The Apple Watch Smart Stack and the CarPlay Dashboard (#454): iOS 18
+    /// and later. On 16.2 to 17.x the configuration is returned unchanged,
+    /// so those phones draw exactly what they drew before. (An `if
+    /// #available` returning two types is allowed here by SE-0360.)
+    func smallSupplementalFamilyIfAvailable() -> some WidgetConfiguration {
+        if #available(iOS 18.0, *) {
+            return supplementalActivityFamilies([.small])
+        } else {
+            return self
+        }
+    }
+}
+
+/// The lock screen everywhere it was before; the small view where iOS asks
+/// for the small family (the Smart Stack, CarPlay). `activityFamily` exists
+/// only on iOS 18, so the switch is behind its own availability.
+private struct ActivityContentView: View {
+    let title: String
+    let routeDate: String
+    let state: RouteActivityAttributes.ContentState
+
+    var body: some View {
+        if #available(iOS 18.0, *) {
+            FamilySwitch(title: title, routeDate: routeDate, state: state)
+        } else {
+            LockScreenView(title: title, routeDate: routeDate, state: state)
+        }
+    }
+}
+
+@available(iOS 18.0, *)
+private struct FamilySwitch: View {
+    @Environment(\.activityFamily) private var family
+    let title: String
+    let routeDate: String
+    let state: RouteActivityAttributes.ContentState
+
+    var body: some View {
+        switch family {
+        case .small:
+            SmallRouteView(state: state)
+        default:
+            LockScreenView(title: title, routeDate: routeDate, state: state)
+        }
     }
 }
 
@@ -214,6 +273,54 @@ private struct LockScreenView: View {
             }
         }
         .padding(buttons ? 14 : 16)
+    }
+}
+
+/// The Smart Stack on an Apple Watch and the CarPlay Dashboard (#454):
+/// "Stop 2 of 7", the street, the window, and a bar. No buttons and no
+/// links: the only thing a tap does is the card's `widgetURL`, My Day on the
+/// stop, with no action in it. Nothing here starts or completes a visit.
+///
+/// The street is `shortStop`, "Elm St", never `nextStop`: `nextStop` is the
+/// office's label for the property when it has one, and a label is often
+/// the customer's name.
+struct SmallRouteView: View {
+    let state: RouteActivityAttributes.ContentState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 4) {
+                Image(systemName: state.allDone ? "checkmark.circle.fill" : Brand.glyph)
+                    .font(.caption.weight(.semibold))
+                Text(state.stopLabel)
+                    .font(.caption.weight(.semibold))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            if !state.allDone {
+                if let street = state.shortStop {
+                    Text(street)
+                        .font(.headline)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                if let window = state.window {
+                    Text(window)
+                        .font(.caption)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .opacity(0.85)
+                }
+            }
+            ProgressView(value: state.progress)
+                .tint(Brand.cream)
+        }
+        .foregroundColor(Brand.cream)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
     }
 }
 
@@ -349,3 +456,47 @@ private struct ProgressRing: View {
         }
     }
 }
+
+#if DEBUG
+/// Xcode previews of the small family (#454): stop 2 of 7 in English, the
+/// same stop in Arabic, a stop with no street, and a finished route, at about
+/// the size of an Apple Watch Smart Stack tile.
+struct SmallRouteView_Previews: PreviewProvider {
+    private static func state(
+        position: Int, shortStop: String?, window: String?, allDone: Bool = false, rtl: Bool = false
+    ) -> RouteActivityAttributes.ContentState {
+        .init(
+            stopLabel: allDone ? "All stops done" : (rtl ? "المحطة \(position) من 7" : "Stop \(position) of 7"),
+            nextLabel: allDone ? "Route finished" : "Next stop",
+            nextStop: allDone ? nil : "Smith residence",
+            window: window,
+            doneLabel: "\(position - 1) done",
+            skippedLabel: "0 skipped",
+            done: allDone ? 7 : position - 1,
+            skipped: 0,
+            total: 7,
+            position: position,
+            allDone: allDone,
+            rtl: rtl,
+            shortStop: shortStop
+        )
+    }
+
+    static var previews: some View {
+        Group {
+            SmallRouteView(state: state(position: 2, shortStop: "Elm St", window: "10:40–11:00 AM"))
+                .previewDisplayName("Small, stop 2 of 7")
+            SmallRouteView(state: state(position: 2, shortStop: "Elm St", window: "10:40 ص–11:00 ص", rtl: true))
+                .environment(\.layoutDirection, .rightToLeft)
+                .previewDisplayName("Small, Arabic")
+            SmallRouteView(state: state(position: 4, shortStop: nil, window: nil))
+                .previewDisplayName("Small, no street or window")
+            SmallRouteView(state: state(position: 7, shortStop: nil, window: nil, allDone: true))
+                .previewDisplayName("Small, finished")
+        }
+        .frame(width: 170, height: 76)
+        .background(Brand.navy)
+        .previewLayout(.sizeThatFits)
+    }
+}
+#endif

@@ -124,6 +124,9 @@ describe("the content state", () => {
       position: 5,
       allDone: false,
       rtl: false,
+      // The watch and car line (tests/the-route-on-a-wrist-and-a-dashboard
+      // .test.ts): the street with no house number.
+      shortStop: "Elm St",
       // The buttons (tests/buttons-on-the-lock-screen.test.ts). No
       // coordinates in this fixture, so Navigate goes by the address.
       visitId: "v5",

@@ -33,6 +33,15 @@ export type RouteActivityState = {
   position: number;
   allDone: boolean;
   rtl: boolean;
+  /** The street of the stop on the card, with no house number and never the
+   *  office's label for the property: "Elm St". What the small presentation
+   *  on an Apple Watch Smart Stack and a CarPlay Dashboard shows beside
+   *  "Stop 4 of 7" (#454). Those screens are read by whoever is in the car or
+   *  glances at a wrist, so this is built from the street alone: the label
+   *  an office types is often the customer's name ("Smith residence"), and
+   *  the customer's own record is never in reach of this builder at all.
+   *  Null when the route is finished or the stop has no street. */
+  shortStop: string | null;
   // ── The buttons (2026-10-07). Every one of these is null when the route is
   // finished, and every one is a plain value, never an object: the "skip
   // unchanged state" check in routeChangePriority compares field by field
@@ -103,6 +112,24 @@ export function stopName(v: RouteActivityVisit | undefined): string | null {
   if (label) return label;
   const street = p?.street?.trim();
   return street || null;
+}
+
+/** "Elm St" from "412 Elm St, Apt 3": the street a stop is on, for the watch
+ *  and car surfaces (#454). Only `properties.street` is read -- never the
+ *  property's label, never a client -- the house or unit number in front of
+ *  it is dropped, and so is anything after the first comma (a unit, a
+ *  suite). Null when nothing is left. */
+export function stopStreet(v: RouteActivityVisit | undefined): string | null {
+  const raw = v?.properties?.street;
+  if (typeof raw !== "string") return null;
+  const street = raw
+    .split(",")[0]
+    // "412 ", "12B ", "1200-1204 ", "#7 ", "No. 5 "
+    .replace(/^\s*(?:no\.?\s*|#\s*)?\d+[a-z]?(?:\s*[-\u2013\/]\s*\d+[a-z]?)?\s+/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  // A street that was only a number ("412") has nothing left to say.
+  return street && !/^\d+$/.test(street) ? street : null;
 }
 
 /** Where Navigate goes: the property's coordinates when it has them, else
@@ -207,6 +234,7 @@ export function buildRouteActivityState(
     position,
     allDone,
     rtl: ctx.rtl,
+    shortStop: allDone ? null : stopStreet(next),
     visitId: allDone || !next ? null : next.id,
     destLat: dest?.lat ?? null,
     destLng: dest?.lng ?? null,
