@@ -729,6 +729,28 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
             return new Response("ok", { status: 200 });
           }
 
+          // A late-change fee on a portal reschedule or cancel (#730). Settled
+          // only here: matched by PaymentIntent AND event.account in the
+          // database, and recorded once per event id, so a duplicate delivery
+          // or another tenant's event changes nothing. A database error
+          // throws to the 500 below and Stripe retries.
+          if (
+            (event.type === "payment_intent.succeeded" ||
+              event.type === "payment_intent.payment_failed") &&
+            (event.data.object as { metadata?: Record<string, string> } | null)?.metadata
+              ?.source === "portal_change_fee"
+          ) {
+            const { recordPortalChangeFeeEvent } = await import("@/lib/portal-change-fees.server");
+            const settled = await recordPortalChangeFeeEvent(supabaseAdmin as any, event as any);
+            // Never acknowledge an event that settled nothing it should have
+            // (#730 review, finding 2): non-2xx, so Stripe delivers it again.
+            if (settled === "unknown") {
+              console.warn("portal change fee event matched no fee yet; asking Stripe to retry", event.id);
+              return new Response("Fee not found yet", { status: 409 });
+            }
+            return new Response("ok", { status: 200 });
+          }
+
           if (event.type === "setup_intent.succeeded") {
             // The durable backstop for saving a card.
             //

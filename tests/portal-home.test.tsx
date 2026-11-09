@@ -240,7 +240,10 @@ describe("portalContext home", () => {
     try {
       await vi.waitFor(() => {
         const names = new Set(state.rpc.mock.calls.map(([name]) => name));
-        expect(names.size).toBe(11);
+        // Eleven parts, twelve reads: the visits part also reads each visit's
+        // change terms, portal_visit_change_terms (#730).
+        expect(names.size).toBe(12);
+        expect(names.has("portal_visit_change_terms")).toBe(true);
       });
     } finally {
       release();

@@ -30,6 +30,7 @@ function PortalVisits() {
     concernMut,
     skipMut,
     rescheduleMut,
+    withdrawChangeMut,
     freqMut,
     vacationMut,
     recleanMut,
@@ -81,8 +82,13 @@ function PortalVisits() {
             // does when the org has never configured a skip rule, and because
             // a missing field must not invent a charge on screen.
             skipBillablePct={Number(c?.skip_billable_pct ?? 0)}
-            onSkip={(id, reason) => skipMut.mutate({ visitId: id, reason })}
-            onReschedule={(id, newDate) => rescheduleMut.mutate({ visitId: id, newDate })}
+            onSkip={(id, reason, acceptedFeeCents, idempotencyKey) =>
+              skipMut.mutate({ visitId: id, reason, acceptedFeeCents, idempotencyKey })
+            }
+            onReschedule={(id, newDate, acceptedFeeCents, idempotencyKey) =>
+              rescheduleMut.mutate({ visitId: id, newDate, acceptedFeeCents, idempotencyKey })
+            }
+            onWithdraw={(requestId) => withdrawChangeMut.mutate(requestId)}
           />
         )}
       </section>
