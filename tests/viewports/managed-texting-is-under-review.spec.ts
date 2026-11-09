@@ -133,7 +133,7 @@ for (const width of WIDTHS) {
         },
       });
       await page.goto("/settings/billing", { waitUntil: "domcontentloaded" });
-      await expect(page.getByText("Current plan")).toBeVisible({ timeout: 45_000 });
+      await expect(page.getByText("Current plan").first()).toBeVisible({ timeout: 45_000 });
       const line = page.getByTestId("managed-texting-state");
       await expect(line).toHaveText(`Texting your clients is ${LINE.toLowerCase()}.`, {
         timeout: 15_000,
