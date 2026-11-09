@@ -1,4 +1,12 @@
 import type * as Leaflet from "leaflet";
+import {
+  adapterFor,
+  envValue,
+  providerContext,
+  requestedProvider,
+  type ProviderContext,
+  type ProviderEnv,
+} from "@/lib/providers/config";
 
 /**
  * THE FALLBACK BASEMAP. Since 2026-10-02 every map is drawn by the Google
@@ -77,6 +85,91 @@ const ESRI_LABELS_URL =
 const ESRI_TRANSPORT_URL =
   "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}";
 
+// ── THE STREET TILE PROVIDER ─────────────────────────────────────────────
+//
+// VITE_MAP_TILES_PROVIDER picks who draws the "street" basemap (see
+// src/lib/providers/config.ts). Unset is "osm", the tiles above, exactly as
+// before. "xyz" is any keyed raster tile service with a {z}/{x}/{y} URL --
+// which is what nearly every paid basemap offers -- configured entirely by:
+//
+//   VITE_MAP_TILES_URL          template, e.g. https://host/{z}/{x}/{y}.png?key={key}
+//   VITE_MAP_TILES_KEY          substituted for {key}
+//   VITE_MAP_TILES_ATTRIBUTION  required by every provider's terms
+//   VITE_MAP_TILES_MAX_ZOOM     optional, default 19
+//
+// VITE_ because these tiles are drawn in the browser and only VITE_ names are
+// inlined into the bundle; a tile key is a browser key, public by nature.
+//
+// A misconfigured provider falls back to OSM WITH an error in the console:
+// this basemap is itself the fallback for Google, and the one thing it must
+// never be is a grey box. "satellite" (Esri) is not affected by this setting.
+
+export type StreetTiles = { url: string; attribution: string; maxZoom: number };
+
+export type TileAdapter = {
+  id: string;
+  /** The tile layer, or throws when the context cannot make one. */
+  street(ctx: ProviderContext): StreetTiles;
+};
+
+const osmTiles: TileAdapter = {
+  id: "osm",
+  street: () => ({ url: OSM_URL, attribution: OSM_ATTR, maxZoom: 19 }),
+};
+
+const xyzTiles: TileAdapter = {
+  id: "xyz",
+  street(ctx) {
+    if (!ctx.url) throw new Error("VITE_MAP_TILES_PROVIDER=xyz needs VITE_MAP_TILES_URL");
+    if (ctx.url.includes("{key}") && !ctx.key) {
+      throw new Error("VITE_MAP_TILES_URL asks for {key} but VITE_MAP_TILES_KEY is empty");
+    }
+    const maxZoom = Number(envValue(ctx.env, "VITE_MAP_TILES_MAX_ZOOM") ?? 19);
+    return {
+      url: ctx.url.split("{key}").join(ctx.key ?? ""),
+      attribution: envValue(ctx.env, "VITE_MAP_TILES_ATTRIBUTION") ?? "",
+      maxZoom: Number.isFinite(maxZoom) && maxZoom > 0 ? maxZoom : 19,
+    };
+  },
+};
+
+const TILE_PROVIDERS = new Map<string, TileAdapter>([
+  [osmTiles.id, osmTiles],
+  [xyzTiles.id, xyzTiles],
+]);
+
+/** Add (or replace) a tile adapter; VITE_MAP_TILES_PROVIDER selects it. */
+export function registerTileProvider(adapter: TileAdapter): void {
+  TILE_PROVIDERS.set(adapter.id.toLowerCase(), adapter);
+}
+
+/** The street layer `env` selects, or OSM with the reason logged. */
+export function resolveStreetTiles(env: ProviderEnv): StreetTiles {
+  try {
+    const adapter = adapterFor(
+      "map-tiles",
+      TILE_PROVIDERS,
+      requestedProvider("map-tiles", env, osmTiles.id),
+    );
+    return adapter.street(providerContext("map-tiles", env));
+  } catch (err) {
+    console.error(`[map-tiles] ${(err as Error).message}; drawing OpenStreetMap instead`);
+    return osmTiles.street(providerContext("map-tiles", env));
+  }
+}
+
+/** The build's VITE_MAP_TILES_* values. Each spelled out in full, no `?.` and
+ *  no dynamic key: the build replaces exactly this text with the value. */
+function buildTimeTileEnv(): ProviderEnv {
+  return {
+    VITE_MAP_TILES_PROVIDER: import.meta.env.VITE_MAP_TILES_PROVIDER,
+    VITE_MAP_TILES_URL: import.meta.env.VITE_MAP_TILES_URL,
+    VITE_MAP_TILES_KEY: import.meta.env.VITE_MAP_TILES_KEY,
+    VITE_MAP_TILES_ATTRIBUTION: import.meta.env.VITE_MAP_TILES_ATTRIBUTION,
+    VITE_MAP_TILES_MAX_ZOOM: import.meta.env.VITE_MAP_TILES_MAX_ZOOM,
+  };
+}
+
 /**
  * Add the standard tile layer(s) for the given variant to a Leaflet map.
  * Callers should not add tile layers by hand — use this so all maps stay
@@ -105,7 +198,8 @@ export function addBaseTiles(
     }).addTo(map);
     return;
   }
-  L.tileLayer(OSM_URL, { attribution: OSM_ATTR, maxZoom: 19 }).addTo(map);
+  const street = resolveStreetTiles(buildTimeTileEnv());
+  L.tileLayer(street.url, { attribution: street.attribution, maxZoom: street.maxZoom }).addTo(map);
 }
 
 /** The user's chosen base style, or the default.

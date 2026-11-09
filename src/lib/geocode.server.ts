@@ -13,6 +13,28 @@
 // `api_key` QUERY PARAMETER; that is acceptable server-side, but it means the
 // request URL is a secret. It is never logged, and every message built from a
 // Geocodio response goes through redact() first.
+//
+// Since #529 both are ADAPTERS (GeocodingAdapter, below), chosen by
+// configuration -- see src/lib/providers/config.ts:
+//
+//   GEOCODING_PROVIDER  unset: "geocodio" when GEOCODIO_API_KEY is set, else
+//                       "nominatim" -- the rule this file always followed.
+//   GEOCODING_FALLBACK  who is asked when the first provider fails to answer.
+//                       Unset: "nominatim", as before. "none": nobody; the
+//                       address simply gets no point.
+//   GEOCODING_API_KEY / GEOCODING_URL  handed to whichever adapter is picked.
+//
+// A paid provider is a new entry in GEOCODING_PROVIDERS. Nothing that calls
+// geocodeAddress or geocodeAddresses changes.
+import {
+  adapterFor,
+  envValue,
+  providerContext,
+  requestedProvider,
+  serverEnv,
+  type ProviderContext,
+  type ProviderEnv,
+} from "@/lib/providers/config";
 
 /** How precisely the geocoder actually matched.
  *
@@ -72,70 +94,191 @@ function joinAddress(parts: AddressParts): string {
     .trim();
 }
 
-/** Geocode one address. Geocodio if a key is configured, otherwise -- or if
- *  Geocodio errors -- Nominatim, exactly as before the key existed. */
+// ── The provider ────────────────────────────────────────────────────────────
+
+/** "This provider did not answer" -- an outage, a bad key, a 429 -- as
+ *  distinct from null, "it answered, and there is no usable point". Only the
+ *  first sends the address on to the fallback. */
+export const GEOCODER_FAILED = Symbol("geocoder-failed");
+export type GeocoderAnswer = GeocodeResult | typeof GEOCODER_FAILED;
+
+export type GeocodingAdapter = {
+  id: string;
+  /** One address. `parts` is there for anything the joined string loses
+   *  (Geocodio is told the country). */
+  single(address: string, parts: AddressParts, ctx: ProviderContext): Promise<GeocoderAnswer>;
+  /** Many addresses, answers in input order. Optional: without it, rows are
+   *  asked one at a time through `single`. */
+  batch?(addresses: string[], ctx: ProviderContext): Promise<GeocoderAnswer[] | typeof GEOCODER_FAILED>;
+  /** Asked one address at a time under a rate limit, so a caller's time
+   *  budget (`nominatimBudgetMs`) applies to it. */
+  throttled?: boolean;
+};
+
+const geocodio: GeocodingAdapter = {
+  id: "geocodio",
+  async single(address, parts, ctx) {
+    const key = geocodioKey(ctx);
+    if (!key) {
+      console.error(`[geocode] geocodio selected but no GEOCODIO_API_KEY / GEOCODING_API_KEY; falling back`);
+      return GEOCODER_FAILED;
+    }
+    return geocodioSingle(address, geocodioCountry(parts), key);
+  },
+  async batch(addresses, ctx) {
+    const key = geocodioKey(ctx);
+    if (!key) {
+      console.error(`[geocode] geocodio selected but no GEOCODIO_API_KEY / GEOCODING_API_KEY; falling back`);
+      return GEOCODER_FAILED;
+    }
+    const out: GeocoderAnswer[] = [];
+    for (let at = 0; at < addresses.length; at += GEOCODIO_BATCH_MAX) {
+      const chunk = addresses.slice(at, at + GEOCODIO_BATCH_MAX);
+      const answers = await geocodioBatch(chunk, key);
+      if (answers === GEOCODER_FAILED) chunk.forEach(() => out.push(GEOCODER_FAILED));
+      else out.push(...answers);
+    }
+    return out;
+  },
+};
+
+const nominatim: GeocodingAdapter = {
+  id: "nominatim",
+  throttled: true,
+  // Never GEOCODER_FAILED: it has always been the last resort, so its
+  // failures are a null, logged where they happen.
+  single: (address) => geocodeWithNominatim(address),
+};
+
+const GEOCODING_PROVIDERS = new Map<string, GeocodingAdapter>([
+  [geocodio.id, geocodio],
+  [nominatim.id, nominatim],
+]);
+
+/** Add (or replace) a geocoding adapter; GEOCODING_PROVIDER or
+ *  GEOCODING_FALLBACK then select it by id. */
+export function registerGeocodingProvider(adapter: GeocodingAdapter): void {
+  GEOCODING_PROVIDERS.set(adapter.id.toLowerCase(), adapter);
+}
+
+/** Remove an adapter registered with registerGeocodingProvider. The two
+ *  built-ins stay. */
+export function unregisterGeocodingProvider(id: string): void {
+  const k = id.toLowerCase();
+  if (k !== geocodio.id && k !== nominatim.id) GEOCODING_PROVIDERS.delete(k);
+}
+
+/** Who is asked first, and who is asked when that one does not answer.
+ *  Throws ProviderConfigError for a name nobody registered. */
+export function geocodingProviders(env: ProviderEnv = serverEnv()): {
+  primary: GeocodingAdapter;
+  fallback: GeocodingAdapter | null;
+} {
+  const primary = adapterFor(
+    "geocoding",
+    GEOCODING_PROVIDERS,
+    requestedProvider("geocoding", env, envValue(env, "GEOCODIO_API_KEY") ? geocodio.id : nominatim.id),
+  );
+  const fb = (envValue(env, "GEOCODING_FALLBACK") ?? nominatim.id).toLowerCase();
+  if (fb === "none" || fb === "off" || fb === primary.id) return { primary, fallback: null };
+  return {
+    primary,
+    fallback: adapterFor("geocoding", GEOCODING_PROVIDERS, fb, "GEOCODING_FALLBACK"),
+  };
+}
+
+/** geocodingProviders, or null with the reason logged: a misconfigured
+ *  geocoder costs a pin, never a signup. */
+function chainOrNull() {
+  try {
+    return geocodingProviders();
+  } catch (err) {
+    console.error("[geocode]", (err as Error).message, "No address will get a point.");
+    return null;
+  }
+}
+
+/** Geocode one address with the configured provider, and its fallback if the
+ *  provider does not answer. Unconfigured: Geocodio if a key is set,
+ *  otherwise -- or if Geocodio errors -- Nominatim, exactly as before. */
 export async function geocodeAddress(parts: AddressParts): Promise<GeocodeResult> {
   const address = joinAddress(parts);
   if (!address) return null;
 
-  const key = geocodioKey();
-  if (key) {
-    const answer = await geocodioSingle(address, geocodioCountry(parts), key);
-    if (answer !== GEOCODIO_FAILED) return answer;
-    // Fall through: a bad key, a 429 or an outage must not stop a signup from
-    // getting a pin. Nominatim is slower, not wrong.
+  const chain = chainOrNull();
+  if (!chain) return null;
+  const ctx = providerContext("geocoding", serverEnv());
+
+  const answer = await chain.primary.single(address, parts, ctx);
+  if (answer !== GEOCODER_FAILED) return answer;
+  // A bad key, a 429 or an outage must not stop a signup from getting a pin:
+  // the fallback is slower, not wrong. Unless there is no fallback, by choice.
+  if (!chain.fallback) {
+    console.error(`[geocode] ${chain.primary.id} did not answer for "${address}" and GEOCODING_FALLBACK is none`);
+    return null;
   }
-  return geocodeWithNominatim(address);
+  const second = await chain.fallback.single(address, parts, ctx);
+  return second === GEOCODER_FAILED ? null : second;
 }
 
 /** Geocode many addresses, answers in the SAME ORDER as the input, one entry
  *  per input (null where nothing usable came back -- the same null a single
  *  lookup returns, so callers keep treating "no coordinates" one way).
  *
- *  With a Geocodio key this is one batch request per 10,000 addresses instead
- *  of one throttled request per address. Without a key it is the old loop over
- *  Nominatim at 1/s, unchanged. If a whole batch fails, every row in it falls
- *  back to Nominatim; if Geocodio errors on a single row, that row does. */
+ *  A provider with a batch endpoint (Geocodio: one request per 10,000
+ *  addresses) is asked once; one without is asked row by row. Rows the first
+ *  provider did not answer -- a whole failed batch, or one row's error -- go
+ *  to the fallback. Unconfigured, that is exactly the old behaviour: Geocodio
+ *  batches with a key, Nominatim at 1/s without one or for what it missed. */
 export async function geocodeAddresses(
   list: AddressParts[],
   opts: {
-    /** Stop asking Nominatim after this long; rows it did not reach come back
-     *  null, the same as an address with no match. Unset: no limit. An
-     *  import sets it (#617) because 1,000 addresses at one a second is
-     *  about 17 minutes. */
+    /** Stop asking a throttled provider (Nominatim) after this long; rows it
+     *  did not reach come back null, the same as an address with no match.
+     *  Unset: no limit. An import sets it (#617) because 1,000 addresses at
+     *  one a second is about 17 minutes. */
     nominatimBudgetMs?: number;
   } = {},
 ): Promise<GeocodeResult[]> {
   const out: GeocodeResult[] = list.map(() => null);
   const addresses = list.map(joinAddress);
-  const key = geocodioKey();
+  const chain = chainOrNull();
+  if (!chain) return out;
+  const ctx = providerContext("geocoding", serverEnv());
 
-  // Index of every row that still needs Nominatim.
-  const viaNominatim: number[] = [];
-
-  if (!key) {
-    addresses.forEach((a, i) => a && viaNominatim.push(i));
-  } else {
-    const wanted = addresses.flatMap((a, i) => (a ? [i] : []));
-    for (let at = 0; at < wanted.length; at += GEOCODIO_BATCH_MAX) {
-      const chunk = wanted.slice(at, at + GEOCODIO_BATCH_MAX);
-      const answers = await geocodioBatch(
-        chunk.map((i) => addresses[i]),
-        key,
-      );
-      chunk.forEach((rowIndex, k) => {
-        const a = answers === GEOCODIO_FAILED ? GEOCODIO_FAILED : answers[k];
-        if (a === GEOCODIO_FAILED) viaNominatim.push(rowIndex);
+  /** Ask `adapter` for every row in `rows`; returns the rows it did not answer. */
+  const ask = async (adapter: GeocodingAdapter, rows: number[]): Promise<number[]> => {
+    const missed: number[] = [];
+    if (rows.length === 0) return missed;
+    if (adapter.batch) {
+      const answers = await adapter.batch(rows.map((i) => addresses[i]), ctx);
+      rows.forEach((rowIndex, k) => {
+        const a = answers === GEOCODER_FAILED ? GEOCODER_FAILED : answers[k];
+        if (a === GEOCODER_FAILED || a === undefined) missed.push(rowIndex);
         else out[rowIndex] = a;
       });
+      return missed;
     }
-  }
+    const deadline =
+      adapter.throttled && opts.nominatimBudgetMs != null
+        ? Date.now() + opts.nominatimBudgetMs
+        : Infinity;
+    for (const i of rows) {
+      if (Date.now() >= deadline) break;
+      const a = await adapter.single(addresses[i], list[i], ctx);
+      if (a === GEOCODER_FAILED) missed.push(i);
+      else out[i] = a;
+    }
+    return missed;
+  };
 
-  const deadline =
-    opts.nominatimBudgetMs != null ? Date.now() + opts.nominatimBudgetMs : Infinity;
-  for (const i of viaNominatim) {
-    if (Date.now() >= deadline) break;
-    out[i] = await geocodeWithNominatim(addresses[i]);
+  const wanted = addresses.flatMap((a, i) => (a ? [i] : []));
+  const missed = await ask(chain.primary, wanted);
+  if (missed.length && chain.fallback) await ask(chain.fallback, missed);
+  else if (missed.length) {
+    console.error(
+      `[geocode] ${chain.primary.id} did not answer ${missed.length} address(es) and GEOCODING_FALLBACK is none`,
+    );
   }
   return out;
 }
@@ -147,20 +290,26 @@ const GEOCODIO_URL = "https://api.geocod.io/v1.7/geocode";
 const GEOCODIO_BATCH_MAX = 10_000;
 // A sentinel distinct from null: null is "Geocodio answered, and the answer is
 // that there is no usable point"; GEOCODIO_FAILED is "Geocodio did not answer"
-// and the caller should ask Nominatim instead.
-const GEOCODIO_FAILED = Symbol("geocodio-failed");
-type GeocodioAnswer = GeocodeResult | typeof GEOCODIO_FAILED;
+// and the caller should ask the fallback instead.
+const GEOCODIO_FAILED: typeof GEOCODER_FAILED = GEOCODER_FAILED;
+type GeocodioAnswer = GeocoderAnswer;
 
-function geocodioKey(): string | null {
-  const key = process.env.GEOCODIO_API_KEY?.trim();
-  return key ? key : null;
+/** GEOCODIO_API_KEY first -- its own name, which means only Geocodio -- then
+ *  the generic GEOCODING_API_KEY. */
+function geocodioKey(ctx: ProviderContext): string | null {
+  return envValue(ctx.env, "GEOCODIO_API_KEY") ?? ctx.key;
 }
 
-/** Remove the key from anything about to be logged. Geocodio's error bodies do
- *  not echo it today; this is so that a future one that does cannot leak it. */
+/** Remove any configured key from anything about to be logged. Geocodio's
+ *  error bodies do not echo it today; this is so that a future one that does
+ *  cannot leak it. */
 function redact(text: string): string {
-  const key = geocodioKey();
-  return key ? text.split(key).join("[redacted]") : text;
+  let out = text;
+  for (const name of ["GEOCODIO_API_KEY", "GEOCODING_API_KEY"]) {
+    const key = envValue(serverEnv(), name);
+    if (key) out = out.split(key).join("[redacted]");
+  }
+  return out;
 }
 
 const CA_POSTAL = /\b[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z][ -]?\d[ABCEGHJ-NPRSTV-Z]\d\b/i;
@@ -256,7 +405,7 @@ async function geocodioSingle(
     res = await fetch(`${GEOCODIO_URL}?${params}`, { headers: { Accept: "application/json" } });
   } catch (err) {
     console.error(
-      `[geocode] geocodio network error for "${address}"; falling back to Nominatim:`,
+      `[geocode] geocodio network error for "${address}"; falling back:`,
       redact(String((err as Error)?.message ?? err)),
     );
     return GEOCODIO_FAILED;
@@ -266,7 +415,7 @@ async function geocodioSingle(
     // are "ask somebody else", not "this address does not exist".
     const body = await res.text().catch(() => "");
     console.error(
-      `[geocode] geocodio ${res.status} for "${address}"; falling back to Nominatim: ${redact(body.slice(0, 300))}`,
+      `[geocode] geocodio ${res.status} for "${address}"; falling back: ${redact(body.slice(0, 300))}`,
     );
     return GEOCODIO_FAILED;
   }
@@ -275,7 +424,7 @@ async function geocodioSingle(
     data = await res.json();
   } catch {
     console.error(
-      `[geocode] geocodio sent invalid JSON for "${address}"; falling back to Nominatim`,
+      `[geocode] geocodio sent invalid JSON for "${address}"; falling back`,
     );
     return GEOCODIO_FAILED;
   }
@@ -300,7 +449,7 @@ async function geocodioBatch(
     });
   } catch (err) {
     console.error(
-      `[geocode] geocodio batch of ${addresses.length}: network error; falling back to Nominatim:`,
+      `[geocode] geocodio batch of ${addresses.length}: network error; falling back:`,
       redact(String((err as Error)?.message ?? err)),
     );
     return GEOCODIO_FAILED;
@@ -308,7 +457,7 @@ async function geocodioBatch(
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     console.error(
-      `[geocode] geocodio batch of ${addresses.length}: ${res.status}; falling back to Nominatim: ${redact(body.slice(0, 300))}`,
+      `[geocode] geocodio batch of ${addresses.length}: ${res.status}; falling back: ${redact(body.slice(0, 300))}`,
     );
     return GEOCODIO_FAILED;
   }
@@ -317,7 +466,7 @@ async function geocodioBatch(
     data = await res.json();
   } catch {
     console.error(
-      `[geocode] geocodio batch of ${addresses.length}: invalid JSON; falling back to Nominatim`,
+      `[geocode] geocodio batch of ${addresses.length}: invalid JSON; falling back`,
     );
     return GEOCODIO_FAILED;
   }
@@ -325,7 +474,7 @@ async function geocodioBatch(
   const entries: BatchEntry[] = Array.isArray(data?.results) ? data.results : [];
   if (entries.length !== addresses.length) {
     console.error(
-      `[geocode] geocodio batch sent ${addresses.length}, got ${entries.length} back; falling back to Nominatim`,
+      `[geocode] geocodio batch sent ${addresses.length}, got ${entries.length} back; falling back`,
     );
     return GEOCODIO_FAILED;
   }
@@ -333,7 +482,7 @@ async function geocodioBatch(
     const entry = entries[i];
     if (typeof entry?.query === "string" && entry.query !== address) {
       console.error(
-        `[geocode] geocodio batch row ${i} answered a different query; falling back to Nominatim for "${address}"`,
+        `[geocode] geocodio batch row ${i} answered a different query; falling back for "${address}"`,
       );
       return GEOCODIO_FAILED;
     }
@@ -342,7 +491,7 @@ async function geocodioBatch(
       // A per-row error (typically "could not parse this address") inside an
       // otherwise good batch: that row, and only that row, tries Nominatim.
       console.error(
-        `[geocode] geocodio batch row ${i} error for "${address}"; falling back to Nominatim: ${redact(String(response?.error ?? "no response"))}`,
+        `[geocode] geocodio batch row ${i} error for "${address}"; falling back: ${redact(String(response?.error ?? "no response"))}`,
       );
       return GEOCODIO_FAILED;
     }

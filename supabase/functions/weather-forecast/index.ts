@@ -61,7 +61,18 @@ Deno.serve(async (req) => {
     return json({ error: "Dates must be YYYY-MM-DD" }, 400);
   }
 
-  const url = new URL("https://api.open-meteo.com/v1/forecast");
+  // Same provider settings as src/lib/weather.functions.ts (#529): this
+  // function relays only Open-Meteo, so WEATHER_URL and WEATHER_API_KEY are
+  // read when WEATHER_PROVIDER is unset or "open-meteo", and the public host
+  // with no key is the default -- the request this function always made.
+  // These are this function's OWN secrets (Supabase function secrets are
+  // separate from the app server's). The key is never logged or echoed.
+  const provider = (Deno.env.get("WEATHER_PROVIDER") ?? "").trim().toLowerCase();
+  const openMeteo = provider === "" || provider === "open-meteo";
+  const base = ((openMeteo && Deno.env.get("WEATHER_URL")?.trim()) || "https://api.open-meteo.com")
+    .replace(/\/+$/, "");
+  const apiKey = openMeteo ? Deno.env.get("WEATHER_API_KEY")?.trim() : "";
+  const url = new URL(`${base}/v1/forecast`);
   url.searchParams.set("latitude", String(latitude));
   url.searchParams.set("longitude", String(longitude));
   // Current Open-Meteo daily variable names — the legacy ones (weathercode,
@@ -82,6 +93,7 @@ Deno.serve(async (req) => {
   url.searchParams.set("timezone", "auto");
   url.searchParams.set("start_date", fromDate);
   url.searchParams.set("end_date", toDate);
+  if (apiKey) url.searchParams.set("apikey", apiKey);
 
   try {
     const upstream = await fetch(url.toString(), {
@@ -94,7 +106,11 @@ Deno.serve(async (req) => {
     });
   } catch (e) {
     return json(
-      { error: `Weather upstream unreachable: ${(e as Error).message}` },
+      {
+        error: `Weather upstream unreachable: ${
+          apiKey ? (e as Error).message.split(apiKey).join("[redacted]") : (e as Error).message
+        }`,
+      },
       502,
     );
   }

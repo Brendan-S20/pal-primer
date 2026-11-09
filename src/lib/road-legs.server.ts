@@ -32,6 +32,13 @@
 // wants a self-hosted OSRM or a paid provider, and the only thing that has to
 // change is OSRM_URL.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import {
+  pickProvider,
+  providerContext,
+  serverEnv,
+  type ProviderContext,
+  type ProviderEnv,
+} from "@/lib/providers/config";
 
 const OSRM_URL = process.env.OSRM_URL ?? "https://router.project-osrm.org";
 
@@ -79,9 +86,94 @@ const USER_AGENT = "HoundStack/1.0 (pet-waste operations app; contact: support@h
  *  infra/osrm/docker-compose.yml sets 200 -- so this is an env var rather than
  *  a constant, and raising the server without raising this would leave the
  *  extra capacity unused and silent. */
-const MAX_POINTS = Number(process.env.OSRM_MAX_TABLE ?? 90);
+function osrmMaxPoints(): number {
+  return Number(process.env.OSRM_MAX_TABLE ?? 90);
+}
 
 type Point = { lat: number; lon: number };
+
+// ── THE ROUTING PROVIDER ─────────────────────────────────────────────────
+//
+// Everything below this block speaks OSRM's Table response: `code`, a
+// `durations` and a `distances` matrix in input order, and `sources` /
+// `destinations` carrying how far each point was snapped. A provider is an
+// adapter that builds ONE request for every pair among `points` and turns
+// whatever comes back into that shape, so the snap guard, the cache and the
+// planner never learn there is more than one router.
+//
+// ROUTING_PROVIDER picks it (see src/lib/providers/config.ts); unset is
+// "osrm", which is OSRM_URL / OSRM_ENDPOINTS / the public demo exactly as
+// before. A paid provider is a new entry in ROUTING_PROVIDERS reading
+// ROUTING_API_KEY and ROUTING_URL from its context -- and nothing else here.
+
+/** OSRM's Table response, which every adapter's answer is normalised to. */
+export type RoutingTable = {
+  code: string;
+  message?: string;
+  /** Seconds, [from][to], null where no road connects the pair. */
+  durations: Array<Array<number | null>>;
+  /** Metres, [from][to], null where no road connects the pair. */
+  distances: Array<Array<number | null>>;
+  /** How far each point had to move to reach a road, in metres. */
+  sources?: Array<{ distance?: number } | null>;
+  destinations?: Array<{ distance?: number } | null>;
+};
+
+export type RoutingRequest = {
+  url: string;
+  headers?: Record<string, string>;
+  /** What may be written to a log. NEVER contains a key: a key that travels
+   *  in the query string makes `url` itself a secret. */
+  endpoint: string;
+};
+
+export type RoutingAdapter = {
+  id: string;
+  /** How the logs name it. */
+  label: string;
+  /** The most points one request may carry. */
+  maxPoints(ctx: ProviderContext): number;
+  tableRequest(points: Point[], ctx: ProviderContext): RoutingRequest;
+  /** The response body as OSRM's Table, or null when it is not one. */
+  parseTable(json: unknown): RoutingTable | null;
+};
+
+const osrm: RoutingAdapter = {
+  id: "osrm",
+  label: "OSRM",
+  maxPoints: () => osrmMaxPoints(),
+  tableRequest(points) {
+    // OSRM takes lon,lat. Getting this backwards routes through the Indian
+    // Ocean and returns plausible-looking numbers, so it is written once, here.
+    const coords = points.map((p) => `${p.lon},${p.lat}`).join(";");
+    const base = endpointFor(points[0].lat, points[0].lon);
+    return {
+      url: `${base}/table/v1/driving/${coords}?annotations=duration,distance`,
+      headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+      endpoint: base,
+    };
+  },
+  parseTable: (json) => (json && typeof json === "object" ? (json as RoutingTable) : null),
+};
+
+const ROUTING_PROVIDERS = new Map<string, RoutingAdapter>([[osrm.id, osrm]]);
+
+/** Add (or replace) a routing adapter. For a provider added in its own file,
+ *  and for tests; ROUTING_PROVIDER then selects it by id. */
+export function registerRoutingProvider(adapter: RoutingAdapter): void {
+  ROUTING_PROVIDERS.set(adapter.id.toLowerCase(), adapter);
+}
+
+/** Remove an adapter registered with registerRoutingProvider. "osrm" stays. */
+export function unregisterRoutingProvider(id: string): void {
+  if (id.toLowerCase() !== osrm.id) ROUTING_PROVIDERS.delete(id.toLowerCase());
+}
+
+/** The adapter the environment selects. Throws ProviderConfigError for a
+ *  ROUTING_PROVIDER nobody registered -- never the demo server instead. */
+export function routingProvider(env: ProviderEnv = serverEnv()): RoutingAdapter {
+  return pickProvider("routing", env, ROUTING_PROVIDERS, osrm.id);
+}
 
 /** Rounded exactly as the table stores them, so a lookup cannot miss by a tick. */
 const r5 = (n: number) => Number(n.toFixed(5));
@@ -442,6 +534,17 @@ async function measureDay(
   // other legs might be stale, and nothing here can tell.
   if (await everyLegIsFresh(orgId, points)) return alreadyCached;
 
+  let provider: RoutingAdapter;
+  try {
+    provider = routingProvider();
+  } catch (err) {
+    // A misspelt ROUTING_PROVIDER. Estimates, loudly -- not the demo server.
+    console.error("[road-legs]", (err as Error).message, "Leaving this day on estimates.");
+    return failed("router_error");
+  }
+  const ctx = providerContext("routing", serverEnv());
+  const MAX_POINTS = provider.maxPoints(ctx);
+
   if (points.length > MAX_POINTS) {
     // Deliberately not silently truncating: a partial matrix would measure some
     // legs and estimate others, and the mix is harder to reason about than
@@ -452,16 +555,14 @@ async function measureDay(
     return failed("too_many_points");
   }
 
-  // OSRM takes lon,lat. Getting this backwards routes through the Indian Ocean
-  // and returns plausible-looking numbers, so it is written once, here.
-  const coords = points.map((p) => `${p.lon},${p.lat}`).join(";");
-  const base = endpointFor(points[0].lat, points[0].lon);
-  const url = `${base}/table/v1/driving/${coords}?annotations=duration,distance`;
+  const request = provider.tableRequest(points, ctx);
+  const base = request.endpoint;
+  const who = provider.label;
 
   const ask = async () => {
-    await paceFor(base);
-    return fetch(url, {
-      headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+    await paceFor(request.url);
+    return fetch(request.url, {
+      headers: request.headers,
       signal: AbortSignal.timeout(20_000),
     });
   };
@@ -475,28 +576,28 @@ async function measureDay(
     if (res.status === 429) {
       const wait = retryAfterMs(res.headers.get("retry-after"));
       await res.body?.cancel().catch(() => {});
-      console.warn(`[road-legs] OSRM 429 for ${orgId} ${day}; retrying once in ${wait} ms`);
+      console.warn(`[road-legs] ${who} 429 for ${orgId} ${day}; retrying once in ${wait} ms`);
       await timing.sleep(wait);
       res = await ask();
       if (res.status === 429) {
         console.error(
-          `[road-legs] OSRM 429 again for ${orgId} ${day}; leaving this day on estimates`,
+          `[road-legs] ${who} 429 again for ${orgId} ${day}; leaving this day on estimates`,
         );
         return failed("router_busy");
       }
     }
     if (!res.ok) {
-      console.error(`[road-legs] OSRM ${res.status} for ${orgId} ${day}`);
+      console.error(`[road-legs] ${who} ${res.status} for ${orgId} ${day}`);
       return failed("router_error");
     }
-    json = await res.json();
+    json = provider.parseTable(await res.json());
   } catch (err) {
-    console.error("[road-legs] OSRM unreachable", (err as Error).message);
+    console.error(`[road-legs] ${who} unreachable`, (err as Error).message);
     return failed("router_unreachable");
   }
 
   if (json?.code !== "Ok" || !Array.isArray(json.distances) || !Array.isArray(json.durations)) {
-    console.error("[road-legs] OSRM returned", json?.code, json?.message ?? "");
+    console.error(`[road-legs] ${who} returned`, json?.code, json?.message ?? "");
     return failed("router_error");
   }
 
@@ -547,7 +648,7 @@ async function measureDay(
         to_lon: points[j].lon,
         meters,
         seconds,
-        source: "osrm",
+        source: provider.id,
         fetched_at: new Date().toISOString(),
       });
     }
