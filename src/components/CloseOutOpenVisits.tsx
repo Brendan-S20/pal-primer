@@ -8,7 +8,7 @@ import { useIntlLocale } from "@/lib/i18n";
 import { orgLocalDayTime } from "@/lib/org-day";
 import { formatDay } from "@/lib/format";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
-import { deferredAfterOpenChange } from "@/lib/close-out-defer";
+import { deferredAfterOpenChange, deferredSoFar, rememberDeferred } from "@/lib/close-out-defer";
 import {
   listVisitsAwaitingCloseOut,
   confirmOpenVisit,
@@ -41,6 +41,13 @@ import { Label } from "@/components/ui/label";
 // could not read the day or reach the account menu to sign out. Closing now
 // defers the visit for this session exactly like "Still working". It records
 // nothing on the visit; it only stops asking until the next load.
+//
+// #721: closing puts off every visit the prompt holds, not just the one on
+// screen, and so does a tap outside it. The dialog stays open while the next
+// visit swaps in, so with several open visits X and Escape each showed the
+// next one in the same frame and looked like they did nothing. The list also
+// lives outside this component now (lib/close-out-defer.ts), because My Day
+// unmounts it whenever a new date loads and that brought the prompt back.
 
 /** datetime-local wants "YYYY-MM-DDTHH:MM" in LOCAL time, with no zone. */
 function toLocalInputValue(d: Date): string {
@@ -62,9 +69,10 @@ export function CloseOutOpenVisits() {
     staleTime: 5 * 60_000,
   });
 
-  // Dismissed for this session only — deliberately not persisted. An open visit
-  // is unresolved work; it should come back.
-  const [deferred, setDeferred] = useState<string[]>([]);
+  // Dismissed for this page load only — deliberately not persisted. An open
+  // visit is unresolved work; it should come back.
+  const [deferred, setDeferred] = useState<string[]>(deferredSoFar);
+  useEffect(() => rememberDeferred(deferred), [deferred]);
   const pending = useMemo(
     () => (data?.visits ?? []).filter((v: OpenVisitRow) => !deferred.includes(v.id)),
     [data?.visits, deferred],
@@ -140,10 +148,17 @@ export function CloseOutOpenVisits() {
     <Dialog
       open
       onOpenChange={(open) =>
-        setDeferred((d) => deferredAfterOpenChange(open, m.isPending, visit.id, d))
+        setDeferred((d) =>
+          deferredAfterOpenChange(
+            open,
+            m.isPending,
+            pending.map((v: OpenVisitRow) => v.id),
+            d,
+          ),
+        )
       }
     >
-      <DialogContent className="sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0" />
@@ -197,7 +212,7 @@ export function CloseOutOpenVisits() {
           <Button
             variant="ghost"
             disabled={m.isPending}
-            onClick={() => setDeferred((d) => deferredAfterOpenChange(false, false, visit.id, d))}
+            onClick={() => setDeferred((d) => deferredAfterOpenChange(false, false, [visit.id], d))}
             className="w-full"
           >
             {t("closeOut.stillWorking")}

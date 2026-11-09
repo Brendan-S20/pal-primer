@@ -42,6 +42,8 @@ import { commitResultCounts } from "@/lib/import-commit-guard";
 type Row = Record<string, any>;
 let tables: Record<string, Row[]>;
 let seq: number;
+/** A client insert naming this client is refused, as a check constraint would. */
+let refuseClient: string | null;
 
 /** Just enough of supabase-js for the import: filters, ranges, inserts and
  *  updates that change the rows a later read sees. */
@@ -58,6 +60,10 @@ function fakeSupabase() {
       const run = async (mode: "many" | "one") => {
         const list = (tables[table] ??= []);
         if (op === "insert") {
+          const list0 = Array.isArray(payload) ? payload : [payload];
+          if (table === "clients" && list0.some((r: Row) => r.display_name === refuseClient)) {
+            return { data: null, error: { message: "new row violates a check" } };
+          }
           const items = (Array.isArray(payload) ? payload : [payload]).map((r: Row) => ({
             id: r.id ?? `${table}-${++seq}`,
             created_at: new Date().toISOString(),
@@ -147,6 +153,7 @@ function fiftyRows(): Row[] {
 
 beforeEach(() => {
   seq = 0;
+  refuseClient = null;
   tables = {
     import_batches: [],
     import_rows: [],
@@ -221,6 +228,48 @@ describe("a 50-row clients file with a duplicate inside it", () => {
     expect(tables.clients.filter((c) => c.primary_email === "client10@example.test")).toHaveLength(
       1,
     );
+  });
+
+  it("points the skipped repeat at the client its first row made", async () => {
+    const { batchId } = await preview({
+      source: "generic_csv",
+      entity: "clients",
+      mapping: { ...mapping, street: "Street", city: "City", postal_code: "Zip" },
+      rows: fiftyRows(),
+    });
+    await commit(batchId);
+    const rows = tables.import_rows.filter((r) => r.batch_id === batchId);
+    const ten = rows.find((r) => r.row_num === 10)!;
+    expect(ten.target_id).toBeTruthy();
+    expect(rows.find((r) => r.row_num === 11)).toMatchObject({
+      action: "skip",
+      target_id: ten.target_id,
+    });
+  });
+
+  it("fails the repeat when its first row fails, and the counts still equal the rows", async () => {
+    const { batchId } = await preview({
+      source: "generic_csv",
+      entity: "clients",
+      mapping: { ...mapping, street: "Street", city: "City", postal_code: "Zip" },
+      rows: fiftyRows(),
+    });
+    refuseClient = "Client 10";
+    const result = await commit(batchId);
+    const states = rowStates(batchId);
+    expect(states).toEqual({ create: 44, update: 0, skip: 1, error: 5 });
+    const rows = tables.import_rows.filter((r) => r.batch_id === batchId);
+    expect(rows.find((r) => r.row_num === 11)).toMatchObject({
+      action: "error",
+      error: "The same client appears earlier in this file, and that row could not be imported.",
+    });
+    expect(result).toMatchObject({ created: 44, skipped: 1, failed: 2 });
+    expect(commitResultCounts(result)).toEqual({
+      created: states.create,
+      updated: states.update,
+      skipped: states.skip,
+      failed: states.error,
+    });
   });
 
   it("flags a ZIP that is not one and a phone that is not whole, in the preview", async () => {
@@ -348,6 +397,40 @@ describe("dogs for clients with no id from the old system", () => {
       ["Biscuit", "p-email"],
       ["Mochi", "p-phone"],
       ["Rex", "p-name"],
+    ]);
+  });
+
+  it("refuses a dog whose email or phone two clients share, rather than picking one", async () => {
+    tables.clients.push(
+      {
+        id: "c-1",
+        organization_id: "org",
+        display_name: "Ana",
+        primary_email: "home@example.test",
+        primary_phone: "+13125550142",
+      },
+      {
+        id: "c-2",
+        organization_id: "org",
+        display_name: "Bo",
+        primary_email: "home@example.test",
+        primary_phone: "+13125550142",
+      },
+    );
+    const mapping = autoMap("generic_csv", HEADERS_DOGS, "dogs");
+    const { batchId } = await preview({
+      source: "generic_csv",
+      entity: "dogs",
+      mapping,
+      rows: [
+        { Name: "", Email: "home@example.test", Phone: "", "Dog name": "Biscuit", Breed: "" },
+        { Name: "", Email: "", Phone: "312-555-0142", "Dog name": "Mochi", Breed: "" },
+      ],
+    });
+    const rows = tables.import_rows.filter((r) => r.batch_id === batchId);
+    expect(rows.map((r) => [r.action, r.error])).toEqual([
+      ["error", "More than one client has the email home@example.test; add an ID column"],
+      ["error", "More than one client has the phone 312-555-0142; add an ID column"],
     ]);
   });
 
