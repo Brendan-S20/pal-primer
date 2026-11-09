@@ -117,6 +117,7 @@ import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
 import { visitServiceLabel } from "@/lib/visit-service";
 import { GroomPetPanel } from "@/components/my-day/GroomPetPanel";
+import { SkipConfirmRow } from "@/components/my-day/SkipConfirmRow";
 import {
   TrainingProgressPanel,
   TrainingSessionBadge,
@@ -3207,19 +3208,12 @@ function VisitCard({
                 placeholder={t("skip.detailsPlaceholder")}
                 rows={2}
               />
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  disabled={!reason.trim() || skip.isPending}
-                  onClick={() => skip.mutate()}
-                >
-                  {t("skip.confirm")}
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setShowSkip(false)}>
-                  {t("common.cancel")}
-                </Button>
-              </div>
+              <SkipConfirmRow
+                reason={reason}
+                pending={skip.isPending}
+                onConfirm={() => skip.mutate()}
+                onCancel={() => setShowSkip(false)}
+              />
               <p className="text-2xs text-muted-foreground">{t("skip.billingNote")}</p>
             </div>
           )}
