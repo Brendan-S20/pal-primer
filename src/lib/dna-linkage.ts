@@ -218,6 +218,9 @@ export type DogLinks = {
   packages: number;
   careLogs: number;
   homework: number;
+  /** Lesson scores and notes kept for this dog (session_progress and
+   *  training_session_notes, since 20261102171500). */
+  lessonRecords: number;
   groomNotes: number;
   incidents: number;
   dnaMatches: number;
@@ -233,6 +236,7 @@ const DOG_LINK_LABELS: Record<keyof DogLinks, string> = {
   packages: "training packages",
   careLogs: "care logs",
   homework: "homework",
+  lessonRecords: "lesson progress",
   groomNotes: "grooming notes",
   incidents: "unit incidents",
   dnaMatches: "DNA matches",

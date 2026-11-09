@@ -252,6 +252,7 @@ const NO_LINKS: DogLinks = {
   packages: 0,
   careLogs: 0,
   homework: 0,
+  lessonRecords: 0,
   groomNotes: 0,
   incidents: 0,
   dnaMatches: 0,
@@ -309,6 +310,8 @@ describe("deleting a dog from a unit (#455)", () => {
         "client_packages.dog_id",
         "care_log.pet_id",
         "homework.dog_id",
+        "session_progress.dog_id",
+        "training_session_notes.dog_id",
         "pet_groom_notes.dog_id",
         "unit_incidents.dog_id",
         "dna_matches.matched_dog_id",
@@ -318,18 +321,25 @@ describe("deleting a dog from a unit (#455)", () => {
       ].sort(),
     );
     // Every count is scoped to the caller's organization.
-    expect(h.countFilters.filter((f) => f.col === "organization_id")).toHaveLength(12);
+    expect(h.countFilters.filter((f) => f.col === "organization_id")).toHaveLength(14);
   });
 
-  it("head-counts only columns each table has: homework and pet_care_instructions have no id", async () => {
+  it("marks a dog with lesson scores or notes inactive, so its training history stays (R2-26)", async () => {
+    h.counts = { session_progress: 3 };
+    const r = await removeDog({ data: { id: DOG }, context: ctx() } as any);
+    expect(r).toEqual({ outcome: "deactivated", reasons: ["lesson progress"] });
+    expect(h.deleted).toEqual([]);
+  });
+
+  it("head-counts only columns each table has: pet_care_instructions has no id", async () => {
+    // homework had no id until 20261102171500 gave it one; the count still selects "*".
     expect(ROW_COLUMNS.homework?.has("visit_id")).toBe(true);
-    expect(ROW_COLUMNS.homework?.has("id")).toBe(false);
     expect(ROW_COLUMNS.pet_care_instructions?.has("pet_id")).toBe(true);
     expect(ROW_COLUMNS.pet_care_instructions?.has("id")).toBe(false);
 
     const r = await removeDog({ data: { id: DOG }, context: ctx() } as any);
     expect(r).toEqual({ outcome: "deleted", reasons: [] });
-    expect(h.headSelects).toHaveLength(12);
+    expect(h.headSelects).toHaveLength(14);
     for (const { table, columns } of h.headSelects) {
       expect(ROW_COLUMNS[table], `${table} is in the generated types`).toBeDefined();
       if (columns === "*") continue;

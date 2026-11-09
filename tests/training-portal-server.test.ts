@@ -251,11 +251,35 @@ describe("the portal Training page", () => {
       error: null,
     }),
     session_progress: () => ({
-      data: [{ visit_id: "v-done", score: 4, training_skills: { name: "Sit", sort_order: 1 } }],
+      data: [
+        {
+          visit_id: "v-done",
+          dog_id: "dog-1",
+          score: 4,
+          training_skills: { name: "Sit", sort_order: 1 },
+          visits: { scheduled_on: "2026-10-02" },
+        },
+        // An older lesson outside any package still counts toward the dog's progress.
+        {
+          visit_id: "v-older",
+          dog_id: "dog-1",
+          score: 2,
+          training_skills: { name: "Sit", sort_order: 1 },
+          visits: { scheduled_on: "2026-09-25" },
+        },
+      ],
       error: null,
     }),
     homework: () => ({
-      data: [{ visit_id: "v-done", body: "Practice sit", due_on: null }],
+      data: [
+        {
+          visit_id: "v-done",
+          dog_id: "dog-1",
+          body: "Practice sit",
+          due_on: null,
+          visits: { scheduled_on: "2026-10-02" },
+        },
+      ],
       error: null,
     }),
     staff: () => ({ data: [{ id: "s1", display_name: "Maria Lopez" }], error: null }),
@@ -264,7 +288,7 @@ describe("the portal Training page", () => {
   const lessonNotes = () =>
     state.rpc.mockImplementation(async (fn: string) =>
       fn === "portal_training_lesson_notes"
-        ? { data: [{ visit_id: "v-done", note: "Good focus" }], error: null }
+        ? { data: [{ visit_id: "v-done", dog_id: "dog-1", note: "Good focus" }], error: null }
         : { data: null, error: { message: `unexpected rpc ${fn}` } },
     );
 
@@ -289,11 +313,31 @@ describe("the portal Training page", () => {
         id: "v-done",
         scheduledOn: "2026-10-02",
         status: "completed",
-        scores: [{ skill: "Sit", score: 4 }],
-        note: "Good focus",
-        homework: { body: "Practice sit", dueOn: null },
+        records: [
+          {
+            dogName: "Biscuit",
+            scores: [{ skill: "Sit", score: 4 }],
+            note: "Good focus",
+            homework: { body: "Practice sit", dueOn: null },
+          },
+        ],
       },
     ]);
+    // Each dog's skills over time and its current homework (R2-26).
+    expect(r.dogProgress).toEqual([
+      {
+        dogId: "dog-1",
+        dogName: "Biscuit",
+        skills: [{ skill: "Sit", scores: [2, 4], first: 2, latest: 4, lessons: 2 }],
+        homework: { body: "Practice sit", dueOn: null, setOn: "2026-10-02" },
+      },
+    ]);
+    // Read for this client's completed lessons only.
+    for (const table of ["session_progress", "homework"]) {
+      expect(filtersOf(table)).toContainEqual(["eq", "visits.client_id", "client-1"]);
+      expect(filtersOf(table)).toContainEqual(["eq", "visits.status", "completed"]);
+      expect(filtersOf(table)).toContainEqual(["eq", "organization_id", "org-1"]);
+    }
     // The shared note only, through the portal function. The table itself is
     // never read, so no column list on it can widen to the trainer's note. The
     // session's client goes with it, so another client's visit ids return
@@ -321,6 +365,21 @@ describe("the portal Training page", () => {
     expect(sql).toMatch(/AND v\.client_id = _client_id/);
     expect(sql).not.toMatch(/trainer_note|\*/);
     expect(sql).toMatch(/FROM PUBLIC, anon, authenticated;/);
+
+    // 20261102171500 adds the dog to what it returns (R2-26), and nothing else.
+    const perDog = readFileSync(
+      "supabase/migrations/20261102171500_a-lesson-is-recorded-per-dog.sql",
+      "utf8",
+    ).replace(/--.*$/gm, "");
+    const fn = perDog.slice(perDog.indexOf("CREATE FUNCTION public.portal_training_lesson_notes"));
+    const body = fn.slice(0, fn.indexOf("$function$;"));
+    expect(body).toMatch(/RETURNS TABLE \(visit_id uuid, dog_id uuid, note text\)/);
+    expect(body).toMatch(
+      /SELECT n\.visit_id, n\.dog_id, n\.note\s+FROM public\.training_session_notes n/,
+    );
+    expect(body).toMatch(/AND v\.client_id = _client_id/);
+    expect(body).not.toMatch(/trainer_note|\*/);
+    expect(fn).toMatch(/FROM PUBLIC, anon, authenticated;/);
   });
 
   it("never names the trainer-only note anywhere in the portal code", () => {
@@ -340,8 +399,10 @@ describe("the portal Training page", () => {
     const r = await portalGetTraining({ data: { token: TOKEN } });
     if (!r.visible) throw new Error("expected the page");
     expect(r.shareProgress).toBe(false);
-    expect(r.packages[0].recent[0]).toMatchObject({ note: null, homework: null });
-    expect(r.packages[0].recent[0].scores).toHaveLength(1);
+    expect(r.packages[0].recent[0].records).toEqual([
+      { dogName: "Biscuit", scores: [{ skill: "Sit", score: 4 }], note: null, homework: null },
+    ]);
+    expect(r.dogProgress[0].homework).toBeNull();
     expect(state.queries.some((q) => q.table === "training_session_notes")).toBe(false);
     expect(state.rpc).not.toHaveBeenCalledWith("portal_training_lesson_notes", expect.anything());
     expect(state.queries.some((q) => q.table === "homework")).toBe(false);
