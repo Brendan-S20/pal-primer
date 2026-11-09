@@ -120,3 +120,34 @@ jobs:
             ${{ runner.temp }}/ios-launch-smoke/crashes/
           retention-days: 14
           if-no-files-found: ignore
+
+      # ── LEAVE THE MAC WITH NO SIMULATOR RUNNING ─────────────────────────
+      #
+      # Leftover booted simulators keep crashing Apple's PosterBoard process
+      # on the self-hosted Mac. The smoke script shuts down and deletes its
+      # own devices on the way out, but only when it gets that far: a failed
+      # or cancelled run leaves them booted. So, whatever happened above:
+      # shut everything down, delete every device the script created (it
+      # names them "HS launch smoke <device> iOS <version>"), and delete any
+      # device whose runtime is gone. This step can never fail the job:
+      # continue-on-error, no `set -e`, and every command ends in `|| true`.
+      - name: Shut down and delete the simulators
+        if: always()
+        continue-on-error: true
+        run: |
+          xcrun simctl shutdown all || true
+          xcrun simctl list devices -j 2>/dev/null | python3 -I -c '
+          import json, sys
+          try:
+              devices = json.load(sys.stdin).get("devices", {})
+          except Exception:
+              devices = {}
+          for runtime in devices.values():
+              for d in runtime:
+                  if d.get("name", "").startswith("HS launch smoke "):
+                      print(d["udid"])
+          ' | while read -r udid; do
+            echo "deleting smoke simulator $udid"
+            xcrun simctl delete "$udid" || true
+          done || true
+          xcrun simctl delete unavailable || true
