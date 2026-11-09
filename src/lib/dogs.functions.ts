@@ -306,8 +306,8 @@ export const updateDog = createServerFn({ method: "POST" })
 /** Count what points at a dog. Head-only counts, one per table, all scoped
  *  to the organization. A failed count throws: deleting on a guess is how a
  *  plan ends up naming a dog that no longer exists. The count selects "*":
- *  not every table has an id column (homework is keyed by visit_id,
- *  pet_care_instructions by pet_id), and a HEAD request for a missing column
+ *  not every table has an id column (pet_care_instructions is keyed by
+ *  pet_id; homework was keyed by visit_id until 20261102171500), and a HEAD request for a missing column
  *  fails with an empty body, so the error message is blank (#455). */
 async function countDogLinks(supabase: any, orgId: string, dogId: string): Promise<DogLinks> {
   const count = async (table: string, apply: (q: any) => any) => {
@@ -324,6 +324,8 @@ async function countDogLinks(supabase: any, orgId: string, dogId: string): Promi
     packages,
     careLogs,
     homework,
+    lessonScores,
+    lessonNotes,
     groomNotes,
     incidents,
     dnaMatches,
@@ -337,6 +339,8 @@ async function countDogLinks(supabase: any, orgId: string, dogId: string): Promi
       count("client_packages", (q) => q.eq("dog_id", dogId)),
       count("care_log", (q) => q.eq("pet_id", dogId)),
       count("homework", (q) => q.eq("dog_id", dogId)),
+      count("session_progress", (q) => q.eq("dog_id", dogId)),
+      count("training_session_notes", (q) => q.eq("dog_id", dogId)),
       count("pet_groom_notes", (q) => q.eq("dog_id", dogId)),
       count("unit_incidents", (q) => q.eq("dog_id", dogId)),
       count("dna_matches", (q) => q.eq("matched_dog_id", dogId)),
@@ -351,6 +355,7 @@ async function countDogLinks(supabase: any, orgId: string, dogId: string): Promi
     packages,
     careLogs,
     homework,
+    lessonRecords: lessonScores + lessonNotes,
     groomNotes,
     incidents,
     dnaMatches,

@@ -21,6 +21,7 @@ import {
   portalShowsTraining,
 } from "@/lib/training-portal";
 import { createPackageSale, type TrainingDb } from "@/lib/training-packages.server";
+import { skillTrends, type DatedScore } from "@/lib/training-progress";
 
 // The admin client, typed loosely as every portal handler holds it.
 type Admin = any;
@@ -54,6 +55,10 @@ const DECIDED_NOT_TO_SEND = new Set([
   "already_sent",
 ]);
 const RECENT_LESSONS = 20;
+// A client's completed-lesson scores and homework, newest first. Enough for
+// a year of weekly lessons for two dogs at five skills.
+const PROGRESS_ROWS = 1000;
+const HOMEWORK_ROWS = 200;
 
 function one<T>(v: T | T[] | null | undefined): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
@@ -199,17 +204,24 @@ export async function loadPortalTraining(sb: Admin, session: Session) {
   const staffIds = [
     ...new Set(upcoming.map((l) => l.assigned_staff_id).filter((v): v is string => !!v)),
   ];
+  // Scores and homework are read for the client's completed lessons, not only
+  // the recent package lessons: they make each dog's progress over time and
+  // the homework it is on now, whichever lesson set it (R2-26).
   const [scores, notes, homework, staff] = await Promise.all([
-    recentIds.length
-      ? sb
-          .from("session_progress")
-          .select("visit_id, score, training_skills(name, sort_order)")
-          .in("visit_id", recentIds)
-          .eq("organization_id", orgId)
-      : { data: [], error: null },
+    sb
+      .from("session_progress")
+      .select(
+        "visit_id, dog_id, score, training_skills(name, sort_order), visits!inner(scheduled_on, status, client_id)",
+      )
+      .eq("organization_id", orgId)
+      .eq("visits.client_id", clientId)
+      .eq("visits.status", "completed")
+      .lte("visits.scheduled_on", today)
+      .order("created_at", { ascending: false })
+      .limit(PROGRESS_ROWS),
     share && recentIds.length
       ? // Through the portal function, never the table: its RETURNS TABLE is
-        // (visit_id, note), so the staff-only note cannot come back, and it
+        // (visit_id, dog_id, note), so the staff-only note cannot come back, and it
         // returns only this client's visits.
         // rpc-role: service (sb is admin(); granted to service_role only)
         sb.rpc("portal_training_lesson_notes", {
@@ -218,12 +230,16 @@ export async function loadPortalTraining(sb: Admin, session: Session) {
           _visit_ids: recentIds,
         })
       : { data: [], error: null },
-    share && recentIds.length
+    share
       ? sb
           .from("homework")
-          .select("visit_id, body, due_on")
-          .in("visit_id", recentIds)
+          .select("visit_id, dog_id, body, due_on, visits!inner(scheduled_on, status, client_id)")
           .eq("organization_id", orgId)
+          .eq("visits.client_id", clientId)
+          .eq("visits.status", "completed")
+          .lte("visits.scheduled_on", today)
+          .order("created_at", { ascending: false })
+          .limit(HOMEWORK_ROWS)
       : { data: [], error: null },
     staffIds.length
       ? sb.from("staff").select("id, display_name").in("id", staffIds).eq("organization_id", orgId)
@@ -231,29 +247,66 @@ export async function loadPortalTraining(sb: Admin, session: Session) {
   ]);
   for (const r of [scores, notes, homework, staff]) if (r.error) throw new Error(r.error.message);
 
-  const scoresBy = new Map<string, { skill: string; score: number; sort: number }[]>();
-  for (const s of (scores.data ?? []) as Array<{
+  type Visited = { scheduled_on: string } | { scheduled_on: string }[] | null | undefined;
+  const scoreRows = (scores.data ?? []) as Array<{
     visit_id: string;
+    dog_id: string | null;
     score: number;
     training_skills: { name: string; sort_order: number } | { name: string; sort_order: number }[];
-  }>) {
+    visits?: Visited;
+  }>;
+  // `note` only: portal_training_lesson_notes returns nothing else.
+  const noteRows = (notes.data ?? []) as {
+    visit_id: string;
+    dog_id?: string | null;
+    note: string | null;
+  }[];
+  const homeworkRows = (homework.data ?? []) as Array<{
+    visit_id: string;
+    dog_id?: string | null;
+    body: string;
+    due_on: string | null;
+    visits?: Visited;
+  }>;
+  const dated: Array<DatedScore & { dogId: string | null }> = scoreRows.map((s) => {
     const skill = one(s.training_skills);
-    const list = scoresBy.get(s.visit_id) ?? [];
-    list.push({ skill: skill?.name ?? "", score: s.score, sort: skill?.sort_order ?? 0 });
-    scoresBy.set(s.visit_id, list);
-  }
-  const noteBy = new Map(
-    // `note` only: portal_training_lesson_notes returns nothing else.
-    ((notes.data ?? []) as { visit_id: string; note: string | null }[]).map((n) => [
-      n.visit_id,
-      n.note,
-    ]),
-  );
-  const homeworkBy = new Map(
-    ((homework.data ?? []) as { visit_id: string; body: string; due_on: string | null }[]).map(
-      (h) => [h.visit_id, { body: h.body, dueOn: h.due_on }],
-    ),
-  );
+    return {
+      visitId: s.visit_id,
+      dogId: s.dog_id ?? null,
+      scheduledOn: one(s.visits ?? null)?.scheduled_on ?? "",
+      skill: skill?.name ?? "",
+      sortOrder: skill?.sort_order ?? 0,
+      score: s.score,
+    };
+  });
+  /** One lesson's records, one per dog (or one for the whole lesson). */
+  const recordsFor = (visitId: string, dogName: Map<string, string>) => {
+    const dogIds = new Set<string | null>();
+    for (const r of dated) if (r.visitId === visitId) dogIds.add(r.dogId);
+    if (share) {
+      for (const n of noteRows) if (n.visit_id === visitId) dogIds.add(n.dog_id ?? null);
+      for (const h of homeworkRows) if (h.visit_id === visitId) dogIds.add(h.dog_id ?? null);
+    }
+    return [...dogIds]
+      .map((dogId) => {
+        const note = noteRows.find((n) => n.visit_id === visitId && (n.dog_id ?? null) === dogId);
+        const work = homeworkRows.find(
+          (h) => h.visit_id === visitId && (h.dog_id ?? null) === dogId,
+        );
+        return {
+          dogName: dogId ? (dogName.get(dogId) ?? null) : null,
+          scores: dated
+            .filter((r) => r.visitId === visitId && r.dogId === dogId)
+            .sort((a, b) => a.sortOrder - b.sortOrder || a.skill.localeCompare(b.skill))
+            .map(({ skill, score }) => ({ skill, score })),
+          // Null both when nothing was written and when the business keeps
+          // notes and homework to itself.
+          note: share ? (note?.note ?? null) : null,
+          homework: share && work ? { body: work.body, dueOn: work.due_on } : null,
+        };
+      })
+      .sort((a, b) => (a.dogName ?? "").localeCompare(b.dogName ?? ""));
+  };
   const staffName = new Map(
     ((staff.data ?? []) as { id: string; display_name: string }[]).map((s) => [
       s.id,
@@ -280,12 +333,39 @@ export async function loadPortalTraining(sb: Admin, session: Session) {
   }));
   const dogName = new Map(dogList.map((d) => [d.id, d.name]));
   const startOf = (l: LessonRow) => one(l.subscriptions)?.earliest_time?.slice(0, 5) ?? null;
+  // Each dog's skills over time and the homework from its latest lesson that
+  // set any. A dog with neither is left out.
+  const dogProgress = dogList
+    .map((d) => {
+      const latest = homeworkRows
+        .filter((h) => h.dog_id === d.id)
+        .sort((a, b) =>
+          (one(b.visits ?? null)?.scheduled_on ?? "").localeCompare(
+            one(a.visits ?? null)?.scheduled_on ?? "",
+          ),
+        )[0];
+      return {
+        dogId: d.id,
+        dogName: d.name,
+        skills: skillTrends(dated.filter((r) => r.dogId === d.id && r.scheduledOn)),
+        homework:
+          share && latest
+            ? {
+                body: latest.body,
+                dueOn: latest.due_on,
+                setOn: one(latest.visits ?? null)?.scheduled_on ?? null,
+              }
+            : null,
+      };
+    })
+    .filter((p) => p.skills.length > 0 || p.homework);
 
   return {
     visible: true as const,
     today,
     shareProgress: share,
     dogs: dogList,
+    dogProgress,
     properties: (props.data ?? []) as Array<{
       id: string;
       label: string | null;
@@ -341,13 +421,7 @@ export async function loadPortalTraining(sb: Admin, session: Session) {
             id: l.id,
             scheduledOn: l.scheduled_on,
             status: l.status,
-            scores: (scoresBy.get(l.id) ?? [])
-              .sort((a, b) => a.sort - b.sort || a.skill.localeCompare(b.skill))
-              .map(({ skill, score }) => ({ skill, score })),
-            // Null both when nothing was written and when the business keeps
-            // notes and homework to itself.
-            note: share ? (noteBy.get(l.id) ?? null) : null,
-            homework: share ? (homeworkBy.get(l.id) ?? null) : null,
+            records: recordsFor(l.id, dogName),
           })),
       };
     }),
