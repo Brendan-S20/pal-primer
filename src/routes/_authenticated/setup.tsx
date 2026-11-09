@@ -695,6 +695,11 @@ function ServiceAreaPanel({
             data: {
               name: name.trim(),
               geoMatchMode: "radius",
+              // List the ZIPs the circle holds, as "Fill ZIPs from the area" on
+              // Zones does. Without them the signup page and the lead form,
+              // which match by ZIP alone, could not quote the area setup made
+              // (onboarding audit 2026-11-09, D1).
+              fillZipsFromShape: true,
               centerLatitude: center.lat,
               centerLongitude: center.lng,
               radiusMeters: Math.round(miles * 1609.344),

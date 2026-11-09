@@ -39,11 +39,10 @@ import { supabase } from "@/integrations/supabase/client";
 
 export type OAuthProvider = "google" | "apple" | "facebook";
 
-/** Must match CFBundleURLTypes in ios/App/App/Info.plist AND be allow-listed in
- *  Supabase → Authentication → URL Configuration → Redirect URLs. Supabase
- *  refuses to redirect anywhere that is not on that list, silently landing the
- *  person on the site URL instead, which looks like "the button did nothing". */
-export const NATIVE_OAUTH_REDIRECT = "consulting.thenorth.houndstack://auth-callback";
+import { NATIVE_OAUTH_REDIRECT } from "@/lib/native-oauth-redirect";
+// Re-exported: callers have always imported it from here. Its definition, and
+// why it must match Info.plist and Supabase's allow-list, is in that file.
+export { NATIVE_OAUTH_REDIRECT };
 
 /** Start the flow: ask Supabase for the provider URL, then open it OUTSIDE the
  *  app. `skipBrowserRedirect` is what stops supabase-js navigating the WebView

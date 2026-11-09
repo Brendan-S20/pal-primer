@@ -109,6 +109,14 @@ describe("the workflow runs on the files it tests", () => {
     expect(pullRequestPaths()).toContain("playwright.config.ts");
   });
 
+  it("admits src/** and routes it to the browser jobs only", () => {
+    // Product asked that a UI change get browser coverage on its PR without
+    // a manual dispatch. It must not start the Docker replay.
+    expect(pullRequestPaths()).toContain("src/**");
+    const arm = gateScript().match(/^\s*src\/\*\)\s*(.*);;\s*$/m);
+    expect(arm?.[1].trim()).toBe("viewports=true");
+  });
+
   it("still admits the migration paths the trigger was added for", () => {
     expect(pullRequestPaths()).toEqual(
       expect.arrayContaining(["supabase/migrations/**", "supabase/proofs/**"]),

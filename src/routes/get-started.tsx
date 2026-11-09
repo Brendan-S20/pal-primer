@@ -29,6 +29,12 @@ import { pageTitle } from "@/lib/page-title";
 import { deviceTimezone } from "@/lib/org-timezone";
 import { handOffSignupEmail, takeSignupEmail } from "@/lib/signup-email";
 import { finishSignup, newSignupProgress, signupErrorMessage } from "@/lib/finish-signup";
+import {
+  clearSignupDraft,
+  readSignupDraft,
+  saveSignupDraft,
+  SIGNUP_INTERRUPTED_MESSAGE,
+} from "@/lib/signup-draft";
 
 // The Get-started walkthrough (Brendan's re-review): account creation is a
 // guided path, not a tab on the sign-in card. Steps: account → business →
@@ -103,10 +109,6 @@ function NewBusinessPage() {
   const [checking, setChecking] = useState(false);
 
   const [email, setEmail] = useState("");
-  useEffect(() => {
-    const handed = takeSignupEmail();
-    if (handed) setEmail((typed) => typed || handed);
-  }, []);
   const [password, setPassword] = useState("");
   const [orgName, setOrgName] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -116,6 +118,12 @@ function NewBusinessPage() {
   // repeats (src/lib/finish-signup.ts). Above the `invited` early
   // return, so it is called on every render.
   const progress = useRef(newSignupProgress());
+  // Drawn again partway through, with no password to hand (it is never kept):
+  // the last step asks for it once more (#785 (a)).
+  const [askPasswordAgain, setAskPasswordAgain] = useState(false);
+  // Nothing is written until what was kept has been read back, so the first,
+  // empty render can never overwrite a draft it was about to restore.
+  const draftRead = useRef(false);
 
   // "Promo or referral code" (optional). Validated server-side for a friendly
   // hint, but an invalid code NEVER blocks signup — the server drops bad codes
@@ -123,6 +131,48 @@ function NewBusinessPage() {
   const [promoCode, setPromoCode] = useState("");
   const [promoStatus, setPromoStatus] = useState<{ valid: boolean; message: string } | null>(null);
   const [promoChecking, setPromoChecking] = useState(false);
+
+  // A page drawn afresh partway through sign-up (a reload, a remount, a second
+  // tab) used to start again from an empty first step with no word of why
+  // (#785 (a)). What was typed comes back, at the step it was on, and a create
+  // that was still working when the page went says so.
+  useEffect(() => {
+    const handed = takeSignupEmail();
+    const draft = readSignupDraft();
+    const sameSignup =
+      draft && (!handed || handed.toLowerCase() === draft.email.trim().toLowerCase());
+    if (draft && sameSignup) {
+      setEmail((typed) => typed || draft.email);
+      setOrgName(draft.orgName);
+      setDisplayName(draft.displayName);
+      setPhone(draft.phone);
+      setSmsConsent(draft.smsConsent);
+      if (draft.promoCode) setPromoCode(draft.promoCode);
+      const step1Ok = isValidOrgName(draft.orgName) && draft.displayName.trim().length > 0;
+      const step = draft.step === 2 && !step1Ok ? 1 : draft.step;
+      setStep(step);
+      if (step > 0) setAskPasswordAgain(true);
+      if (draft.creating) setError(SIGNUP_INTERRUPTED_MESSAGE);
+    } else {
+      if (draft) clearSignupDraft();
+      if (handed) setEmail((typed) => typed || handed);
+    }
+    draftRead.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!draftRead.current || invited) return;
+    saveSignupDraft({
+      step,
+      email,
+      orgName,
+      displayName,
+      phone,
+      smsConsent,
+      promoCode,
+      creating: busy && step === 2,
+    });
+  }, [step, email, orgName, displayName, phone, smsConsent, promoCode, busy, invited]);
 
   const checkPromo = async (value: string) => {
     const code = value.trim();
@@ -198,6 +248,7 @@ function NewBusinessPage() {
         );
       }
       clearSignupAttribution();
+      clearSignupDraft();
       navigate({ to: "/auth" });
     } catch (err) {
       setBusy(false);
@@ -296,7 +347,14 @@ function NewBusinessPage() {
             ),
         },
       );
-      navigate({ to: outcome === "joined-team" ? "/auth" : "/onboarding" });
+      // The kept draft (#785) is spent on both ways out, as before.
+      if (outcome === "joined-team") {
+        clearSignupDraft();
+        navigate({ to: "/auth" });
+        return;
+      }
+      clearSignupDraft();
+      navigate({ to: "/onboarding" });
     } catch (err) {
       setBusy(false);
       setError(signupErrorMessage(err, progress.current));
@@ -466,6 +524,24 @@ function NewBusinessPage() {
               finish();
             }}
           >
+            {askPasswordAgain && (
+              <div className="space-y-2">
+                <Label htmlFor="gs-pass-again">Your password</Label>
+                <Input
+                  id="gs-pass-again"
+                  type="password"
+                  required
+                  minLength={8}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="At least 8 characters"
+                />
+                <p className="break-words text-xs text-muted-foreground">
+                  For {email.trim() || "your account"}. We never keep it on this device, so it is
+                  asked for again after the page reloads.
+                </p>
+              </div>
+            )}
             <SmsOptInHeading />
             <SmsOptInFields
               phone={phone}
@@ -485,7 +561,7 @@ function NewBusinessPage() {
               >
                 Back
               </Button>
-              <Button type="submit" className="flex-1" disabled={busy}>
+              <Button type="submit" className="flex-1" disabled={busy || password.length < 8}>
                 {busy
                   ? "Creating your workspace…"
                   : progress.current.registered

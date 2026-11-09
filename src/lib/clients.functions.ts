@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 import { buildClientNamePatch } from "@/lib/client-name";
+import { needsANamedDog, SERVER_NEEDS_A_NAMED_DOG } from "@/lib/new-client-dogs";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   // Through the shared gate, so a person whose access is turned off is
@@ -1526,6 +1527,13 @@ export const onboardClient = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => onboardSchema.parse(d))
   .handler(async ({ data, context }) => {
+    // A residential client is somebody's dogs. Created with none, its plan
+    // billed for one and the Summary's first words were "no dog is on file"
+    // (onboarding audit 2026-11-09, D2). Refused before anything is read or
+    // written; commercial / HOA may still have none. lib/new-client-dogs.
+    if (needsANamedDog(data.accountType, data.dogs)) {
+      throw new Error(SERVER_NEEDS_A_NAMED_DOG);
+    }
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
 
