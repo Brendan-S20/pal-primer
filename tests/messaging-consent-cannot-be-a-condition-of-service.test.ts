@@ -181,7 +181,7 @@ describe("messaging consent cannot be a condition of service", () => {
     expect(flat).toMatch(
       /is operated by The North Consulting LLC, 2222 West Grand River Avenue STE A, Okemos, MI 48864\. Contact:/,
     );
-    expect(footer).toMatch(/href="mailto:brendan@houndstack\.com"/);
+    expect(footer).toMatch(/href="mailto:support@houndstack\.com"/);
     expect(footer).toMatch(/<OperatorIdentity /);
     expect(shell).toMatch(/<OperatorIdentity /);
   });
