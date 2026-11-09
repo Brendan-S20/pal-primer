@@ -2754,6 +2754,7 @@ export type Database = {
           created_at: string
           dog_id: string | null
           due_on: string | null
+          id: string
           organization_id: string
           updated_at: string
           visit_id: string
@@ -2764,6 +2765,7 @@ export type Database = {
           created_at?: string
           dog_id?: string | null
           due_on?: string | null
+          id?: string
           organization_id: string
           updated_at?: string
           visit_id: string
@@ -2774,6 +2776,7 @@ export type Database = {
           created_at?: string
           dog_id?: string | null
           due_on?: string | null
+          id?: string
           organization_id?: string
           updated_at?: string
           visit_id?: string
@@ -2796,7 +2799,7 @@ export type Database = {
           {
             foreignKeyName: "homework_visit_id_fkey"
             columns: ["visit_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "visits"
             referencedColumns: ["id"]
           },
@@ -7151,6 +7154,7 @@ export type Database = {
       session_progress: {
         Row: {
           created_at: string
+          dog_id: string | null
           id: string
           organization_id: string
           score: number
@@ -7160,6 +7164,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          dog_id?: string | null
           id?: string
           organization_id: string
           score: number
@@ -7169,6 +7174,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          dog_id?: string | null
           id?: string
           organization_id?: string
           score?: number
@@ -7177,6 +7183,13 @@ export type Database = {
           visit_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "session_progress_dog_id_fkey"
+            columns: ["dog_id"]
+            isOneToOne: false
+            referencedRelation: "dogs"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "session_progress_organization_id_fkey"
             columns: ["organization_id"]
@@ -7446,6 +7459,7 @@ export type Database = {
           is_field_tech: boolean
           is_field_tech_overridden: boolean
           location_id: string | null
+          max_dogs_per_walk: number | null
           organization_id: string
           phone: string | null
           role: Database["public"]["Enums"]["staff_role"]
@@ -7469,6 +7483,7 @@ export type Database = {
           is_field_tech?: boolean
           is_field_tech_overridden?: boolean
           location_id?: string | null
+          max_dogs_per_walk?: number | null
           organization_id: string
           phone?: string | null
           role: Database["public"]["Enums"]["staff_role"]
@@ -7492,6 +7507,7 @@ export type Database = {
           is_field_tech?: boolean
           is_field_tech_overridden?: boolean
           location_id?: string | null
+          max_dogs_per_walk?: number | null
           organization_id?: string
           phone?: string | null
           role?: Database["public"]["Enums"]["staff_role"]
@@ -7810,6 +7826,7 @@ export type Database = {
       subscriptions: {
         Row: {
           account_type: Database["public"]["Enums"]["account_type"]
+          assigned_staff_id: string | null
           billing_cadence: Database["public"]["Enums"]["billing_cadence"]
           booked_via: string | null
           client_id: string
@@ -7850,6 +7867,7 @@ export type Database = {
         }
         Insert: {
           account_type: Database["public"]["Enums"]["account_type"]
+          assigned_staff_id?: string | null
           billing_cadence?: Database["public"]["Enums"]["billing_cadence"]
           booked_via?: string | null
           client_id: string
@@ -7890,6 +7908,7 @@ export type Database = {
         }
         Update: {
           account_type?: Database["public"]["Enums"]["account_type"]
+          assigned_staff_id?: string | null
           billing_cadence?: Database["public"]["Enums"]["billing_cadence"]
           booked_via?: string | null
           client_id?: string
@@ -8185,6 +8204,8 @@ export type Database = {
       training_session_notes: {
         Row: {
           created_at: string
+          dog_id: string | null
+          id: string
           note: string | null
           organization_id: string
           trainer_note: string | null
@@ -8193,6 +8214,8 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          dog_id?: string | null
+          id?: string
           note?: string | null
           organization_id: string
           trainer_note?: string | null
@@ -8201,6 +8224,8 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          dog_id?: string | null
+          id?: string
           note?: string | null
           organization_id?: string
           trainer_note?: string | null
@@ -8208,6 +8233,13 @@ export type Database = {
           visit_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "training_session_notes_dog_id_fkey"
+            columns: ["dog_id"]
+            isOneToOne: false
+            referencedRelation: "dogs"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "training_session_notes_organization_id_fkey"
             columns: ["organization_id"]
@@ -8218,7 +8250,7 @@ export type Database = {
           {
             foreignKeyName: "training_session_notes_visit_id_fkey"
             columns: ["visit_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "visits"
             referencedColumns: ["id"]
           },
@@ -9423,6 +9455,10 @@ export type Database = {
         }
         Returns: number
       }
+      assign_walk_group_if_open: {
+        Args: { _group_id: string; _walker_id: string }
+        Returns: string
+      }
       book_training_package_plan: {
         Args: {
           _client_package_id: string
@@ -10489,6 +10525,7 @@ export type Database = {
           _visit_ids: string[]
         }
         Returns: {
+          dog_id: string
           note: string
           visit_id: string
         }[]
@@ -10905,6 +10942,10 @@ export type Database = {
       set_org_commercial_accounts: {
         Args: { _enabled: boolean }
         Returns: Json
+      }
+      set_plan_walker: {
+        Args: { _subscription_id: string; _walker_id: string | null }
+        Returns: undefined
       }
       set_route_windows: {
         Args: { _org_id: string; _policy: string }

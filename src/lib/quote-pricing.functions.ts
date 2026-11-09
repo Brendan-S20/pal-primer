@@ -40,7 +40,9 @@ export const getQuotePricing = createServerFn({ method: "GET" })
         .order("name"),
       supabase
         .from("organizations")
-        .select("std_base_price_cents, std_per_dog_addl_cents, frequency_multipliers")
+        .select(
+          "std_base_price_cents, std_per_dog_addl_cents, frequency_multipliers, one_off_price_cents",
+        )
         .eq("id", orgId)
         .single(),
     ]);
@@ -165,5 +167,8 @@ export const getQuotePricing = createServerFn({ method: "GET" })
       subject,
       subjectLabel,
       currentPlan,
+      // A one-time cleanup's visit (D12): the owner's extra-visit price,
+      // Settings → Client portal. Null when they price each one by hand.
+      oneTimeVisitCents: (orgRes.data.one_off_price_cents as number | null | undefined) ?? null,
     };
   });

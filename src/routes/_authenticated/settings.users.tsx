@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { StaffSkills } from "@/components/settings/StaffSkills";
+import { WalkerDogCap } from "@/components/settings/WalkerDogCap";
 import { toast } from "sonner";
 import { useMyRole } from "@/hooks/useMyRole";
 import { humanizeRole } from "@/lib/humanize";
@@ -673,6 +674,8 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
       {/* Service skills (2026-10-10). Drawn only when the business sells two
           or more services; see StaffSkills. */}
       <StaffSkills staffId={staff.id} canEdit={canEdit} />
+      {/* Dog cap per walker (#731). Drawn only for a business that walks dogs. */}
+      <WalkerDogCap staffId={staff.id} canEdit={canEdit} />
       {canEdit && (
         <div className="sm:col-span-2 flex justify-end">
           <Button size="sm" onClick={save} disabled={saving}>

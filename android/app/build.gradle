@@ -65,6 +65,23 @@ if (versionPropsFile.exists()) {
 def appVersionCode = (System.getenv('ANDROID_VERSION_CODE') ?: versionProps.getProperty('VERSION_CODE', '1')).trim().toInteger()
 def appVersionName = (System.getenv('ANDROID_VERSION_NAME') ?: versionProps.getProperty('VERSION_NAME', '1.0')).trim()
 
+// ── IN-APP RATING PROMPT, DEBUG/QA ONLY (issue #521) ────────────────────────
+//
+// Play's review sheet never appears on a debug or sideloaded build, so the
+// rating prompt is invisible to QA. A DEBUG build made with
+//   ./gradlew assembleDebug -Phoundstack.fakeReview=on     (or =fail)
+// (or HOUNDSTACK_FAKE_REVIEW=on in the environment) registers a plugin that
+// runs Play's FakeReviewManager and shows a toast when the sheet would appear.
+// See docs/android-rating-prompt-qa.md.
+//
+// OFF unless asked for, and RELEASE IS ALWAYS "off": the release BuildConfig
+// field is a literal, the plugin's classes live in src/debug only, and
+// tests/the-fake-review-manager-stays-out-of-release.test.ts pins all three.
+def fakeReviewFlag = (findProperty('houndstack.fakeReview') ?: System.getenv('HOUNDSTACK_FAKE_REVIEW') ?: 'off').toString().trim().toLowerCase()
+if (!(fakeReviewFlag in ['off', 'on', 'fail'])) {
+    throw new GradleException("houndstack.fakeReview must be off, on or fail, not '${fakeReviewFlag}'")
+}
+
 android {
     namespace = "consulting.thenorth.houndstack"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -91,8 +108,20 @@ android {
             }
         }
     }
+    buildFeatures {
+        buildConfig = true
+    }
+    testOptions {
+        // FakeReviewManager builds an Intent; on the JVM the stub android.jar
+        // returns defaults instead of throwing "not mocked". Unit tests only.
+        unitTests.returnDefaultValues = true
+    }
     buildTypes {
+        debug {
+            buildConfigField "String", "FAKE_REVIEW_MANAGER", "\"${fakeReviewFlag}\""
+        }
         release {
+            buildConfigField "String", "FAKE_REVIEW_MANAGER", "\"off\""
             if (hasReleaseSigning) {
                 signingConfig signingConfigs.release
             }
@@ -115,6 +144,16 @@ dependencies {
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
     testImplementation "junit:junit:$junitVersion"
+    // FakeReviewManager ships inside Play's review artifact. Debug and test
+    // classpaths only: release keeps getting it solely through
+    // @capacitor-community/in-app-review, as before (issue #521).
+    debugImplementation "com.google.android.play:review:$googleAndroidPlayReviewVersion"
+    testDebugImplementation "com.google.android.play:review:$googleAndroidPlayReviewVersion"
+    // FakeReviewManager.requestReviewFlow() wraps PendingIntent.getBroadcast,
+    // which the JVM's stub android.jar answers with null. One static mock
+    // gives it a PendingIntent, so the JVM test needs no emulator or Robolectric.
+    testDebugImplementation "org.mockito:mockito-core:$mockitoVersion"
+    androidTestImplementation "com.google.android.play:review:$googleAndroidPlayReviewVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')

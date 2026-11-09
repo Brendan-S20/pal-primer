@@ -93,6 +93,7 @@ import { WORK_WEEK, normalizeWeekdays, offersSetDays } from "@/lib/weekday-set";
 import { servicePriceCents } from "@/lib/services";
 import { useIntlLocale } from "@/lib/i18n";
 import { createWalkPlans } from "@/lib/walk-plans.functions";
+import { PlanWalker } from "@/components/client-detail/PlanWalker";
 import { walkWindowsProblem, type WalkWindow } from "@/lib/subscription-form";
 import { isDog } from "@/lib/pets";
 import { formatMultiplier, perVisitMultiplier } from "@/lib/frequency-multipliers";
@@ -1079,6 +1080,10 @@ function ServiceDetailDrawer({
             </div>
           )}
         </dl>
+        {/* The walker on a walk plan (#731, F-17). */}
+        {s.services?.service_line === "dog_walking" && !s.stay_id && (
+          <PlanWalker subscriptionId={s.id} />
+        )}
 
         {/* What this service has cost over time, and what was billed on top of
             it. The drawer showed today's price and nothing about how it got

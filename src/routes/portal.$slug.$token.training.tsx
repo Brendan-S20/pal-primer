@@ -3,7 +3,14 @@ import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { CalendarClock, CalendarPlus, GraduationCap, NotebookPen, ShoppingBag } from "lucide-react";
+import {
+  CalendarClock,
+  CalendarPlus,
+  GraduationCap,
+  NotebookPen,
+  ShoppingBag,
+  TrendingUp,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -102,8 +109,54 @@ function PortalTraining() {
           </ul>
         )}
       </section>
+      {data.dogProgress.length > 0 && <DogProgressSection data={data} />}
       {data.forSale.length > 0 && <BuySection data={data} />}
     </div>
+  );
+}
+
+/** Each dog's homework now and how each skill has gone, oldest score first. */
+function DogProgressSection({ data }: { data: Training }) {
+  return (
+    <section className="space-y-3" data-testid="portal-dog-progress">
+      <h2 className="flex items-center gap-2 text-lg font-semibold">
+        <TrendingUp className="h-4 w-4 shrink-0" /> Progress and homework
+      </h2>
+      <ul className="grid gap-4 md:grid-cols-2">
+        {data.dogProgress.map((dog) => (
+          <li key={dog.dogId} className="min-w-0 space-y-3 rounded-lg border bg-card p-4 text-sm">
+            <h3 className="break-words text-base font-semibold">
+              <bdi>{dog.dogName}</bdi>
+            </h3>
+            {dog.homework && (
+              <div className="rounded-md bg-muted/60 p-2">
+                <div className="text-xs font-medium text-muted-foreground">
+                  Homework
+                  {dog.homework.setOn ? ` from ${fmtDayShort(dog.homework.setOn)}` : ""}
+                  {dog.homework.dueOn ? `, by ${fmtDayShort(dog.homework.dueOn)}` : ""}
+                </div>
+                <p className="whitespace-pre-line break-words">{dog.homework.body}</p>
+              </div>
+            )}
+            {dog.skills.length > 0 && (
+              <ul className="space-y-1" aria-label="Skills">
+                {dog.skills.map((s) => (
+                  <li key={s.skill} className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+                    <span className="min-w-0 break-words font-medium">
+                      <bdi>{s.skill}</bdi>
+                    </span>
+                    <span className="text-muted-foreground">
+                      {s.latest} of 5
+                      {s.lessons > 1 && s.latest !== s.first ? `, from ${s.first}` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -218,32 +271,43 @@ function PackageCard({ pack, data }: { pack: Pack; data: Training }) {
                     {LESSON_STATUS[l.status] ?? l.status}
                   </span>
                 </div>
-                {l.scores.length > 0 && (
-                  <ul className="flex flex-wrap gap-2" aria-label="Scores">
-                    {l.scores.map((s) => (
-                      <li
-                        key={s.skill}
-                        className="max-w-full break-words rounded-full bg-muted px-2.5 py-0.5 text-xs"
-                      >
-                        <bdi>{s.skill}</bdi>: {s.score} of 5
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {l.note && (
-                  <div>
-                    <div className="text-xs font-medium text-muted-foreground">Trainer's note</div>
-                    <p className="whitespace-pre-line break-words">{l.note}</p>
+                {l.records.map((r, i) => (
+                  <div key={r.dogName ?? `lesson-${i}`} className="min-w-0 space-y-2">
+                    {r.dogName && l.records.length > 1 && (
+                      <div className="break-words font-medium">
+                        <bdi>{r.dogName}</bdi>
+                      </div>
+                    )}
+                    {r.scores.length > 0 && (
+                      <ul className="flex flex-wrap gap-2" aria-label="Scores">
+                        {r.scores.map((s) => (
+                          <li
+                            key={s.skill}
+                            className="max-w-full break-words rounded-full bg-muted px-2.5 py-0.5 text-xs"
+                          >
+                            <bdi>{s.skill}</bdi>: {s.score} of 5
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {r.note && (
+                      <div>
+                        <div className="text-xs font-medium text-muted-foreground">
+                          Trainer's note
+                        </div>
+                        <p className="whitespace-pre-line break-words">{r.note}</p>
+                      </div>
+                    )}
+                    {r.homework && (
+                      <div className="rounded-md bg-muted/60 p-2">
+                        <div className="text-xs font-medium text-muted-foreground">
+                          Homework{r.homework.dueOn ? `, by ${fmtDayShort(r.homework.dueOn)}` : ""}
+                        </div>
+                        <p className="whitespace-pre-line break-words">{r.homework.body}</p>
+                      </div>
+                    )}
                   </div>
-                )}
-                {l.homework && (
-                  <div className="rounded-md bg-muted/60 p-2">
-                    <div className="text-xs font-medium text-muted-foreground">
-                      Homework{l.homework.dueOn ? `, by ${fmtDayShort(l.homework.dueOn)}` : ""}
-                    </div>
-                    <p className="whitespace-pre-line break-words">{l.homework.body}</p>
-                  </div>
-                )}
+                ))}
               </li>
             ))}
           </ul>
