@@ -72,6 +72,70 @@ export async function settleAfterFirstCommit<T>(work: () => Promise<T>): Promise
   }
 }
 
+/** Has React committed the app's first render? */
+export function isAppMounted(): boolean {
+  return mounted;
+}
+
+// ── THE THIRD PATH, AND ONE FIX FOR ALL OF THEM ──────────────────────────
+//
+// Two paths into the same race were closed one at a time: the hydration
+// pendingMinMs timer (a-timer-that-beat-the-first-render.test.ts, 2026-10-08)
+// and the beforeLoad's own answer (settleAfterFirstCommit above, 2026-10-10).
+// A third is still open, and the second fix widens it: while a route's
+// beforeLoad is still pending after `pendingMs`, router-core's
+// setupPendingTimeout fires triggerOnReady -> onReady -> router.startTransition
+// to show the pending component. _authenticated's beforeLoad now waits for the
+// first commit, so on a slow first render that timer fires first. The stack,
+// captured on 2026-11-09 in the QA-list E2E spec (#733) and reproduced on main
+// at 6 of 16 hard loads of /my-schedule and /review:
+//
+//   dispatchSetState <- Transitioner.router.startTransition <- onReady
+//   <- triggerOnReady <- (setTimeout)
+//
+// Rather than chase each caller, guard the one function they all reach.
+// <Transitioner> assigns router.startTransition during its render; a call to
+// THAT function before the app's first commit is exactly the setState on a
+// fiber that never mounted. guardRouterStartTransition holds such calls until
+// the first commit and then runs them in order. Everything else is untouched:
+// before <Transitioner> has rendered, the router's own default (run the
+// function now) still runs synchronously, which hydration depends on; after
+// the first commit every call goes straight through.
+
+type StartTransition = (fn: () => void) => void;
+
+/**
+ * Install the guard on a router (client only; see above). Returns the router.
+ * Idempotent per router.
+ */
+export function guardRouterStartTransition<R extends { startTransition: StartTransition }>(
+  router: R,
+): R {
+  const marked = router as R & { __startTransitionGuarded?: boolean };
+  if (marked.__startTransitionGuarded) return router;
+  marked.__startTransitionGuarded = true;
+  // The router's constructor default, used until <Transitioner> replaces it.
+  let current: StartTransition = router.startTransition;
+  let fromRender = false;
+  Object.defineProperty(router, "startTransition", {
+    configurable: true,
+    enumerable: true,
+    get(): StartTransition {
+      return (fn) => {
+        if (!fromRender || mounted) return current(fn);
+        // Assigned by a render that has not committed: wait for the commit,
+        // then call whichever function the committed render left in place.
+        void untilTheAppHasMounted().then(() => current(fn));
+      };
+    },
+    set(next: StartTransition) {
+      current = next;
+      fromRender = true;
+    },
+  });
+  return router;
+}
+
 /** Test seam: back to "nothing has committed". */
 export function resetAppMountedForTests(): void {
   mounted = false;
