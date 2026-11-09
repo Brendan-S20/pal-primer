@@ -2,10 +2,10 @@
 // composer. Portal status, review requests, and referrals live on the
 // Reviews & referrals tab.
 import { MessageComposer } from "@/components/client-detail/comms-panels";
+import { TextingStateBadge } from "@/components/TextingNotLive";
 import { TextingConsentPanel } from "@/components/client-detail/TextingConsentPanel";
 import { formatPhone } from "@/lib/format";
 import { useClientTexting } from "@/hooks/useClientTexting";
-import { ComingSoonBadge } from "@/components/ComingSoonBadge";
 
 export function CommunicationTab({ client }: { client: any }) {
   const texting = useClientTexting();
@@ -18,7 +18,7 @@ export function CommunicationTab({ client }: { client: any }) {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="flex flex-wrap items-center gap-2 text-sm font-medium">
             Messages
-            {!texting && <ComingSoonBadge />}
+            {!texting && <TextingStateBadge />}
           </h2>
           {!texting ? null : client.primary_phone ? (
             <span className="text-xs text-muted-foreground">
