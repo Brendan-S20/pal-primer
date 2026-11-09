@@ -38,21 +38,25 @@ export async function removeOrgCard(input: {
 }): Promise<{ ok: true; outcome: DetachOutcome }> {
   const { stripe, customerId, subscriptionId, billingStatus, paymentMethodId } = input;
 
-  let pm: { customer?: string | { id: string } | null };
+  let pm: { customer?: string | { id: string } | null } | null;
   try {
     pm = await stripe.paymentMethods.retrieve(paymentMethodId);
   } catch (e) {
+    if ((e as { code?: string })?.code !== "resource_missing") throw e;
     // Deleted in Stripe already: there is nothing left to remove.
-    if ((e as { code?: string })?.code === "resource_missing") {
-      console.info("[org-card-removal] card no longer exists in Stripe", paymentMethodId);
-      return { ok: true, outcome: "already_detached" };
-    }
-    throw e;
+    console.info("[org-card-removal] card no longer exists in Stripe", paymentMethodId);
+    pm = null;
   }
-  const pmCustomer = typeof pm.customer === "string" ? pm.customer : (pm.customer?.id ?? null);
-  // Attached to nobody: already detached (an earlier removal, or Stripe's own
-  // dashboard). It cannot be charged, which is what removing it was for.
-  if (!pmCustomer) return { ok: true, outcome: "already_detached" };
+  const pmCustomer = typeof pm?.customer === "string" ? pm.customer : (pm?.customer?.id ?? null);
+
+  // Attached to nobody (or deleted): already detached, by an earlier removal
+  // or Stripe's own dashboard. It cannot be charged, which is what removing it
+  // was for. The default is still repaired below, so a retry after a removal
+  // whose promote step failed finishes the job instead of stopping here.
+  if (!pmCustomer) {
+    await repairDefault(input);
+    return { ok: true, outcome: "already_detached" };
+  }
   if (pmCustomer !== customerId) throw new Error("That card doesn't belong to your account.");
 
   const customer = await stripe.customers.retrieve(customerId);
@@ -73,20 +77,39 @@ export async function removeOrgCard(input: {
   const outcome = await detachPaymentMethod(stripe, paymentMethodId, {
     context: "org-card-removal",
   });
+  await repairDefault(input);
+  return { ok: true, outcome };
+}
 
-  if (wasDefault && others.length > 0) {
-    await stripe.customers.update(customerId, {
-      invoice_settings: { default_payment_method: others[0].id },
-    });
-    if (subscriptionId) {
-      try {
-        await stripe.subscriptions.update(subscriptionId, {
-          default_payment_method: others[0].id,
-        });
-      } catch (e) {
-        if ((e as { code?: string })?.code !== "resource_missing") throw e;
-      }
+/**
+ * If the default (customer or subscription) is no longer one of the cards
+ * attached to the customer, make the first attached card the default. Run
+ * after every removal, including one that found the card already gone: the
+ * state it repairs is "detached, but the promote that should have followed
+ * did not happen" (review on #748).
+ */
+async function repairDefault(input: {
+  stripe: OrgCardStripe;
+  customerId: string;
+  subscriptionId: string | null;
+  defaultIdFor: (customer: unknown) => Promise<string | null>;
+}): Promise<void> {
+  const { stripe, customerId, subscriptionId } = input;
+  const customer = await stripe.customers.retrieve(customerId);
+  const defaultId = await input.defaultIdFor(customer);
+  const pms = await stripe.customers.listPaymentMethods(customerId, { type: "card", limit: 20 });
+  const attached = (pms.data ?? []).filter((m) => m.card);
+  if (attached.length === 0) return;
+  if (defaultId && attached.some((m) => m.id === defaultId)) return;
+  const next = attached[0].id;
+  await stripe.customers.update(customerId, {
+    invoice_settings: { default_payment_method: next },
+  });
+  if (subscriptionId) {
+    try {
+      await stripe.subscriptions.update(subscriptionId, { default_payment_method: next });
+    } catch (e) {
+      if ((e as { code?: string })?.code !== "resource_missing") throw e;
     }
   }
-  return { ok: true, outcome };
 }

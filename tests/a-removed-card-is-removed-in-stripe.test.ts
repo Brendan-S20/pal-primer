@@ -33,7 +33,8 @@ function fakeStripe(
     cards?: string[];
   } = {},
 ) {
-  const cards = opts.cards ?? ["pm_1"];
+  // What is attached right now; a successful detach takes the card off it.
+  const cards = [...(opts.cards ?? ["pm_1"])];
   const calls = {
     detach: [] as string[],
     customerUpdate: [] as unknown[],
@@ -48,6 +49,7 @@ function fakeStripe(
       detach: vi.fn(async (id: string) => {
         calls.detach.push(id);
         if (opts.detachError) throw opts.detachError;
+        if (cards.includes(id)) cards.splice(cards.indexOf(id), 1);
         return { id, customer: null };
       }),
     },
@@ -159,6 +161,42 @@ describe("a locked owner removing their saved card", () => {
       outcome: "already_detached",
     });
     expect(deleted.calls.detach).toEqual([]);
+  });
+
+  it("a retry after a failed promote finishes the job: the default moves to a card still attached", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    // pm_1 was detached last time, but promoting pm_2 failed, so the
+    // subscription's default is still the detached pm_1.
+    const { stripe, calls } = fakeStripe({ attachedTo: null, cards: ["pm_2"] });
+    await expect(
+      removeOrgCard({
+        stripe,
+        customerId: CUS,
+        subscriptionId: "sub_1",
+        billingStatus: "active",
+        paymentMethodId: "pm_1",
+        defaultIdFor: async () => "pm_1",
+      }),
+    ).resolves.toEqual({ ok: true, outcome: "already_detached" });
+    expect(calls.detach).toEqual([]);
+    expect(calls.customerUpdate).toEqual([
+      { invoice_settings: { default_payment_method: "pm_2" } },
+    ]);
+    expect(calls.subUpdate).toEqual([{ default_payment_method: "pm_2" }]);
+  });
+
+  it("leaves the default alone when a card that was not the default is removed", async () => {
+    const { stripe, calls } = fakeStripe({ cards: ["pm_1", "pm_2"] });
+    await removeOrgCard({
+      stripe,
+      customerId: CUS,
+      subscriptionId: null,
+      billingStatus: "free",
+      paymentMethodId: "pm_2",
+      defaultIdFor: async () => "pm_1",
+    });
+    expect(calls.detach).toEqual(["pm_2"]);
+    expect(calls.customerUpdate).toEqual([]);
   });
 
   it("still refuses a card that belongs to someone else", async () => {
