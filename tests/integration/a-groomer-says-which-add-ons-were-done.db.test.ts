@@ -1,5 +1,5 @@
 // A groomer says which booked add-ons were done (#412), in a real database.
-// set_groom_addon_done (20261109120000) writes visits.groom_addons_not_done,
+// set_groom_addon_done (20261109130000) writes visits.groom_addons_not_done,
 // and visits_groom_plan_addons charges only the rest at completion. Skipped
 // unless TEST_SUPABASE_* point at a local stack.
 

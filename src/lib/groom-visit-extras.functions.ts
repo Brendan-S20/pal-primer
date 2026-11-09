@@ -6,7 +6,7 @@
 // role, scoped to that visit's own plan and organization: a groomer reads the
 // names of the add-ons booked on their groom, not the plan's prices.
 //
-// A mark is written by set_groom_addon_done (20261109120000), which checks the
+// A mark is written by set_groom_addon_done (20261109130000), which checks the
 // caller is the visit's groomer or the office, that the add-on is on this
 // groom, and that the groom is not finished.
 

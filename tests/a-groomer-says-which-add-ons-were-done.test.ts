@@ -63,7 +63,7 @@ describe("the add-ons on a groom", () => {
 
   it("the completion trigger skips an add-on marked not done, and nothing else changed", () => {
     const sql = readFileSync(
-      "supabase/migrations/20261109120000_a-groomer-says-which-add-ons-were-done.sql",
+      "supabase/migrations/20261109130000_a-groomer-says-which-add-ons-were-done.sql",
       "utf8",
     );
     const original = readFileSync(
@@ -109,7 +109,7 @@ describe("the add-ons on a groom", () => {
 describe("the van's hookups", () => {
   it("are two flags on the address that default to nothing claimed", () => {
     const sql = readFileSync(
-      "supabase/migrations/20261109120100_the-van-knows-if-it-needs-power-or-water.sql",
+      "supabase/migrations/20261109130100_the-van-knows-if-it-needs-power-or-water.sql",
       "utf8",
     );
     expect(sql).toContain("van_power_available boolean NOT NULL DEFAULT false");

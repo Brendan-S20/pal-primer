@@ -1,7 +1,7 @@
 // Beside a groom's pets on its card (#412): whether the van can plug in or
 // fill up at the address, and the add-ons booked on this groom, each one a box
 // the groomer ticks off. An add-on left unticked is not billed when the groom
-// is completed (set_groom_addon_done, 20261109120000). An add-on done on the
+// is completed (set_groom_addon_done, 20261109130000). An add-on done on the
 // day that was not booked is the field add-on further down the card.
 
 import { useTranslation } from "react-i18next";
