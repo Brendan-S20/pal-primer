@@ -15,7 +15,7 @@ export const Route = createFileRoute("/legal/privacy")({
 
 function PrivacyPage() {
   return (
-    <LegalShell title="Privacy Policy" updated="October 18, 2026">
+    <LegalShell title="Privacy Policy" updated="November 9, 2026">
       <section>
         <p>
           {APP_NAME} ("we", "us") provides field-service software for pet-care businesses at
@@ -73,6 +73,18 @@ function PrivacyPage() {
       </section>
 
       <section>
+        <h2>This website</h2>
+        <p>
+          The marketing site at www.houndstack.com uses Vercel Web Analytics. It is cookie-free,
+          aggregated, and does not give us personal identifiers. We see page views and referral
+          sources, not individual profiles. If you submit the contact or product-updates form on
+          that site, it is sent to and stored by the {APP_NAME} app, our own systems hosted on
+          Supabase, and emailed to us. We receive the name, business name, email, phone number if
+          present, and message you typed, and we use them to respond to you.
+        </p>
+      </section>
+
+      <section>
         <h2>How we use information</h2>
         <ul>
           <li>To provide, maintain, and improve the service.</li>
@@ -91,10 +103,11 @@ function PrivacyPage() {
         <h2>Text messaging</h2>
         <p>
           {APP_NAME} sends two kinds of text. From {APP_NAME}&apos;s own number we text account
-          holders who opt in (below). Texting between a business and its own clients is coming soon
-          and is pending carrier registration. When it launches, those texts are sent from a
-          separate Twilio account that {APP_NAME} sets up for that business, and the business is
-          responsible for having its clients&apos; consent.
+          holders who opt in (below). A business can text its own clients through the Managed
+          texting add-on. Those texts start once the carriers approve that business&apos;s own
+          registration, and they are sent from a separate Twilio account that {APP_NAME} sets up
+          for that business, never from {APP_NAME}&apos;s own number. The business is responsible
+          for having its clients&apos; consent.
         </p>
         <p>
           We collect mobile numbers and SMS consent records only from {APP_NAME} account holders who
@@ -153,8 +166,15 @@ function PrivacyPage() {
             together with the page in the app it opens)
           </li>
           <li>
-            Vercel Web Analytics (page view counts for the marketing site at houndstack.com only;
-            the app does not use it)
+            Vercel Web Analytics (visit counts for the marketing site at www.houndstack.com only:
+            it sets no cookies, does not give us personal identifiers, and shows page views and
+            referral sources in aggregate; the app does not use it)
+          </li>
+          <li>
+            Supabase for website form submissions (the contact and product-updates forms on
+            www.houndstack.com only: the name, business name, email address, phone number if
+            present, message, page, and submission time, plus a salted hash of your IP address and
+            your browser user agent, used to stop spam)
           </li>
           <li>
             Anthropic (the AI features, once a business switches them on: the AI receptionist and

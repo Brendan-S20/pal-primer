@@ -315,7 +315,12 @@ describe("no trigger function is executable by a signed-in user", () => {
     // is a CREATE OR REPLACE of the function 20261023100000 already defines,
     // so it adds no new name. main alone counts 103; main plus #733 counts
     // 107, not 104/108.
-    expect(triggerFunctions().size).toBe(107);
+    //
+    // 107 -> 108 (20261102172500, a lesson series skips closed days and can
+    // stop, R2-49): visits_follow_series_rules, which leaves out a series
+    // visit on a closed or holiday date, or past the series' session count.
+    // Revoked from PUBLIC, anon and authenticated there.
+    expect(triggerFunctions().size).toBe(108);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

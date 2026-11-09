@@ -157,7 +157,12 @@ const ANSWERS: Record<string, unknown> = {
     packages: [{ ...catalogPackage, services: { name: "Private lesson (60 min)" } }],
     lessonMinutes: { [LESSON_ID]: 60 },
   },
-  getTrainingSessionRules: { lateCancelHours: 24, missedUsesSession: true },
+  getTrainingSessionRules: {
+    lateCancelHours: 24,
+    missedUsesSession: true,
+    shareProgress: true,
+    seriesSkipClosed: true,
+  },
   getTrainingSession: { n: 2, total: 6 },
   getSessionProgress: {
     skills,

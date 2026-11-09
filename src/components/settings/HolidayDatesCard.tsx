@@ -1,6 +1,8 @@
 // Settings > Services, for a business that runs pet sitting: the dates a
 // sitting visit takes its service's holiday surcharge (holiday_dates,
 // migration 20261024080800). These are not closures. Office screen, English.
+// A training business sees it too: a lesson series that skips holidays and
+// closed days books nothing on these dates (20261102172500, R2-49).
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -12,7 +14,17 @@ import { Label } from "@/components/ui/label";
 import { addHoliday, deleteHoliday, listHolidays } from "@/lib/holidays.functions";
 import { holidayDateLabel, holidayNightLabel } from "@/lib/stays";
 
-export function HolidayDatesCard({ canEdit }: { canEdit: boolean }) {
+export function HolidayDatesCard({
+  canEdit,
+  sitting = true,
+  training = false,
+}: {
+  canEdit: boolean;
+  /** The business runs pet sitting: the dates price a sitting visit. */
+  sitting?: boolean;
+  /** The business runs training: a lesson series can skip the dates (R2-49). */
+  training?: boolean;
+}) {
   const qc = useQueryClient();
   const list = useServerFn(listHolidays);
   const add = useServerFn(addHoliday);
@@ -42,11 +54,18 @@ export function HolidayDatesCard({ canEdit }: { canEdit: boolean }) {
     <section className="space-y-3 rounded-lg border bg-card p-4 sm:p-5">
       <div className="min-w-0">
         <h3 className="font-semibold">Holiday dates</h3>
-        <p className="text-sm text-muted-foreground">
-          Sitting visits on these dates are charged the service's holiday surcharge. You stay open:
-          nothing is skipped or moved. For an overnight, the night that starts on the date counts.
-          The night of Dec 24 starts on the 24th.
-        </p>
+        {sitting && (
+          <p className="text-sm text-muted-foreground">
+            Sitting visits on these dates are charged the service's holiday surcharge. You stay
+            open: no sitting visit is skipped or moved. For an overnight,
+            the night that starts on the date counts. The night of Dec 24 starts on the 24th.
+          </p>
+        )}
+        {training && (
+          <p className="text-sm text-muted-foreground">
+            A lesson series set to skip holidays and closed days books no lesson on these dates.
+          </p>
+        )}
       </div>
 
       {canEdit && (

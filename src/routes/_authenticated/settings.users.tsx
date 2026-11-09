@@ -26,7 +26,7 @@ import { StaffSkills } from "@/components/settings/StaffSkills";
 import { WalkerDogCap } from "@/components/settings/WalkerDogCap";
 import { toast } from "sonner";
 import { useMyRole } from "@/hooks/useMyRole";
-import { humanizeRole } from "@/lib/humanize";
+import { useRoleLabel } from "@/components/CommercialOnly";
 import { MapPin, ChevronDown, ChevronRight } from "lucide-react";
 import { titleHead } from "@/lib/page-title";
 import { inviteSendToast, replaceInviteQuestion } from "@/lib/invite-copy";
@@ -94,6 +94,7 @@ async function geocode(q: string): Promise<{ lat: number; lng: number } | null> 
 }
 
 function UsersPage() {
+  const roleLabel = useRoleLabel();
   const qc = useQueryClient();
   const { role: myRole } = useMyRole();
   const canEdit = myRole === "owner";
@@ -261,13 +262,13 @@ function UsersPage() {
                                 <SelectContent>
                                   {ROLES.map((r) => (
                                     <SelectItem key={r} value={r}>
-                                      {humanizeRole(r)}
+                                      {roleLabel(r)}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
                             ) : (
-                              <Badge variant="secondary">{humanizeRole(u.role)}</Badge>
+                              <Badge variant="secondary">{roleLabel(u.role)}</Badge>
                             )}
                           </td>
                           <td className="py-3 max-md:py-0">
@@ -345,6 +346,7 @@ function UsersPage() {
 // Finding #40: real invite flow — email + pre-assigned role, pending list with
 // revoke, and auto-assignment on the invitee's first sign-in.
 function InvitePanel() {
+  const roleLabel = useRoleLabel();
   const qc = useQueryClient();
   const createFn = useServerFn(createOrgInvite);
   const listFn = useServerFn(listOrgInvites);
@@ -446,7 +448,7 @@ function InvitePanel() {
             >
               {INVITE_ROLES.map((r) => (
                 <option key={r} value={r}>
-                  {humanizeRole(r)}
+                  {roleLabel(r)}
                 </option>
               ))}
             </select>
@@ -470,7 +472,7 @@ function InvitePanel() {
             <ul className="divide-y">
               {invites.filter((i) => i.status === "pending").map((i) => (
                 <li key={i.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2 text-sm">
-                  <span className="min-w-0 break-words">{i.email} <span className="text-muted-foreground">· {humanizeRole(i.role)}</span></span>
+                  <span className="min-w-0 break-words">{i.email} <span className="text-muted-foreground">· {roleLabel(i.role)}</span></span>
                   <span className="flex shrink-0 items-center gap-3">
                     {i.link && (
                       <button className="text-xs underline touch:min-h-11" onClick={() => copyLink(i.link)}>Copy link</button>
