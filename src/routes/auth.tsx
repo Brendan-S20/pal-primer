@@ -13,7 +13,6 @@ import {
 import { checkEmailAccount } from "@/lib/auth-entry.functions";
 import { lookupInviteByToken } from "@/lib/platform-onboarding.functions";
 import { handOffSignupEmail, takeExistingAccount } from "@/lib/signup-email";
-import { clearRecovery, recoveryPending } from "@/lib/password-recovery";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,6 +28,12 @@ import { rememberLandingPath, readLandingPath } from "@/lib/offline/read-cache";
 import { pageTitle } from "@/lib/page-title";
 import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
 import { takeLinkForLanding } from "@/lib/pending-deep-link";
+import {
+  clearRecoveryPending,
+  passwordResetRedirectHere,
+  recoveryRedirectTarget,
+  requestPasswordReset,
+} from "@/lib/password-recovery";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -234,6 +239,18 @@ function AuthPage() {
     let stopRecovery: (() => void) | null = null;
 
     const run = async () => {
+      // A password-recovery link is not a sign-in. Supabase sends one that
+      // is not on its redirect allow-list to the site root, the root sends
+      // it here, and supabase-js has usually already turned its hash into a
+      // session. Landing that session ran ensureBootstrapped for a person who
+      // had only forgotten their password (a removed member got a brand-new
+      // organization) and never let them set one. Nothing below runs until
+      // /reset-password has the new password.
+      const recovery = recoveryRedirectTarget(window.location.href);
+      if (recovery) {
+        router.history.replace(recovery);
+        return;
+      }
       const identity = await resolveIdentity();
       if (cancelled) return;
       if (!identity.ok) {
@@ -253,15 +270,6 @@ function AuthPage() {
           });
         }
         return;
-      }
-
-      // A password-reset link is a sign-in, and it is not for landing (#765).
-      // Routed by membership it went to /no-workspace or a dashboard and the
-      // password was never asked for. Handed over BEFORE anything below reads
-      // user_roles: a password belongs to the account, not to a business.
-      if (identity.verified && recoveryPending()) {
-        clearRecovery();
-        return navigate({ to: "/reset-password" });
       }
 
       // Bootstrap is a write and needs a live user object and a network; both
@@ -317,6 +325,8 @@ function AuthPage() {
       setLoading(false);
       return setError(error.message);
     }
+    // Signed in with a password: whatever reset this tab started is over.
+    clearRecoveryPending();
     let isNewOrg: boolean | typeof NEEDS_ORG_NAME = false;
     if (data.user) {
       try {
@@ -503,20 +513,19 @@ function AuthPage() {
 
   // Asks nothing about memberships, and must not: an account with no business
   // is exactly who needs this most (#765).
+  // One helper for every reset request (lib/password-recovery.ts): the
+  // redirect is /reset-password on the canonical origin (the iOS app's own
+  // scheme in the iOS app), and a failed send says so instead of "check your
+  // email" for a message that is never coming.
   const forgotPassword = async () => {
     setAlert(null);
     setOfferReset(false);
     if (!emailValid) return setError("Enter your email address first.");
     setLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
+    const r = await requestPasswordReset(supabase, email, await passwordResetRedirectHere());
     setLoading(false);
-    if (error) {
-      setError(
-        `We couldn't send a reset email (${error.message}). Try again in a minute, or contact support.`,
-      );
-    } else setInfo(`Check ${email.trim()} for a reset link.`);
+    if (!r.ok) setError(r.message);
+    else setInfo(`Check ${r.sentTo} for a reset link. It works once, for an hour.`);
   };
 
   return (

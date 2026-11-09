@@ -209,6 +209,9 @@ const newClient = (subscription: Record<string, unknown> | undefined) =>
       city: "Springfield",
       region: "IL",
       postalCode: "60614",
+      // The plan bills for two dogs, so two are on file: a residential client
+      // with none is refused before anything is written (audit 2026-11-09, D2).
+      dogs: [{ name: "Biscuit" }, { name: "Mochi" }],
       ...(subscription
         ? {
             subscription: {
@@ -322,6 +325,7 @@ describe("a dispatcher's new client with a plan (gaps-r2-02)", () => {
           street: "1 Oak St",
           city: "Springfield",
           postalCode: "60614",
+          dogs: [{ name: "Biscuit" }],
           firstCleanup: { priceCents: 7500, description: "First cleanup" },
         },
       }),

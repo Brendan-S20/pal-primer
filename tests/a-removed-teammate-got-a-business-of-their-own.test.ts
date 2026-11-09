@@ -176,32 +176,31 @@ describe("/no-workspace says what a removed teammate can do", () => {
 });
 
 // ── A reset is not a sign-in to be routed by membership ───────────────────
+// The recovery mechanism itself is #780's (lib/password-recovery.ts, pinned by
+// a-password-reset-that-goes-somewhere.test.ts). What #765 needs from it is
+// that both screens a membership-less account can reach defer to it before
+// anything about a business is decided.
 describe("a password reset never waits on a membership", () => {
   const auth = codeOnly(read("src/routes/auth.tsx"));
 
-  it("/auth hands a recovery session to /reset-password before the membership sequence", () => {
+  it("/auth hands a recovery to /reset-password before the membership sequence", () => {
     const run = auth.slice(auth.indexOf("const run = async"));
-    const recovery = run.indexOf("recoveryPending()");
+    const recovery = run.indexOf("recoveryRedirectTarget(");
     const bootstrap = run.indexOf("ensureBootstrapped(");
     expect(recovery, "no recovery check in /auth's landing effect").toBeGreaterThan(-1);
     expect(recovery).toBeLessThan(bootstrap);
-    expect(run.slice(recovery, bootstrap)).toMatch(/navigate\(\{ to: "\/reset-password" \}\)/);
   });
 
   it("/no-workspace does too, for a recovery that reached it first", () => {
     expect(codeOnly(read("src/routes/no-workspace.tsx"))).toMatch(
-      /recoveryPending\(\)[\s\S]{0,200}"\/reset-password"/,
+      /recoveryRedirectTarget\(window\.location\.href\);\s*if \(recovery\) router\.history\.replace\(recovery\);/,
     );
-  });
-
-  it("the recovery is noted before supabase-js clears the hash", () => {
-    expect(codeOnly(read("src/routes/__root.tsx"))).toMatch(/^noteRecoveryFromUrl\(\);$/m);
   });
 
   it("sending a reset asks nothing about the business", () => {
     const fp = auth.slice(auth.indexOf("const forgotPassword"));
     const body = fp.slice(0, fp.indexOf("\n  };"));
-    expect(body).toContain("resetPasswordForEmail");
+    expect(body).toContain("requestPasswordReset(");
     expect(body).not.toMatch(/user_roles|organization|sendEmailVerification/);
   });
 
@@ -211,20 +210,9 @@ describe("a password reset never waits on a membership", () => {
       "src/routes/reset-password.tsx",
       "src/routes/no-workspace.tsx",
       "src/lib/ensure-workspace.ts",
+      "src/lib/password-recovery.ts",
     ]) {
       expect(codeOnly(read(f)), f).not.toContain("sendEmailVerification");
     }
-  });
-});
-
-describe("the recovery note", async () => {
-  const { urlIsRecovery } = await import("@/lib/password-recovery");
-  it("recognises the implicit-flow hash and the query form", () => {
-    expect(urlIsRecovery({ hash: "#access_token=x&refresh_token=y&type=recovery" })).toBe(true);
-    expect(urlIsRecovery({ search: "?type=recovery&token=abc" })).toBe(true);
-  });
-  it("does not mistake a normal sign-in for one", () => {
-    expect(urlIsRecovery({ hash: "#access_token=x&type=signup" })).toBe(false);
-    expect(urlIsRecovery({ hash: "", search: "?invite=abc" })).toBe(false);
   });
 });

@@ -150,6 +150,6 @@ describe("the pages", () => {
 
   it("a failed reset says so in words, never silently", () => {
     const fp = auth.slice(auth.indexOf("const forgotPassword"));
-    expect(fp.slice(0, 700)).toMatch(/if \(error\) \{\s*setError\(/);
+    expect(fp.slice(0, 700)).toMatch(/if \(!r\.ok\) setError\(r\.message\);/);
   });
 });

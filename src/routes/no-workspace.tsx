@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { acceptPendingInvite, ensureBootstrapped } from "@/lib/ensure-workspace";
-import { clearRecovery, recoveryPending } from "@/lib/password-recovery";
+import { recoveryRedirectTarget } from "@/lib/password-recovery";
 import { isValidOrgName } from "@/lib/dna-linkage";
 import { Building2 } from "lucide-react";
 import { APP_NAME } from "@/lib/scoop";
@@ -75,6 +75,7 @@ export const Route = createFileRoute("/no-workspace")({
 
 function NoWorkspacePage() {
   const navigate = useNavigate();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [email, setEmail] = useState<string | null>(null);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
@@ -87,11 +88,11 @@ function NoWorkspacePage() {
   // A reset link that reached this page is still a reset: the password comes
   // first, the business after (#765).
   useEffect(() => {
-    if (recoveryPending()) {
-      clearRecovery();
-      navigate({ to: "/reset-password" });
-    }
-  }, [navigate]);
+    // The same check /auth makes (lib/password-recovery.ts, #780): a tab
+    // that is mid-recovery is sent to /reset-password, not offered a form.
+    const recovery = recoveryRedirectTarget(window.location.href);
+    if (recovery) router.history.replace(recovery);
+  }, [router]);
 
   useEffect(() => {
     let cancelled = false;

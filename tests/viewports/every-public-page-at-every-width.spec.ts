@@ -27,6 +27,9 @@ const UNSTUBBED = [
   "/auth",
   "/get-started",
   "/no-workspace",
+  // Opened with no link and no session it draws its expired-link state: the
+  // message and the "send a new reset link" form (2026-11-09).
+  "/reset-password",
   "/legal/privacy",
   "/legal/terms",
   "/legal/sms",
