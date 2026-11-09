@@ -37,6 +37,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { BoundarySketch, formatArea, type PolygonGeoJSON } from "@/components/BoundarySketch";
 import { AddressAutocomplete, type ResolvedAddress } from "@/components/AddressAutocomplete";
+import { partsFromPick } from "@/lib/address/pick";
 import { Check, ChevronRight, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { getEmailSendStatus } from "@/lib/notifications.functions";
@@ -534,16 +535,21 @@ function NewClientWizardForm({
   // geocode effect is guarded by `if (geo) return;`, so a pin left over from
   // the address the user has just corrected would be the pin they draw a
   // boundary on — for the wrong house, with no way to tell from the map.
+  //
+  // Every part, unconditionally (#783). This read `if (r.address.region)
+  // setRegion(...)`, which kept a typed state under a suggestion's city; the
+  // shared helper is the one place that decides what a pick replaces.
   function applyResolvedAddress(r: ResolvedAddress) {
-    setStreet(r.address.street);
-    setCity(r.address.city);
-    if (r.address.region) setRegion(r.address.region);
-    setPostalCode(r.address.postalCode);
-    if (r.address.latitude != null && r.address.longitude != null) {
+    const parts = partsFromPick(r.address);
+    setStreet(parts.street);
+    setCity(parts.city);
+    setRegion(parts.region);
+    setPostalCode(parts.postalCode);
+    if (parts.latitude != null && parts.longitude != null) {
       // A provider match is a better pin than the Outline step's Nominatim
       // lookup, and it saves the round trip: the effect there is a fallback
       // for hand-typed addresses now.
-      setGeo({ lat: r.address.latitude, lng: r.address.longitude });
+      setGeo({ lat: parts.latitude, lng: parts.longitude });
       setGeoStatus("ok");
     } else {
       setGeo(null);
