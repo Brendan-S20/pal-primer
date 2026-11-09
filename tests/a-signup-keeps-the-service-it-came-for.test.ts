@@ -131,7 +131,8 @@ describe("the service and the UTM survive the walkthrough to org creation", () =
   });
 
   it("both org-creation paths pass the stashed service and UTM to bootstrapOrganization", () => {
-    for (const f of ["src/routes/get-started.tsx", "src/lib/ensure-workspace.ts"]) {
+    // get-started.tsx's sequence is src/lib/finish-signup.ts since 2026-11-09.
+    for (const f of ["src/lib/finish-signup.ts", "src/lib/ensure-workspace.ts"]) {
       const src = read(f);
       expect(src, f).toMatch(/utm: attribution\.utm,\s*serviceLine: attribution\.service,/);
     }

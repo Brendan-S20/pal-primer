@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   clearSignupAttribution,
@@ -28,6 +28,7 @@ import { isValidOrgName } from "@/lib/dna-linkage";
 import { pageTitle } from "@/lib/page-title";
 import { deviceTimezone } from "@/lib/org-timezone";
 import { handOffSignupEmail, takeSignupEmail } from "@/lib/signup-email";
+import { finishSignup, newSignupProgress, signupErrorMessage } from "@/lib/finish-signup";
 
 // The Get-started walkthrough (Brendan's re-review): account creation is a
 // guided path, not a tab on the sign-in card. Steps: account → business →
@@ -111,6 +112,10 @@ function NewBusinessPage() {
   const [displayName, setDisplayName] = useState("");
   const [phone, setPhone] = useState("");
   const [smsConsent, setSmsConsent] = useState(false);
+  // How far "Create my workspace" got, so a retry resumes rather than
+  // repeats (src/lib/finish-signup.ts). Above the `invited` early
+  // return, so it is called on every render.
+  const progress = useRef(newSignupProgress());
 
   // "Promo or referral code" (optional). Validated server-side for a friendly
   // hint, but an invalid code NEVER blocks signup — the server drops bad codes
@@ -267,83 +272,34 @@ function NewBusinessPage() {
     setError(null);
     setBusy(true);
     try {
-      // Frictionless signup: the account is created server-side auto-confirmed
-      // so there's no email-confirmation wall. Verifying the address is a
-      // to-do afterwards (and gates Stripe Express until done).
-      await registerAccount({
-        data: {
-          email: email.trim(),
-          password,
-          orgName: orgName.trim(),
-          displayName: displayName.trim(),
-          phone: phone.trim() || undefined,
-          smsConsent: smsConsent && !!phone.trim(),
+      const outcome = await finishSignup(
+        { email, password, orgName, displayName, phone, smsConsent, promoCode },
+        progress.current,
+        {
+          registerAccount: (a) => registerAccount(a as never),
+          signIn: (e, p) => supabase.auth.signInWithPassword({ email: e, password: p }),
+          acceptPendingInvite: () => acceptPendingInvite(null),
+          bootstrapOrganization: (a) => bootstrapOrganization(a as never),
+          recordSmsConsent: (a) => recordSmsConsent(a),
+          sendEmailVerification: () => sendEmailVerification(),
+          readAttribution: readSignupAttribution,
+          clearAttribution: clearSignupAttribution,
+          timezone: deviceTimezone,
+          consentText: SMS_CONSENT_TEXT,
+          // Signup is not blocked and the account is already created --
+          // losing a discount is not worth losing a customer over -- but it is
+          // said here and held on screen.
+          onPromoLost: (code) =>
+            toast.warning(
+              `We could not attach promo code ${code} to your account. Your account is set up. Contact us before you subscribe so we can apply it.`,
+              { duration: 15000 },
+            ),
         },
-      });
-      const { error: signInErr } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
-      if (signInErr) throw signInErr;
-
-      // Invited without the link (opened the app and signed up directly): the
-      // email path still finds the invitation, and joining it is the right
-      // answer rather than a second business under the same address (#568).
-      if (await acceptPendingInvite(null)) {
-        clearSignupAttribution();
-        navigate({ to: "/auth" });
-        return;
-      }
-
-      const attribution = readSignupAttribution();
-      const boot = await bootstrapOrganization({
-        data: {
-          orgName,
-          displayName,
-          refCode: attribution.ref,
-          utm: attribution.utm,
-          serviceLine: attribution.service,
-          promoCode: promoCode.trim() || undefined,
-          // The phone's or browser's zone. Without it the org kept the
-          // column default, Central, on every signup (#654).
-          timezone: deviceTimezone(),
-        },
-      });
-      clearSignupAttribution();
-
-      // The code was checked on blur and this form TOLD them it was good. If
-      // keeping it then failed, nothing downstream can warn them: the org
-      // carries no code, so the subscribe screen cannot tell "lost it" from
-      // "never had one" and will quietly charge full price.
-      //
-      // Signup is not blocked and the account is already created -- losing a
-      // discount is not worth losing a customer over. But this is the last
-      // moment anybody can say so, so it is said here and held on screen.
-      // `promoStored` is null when there was no coupon to keep, which is the
-      // ordinary case and says nothing.
-      if (boot?.promoStored === false) {
-        toast.warning(
-          `We could not attach promo code ${promoCode.trim()} to your account. Your account is set up. Contact us before you subscribe so we can apply it.`,
-          { duration: 15000 },
-        );
-      }
-      if (smsConsent && phone.trim()) {
-        try {
-          await recordSmsConsent({ data: { phone: phone.trim(), consentText: SMS_CONSENT_TEXT } });
-        } catch (e) {
-          console.error("sms consent record failed", e);
-        }
-      }
-      // Fire the verification email in the background — verify now or later.
-      try {
-        await sendEmailVerification();
-      } catch (e) {
-        console.error("verification email send failed", e);
-      }
-      navigate({ to: "/onboarding" });
+      );
+      navigate({ to: outcome === "joined-team" ? "/auth" : "/onboarding" });
     } catch (err) {
       setBusy(false);
-      setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
+      setError(signupErrorMessage(err, progress.current));
     }
   };
 
@@ -519,11 +475,22 @@ function NewBusinessPage() {
             />
             {error && <p className="text-sm text-destructive">{error}</p>}
             <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => setStep(1)} disabled={busy}>
+              {/* Once the account exists, going back to change the email or
+                  password would only lead to "already has an account". */}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setStep(1)}
+                disabled={busy || progress.current.registered}
+              >
                 Back
               </Button>
               <Button type="submit" className="flex-1" disabled={busy}>
-                {busy ? "Creating your workspace…" : "Create my workspace"}
+                {busy
+                  ? "Creating your workspace…"
+                  : progress.current.registered
+                    ? "Try again"
+                    : "Create my workspace"}
               </Button>
             </div>
             <p className="text-center text-xs text-muted-foreground">
@@ -637,7 +604,8 @@ function JoinTeamPage({ token }: { token: string }) {
                 Join <bdi className="break-words">{invite.organization_name ?? "your team"}</bdi>
               </h1>
               <p className="text-sm text-muted-foreground">
-                You were invited as {invite.role_label ?? humanizeRole(invite.role ?? "")}. Create your account to join.
+                You were invited as {invite.role_label ?? humanizeRole(invite.role ?? "")}. Create
+                your account to join.
               </p>
             </div>
             <div className="space-y-2">

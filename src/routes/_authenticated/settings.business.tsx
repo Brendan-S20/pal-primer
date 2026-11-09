@@ -17,6 +17,7 @@ import { reseedDemoData } from "@/lib/demo.functions";
 import { isDemoOrganization } from "@/lib/demo-org";
 import { getMyOrg } from "@/lib/org.functions";
 import { CountryCard } from "@/components/settings/CountryCard";
+import { BusinessDetailsCard, DumpSitesCard } from "@/components/settings/BusinessDetailsCards";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { getDispatchSettings, updateDispatchSettings } from "@/lib/visits.functions";
 import { DEFAULT_TIMEZONE } from "@/lib/route-window";
@@ -78,10 +79,14 @@ function BusinessDefaultsPage() {
       {/* The org's clock, and every "today" judgement in the product reads
           it. The server gates the write on manage_settings, so render it only
           for the people the server will listen to, like PricingBaselineCard. */}
+      {/* What Get started and Setup asked for, here where an owner looks for
+          it (#766). Read-only for a role that cannot write it. */}
+      <BusinessDetailsCard canEdit={canManageSettings} />
       {canManageSettings && <TimeZoneCard />}
       {canManageSettings && <CountryCard />}
       <ServiceLinesCard />
       <PricingBaselineCard />
+      <DumpSitesForPetWaste />
       <CommercialAccountsCard />
       <CompletionPhotoCard />
       {/* Written by manage_settings only, so drawn for those roles only, like
@@ -148,6 +153,12 @@ function TimeZoneCard() {
       </CardContent>
     </Card>
   );
+}
+
+/** A pet-waste module, so signposted only to a business that runs the line. */
+function DumpSitesForPetWaste() {
+  const { petWaste, known } = useServiceLines();
+  return known && petWaste ? <DumpSitesCard /> : null;
 }
 
 function PricingBaselineCard() {
