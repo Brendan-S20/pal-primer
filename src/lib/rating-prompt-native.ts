@@ -78,6 +78,35 @@ function onCalmScreen(location: RatingPromptLocation): boolean {
   );
 }
 
+/** The debug-only Android plugin backed by Play's FakeReviewManager (issue
+ *  #521). Must match FakeReviewPlugin.NAME in android/app/src/debug. */
+export const FAKE_REVIEW_PLUGIN = "HoundStackFakeReview";
+
+type FakeReviewPlugin = { requestReview(): Promise<{ outcome: string }> };
+
+/**
+ * Call the store's review sheet. Production, iOS and every release build:
+ * @capacitor-community/in-app-review, as always.
+ *
+ * The one exception is a DEBUG Android build made with
+ * -Phoundstack.fakeReview=on|fail (docs/android-rating-prompt-qa.md). Only
+ * that APK registers HoundStackFakeReview, so asking whether the plugin is
+ * there is the flag: no build setting in this bundle, nothing to forget to
+ * turn off. Anything but "launched" throws, like a refused real request, so
+ * the caller's catch treats it the same way.
+ */
+async function requestStoreReview(): Promise<void> {
+  const core = await import("@capacitor/core");
+  if (platform() === "android" && core.Capacitor.isPluginAvailable?.(FAKE_REVIEW_PLUGIN)) {
+    const fake = core.registerPlugin<FakeReviewPlugin>(FAKE_REVIEW_PLUGIN);
+    const { outcome } = await fake.requestReview();
+    if (outcome !== "launched") throw new Error(`FakeReviewManager: ${outcome}`);
+    return;
+  }
+  const { InAppReview } = await import("@capacitor-community/in-app-review");
+  await InAppReview.requestReview();
+}
+
 /** Count this launch as a session for this person, once. */
 export async function countRatingPromptSession(userId: string): Promise<void> {
   if (!isNative() || countedThisLaunch.has(userId)) return;
@@ -131,8 +160,7 @@ export async function maybeRequestRatingPrompt(
     if (!isRatingPromptEligible({ ...device(), ...counts })) return false;
 
     triedThisLaunch.add(userId);
-    const { InAppReview } = await import("@capacitor-community/in-app-review");
-    await InAppReview.requestReview();
+    await requestStoreReview();
     await writeState(userId, {
       sessions: state.sessions,
       lastPromptedAt: now(),
