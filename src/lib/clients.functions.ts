@@ -6,6 +6,19 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 import { buildClientNamePatch } from "@/lib/client-name";
 
+/**
+ * Whether a new client is sent the welcome email: only when the person
+ * creating them ticked the box AND there is an address to send it to. Unset
+ * is no -- a pilot walking through setup must never email a real client by
+ * surprise (onboarding audit 2026-11-09, D4).
+ */
+export function shouldSendWelcome(data: {
+  sendWelcome?: boolean | null;
+  primaryEmail?: string | null;
+}): boolean {
+  return data.sendWelcome === true && !!data.primaryEmail?.trim();
+}
+
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   // Through the shared gate, so a person whose access is turned off is
   // refused here as everywhere else (20261009180000).
@@ -752,6 +765,8 @@ const createClientSchema = z.object({
   accountType: z.enum(["residential", "commercial"]),
   primaryEmail: z.string().email().or(z.literal("")).optional(),
   primaryPhone: z.string().max(40).optional(),
+  /** Opt-in, as onboardClient's: absent or false sends nothing. */
+  sendWelcome: z.boolean().optional(),
 });
 
 export const createClient = createServerFn({ method: "POST" })
@@ -784,8 +799,9 @@ export const createClient = createServerFn({ method: "POST" })
       });
     }
 
-    // Fire welcome email (best-effort; never block client creation)
-    if (data.primaryEmail) {
+    // Welcome email only when the person creating the client asked for it
+    // (see onboardClient). Best-effort; never blocks client creation.
+    if (shouldSendWelcome(data)) {
       try {
         const { buildPortalLink } = await import("@/lib/portal-links.server");
         const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
@@ -1415,6 +1431,13 @@ const onboardSchema = z.object({
   accountType: z.enum(["residential", "commercial"]),
   primaryEmail: z.string().email().or(z.literal("")).optional(),
   primaryPhone: z.string().max(40).optional(),
+  // The welcome email (and portal link) to primaryEmail. OPT-IN: absent or
+  // false sends nothing. It used to go to every new client with an email, so
+  // the first client typed in during setup -- often a real customer, or the
+  // owner trying the form -- was emailed with no warning (onboarding audit
+  // 2026-11-09, D4). The wizard shows the subject and the recipient beside
+  // an unchecked box; only ticking it sends.
+  sendWelcome: z.boolean().optional(),
   // property
   street: z.string().min(1).max(200),
   city: z.string().min(1).max(120),
@@ -1911,7 +1934,7 @@ export const onboardClient = createServerFn({ method: "POST" })
     let welcomeStatusHandle: string | null = null;
     let welcomeTurnedOff = false;
     let welcomeLink: string | null = null;
-    if (data.primaryEmail) {
+    if (shouldSendWelcome(data)) {
       try {
         const { buildPortalLink } = await import("@/lib/portal-links.server");
         const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
@@ -1950,6 +1973,7 @@ export const onboardClient = createServerFn({ method: "POST" })
       welcomeStatusHandle,
       welcomeTurnedOff,
       welcomeLink,
+      welcomeRequested: shouldSendWelcome(data),
       officeNoteSaved,
       leadLinked,
       firstCleanupInvoiced,

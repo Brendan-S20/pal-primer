@@ -42,6 +42,9 @@ import { toast } from "sonner";
 import { getEmailSendStatus } from "@/lib/notifications.functions";
 import { reportQueuedSend } from "@/lib/send-report";
 import { useOrgToday } from "@/hooks/useOrgToday";
+import { getMyOrg } from "@/lib/org.functions";
+import { WelcomeEmailOptIn } from "@/components/client-detail/WelcomeEmailOptIn";
+import { WELCOME_EMAIL_DEFAULT_CHECKED } from "@/lib/welcome-email";
 import { formatDay } from "@/lib/format";
 import { titleHead } from "@/lib/page-title";
 import {
@@ -489,6 +492,15 @@ function NewClientWizardForm({
   const [accountType, setAccountType] = useState<"residential" | "commercial">("residential");
   const [primaryEmail, setPrimaryEmail] = useState(prefill.primaryEmail);
   const [primaryPhone, setPrimaryPhone] = useState(prefill.primaryPhone);
+  // Opt-in, never ticked for you, and not kept in the draft: a restored draft
+  // starts unticked too (onboarding audit 2026-11-09, D4).
+  const [sendWelcome, setSendWelcome] = useState(WELCOME_EMAIL_DEFAULT_CHECKED);
+  const orgFn = useServerFn(getMyOrg);
+  const { data: orgData } = useQuery({
+    queryKey: ["my-org"],
+    queryFn: () => orgFn(),
+    staleTime: 60_000,
+  });
   const [officeNote, setOfficeNote] = useState(prefill.officeNote);
 
   // property
@@ -862,6 +874,7 @@ function NewClientWizardForm({
           accountType,
           primaryEmail: primaryEmail || undefined,
           primaryPhone: primaryPhone || undefined,
+          sendWelcome: sendWelcome && !!primaryEmail.trim(),
           street,
           city,
           region: region || undefined,
@@ -930,6 +943,7 @@ function NewClientWizardForm({
       welcomeStatusHandle,
       welcomeTurnedOff,
       welcomeLink,
+      welcomeRequested,
       officeNoteSaved,
       leadLinked,
       firstCleanupInvoiced,
@@ -942,7 +956,8 @@ function NewClientWizardForm({
       // "Welcome email sent" only once the provider has taken it; with email
       // off, "not sent" and the portal link to send by hand (#612). Quiet when
       // the owner turned welcome emails off in Settings: nothing is missing.
-      if (primaryEmail && !welcomeTurnedOff) {
+      // Quiet too when nobody ticked "Email them a welcome": nothing was asked.
+      if (welcomeRequested && primaryEmail && !welcomeTurnedOff) {
         void reportQueuedSend(
           {
             ok: welcomeEmailed,
@@ -1924,6 +1939,15 @@ function NewClientWizardForm({
               </>
             )}
           </div>
+        )}
+
+        {step === steps.length - 1 && primaryEmail.trim() && (
+          <WelcomeEmailOptIn
+            email={primaryEmail.trim()}
+            orgName={(orgData?.organization as { name?: string } | null | undefined)?.name}
+            checked={sendWelcome}
+            onCheckedChange={setSendWelcome}
+          />
         )}
 
         {/* Nav */}

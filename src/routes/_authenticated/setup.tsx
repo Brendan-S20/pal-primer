@@ -827,6 +827,7 @@ function ClientsPanel({ step }: { step: OnboardingStep }) {
       <p className="text-sm">
         The new-client form takes their address, dogs and plan, and quotes the price from your
         service area. When you save, come back here with the setup bar at the top of the page.
+        Nothing is emailed to the client unless you tick "Email them a welcome" before you save.
       </p>
       <div className="flex flex-wrap gap-2">
         <Button asChild data-setup-action="add-client">
