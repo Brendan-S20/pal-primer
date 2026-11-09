@@ -209,4 +209,15 @@
          on devices without one rather than having Play filter them out. -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.location" android:required="false" />
+
+    <!-- Tap to Pay on Android (#579): the phone's own NFC reads the card, via
+         @capacitor-community/stripe-terminal. Optional, like the camera: most
+         of the product never touches NFC, and a phone without it should still
+         install. The app decides at runtime whether to offer Tap to Pay
+         (src/lib/tap-to-pay.ts, Android 13+), and Stripe's SDK refuses a phone
+         that fails its own checks (NFC off, rooted, Developer options on).
+         The plugin's own manifest merges in BLUETOOTH_CONNECT and
+         ACCESS_FINE_LOCATION (already declared above). -->
+    <uses-permission android:name="android.permission.NFC" />
+    <uses-feature android:name="android.hardware.nfc" android:required="false" />
 </manifest>
