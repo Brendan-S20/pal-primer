@@ -136,18 +136,46 @@ hosting secrets, in this order:
 To turn Google off again, remove both variables, or set them to `osrm` and
 `geocodio`/`nominatim`. Nothing else changes.
 
-## Terms to check before relying on stored results (Needs Brendan)
+## Google-derived data is kept 30 days
 
-The app stores coordinates and drive times:
+Decision (Brendan, 2026-11-09): Google-derived data is refreshed or dropped
+after 30 days, to comply with Google Maps Platform's caching terms.
 
-- `clients` / `properties` latitude and longitude
-- the `road_legs` cache, for 90 days
+**What the app now does:**
 
-Google Maps Platform's service-specific terms limit how long content from the
-Geocoding API and Routes API may be cached; at the time of writing,
-coordinates may be kept only temporarily. Read the current
-**Google Maps Platform Service Specific Terms** for both APIs and decide
-whether the stored values need an expiry. Nothing in this change adds one.
+- **Every pin records its source.** Each property pin records who produced it
+  (`properties.geocode_source`) and when (`properties.geocoded_at`), from
+  migration `20261109200000_a-pin-knows-who-placed-it.sql`.
+  - The Google sources are `google` (Geocoding API) and `google_places` (a
+    pick from the address search box).
+  - The other sources are `geocodio`, `nominatim`, `manual`, and NULL for
+    unknown.
+- **A daily job does the refresh and the purge.** It is
+  `/api/public/hooks/google-cache-expiry`, scheduled by pg_cron at 07:23 UTC
+  in `20261109200100_google-derived-data-is-kept-thirty-days.sql`. It:
+  - deletes `road_legs` rows with `source = 'google'` that are older than 30
+    days. Other sources keep the existing weekly 90-day prune.
+  - re-geocodes Google-sourced pins older than 30 days, and clears a pin if
+    the re-geocode finds nothing.
+  - never touches any other source, or a pin of unknown source.
+- **The rule lives in one file**, `src/lib/geocode-source.ts`. The tests are in
+  `tests/google-derived-data-is-kept-thirty-days.test.ts`.
+
+**What it does not cover (Needs Brendan):**
+
+- **Pins saved before this change** have no source recorded, so they are never
+  expired. Pins picked from the Google address box before then are therefore
+  kept. Labelling them after the fact would be a guess, and a wrong guess
+  deletes a coordinate.
+- **Other tables:**
+  - `neighbor_leads` (filled from Google Places details) and `organizations` /
+    `waste_disposal_facilities` (geocoded) also hold coordinates. These are not
+    covered yet.
+  - `road_legs` is the only drive-time store.
+- **Whether 30 days matches the current terms.** That is still yours to
+  confirm against Google's current Service Specific Terms.
+- **Cost of the refresh.** Each re-geocode is a billed Geocoding call, so
+  about 1/30 of the Google-sourced pins are re-billed each day.
 
 ## Checklist
 
@@ -157,4 +185,5 @@ whether the stored values need an expiry. Nothing in this change adds one.
 - [ ] Only after the budget: `ROUTING_PROVIDER=google` and
       `GEOCODING_PROVIDER=google` set
 - [ ] Geocoding API and Routes API enabled on that project
-- [ ] Caching terms read, and a decision recorded on #529
+- [x] Caching decision recorded (2026-11-09): refresh or drop after 30 days
+- [ ] Confirm 30 days against Google's current Service Specific Terms

@@ -20,6 +20,8 @@ export interface ResolvedAddress {
   address: AddressDetails;
   zoneId: string | null;
   zoneName: string | null;
+  /** Who produced address.latitude/longitude (geocode-source.ts). */
+  geocodeSource?: "google_places" | null;
 }
 
 /** What the control renders, given its state.

@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { provenancePatch } from "@/lib/geocode-source";
 import {
   importPlanRow,
   mapBalanceRow,
@@ -1551,7 +1552,7 @@ export const commitImport = createServerFn({ method: "POST" })
       // seconds); without one it is the same 1/s loop as before, just earlier.
       // A row missing from this map -- the batch threw -- is geocoded on its own
       // in the loop below, which is what every row used to do.
-      const geoByRow = new Map<string, import("./geocode.server").GeocodeResult>();
+      const geoByRow = new Map<string, import("./geocode.server").SourcedGeocode>();
       if (entity === "clients") {
         type Where = { street?: string; city?: string; region?: string; postal_code?: string };
         const toGeocode = (rows ?? []).flatMap((r) => {
@@ -1560,14 +1561,14 @@ export const commitImport = createServerFn({ method: "POST" })
         });
         if (toGeocode.length > 0) {
           try {
-            const { geocodeAddresses } = await import("./geocode.server");
+            const { geocodeAddressesSourced } = await import("./geocode.server");
             // Without a Geocodio key every address is one Nominatim request a
             // second, which on its own made a 1,000-row import take about 17
             // minutes (#617). The import spends at most IMPORT_GEOCODE_BUDGET_MS
             // on it; an address it did not reach is saved without a pin and
             // located later by "Geocode addresses" on the Routes page, which
             // finds every property with no coordinates.
-            const geos = await geocodeAddresses(
+            const geos = await geocodeAddressesSourced(
               toGeocode.map(({ m }) => ({
                 street: m.street,
                 city: m.city,
@@ -1721,7 +1722,8 @@ export const commitImport = createServerFn({ method: "POST" })
           // for it (auto-geocoded) so routing/pricing/DNA work downstream —
           // instead of silently dropping the address (finding #12).
           if (!(m.street && m.city)) continue;
-          const geo = geoByRow.get(c.rowId) ?? null;
+          const sourcedGeo = geoByRow.get(c.rowId) ?? null;
+          const geo = sourcedGeo?.point ?? null;
           // Type-appropriate zone matching (B3): the imported property
           // inherits the client's account type, so a commercial client
           // lands in a commercial zone even when a residential zone
@@ -1752,6 +1754,7 @@ export const commitImport = createServerFn({ method: "POST" })
             zone_id: importZoneId,
             latitude: geo?.latitude ?? null,
             longitude: geo?.longitude ?? null,
+            ...(geo ? provenancePatch(sourcedGeo?.source ?? null) : {}),
           });
         }
       };

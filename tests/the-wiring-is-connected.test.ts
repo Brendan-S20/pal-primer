@@ -503,8 +503,13 @@ describe("a database can actually be built from these files", () => {
       // texting-status joined on 2026-10-29 (20261029160000, #538). Every ten
       // minutes, and only while a business's toll-free verification is with
       // Twilio. It only WARNS about itself as well.
+      //
+      // google-cache-expiry joined on 2026-11-09 (20261109200100, #745). Once a
+      // day it refreshes or drops Google-derived pins and drive times older
+      // than 30 days. It only WARNS about itself as well.
     ).toEqual([
       "deliver-webhooks",
+      "google-cache-expiry",
       "late-check",
       "prune-road-legs",
       "run-billing-cycles",

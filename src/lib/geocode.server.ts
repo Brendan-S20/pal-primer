@@ -40,6 +40,7 @@ import {
   type ProviderEnv,
 } from "@/lib/providers/config";
 import { googleServerKey, recordGoogleMapsUsage } from "@/lib/providers/google-usage.server";
+import { asGeocodeSource, type GeocodeSource } from "@/lib/geocode-source";
 
 /** How precisely the geocoder actually matched.
  *
@@ -69,6 +70,12 @@ export type GeocodeResult =
       place?: string | null;
     }
   | null;
+
+/** A result and which provider produced it (geocode-source.ts), so a caller
+ *  that stores the point can store its provenance in
+ *  properties.geocode_source. `source` is null when there is no point, and for
+ *  an adapter whose id is not a known source. */
+export type SourcedGeocode = { point: GeocodeResult; source: GeocodeSource | null };
 
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 const USER_AGENT =
@@ -226,6 +233,11 @@ export function geocodingProviders(env: ProviderEnv = serverEnv()): {
   };
 }
 
+/** Who an answer came from, or null when there is no point to attribute. */
+function sourceOf(answer: GeocoderAnswer, adapter: GeocodingAdapter): GeocodeSource | null {
+  return answer === GEOCODER_FAILED || answer === null ? null : asGeocodeSource(adapter.id);
+}
+
 /** geocodingProviders, or null with the reason logged: a misconfigured
  *  geocoder costs a pin, never a signup. */
 function chainOrNull() {
@@ -241,23 +253,29 @@ function chainOrNull() {
  *  provider does not answer. Unconfigured: Geocodio if a key is set,
  *  otherwise -- or if Geocodio errors -- Nominatim, exactly as before. */
 export async function geocodeAddress(parts: AddressParts): Promise<GeocodeResult> {
+  return (await geocodeAddressSourced(parts)).point;
+}
+
+/** geocodeAddress, plus which provider answered. */
+export async function geocodeAddressSourced(parts: AddressParts): Promise<SourcedGeocode> {
+  const none: SourcedGeocode = { point: null, source: null };
   const address = joinAddress(parts);
-  if (!address) return null;
+  if (!address) return none;
 
   const chain = chainOrNull();
-  if (!chain) return null;
+  if (!chain) return none;
   const ctx = providerContext("geocoding", serverEnv());
 
   const answer = await chain.primary.single(address, parts, ctx);
-  if (answer !== GEOCODER_FAILED) return answer;
+  if (answer !== GEOCODER_FAILED) return { point: answer, source: sourceOf(answer, chain.primary) };
   // A bad key, a 429 or an outage must not stop a signup from getting a pin:
   // the fallback is slower, not wrong. Unless there is no fallback, by choice.
   if (!chain.fallback) {
     console.error(`[geocode] ${chain.primary.id} did not answer for "${address}" and GEOCODING_FALLBACK is none`);
-    return null;
+    return none;
   }
   const second = await chain.fallback.single(address, parts, ctx);
-  return second === GEOCODER_FAILED ? null : second;
+  return second === GEOCODER_FAILED ? none : { point: second, source: sourceOf(second, chain.fallback) };
 }
 
 /** Geocode many addresses, answers in the SAME ORDER as the input, one entry
@@ -279,7 +297,15 @@ export async function geocodeAddresses(
     nominatimBudgetMs?: number;
   } = {},
 ): Promise<GeocodeResult[]> {
-  const out: GeocodeResult[] = list.map(() => null);
+  return (await geocodeAddressesSourced(list, opts)).map((r) => r.point);
+}
+
+/** geocodeAddresses, plus which provider answered each row. */
+export async function geocodeAddressesSourced(
+  list: AddressParts[],
+  opts: { nominatimBudgetMs?: number } = {},
+): Promise<SourcedGeocode[]> {
+  const out: SourcedGeocode[] = list.map(() => ({ point: null, source: null }));
   const addresses = list.map(joinAddress);
   const chain = chainOrNull();
   if (!chain) return out;
@@ -294,7 +320,7 @@ export async function geocodeAddresses(
       rows.forEach((rowIndex, k) => {
         const a = answers === GEOCODER_FAILED ? GEOCODER_FAILED : answers[k];
         if (a === GEOCODER_FAILED || a === undefined) missed.push(rowIndex);
-        else out[rowIndex] = a;
+        else out[rowIndex] = { point: a, source: sourceOf(a, adapter) };
       });
       return missed;
     }
@@ -306,7 +332,7 @@ export async function geocodeAddresses(
       if (Date.now() >= deadline) break;
       const a = await adapter.single(addresses[i], list[i], ctx);
       if (a === GEOCODER_FAILED) missed.push(i);
-      else out[i] = a;
+      else out[i] = { point: a, source: sourceOf(a, adapter) };
     }
     return missed;
   };

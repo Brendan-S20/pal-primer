@@ -29,11 +29,23 @@ vi.mock("@tanstack/react-start", () => ({
 vi.mock("@/integrations/supabase/auth-middleware", () => ({ requireSupabaseAuth: {} }));
 vi.mock("@/lib/activity.server", () => ({ logActivity: vi.fn(async () => {}) }));
 vi.mock("@/lib/geocode.server", () => ({
-  // Every address is found, at the middle of the radius zone below.
-  geocodeAddresses: vi.fn(async (list: unknown[]) =>
-    list.map(() => ({ latitude: 41.9, longitude: -87.65, precision: "house" })),
+  // Every address is found, at the middle of the radius zone below, by
+  // Google -- so the pin is stored with its source and time (#745).
+  geocodeAddressesSourced: vi.fn(async (list: unknown[]) =>
+    list.map(() => ({
+      point: { latitude: 41.9, longitude: -87.65, precision: "house" },
+      source: "google",
+    })),
   ),
 }));
+
+/** What a found pin carries besides its zone (20261109200000). */
+const PIN = {
+  latitude: 41.9,
+  longitude: -87.65,
+  geocode_source: "google",
+  geocoded_at: expect.any(String),
+};
 
 const state = vi.hoisted(() => ({ supabase: null as any }));
 
@@ -111,8 +123,7 @@ describe("a pin found after an import", () => {
     });
     const r = await backfillPropertyGeocodes({ data: {} });
     expect(patchFor("p1")).toEqual({
-      latitude: 41.9,
-      longitude: -87.65,
+      ...PIN,
       auto_zone_id: RADIUS,
       zone_id: RADIUS,
     });
@@ -127,7 +138,7 @@ describe("a pin found after an import", () => {
       clients: [{ id: "c1", account_type: "residential" }],
     });
     const r = await backfillPropertyGeocodes({ data: {} });
-    expect(patchFor("p2")).toEqual({ latitude: 41.9, longitude: -87.65, auto_zone_id: RADIUS });
+    expect(patchFor("p2")).toEqual({ ...PIN, auto_zone_id: RADIUS });
     expect(r).toMatchObject({ updated: 1, rezoned: 0 });
   });
 
@@ -138,7 +149,7 @@ describe("a pin found after an import", () => {
       clients: [{ id: "c1", account_type: "residential" }],
     });
     await backfillPropertyGeocodes({ data: {} });
-    expect(patchFor("p3")).toEqual({ latitude: 41.9, longitude: -87.65 });
+    expect(patchFor("p3")).toEqual(PIN);
   });
 
   it("saves the pin and leaves the zone alone when the zones cannot be read", async () => {
@@ -158,7 +169,7 @@ describe("a pin found after an import", () => {
           }
         : real(t);
     const r = await backfillPropertyGeocodes({ data: {} });
-    expect(patchFor("p4")).toEqual({ latitude: 41.9, longitude: -87.65 });
+    expect(patchFor("p4")).toEqual(PIN);
     expect(r).toMatchObject({ updated: 1, rezoned: 0, zonesUnread: 1 });
   });
 });

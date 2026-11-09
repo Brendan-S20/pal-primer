@@ -49,6 +49,9 @@ vi.mock("@/lib/authz.server", () => ({
 }));
 vi.mock("@/lib/geocode.server", () => ({
   geocodeAddresses: vi.fn(async (list: unknown[]) => list.map(() => null)),
+  geocodeAddressesSourced: vi.fn(async (list: unknown[]) =>
+    list.map(() => ({ point: null, source: null })),
+  ),
   geocodeAddress: vi.fn(async () => null),
 }));
 

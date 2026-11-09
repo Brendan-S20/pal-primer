@@ -29,17 +29,24 @@ vi.mock("@/lib/authz.server", () => ({
 }));
 const geocodeCalls = vi.hoisted(() => [] as { n: number; budget: unknown }[]);
 vi.mock("@/lib/geocode.server", () => ({
-  geocodeAddresses: vi.fn(async (list: unknown[], opts: { nominatimBudgetMs?: number }) => {
+  geocodeAddressesSourced: vi.fn(async (list: unknown[], opts: { nominatimBudgetMs?: number }) => {
     geocodeCalls.push({ n: list.length, budget: opts?.nominatimBudgetMs });
-    return list.map((_, i) => (i % 2 ? { latitude: 41.9, longitude: -87.6, precision: "house" } : null));
+    return list.map((_, i) =>
+      i % 2
+        ? { point: { latitude: 41.9, longitude: -87.6, precision: "house" }, source: "google" }
+        : { point: null, source: null },
+    );
   }),
   geocodeAddress: vi.fn(async () => {
+    throw new Error("an import must not geocode row by row");
+  }),
+  geocodeAddressSourced: vi.fn(async () => {
     throw new Error("an import must not geocode row by row");
   }),
 }));
 
 import { commitImport } from "@/lib/imports.functions";
-import { geocodeAddresses } from "@/lib/geocode.server";
+import { geocodeAddressesSourced } from "@/lib/geocode.server";
 
 const LATENCY = 10;
 const N = 1_000;
@@ -188,7 +195,7 @@ beforeEach(() => {
   maxInFlight = 0;
   inFlight = 0;
   geocodeCalls.length = 0;
-  vi.mocked(geocodeAddresses).mockClear();
+  vi.mocked(geocodeAddressesSourced).mockClear();
 });
 
 const commit = () =>
@@ -228,13 +235,17 @@ describe("a 1,000-row client import", () => {
     expect(byRow.get("row-999")).toMatchObject({ action: "skip", target_id: first.target_id });
     // The property belongs to the client the row made, with its pin when the
     // geocoder found one.
-    expect(propertyRows[1]).toMatchObject({ client_id: clientRows[1].id, latitude: 41.9 });
+    expect(propertyRows[1]).toMatchObject({
+      client_id: clientRows[1].id,
+      latitude: 41.9,
+      geocode_source: "google",
+    });
     expect(propertyRows[0]).toMatchObject({ client_id: clientRows[0].id, latitude: null });
   });
 
   it("geocodes once, on a budget, and never row by row", async () => {
     await commit();
-    expect(geocodeAddresses).toHaveBeenCalledTimes(1);
+    expect(geocodeAddressesSourced).toHaveBeenCalledTimes(1);
     expect(geocodeCalls).toEqual([{ n: N, budget: 60_000 }]);
   });
 

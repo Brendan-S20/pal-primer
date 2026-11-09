@@ -146,6 +146,10 @@ export const resolveAddress = createServerFn({ method: "POST" })
 
     return {
       address: details,
+      // Who produced address.latitude/longitude, for properties.geocode_source:
+      // a Places Details answer is Google-derived and expires after 30 days
+      // (geocode-source.ts).
+      geocodeSource: provider.name === "google-places" ? ("google_places" as const) : null,
       zoneId: zone ? (zone.id as string) : null,
       zoneName: zone ? ((zone as any).name as string) : null,
     };

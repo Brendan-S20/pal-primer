@@ -2,6 +2,12 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
+  GEOCODE_SOURCES,
+  inferClientPointSource,
+  provenancePatch,
+  type GeocodeSource,
+} from "@/lib/geocode-source";
+import {
   ACCESS_CODE_MAX,
   ACCESS_NOTES_MAX,
   ACCESS_METHODS,
@@ -49,6 +55,11 @@ const createPropSchema = z.object({
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
   addressSource: z.enum(["matched", "manual"]).optional(),
+  // Who produced latitude/longitude, as the server told the browser
+  // (resolveAddress / geocodePreview). Stored as properties.geocode_source so
+  // Google-derived pins can be refreshed or dropped after 30 days
+  // (geocode-source.ts). Absent: inferred from addressSource.
+  geocodeSource: z.enum(GEOCODE_SOURCES).optional(),
   yardSize,
   invisibleFence: z.boolean().optional(),
   escapeRisk: z.boolean().optional(),
@@ -123,14 +134,19 @@ export const createProperty = createServerFn({ method: "POST" })
       data.latitude != null && data.longitude != null
         ? { latitude: data.latitude, longitude: data.longitude }
         : null;
+    let geoSource: GeocodeSource | null = geo
+      ? inferClientPointSource(data.geocodeSource, data.addressSource)
+      : null;
     if (!geo) {
-      const { geocodeAddress } = await import("./geocode.server");
-      geo = await geocodeAddress({
+      const { geocodeAddressSourced } = await import("./geocode.server");
+      const found = await geocodeAddressSourced({
         street: data.street,
         city: data.city,
         region: data.region,
         postal_code: data.postalCode,
       });
+      geo = found.point;
+      geoSource = found.source;
     }
 
     // Auto-assign a service zone from the address (spec: automatic zone
@@ -180,6 +196,7 @@ export const createProperty = createServerFn({ method: "POST" })
         visit_contact_email: data.visitContactEmail || null,
         latitude: geo?.latitude ?? null,
         longitude: geo?.longitude ?? null,
+        ...(geo ? provenancePatch(geoSource) : {}),
         boundary: (data.boundary as any) ?? null,
         boundary_area_sqm: data.boundary ? polygonAreaSqm(data.boundary as any) : null,
         ...walkAccessPatch(data),
@@ -239,7 +256,7 @@ export const updateProperty = createServerFn({ method: "POST" })
     const { data: current, error: curErr } = await supabase
       .from("properties")
       .select(
-        "organization_id, client_id, zone_override_reason, street, city, postal_code, auto_zone_id, zone_id, has_units, total_units, boundary_area_sqm, do_not_enter_if_dog_out, hazard_notes, clients(account_type)",
+        "organization_id, client_id, zone_override_reason, street, city, postal_code, latitude, longitude, auto_zone_id, zone_id, has_units, total_units, boundary_area_sqm, do_not_enter_if_dog_out, hazard_notes, clients(account_type)",
       )
       .eq("id", data.propertyId)
       .single();
@@ -262,21 +279,40 @@ export const updateProperty = createServerFn({ method: "POST" })
       data.latitude != null && data.longitude != null
         ? { latitude: data.latitude, longitude: data.longitude }
         : null;
+    let geoSource: GeocodeSource | null = geo
+      ? inferClientPointSource(data.geocodeSource, data.addressSource)
+      : null;
     if (!geo) {
-      const { geocodeAddress } = await import("./geocode.server");
-      geo = await geocodeAddress({
+      const { geocodeAddressSourced } = await import("./geocode.server");
+      const found = await geocodeAddressSourced({
         street: data.street,
         city: data.city,
         region: data.region,
         postal_code: data.postalCode,
       });
+      geo = found.point;
+      geoSource = found.source;
     }
+
+    // The drawer sends the stored point back on every save. The same point is
+    // not a new fetch: its source and its 30-day clock stay as they are, or
+    // every unrelated edit would restart a Google pin's expiry.
+    const samePoint =
+      geo != null &&
+      current.latitude != null &&
+      current.longitude != null &&
+      Math.abs(Number(current.latitude) - geo.latitude) < 1e-9 &&
+      Math.abs(Number(current.longitude) - geo.longitude) < 1e-9;
 
     // Only overwrite coordinates when geocoding actually resolved, so a
     // transient geocoder miss doesn't blank out a good pin.
     const geoPatch =
       geo?.latitude != null && geo?.longitude != null
-        ? { latitude: geo.latitude, longitude: geo.longitude }
+        ? {
+            latitude: geo.latitude,
+            longitude: geo.longitude,
+            ...(samePoint ? {} : provenancePatch(geoSource)),
+          }
         : {};
 
     // Refresh the detected zone; the effective zone follows it only while
@@ -510,8 +546,8 @@ export const backfillPropertyGeocodes = createServerFn({ method: "POST" })
 
     // One call for the whole page: a single Geocodio batch request when a key
     // is configured, the old 1/s Nominatim loop when it is not.
-    const { geocodeAddresses } = await import("./geocode.server");
-    const geos = await geocodeAddresses(
+    const { geocodeAddressesSourced } = await import("./geocode.server");
+    const sourced = await geocodeAddressesSourced(
       rows.map((r) => ({
         street: r.street,
         city: r.city,
@@ -549,7 +585,7 @@ export const backfillPropertyGeocodes = createServerFn({ method: "POST" })
     let rezoned = 0;
     let zonesUnread = 0;
     for (const [i, r] of rows.entries()) {
-      const geo = geos[i];
+      const geo = sourced[i].point;
       if (!geo) continue;
       const zones = zonesByOrg.get(r.organization_id as string) ?? null;
       let zonePatch: { auto_zone_id?: string | null; zone_id?: string | null } = {};
@@ -570,7 +606,12 @@ export const backfillPropertyGeocodes = createServerFn({ method: "POST" })
       }
       const { error: uErr } = await supabase
         .from("properties")
-        .update({ latitude: geo.latitude, longitude: geo.longitude, ...zonePatch })
+        .update({
+          latitude: geo.latitude,
+          longitude: geo.longitude,
+          ...provenancePatch(sourced[i].source),
+          ...zonePatch,
+        })
         .eq("id", r.id);
       if (uErr) continue;
       updated += 1;
@@ -670,14 +711,18 @@ export const geocodePreview = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data }) => {
-    const { geocodeAddress } = await import("./geocode.server");
-    const geo = await geocodeAddress({
+    const { geocodeAddressSourced } = await import("./geocode.server");
+    const { point: geo, source } = await geocodeAddressSourced({
       street: data.street,
       city: data.city,
       region: data.region,
       postal_code: data.postalCode,
     });
-    return { point: geo ? { latitude: geo.latitude, longitude: geo.longitude } : null };
+    return {
+      point: geo ? { latitude: geo.latitude, longitude: geo.longitude } : null,
+      // Sent back with the save, so the pin is stored with who produced it.
+      source,
+    };
   });
 
 export const getPropertyBoundary = createServerFn({ method: "GET" })

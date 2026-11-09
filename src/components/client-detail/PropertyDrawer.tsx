@@ -21,6 +21,7 @@ import {
 import { BoundarySketch, type PolygonGeoJSON } from "@/components/BoundarySketch";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { AddressAutocomplete, type ResolvedAddress } from "@/components/AddressAutocomplete";
+import { asGeocodeSource, type GeocodeSource } from "@/lib/geocode-source";
 // (Badge replaced by MetaChip per Stage 3 taxonomy.)
 import { MetaChip, SectionLabel } from "@/components/client-detail/primitives";
 import { useServiceLines } from "@/components/CommercialOnly";
@@ -83,6 +84,8 @@ export function PropertyDrawer({
       latitude: (property?.latitude ?? null) as number | null,
       longitude: (property?.longitude ?? null) as number | null,
       addressSource: (property?.address_source ?? "manual") as "matched" | "manual",
+      // Who produced the stored pin; sent back so a save keeps it.
+      geocodeSource: (asGeocodeSource((property as any)?.geocode_source) ?? null) as GeocodeSource | null,
       label: property?.label ?? "",
       accountType: (property?.account_type ?? client?.account_type ?? "residential") as
         | "residential"
@@ -185,6 +188,7 @@ export function PropertyDrawer({
       latitude: r.address.latitude,
       longitude: r.address.longitude,
       addressSource: "matched",
+      geocodeSource: r.geocodeSource ?? "google_places",
     }));
     setMatchedZoneName(r.zoneName);
     if (!property) discardPendingBoundary();
@@ -201,6 +205,7 @@ export function PropertyDrawer({
       addressSource: "manual" as const,
       latitude: null,
       longitude: null,
+      geocodeSource: null,
     }));
     setMatchedZoneName(null);
     if (!property) discardPendingBoundary();
@@ -224,6 +229,7 @@ export function PropertyDrawer({
         latitude: form.latitude ?? undefined,
         longitude: form.longitude ?? undefined,
         addressSource: form.addressSource,
+        geocodeSource: form.latitude != null ? (form.geocodeSource ?? undefined) : undefined,
         label: form.label || undefined,
         accountType: form.accountType,
         // Sent only when changed, so a drawer that could not load the codes
@@ -653,7 +659,14 @@ export function PropertyDrawer({
             postalCode={form.postalCode}
             latitude={form.latitude}
             longitude={form.longitude}
-            onLocate={(p) => setForm((f) => ({ ...f, latitude: p.latitude, longitude: p.longitude }))}
+            onLocate={(p) =>
+              setForm((f) => ({
+                ...f,
+                latitude: p.latitude,
+                longitude: p.longitude,
+                geocodeSource: p.source ?? null,
+              }))
+            }
             pendingBoundary={pendingBoundary}
             onBoundary={setPendingBoundary}
           />
@@ -701,7 +714,7 @@ function NewBoundarySection({
   postalCode: string;
   latitude: number | null;
   longitude: number | null;
-  onLocate: (p: { latitude: number; longitude: number }) => void;
+  onLocate: (p: { latitude: number; longitude: number; source?: GeocodeSource | null }) => void;
   pendingBoundary: PolygonGeoJSON | null;
   onBoundary: (p: PolygonGeoJSON | null) => void;
 }) {
@@ -712,7 +725,7 @@ function NewBoundarySection({
         data: { street, city, region: region || undefined, postalCode },
       }),
     onSuccess: (r: any) => {
-      if (r?.point) onLocate(r.point);
+      if (r?.point) onLocate({ ...r.point, source: r.source });
       else toast.error("Couldn't find that address on the map. Check the street, city, and ZIP.");
     },
     onError: (e) => toast.error((e as Error).message),

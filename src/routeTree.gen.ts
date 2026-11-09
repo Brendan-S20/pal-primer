@@ -164,6 +164,7 @@ import { Route as ApiPublicHooksPlatformStripeRouteImport } from './routes/api/p
 import { Route as ApiPublicHooksNightlyRouteImport } from './routes/api/public/hooks/nightly'
 import { Route as ApiPublicHooksLiveActivityActionRouteImport } from './routes/api/public/hooks/live-activity-action'
 import { Route as ApiPublicHooksLateCheckRouteImport } from './routes/api/public/hooks/late-check'
+import { Route as ApiPublicHooksGoogleCacheExpiryRouteImport } from './routes/api/public/hooks/google-cache-expiry'
 import { Route as ApiPublicHooksAnnouncementEmailsRouteImport } from './routes/api/public/hooks/announcement-emails'
 import { Route as ApiPublicCalendarTokenRouteImport } from './routes/api/public/calendar.$token'
 import { Route as AuthenticatedPropertiesPropertyIdBoundaryRouteImport } from './routes/_authenticated/properties.$propertyId.boundary'
@@ -997,6 +998,12 @@ const ApiPublicHooksLateCheckRoute = ApiPublicHooksLateCheckRouteImport.update({
   path: '/api/public/hooks/late-check',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicHooksGoogleCacheExpiryRoute =
+  ApiPublicHooksGoogleCacheExpiryRouteImport.update({
+    id: '/api/public/hooks/google-cache-expiry',
+    path: '/api/public/hooks/google-cache-expiry',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksAnnouncementEmailsRoute =
   ApiPublicHooksAnnouncementEmailsRouteImport.update({
     id: '/api/public/hooks/announcement-emails',
@@ -1160,6 +1167,7 @@ export interface FileRoutesByFullPath {
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/calendar/$token': typeof ApiPublicCalendarTokenRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
+  '/api/public/hooks/google-cache-expiry': typeof ApiPublicHooksGoogleCacheExpiryRoute
   '/api/public/hooks/late-check': typeof ApiPublicHooksLateCheckRoute
   '/api/public/hooks/live-activity-action': typeof ApiPublicHooksLiveActivityActionRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
@@ -1311,6 +1319,7 @@ export interface FileRoutesByTo {
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/calendar/$token': typeof ApiPublicCalendarTokenRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
+  '/api/public/hooks/google-cache-expiry': typeof ApiPublicHooksGoogleCacheExpiryRoute
   '/api/public/hooks/late-check': typeof ApiPublicHooksLateCheckRoute
   '/api/public/hooks/live-activity-action': typeof ApiPublicHooksLiveActivityActionRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
@@ -1473,6 +1482,7 @@ export interface FileRoutesById {
   '/_authenticated/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/calendar/$token': typeof ApiPublicCalendarTokenRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
+  '/api/public/hooks/google-cache-expiry': typeof ApiPublicHooksGoogleCacheExpiryRoute
   '/api/public/hooks/late-check': typeof ApiPublicHooksLateCheckRoute
   '/api/public/hooks/live-activity-action': typeof ApiPublicHooksLiveActivityActionRoute
   '/api/public/hooks/nightly': typeof ApiPublicHooksNightlyRoute
@@ -1635,6 +1645,7 @@ export interface FileRouteTypes {
     | '/properties/$propertyId/boundary'
     | '/api/public/calendar/$token'
     | '/api/public/hooks/announcement-emails'
+    | '/api/public/hooks/google-cache-expiry'
     | '/api/public/hooks/late-check'
     | '/api/public/hooks/live-activity-action'
     | '/api/public/hooks/nightly'
@@ -1786,6 +1797,7 @@ export interface FileRouteTypes {
     | '/properties/$propertyId/boundary'
     | '/api/public/calendar/$token'
     | '/api/public/hooks/announcement-emails'
+    | '/api/public/hooks/google-cache-expiry'
     | '/api/public/hooks/late-check'
     | '/api/public/hooks/live-activity-action'
     | '/api/public/hooks/nightly'
@@ -1947,6 +1959,7 @@ export interface FileRouteTypes {
     | '/_authenticated/properties/$propertyId/boundary'
     | '/api/public/calendar/$token'
     | '/api/public/hooks/announcement-emails'
+    | '/api/public/hooks/google-cache-expiry'
     | '/api/public/hooks/late-check'
     | '/api/public/hooks/live-activity-action'
     | '/api/public/hooks/nightly'
@@ -2011,6 +2024,7 @@ export interface RootRouteChildren {
   PayITokenRoute: typeof PayITokenRoute
   ApiPublicCalendarTokenRoute: typeof ApiPublicCalendarTokenRoute
   ApiPublicHooksAnnouncementEmailsRoute: typeof ApiPublicHooksAnnouncementEmailsRoute
+  ApiPublicHooksGoogleCacheExpiryRoute: typeof ApiPublicHooksGoogleCacheExpiryRoute
   ApiPublicHooksLateCheckRoute: typeof ApiPublicHooksLateCheckRoute
   ApiPublicHooksLiveActivityActionRoute: typeof ApiPublicHooksLiveActivityActionRoute
   ApiPublicHooksNightlyRoute: typeof ApiPublicHooksNightlyRoute
@@ -3111,6 +3125,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksLateCheckRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/google-cache-expiry': {
+      id: '/api/public/hooks/google-cache-expiry'
+      path: '/api/public/hooks/google-cache-expiry'
+      fullPath: '/api/public/hooks/google-cache-expiry'
+      preLoaderRoute: typeof ApiPublicHooksGoogleCacheExpiryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/announcement-emails': {
       id: '/api/public/hooks/announcement-emails'
       path: '/api/public/hooks/announcement-emails'
@@ -3506,6 +3527,7 @@ const rootRouteChildren: RootRouteChildren = {
   PayITokenRoute: PayITokenRoute,
   ApiPublicCalendarTokenRoute: ApiPublicCalendarTokenRoute,
   ApiPublicHooksAnnouncementEmailsRoute: ApiPublicHooksAnnouncementEmailsRoute,
+  ApiPublicHooksGoogleCacheExpiryRoute: ApiPublicHooksGoogleCacheExpiryRoute,
   ApiPublicHooksLateCheckRoute: ApiPublicHooksLateCheckRoute,
   ApiPublicHooksLiveActivityActionRoute: ApiPublicHooksLiveActivityActionRoute,
   ApiPublicHooksNightlyRoute: ApiPublicHooksNightlyRoute,

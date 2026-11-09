@@ -2,6 +2,12 @@ import { COAT_TYPES } from "@/lib/groom";
 import { createServerFn } from "@tanstack/react-start";
 import { refuseIfChanged, StaleWriteError } from "@/lib/stale-write";
 import { z } from "zod";
+import {
+  GEOCODE_SOURCES,
+  asGeocodeSource,
+  provenancePatch,
+  type GeocodeSource,
+} from "@/lib/geocode-source";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 import { buildClientNamePatch } from "@/lib/client-name";
@@ -1424,6 +1430,8 @@ const onboardSchema = z.object({
   // step's lookup that the boundary was drawn on. See the handler.
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
+  // Who produced that pin (geocode-source.ts), as the server told the wizard.
+  geocodeSource: z.enum(GEOCODE_SOURCES).optional(),
   gateCode: z.string().max(60).optional(),
   parkingNotes: z.string().max(1000).optional(),
   // properties.access_notes, the line the tech reads under Access. The
@@ -1636,17 +1644,22 @@ export const onboardClient = createServerFn({ method: "POST" })
     const pinned = data.latitude != null && data.longitude != null;
     let latitude: number | null = pinned ? data.latitude! : null;
     let longitude: number | null = pinned ? data.longitude! : null;
+    // The wizard stores address_source "manual" whatever the picker did, so
+    // only an explicit label says where its pin came from; unlabelled is
+    // unknown, and unknown is never expired (geocode-source.ts).
+    let geoSource: GeocodeSource | null = pinned ? asGeocodeSource(data.geocodeSource) : null;
     if (!pinned) {
       try {
-        const { geocodeAddress } = await import("./geocode.server");
-        const geo = await geocodeAddress({
+        const { geocodeAddressSourced } = await import("./geocode.server");
+        const found = await geocodeAddressSourced({
           street: data.street,
           city: data.city,
           region: data.region,
           postal_code: data.postalCode,
         });
-        latitude = geo?.latitude ?? null;
-        longitude = geo?.longitude ?? null;
+        latitude = found.point?.latitude ?? null;
+        longitude = found.point?.longitude ?? null;
+        geoSource = found.source;
       } catch {}
     }
 
@@ -1695,6 +1708,7 @@ export const onboardClient = createServerFn({ method: "POST" })
         hazard_notes: data.hazardNotes || null,
         latitude,
         longitude,
+        ...(latitude != null && longitude != null ? provenancePatch(geoSource) : {}),
         boundary: (data.boundary as any) ?? null,
         boundary_area_sqm: data.boundaryAreaSqm ?? null,
         // The property's own account type, which the tech's stop reads to

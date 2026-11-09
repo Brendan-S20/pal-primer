@@ -3,6 +3,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { lookupAddressPoint } from "@/lib/geocode.functions";
+import { asGeocodeSource, type GeocodeSource } from "@/lib/geocode-source";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { onboardClient, getInternalQuote } from "@/lib/clients.functions";
 import { getFirstCleanupPricing } from "@/lib/first-cleanup.functions";
@@ -518,7 +519,13 @@ function NewClientWizardForm({
 
   // yard boundary
   const [boundary, setBoundary] = useState<PolygonGeoJSON | null>(null);
-  const [geo, setGeo] = useState<{ lat: number; lng: number } | null>(null);
+  // `source` is who produced the pin (geocode-source.ts), stored with it on
+  // save so a Google-derived pin can be refreshed or dropped after 30 days.
+  const [geo, setGeo] = useState<{
+    lat: number;
+    lng: number;
+    source?: GeocodeSource | null;
+  } | null>(null);
   // Geocode outcome for the Outline step, so a failure surfaces a clear message
   // instead of silently rendering a zoomed-out world map (finding #13).
   const [geoStatus, setGeoStatus] = useState<"idle" | "loading" | "ok" | "notfound" | "error">(
@@ -543,7 +550,11 @@ function NewClientWizardForm({
       // A provider match is a better pin than the Outline step's Nominatim
       // lookup, and it saves the round trip: the effect there is a fallback
       // for hand-typed addresses now.
-      setGeo({ lat: r.address.latitude, lng: r.address.longitude });
+      setGeo({
+        lat: r.address.latitude,
+        lng: r.address.longitude,
+        source: r.geocodeSource ?? "google_places",
+      });
       setGeoStatus("ok");
     } else {
       setGeo(null);
@@ -573,10 +584,10 @@ function NewClientWizardForm({
     setGeoStatus("loading");
     (async () => {
       try {
-        const { geo: g } = await geocodeFn({ data: { query: q } });
+        const { geo: g, source } = await geocodeFn({ data: { query: q } });
         if (cancelled) return;
         if (g) {
-          setGeo({ lat: g.latitude, lng: g.longitude });
+          setGeo({ lat: g.latitude, lng: g.longitude, source });
           setGeoStatus("ok");
         } else {
           setGeoStatus("notfound");
@@ -871,6 +882,7 @@ function NewClientWizardForm({
           // drawn on instead of geocoding the address a second time.
           latitude: geo?.lat,
           longitude: geo?.lng,
+          geocodeSource: geo ? (asGeocodeSource(geo.source) ?? undefined) : undefined,
           gateCode: gateCode || undefined,
           parkingNotes: parkingNotes || undefined,
           accessNotes: accessNotes.trim() || undefined,

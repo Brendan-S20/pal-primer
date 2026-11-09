@@ -151,7 +151,10 @@ function PrivacyPage() {
           <li>Stripe (payment processing and billing)</li>
           <li>Twilio (SMS delivery)</li>
           <li>Resend (email delivery)</li>
-          <li>Google (maps and address suggestions)</li>
+          <li>
+            Google (maps, address suggestions, turning addresses into map locations, and drive times
+            between stops)
+          </li>
           <li>Geocodio (turning addresses into map locations)</li>
           <li>
             Sentry (error reporting: when the app or our server hits a fault, Sentry receives the

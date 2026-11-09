@@ -42,10 +42,12 @@ export const lookupAddressPoint = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ query: z.string().min(3).max(300) }).parse(d))
   .handler(async ({ data }) => {
-    const { geocodeAddress } = await import("@/lib/geocode.server");
+    const { geocodeAddressSourced } = await import("@/lib/geocode.server");
     // The callers pass one already-joined string, which is what they were
     // sending to Nominatim as `q`. geocodeAddress joins its parts the same way,
     // so handing it as `street` reproduces the identical query.
-    const geo = await geocodeAddress({ street: data.query });
-    return { geo };
+    const { point: geo, source } = await geocodeAddressSourced({ street: data.query });
+    // `source` travels back with the pin when it is saved, so the property
+    // records who produced it (properties.geocode_source).
+    return { geo, source };
   });

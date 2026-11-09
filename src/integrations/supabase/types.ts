@@ -5987,6 +5987,8 @@ export type Database = {
           est_override_by: string | null
           est_override_reason: string | null
           gate_code: string | null
+          geocode_source: string | null
+          geocoded_at: string | null
           has_units: boolean
           hazard_notes: string | null
           id: string
@@ -6043,6 +6045,8 @@ export type Database = {
           est_override_by?: string | null
           est_override_reason?: string | null
           gate_code?: string | null
+          geocode_source?: string | null
+          geocoded_at?: string | null
           has_units?: boolean
           hazard_notes?: string | null
           id?: string
@@ -6099,6 +6103,8 @@ export type Database = {
           est_override_by?: string | null
           est_override_reason?: string | null
           gate_code?: string | null
+          geocode_source?: string | null
+          geocoded_at?: string | null
           has_units?: boolean
           hazard_notes?: string | null
           id?: string
