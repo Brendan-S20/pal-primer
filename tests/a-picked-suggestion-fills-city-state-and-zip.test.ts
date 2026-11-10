@@ -20,6 +20,7 @@ import { googlePlacesProvider } from "@/lib/address/google-places.server";
 import {
   addressFromPlace,
   formatAddressLine,
+  normalizeStreetName,
   parseFormattedAddress,
 } from "@/lib/address/from-place";
 import { pickOutcome } from "@/lib/address/pick";
@@ -137,6 +138,50 @@ describe("(a) normal components fill street, city, state and ZIP", () => {
       postalCode: "48226",
       formatted: "1 Woodward Avenue, Detroit, MI 48226",
     });
+  });
+});
+
+describe("the picked row only supplies a street line that names the place's own route", () => {
+  const ROUTE_ONLY = {
+    addressComponents: [
+      { longText: "Woodward Avenue", shortText: "Woodward Ave", types: ["route"] },
+      { longText: "Detroit", types: ["locality"] },
+      { longText: "Michigan", shortText: "MI", types: ["administrative_area_level_1"] },
+      { longText: "48226", types: ["postal_code"] },
+    ],
+    location: { latitude: 42.33, longitude: -83.04 },
+    formattedAddress: "Woodward Ave, Detroit, MI 48226, USA",
+  };
+
+  it("a row naming a different street is not used, and the pick is refused rather than mixed", async () => {
+    // The row is sent from the browser, so it cannot vouch for a street the
+    // place itself does not have.
+    expect(addressFromPlace({ ...ROUTE_ONLY, suggestion: BRUSH_ROW }).street).toBe("");
+    const { details, outcome } = await pickThroughProvider(ROUTE_ONLY, BRUSH_ROW);
+    expect(details).toBeNull();
+    expect(outcome).toEqual({ kind: "keep-typed", reason: "failed" });
+  });
+
+  it("a numbered pick that resolves to a bare street is refused, not saved without its number", () => {
+    const d = addressFromPlace({
+      ...ROUTE_ONLY,
+      suggestion: { mainText: "77 Woodward Way", secondaryText: "Detroit, MI, USA" },
+    });
+    expect(d.street).toBe("");
+  });
+
+  it("a row naming the same street, spelled differently, is used", () => {
+    const d = addressFromPlace({
+      ...ROUTE_ONLY,
+      suggestion: { mainText: "1 Woodward Ave.", secondaryText: "Detroit, MI, USA" },
+    });
+    expect(d.street).toBe("1 Woodward Ave.");
+  });
+
+  it("St / Street, Ave / Avenue and directionals normalise to one spelling", () => {
+    expect(normalizeStreetName("Brush Street")).toBe(normalizeStreetName("brush st."));
+    expect(normalizeStreetName("W Grand Boulevard")).toBe(normalizeStreetName("West Grand Blvd"));
+    expect(normalizeStreetName("Brush St")).not.toBe(normalizeStreetName("Woodward Ave"));
   });
 });
 

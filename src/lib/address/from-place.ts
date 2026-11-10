@@ -16,8 +16,10 @@
 // whose formatted address still carries the ZIP.
 //
 // So every part is read from the components first, then from the place's own
-// formatted address, then — for the street line only — from the suggestion row
-// the person actually picked. All three describe the SAME place; none of them
+// formatted address, then, as a last resort, from the suggestion row the
+// person actually picked: its street line (only when its street name is the
+// place's own `route`), and its city and state. ZIP and the pin never come
+// from the row — it carries neither. All three describe the SAME place; none of them
 // is anything the person typed, so the #783 rule still holds: a pick supplies
 // every part or the form keeps what was typed. `isCompletePick` is still the
 // gate, and it still runs after this.
@@ -225,9 +227,61 @@ function pick(components: PlaceComponent[], types: string[], short = false): str
 /** Does `line` start with a house number? */
 const HOUSE_NUMBER = /^\d+[A-Za-z]?(?:-\d+)?\s+\S/;
 
+/** Street-name words that mean the same thing written either way. */
+const STREET_WORDS: Record<string, string> = {
+  street: "st",
+  avenue: "ave",
+  av: "ave",
+  road: "rd",
+  boulevard: "blvd",
+  drive: "dr",
+  lane: "ln",
+  court: "ct",
+  place: "pl",
+  terrace: "ter",
+  circle: "cir",
+  parkway: "pkwy",
+  highway: "hwy",
+  trail: "trl",
+  square: "sq",
+  alley: "aly",
+  crossing: "xing",
+  north: "n",
+  south: "s",
+  east: "e",
+  west: "w",
+  northeast: "ne",
+  northwest: "nw",
+  southeast: "se",
+  southwest: "sw",
+  saint: "st",
+  mount: "mt",
+  fort: "ft",
+};
+
+/** "Brush Street" and "brush st." compare equal. */
+export function normalizeStreetName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[.,#']/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => STREET_WORDS[w] ?? w)
+    .join(" ");
+}
+
+/** Does this street line ("2000 Brush Street") name the place's `route`
+ *  ("Brush St")? With no route component there is nothing to contradict it. */
+function namesRoute(line: string, route: string): boolean {
+  if (!route) return true;
+  const name = line.replace(/^\d+[A-Za-z]?(?:-\d+)?\s+/, "");
+  return normalizeStreetName(name) === normalizeStreetName(route);
+}
+
 /** Map a Places result to the parts a form stores. Components first, then the
- *  place's formatted address, then (street line only) the picked suggestion.
- *  The result may still be incomplete; `isCompletePick` decides. */
+ *  place's formatted address, then the picked suggestion as a last resort (a
+ *  street line only when it names the place's route; city and state). The
+ *  result may still be incomplete; `isCompletePick` decides. */
 export function addressFromPlace(place: PlaceInput): AddressDetails {
   const comps = place.addressComponents ?? [];
   const formatted = (place.formattedAddress ?? "").trim();
@@ -242,12 +296,24 @@ export function addressFromPlace(place: PlaceInput): AddressDetails {
   if (!HOUSE_NUMBER.test(street)) {
     // No house number in the components. Take the street line from the place's
     // own formatted address if it has one, else from the row the person picked —
-    // the line they chose is the line they meant.
+    // the line they chose is the line they meant. The row comes from the
+    // browser, so it is used only when its street name is this place's route:
+    // a row for a different street is not this place, and the pick fails
+    // rather than saving a street from somewhere else.
     if (HOUSE_NUMBER.test(fromFormatted.street)) street = fromFormatted.street;
-    else if (HOUSE_NUMBER.test(fromSuggestion.street)) street = fromSuggestion.street;
-    else if (HOUSE_NUMBER.test(mainText)) street = mainText;
+    else if (HOUSE_NUMBER.test(fromSuggestion.street) && namesRoute(fromSuggestion.street, route))
+      street = fromSuggestion.street;
+    else if (HOUSE_NUMBER.test(mainText) && namesRoute(mainText, route)) street = mainText;
     else street = street || pick(comps, ["premise"]) || fromFormatted.street;
   }
+  // The person picked a numbered address. A street line with the number gone
+  // is not what they picked, so it counts as missing and the pick is refused
+  // (isCompletePick) rather than saving "Woodward Avenue" with no house.
+  if (
+    !HOUSE_NUMBER.test(street) &&
+    (HOUSE_NUMBER.test(mainText) || HOUSE_NUMBER.test(fromSuggestion.street))
+  )
+    street = "";
 
   const city =
     pick(comps, [

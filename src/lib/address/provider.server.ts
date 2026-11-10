@@ -49,9 +49,10 @@ export interface AddressProvider {
     placeId: string,
     opts?: {
       sessionToken?: string;
-      /** The suggestion row the person picked. A fallback source for the
-       *  street line when the place's own components carry no house number
-       *  (#805); never a source for any other part. */
+      /** The suggestion row the person picked (#805). A last-resort source,
+       *  after the place's components and formatted address: for the street
+       *  line when the components carry no house number (only if it names the
+       *  place's `route`), and for city and state. Never for ZIP or the pin. */
       suggestion?: { mainText?: string | null; secondaryText?: string | null } | null;
     },
   ): Promise<AddressDetails | null>;
