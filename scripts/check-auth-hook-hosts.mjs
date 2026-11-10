@@ -66,11 +66,10 @@
 // The token comes from SUPABASE_ACCESS_TOKEN in the caller's environment and is
 // never printed, nor is the config response; only hook field names and
 // redacted URIs are. No Management API token is stored in GitHub (per
-// Brendan): the daily --live run happens outside GitHub, from SIC's routine.
-// .github/workflows/auth-hook-health.yml schedules only the no-token path
-// above, and its manual live job skips at the workflow layer when the runner
-// has no token. Called directly, a missing token under --live is still a
-// failure (exit 2), not a skip: the caller asked for the live check.
+// Brendan). This is a manual, local tool: per Brendan (2026-11-09) the daily
+// health check is not needed, so nothing in CI runs it. A missing token under
+// --live is a failure (exit 2), not a skip: the caller asked for the live
+// check.
 //
 // Usage:
 //   node scripts/check-auth-hook-hosts.mjs
