@@ -34,8 +34,9 @@ The card processing fee itself is not part of this: the live balance
 transactions show it on the connected account (`fee_details` is one
 `stripe_fee` line). The -$2.04 platform debit on Nov 8 was a
 `reserve_transaction` for a negative balance after a refund, which is loss
-liability (`controller.losses.payments: application`), not a fee. That is a
-separate decision and this change does not touch it.
+liability (`controller.losses.payments: application`), not a fee. Brendan
+decided that separately (Nov 10 2026, 6:36 AM ET): "Keep Express; HoundStack
+stays liable". See "Loss liability" below.
 
 ## How it is passed through
 
@@ -129,5 +130,12 @@ an application fee."
   screening, and that the pass-through lands on the connected account, is
   still to be shown in Stripe test mode. That proof is outstanding and needs
   a separate, approved check.
-- **Loss liability** (`controller.losses.payments: application`, the Nov 8
-  reserve) is a separate yes/no for Brendan and is not changed here.
+- **Loss liability stays with HoundStack.** Brendan's decision (Nov 10 2026,
+  6:36 AM ET), word for word: "Keep Express; HoundStack stays liable". It
+  replaces his earlier "Make new businesses liable, if Stripe allows". Every
+  connected account, existing and new, is still created as legacy
+  `type: "express"` (`losses.payments: application`, `fees.payer:
+  application_express`, the Express Dashboard), so HoundStack covers
+  refunds, disputes and negative balances (reserves like the Nov 8 one) on
+  all of them. The Radar pass-through above is what keeps the business
+  paying its own Radar fee under that setup.
