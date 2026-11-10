@@ -19,6 +19,7 @@
 		7A5E1C0D2EA0000000000571 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA0000000000570 /* SceneDelegate.swift */; };
 		7A5E1C0D2EA0000000000102 /* RouteActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA0000000000002 /* RouteActivityAttributes.swift */; };
 		7A5E1C0D2EA0000000000103 /* RouteActivityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA0000000000003 /* RouteActivityPlugin.swift */; };
+		7A5E1C0D2EA0000000000811 /* TapToPayEducationPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA0000000000810 /* TapToPayEducationPlugin.swift */; };
 		7A5E1C0D2EA0000000000104 /* RouteActivityDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA0000000000004 /* RouteActivityDemo.swift */; };
 		7A5E1C0D2EA0000000000105 /* RouteActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA0000000000002 /* RouteActivityAttributes.swift */; };
 		7A5E1C0D2EA0000000000106 /* RouteActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A5E1C0D2EA0000000000005 /* RouteActivityBundle.swift */; };
@@ -73,6 +74,7 @@
 		7A5E1C0D2EA0000000000570 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		7A5E1C0D2EA0000000000002 /* RouteActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteActivityAttributes.swift; sourceTree = "<group>"; };
 		7A5E1C0D2EA0000000000003 /* RouteActivityPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteActivityPlugin.swift; sourceTree = "<group>"; };
+		7A5E1C0D2EA0000000000810 /* TapToPayEducationPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TapToPayEducationPlugin.swift; sourceTree = "<group>"; };
 		7A5E1C0D2EA0000000000004 /* RouteActivityDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteActivityDemo.swift; sourceTree = "<group>"; };
 		7A5E1C0D2EA0000000000005 /* RouteActivityBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteActivityBundle.swift; sourceTree = "<group>"; };
 		7A5E1C0D2EA0000000000006 /* RouteLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteLiveActivity.swift; sourceTree = "<group>"; };
@@ -136,6 +138,7 @@
 				7A5E1C0D2EA0000000000570 /* SceneDelegate.swift */,
 				7A5E1C0D2EA0000000000001 /* HSBridgeViewController.swift */,
 				7A5E1C0D2EA0000000000401 /* LiveActivity */,
+				7A5E1C0D2EA0000000000812 /* TapToPay */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -145,6 +148,14 @@
 				50B271D01FEDC1A000F3C39B /* public */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		7A5E1C0D2EA0000000000812 /* TapToPay */ = {
+			isa = PBXGroup;
+			children = (
+				7A5E1C0D2EA0000000000810 /* TapToPayEducationPlugin.swift */,
+			);
+			path = TapToPay;
 			sourceTree = "<group>";
 		};
 		7A5E1C0D2EA0000000000401 /* LiveActivity */ = {
@@ -298,6 +309,7 @@
 				7A5E1C0D2EA0000000000101 /* HSBridgeViewController.swift in Sources */,
 				7A5E1C0D2EA0000000000102 /* RouteActivityAttributes.swift in Sources */,
 				7A5E1C0D2EA0000000000103 /* RouteActivityPlugin.swift in Sources */,
+				7A5E1C0D2EA0000000000811 /* TapToPayEducationPlugin.swift in Sources */,
 				7A5E1C0D2EA0000000000104 /* RouteActivityDemo.swift in Sources */,
 				7A5E1C0D2EA000000000010C /* RouteActivityIntents.swift in Sources */,
 			);

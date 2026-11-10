@@ -3,7 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useState, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import {
   ConnectComponentsProvider,
   ConnectAccountOnboarding,
@@ -49,6 +49,18 @@ import {
   withTimeout,
   type BalanceSummaryData,
 } from "@/lib/payments-load";
+
+// Tap to Pay (#579) is native only, loaded lazily behind the build-time flag,
+// read inline so Vite folds it to `null` in the web build and Rollup emits no
+// Tap to Pay chunk (the same shape StaffInvoicePayForm uses).
+const TapToPaySettingsCard =
+  import.meta.env.VITE_NATIVE_BUNDLE === "1"
+    ? lazy(() =>
+        import("@/components/tap-to-pay/TapToPaySettingsCard").then((m) => ({
+          default: m.TapToPaySettingsCard,
+        })),
+      )
+    : null;
 
 function ResendVerification() {
   const sendFn = useServerFn(sendEmailVerification);
@@ -269,6 +281,13 @@ function PaymentsSettings() {
             settings={
               cfg.chargesEnabled ? (
                 <div className="space-y-4">
+                  {/* Tap to Pay on iPhone (Apple's review guide 3.6): enabled
+                      outside checkout. Native app only; the web build drops it. */}
+                  {TapToPaySettingsCard && (
+                    <Suspense fallback={null}>
+                      <TapToPaySettingsCard />
+                    </Suspense>
+                  )}
                   <ProcessingFeeCard />
                   <TipsCard />
                 </div>

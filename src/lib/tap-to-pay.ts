@@ -2,19 +2,21 @@
 // what to say when a tap cannot happen.
 //
 // The phone is the card reader (Stripe Terminal, Tap to Pay on iPhone and on
-// Android). The button is drawn only when ALL of these hold:
+// Android). Tap to Pay is drawn on an invoice only when ALL of these hold:
 //
 //   * this is the app binary, not the web or the PWA (IS_NATIVE_BUNDLE, a
 //     build-time constant, so the web build folds every branch away);
 //   * the platform is iOS on an iPhone, or Android 13 or later. Tap to Pay on
-//     iPhone does not exist on iPad, and Stripe needs iOS 16.4 for the
-//     terms check; Product set Android 13 as the floor;
-//   * the person may already take a payment: `manage_client_billing`, the
-//     permission createInvoicePaymentIntent requires. A tech or a dispatcher
-//     does not hold it, so neither sees the button (and the server refuses
-//     them anyway);
+//     iPhone does not exist on iPad. An iPhone below iOS 16.4 (Stripe's
+//     floor) is not left blank: it is told to update to the latest iOS
+//     (Apple's review guide 1.4), and 16.4 to 17.5 can tap with the same note;
 //   * the business can take cards at all (a charge-ready connected account),
 //     and the invoice is open with something due.
+//
+// Who may START a tap is `manage_client_billing`, the permission
+// createInvoicePaymentIntent requires (owner, office manager). Anyone else is
+// shown who to ask (Apple 3.8.1) instead of nothing, and the server refuses
+// them anyway. Only the owner may accept Apple's terms (3.8).
 //
 // What this cannot know in advance is whether THIS iPhone model or THIS
 // Android phone passes Stripe's own checks (iPhone XS or later, NFC on, not
@@ -70,8 +72,7 @@ export function reversibleApplicationFeeCents(
  *  `readable: false` means it could not be learned at all, which is not the
  *  same as "this charge carries no per-tap fee". */
 export type ChargeMetadataRead =
-  | { readable: true; metadata: Record<string, string> }
-  | { readable: false; reason: string };
+  { readable: true; metadata: Record<string, string> } | { readable: false; reason: string };
 
 /**
  * The metadata a charge's PaymentIntent was created with. A charge made by a
@@ -134,10 +135,17 @@ export type TapToPayGateInput = {
 };
 
 export type TapToPayGate =
-  | { show: true }
+  | {
+      show: true;
+      /** "ready": the button that starts a tap. "update_ios": an iPhone too
+       *  old for Tap to Pay, told to update rather than shown nothing (1.4).
+       *  "ask_admin": a role that cannot take a payment, told who can
+       *  (3.8.1) instead of seeing nothing. */
+      mode: "ready" | "update_ios" | "ask_admin";
+    }
   | {
       show: false;
-      reason: "web" | "platform" | "device" | "role" | "no_stripe" | "not_payable";
+      reason: "web" | "platform" | "device" | "no_stripe" | "not_payable";
     };
 
 /** iOS version from a WKWebView user agent ("iPhone OS 17_4 like Mac OS X"). */
@@ -155,16 +163,44 @@ export function androidVersion(userAgent: string): number | null {
 export const TAP_TO_PAY_MIN_IOS: [number, number] = [16, 4];
 export const TAP_TO_PAY_MIN_ANDROID = 13;
 
+/** Apple's review guide (1.4): below this, prompt to update to the latest
+ *  iOS. Stripe itself still works from 16.4, so 16.4 to 17.5 can tap, with a
+ *  note; below 16.4 the phone cannot tap at all and gets only the prompt. */
+export const TAP_TO_PAY_LATEST_IOS_PROMPT_BELOW: [number, number] = [17, 6];
+
+function atLeast(v: [number, number], min: [number, number]): boolean {
+  return v[0] > min[0] || (v[0] === min[0] && v[1] >= min[1]);
+}
+
+/** True for an iPhone (not an iPad) on any iOS. */
+export function isIPhone(platform: TapToPayPlatform, userAgent: string): boolean {
+  return platform === "ios" && /iPhone/.test(userAgent) && iosVersion(userAgent) !== null;
+}
+
+/**
+ * Whether this iPhone should be asked to update iOS (Apple 1.4):
+ *   "required"    below 16.4: Tap to Pay cannot run, so this is all it gets;
+ *   "recommended" 16.4 to 17.5: it can tap, and is told to update;
+ *   null          17.6 or later, or not an iPhone.
+ */
+export function iosUpdateAdvice(
+  platform: TapToPayPlatform,
+  userAgent: string,
+): "required" | "recommended" | null {
+  if (!isIPhone(platform, userAgent)) return null;
+  const v = iosVersion(userAgent)!;
+  if (!atLeast(v, TAP_TO_PAY_MIN_IOS)) return "required";
+  if (!atLeast(v, TAP_TO_PAY_LATEST_IOS_PROMPT_BELOW)) return "recommended";
+  return null;
+}
+
 /** Can this phone be a Tap to Pay reader, as far as can be known before asking Stripe? */
 export function deviceCanTapToPay(platform: TapToPayPlatform, userAgent: string): boolean {
   if (platform === "ios") {
     // An iPad reports "iPad" (or a desktop Safari UA); only an iPhone has
     // Tap to Pay on iPhone.
-    const v = iosVersion(userAgent);
-    if (!v || !/iPhone/.test(userAgent)) return false;
-    const [major, minor] = v;
-    const [minMajor, minMinor] = TAP_TO_PAY_MIN_IOS;
-    return major > minMajor || (major === minMajor && minor >= minMinor);
+    if (!isIPhone(platform, userAgent)) return false;
+    return atLeast(iosVersion(userAgent)!, TAP_TO_PAY_MIN_IOS);
   }
   if (platform === "android") {
     const v = androidVersion(userAgent);
@@ -173,69 +209,184 @@ export function deviceCanTapToPay(platform: TapToPayPlatform, userAgent: string)
   return false;
 }
 
-/** Whether to draw "Tap to pay" on an invoice, and if not, why not. */
+/** Whether to draw Tap to Pay on an invoice, and in which form. */
 export function tapToPayGate(input: TapToPayGateInput): TapToPayGate {
   if (!input.isNativeBundle) return { show: false, reason: "web" };
   if (input.platform !== "ios" && input.platform !== "android") {
     return { show: false, reason: "platform" };
   }
-  if (!deviceCanTapToPay(input.platform, input.userAgent)) return { show: false, reason: "device" };
-  if (!hasPermission(input.role ?? null, "manage_client_billing")) {
-    return { show: false, reason: "role" };
+  const updateIos = iosUpdateAdvice(input.platform, input.userAgent) === "required";
+  if (!updateIos && !deviceCanTapToPay(input.platform, input.userAgent)) {
+    return { show: false, reason: "device" };
   }
   if (!input.cardPaymentsReady) return { show: false, reason: "no_stripe" };
   if (input.invoiceStatus !== "open" || !(input.dueCents > 0)) {
     return { show: false, reason: "not_payable" };
   }
-  return { show: true };
+  // Apple 3.8.1: a person who cannot take the payment is told who can, rather
+  // than left wondering why the option is missing. The server refuses them
+  // anyway (manage_client_billing on every Tap to Pay call).
+  if (!hasPermission(input.role ?? null, "manage_client_billing")) {
+    return { show: true, mode: "ask_admin" };
+  }
+  if (updateIos) return { show: true, mode: "update_ios" };
+  return { show: true, mode: "ready" };
+}
+
+/**
+ * Who may accept Apple's Tap to Pay on iPhone terms for the business (Apple
+ * 3.8): the account owner, the one role that holds the business's own
+ * billing. An office manager can take taps once the owner has accepted, and
+ * is asked to fetch the owner when the terms are still open.
+ */
+export function canAcceptTapToPayTerms(role: AppRole | null | undefined): boolean {
+  return hasPermission(role ?? null, "manage_org_billing");
+}
+
+/** Apple's name for the feature, and the button label (5.4). Never with the
+ *  amount in it and never with an Apple logo. Android has no Apple name. */
+export const TAP_TO_PAY_ON_IPHONE = "Tap to Pay on iPhone";
+export function tapToPayLabel(platform: TapToPayPlatform): string {
+  return platform === "ios" ? TAP_TO_PAY_ON_IPHONE : "Tap to Pay";
+}
+
+/** The SF Symbol Apple's guide names for the button icon (5.5). The web view
+ *  cannot draw SF Symbols, so TapToPayMark draws this one as SVG. */
+export const TAP_TO_PAY_SF_SYMBOL = "wave.3.right.circle";
+
+/** Reader setup progress (Apple 3.9.1, 5.7) from the plugin's
+ *  ReaderSoftwareUpdateProgress event, which reports 0 to 1. A whole percent,
+ *  clamped, so a stray value can never draw a meter past its track. */
+export function readerSetupPercent(progress: unknown): number {
+  const n = typeof progress === "number" ? progress : Number(progress);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(Math.min(1, Math.max(0, n)) * 100);
+}
+
+export type TapToPayOutcome = "approved" | "declined";
+
+/**
+ * The receipt text a merchant can send the customer after a tap, approved or
+ * declined (Apple 5.10). Sent through the phone's share sheet (text, email,
+ * AirDrop), so the customer gets it in whatever way they ask for. Customer
+ * facing, so English, in the business's own name.
+ */
+export function tapToPayReceiptText(r: {
+  businessName: string;
+  amountLabel: string;
+  outcome: TapToPayOutcome;
+  invoiceLabel?: string | null;
+  at: Date;
+}): string {
+  const when = r.at.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  const lines = [
+    `Receipt from ${r.businessName || "your service provider"}`,
+    r.outcome === "approved"
+      ? `Payment approved: ${r.amountLabel}`
+      : `Payment declined: ${r.amountLabel}`,
+    r.outcome === "approved" ? "Paid by contactless card or wallet." : "Your card was not charged.",
+  ];
+  if (r.invoiceLabel) lines.push(`Invoice: ${r.invoiceLabel}`);
+  lines.push(`Date: ${when}`);
+  return lines.join("\n");
+}
+
+/** What an interrupted tap's PaymentIntent status means for the merchant.
+ *  "unknown" (no intent, or it could not be read) says nothing: a wrong "not
+ *  approved" would send someone to charge a card twice. */
+export function tapToPayInterruptedOutcome(
+  status: string | null | undefined,
+): "approved" | "pending" | "not_approved" | "unknown" {
+  if (!status) return "unknown";
+  if (status === "succeeded") return "approved";
+  if (status === "processing" || status === "requires_capture") return "pending";
+  return "not_approved";
+}
+
+/** The push sent when a tap was not approved because the app closed (5.12). */
+export function tapToPayNotApprovedPush(amountLabel: string): { title: string; body: string } {
+  return {
+    title: "Payment not approved",
+    body: `The ${amountLabel} Tap to Pay payment was not approved because the app was closed. Nothing was charged. Open the invoice to try again.`,
+  };
 }
 
 export const TAP_TO_PAY_MESSAGES = {
   offline:
     "No connection. Tap to Pay needs the internet to approve the card. Try again when you have signal, or record a cash or check payment instead.",
   ineligible:
-    "This phone can't take Tap to Pay. It needs an iPhone XS or newer on iOS 16.4 or later, or an Android 13+ phone with NFC turned on and Developer options off.",
+    "This phone can't take Tap to Pay. It needs an iPhone XS or newer on the latest version of iOS, or an Android 13+ phone with NFC turned on and Developer options off.",
   terms:
     "Apple's Tap to Pay on iPhone terms haven't been accepted for this business yet. The account owner accepts them once, on an iPhone signed in with an Apple ID, then any iPhone can take taps.",
   nfcOff: "NFC is turned off. Turn it on in the phone's settings, then try again.",
   canceled: "Tap to Pay was canceled. Nothing was charged.",
   declined: "The card was declined. Nothing was charged. Ask for another card.",
+  updateIosRequired:
+    "Update this iPhone to the latest version of iOS to use Tap to Pay on iPhone. Go to Settings, General, Software Update.",
+  updateIosRecommended:
+    "Update this iPhone to the latest version of iOS for the best Tap to Pay on iPhone experience. Go to Settings, General, Software Update.",
+  askAdmin:
+    "Ask your account owner to turn on Tap to Pay on iPhone. They accept Apple's terms once, then you can take payments by tap.",
+  askAdminToPay:
+    "Taking payments by tap is for the account owner and office managers. Ask your account owner if you need it.",
+  notAvailable: "Tap to Pay isn't turned on for this business yet.",
   generic: "Tap to Pay couldn't finish. Nothing was charged. Try again, or use Enter card details.",
 } as const;
 
-/**
- * A plugin rejection (the SDK's `localizedDescription`) as something a person
- * at a customer's door can act on. The plugin rejects with free text, so this
- * matches on wording; anything unrecognised gets the generic message plus the
- * SDK's own words, rather than a guess.
- */
-export function describeTapToPayError(
+export type TapToPayErrorKind =
+  "offline" | "terms" | "nfcOff" | "ineligible" | "canceled" | "declined" | "generic";
+
+/** Which of the known failures a plugin rejection is. The plugin rejects with
+ *  free text (the SDK's `localizedDescription`), so this matches on wording. */
+export function classifyTapToPayError(
   error: unknown,
   ctx: { online: boolean; termsLinked?: boolean | null } = { online: true },
-): string {
-  if (!ctx.online) return TAP_TO_PAY_MESSAGES.offline;
+): { kind: TapToPayErrorKind; raw: string } {
   const raw =
     error instanceof Error
       ? error.message
       : typeof error === "string"
         ? error
         : String((error as { message?: unknown })?.message ?? "");
+  if (!ctx.online) return { kind: "offline", raw };
   const msg = raw.toLowerCase();
   if (/network|offline|internet connection|timed out|could not connect/.test(msg)) {
-    return TAP_TO_PAY_MESSAGES.offline;
+    return { kind: "offline", raw };
   }
   if (/terms|tos|account.?link|not linked|apple id|icloud/.test(msg) || ctx.termsLinked === false) {
-    return TAP_TO_PAY_MESSAGES.terms;
+    return { kind: "terms", raw };
   }
-  if (/nfc.*(disabled|off|not enabled)/.test(msg)) return TAP_TO_PAY_MESSAGES.nfcOff;
+  if (/nfc.*(disabled|off|not enabled)/.test(msg)) return { kind: "nfcOff", raw };
   if (
     /unsupported|not supported|incompatible|ineligible|developer options|rooted|debug|attestation|tampered|passcode|os version/.test(
       msg,
     )
   ) {
-    return TAP_TO_PAY_MESSAGES.ineligible;
+    return { kind: "ineligible", raw };
   }
-  if (/cancel/.test(msg)) return TAP_TO_PAY_MESSAGES.canceled;
-  if (/declin/.test(msg)) return TAP_TO_PAY_MESSAGES.declined;
-  return raw ? `${TAP_TO_PAY_MESSAGES.generic} (${raw})` : TAP_TO_PAY_MESSAGES.generic;
+  if (/cancel/.test(msg)) return { kind: "canceled", raw };
+  if (/declin/.test(msg)) return { kind: "declined", raw };
+  return { kind: "generic", raw };
+}
+
+/**
+ * A plugin rejection as something a person at a customer's door can act on.
+ * Anything unrecognised gets the generic message plus the SDK's own words,
+ * rather than a guess.
+ */
+export function describeTapToPayError(
+  error: unknown,
+  ctx: { online: boolean; termsLinked?: boolean | null } = { online: true },
+): string {
+  const { kind, raw } = classifyTapToPayError(error, ctx);
+  if (kind === "generic") {
+    return raw ? `${TAP_TO_PAY_MESSAGES.generic} (${raw})` : TAP_TO_PAY_MESSAGES.generic;
+  }
+  return TAP_TO_PAY_MESSAGES[kind];
 }

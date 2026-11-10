@@ -28,6 +28,57 @@ import { platformFeeCents } from "@/lib/platform-fee";
 import { tipMetadata } from "@/lib/tips";
 import { TAP_TO_PAY_FEE_CENTS } from "@/lib/tap-to-pay";
 
+// ── WHICH READER: SIMULATED, THE REAL PHONE, OR NONE ─────────────────────
+//
+// The plugin's `initialize({ isTest })` also decides `simulated` for
+// discovery, so test keys always get Stripe's simulated reader, and on a
+// simulated reader Apple's own screens (the terms sheet, the tap screen)
+// never appear. To show them on video for Apple (case 23404969), Brendan's
+// decision (2026-11-10): "Run one real $1 charge and refund it", in LIVE mode
+// on the real phone reader, for a designated demo business only. The
+// physical test-card path is deliberately not built.
+//
+// So in live mode the real reader is OFF unless the business is named in
+// TAP_TO_PAY_LIVE_ORG_IDS (comma-separated organization ids, server env).
+// Unset, nobody gets it: no production customer by default. Detroit Doo
+// Disposal never gets it, even if its id is put on the list by mistake.
+//
+//   test keys                         -> "simulated" (unchanged)
+//   live keys, org on the list        -> "live", the real phone reader
+//   live keys, anyone else            -> "off": no tap, a plain sentence
+export type TapToPayReaderMode = "simulated" | "live" | "off";
+
+export const TAP_TO_PAY_LIVE_ORG_IDS_ENV = "TAP_TO_PAY_LIVE_ORG_IDS";
+
+/** A business that must never take live taps through this switch. */
+const NEVER_LIVE_BUSINESS = /detroit\s*doo/i;
+
+export function liveReaderOrgIds(raw: string | null | undefined): Set<string> {
+  return new Set(
+    (raw ?? "")
+      .split(/[\s,]+/)
+      .map((s) => s.trim().toLowerCase())
+      .filter((s) => /^[0-9a-f-]{36}$/.test(s)),
+  );
+}
+
+export function tapToPayReaderMode(input: {
+  testKeys: boolean;
+  org: { id: string; name: string | null };
+  liveOrgIds: Set<string>;
+}): TapToPayReaderMode {
+  if (input.testKeys) return "simulated";
+  if (NEVER_LIVE_BUSINESS.test(input.org.name ?? "")) return "off";
+  return input.liveOrgIds.has(input.org.id.toLowerCase()) ? "live" : "off";
+}
+
+/** Test or restricted test keys. */
+export function isTestSecret(secret: string): boolean {
+  return secret.startsWith("sk_test_") || secret.startsWith("rk_test_");
+}
+
+export const TAP_TO_PAY_NOT_AVAILABLE = "Tap to Pay isn't turned on for this business yet.";
+
 /** Marks a Terminal Location as the one this product made for an org. */
 export const TAP_TO_PAY_LOCATION_TAG = "houndstack_tap_to_pay";
 
