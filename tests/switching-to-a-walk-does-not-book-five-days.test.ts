@@ -14,6 +14,7 @@ import { join } from "node:path";
 import {
   defaultFirstVisit,
   defaultPlanWeekdays,
+  firstVisitHint,
   nextDay,
   serviceSwitch,
 } from "@/lib/new-client-plan";
@@ -78,6 +79,38 @@ describe("the first visit", () => {
   });
 });
 
+describe("the First visit hint describes the day chosen, not the default", () => {
+  const base = { orgToday: "2026-11-10", dayLabel: "Fri, Nov 13" };
+  it("tomorrow says it is the default and why", () => {
+    expect(firstVisitHint({ ...base, startedOn: "2026-11-11" })).toMatch(
+      /^Starts tomorrow, the default, so a client added after today's route is not put on it\./,
+    );
+  });
+  it("after Today is tapped it says today", () => {
+    expect(firstVisitHint({ ...base, startedOn: "2026-11-10" })).toMatch(/^Starts today\./);
+  });
+  it("a lead's requested start says so, even when it is tomorrow", () => {
+    expect(firstVisitHint({ ...base, startedOn: "2026-11-13", leadStart: "2026-11-13" })).toMatch(
+      /^Starts Fri, Nov 13, the day the lead asked for\./,
+    );
+    expect(
+      firstVisitHint({ ...base, startedOn: "2026-11-11", leadStart: "2026-11-11", dayLabel: "x" }),
+    ).not.toMatch(/default/);
+  });
+  it("any other day names it, and never says tomorrow", () => {
+    const h = firstVisitHint({ ...base, startedOn: "2026-11-13" });
+    expect(h).toMatch(/^Starts Fri, Nov 13\./);
+    expect(h).not.toMatch(/tomorrow/);
+  });
+  it("every branch keeps the moves-to-the-next-day sentence and no em dash", () => {
+    for (const startedOn of ["2026-11-10", "2026-11-11", "2026-11-13"]) {
+      const h = firstVisitHint({ ...base, startedOn });
+      expect(h).toMatch(/it moves to the next one\.$/);
+      expect(h).not.toMatch(/\u2014/);
+    }
+  });
+});
+
 describe("the wizard wires it", () => {
   const wizard = read("src/routes/_authenticated/clients.new.tsx");
 
@@ -94,7 +127,8 @@ describe("the wizard wires it", () => {
     expect(wizard).toMatch(/\["Today", orgTodayStr\]/);
     expect(wizard).toMatch(/\["Tomorrow", orgTomorrowStr\]/);
     expect(wizard).toMatch(/aria-pressed=\{startedOn === day\}/);
-    expect(wizard).toMatch(/Starts tomorrow unless you change it/);
+    expect(wizard).toMatch(/firstVisitHint\(\{\s*startedOn,/);
+    expect(wizard).not.toMatch(/Starts tomorrow unless you change it/);
     expect(wizard).toMatch(/defaultFirstVisit\(orgTodayStr\)/);
   });
 

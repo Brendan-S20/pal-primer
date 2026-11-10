@@ -67,6 +67,7 @@ import {
 import {
   defaultFirstVisit,
   defaultPlanWeekdays,
+  firstVisitHint,
   nextDay,
   planStartsSkipped,
   propertyHazardsFor,
@@ -1888,9 +1889,12 @@ function NewClientWizardForm({
                       ))}
                     </div>
                     <p id="started-on-hint" className="text-xs text-muted-foreground">
-                      Starts tomorrow unless you change it, so a client added after today&apos;s
-                      route is not put on it. If that isn&apos;t a work day or a service day, it
-                      moves to the next one.
+                      {firstVisitHint({
+                        startedOn,
+                        orgToday: orgTodayStr,
+                        leadStart: prefill.startDate,
+                        dayLabel: formatDay(startedOn),
+                      })}
                     </p>
                     {askedStartPassed && (
                       <p className="text-xs text-muted-foreground">

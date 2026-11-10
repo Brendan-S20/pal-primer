@@ -48,6 +48,24 @@ export function defaultFirstVisit(orgToday: string): string {
   return nextDay(orgToday);
 }
 
+/** The sentence under First visit, about the day actually chosen (#774
+ *  review): today, tomorrow (the default, and why), the day a lead asked
+ *  for, or another day. `dayLabel` is that day as the form writes dates. */
+export function firstVisitHint(opts: {
+  startedOn: string;
+  orgToday: string;
+  leadStart?: string | null;
+  dayLabel: string;
+}): string {
+  const moves = "If that isn't a work day or a service day, it moves to the next one.";
+  if (opts.leadStart && opts.startedOn === opts.leadStart)
+    return `Starts ${opts.dayLabel}, the day the lead asked for. ${moves}`;
+  if (opts.startedOn === opts.orgToday) return `Starts today. ${moves}`;
+  if (opts.startedOn === nextDay(opts.orgToday))
+    return `Starts tomorrow, the default, so a client added after today's route is not put on it. ${moves}`;
+  return `Starts ${opts.dayLabel}. ${moves}`;
+}
+
 /** The next calendar day after a YYYY-MM-DD day. */
 export function nextDay(day: string): string {
   return new Date(Date.parse(`${day}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);

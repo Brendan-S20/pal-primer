@@ -380,7 +380,8 @@ for (const { w, h, label } of WIDTHS) {
     await expect(days.getByRole("button", { pressed: true })).toHaveCount(1);
     await expect(page.locator("[data-days-reset]")).toContainText("Days reset for 60-minute walk");
 
-    await expect(page.getByText("Starts tomorrow unless you change it")).toBeVisible();
+    const hint = page.locator("#started-on-hint");
+    await expect(hint).toContainText("Starts tomorrow, the default");
     const today = page.getByRole("button", { name: "Today", exact: true });
     await expect(page.getByRole("button", { name: "Tomorrow", exact: true })).toHaveAttribute(
       "aria-pressed",
@@ -388,6 +389,8 @@ for (const { w, h, label } of WIDTHS) {
     );
     await today.click();
     await expect(today).toHaveAttribute("aria-pressed", "true");
+    await expect(hint).toContainText("Starts today.");
+    await expect(hint).not.toContainText("tomorrow");
     await measure(page, w, `/clients/new Plan, walk after pet waste @${w}px`);
   });
 }
