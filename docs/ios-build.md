@@ -411,7 +411,7 @@ xcodebuild -resolvePackageDependencies -project App.xcodeproj -scheme App
 `@capacitor-community/apple-sign-in` 7.1.0 is the newest release and there is
 no Capacitor 8 one. Its `Package.swift` asks for capacitor-swift-pm
 `from: "7.0.0"` (7.0.0..<8.0.0), `ios/App/CapApp-SPM/Package.swift` pins
-`exact: "8.4.1"`, and Swift Package Manager gives up before anything compiles:
+`exact: "8.4.3"`, and Swift Package Manager gives up before anything compiles:
 
 ```
 Failed to resolve dependencies Dependencies could not be resolved because
@@ -422,7 +422,7 @@ Failed to resolve dependencies Dependencies could not be resolved because
 `package.json`'s `postinstall` runs `scripts/patch-native-plugins.mjs`, which
 rewrites that one range to `from: "8.0.0"` in `node_modules`. The plugin's
 Swift needed nothing else — every Capacitor API it calls is still declared,
-un-deprecated, in 8.4.1. `npm ci` in `ci_post_clone.sh` runs it, so Xcode Cloud
+un-deprecated, in 8.4.3. `npm ci` in `ci_post_clone.sh` runs it, so Xcode Cloud
 gets it with no setting; never install with lifecycle scripts switched off.
 Android is unaffected: the plugin's Android half is a Java stub that only
 builds against `:capacitor-android`, and Apple sign-in is iOS-only in
@@ -438,6 +438,30 @@ CapApp-SPM, then update or delete the entry in the script. When a Capacitor 8
 release of the plugin ships, the script reports "already accepts Capacitor 8"
 and the entry can go. `tests/a-plugin-still-on-capacitor-7-stopped-every-ios-build.test.ts`
 pins all of this against the original 7.1.0 file.
+
+### Bumping Capacitor is three steps, not one
+
+Xcode does not build the Capacitor runtime from `node_modules`. It downloads
+`Capacitor.xcframework` from capacitor-swift-pm at the version CapApp-SPM pins.
+So a Capacitor bump is:
+
+1. `@capacitor/core`, `cli`, `android` and `ios` to the same release, in
+   `package.json`, `package-lock.json` and `bun.lock`.
+2. `npx cap sync ios`, which rewrites the `exact:` pin in
+   `ios/App/CapApp-SPM/Package.swift`. It needs the web build, not Xcode.
+3. The capacitor-swift-pm pin in
+   `ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`:
+   the new version and the commit its tag points at
+   (`git ls-remote https://github.com/ionic-team/capacitor-swift-pm.git refs/tags/<version>`).
+   Xcode Cloud resolves with automatic resolution off, so a stale pin stops
+   the archive with "an out-of-date resolved file was detected" (#723).
+
+Bump only the npm side and the iPhone build keeps the old Swift. Android needs
+no pin: `:capacitor-android` is built from `node_modules`.
+`tests/the-native-shell-is-on-a-patched-capacitor.test.ts` fails if the three
+disagree, or if any of them is in the range GHSA-rvm3-566m-v7fv covers
+(#816: `>=8.3.5 <8.4.3`, and `8.5.0`). The `~8.4.3` range is on purpose: `^8.4.3`
+would let a fresh resolve land on 8.5.0.
 
 ### The workflow's Test action has nothing to test, and never will
 
