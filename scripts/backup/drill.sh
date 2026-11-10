@@ -131,7 +131,11 @@ cd - >/dev/null
 # today. It is here so that no later edit -- a DB_URL read from somewhere
 # else -- can send decrypted customer data to a
 # database off this machine without the drill stopping first.
-RESTORE_TARGET_URL="$db_url" node "$here/local-only.mjs" >/dev/null
+# The output, not just the exit code: a guard that never ran exits 0 too.
+if [ "$(RESTORE_TARGET_URL="$db_url" node "$here/local-only.mjs")" != "local" ]; then
+  echo "::error::the drill stack's database is not on this machine; refusing to restore into it"
+  exit 1
+fi
 
 "$here/restore.sh" "$opened" "$db_url"
 node "$here/verify-restore.mjs" "$opened" "$db_url" ${summary:+"$summary"}

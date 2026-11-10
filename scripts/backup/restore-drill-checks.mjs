@@ -24,15 +24,18 @@
 // row of customer data can reach the terminal or a log.
 
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { expectedObjects } from "../check-baseline-objects.mjs";
 import { checkLocalDbUrl } from "./local-only.mjs";
 
 /** The tables the runbook asks about by name. `staff` rather than auth.users:
  *  a restore can bring back logins and lose the table that says who works
  *  where. auth.users is checked on its own, below. */
+/** The last line of a run in which every check passed. */
+export const ALL_PASSED_PREFIX = "all restore drill checks passed:";
+
 export const DRILL_KEY_TABLES = ["organizations", "clients", "visits", "invoices", "staff"];
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -183,7 +186,20 @@ export function evaluate(facts, { expectedTables, repoNewest }) {
   return { ok: failed.length === 0, failed, lines };
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+// Compared by real path, not URL: run through a symlink, the two URLs differ,
+// this block is skipped, and node exits 0 having checked nothing. Found on
+// 2026-11-10, when a symlinked checkout printed RESTORE DRILL: PASS with no
+// checks. The callers also require this block's own output, so a skipped
+// block fails rather than passes.
+const invokedDirectly = (() => {
+  try {
+    return realpathSync(process.argv[1] ?? "") === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+
+if (invokedDirectly) {
   const url = process.env.RESTORE_TARGET_URL ?? "";
   const local = checkLocalDbUrl(url);
   if (!local.ok) {
@@ -201,4 +217,6 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
     console.log(`checks failed: ${result.failed.join(", ")}`);
     process.exit(1);
   }
+  // restore-drill.sh requires this exact line; nothing else counts as a pass.
+  console.log(`${ALL_PASSED_PREFIX} ${result.lines.filter((l) => l.startsWith("PASS")).length}`);
 }

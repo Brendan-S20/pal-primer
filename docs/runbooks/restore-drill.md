@@ -1,57 +1,82 @@
-# Restore drill (by hand, on a private machine)
+# Restore drill
 
-A backup nobody has restored is a hope. This is how a person proves one of
-the nightly encrypted backups brings the production database back, and how
-to record that on #720.
+A backup nobody has restored is a hope. This page covers how the nightly
+encrypted backups are proved to bring the production database back: every
+week on its own, and by hand when that is not enough. It also covers how to
+record the result on #720.
 
 `docs/backups-and-restore.md` is the wider runbook (what is in a backup,
 where it is kept, how to restore into a new project or bring back one
 tenant). This page covers only the drill.
 
-## What already runs on its own, and what this adds
+## The weekly drill (the default)
 
-- `.github/workflows/backup.yml` has a `restore-drill` job that runs every
-  Sunday on a GitHub-hosted runner. It decrypts that night's backup,
-  restores it into a throwaway Supabase stack, and checks every table's row
-  count against the dump and every foreign key. Its first green run was
-  Backup run #39 on 2026-11-08 (job "Restore that backup into an empty
-  database and check every row came back", about 60 seconds). That job
-  predates this page, and this change does not touch it.
-- `scripts/restore-drill.sh` runs the same restore, then checks what the
-  weekly job does not: every table the migrations create is there, the key
-  tables have rows, RLS is on for every public table, the auth schema is
-  present, and the migration ledger came back.
-- The migration ledger was never in any backup until this change. `supabase
-  db dump` leaves the `supabase_migrations` schema out, so a project
-  restored from a backup had every table and no record of which migrations
-  made them. Its first `supabase db push` would try to apply all of them on
-  top. `scripts/backup/dump.sh` now writes the ledger into
-  `extension-state.sql`. **Every backup made before this change is merged
-  will FAIL the `ledger` check.** That is a true finding about those
-  backups, not a fault in the drill. Run a fresh backup (below) before you
-  drill for the record.
+The owner's decision, 2026-11-10: "Yes, run the weekly restore drill on a
+GitHub runner."
 
-## Who runs it
+`.github/workflows/restore-drill.yml` runs every Wednesday at 08:30 UTC, an
+hour after that morning's backup, and on demand (Actions, Restore drill,
+Run workflow). On a GitHub-hosted `ubuntu-latest` runner it:
+
+1. checks `BACKUP_PASSPHRASE` is set, without reading its value. If it is
+   not, the drill job is **skipped**, and the preflight job's warning says
+   which secret to add;
+2. finds the newest unexpired `db-backup` artifact from a Backup run on
+   `main`, and **fails** if there is none (no backup in 30 days is a
+   failure, not a skip);
+3. downloads that archive and its summary, and runs
+   `scripts/restore-drill.sh` on them. That restores into a throwaway
+   Supabase stack inside the job, on a random local port range, and runs
+   every check below. Any failed check fails the job, and GitHub emails a
+   failed scheduled run;
+4. writes the PASS/FAIL lines to the run's summary page.
+
+The only secret it uses is `BACKUP_PASSPHRASE`, the one `backup.yml` already
+seals with. It is given no database URL. The restore target is refused
+unless it is 127.0.0.1, localhost or ::1, so the decrypted data can only go
+into the database on that VM. GitHub destroys the VM when the job ends, and
+the drill deletes the decrypted files before that, pass or fail. The log
+holds counts, table names and PASS/FAIL only.
+
+`backup.yml` still has its own Sunday `restore-drill` job, which restores
+the backup it has just made and checks row counts and foreign keys. Its
+first green run was Backup run #39 on 2026-11-08. The Wednesday drill adds
+the deeper checks and tests a mid-week backup, so a backup that stops
+restoring is found within four days.
+
+## The migration ledger, and why older backups fail
+
+No backup carried the migration ledger before this change. `supabase db
+dump` leaves the `supabase_migrations` schema out, so a project restored from
+a backup had every table and no record of which migrations made them. Its
+first `supabase db push` would try to apply all of them on top.
+`scripts/backup/dump.sh` now writes the ledger into `extension-state.sql`.
+
+**Every backup made before this change is merged will FAIL the `ledger`
+check**, in the weekly drill and by hand. That is a true finding about those
+backups, not a fault in the drill. After merging, run Backup once by hand
+(Actions, Backup, Run workflow, on `main`). Then run Restore drill by hand
+and confirm it passes.
+
+## The by-hand drill (the fallback)
+
+Use this when the weekly drill cannot run: GitHub-hosted runners are not
+being allocated to the repository (see the known risk in `backup.yml`), the
+passphrase secret is gone, or you want to look at a restored copy yourself.
+
+### Who runs it
 
 The owner, or someone the owner trusts with every customer's data. The
 backup holds every login, address, note and invoice. Whoever runs this
 needs the backup passphrase, which lives in the owner's password manager.
 
-Run it once now to close out #720, then once a quarter, and again after any
-change to `scripts/backup/`.
-
-## Where
+### Where
 
 On a machine you control: your own laptop or desktop, with full-disk
-encryption on.
+encryption on. Not a self-hosted runner and not a shared machine: the
+drill decrypts the whole database onto that disk for a few minutes.
 
-**Not on a GitHub runner, and not in any workflow.** This repository is
-public. A drill decrypts the whole database onto the machine's disk, and a
-workflow you add for it is a workflow anyone can read and, by mistake, a
-log anyone can read. The CI self-test below uses made-up seed data only, and
-that is the only kind of drill a workflow here runs.
-
-## What you need
+### What you need
 
 - Docker running (Docker Desktop on a Mac).
 - The Supabase CLI: `brew install supabase/tap/supabase`.
@@ -61,15 +86,15 @@ that is the only kind of drill a workflow here runs.
 - About 5 GB free disk, and a fast connection the first time (the CLI pulls
   its images once).
 
-## The exact commands
+### The exact commands
 
-### 1. Make a fresh backup (only if the newest one predates this change)
+#### 1. Make a fresh backup (only if the newest one predates this change)
 
 GitHub, Actions, Backup, Run workflow, on `main`. Untick the drill box if
 you like; it does not matter for this. Wait for it to go green (about two
 minutes).
 
-### 2. Download the backup and its summary
+#### 2. Download the backup and its summary
 
 From that run's page, download the two artifacts `db-backup` and
 `db-backup-summary`. Unzip both into a folder only you can read:
@@ -82,7 +107,7 @@ unzip ~/Downloads/db-backup-summary.zip
 ls   # houndstack-db-<stamp>.tar.gz.gpg  summary.json
 ```
 
-### 3. Run the drill
+#### 3. Run the drill
 
 From a checkout of this repo, on current `main`:
 
@@ -118,7 +143,7 @@ The drill:
 It prints table names, counts and PASS/FAIL. It never prints a row, the
 passphrase, or a connection string.
 
-### 4. Clean up
+#### 4. Clean up
 
 ```sh
 rm -rf ~/restore-drill
@@ -176,9 +201,9 @@ backup was taken. It is not a failure.
 On the seed data, on a Linux cloud machine with the Supabase images already
 pulled (2026-11-10):
 
-- seed and backup: 9 seconds
-- drill: 22 seconds
-- self-test total: 34 seconds
+- seed and backup: 9 to 10 seconds
+- drill: 22 to 25 seconds
+- self-test total: 34 to 37 seconds
 
 The first run on a machine pulls the Supabase images, which takes several
 minutes on top. Production is larger: the hosted weekly drill took about 60
@@ -187,7 +212,11 @@ drill on a laptop.
 
 ## Recording the result on #720
 
-Post a comment on #720 with:
+For the weekly drill, post a link to the Restore drill run and paste the
+PASS/FAIL block from its summary page as code. The first green run after
+this merges is the evidence #720 is waiting for.
+
+For a drill by hand, post a comment on #720 with:
 
 - the date, who ran it, and the machine type (for example "MacBook Air M2,
   macOS 15"), not its name or IP;
@@ -227,5 +256,7 @@ scripts/restore-drill-selftest.sh
 
 `tests/a-backup-is-proved-by-bringing-it-back.test.ts` pins the parts that
 must not drift: the localhost guard, each check failing on the restore it
-exists to catch, the ledger in the backup, and no workflow other than
-`backup.yml` reading a production backup.
+exists to catch, the ledger in the backup, and that only `backup.yml` and
+`restore-drill.yml` read a production backup. For the weekly workflow it
+also pins hosted runners, read-only permissions, `BACKUP_PASSPHRASE` as the
+only secret, and the skip when that secret is missing.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The restore drill, by hand: prove one encrypted backup brings the database
-# back, on a private machine, into a throwaway local database.
+# The restore drill: prove one encrypted backup brings the database back,
+# into a throwaway local database.
 #
 #   BACKUP_ARCHIVE=~/Downloads/houndstack-db-<stamp>.tar.gz.gpg \
 #   BACKUP_SUMMARY=~/Downloads/summary.json \          (optional, recommended)
@@ -34,12 +34,15 @@
 # Prints counts, table names and PASS/FAIL. Never a row, never the
 # passphrase, never a connection string.
 #
-# ── NOT FOR A GITHUB RUNNER ───────────────────────────────────────────────
+# ── WHERE IT RUNS ─────────────────────────────────────────────────────────
 #
-# This repository is public and a production backup is every customer's
-# data. Run this on a machine you control, never in a workflow. Its own
-# self-test (scripts/restore-drill-selftest.sh) is the CI-safe version: it
-# makes a backup of local seed data and drills that.
+# Weekly in .github/workflows/restore-drill.yml, on a GitHub-hosted runner
+# whose disk is destroyed when the job ends (the owner's decision,
+# 2026-11-10). By hand on a private machine you control as the fallback.
+# Never on a self-hosted runner or a shared machine: a production backup is
+# every customer's data, decrypted on that disk for a few minutes. Its
+# self-test (scripts/restore-drill-selftest.sh) makes a backup of local seed
+# data and drills that, and is safe anywhere.
 
 set -euo pipefail
 
@@ -103,13 +106,20 @@ fi
 
 db_url="$(cd "$stackdir" && supabase status -o env 2>/dev/null | sed -n 's/^DB_URL="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p')"
 [ -n "$db_url" ] || fail "the restored stack reported no DB_URL"
-RESTORE_TARGET_URL="$db_url" node "$here/backup/local-only.mjs" >/dev/null \
+# Its output is required, not just its exit code: a guard that never ran
+# exits 0 too.
+[ "$(RESTORE_TARGET_URL="$db_url" node "$here/backup/local-only.mjs")" = "local" ] \
   || fail "the restored database is not on this machine"
 
 echo
 echo "checks on the restored database:"
-if ! RESTORE_TARGET_URL="$db_url" node "$here/backup/restore-drill-checks.mjs"; then
+if ! RESTORE_TARGET_URL="$db_url" node "$here/backup/restore-drill-checks.mjs" | tee "$work/checks.log"; then
   fail "one or more checks above failed ($(( $(date +%s) - started ))s)"
+fi
+# Five checks, each named, or it is not a pass: a checks script that exited
+# 0 without running (see local-only.mjs on symlinks) must not read as PASS.
+if [ "$(tail -1 "$work/checks.log")" != "all restore drill checks passed: 5" ]; then
+  fail "the checks did not report all five passing"
 fi
 
 echo

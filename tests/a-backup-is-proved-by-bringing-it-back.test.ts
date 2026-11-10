@@ -13,18 +13,22 @@
 //     not: `supabase db dump` leaves supabase_migrations out, so a project
 //     restored from any backup before this had every table and no record of
 //     which migrations made them;
-//   * no workflow reads a production backup except backup.yml, and the
-//     self-test reads no secret.
+//   * only backup.yml and restore-drill.yml read a production backup, both
+//     on GitHub-hosted runners (the owner's decision, 2026-11-10: "Yes, run
+//     the weekly restore drill on a GitHub runner"), and the self-test reads
+//     no secret.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { load } from "js-yaml";
 import { describe, expect, it } from "vitest";
 import { countExtensionState } from "../scripts/backup/copy-row-counts.mjs";
 import { checkLocalDbUrl } from "../scripts/backup/local-only.mjs";
 import {
+  ALL_PASSED_PREFIX,
   DRILL_KEY_TABLES,
   evaluate,
   expectedPublicTables,
@@ -277,18 +281,18 @@ describe("the backup carries the migration ledger", () => {
   });
 });
 
-describe("no workflow restores a production backup outside backup.yml", () => {
+describe("only backup.yml and restore-drill.yml touch a production backup", () => {
   const workflows = readdirSync(join(ROOT, ".github/workflows")).filter((f) => /\.ya?ml$/.test(f));
 
-  it("only backup.yml downloads the db-backup artifact", () => {
+  it("only backup.yml and restore-drill.yml download the db-backup artifact", () => {
     const downloading = workflows.filter((f) =>
       /download-artifact[\s\S]{0,200}name:\s*db-backup\b/.test(read(`.github/workflows/${f}`)),
     );
-    expect(downloading).toEqual(["backup.yml"]);
+    expect(downloading.sort()).toEqual(["backup.yml", "restore-drill.yml"]);
   });
 
-  it("no workflow runs restore-drill.sh on anything but the self-test", () => {
-    for (const f of workflows) {
+  it("no other workflow runs restore-drill.sh", () => {
+    for (const f of workflows.filter((w) => w !== "restore-drill.yml")) {
       // Named in a paths filter or the database gate is fine: that routes a
       // change to the self-test. Any other mention is a step running it.
       const runs = code(`.github/workflows/${f}`)
@@ -317,5 +321,161 @@ describe("no workflow restores a production backup outside backup.yml", () => {
     const seed = s.indexOf("restore-drill-seed.sql");
     expect(guard).toBeGreaterThan(0);
     expect(seed).toBeGreaterThan(guard);
+  });
+});
+
+type Job = {
+  "runs-on"?: string;
+  if?: string;
+  needs?: string;
+  steps: {
+    name?: string;
+    uses?: string;
+    run?: string;
+    env?: Record<string, string>;
+    with?: Record<string, unknown>;
+  }[];
+};
+
+describe("the weekly restore drill on a GitHub runner", () => {
+  const raw = read(".github/workflows/restore-drill.yml");
+  const wf = load(raw) as {
+    on: { schedule: { cron: string }[]; workflow_dispatch: unknown };
+    permissions: Record<string, string>;
+    jobs: Record<string, Job>;
+  };
+
+  it("runs weekly on a schedule, and by hand", () => {
+    expect(wf.on.schedule).toHaveLength(1);
+    const [, , dom, month, dow] = wf.on.schedule[0].cron.split(/\s+/);
+    expect([dom, month]).toEqual(["*", "*"]);
+    expect(dow).toMatch(/^[0-6]$/);
+    expect("workflow_dispatch" in wf.on).toBe(true);
+  });
+
+  it("is GitHub-hosted Ubuntu, written out, for every job", () => {
+    for (const [name, job] of Object.entries(wf.jobs)) {
+      expect(job["runs-on"], `${name}: runs-on`).toBe("ubuntu-latest");
+    }
+    expect(raw).not.toMatch(/runs-on:.*vars\./);
+  });
+
+  it("can read artifacts and write nothing", () => {
+    expect(wf.permissions).toEqual({ contents: "read", actions: "read" });
+  });
+
+  it("names one existing secret, and no database URL at all", () => {
+    const secrets = [...new Set([...raw.matchAll(/secrets\.([A-Z0-9_]+)/g)].map((m) => m[1]))];
+    expect(secrets).toEqual(["BACKUP_PASSPHRASE"]);
+    // Comments may say why there is none; the configuration may not have one.
+    expect(code(".github/workflows/restore-drill.yml")).not.toMatch(
+      /SUPABASE_DB_URL|DATABASE_URL|db-url/,
+    );
+  });
+
+  it("skips the drill with a message when the passphrase is missing, never seeing its value", () => {
+    const check = wf.jobs.preflight.steps.find((s) => s.env?.HAS_PASSPHRASE);
+    expect(check?.env?.HAS_PASSPHRASE).toBe("${{ secrets.BACKUP_PASSPHRASE != '' }}");
+    expect(check?.run).toMatch(/BACKUP_PASSPHRASE is not set[\s\S]*SKIPPED/);
+    expect(check?.run).toMatch(/ready=false/);
+    expect(wf.jobs.drill.needs).toBe("preflight");
+    expect(wf.jobs.drill.if).toBe("needs.preflight.outputs.ready == 'true'");
+  });
+
+  it("fails, not skips, when there is no backup to drill", () => {
+    const check = wf.jobs.preflight.steps.find((s) => s.env?.HAS_PASSPHRASE);
+    expect(check?.run).toMatch(/no unexpired db-backup artifact[\s\S]*?exit 1/);
+  });
+
+  it("downloads the newest backup and its summary from that run, and drills them with restore-drill.sh", () => {
+    const steps = wf.jobs.drill.steps;
+    const downloads = steps.filter((s) => s.uses?.startsWith("actions/download-artifact@"));
+    expect(downloads.map((s) => s.with?.name)).toEqual(["db-backup", "db-backup-summary"]);
+    for (const d of downloads)
+      expect(d.with?.["run-id"]).toBe("${{ needs.preflight.outputs.run_id }}");
+    const drill = steps.find((s) => s.run?.includes("scripts/restore-drill.sh"));
+    expect(drill?.run).toMatch(/set -o pipefail/);
+    expect(drill?.run).toMatch(/BACKUP_SUMMARY=/);
+    expect(drill?.env).toEqual({ BACKUP_PASSPHRASE: "${{ secrets.BACKUP_PASSPHRASE }}" });
+  });
+
+  it("only the drill step is handed the passphrase", () => {
+    const holders = Object.values(wf.jobs)
+      .flatMap((j) => j.steps)
+      .filter((s) => JSON.stringify(s).includes("secrets.BACKUP_PASSPHRASE }}"));
+    expect(holders.map((s) => s.name)).toEqual(["Restore and check"]);
+  });
+});
+
+describe("a check that never ran is not a pass", () => {
+  // Found on 2026-11-10: run through a symlinked checkout, both scripts'
+  // "am I the entry point" test compared two different URLs, skipped their
+  // main block, and exited 0. local-only.mjs then let any URL through and
+  // restore-drill-checks.mjs printed nothing, and the drill said PASS.
+  const dir = mkdtempSync(join(tmpdir(), "symlinked-"));
+  const linked = join(dir, "scripts");
+  symlinkSync(join(ROOT, "scripts"), linked);
+
+  it("local-only.mjs still refuses a remote URL when reached through a symlink", () => {
+    let status = 0;
+    let out = "";
+    try {
+      out = execFileSync("node", [join(linked, "backup/local-only.mjs")], {
+        env: {
+          ...process.env,
+          RESTORE_TARGET_URL: "postgresql://u:p@db.example.com:5432/postgres",
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+        encoding: "utf8",
+      });
+    } catch (e) {
+      status = (e as { status: number }).status;
+    }
+    expect(status).toBe(1);
+    expect(out).not.toBe("local\n");
+  });
+
+  it("restore-drill-checks.mjs still runs, and refuses, through a symlink", () => {
+    let status = 0;
+    let err = "";
+    try {
+      execFileSync("node", [join(linked, "backup/restore-drill-checks.mjs")], {
+        env: {
+          ...process.env,
+          RESTORE_TARGET_URL: "postgresql://u:p@db.example.com:5432/postgres",
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+        encoding: "utf8",
+      });
+    } catch (e) {
+      status = (e as { status: number }).status;
+      err = (e as { stderr: string }).stderr;
+    }
+    expect(status).toBe(1);
+    expect(err).toMatch(/REFUSING/);
+  });
+
+  it("every caller of local-only.mjs requires it to print `local`, not just to exit 0", () => {
+    for (const p of [
+      "scripts/backup/drill.sh",
+      "scripts/restore-drill.sh",
+      "scripts/restore-drill-selftest.sh",
+    ]) {
+      const calls = code(p)
+        .split("\n")
+        .filter((l) => l.includes("local-only.mjs"));
+      expect(calls.length, p).toBeGreaterThan(0);
+      for (const l of calls)
+        expect(l, p).toMatch(/\[ "\$\(RESTORE_TARGET_URL=.*local-only\.mjs"?\)" (!?=) "local" \]/);
+    }
+  });
+
+  it("restore-drill.sh says PASS only after the checks report all five passing", () => {
+    const s = code("scripts/restore-drill.sh");
+    const sentinel = s.indexOf(`"all restore drill checks passed: 5"`);
+    const pass = s.indexOf("RESTORE DRILL: PASS");
+    expect(sentinel).toBeGreaterThan(0);
+    expect(pass).toBeGreaterThan(sentinel);
+    expect(ALL_PASSED_PREFIX).toBe("all restore drill checks passed:");
   });
 });

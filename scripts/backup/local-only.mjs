@@ -25,7 +25,8 @@
 //   * a URL with no host at all, which libpq resolves through PGHOST or a
 //     service file the drill cannot see.
 
-import { pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
 const OVERRIDES = ["host", "hostaddr", "service"];
@@ -72,7 +73,20 @@ export function checkLocalDbUrl(raw) {
   return { ok: true };
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+// Compared by real path, not URL: run through a symlink, the two URLs differ,
+// this block is skipped, and node exits 0 having checked nothing. Found on
+// 2026-11-10, when a symlinked checkout printed RESTORE DRILL: PASS with no
+// checks. The callers also require this block's own output, so a skipped
+// block fails rather than passes.
+const invokedDirectly = (() => {
+  try {
+    return realpathSync(process.argv[1] ?? "") === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+
+if (invokedDirectly) {
   const verdict = checkLocalDbUrl(process.env.RESTORE_TARGET_URL ?? "");
   if (verdict.ok) {
     console.log("local");

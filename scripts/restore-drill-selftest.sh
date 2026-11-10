@@ -27,7 +27,8 @@ done
 
 db_url="${SELFTEST_DB_URL:-$(supabase status -o env 2>/dev/null | sed -n 's/^DB_URL="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p')}"
 [ -n "$db_url" ] || { echo "::error::no local stack: run 'supabase start' in this checkout first"; exit 1; }
-RESTORE_TARGET_URL="$db_url" node scripts/backup/local-only.mjs >/dev/null
+[ "$(RESTORE_TARGET_URL="$db_url" node scripts/backup/local-only.mjs)" = "local" ] \
+  || { echo "::error::the stack is not on this machine; refusing to seed it"; exit 1; }
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/restore-drill-selftest.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
