@@ -8,22 +8,33 @@ name: Auth hook health
 # and every env var already said app.houndstack.com, so nothing that read the
 # repo could see it. Only the live setting could.
 #
-# So this reads the live Auth config once a day (Management API, GET only) and
-# fails when the send-email hook is not exactly
-# https://app.houndstack.com/email/auth/webhook, or when any enabled hook's
-# host does not resolve or its route does not answer. A failed scheduled run
-# is GitHub's email to whoever last edited this schedule — that is the alert.
+# ── WHERE THE LIVE CHECK RUNS: OUTSIDE GITHUB ───────────────────────────────
 #
-# Needs the repo secret SUPABASE_ACCESS_TOKEN (a Management API token). Without
-# it the step FAILS (exit 2) rather than skipping: a daily check that quietly
-# stops checking is exactly the three months this exists to prevent.
+# Reading the live Auth config needs a Management API token. Per Brendan, no
+# Management API token is stored in GitHub. The daily live check of
+# hook_send_email_uri (scripts/check-auth-hook-hosts.mjs --live) runs outside
+# GitHub, from SIC's routine.
 #
-# The token is passed in env only, never echoed; the script prints hook names
-# and scheme://host/path, never the token or the config body.
+# So this workflow has two jobs:
+#
+#   reachability  Scheduled daily, and by hand. Needs NO token. Resolves and
+#                 probes https://app.houndstack.com/email/auth/webhook (the
+#                 script's default, non-live path). A failed scheduled run is
+#                 GitHub's email to whoever last edited this schedule.
+#
+#   live-hooks    By hand only (workflow_dispatch). Runs --live when the runner
+#                 already has SUPABASE_ACCESS_TOKEN in its environment (e.g. a
+#                 private runner an operator configured). Without it the job
+#                 prints a notice and exits 0; it does not fail and it does not
+#                 ask for a token.
+#
+# The token, when present, is never echoed; the script prints hook names and
+# scheme://host/path, never the token or the config body.
 
 on:
   schedule:
-    # 13:17 UTC daily: daytime in the US, off the hour.
+    # 13:17 UTC daily: daytime in the US, off the hour. Only the no-secret
+    # reachability job runs on the schedule.
     - cron: "17 13 * * *"
   workflow_dispatch:
 
@@ -35,8 +46,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  live-hooks:
-    name: Live Supabase Auth hooks resolve and answer
+  reachability:
+    name: The send-email hook route resolves and answers (no token)
     runs-on: ${{ vars.UNIX_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
@@ -44,8 +55,27 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      # Node built-ins only; no npm install needed.
-      - name: The live send-email hook is the expected URI, and every enabled hook answers
+      # Node built-ins only; no npm install needed. The token is blanked so a
+      # runner that happens to carry one still takes the no-secret path.
+      - name: DNS resolve and HTTPS probe of the expected send-email hook
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-        run: node scripts/check-auth-hook-hosts.mjs --live
+          SUPABASE_ACCESS_TOKEN: ""
+        run: node scripts/check-auth-hook-hosts.mjs
+
+  live-hooks:
+    name: Live Supabase Auth hooks (manual, only with a token in the runner env)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ${{ vars.UNIX_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: The live send-email hook is the expected URI, and every enabled hook answers
+        run: |
+          if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+            echo "::notice::SUPABASE_ACCESS_TOKEN not set; skipping live Management API check (daily live check runs outside GitHub from SIC's routine per Brendan). Exit 0."
+            exit 0
+          fi
+          node scripts/check-auth-hook-hosts.mjs --live
