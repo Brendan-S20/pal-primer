@@ -98,21 +98,10 @@ Neither has an interchange-plus or network-cost line, and the fee sits on the
 connected account. Under `application_express` that means the "nothing added"
 branch does not leak.
 
-**Test-mode tap proof: STILL NOT RUN.** It needs HoundStack's Connect
-platform test-mode access, which the automation does not have yet. Nothing
-here claims it passed. The steps:
-
-1. Take one simulated `card_present` charge on a test-mode Express account
-   (see the $1.00 path below; use $1.00 or more).
-2. Open the charge's balance transaction **on the connected account**
-   (`stripe balance_transactions retrieve txn_... --stripe-account acct_...`)
-   and check `fee_details`: under `application_express` the Stripe fee,
-   Terminal included, is listed there.
-3. Check the PaymentIntent's `application_fee_amount` is the platform fee only
-   (no per-tap ten cents).
-4. Check the platform's balance shows no fee debit for that charge.
-5. Refund the charge and check the application fee reversal: the platform-fee
-   part comes back pro rata, a per-tap part never does.
+**Test-mode tap proof: skipped by Brendan's decision, Nov 10 12:52 AM ET.**
+Cleared on live blended-fee evidence `txn_3UXBtRH7o0ny3UiP02bEe6Qx` and
+`txn_3UXQlPQg89H4tWg50Xv69PHh` plus the fee tests. Check the first real
+tap's `fee_details` on the connected account once Tap to Pay is live.
 
 ## Who sees the button
 
