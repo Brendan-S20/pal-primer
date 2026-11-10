@@ -247,43 +247,42 @@ touch "$marker"
 # warm-up launch on that simulator had painted in 7 s. No app code ran
 # while the screen waited, so it says nothing about the app either.
 #
+# The same fault has a third message. Measured on the CI Mac (ee6f6cac,
+# iPad (A16), iOS 27.2, #726): launch 5 of 5 was requested at 02:32:23,
+# the last HoundStack process had started at 02:32:12 for launch 4, and
+# XCUITest gave up at 02:34:16 with "Application ... does not have a
+# process ID". The retry did not know that message, so the run went red on
+# a launch no app code had run for.
+#
 # Exit 0 only when that is provably what happened: the log has one of those
 # messages AND no HoundStack process started from the failed launch request
 # to the test's tear-down. A process that started and then hung is the app, and is
-# never retried.
+# never retried. scripts/ios-launch-never-started.mjs holds the messages and
+# the proof, and tests/the-launch-check-blames-the-simulator-only-with-proof
+# runs it on logs cut from those runs.
 never_started() {  # $1 xcodebuild log, $2 udid
-  grep -qE "Timed out attempting to launch app|kAXErrorServerNotFound" "$1" || return 1
   xcrun simctl spawn "$2" log show --last 30m --style compact \
     --predicate 'process == "HoundStack"' > "$1.processes.txt" 2>/dev/null < /dev/null || return 1
-  python3 -I - "$1" "$1.processes.txt" <<'PY'
-import re, sys
-from datetime import datetime, timedelta
-lines = open(sys.argv[1], errors="replace").read().splitlines()
-err = next(i for i, l in enumerate(lines)
-           if "Timed out attempting to launch app" in l or "kAXErrorServerNotFound" in l)
-start = launch = None
-for l in reversed(lines[:err]):
-    m = re.search(r"t =\s+([\d.]+)s\s+Launch consulting\.thenorth\.houndstack", l)
-    if m and launch is None:
-        launch = float(m.group(1))
-    m = re.search(r"Start Test at (\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d+)", l)
-    if m:
-        start = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S.%f")
-        break
-end = next((float(m.group(1)) for l in lines[err:]
-            for m in [re.search(r"t =\s+([\d.]+)s Tear Down", l)] if m), None)
-if start is None or launch is None or end is None:
-    sys.exit(1)
-lo, hi = start + timedelta(seconds=launch - 1), start + timedelta(seconds=end)
-first = {}
-for l in open(sys.argv[2], errors="replace"):
-    m = re.match(r"(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d+) \S+ HoundStack\[(\d+)", l)
-    if m:
-        first.setdefault(m.group(2), datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S.%f"))
-started = [p for p, t in first.items() if lo <= t <= hi]
-print(f"launch requested {lo + timedelta(seconds=1):%H:%M:%S}, gave up {hi:%H:%M:%S}, HoundStack processes started in between: {len(started)}")
-sys.exit(0 if not started else 1)
-PY
+  node "$ROOT/scripts/ios-launch-never-started.mjs" "$1" "$1.processes.txt"
+}
+
+# Stop the app before a test class starts, with simctl, and wait until
+# launchd no longer lists it.
+#
+# Measured on the CI Mac (8804c3eb iPad (A16), 1d1bb9b4 iPhone 17e, both
+# iOS 27.2, #726): the first test of ColdLaunch failed in its own set-up with
+# "Failed to terminate consulting.thenorth.houndstack:<pid>", 60 s after
+# asking. The pid was the app the warm-up class had launched last, from
+# another xcodebuild session. The next test on the same simulator launched
+# and passed. Each class now starts with nothing to terminate.
+stop_app() {  # $1 udid
+  xcrun simctl terminate "$1" consulting.thenorth.houndstack > /dev/null 2>&1 || true
+  for _ in $(seq 1 30); do
+    xcrun simctl spawn "$1" launchctl list 2>/dev/null < /dev/null \
+      | grep -q "UIKitApplication:consulting.thenorth.houndstack" || return 0
+    sleep 1
+  done
+  echo "::warning::$name: the app was still listed by launchd 30 s after simctl terminate"
 }
 
 # One test class on this device. A launch that has not painted after 150s
@@ -291,6 +290,7 @@ PY
 # a synchronous prompt; bf2d1af removed that). Simulator processes are
 # ordinary processes on this Mac, so `sample` keeps where each was waiting.
 run_class() {  # $1 class, $2 result name
+  stop_app "$udid"
   xcodebuild test-without-building \
       -project "$ROOT/ios/UITests/UITests.xcodeproj" -scheme HoundStackUITests \
       -destination "id=$udid" -derivedDataPath "$DD/tests" \
@@ -366,6 +366,12 @@ while IFS=$'\t' read -r runtime runtime_version type name <&3; do
     result="FAILED"
   fi
   [ -z "$retried" ] || [ "$result" != "passed" ] || result="passed (retried after the simulator did not start the app:$retried)"
+  # The cold-link test tolerates XCTest's own open-URL timeout and then
+  # still needs the app on sign-in (ColdLaunch.swift, openLink). Say so,
+  # so that a pass with it reads differently from a clean one.
+  if [ "${result#passed}" != "$result" ] && grep -qs "Timed out while opening the default app for a URL" "$OUT/$slug"-launches*.log; then
+    result="$result (XCTest's link open timed out; the app still reached sign-in)"
+  fi
 
   xcrun simctl io "$udid" screenshot "$OUT/$slug.png" > /dev/null 2>&1 || true
   # What the app, its web view and WebKit's processes said, for a launch
