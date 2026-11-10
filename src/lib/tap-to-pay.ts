@@ -100,24 +100,31 @@ export async function readChargeMetadata(
 
 /**
  * The part of an application fee a refund or dispute may hand back, given what
- * could be learned about the charge's metadata, or null when that cannot be
- * decided safely and nothing should be reversed. The webhook feeds a number
- * into feeReversalCents exactly as before; null means skip and log.
+ * could be learned about the charge's metadata. The webhook feeds it into
+ * feeReversalCents and sends only the difference from what Stripe has already
+ * returned, exactly as before.
  *
- * Null when the metadata is unreadable. Assuming "no per-tap fee" there would
- * hand a tap's ten cents back on the `application` fee payer, and the platform
- * would pay for the tenant's tap (owner decision, 2026-11-10). Skipping is the
- * safer error: the platform fee is zero today, a redelivery of the event
- * recomputes the target from scratch (the caller sends only the difference
- * from what Stripe has already returned), and the caller logs the charge so
- * the office can reverse by hand. Readable metadata behaves exactly as before.
+ * Readable metadata behaves exactly as before.
+ *
+ * Unreadable metadata (#826) reverses the fee less at most
+ * TAP_TO_PAY_FEE_CENTS. A tap's ten cents may be in the fee and may not, and
+ * assuming "no per-tap fee" would hand it back on the `application` fee payer,
+ * so the platform would pay for the tenant's tap (owner decision, 2026-11-10).
+ * Taking ten cents off covers that case, and otherwise leaves the business
+ * short at most ten cents pro rata. It is never a reason to skip: the webhook
+ * answers 2xx, so Stripe does NOT redeliver the event, and a skipped reversal
+ * would stay skipped. The caller files a platform audit row for every
+ * unreadable case so a person can square the ten cents by hand.
  *
  * Deliberately not importing @/lib/platform-fee: this module ships to the
  * app, and the fee term stays off the client
  * (tests/a-pricing-term-that-shipped-to-the-browser.test.ts).
  */
-export function reversibleFeeBaseCents(feeCents: number, read: ChargeMetadataRead): number | null {
-  if (!read.readable) return null;
+export function reversibleFeeBaseCents(feeCents: number, read: ChargeMetadataRead): number {
+  if (!read.readable) {
+    if (!Number.isFinite(feeCents) || feeCents <= 0) return 0;
+    return Math.max(0, feeCents - TAP_TO_PAY_FEE_CENTS);
+  }
   return reversibleApplicationFeeCents(feeCents, read.metadata);
 }
 
