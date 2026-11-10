@@ -11,6 +11,7 @@
 // What a unit test cannot prove, and is listed on the PR for a device: the
 // band's colour as actually composited by Android 15+ behind the clock, the
 // native photo sheet, and the Settings page opening.
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -207,6 +208,26 @@ describe("R2-28: the clock is readable on Android in either theme", () => {
     expect(m).not.toBeNull();
     // Dark icons (the launch style) on it clear 4.5:1.
     expect(contrast("#000000", m![1])).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe("the Android resources still parse", () => {
+  it("no XML comment under android/app/src contains `--`, which aapt refuses", () => {
+    // a2ba831 failed :app:mergeDebugResources on colors.xml:25 for exactly
+    // this: a comment that named the CSS variable `--background`. XML does not
+    // allow "--" inside a comment, and nothing short of Gradle reads these.
+    const files = execFileSync("git", ["ls-files", "android/app/src/**/*.xml"], {
+      cwd: join(import.meta.dirname, ".."),
+      encoding: "utf8",
+    })
+      .split("\n")
+      .filter(Boolean);
+    expect(files.length).toBeGreaterThan(0);
+    for (const f of files) {
+      for (const m of read(f).matchAll(/<!--([\s\S]*?)-->/g)) {
+        expect(m[1], f).not.toContain("--");
+      }
+    }
   });
 });
 
