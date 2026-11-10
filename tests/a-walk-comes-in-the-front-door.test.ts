@@ -439,12 +439,14 @@ describe("the new-client wizard", () => {
     expect(wizard).toMatch(/!walkLike &&\s*can\("manage_client_billing"\)/);
   });
 
-  it("asks for the days of a weekly walk, Monday to Friday until told, and refuses none", () => {
+  it("asks for the days of a weekly walk, one day until told, and refuses none", () => {
     expect(wizard).toMatch(/const setDays = walkLike && frequency === "weekly"/);
-    // Monday to Friday for a walk; the first visit's weekday for anything
-    // else (F-04, defaultPlanWeekdays).
+    // The first visit's weekday until the owner picks more (F-04, #774,
+    // defaultPlanWeekdays).
     expect(wizard).toMatch(/useState<number\[\] \| null>\(null\)/);
-    expect(wizard).toMatch(/defaultPlanWeekdays\(chosenService\?\.service_line, weekdayOf\(startedOn\)\)/);
+    expect(wizard).toMatch(
+      /defaultPlanWeekdays\(chosenService\?\.service_line, weekdayOf\(startedOn\)\)/,
+    );
     expect(wizard).toMatch(/<WeekdayPicker[\s\S]*?label="Days each week"/);
     expect(wizard).toMatch(/weekdays: setDays \? normalizeWeekdays\(weekdays\) : undefined/);
     expect(wizard).toMatch(

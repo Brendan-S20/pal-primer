@@ -205,9 +205,12 @@ describe("the server refuses a forged tip", () => {
       const amounts = [...fn.matchAll(/\bamount: ([\w.]+),/g)].map((m) => m[1]);
       expect(amounts.length).toBe(2); // the update and the create
       for (const a of amounts) expect(a).toBe("charge.amountCents");
-      const fees = [...fn.matchAll(/application_fee_amount: platformFeeCents\(([\w.]+)\)/g)].map(
-        (m) => m[1],
-      );
+      // Wrapped in withPassThroughFees since #825 (Stripe's Radar fee on top).
+      const fees = [
+        ...fn.matchAll(
+          /application_fee_amount:\s*(?:withPassThroughFees\(\s*)?platformFeeCents\(([\w.]+)\)/g,
+        ),
+      ].map((m) => m[1]);
       expect(fees.length).toBe(2);
       for (const f of fees) expect(f).toBe("charge.platformFeeBaseCents");
       // And the tip travels to the webhook with the charge.
