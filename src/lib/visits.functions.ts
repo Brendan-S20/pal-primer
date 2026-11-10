@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { blockedCompletionMeta, blockedCompletionSummary } from "@/lib/completion-block";
 import { refuseIfChanged, StaleWriteError } from "@/lib/stale-write";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -655,6 +656,9 @@ export const completeVisitFromOffice = createServerFn({ method: "POST" })
          *  with required checklist items nobody checked (#658, F-15). Asked
          *  only when the database says one is missing. */
         overrideReason: z.string().trim().min(1).max(250).optional(),
+        /** The person saw the BLOCK warning and chose Continue (#851
+         *  follow-up). Recorded, never required. */
+        blockAcknowledged: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -684,6 +688,9 @@ export const completeVisitFromOffice = createServerFn({ method: "POST" })
     });
     const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
     const pushRoutes = await watchRouteLiveActivities([data.visitId]);
+    // The owner's BLOCK rule, for the record only (#851 follow-up).
+    const { completionBlockWarning } = await import("@/lib/completion-block.server");
+    const block = await completionBlockWarning(supabase as any, data.visitId);
     const { error } = await (supabase as any).rpc("office_complete_visit", {
       _visit_id: data.visitId,
       ...(data.overrideReason ? { _override_reason: data.overrideReason } : {}),
@@ -704,10 +711,27 @@ export const completeVisitFromOffice = createServerFn({ method: "POST" })
       propertyId: v.property_id,
       actorUserId: userId,
       kind: "visit.completed",
-      summary: data.overrideReason
-        ? `Marked the visit on ${v.scheduled_on} completed from the office without its photo or checklist: ${data.overrideReason}`
-        : `Marked the visit on ${v.scheduled_on} completed from the office`,
-      ...(data.overrideReason ? { meta: { override_reason: data.overrideReason } } : {}),
+      summary:
+        (data.overrideReason
+          ? `Marked the visit on ${v.scheduled_on} completed from the office without its photo or checklist: ${data.overrideReason}`
+          : `Marked the visit on ${v.scheduled_on} completed from the office`) +
+        (block ? blockedCompletionSummary(block, !!data.blockAcknowledged) : ""),
+      ...(data.overrideReason || block
+        ? {
+            meta: {
+              ...(data.overrideReason ? { override_reason: data.overrideReason } : {}),
+              ...(block
+                ? {
+                    blocked_completion: blockedCompletionMeta(block, {
+                      acknowledged: !!data.blockAcknowledged,
+                      completedBy: userId,
+                      completedAt: new Date().toISOString(),
+                    }),
+                  }
+                : {}),
+            },
+          }
+        : {}),
     });
     // A lesson that leaves one session on its package. Never throws.
     const { afterLessonSessionChange } = await import("@/lib/training-portal.server");

@@ -1,4 +1,5 @@
 import type { MissingVaccine } from "@/lib/pet-safety";
+import { blockedCompletionMeta, blockedCompletionSummary } from "@/lib/completion-block";
 import { createServerFn } from "@tanstack/react-start";
 import { orgToday } from "@/lib/org-day";
 import { formatDay } from "@/lib/format";
@@ -476,10 +477,18 @@ export const completeVisit = createServerFn({ method: "POST" })
           .array(z.string().min(1).max(MAX_CHECKLIST_ID))
           .max(MAX_CHECKLIST_ITEMS)
           .optional(),
+        /** The person saw the BLOCK warning and chose Continue (#851
+         *  follow-up). Recorded, never required: BLOCK does not stop a
+         *  Complete, by the owner's decision. */
+        blockAcknowledged: z.boolean().optional(),
       })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    // The owner's BLOCK rule, as it stands at this moment, for the record.
+    // Never refuses and never throws (completion-block.server.ts).
+    const { completionBlockWarning } = await import("@/lib/completion-block.server");
+    const block = await completionBlockWarning(context.supabase as any, data.visitId);
     const { error } = await context.supabase.rpc("complete_visit", {
       _visit_id: data.visitId,
       _completed_at: data.completedAt ?? undefined,
@@ -502,7 +511,18 @@ export const completeVisit = createServerFn({ method: "POST" })
           propertyId: v.property_id,
           actorUserId: context.userId,
           kind: "visit.completed",
-          summary: `Completed the visit scheduled for ${v.scheduled_on}`,
+          summary: `Completed the visit scheduled for ${v.scheduled_on}${block ? blockedCompletionSummary(block, !!data.blockAcknowledged) : ""}`,
+          ...(block
+            ? {
+                meta: {
+                  blocked_completion: blockedCompletionMeta(block, {
+                    acknowledged: !!data.blockAcknowledged,
+                    completedBy: context.userId,
+                    completedAt: new Date().toISOString(),
+                  }),
+                },
+              }
+            : {}),
         });
       }
     } catch (e) {

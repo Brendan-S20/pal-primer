@@ -1,5 +1,6 @@
 import i18n from "@/lib/i18n";
 import { completeFromOffice, useOfficeCompleteOverride } from "@/components/OfficeCompleteOverride";
+import { useCompletionBlockWarning } from "@/components/CompletionBlockWarning";
 import { warnLessonClashes } from "@/components/training/lessonClashWarning";
 // Visits tab (spec): scheduled window and actual timing are separate,
 // clearly labeled things. Missing timestamps say so instead of blurring
@@ -1101,11 +1102,17 @@ function VisitDetailDrawer({
 
   // No photo or checklist: the office says why, or the visit stays open (#658).
   const { askWhy, dialog: overrideDialog } = useOfficeCompleteOverride();
+  // A client the owner's BLOCK rule holds: say why first, never refuse (#851).
+  const completionBlock = useCompletionBlockWarning();
   const completeMut = useMutation({
     mutationFn: (confirmedEarly: boolean) =>
       completeFromOffice(
-        (overrideReason) => completeFn({ data: { visitId: v.id, confirmedEarly, overrideReason } }),
+        (overrideReason, blockAcknowledged) =>
+          completeFn({
+            data: { visitId: v.id, confirmedEarly, overrideReason, blockAcknowledged },
+          }),
         askWhy,
+        () => completionBlock.check(v.id),
       ),
     onSuccess: (done) => {
       if (!done) return;
@@ -1265,6 +1272,7 @@ function VisitDetailDrawer({
 
         {confirmDialog}
         {overrideDialog}
+        {completionBlock.dialog}
 
         {((canCorrect && canComplete) || (canSchedule && canReschedule)) && (
           <div className="space-y-3 rounded-md border bg-muted/20 p-3">

@@ -17,10 +17,21 @@
  * Arabic writes six forms for each, Chinese one — see TranslationsWithPlurals.
  */
 const en = {
+  completionBlock: {
+    title: "This client is blocked",
+    reasonLabel: "Blocked:",
+    noReason: "This client is blocked (no reason given)",
+    setByOn: "Set by {{who}} on {{when}}.",
+    setBy: "Set by {{who}}.",
+    theOwner: "the owner",
+    body: "You can still complete this visit. Completing it is recorded with your name and the time.",
+    continue: "Complete anyway",
+  },
   petSafety: {
     open: "Safety log",
     title: "Safety log",
-    description: "Safety notes and incidents for this pet, with when, who reported it and any photo. Entries cannot be edited or deleted; add a new one to correct a mistake.",
+    description:
+      "Safety notes and incidents for this pet, with when, who reported it and any photo. Entries cannot be edited or deleted; add a new one to correct a mistake.",
     entryType: "Entry type",
     type: {
       incident: "Incident",
@@ -539,7 +550,8 @@ const en = {
     noteForClient: "Note for the client",
     noteForClientPlaceholder: "Happy walk, sniffed every tree",
     emptyReportTitle: "End the walk with no report?",
-    emptyReportBody: "Pee, poo and the note for the client are all empty. The client gets nothing about this walk.",
+    emptyReportBody:
+      "Pee, poo and the note for the client are all empty. The client gets nothing about this walk.",
     endAnyway: "End anyway",
     addReport: "Fill in report",
     /** Property drawer, when property_access_codes did not return the row. */
@@ -627,7 +639,8 @@ const en = {
     started: "Started",
     startQueued: "Queued. Starts when back online",
     vaccineStartWarn: "Started. Missing or expired vaccine: {{pets}}",
-    vaccineStartBlocked: "Not started. A required vaccine is missing or expired, and this business does not start a visit until it is updated. Ask the office.",
+    vaccineStartBlocked:
+      "Not started. A required vaccine is missing or expired, and this business does not start a visit until it is updated. Ask the office.",
     completed: "Completed",
     completedWithNotices: "Completed. Client notices: {{notices}}.",
     completedWithNoticesPending:
@@ -976,7 +989,8 @@ const en = {
     left_other: "{{count}} left",
     allDone: "all done",
     loadFailed: "Your schedule couldn't load, and no saved copy is on this device.",
-    loadFailedOffline: "You're offline. Your schedule couldn't load, and no saved copy is on this device.",
+    loadFailedOffline:
+      "You're offline. Your schedule couldn't load, and no saved copy is on this device.",
     cachedOffline: "Offline: saved copy, {{age}}",
     cachedRefreshFailed: "Couldn't refresh: saved copy, {{age}}",
   },
@@ -1323,7 +1337,8 @@ const en = {
     bookAnyway: "Book anyway, overlapping the trainer's other lesson",
     dog: "Dog",
     chooseDog: "Choose a dog",
-    dogRequiredHint: "This household has more than one dog. Progress and homework are kept per dog.",
+    dogRequiredHint:
+      "This household has more than one dog. Progress and homework are kept per dog.",
     shareProgress: "Share lesson notes and homework with clients",
     seriesSkipClosed: "New lesson series skip holidays and closed days",
     seriesSkipClosedHint:

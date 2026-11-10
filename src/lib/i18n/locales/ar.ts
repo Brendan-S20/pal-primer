@@ -24,10 +24,21 @@ import type { PluralCategory, TranslationsWithPlurals } from "./en";
  * الإضافية". Unicode does not mirror arrows, so → would point backwards.
  */
 const ar: TranslationsWithPlurals<PluralCategory> = {
+  completionBlock: {
+    title: "هذا العميل محظور",
+    reasonLabel: "سبب الحظر:",
+    noReason: "هذا العميل محظور (لم يُذكر سبب)",
+    setByOn: "وضعه {{who}} في {{when}}.",
+    setBy: "وضعه {{who}}.",
+    theOwner: "المالك",
+    body: "لا يزال بإمكانك إكمال هذه الزيارة. يُسجَّل الإكمال باسمك ووقته.",
+    continue: "أكمل على أي حال",
+  },
   petSafety: {
     open: "سجل السلامة",
     title: "سجل السلامة",
-    description: "ملاحظات السلامة والحوادث لهذا الحيوان، مع الوقت ومن أبلغ عنها والصورة إن وجدت. لا يمكن تعديل الإدخالات أو حذفها؛ أضف إدخالًا جديدًا لتصحيح خطأ.",
+    description:
+      "ملاحظات السلامة والحوادث لهذا الحيوان، مع الوقت ومن أبلغ عنها والصورة إن وجدت. لا يمكن تعديل الإدخالات أو حذفها؛ أضف إدخالًا جديدًا لتصحيح خطأ.",
     entryType: "نوع الإدخال",
     type: {
       incident: "حادثة",
@@ -570,7 +581,8 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     noteForClient: "ملاحظة للعميل",
     noteForClientPlaceholder: "نزهة سعيدة، شمّ كل شجرة",
     emptyReportTitle: "إنهاء النزهة بلا تقرير؟",
-    emptyReportBody: "التبول والتبرز والملاحظة للعميل كلها فارغة. لن يصل العميل أي شيء عن هذه النزهة.",
+    emptyReportBody:
+      "التبول والتبرز والملاحظة للعميل كلها فارغة. لن يصل العميل أي شيء عن هذه النزهة.",
     endAnyway: "إنهاء على أي حال",
     addReport: "املأ التقرير",
     codesNotLoaded: "الرموز المحفوظة مخفية أو تعذّر تحميلها. ستبقى كما هي ما لم تكتب رموزًا جديدة.",
@@ -656,7 +668,8 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     started: "بدأت الزيارة",
     startQueued: "بالانتظار. تبدأ عند عودة الاتصال",
     vaccineStartWarn: "بدأت الزيارة. لقاح ناقص أو منتهي: {{pets}}",
-    vaccineStartBlocked: "لم تبدأ الزيارة. يوجد لقاح مطلوب ناقص أو منتهي، ولا يبدأ هذا النشاط الزيارة حتى يتم تحديثه. اسأل المكتب.",
+    vaccineStartBlocked:
+      "لم تبدأ الزيارة. يوجد لقاح مطلوب ناقص أو منتهي، ولا يبدأ هذا النشاط الزيارة حتى يتم تحديثه. اسأل المكتب.",
     completed: "اكتملت الزيارة",
     completedWithNotices: "اكتملت الزيارة. إشعارات العميل: {{notices}}.",
     completedWithNoticesPending:
