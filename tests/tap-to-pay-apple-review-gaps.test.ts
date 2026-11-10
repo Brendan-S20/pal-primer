@@ -2,9 +2,10 @@
 // for case 23404969. The rules and the server; the screens are in
 // tap-to-pay-apple-review-screens.test.tsx.
 //
-//   gap 1  a live-mode real phone reader for a designated demo business only,
-//          behind TAP_TO_PAY_LIVE_ORG_IDS; never a production customer by
-//          default; test keys stay on the simulator
+//   gap 1  live taps on the real phone reader for the production demo org
+//          only (by id); Detroit Doo Disposal refused by id through
+//          TAP_TO_PAY_NEVER_LIVE_ORG_IDS; every other org refused live; test
+//          keys stay on the simulator for everyone
 //   1.4    an iPhone before iOS 17.6 is told to update to the latest iOS
 //   1.5    warm-up at launch and on every return to the foreground
 //   3.8    only the owner accepts Apple's terms; 3.8.1 everyone else is told
@@ -18,7 +19,11 @@
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const DEMO_ORG = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+// Demo Pet Waste Co, the production demo org, as the migrations name it.
+const DEMO_ORG = "342d4d1e-56f7-4b6e-ad40-524d370e1a36";
+// Stands for Detroit Doo Disposal's id, which is not in the repo: ops puts
+// the real one in TAP_TO_PAY_NEVER_LIVE_ORG_IDS.
+const DETROIT_DOO_ORG = "0d0d0d0d-dddd-4ddd-8ddd-000000000d00";
 const OTHER_ORG = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const INVOICE_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
@@ -158,9 +163,10 @@ import {
   TAP_TO_PAY_SF_SYMBOL,
 } from "@/lib/tap-to-pay";
 import {
-  liveReaderOrgIds,
+  parseOrgIds,
   tapToPayReaderMode,
-  TAP_TO_PAY_LIVE_ORG_IDS_ENV,
+  TAP_TO_PAY_LIVE_DEMO_ORG_ID,
+  TAP_TO_PAY_NEVER_LIVE_ORG_IDS_ENV,
   TAP_TO_PAY_NOT_AVAILABLE,
 } from "@/lib/tap-to-pay.server";
 import {
@@ -187,51 +193,80 @@ beforeEach(() => {
     status: "open",
     stripe_payment_intent_id: "pi_open",
   };
-  delete process.env[TAP_TO_PAY_LIVE_ORG_IDS_ENV];
+  process.env[TAP_TO_PAY_NEVER_LIVE_ORG_IDS_ENV] = DETROIT_DOO_ORG;
 });
 
-describe("gap 1: the real phone reader in live mode, for a designated demo business only", () => {
-  const set = liveReaderOrgIds(`${DEMO_ORG}, not-an-id`);
+describe("gap 1: live taps for the production demo org only; Detroit Doo refused", () => {
+  const never = parseOrgIds(`${DETROIT_DOO_ORG}, not-an-id`);
+  const mode = (id: string, testKeys = false, neverLiveOrgIds = never) =>
+    tapToPayReaderMode({ testKeys, org: { id }, neverLiveOrgIds });
 
-  it("test keys always get Stripe's simulated reader (unchanged)", () => {
-    expect(tapToPayReaderMode({ testKeys: true, org: { id: DEMO_ORG }, liveOrgIds: set })).toBe(
-      "simulated",
-    );
-  });
-
-  it("live keys: the real reader only for a business on TAP_TO_PAY_LIVE_ORG_IDS", () => {
-    expect(tapToPayReaderMode({ testKeys: false, org: { id: DEMO_ORG }, liveOrgIds: set })).toBe(
-      "live",
-    );
-    expect(tapToPayReaderMode({ testKeys: false, org: { id: OTHER_ORG }, liveOrgIds: set })).toBe(
-      "off",
-    );
-  });
-
-  it("no production customer gets it by default: an unset list allows nobody", () => {
-    expect(liveReaderOrgIds(undefined).size).toBe(0);
-    expect(liveReaderOrgIds("").size).toBe(0);
+  it("the demo org is the one the migrations name for Demo Pet Waste Co", () => {
+    expect(TAP_TO_PAY_LIVE_DEMO_ORG_ID).toBe(DEMO_ORG);
     expect(
-      tapToPayReaderMode({
-        testKeys: false,
-        org: { id: DEMO_ORG },
-        liveOrgIds: liveReaderOrgIds(undefined),
-      }),
-    ).toBe("off");
+      readFileSync(
+        "supabase/migrations/20260911200000_the-demo-org-was-still-driving-manhattan.sql",
+        "utf8",
+      ),
+    ).toMatch(/Demo Pet Waste Co[\s\S]*WHERE id = '342d4d1e-56f7-4b6e-ad40-524d370e1a36'/);
   });
 
-  it("prepare, live keys, demo business on the list: the real reader (isTest false)", async () => {
-    process.env[TAP_TO_PAY_LIVE_ORG_IDS_ENV] = DEMO_ORG;
+  it("the demo org is allowed live taps", () => {
+    expect(mode(DEMO_ORG)).toBe("live");
+    expect(mode(DEMO_ORG.toUpperCase())).toBe("live");
+  });
+
+  it("Detroit Doo is refused live taps, by id", () => {
+    expect(mode(DETROIT_DOO_ORG)).toBe("off");
+    // The deny list wins over everything, the demo org included.
+    expect(mode(DEMO_ORG, false, parseOrgIds(DEMO_ORG))).toBe("off");
+  });
+
+  it("any other org is refused live, with or without a deny list", () => {
+    expect(mode(OTHER_ORG)).toBe("off");
+    expect(mode(OTHER_ORG, false, parseOrgIds(undefined))).toBe("off");
+    // With no deny list set, Detroit Doo is still refused: it is not the demo org.
+    expect(mode(DETROIT_DOO_ORG, false, parseOrgIds(undefined))).toBe("off");
+  });
+
+  it("test mode is unchanged for everyone: Stripe's simulated reader", () => {
+    for (const id of [DEMO_ORG, DETROIT_DOO_ORG, OTHER_ORG])
+      expect(mode(id, true)).toBe("simulated");
+  });
+
+  it("a name has no say: the mode reads the org id only", () => {
+    const src = readFileSync("src/lib/tap-to-pay.server.ts", "utf8");
+    const fn = src.slice(src.indexOf("export function tapToPayReaderMode"));
+    const body = fn.slice(0, fn.indexOf("\n}\n"));
+    // No regex on a business name anywhere, and the mode never reads a name.
+    expect(src).not.toMatch(/\/detroit/i);
+    expect(body).toMatch(/org: \{ id: string \}/);
+    expect(body).not.toMatch(/name/);
+    expect(parseOrgIds("Detroit Doo Disposal, , x").size).toBe(0);
+  });
+
+  it("prepare, live keys, the demo org: the real reader (isTest false)", async () => {
     const r = await prepareTapToPay({ data: { invoiceId: INVOICE_ID } });
     expect(r).toMatchObject({ readerMode: "live", isTest: false, locationId: "tml_demo" });
   });
 
-  it("prepare, live keys, a business not on the list: refused before any Stripe call", async () => {
-    process.env[TAP_TO_PAY_LIVE_ORG_IDS_ENV] = OTHER_ORG;
-    await expect(prepareTapToPay({ data: { invoiceId: INVOICE_ID } })).rejects.toThrow(
-      TAP_TO_PAY_NOT_AVAILABLE,
-    );
-    await expect(createTapToPayConnectionToken()).rejects.toThrow(TAP_TO_PAY_NOT_AVAILABLE);
+  it("prepare, live keys, Detroit Doo or any other org: refused before any Stripe call", async () => {
+    for (const org of [DETROIT_DOO_ORG, OTHER_ORG]) {
+      state.orgId = org;
+      state.invoice = { ...state.invoice, organization_id: org };
+      await expect(prepareTapToPay({ data: { invoiceId: INVOICE_ID } })).rejects.toThrow(
+        TAP_TO_PAY_NOT_AVAILABLE,
+      );
+      await expect(createTapToPayConnectionToken()).rejects.toThrow(TAP_TO_PAY_NOT_AVAILABLE);
+    }
+  });
+
+  it("prepare, test keys, Detroit Doo: the simulated reader, as before", async () => {
+    state.secret = "sk_test_platform";
+    state.orgId = DETROIT_DOO_ORG;
+    state.invoice = { ...state.invoice, organization_id: DETROIT_DOO_ORG };
+    const r = await prepareTapToPay({ data: { invoiceId: INVOICE_ID } });
+    expect(r).toMatchObject({ readerMode: "simulated", isTest: true });
   });
 
   it("prepare with no invoice (Enable from Settings, the warm-up) uses the caller's business", async () => {
@@ -251,7 +286,6 @@ describe("gap 1: the real phone reader in live mode, for a designated demo busin
 
 describe("status for every screen: who may tap, who may accept Apple's terms", () => {
   it("the owner may tap and accept the terms", async () => {
-    process.env[TAP_TO_PAY_LIVE_ORG_IDS_ENV] = DEMO_ORG;
     expect(await getTapToPayStatus()).toEqual({
       available: true,
       readerMode: "live",
@@ -270,7 +304,8 @@ describe("status for every screen: who may tap, who may accept Apple's terms", (
     expect(canAcceptTapToPayTerms("office_manager")).toBe(false);
   });
 
-  it("not available to a business off the live list", async () => {
+  it("not available to a business that is not the demo org", async () => {
+    state.orgId = OTHER_ORG;
     expect(await getTapToPayStatus()).toMatchObject({ available: false, readerMode: "off" });
   });
 });

@@ -166,14 +166,24 @@ simulated reader never shows Apple's screens. `tapToPayReaderMode` in
 | Keys | Business | Reader |
 | --- | --- | --- |
 | test (`sk_test_`, `rk_test_`) | any | Stripe's simulated reader (unchanged) |
-| live | on `TAP_TO_PAY_LIVE_ORG_IDS` | the **real phone reader**, live mode |
+| live | on `TAP_TO_PAY_NEVER_LIVE_ORG_IDS` (Detroit Doo Disposal) | none, checked first |
+| live | the production demo org, Demo Pet Waste Co (`TAP_TO_PAY_LIVE_DEMO_ORG_ID`, `342d4d1e-56f7-4b6e-ad40-524d370e1a36`) | the **real phone reader**, live mode |
 | live | anyone else | none: "Tap to Pay isn't turned on for this business yet." |
 
-`TAP_TO_PAY_LIVE_ORG_IDS` is a server environment variable, comma-separated
-organization ids. **Unset, no business gets it**, so no production customer
-is enabled by default. Prepare, the connection token and the payment intent all
-check it. There is deliberately no "test keys plus a physical test card"
-path.
+Brendan's decisions (2026-11-10): "Yes, turn on live Tap to Pay for the demo
+org only" (7:58 AM ET) and "Yes, block Detroit Doo from live taps" (7:57 AM
+ET). Both are keyed on organization ids, never on a name. The demo org's id is
+in code, the one the migrations already name for Demo Pet Waste Co
+(`20260911200000_the-demo-org-was-still-driving-manhattan.sql`).
+
+Detroit Doo Disposal's id is not in this repository, so it goes in the server
+environment variable `TAP_TO_PAY_NEVER_LIVE_ORG_IDS` (comma-separated
+organization ids). It is refused live taps today even before that is set,
+because it is not the demo org; the deny list keeps it refused if live taps
+are ever widened, and it wins over everything, the demo org included.
+
+Prepare, the connection token and the payment intent all check the mode.
+There is deliberately no "test keys plus a physical test card" path.
 
 ## Runbook: the $1 recording charge for Apple (case 23404969)
 
@@ -183,11 +193,11 @@ refund it."
 1. **Who records:** Brendan, on a development-signed iPhone build (provisioning
    profile with the Tap to Pay on iPhone capability), iPhone XS or newer, on
    the latest iOS.
-2. **Which business:** the designated demo business only. Put its
-   organization id, and only its id, in `TAP_TO_PAY_LIVE_ORG_IDS` on the
-   server the build talks to. Never a customer's business.
-   The demo business needs a charge-ready live connected account and a
-   business address (Settings, Client portal).
+2. **Which business:** the production demo org, Demo Pet Waste Co, only. It
+   is the one business the code lets take live taps. Never a customer's
+   business. The demo org needs a charge-ready live connected account and a
+   business address (Settings, Client portal); the Terminal Location is made
+   on the first tap.
 3. **What to record:** the announcement, Enable Tap to Pay on iPhone from
    Payments, Account tab (Apple's terms sheet, then the setup meter), How it works, then a
    $1.00 invoice: Tap to Pay on iPhone first in the list, Apple's tap screen,
@@ -195,8 +205,8 @@ refund it."
 4. **The charge:** live mode. Brendan taps **his own real card** for $1.00.
 5. **The refund:** SIC refunds the $1.00 in Stripe after the recording.
    Nobody else charges or refunds it.
-6. **After:** remove the id from `TAP_TO_PAY_LIVE_ORG_IDS` (or leave only the
-   demo business) until Tap to Pay is approved and launched.
+6. **After:** nothing to switch off: live taps stay limited to the demo org
+   until a later change opens them to customers after Apple approves.
 
 ## Test-mode path: a $1.00 invoice to paid on a Connect demo org
 

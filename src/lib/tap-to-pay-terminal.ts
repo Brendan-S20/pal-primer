@@ -63,7 +63,7 @@ let initialisedAs: boolean | null = null;
 
 /** Initialise the SDK once per launch. `simulated` comes from the server
  *  (prepareTapToPay.isTest): test keys, Stripe's simulated reader; live keys
- *  for a business on TAP_TO_PAY_LIVE_ORG_IDS, the real phone reader. */
+ *  for the production demo org only, the real phone reader. */
 export function ensureTerminal(simulated: boolean): Promise<Plugin> {
   if (terminalReady && initialisedAs !== null && initialisedAs !== simulated) {
     // The SDK cannot change mode after initialize; a mismatch means the keys

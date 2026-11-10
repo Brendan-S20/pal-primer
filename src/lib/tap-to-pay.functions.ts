@@ -54,18 +54,18 @@ async function orgForLocation(orgId: string): Promise<LocationOrg> {
 }
 
 /** Which reader this business gets (see tapToPayReaderMode). */
-async function readerModeFor(org: { id: string; name: string | null }) {
+async function readerModeFor(org: { id: string }) {
   const { connectSecret } = await import("@/lib/stripe-connect.server");
-  const { tapToPayReaderMode, liveReaderOrgIds, isTestSecret, TAP_TO_PAY_LIVE_ORG_IDS_ENV } =
+  const { tapToPayReaderMode, parseOrgIds, isTestSecret, TAP_TO_PAY_NEVER_LIVE_ORG_IDS_ENV } =
     await import("@/lib/tap-to-pay.server");
   return tapToPayReaderMode({
     testKeys: isTestSecret(connectSecret()),
     org,
-    liveOrgIds: liveReaderOrgIds(process.env[TAP_TO_PAY_LIVE_ORG_IDS_ENV]),
+    neverLiveOrgIds: parseOrgIds(process.env[TAP_TO_PAY_NEVER_LIVE_ORG_IDS_ENV]),
   });
 }
 
-async function refuseWhenOff(org: { id: string; name: string | null }) {
+async function refuseWhenOff(org: { id: string }) {
   const mode = await readerModeFor(org);
   if (mode === "off") {
     const { TAP_TO_PAY_NOT_AVAILABLE } = await import("@/lib/tap-to-pay.server");
@@ -134,8 +134,8 @@ export const prepareTapToPay = createServerFn({ method: "POST" })
       readerMode,
       // What the SDK is initialised with. Test keys mean the simulated reader
       // (a real tap against a test account is refused by Stripe anyway).
-      // Live keys reach here only for a business on TAP_TO_PAY_LIVE_ORG_IDS,
-      // and get the real phone reader, which is what shows Apple's screens.
+      // Live keys reach here only for the production demo org (never one on
+      // TAP_TO_PAY_NEVER_LIVE_ORG_IDS), which gets the real phone reader: what shows Apple's screens.
       isTest: readerMode === "simulated",
     };
   });

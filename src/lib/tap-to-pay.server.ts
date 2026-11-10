@@ -38,33 +38,57 @@ import { TAP_TO_PAY_FEE_CENTS } from "@/lib/tap-to-pay";
 // on the real phone reader, for a designated demo business only. The
 // physical test-card path is deliberately not built.
 //
-// So in live mode the real reader is OFF unless the business is named in
-// TAP_TO_PAY_LIVE_ORG_IDS (comma-separated organization ids, server env).
-// Unset, nobody gets it: no production customer by default.
+// Brendan's decisions (2026-11-10, 7:57 and 7:58 AM ET): "Yes, turn on live
+// Tap to Pay for the demo org only" and "Yes, block Detroit Doo from live
+// taps." So, keyed on organization ids, never on a name:
 //
-//   test keys                         -> "simulated" (unchanged)
-//   live keys, org on the list        -> "live", the real phone reader
-//   live keys, anyone else            -> "off": no tap, a plain sentence
+//   test keys                          -> "simulated", for every business
+//                                         (unchanged)
+//   live keys, a NEVER-live org        -> "off". Checked first, so nothing
+//                                         below can turn it back on
+//   live keys, the production demo org -> "live", the real phone reader
+//   live keys, anyone else             -> "off": no tap, a plain sentence
+//
+// The demo org is Demo Pet Waste Co, the account the product is sold and
+// recorded from. Its id is the one the migrations already name for it
+// (20260911200000_the-demo-org-was-still-driving-manhattan.sql).
+//
+// Detroit Doo Disposal is a real customer. Its organization id is not in
+// this repository (only test fixtures are), and nothing here reads
+// production, so its id is supplied by ops in TAP_TO_PAY_NEVER_LIVE_ORG_IDS
+// (comma-separated organization ids, server env). Until that is set it is
+// still refused, because it is not the demo org; the deny list is what keeps
+// it refused if live taps are ever widened.
 export type TapToPayReaderMode = "simulated" | "live" | "off";
 
-export const TAP_TO_PAY_LIVE_ORG_IDS_ENV = "TAP_TO_PAY_LIVE_ORG_IDS";
+/** Demo Pet Waste Co, the production demo organization. The only business
+ *  that may take live taps. */
+export const TAP_TO_PAY_LIVE_DEMO_ORG_ID = "342d4d1e-56f7-4b6e-ad40-524d370e1a36";
 
-export function liveReaderOrgIds(raw: string | null | undefined): Set<string> {
+/** Server env: organization ids that never take live taps (Detroit Doo
+ *  Disposal's goes here). */
+export const TAP_TO_PAY_NEVER_LIVE_ORG_IDS_ENV = "TAP_TO_PAY_NEVER_LIVE_ORG_IDS";
+
+/** A comma- or space-separated list of organization ids, lowercased; anything
+ *  that is not the shape of a uuid is dropped. */
+export function parseOrgIds(raw: string | null | undefined): Set<string> {
   return new Set(
     (raw ?? "")
       .split(/[\s,]+/)
       .map((s) => s.trim().toLowerCase())
-      .filter((s) => /^[0-9a-f-]{36}$/.test(s)),
+      .filter((s) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s)),
   );
 }
 
 export function tapToPayReaderMode(input: {
   testKeys: boolean;
   org: { id: string };
-  liveOrgIds: Set<string>;
+  neverLiveOrgIds: Set<string>;
 }): TapToPayReaderMode {
   if (input.testKeys) return "simulated";
-  return input.liveOrgIds.has(input.org.id.toLowerCase()) ? "live" : "off";
+  const id = input.org.id.toLowerCase();
+  if (input.neverLiveOrgIds.has(id)) return "off";
+  return id === TAP_TO_PAY_LIVE_DEMO_ORG_ID ? "live" : "off";
 }
 
 /** Test or restricted test keys. */
