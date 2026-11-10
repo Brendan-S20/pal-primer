@@ -119,6 +119,10 @@ export const resolveAddress = createServerFn({ method: "POST" })
       .object({
         placeId: z.string().min(3).max(300),
         sessionToken: z.string().min(8).max(64).optional(),
+        // The row the person picked, as shown (#805). Only a fallback for
+        // the street line when Google's components have no house number.
+        mainText: z.string().max(300).optional(),
+        secondaryText: z.string().max(300).optional(),
         accountType: z.enum(["residential", "commercial"]).optional(),
       })
       .parse(d),
@@ -128,7 +132,10 @@ export const resolveAddress = createServerFn({ method: "POST" })
     const provider = getAddressProvider();
     if (!provider) throw new Error("Address search isn't configured");
     checkRate(context.userId);
-    const details = await provider.details(data.placeId, { sessionToken: data.sessionToken });
+    const details = await provider.details(data.placeId, {
+      sessionToken: data.sessionToken,
+      suggestion: { mainText: data.mainText ?? null, secondaryText: data.secondaryText ?? null },
+    });
     if (!details) throw new Error("Couldn't load that address. Enter it manually instead.");
 
     // Automatic zone lookup from the resolved point + ZIP (same matcher the

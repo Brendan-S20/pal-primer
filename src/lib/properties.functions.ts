@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { formatAddressLine } from "@/lib/address/from-place";
 import {
   ACCESS_CODE_MAX,
   ACCESS_NOTES_MAX,
@@ -208,7 +209,7 @@ export const createProperty = createServerFn({ method: "POST" })
       propertyId: row.id as string,
       actorUserId: context.userId,
       kind: "property.created",
-      summary: `Added property ${data.street}, ${data.city} ${data.postalCode}`,
+      summary: `Added property ${formatAddressLine(data)}`,
     });
     return { id: row.id as string };
   });
