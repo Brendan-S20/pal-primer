@@ -1042,9 +1042,7 @@ function MyDay() {
                 className="h-9 min-w-0 max-w-full rounded-md border bg-background px-2 text-sm touch:min-h-11"
               >
                 <option value="">
-                  {data?.staff && !previewing
-                    ? t("myDay.title")
-                    : t(trainerWords ? "myDay.selectTrainer" : "myDay.selectTechnician")}
+                  {data?.staff && !previewing ? t("myDay.title") : t(trainerWords ? "myDay.selectTrainer" : "myDay.selectTechnician")}
                 </option>
                 {fieldStaff.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -1087,9 +1085,7 @@ function MyDay() {
 
         {!staff && isOfficeRole && (
           <div className="rounded-lg border bg-card p-(--card-pad) text-center text-sm text-muted-foreground">
-            {fieldStaff.length === 0
-              ? t(trainerWords ? "myDay.noTrainers" : "myDay.noTechnicians")
-              : t(trainerWords ? "myDay.pickTrainer" : "myDay.pickTechnician")}
+            {fieldStaff.length === 0 ? t(trainerWords ? "myDay.noTrainers" : "myDay.noTechnicians") : t(trainerWords ? "myDay.pickTrainer" : "myDay.pickTechnician")}
           </div>
         )}
 
@@ -2574,7 +2570,9 @@ function VisitCard({
             {p?.city || p?.postal_code ? " · " : ""}
             {visit.clients?.display_name ?? t("visit.fallbackClient")}
           </div>
-          {!collapsed && <TrainingProgressPanel visitId={visit.id} serviceLine={service?.line} />}
+          {!collapsed && (
+            <TrainingProgressPanel visitId={visit.id} serviceLine={service?.line} />
+          )}
 
           {/* When this stop is expected, and how big the yard is — one line of
               context, wrapping rather than stacking.
@@ -2667,11 +2665,7 @@ function VisitCard({
                   <SitEmergencyFacts emergency={sitEmergency(visit.clients)} locale={locale} />
                 </>
               ) : (
-                <DogsLine
-                  dogs={p?.dogs}
-                  dogCount={facts?.dogCount}
-                  pets={service?.line === "pet_sitting"}
-                />
+                <DogsLine dogs={p?.dogs} dogCount={facts?.dogCount} pets={service?.line === "pet_sitting"} />
               )}
               {isGroom && visit.groom_summary && (
                 <p className="mt-1 min-w-0 text-sm text-muted-foreground [overflow-wrap:anywhere]">

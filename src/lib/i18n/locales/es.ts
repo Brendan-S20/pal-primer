@@ -23,8 +23,7 @@ const es: Translations = {
   petSafety: {
     open: "Registro de seguridad",
     title: "Registro de seguridad",
-    description:
-      "Notas de seguridad e incidentes de esta mascota, con cuándo, quién lo reportó y la foto si hay. Las entradas no se pueden editar ni borrar; agrega una nueva para corregir un error.",
+    description: "Notas de seguridad e incidentes de esta mascota, con cuándo, quién lo reportó y la foto si hay. Las entradas no se pueden editar ni borrar; agrega una nueva para corregir un error.",
     entryType: "Tipo de entrada",
     type: {
       incident: "Incidente",
@@ -536,8 +535,7 @@ const es: Translations = {
     noteForClient: "Nota para el cliente",
     noteForClientPlaceholder: "Buen paseo, olió cada árbol",
     emptyReportTitle: "¿Terminar el paseo sin informe?",
-    emptyReportBody:
-      "Pipí, popó y la nota para el cliente están vacíos. El cliente no recibe nada sobre este paseo.",
+    emptyReportBody: "Pipí, popó y la nota para el cliente están vacíos. El cliente no recibe nada sobre este paseo.",
     endAnyway: "Terminar igual",
     addReport: "Llenar informe",
     codesNotLoaded:
@@ -624,8 +622,7 @@ const es: Translations = {
     started: "Iniciada",
     startQueued: "En cola. Se inicia cuando haya conexión",
     vaccineStartWarn: "Iniciada. Vacuna faltante o vencida: {{pets}}",
-    vaccineStartBlocked:
-      "No iniciada. Falta una vacuna obligatoria o está vencida, y este negocio no inicia la visita hasta que se actualice. Consulta con la oficina.",
+    vaccineStartBlocked: "No iniciada. Falta una vacuna obligatoria o está vencida, y este negocio no inicia la visita hasta que se actualice. Consulta con la oficina.",
     completed: "Completada",
     completedWithNotices: "Completada. Avisos al cliente: {{notices}}.",
     completedWithNoticesPending:
@@ -1274,8 +1271,7 @@ const es: Translations = {
     note: "Nota de la sesión",
     notePlaceholder: "En qué trabajó el perro",
     noteClientSees: "Nota de la clase. El cliente la verá",
-    noteClientDoesNotSee:
-      "Nota de la clase. Los clientes no la ven mientras compartir esté desactivado",
+    noteClientDoesNotSee: "Nota de la clase. Los clientes no la ven mientras compartir esté desactivado",
     trainerNote: "Solo para el entrenador",
     trainerNotePlaceholder: "Para ti y el próximo entrenador. El cliente nunca la ve.",
     homework: "Tarea",
@@ -1310,7 +1306,8 @@ const es: Translations = {
     cancelBookedCancel: "Cancelarlas. Sus sesiones vuelven al paquete.",
     cancelBookedKeep: "Mantenerlas. El entrenador aún puede completarlas.",
     cancelChoose: "Elija qué pasa con las clases reservadas.",
-    cancelPastLessons: "Las clases de hoy o antes no cambian y aún se pueden completar u omitir.",
+    cancelPastLessons:
+      "Las clases de hoy o antes no cambian y aún se pueden completar u omitir.",
     canceledLessons: "Paquete cancelado. Clases canceladas con él: {{n}}",
     startTime: "Hora de inicio",
     lessonMinutes: "Duración en minutos",
@@ -1319,8 +1316,7 @@ const es: Translations = {
     bookAnyway: "Reservar de todos modos, aunque se cruce con otra clase del entrenador",
     dog: "Perro",
     chooseDog: "Elija un perro",
-    dogRequiredHint:
-      "Este hogar tiene más de un perro. El progreso y la tarea se guardan por perro.",
+    dogRequiredHint: "Este hogar tiene más de un perro. El progreso y la tarea se guardan por perro.",
     shareProgress: "Compartir las notas y la tarea de cada clase con los clientes",
     seriesSkipClosed: "Las nuevas series de clases se saltan los festivos y los días cerrados",
     seriesSkipClosedHint:

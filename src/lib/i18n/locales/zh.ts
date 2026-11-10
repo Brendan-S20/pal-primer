@@ -32,8 +32,7 @@ const zh: TranslationsWithPlurals<"other"> = {
   petSafety: {
     open: "安全记录",
     title: "安全记录",
-    description:
-      "这只宠物的安全备注和事件记录，包括时间、报告人和照片（如有）。记录不能编辑或删除；如需更正，请新增一条。",
+    description: "这只宠物的安全备注和事件记录，包括时间、报告人和照片（如有）。记录不能编辑或删除；如需更正，请新增一条。",
     entryType: "记录类型",
     type: {
       incident: "事件",
@@ -610,8 +609,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     started: "已开始",
     startQueued: "已排队，联网后开始",
     vaccineStartWarn: "已开始。疫苗缺失或已过期：{{pets}}",
-    vaccineStartBlocked:
-      "未开始。缺少必需疫苗或疫苗已过期，本商家在更新前不会开始上门。请联系办公室。",
+    vaccineStartBlocked: "未开始。缺少必需疫苗或疫苗已过期，本商家在更新前不会开始上门。请联系办公室。",
     completed: "已完成",
     completedWithNotices: "已完成。客户通知：{{notices}}。",
     completedWithNoticesPending: "已完成。已发送客户通知：{{notices}}。还有通知仍在发送。",
@@ -1266,8 +1264,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     dogRequiredHint: "这个家庭有不止一只狗。进度和作业按狗分别记录。",
     shareProgress: "与客户分享课程笔记和作业",
     seriesSkipClosed: "新的课程系列跳过节假日和休息日",
-    seriesSkipClosedHint:
-      "每周系列不会在节假日或停业日安排课程。每个系列在创建或编辑时都可以更改。",
+    seriesSkipClosedHint: "每周系列不会在节假日或停业日安排课程。每个系列在创建或编辑时都可以更改。",
     shareProgressHint:
       "客户可以在门户的训练页面看到每节课的笔记和作业。评分、日期和剩余课时始终显示。",
   },

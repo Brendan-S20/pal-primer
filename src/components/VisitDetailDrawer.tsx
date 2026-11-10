@@ -61,12 +61,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
-import {
-  PHOTO_KIND_OPTIONS,
-  photoKindLabel,
-  defaultPhotoKind,
-  type PhotoKind,
-} from "@/lib/photo-kinds";
+import { PHOTO_KIND_OPTIONS, photoKindLabel, defaultPhotoKind, type PhotoKind } from "@/lib/photo-kinds";
 import { parseAnswers } from "@/lib/visit-checklist";
 import { VisitChecklistAnswers } from "@/components/VisitChecklistAnswers";
 import { visitStayDates } from "@/lib/stays";
@@ -470,9 +465,7 @@ export function VisitDetailDrawer({
             )}
             {/* Part of a sitter's stay (#411): the stay's dates. */}
             {visitStayDates((v as any)?.subscriptions?.stays) && (
-              <Badge variant="outline">
-                Stay, {visitStayDates((v as any).subscriptions.stays)}
-              </Badge>
+              <Badge variant="outline">Stay, {visitStayDates((v as any).subscriptions.stays)}</Badge>
             )}
           </SheetTitle>
           <SheetDescription>
@@ -669,12 +662,7 @@ export function VisitDetailDrawer({
                 the visit was completed. Absent when nothing asked. */}
             <VisitChecklistAnswers answers={parseAnswers(v.visit_checklist) ?? []} />
 
-            <PhotosSection
-              key={visitId!}
-              visitId={visitId!}
-              photos={v.visit_photos ?? []}
-              status={v.status}
-            />
+            <PhotosSection key={visitId!} visitId={visitId!} photos={v.visit_photos ?? []} status={v.status} />
 
             {/* Past and future apart. One "Other visits here" list, newest
                 first, put next month's scheduled visits above last week's
@@ -771,9 +759,9 @@ export function VisitDetailDrawer({
                       </Button>
                     </div>
                     <p className="text-2xs text-muted-foreground">
-                      It stays with the same tech when the new day is a work day and they are not
-                      off. Otherwise it is left unassigned for dispatch. Reordering a tech's stops
-                      is on the Schedule board.
+                      It stays with the same tech when the new day is a work day and they are
+                      not off. Otherwise it is left unassigned for dispatch. Reordering a
+                      tech's stops is on the Schedule board.
                     </p>
                   </form>
                 )}
@@ -796,8 +784,8 @@ export function VisitDetailDrawer({
                   <>
                     {v.status === "missed" && (
                       <p className="text-xs text-muted-foreground">
-                        Marked missed because nobody closed it out. If it was serviced, complete it
-                        here.
+                        Marked missed because nobody closed it out. If it was serviced, complete
+                        it here.
                       </p>
                     )}
                     {canComplete && (
@@ -899,9 +887,7 @@ function OtherVisits({
           <li key={h.id} className="flex justify-between gap-2">
             <span className="shrink-0">{formatDay(h.scheduled_on)}</span>
             <span className="min-w-0 text-end text-muted-foreground">
-              <span className="capitalize">
-                {i18n.t(`status.${h.status}`, { defaultValue: "Visit" })}
-              </span>
+              <span className="capitalize">{i18n.t(`status.${h.status}`, { defaultValue: "Visit" })}</span>
               {h.status === "skipped" && (
                 <span className="block break-words">
                   {skipReasonText(h.skip_reason, h.skip_reason_code)}
