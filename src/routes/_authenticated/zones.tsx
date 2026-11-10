@@ -2,7 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState } from "react";
-import { listZones, deleteZone, normalizeUsZip } from "@/lib/zones.functions";
+import { listZones, deleteZone, normalizeUsZip, fillEmptyZoneZips } from "@/lib/zones.functions";
+import { zoneNeedsZipBackfill } from "@/lib/zone-zip-backfill";
 import { getZoneCoverage, rerunZoneDetection } from "@/lib/zone-coverage.functions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -195,6 +196,20 @@ function ZonesPage() {
   // Below lg the map is behind a toggle so the list comes first on a phone.
   const [mapOpen, setMapOpen] = useState(false);
   const hasMap = zones.some((z) => zoneHasGeo(z as OverviewZone));
+  // Drawn areas that list no ZIPs (#793): saved before setup filled them
+  // (#778), so the signup page and lead form quote nobody in them. One click
+  // fills them all, the same way "Fill ZIPs from the area" fills one.
+  const emptyZipAreas = zones.filter((z) => zoneNeedsZipBackfill(z as any));
+  const fillEmptyM = useMutation({
+    mutationFn: () => fillEmptyZoneZips({ data: {} }),
+    onSuccess: (r: { summary: string | null; written: string[] }) => {
+      if (r.written.length > 0) toast.success(r.summary ?? "ZIPs added.");
+      else toast.error(r.summary ?? "No ZIPs could be added.");
+      qc.invalidateQueries({ queryKey: ["zones"] });
+      qc.invalidateQueries({ queryKey: ["zone-coverage"] });
+    },
+    onError: (e: unknown) => toast.error(`Could not fill ZIPs: ${(e as Error).message}`),
+  });
 
   // Multi-select for bulk delete (Invoices-page pattern). Only offered to
   // roles that can edit zones — deleteZone is manage_pricing-gated anyway.
@@ -311,6 +326,37 @@ function ZonesPage() {
           No map coverage yet: {noGeoZones.map((z) => `"${z.name}"`).join(", ")}. Open Edit to draw
           coverage so these zones appear on the map and match by location.
         </p>
+      )}
+
+      {canEdit && emptyZipAreas.length > 0 && (
+        <div
+          role="status"
+          data-testid="empty-zip-areas"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300/60 bg-amber-50/60 p-3 text-sm dark:border-amber-900/60 dark:bg-amber-950/20"
+        >
+          <p className="min-w-0 basis-full sm:basis-0 sm:grow">
+            {emptyZipAreas.length === 1
+              ? `"${emptyZipAreas[0].name}" lists no ZIPs, so the signup page and lead form can't quote it.`
+              : `${emptyZipAreas.length} areas list no ZIPs, so the signup page and lead form can't quote them.`}{" "}
+            <span className="text-xs text-muted-foreground">
+              Adds the ZIPs whose center is inside each area. A ZIP another zone already lists is
+              left with that zone.
+            </span>
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="shrink-0"
+            disabled={fillEmptyM.isPending}
+            onClick={() => fillEmptyM.mutate()}
+          >
+            {fillEmptyM.isPending
+              ? "Filling…"
+              : emptyZipAreas.length === 1
+                ? "Fill its ZIPs"
+                : "Fill ZIPs for all"}
+          </Button>
+        </div>
       )}
 
       {/* Split view (#450): the list on the left, the map beside it from lg

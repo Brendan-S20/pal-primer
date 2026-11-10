@@ -272,9 +272,7 @@ describe("and the list you never open still tells you", () => {
   it("renders an unmatched ZIP as broken rather than as an ordinary chip", () => {
     // The variant is the assertion: `secondary` for every chip is precisely
     // the state where "Michigan" and "78701" are indistinguishable.
-    expect(zones()).toMatch(
-      /variant=\{normalizeUsZip\(z\) === z \? "secondary" : "destructive"\}/,
-    );
+    expect(zones()).toMatch(/variant=\{normalizeUsZip\(z\) === z \? "secondary" : "destructive"\}/);
   });
 
   it("names the offending value instead of counting it", () => {
@@ -300,7 +298,7 @@ describe("and the list you never open still tells you", () => {
     // Two definitions of "a valid ZIP" is how a chip ends up red on one screen
     // and blue on another. zones.tsx imports the one the server enforces.
     const src = zones();
-    expect(src).toMatch(/import \{ listZones, deleteZone, normalizeUsZip \}/);
+    expect(src).toMatch(/import \{[^}]*\bnormalizeUsZip\b[^}]*\} from "@\/lib\/zones\.functions"/);
     expect(src).not.toMatch(/\/\^\\d\{5\}\$\//);
   });
 });
