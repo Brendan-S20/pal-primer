@@ -209,11 +209,21 @@ export const deleteAnnouncement = createServerFn({ method: "POST" })
 // complete one is the fault this whole change is about; it would be a poor
 // trade to close it at the top and reopen it at the bottom.
 //
-// The population is still "users with an organization membership", unchanged.
-// Accounts with no `user_roles` row at all — abandoned signups, platform
-// admins — were invisible here before and still are. That is a different hole
-// with a different answer (it changes what the page MEANS, not how much of it
-// you can see) and it is not this change.
+// ── ACCOUNTS WITH NO BUSINESS ARE LISTED TOO (#765, 2026-11-09) ───────────
+//
+// Until then the population was "users with an organization membership", and
+// an account with no `user_roles` row was only counted (`unattached`). That
+// hid exactly the account support needed to find: Detroit Doo Disposal's
+// removed teammate, whose address could not sign in, reset, or sign up, could
+// not be searched for here or sent a reset from here. Nine more orphaned
+// accounts were in the same place.
+//
+// So with no org/role filter the account scan runs to the end of
+// `auth.users`, and every account with no membership is a row of its own,
+// `no_business: true`, labelled "No business" (or "Platform admin" for the
+// accounts that hold no role by design). Under an org or role filter nothing
+// changes: an account with no business cannot match one. Member rows are
+// built exactly as before.
 
 export type PlatformUserRow = {
   user_id: string;
@@ -221,6 +231,10 @@ export type PlatformUserRow = {
   last_sign_in_at: string | null;
   created_at: string | null;
   organizations: Array<{ id: string; name: string; role: string }>;
+  /** An account with no organization membership at all (#765). */
+  no_business?: boolean;
+  /** Holds no membership by design: a platform admin. */
+  platform_admin?: boolean;
 };
 
 /** How much of the directory each scan actually managed to read. */
@@ -336,6 +350,18 @@ async function loadMemberships(
   return { rows, complete: false };
 }
 
+/** Platform admins hold no membership by design; the directory labels them
+ *  as such rather than as "No business". A failed read labels nobody. */
+async function loadPlatformAdminIds(supabaseAdmin: any): Promise<Set<string>> {
+  try {
+    const { data, error } = await supabaseAdmin.from("platform_admins").select("user_id");
+    if (error) return new Set();
+    return new Set(((data ?? []) as Array<{ user_id: string }>).map((r) => r.user_id));
+  } catch {
+    return new Set();
+  }
+}
+
 /** Organization names for the ids we actually have, in `.in()`-sized batches. */
 async function loadOrgNames(supabaseAdmin: any, orgIds: string[]): Promise<Map<string, string>> {
   const names = new Map<string, string>();
@@ -381,6 +407,9 @@ const accountInfo = (u: any): AccountInfo => ({
 export async function loadAccounts(
   supabaseAdmin: any,
   memberIds: string[],
+  /** Read every account, not only enough to resolve the members: the
+   *  unfiltered directory lists the accounts that have no business (#765). */
+  opts: { wholeDirectory?: boolean } = {},
 ): Promise<{
   byId: Map<string, AccountInfo>;
   accounts: number;
@@ -469,7 +498,7 @@ export async function loadAccounts(
 
   const stillMissing = () => memberIds.filter((id) => !byId.has(id));
 
-  if (!listFailed && !exhausted && memberIds.length > MAX_DIRECT_LOOKUPS) {
+  if (!listFailed && !exhausted && (opts.wholeDirectory || memberIds.length > MAX_DIRECT_LOOKUPS)) {
     while (!exhausted && scannedPages < MAX_ACCOUNT_PAGES) {
       const n = await tryReadPage(scannedPages + 1);
       if (n === null) break;
@@ -526,11 +555,17 @@ function smallestFactor(n: number): number {
   return n;
 }
 
-/** Case-insensitive match on email, user id, or any organization name. */
+/** What the directory calls an account with no membership. Searching for it
+ *  lists them all. */
+export const NO_BUSINESS_LABEL = "No business";
+
+/** Case-insensitive match on email, user id, any organization name, or the
+ *  "No business" label. */
 export function matchesDirectorySearch(row: PlatformUserRow, search: string): boolean {
   const s = search.toLowerCase().trim();
   if (!s) return true;
   return (
+    (row.no_business === true && !row.platform_admin && NO_BUSINESS_LABEL.toLowerCase().includes(s)) ||
     (row.email ?? "").toLowerCase().includes(s) ||
     row.user_id.toLowerCase().includes(s) ||
     row.organizations.some((o) => o.name.toLowerCase().includes(s))
@@ -603,10 +638,13 @@ export const listPlatformUsers = createServerFn({ method: "GET" })
       new Set(memberships.rows.map((r) => r.organization_id).filter(Boolean)),
     ) as string[];
 
-    const [orgName, accounts] = await Promise.all([
+    // Unfiltered, the directory is every account (#765), so the scan reads to
+    // the end of auth.users even when there are no members at all.
+    const filtered = Boolean(data.organization_id || data.role);
+    const [orgName, accounts, platformAdmins] = await Promise.all([
       loadOrgNames(supabaseAdmin, orgIds),
-      memberIds.length
-        ? loadAccounts(supabaseAdmin, memberIds)
+      memberIds.length || !filtered
+        ? loadAccounts(supabaseAdmin, memberIds, { wholeDirectory: !filtered })
         : Promise.resolve({
             byId: new Map<string, AccountInfo>(),
             accounts: 0,
@@ -614,6 +652,7 @@ export const listPlatformUsers = createServerFn({ method: "GET" })
             exhausted: false,
             unreadable: 0,
           }),
+      filtered ? Promise.resolve(new Set<string>()) : loadPlatformAdminIds(supabaseAdmin),
     ]);
 
     const orgsByUser = new Map<string, PlatformUserRow["organizations"]>();
@@ -640,6 +679,24 @@ export const listPlatformUsers = createServerFn({ method: "GET" })
       };
     });
 
+    // Every account the scan read that holds no membership, as a row (#765).
+    // Never under a filter: an account with no business matches no org/role.
+    if (!filtered) {
+      const members = new Set(memberIds);
+      for (const [uid, info] of accounts.byId) {
+        if (members.has(uid)) continue;
+        all.push({
+          user_id: uid,
+          email: info.email,
+          last_sign_in_at: info.last_sign_in_at,
+          created_at: info.created_at,
+          organizations: [],
+          no_business: true,
+          platform_admin: platformAdmins.has(uid),
+        });
+      }
+    }
+
     const page = selectDirectoryPage(all, {
       search: data.search,
       offset: data.offset,
@@ -660,7 +717,7 @@ export const listPlatformUsers = createServerFn({ method: "GET" })
         unattached: unattachedCount({
           exhausted: accounts.exhausted,
           membershipsComplete: memberships.complete,
-          filtered: Boolean(data.organization_id || data.role),
+          filtered,
           accounts: accounts.byId.size,
           members: memberIds.length,
         }),
@@ -765,9 +822,11 @@ export const sendPasswordReset = createServerFn({ method: "POST" })
       type: "recovery",
       email,
     });
-    if (linkErr) throw new Error(linkErr.message);
+    // No organization is looked up on this path, on purpose (#765): an account
+    // with no business is the one most likely to need a reset from support.
+    if (linkErr) throw new Error(`Couldn't create a reset link: ${linkErr.message}`);
     const actionLink = linkData.properties?.action_link;
-    if (!actionLink) throw new Error("Failed to generate a recovery link.");
+    if (!actionLink) throw new Error("Couldn't create a reset link. Try again.");
 
     let delivered = false;
     const resendApiKey = process.env.RESEND_API_KEY;

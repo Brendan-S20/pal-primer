@@ -12,7 +12,7 @@ import {
 } from "@/lib/ensure-workspace";
 import { checkEmailAccount } from "@/lib/auth-entry.functions";
 import { lookupInviteByToken } from "@/lib/platform-onboarding.functions";
-import { handOffSignupEmail } from "@/lib/signup-email";
+import { handOffSignupEmail, takeExistingAccount } from "@/lib/signup-email";
 import {
   handOffSignIn,
   signInLanded,
@@ -182,6 +182,21 @@ function AuthPage() {
     setStage("email");
   };
   const setInfo = (text: string) => setAlert({ kind: "info", text });
+  // Set when the person came from a sign-up form whose address already has an
+  // account (#765): the reset is offered as a button in the message, not only
+  // as the small link beside the password label.
+  const [offerReset, setOfferReset] = useState(false);
+  useEffect(() => {
+    const taken = takeExistingAccount();
+    if (!taken) return;
+    setEmail(taken);
+    setStage("password");
+    setOfferReset(true);
+    setAlert({
+      kind: "info",
+      text: "That email already has an account. Sign in with its password, or reset it if you don't know it.",
+    });
+  }, []);
 
   /** A sign-in this page handed on came back here signed out (#785). Put the
    *  person back where they were, with what they typed and a reason, rather
@@ -547,12 +562,16 @@ function AuthPage() {
     }
   };
 
+  // Asks nothing about memberships, and must not: an account with no business
+  // is exactly who needs this most (#765).
   // One helper for every reset request (lib/password-recovery.ts): the
   // redirect is /reset-password on the canonical origin (the iOS app's own
   // scheme in the iOS app), and a failed send says so instead of "check your
   // email" for a message that is never coming.
   const forgotPassword = async () => {
     setAlert(null);
+    setOfferReset(false);
+    if (!emailValid) return setError("Enter your email address first.");
     setLoading(true);
     const r = await requestPasswordReset(supabase, email, await passwordResetRedirectHere());
     setLoading(false);
@@ -632,6 +651,7 @@ function AuthPage() {
                 setStage("email");
                 setPassword("");
                 setAlert(null);
+                setOfferReset(false);
               }}
               className="w-full text-center text-xs text-muted-foreground underline underline-offset-2 hover:text-primary"
             >
@@ -777,6 +797,21 @@ function AuthPage() {
             {inviteRefused && (
               <Button type="button" variant="outline" size="sm" onClick={switchAccounts}>
                 Sign out and switch accounts
+              </Button>
+            )}
+            {offerReset && stage === "password" && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setResetting(true);
+                  void forgotPassword().finally(() => setResetting(false));
+                }}
+                disabled={loading}
+                aria-busy={resetting || undefined}
+              >
+                {resetting ? "Sending reset link…" : "Email me a reset link"}
               </Button>
             )}
           </div>

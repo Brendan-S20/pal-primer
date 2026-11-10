@@ -191,7 +191,7 @@ export function AddressAutocomplete({
     }, DEBOUNCE_MS);
   }
 
-  async function select(s: { id: string; mainText: string }) {
+  async function select(s: { id: string; mainText: string; secondaryText: string }) {
     // Kill the pending debounce and any in-flight search: a keystroke less
     // than 300ms before the click must not reopen the list (or bill a whole
     // new Google session) after the form is already filled.
@@ -204,7 +204,14 @@ export function AddressAutocomplete({
     let resolved: ResolvedAddress | null = null;
     try {
       resolved = (await resolveFn({
-        data: { placeId: s.id, sessionToken: ensureSession() },
+        // The row itself goes too: when Google's place has no house-number
+        // component, the street line comes from what was picked (#805).
+        data: {
+          placeId: s.id,
+          sessionToken: ensureSession(),
+          mainText: s.mainText,
+          secondaryText: s.secondaryText,
+        },
       })) as ResolvedAddress;
       sessionToken.current = ""; // session ends at details
     } catch (e) {

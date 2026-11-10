@@ -167,6 +167,36 @@ for (const { w, h, label } of WIDTHS) {
       await measure(page, w, `/setup end of day (dog walking) @${w}px`);
     });
 
+    test(`/setup step 1 says routes, not trucks, and shows the workday @${w}px`, async ({
+      page,
+    }) => {
+      // #768 and #769: the address help named trucks, and the 08:00-17:00
+      // workday every arrival window is computed from was never shown.
+      await open(page, "owner", DOG_WALKING, "/setup?step=business", w, h);
+      await expectServiceLineChoices(page);
+      await expect(page.getByText(/trucks/i)).toHaveCount(0);
+      await expect(page.getByText("Where routes start each day", { exact: false })).toBeVisible();
+      // What is STORED, not the column default: the stub's org starts at
+      // 07:30, and a form that showed 08:00 here would be the silent default.
+      await expect(page.getByLabel("Starts")).toHaveValue("07:30");
+      await expect(page.getByLabel("Ends")).toHaveValue("17:00");
+      await measure(page, w, `/setup step 1 (dog walking) @${w}px`);
+    });
+
+    test(`/setup prices the walks in place, the drop-in optional @${w}px`, async ({ page }) => {
+      // #769: the step was a button to Settings, Services.
+      await open(page, "owner", DOG_WALKING, "/setup?step=zones", w, h);
+      await expect(page.getByRole("heading", { name: "Price your walks" })).toBeVisible({
+        timeout: FIRST_PAINT_MS,
+      });
+      await expect(page.getByLabel(/^30-minute walk \(\$\)$/)).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByLabel(/^60-minute walk \(\$\)$/)).toBeVisible();
+      await expect(page.getByLabel(/^Drop-in visit \(20 min\) \(\$\), optional$/)).toBeVisible();
+      await expect(page.getByRole("link", { name: "Price walks" })).toHaveCount(0);
+      await expect(page.getByText(/dump|trucks|yard/i)).toHaveCount(0);
+      await measure(page, w, `/setup prices (dog walking) @${w}px`);
+    });
+
     test(`the new-client wizard has no Outline step @${w}px`, async ({ page }) => {
       await open(page, "owner", DOG_WALKING, "/clients/new", w, h);
       await expect(page.getByRole("heading", { name: /new client/i }).first()).toBeVisible({
@@ -411,5 +441,45 @@ for (const w of [390, 820, 1024, 1440]) {
     await page.getByRole("button", { name: "Bill it", exact: true }).click();
     await expect.poll(() => billed.length).toBe(1);
     expect(billed[0]).toContain("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+  });
+}
+
+// #768/#769: a business that scoops AND walks. The dump site and the yard are
+// the pet-waste half of each step, not the whole of it, and the walks are
+// priced beside the area.
+const MIXED = ["pet_waste", "dog_walking"];
+
+for (const { w, h, label } of WIDTHS) {
+  test.describe(`a business that scoops and walks, ${label}`, () => {
+    test(`/setup's end-of-day step asks where the day ends, the dump site under pet waste @${w}px`, async ({
+      page,
+    }) => {
+      await open(page, "owner", MIXED, "/setup?step=dump_site", w, h);
+      await expect(page.getByRole("heading", { name: "Where does your day end?" })).toBeVisible({
+        timeout: FIRST_PAINT_MS,
+      });
+      await expect(page.getByText(/crew unloads/i)).toHaveCount(0);
+      const petWasteHalf = page.locator("[data-setup-pet-waste-day-end]");
+      await expect(petWasteHalf.getByText("For your pet waste routes")).toBeVisible();
+      await expect(petWasteHalf.getByRole("button", { name: "Add dump site" })).toBeVisible();
+      await measure(page, w, `/setup end of day (scoops and walks) @${w}px`);
+    });
+
+    test(`/setup's price step prices walks and the pet waste area in place @${w}px`, async ({
+      page,
+    }) => {
+      await open(page, "owner", MIXED, "/setup?step=zones", w, h);
+      await expect(page.getByRole("heading", { name: "Price your services" })).toBeVisible({
+        timeout: FIRST_PAINT_MS,
+      });
+      await expect(page.getByText(/pet waste visits and walks/)).toBeVisible();
+      await expect(page.getByText(/pet waste zones/i)).toHaveCount(0);
+      const walks = page.locator('[data-setup-price-form="walks"]');
+      await expect(walks.getByLabel(/^30-minute walk \(\$\)$/)).toBeVisible({ timeout: 15_000 });
+      await expect(walks.getByLabel(/^60-minute walk \(\$\)$/)).toBeVisible();
+      await expect(page.locator('[data-setup-price-form="area"]')).toBeVisible();
+      await expect(page.getByRole("link", { name: "Price walks" })).toHaveCount(0);
+      await measure(page, w, `/setup prices (scoops and walks) @${w}px`);
+    });
   });
 }
