@@ -20,6 +20,7 @@ import {
 } from "@/lib/properties.functions";
 import { BoundarySketch, type PolygonGeoJSON } from "@/components/BoundarySketch";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
+import { partsFromPick } from "@/lib/address/pick";
 import { AddressAutocomplete, type ResolvedAddress } from "@/components/AddressAutocomplete";
 // (Badge replaced by MetaChip per Stage 3 taxonomy.)
 import { MetaChip, SectionLabel } from "@/components/client-detail/primitives";
@@ -178,17 +179,13 @@ export function PropertyDrawer({
   }
 
   function applyResolved(r: ResolvedAddress) {
+    // Every part from the match, the unit included: carrying "#4" from a
+    // previous selection onto a different address would save a wrong unit
+    // (lib/address/pick.ts, #783).
+    const parts = partsFromPick(r.address);
     setForm((f) => ({
       ...f,
-      street: r.address.street,
-      // Each match owns the unit: carrying "#4" from a previous selection
-      // onto a different address would save a wrong unit.
-      unit: r.address.unit ?? "",
-      city: r.address.city,
-      region: r.address.region ?? "",
-      postalCode: r.address.postalCode,
-      latitude: r.address.latitude,
-      longitude: r.address.longitude,
+      ...parts,
       addressSource: "matched",
     }));
     setMatchedZoneName(r.zoneName);

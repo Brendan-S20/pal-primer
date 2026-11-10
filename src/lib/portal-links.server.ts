@@ -6,12 +6,10 @@ function appUrl(): string {
   return appOrigin();
 }
 
-export function slugify(txt: string): string {
-  return (txt || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
+// One rule for a portal address, shared with the browser: setup step 1 shows
+// the address it will suggest before anything is saved (D14).
+import { slugify } from "@/lib/portal-slug";
+export { slugify };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function isUuid(v: string | null | undefined): boolean {

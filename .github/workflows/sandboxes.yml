@@ -79,8 +79,14 @@ on:
   # The tests/support files are what the DB tests import. #683 changed only
   # select-embeds.ts, which decides every query every-select-embed-resolves
   # sends; without them the fix to that test would not have run it.
+  #
+  # src/** routes to the browser jobs only (Four widths + the one-off cases),
+  # never the database job. Product asked for it so a UI change in src/ gets
+  # browser coverage on its PR without someone dispatching viewports=true by
+  # hand. The gate in `changes` still keeps a src-only PR off the Docker replay.
   pull_request:
     paths:
+      - "src/**"
       - "supabase/migrations/**"
       - "supabase/proofs/**"
       - "tests/integration/*.db.test.ts"
@@ -229,6 +235,8 @@ jobs:
               tests/support/select-embeds.ts|tests/support/withheld-columns.ts) database=true ;;
               tests/e2e/*|playwright.e2e.config.ts)        database=true ;;
               tests/viewports/*|playwright.config.ts)      viewports=true ;;
+              # App source: the browser jobs only, never the database replay.
+              src/*)                                       viewports=true ;;
               # The workflow itself changes what both jobs DO, so it runs both.
               .github/workflows/sandboxes.yml)             database=true; viewports=true ;;
             esac

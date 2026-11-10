@@ -150,6 +150,7 @@ describe("D9: a finished step leaves the banner as soon as it is finished", () =
 
   it("the setup surfaces share one query, which nothing holds fresh for 30 seconds", () => {
     for (const f of [
+      "src/components/AppSidebar.tsx",
       "src/components/SetupGuideBanner.tsx",
       "src/components/OnboardingChecklist.tsx",
       "src/routes/_authenticated/setup.tsx",
@@ -173,6 +174,11 @@ describe("D9: a finished step leaves the banner as soon as it is finished", () =
     );
     // Both "That's me" and "Invite" finish the step; each says so itself
     // rather than relying on the caller's onSaved.
-    expect(staff.match(/invalidateOnboardingStatus\(qc\)/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    // Spelled either as the helper or, inside stepSave, as the key in its
+    // refresh list.
+    expect(
+      staff.match(/invalidateOnboardingStatus\(qc\)|refresh: \[ONBOARDING_STATUS_KEY/g)?.length ??
+        0,
+    ).toBeGreaterThanOrEqual(2);
   });
 });

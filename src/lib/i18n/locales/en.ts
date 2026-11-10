@@ -916,7 +916,10 @@ const en = {
     viewAccount: "View and edit your account",
     expandMenu: "Show menu labels",
     collapseMenu: "Hide menu labels",
+    showAllMenus: "Show all menus",
+    hideAllMenus: "Show fewer menus",
     group: {
+      "Get started": "Get started",
       Overview: "Overview",
       Operations: "Operations",
       Field: "Field",
@@ -926,6 +929,7 @@ const en = {
       Platform: "Platform",
     },
     item: {
+      setup: "Guided setup",
       dashboard: "Dashboard",
       inbox: "Inbox",
       leads: "Leads",

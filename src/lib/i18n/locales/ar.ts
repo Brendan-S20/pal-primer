@@ -961,7 +961,10 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     viewAccount: "عرض حسابك وتعديله",
     expandMenu: "إظهار أسماء القائمة",
     collapseMenu: "إخفاء أسماء القائمة",
+    showAllMenus: "عرض كل القوائم",
+    hideAllMenus: "عرض قوائم أقل",
     group: {
+      "Get started": "البدء",
       Overview: "نظرة عامة",
       Operations: "العمليات",
       Field: "الميدان",
@@ -971,6 +974,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
       Platform: "المنصة",
     },
     item: {
+      setup: "الإعداد الموجّه",
       dashboard: "لوحة التحكم",
       inbox: "صندوق الوارد",
       leads: "العملاء المحتملون",

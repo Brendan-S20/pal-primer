@@ -28,7 +28,21 @@ import {
   type OnboardingStepId,
   type PricePart,
 } from "@/lib/onboarding.functions";
-import { getOrgBranding, updateOrgBranding } from "@/lib/org.functions";
+import {
+  getMyOrg,
+  getOrgBranding,
+  setPortalSlug,
+  suggestPortalSlug,
+  updateOrgBranding,
+} from "@/lib/org.functions";
+import {
+  officeEmailPrefill,
+  officeEmailWrite,
+  portalSlugPrefill,
+  portalSlugWrite,
+} from "@/lib/setup-prefill";
+import { slugify } from "@/lib/portal-slug";
+import { linkOrigin } from "@/lib/app-origin";
 import { countryFromAddress } from "@/lib/distance-unit";
 import { setServiceLines } from "@/lib/org-features.functions";
 import { setupAsksServiceLines, type ServiceLine } from "@/lib/service-lines";
@@ -40,6 +54,20 @@ import {
 import { useServiceLineAvailability } from "@/hooks/useServiceLineAvailability";
 import { getDispatchSettings, updateDispatchSettings } from "@/lib/visits.functions";
 import { createZone, geocodePostal } from "@/lib/zones.functions";
+import { getFirstCleanupPricing, setFirstCleanupPricing } from "@/lib/first-cleanup.functions";
+import { getStandardPricing, updateFrequencyMultipliers } from "@/lib/subscriptions.functions";
+import { FIRST_CLEANUP_MODE_LABEL } from "@/lib/first-cleanup";
+import { formatMultiplier, type MultiplierFrequency } from "@/lib/frequency-multipliers";
+import {
+  SETUP_MULTIPLIER_FREQUENCIES,
+  firstCleanupPricingFromSetup,
+  setupFirstCleanupCents,
+  setupMultipliers,
+  storedMultiplier,
+  type SetupFirstCleanup,
+} from "@/lib/setup-pricing";
+import { adoptSetupAreaPrice } from "@/lib/setup-price.functions";
+import { stepSave } from "@/lib/setup-step-save";
 import { createOrgInvite, listStaffAddresses, setStaffRouting } from "@/lib/users.functions";
 import { upsertFacility } from "@/lib/stations.functions";
 import { getStripeConnectStatus } from "@/lib/stripe-connect.functions";
@@ -341,6 +369,7 @@ function PricingPanel({ step, onSaved }: { step: OnboardingStep; onSaved: () => 
 }
 
 const fieldClass = "space-y-1.5";
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ── 1. The business ────────────────────────────────────────────────────────
 
@@ -367,18 +396,32 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
   const [phone, setPhone] = useState<string | null>(null);
   const [address, setAddress] = useState<string | null>(null);
   const [tz, setTz] = useState<string | null>(null);
+  // The client portal's address and the office email (D14): asked here,
+  // prefilled, so Settings > Client portal is not left with an empty address
+  // and a reply-to nobody reads. null until touched, like the rest.
+  const [officeEmail, setOfficeEmail] = useState<string | null>(null);
+  const [portalSlug, setPortalSlugText] = useState<string | null>(null);
+  const { authEmail } = useMyProfile();
+  const orgFn = useServerFn(getMyOrg);
+  const orgQ = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn(), staleTime: 60_000 });
+  const savedSlug = (orgQ.data?.organization as { portal_slug?: string | null } | undefined)
+    ?.portal_slug;
+  const setSlugFn = useServerFn(setPortalSlug);
+  const suggestSlugFn = useServerFn(suggestPortalSlug);
   // Kept on the device as it is typed (gaps-r2-12): a reload used to clear
   // the services ticked, the phone, the address and the zone. Only what was
   // touched is kept, the same null-means-untouched values as above.
   const draft = useFormDraft({
     form: "setup-business",
-    value: { lines, name, phone, address, tz },
+    value: { lines, name, phone, address, tz, officeEmail, portalSlug },
     restore: (d) => {
       setLines(d.lines);
       setName(d.name);
       setPhone(d.phone);
       setAddress(d.address);
       setTz(d.tz);
+      setOfficeEmail(d.officeEmail ?? null);
+      setPortalSlugText(d.portalSlug ?? null);
     },
     reset: () => {
       setLines(null);
@@ -386,6 +429,8 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
       setPhone(null);
       setAddress(null);
       setTz(null);
+      setOfficeEmail(null);
+      setPortalSlugText(null);
     },
   });
 
@@ -393,6 +438,9 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
   const nameVal = name ?? b?.name ?? "";
   const phoneVal = phone ?? b?.contact_phone ?? "";
   const addressVal = address ?? b?.contact_address ?? "";
+  const officeEmailVal =
+    officeEmail ?? officeEmailPrefill({ saved: b?.contact_email, ownerEmail: authEmail });
+  const portalSlugVal = portalSlug ?? portalSlugPrefill({ saved: savedSlug, name: nameVal });
   const savedTz = (dispatchQ.data?.settings as { timezone?: string | null } | undefined)?.timezone;
   // The device's zone, or the address's, unless somebody already chose one
   // (#654: this read `savedTz ?? Chicago`, and savedTz was the column default).
@@ -426,41 +474,62 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
     (lines !== null || mayPreselect) &&
     (linesVal.length !== savedLines.length || linesVal.some((l) => !savedLines.includes(l)));
 
-  const m = useMutation({
-    mutationFn: async () => {
-      // First, because it decides what the later steps ask: a business that
-      // does not run pet waste is asked where its day ends, not for a dump
-      // site.
-      if (linesChanged) await saveLinesFn({ data: { lines: linesVal } });
-      // The country, when the address says it plainly ("TX 78701" is US) and
-      // nobody has chosen one yet: it decides miles or km on the board
-      // (#496). A choice made in Settings > Business is never overwritten.
-      const country = b?.country ? undefined : (countryFromAddress(addressVal) ?? undefined);
-      await saveBrandingFn({
-        data: {
-          name: nameVal.trim() || undefined,
-          contactPhone: phoneVal.trim() || null,
-          contactAddress: addressVal.trim() || null,
-          country,
-        },
-      });
-      if (writeTz) await saveDispatchFn({ data: { timezone: tzVal } });
-    },
-    onSuccess: () => {
-      draft.clear();
-      toast.success("Business details saved");
-      qc.invalidateQueries({ queryKey: ["org-branding"] });
-      qc.invalidateQueries({ queryKey: ["dispatch-settings"] });
-      qc.invalidateQueries({ queryKey: ["my-org"] });
-      if (linesChanged) {
-        setLines(null);
-        qc.invalidateQueries({ queryKey: ["my-org-features"] });
-        qc.invalidateQueries({ queryKey: ["services"] });
-      }
-      onSaved();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  // Refreshed on failure too (stepSave): the writes run in turn, so a
+  // failure in a later one leaves the earlier ones saved, and Settings must
+  // show them.
+  const m = useMutation(
+    stepSave({
+      qc,
+      save: async () => {
+        // First, because it decides what the later steps ask: a business that
+        // does not run pet waste is asked where its day ends, not for a dump
+        // site.
+        if (linesChanged) await saveLinesFn({ data: { lines: linesVal } });
+        // The country, when the address says it plainly ("TX 78701" is US) and
+        // nobody has chosen one yet: it decides miles or km on the board
+        // (#496). A choice made in Settings > Business is never overwritten.
+        const country = b?.country ? undefined : (countryFromAddress(addressVal) ?? undefined);
+        // Untouched, a business with no office email gets the owner's own
+        // sign-in email (D14); a saved one is never overwritten untouched.
+        const officeEmailToSave = officeEmailWrite({
+          saved: b?.contact_email,
+          typed: officeEmail,
+          ownerEmail: authEmail,
+        });
+        await saveBrandingFn({
+          data: {
+            name: nameVal.trim() || undefined,
+            contactPhone: phoneVal.trim() || null,
+            contactAddress: addressVal.trim() || null,
+            country,
+            contactEmail: officeEmailToSave,
+          },
+        });
+        if (writeTz) await saveDispatchFn({ data: { timezone: tzVal } });
+        // After the name, so a suggested address is the name just saved. A
+        // typed address goes through setPortalSlug, which refuses one that is
+        // taken; an untouched one through suggestPortalSlug, which picks the
+        // nearest free one, so another business's name never blocks this step.
+        const slugWrite = portalSlugWrite({ saved: savedSlug, typed: portalSlug });
+        if (slugWrite.kind === "set") await setSlugFn({ data: { slug: slugWrite.slug } });
+        else if (slugWrite.kind === "suggest") await suggestSlugFn();
+      },
+      refresh: [
+        ["org-branding"],
+        ["dispatch-settings"],
+        ["my-org"],
+        ...(linesChanged ? [["my-org-features"], ["services"]] : []),
+      ],
+      saved: () => {
+        draft.clear();
+        setOfficeEmail(null);
+        setPortalSlugText(null);
+        toast.success("Business details saved");
+        if (linesChanged) setLines(null);
+      },
+      onSaved,
+    }),
+  );
 
   return (
     <form
@@ -473,6 +542,10 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
         }
         if (!addressVal.trim()) {
           toast.error("Add your business address. Routes start from it.");
+          return;
+        }
+        if (officeEmailVal.trim() && !EMAIL_RE.test(officeEmailVal.trim())) {
+          toast.error("Check the office email. It should look like you@example.com.");
           return;
         }
         m.mutate();
@@ -532,6 +605,48 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
         </p>
       </div>
       <div className={fieldClass}>
+        <Label htmlFor="setup-office-email">Office email</Label>
+        <Input
+          id="setup-office-email"
+          type="email"
+          value={officeEmailVal}
+          onChange={(e) => setOfficeEmail(e.target.value)}
+          maxLength={255}
+          autoComplete="email"
+          placeholder="hello@your-company.com"
+        />
+        <p className="text-xs text-muted-foreground">
+          Clients who reply to an invoice or a reminder reach this address. Change it any time in
+          Settings, Client portal.
+        </p>
+      </div>
+      <div className={fieldClass}>
+        <Label htmlFor="setup-portal-slug">Client portal address</Label>
+        {/* The prefix is a fixed part of the address and the slug is the part
+            the owner types; on a narrow phone the two wrap rather than
+            pushing the input off the side. */}
+        <div className="flex flex-wrap items-center gap-x-1 gap-y-1.5">
+          <span className="min-w-0 break-all text-sm text-muted-foreground" dir="ltr">
+            {linkOrigin().replace(/^https?:\/\//, "")}/portal/
+          </span>
+          <Input
+            id="setup-portal-slug"
+            className="min-w-0 flex-1 basis-40"
+            dir="ltr"
+            value={portalSlugVal}
+            onChange={(e) => setPortalSlugText(slugify(e.target.value).slice(0, 63))}
+            maxLength={63}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder="your-company"
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Where clients sign in to see visits and pay invoices. Letters, numbers and hyphens.
+        </p>
+      </div>
+      <div className={fieldClass}>
         <Label htmlFor="setup-timezone">Time zone</Label>
         <select
           id="setup-timezone"
@@ -556,6 +671,9 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
 // ── 2. The service area and its price ──────────────────────────────────────
 
 const MILES = [5, 10, 15, 25, 40] as const;
+
+/** What Zones' First cleanup card reads (FirstCleanupPricingCard). */
+const FIRST_CLEANUP_KEY = ["first-cleanup-pricing"];
 
 /** For a business that runs more than one service line (#639): one row per
  *  thing to price, each saying whether it is done and where to do it. The
@@ -660,6 +778,10 @@ function ServiceAreaPanel({
   const brandingQ = useQuery({ queryKey: ["org-branding"], queryFn: () => brandingFn() });
   const createFn = useServerFn(createZone);
   const postalFn = useServerFn(geocodePostal);
+  const adoptFn = useServerFn(adoptSetupAreaPrice);
+  // The zone this form already created, so a retry after the price step
+  // failed does not create a second one.
+  const createdZone = useRef<string | null>(null);
 
   const [name, setName] = useState("Main service area");
   const [miles, setMiles] = useState<number>(15);
@@ -667,39 +789,105 @@ function ServiceAreaPanel({
   const [price, setPrice] = useState("");
   const [extraDog, setExtraDog] = useState("");
 
+  // The first cleanup and the schedule prices (D7). Written where Zones and
+  // Settings > Business defaults read them, through their own server
+  // functions: the zone's initial_cleanup_cents plus first_cleanup_pricing's
+  // mode, and frequency_multipliers. See lib/setup-pricing.
+  const fcGetFn = useServerFn(getFirstCleanupPricing);
+  const fcSetFn = useServerFn(setFirstCleanupPricing);
+  const stdGetFn = useServerFn(getStandardPricing);
+  const multSetFn = useServerFn(updateFrequencyMultipliers);
+  const fcQ = useQuery({ queryKey: ["first-cleanup-pricing"], queryFn: () => fcGetFn() });
+  const stdQ = useQuery({ queryKey: ["std-pricing"], queryFn: () => stdGetFn() });
+  const fcPricing = fcQ.data?.pricing;
+  // Tiers by "when was your yard last cleaned" are a Zones decision; setup
+  // says so and leaves them alone.
+  const tiered = fcPricing?.mode === "by_last_cleaned";
+  // No answer until the owner gives one: "Off" is a choice, not a default
+  // nobody read. A business already charging a flat first cleanup starts there.
+  const [firstCleanup, setFirstCleanup] = useState<SetupFirstCleanup | null>(null);
+  const firstCleanupVal: SetupFirstCleanup | null =
+    firstCleanup ?? (fcPricing?.mode === "flat" ? "flat" : null);
+  const [firstCleanupPrice, setFirstCleanupPrice] = useState("");
+  const [multDraft, setMultDraft] = useState<Partial<Record<MultiplierFrequency, string>>>({});
+  const storedMults = stdQ.data?.frequencyMultipliers;
+  const multValue = (f: MultiplierFrequency) =>
+    multDraft[f] ?? formatMultiplier(storedMultiplier(storedMults, f));
+  const pricesLoaded = !!fcQ.data && !!stdQ.data;
+
   const b = brandingQ.data;
   const pinned = b?.latitude != null && b?.longitude != null;
 
-  const m = useMutation({
-    mutationFn: async () => {
-      let center = pinned ? { lat: Number(b!.latitude), lng: Number(b!.longitude) } : null;
-      if (!center) {
-        const r = await postalFn({ data: { postalCode: zip.trim() } });
-        if (!r.point) throw new Error("We could not find that ZIP code. Check it and try again.");
-        center = { lat: r.point.latitude, lng: r.point.longitude };
-      }
-      const cents = (v: string) => Math.round(parseFloat(v) * 100);
-      return createFn({
-        data: {
-          name: name.trim(),
-          geoMatchMode: "radius",
-          centerLatitude: center.lat,
-          centerLongitude: center.lng,
-          radiusMeters: Math.round(miles * 1609.344),
-          basePriceCents: cents(price),
-          perDogAddlCents: extraDog.trim() ? cents(extraDog) : 0,
-        },
-      });
-    },
-    onSuccess: () => {
-      toast.success("Service area saved");
-      qc.invalidateQueries({ queryKey: ["zones"] });
-      onSaved();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  const m = useMutation(
+    stepSave({
+      qc,
+      save: async () => {
+        const cents = (v: string) => Math.round(parseFloat(v) * 100);
+        const basePriceCents = cents(price);
+        const perDogAddlCents = extraDog.trim() ? cents(extraDog) : 0;
+        // The first cleanup and the schedule prices (D7) first: they are
+        // idempotent, so a failure here leaves nothing half-made, and the
+        // area (which finishes the step) is saved after them.
+        const mults = setupMultipliers(storedMults, multDraft);
+        if (!mults) throw new Error("Each schedule needs a number between 0.1 and 10.");
+        await multSetFn({ data: mults });
+        let initialCleanupCents: number | undefined;
+        if (!tiered && fcPricing && firstCleanupVal) {
+          const fc = setupFirstCleanupCents(firstCleanupVal, firstCleanupPrice);
+          if (fc == null) throw new Error("Enter what a first cleanup costs, or choose Off.");
+          initialCleanupCents = fc;
+          const next = firstCleanupPricingFromSetup(fcPricing, firstCleanupVal);
+          if (next) await fcSetFn({ data: next });
+        }
+        if (!createdZone.current) {
+          let center = pinned ? { lat: Number(b!.latitude), lng: Number(b!.longitude) } : null;
+          if (!center) {
+            const r = await postalFn({ data: { postalCode: zip.trim() } });
+            if (!r.point)
+              throw new Error("We could not find that ZIP code. Check it and try again.");
+            center = { lat: r.point.latitude, lng: r.point.longitude };
+          }
+          const zone = await createFn({
+            data: {
+              name: name.trim(),
+              geoMatchMode: "radius",
+              // List the ZIPs the circle holds, as "Fill ZIPs from the area" on
+              // Zones does. Without them the signup page and the lead form,
+              // which match by ZIP alone, could not quote the area setup made
+              // (onboarding audit 2026-11-09, D1).
+              fillZipsFromShape: true,
+              centerLatitude: center.lat,
+              centerLongitude: center.lng,
+              radiusMeters: Math.round(miles * 1609.344),
+              basePriceCents,
+              perDogAddlCents,
+              // The zone's own first-cleanup price, which Zones' "flat" mode
+              // reads (D7). Off is an explicit $0.
+              initialCleanupCents,
+            },
+          });
+          createdZone.current = zone.id;
+        }
+        // The same price is the business's Standard price and the default
+        // service's price, where those are still blank (#766). One answer to
+        // "what do I charge per visit", not a zone at $25 and Standard at $30.
+        await adoptFn({ data: { basePriceCents, perDogAddlCents } });
+      },
+      // Zones, Settings > Business > Standard pricing and Price by schedule,
+      // Settings > Services, and Zones' First cleanup card.
+      refresh: [["zones"], ["zone-coverage"], ["std-pricing"], ["services"], FIRST_CLEANUP_KEY],
+      saved: () => {
+        createdZone.current = null;
+        setMultDraft({});
+        toast.success("Service area saved");
+      },
+      onSaved,
+    }),
+  );
 
   const priceOk = parseFloat(price) > 0;
+  const priceCents = priceOk ? Math.round(parseFloat(price) * 100) : null;
+  const money = (c: number) => `$${(c / 100).toFixed(2)}`;
 
   if (done && !adding) {
     return (
@@ -711,6 +899,16 @@ function ServiceAreaPanel({
           </Link>
           .
         </p>
+        {fcPricing && (
+          <p className="text-sm text-muted-foreground" data-setup-first-cleanup-summary>
+            First cleanup: {FIRST_CLEANUP_MODE_LABEL[fcPricing.mode]}. Every 2 weeks: x
+            {formatMultiplier(storedMultiplier(storedMults, "biweekly"))} of a weekly visit, on{" "}
+            <Link to="/settings/business" className="underline">
+              Business defaults
+            </Link>
+            .
+          </p>
+        )}
         <Button type="button" variant="outline" onClick={() => setAdding(true)}>
           Add another area
         </Button>
@@ -729,6 +927,22 @@ function ServiceAreaPanel({
         }
         if (!pinned && zip.trim().length < 5) {
           toast.error("Enter the ZIP code at the middle of the area you serve.");
+          return;
+        }
+        if (!tiered && !firstCleanupVal) {
+          toast.error("Choose whether new clients pay for a first cleanup.");
+          return;
+        }
+        if (
+          !tiered &&
+          firstCleanupVal &&
+          setupFirstCleanupCents(firstCleanupVal, firstCleanupPrice) == null
+        ) {
+          toast.error("Enter what a first cleanup costs, or choose Off.");
+          return;
+        }
+        if (!setupMultipliers(storedMults, multDraft)) {
+          toast.error("Each schedule needs a number between 0.1 and 10.");
           return;
         }
         m.mutate();
@@ -806,6 +1020,103 @@ function ServiceAreaPanel({
           />
         </div>
       </div>
+      <fieldset className={fieldClass} data-setup-first-cleanup>
+        <legend className="text-sm font-medium">First cleanup</legend>
+        <p className="text-xs text-muted-foreground">
+          What a new client pays once, for the first visit, when the yard has built up.
+        </p>
+        {tiered ? (
+          <p className="pt-1 text-sm">
+            Priced by when the yard was last cleaned, set on{" "}
+            <Link to="/zones" className="underline">
+              Zones
+            </Link>
+            .
+          </p>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-2 pt-1.5">
+              <Button
+                id="setup-first-cleanup-off"
+                type="button"
+                size="sm"
+                variant={firstCleanupVal === "off" ? "default" : "outline"}
+                aria-pressed={firstCleanupVal === "off"}
+                onClick={() => setFirstCleanup("off")}
+              >
+                Off, no first-cleanup charge
+              </Button>
+              <Button
+                id="setup-first-cleanup-flat"
+                type="button"
+                size="sm"
+                variant={firstCleanupVal === "flat" ? "default" : "outline"}
+                aria-pressed={firstCleanupVal === "flat"}
+                onClick={() => setFirstCleanup("flat")}
+              >
+                Charge a flat price
+              </Button>
+            </div>
+            {firstCleanupVal === "flat" && (
+              <div className={`${fieldClass} pt-2`}>
+                <Label htmlFor="setup-zone-first-cleanup">First cleanup price ($)</Label>
+                <Input
+                  id="setup-zone-first-cleanup"
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  value={firstCleanupPrice}
+                  onChange={(e) => setFirstCleanupPrice(e.target.value)}
+                />
+              </div>
+            )}
+          </>
+        )}
+      </fieldset>
+      <fieldset className={fieldClass} data-setup-schedule-prices>
+        <legend className="text-sm font-medium">Price by schedule</legend>
+        <p className="text-xs text-muted-foreground">
+          Each number is what one visit on that schedule costs, counted in weekly visits. Twice
+          weekly and monthly are on Business defaults.
+        </p>
+        <div className="space-y-2 pt-1.5">
+          {SETUP_MULTIPLIER_FREQUENCIES.map((f) => {
+            const raw = multValue(f);
+            const n = Number(raw);
+            const ok = raw.trim() !== "" && Number.isFinite(n) && n >= 0.1 && n <= 10;
+            return (
+              <div key={f} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                <Label htmlFor={`setup-mult-${f}`} className="min-w-0 flex-1 basis-32 text-sm">
+                  {f === "weekly" ? "Weekly" : "Every 2 weeks"}
+                </Label>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="text-sm text-muted-foreground">x</span>
+                  <Input
+                    id={`setup-mult-${f}`}
+                    type="number"
+                    inputMode="decimal"
+                    min="0.1"
+                    max="10"
+                    step="0.05"
+                    className="w-24"
+                    aria-invalid={!ok}
+                    value={raw}
+                    onChange={(e) => setMultDraft((d) => ({ ...d, [f]: e.target.value }))}
+                  />
+                  <span className="w-28 text-xs text-muted-foreground">
+                    {!ok
+                      ? "Between 0.1 and 10"
+                      : priceCents != null
+                        ? `${money(Math.round(priceCents * n))} a visit`
+                        : null}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </fieldset>
       <p className="text-xs text-muted-foreground">
         You can draw more areas with their own prices on{" "}
         <Link to="/zones" className="underline">
@@ -813,7 +1124,7 @@ function ServiceAreaPanel({
         </Link>{" "}
         later.
       </p>
-      <Button type="submit" disabled={m.isPending} data-setup-action="save">
+      <Button type="submit" disabled={m.isPending || !pricesLoaded} data-setup-action="save">
         {m.isPending ? "Saving…" : saveLabel}
       </Button>
     </form>
@@ -860,33 +1171,33 @@ function StaffPanel({ onSaved }: { onSaved: () => void }) {
     { id: string; is_field_tech: boolean | null } | undefined;
   const iRunRoutes = !!mine?.is_field_tech;
 
-  const selfMut = useMutation({
-    mutationFn: () => routingFn({ data: { staffId: me!.id, isFieldTech: true } }),
-    onSuccess: () => {
-      toast.success("You're on the schedule");
-      void invalidateOnboardingStatus(qc);
-      qc.invalidateQueries({ queryKey: ["staff-addresses"] });
-      qc.invalidateQueries({ queryKey: ["staff"] });
-      onSaved();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  const selfMut = useMutation(
+    stepSave({
+      qc,
+      save: () => routingFn({ data: { staffId: me!.id, isFieldTech: true } }),
+      // Settings > Users reads both of the first two.
+      refresh: [ONBOARDING_STATUS_KEY, ["staff-addresses"], ["org-users"], ["staff"]],
+      saved: "You're on the schedule",
+      onSaved,
+    }),
+  );
 
-  const inviteMut = useMutation({
-    mutationFn: () => inviteFn({ data: { email: email.trim(), role: "tech" } }),
-    // The Team page's honest wording (#568): "sent" only when the provider
-    // accepted it, otherwise "not sent" and the link to send by hand (#612).
-    onSuccess: (r) => {
-      const to = email.trim();
-      if (r.emailSent) toast.success(`Invite sent to ${to}`);
-      else toastNotSent("Invite", to, r.link);
-      setEmail("");
-      void invalidateOnboardingStatus(qc);
-      qc.invalidateQueries({ queryKey: ["org-invites"] });
-      onSaved();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  const inviteMut = useMutation(
+    stepSave({
+      qc,
+      save: () => inviteFn({ data: { email: email.trim(), role: "tech" } }),
+      refresh: [ONBOARDING_STATUS_KEY, ["org-invites"]],
+      // The Team page's honest wording (#568): "sent" only when the provider
+      // accepted it, otherwise "not sent" and the link to send by hand (#612).
+      saved: (r) => {
+        const to = email.trim();
+        if (r.emailSent) toast.success(`Invite sent to ${to}`);
+        else toastNotSent("Invite", to, r.link);
+        setEmail("");
+      },
+      onSaved,
+    }),
+  );
 
   return (
     <div className="space-y-5">
@@ -968,16 +1279,18 @@ function DumpSitePanel({ done, onSaved }: { done: boolean; onSaved: () => void }
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
 
-  const m = useMutation({
-    mutationFn: () =>
-      saveFn({ data: { name: name.trim() || "Dump site", address: address.trim() } }),
-    onSuccess: () => {
-      toast.success("Dump site saved");
-      qc.invalidateQueries({ queryKey: ["facilities"] });
-      onSaved();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  const m = useMutation(
+    stepSave({
+      qc,
+      save: () => saveFn({ data: { name: name.trim() || "Dump site", address: address.trim() } }),
+      // The key the Waste log and Settings > Business > Dump sites read. This
+      // said "facilities", a key nothing reads, so those lists kept showing
+      // no dump site until something else refreshed them.
+      refresh: [["waste-facilities"]],
+      saved: "Dump site saved",
+      onSaved,
+    }),
+  );
 
   const start = brandingQ.data?.contact_address;
 
