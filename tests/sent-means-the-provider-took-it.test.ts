@@ -227,8 +227,9 @@ describe("each label says sent only when it was, and 'not sent, copy link' when 
     expect(page).not.toMatch(/Welcome email sent to/);
     expect(page).toMatch(/what: "Welcome email"/);
     expect(page).toMatch(/statusHandle: welcomeStatusHandle/);
-    // Quiet when the owner turned welcome emails off.
-    expect(page).toMatch(/if \(primaryEmail && !welcomeTurnedOff\)/);
+    // Quiet when the owner turned welcome emails off, and when nobody ticked
+    // "Email them a welcome" (onboarding audit 2026-11-09, D4).
+    expect(page).toMatch(/if \(welcomeRequested && primaryEmail && !welcomeTurnedOff\)/);
     expect(page).toMatch(/link: welcomeLink/);
   });
 
