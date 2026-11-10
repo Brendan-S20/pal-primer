@@ -118,12 +118,15 @@ export async function finishSignup(
     progress.consentSaved = true;
   }
 
-  // Verify now or later; never a reason to stop.
-  try {
-    await deps.sendEmailVerification();
-  } catch (e) {
-    console.error("verification email send failed", e);
-  }
+  // Verify now or later; never a reason to stop -- and never a reason to
+  // WAIT, either (#786). This used to be awaited, so "Create my workspace"
+  // held the owner on the button for as long as the mail provider took to
+  // answer, after the business already existed: part of the 4.3 s measured
+  // on live. The send is started here and left to finish on its own; a
+  // failure is still logged, and nothing about it can stop the signup.
+  void Promise.resolve()
+    .then(() => deps.sendEmailVerification())
+    .catch((e) => console.error("verification email send failed", e));
   return "workspace";
 }
 
