@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  billingFrequencyForNewClient,
   invoicesAtCompletion,
   voidedInvoiceCount,
   type BillableVisit,
@@ -76,6 +77,50 @@ describe("which completions invoice the visit", () => {
   it("a skipped or still-scheduled visit does not", () => {
     expect(invoicesAtCompletion(visit({ status: "skipped" }), afterEachVisit)).toBe(false);
     expect(invoicesAtCompletion(visit({ status: "scheduled" }), afterEachVisit)).toBe(false);
+  });
+});
+
+describe('"Bill after each visit" on the new-client form bills after each visit', () => {
+  it("a postpaid plan saves the client billed after each visit", () => {
+    expect(billingFrequencyForNewClient("postpaid")).toBe("after_each_visit");
+  });
+
+  it("a prepaid plan, or no plan, leaves the default (monthly) alone", () => {
+    expect(billingFrequencyForNewClient("prepaid")).toBeUndefined();
+    expect(billingFrequencyForNewClient(null)).toBeUndefined();
+    expect(billingFrequencyForNewClient(undefined)).toBeUndefined();
+  });
+
+  it("the tester's path: Weekly scoop, Bill after each visit, $20, completed: invoiced", () => {
+    const v = visit({
+      price_cents: 2000,
+      subscription: { price_cents: 2000, billing_cadence: "postpaid" },
+    });
+    expect(
+      invoicesAtCompletion(v, {
+        billingFrequency: billingFrequencyForNewClient("postpaid") ?? "monthly",
+        clientActive: true,
+        autoInvoiceEnabled: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("the form's only postpaid option is the one labelled Bill after each visit", () => {
+    const form = read("src/routes/_authenticated/clients.new.tsx");
+    expect(form).toMatch(/<option value="postpaid">Bill after each visit<\/option>/);
+  });
+
+  it("onboardClient writes that frequency on the client it creates, from the plan's cadence", () => {
+    const fn = between(
+      read("src/lib/clients.functions.ts"),
+      "export const onboardClient",
+      "// 2) property",
+    );
+    expect(fn).toMatch(/billingFrequencyForNewClient\(/);
+    // A caller who does not set prices always writes a postpaid plan.
+    expect(fn).toMatch(/planAtSetPrice\s*\?\s*"postpaid"/);
+    const insert = fn.slice(fn.indexOf('.from("clients")'));
+    expect(insert).toMatch(/billing_frequency: billingFrequency/);
   });
 });
 

@@ -1628,6 +1628,21 @@ export const onboardClient = createServerFn({ method: "POST" })
     }
 
     // 1) client
+    //
+    // "Bill after each visit" is what the form calls a postpaid plan, so the
+    // client is billed that way: billing_frequency 'after_each_visit', which
+    // invoices each visit when it is completed (#859). It defaulted to
+    // 'monthly', so the label's promise waited for the end of the month. The
+    // cadence is the one the plan is written with below: a caller who does
+    // not set prices always writes a postpaid plan.
+    const { billingFrequencyForNewClient } = await import("@/lib/visit-invoicing");
+    const billingFrequency = billingFrequencyForNewClient(
+      data.subscription
+        ? planAtSetPrice
+          ? "postpaid"
+          : (data.subscription.billingCadence ?? "postpaid")
+        : null,
+    );
     const { data: cRow, error: cErr } = await supabase
       .from("clients")
       .insert({
@@ -1636,6 +1651,7 @@ export const onboardClient = createServerFn({ method: "POST" })
         account_type: data.accountType,
         primary_email: data.primaryEmail || null,
         primary_phone: data.primaryPhone || null,
+        ...(billingFrequency ? { billing_frequency: billingFrequency } : {}),
       })
       .select("id, portal_token")
       .single();

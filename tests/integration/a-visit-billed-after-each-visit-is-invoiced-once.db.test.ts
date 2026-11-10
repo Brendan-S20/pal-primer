@@ -22,6 +22,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { addDays, orgDay } from "../support/org-day";
 import { insertManualInvoice } from "@/lib/manual-invoice.server";
 import { visitInvoicing } from "@/lib/visit-invoicing.server";
+import { billingFrequencyForNewClient } from "@/lib/visit-invoicing";
 import {
   invoiceVisitAtCompletion,
   nextVisitInvoiceKey,
@@ -130,6 +131,33 @@ describe.skipIf(!enabled)("a visit billed after each visit is invoiced when comp
     });
   });
 
+  it("the tester's path (#859): a client saved with Bill after each visit is invoiced at completion", async () => {
+    // What onboardClient writes for the new-client form's "Bill after each
+    // visit" on a Weekly scoop plan at $20: a postpaid plan, and the client
+    // billed after each visit. Nothing passed for the frequency but the
+    // helper's answer, so a client saved on the old default fails here.
+    const frequency = billingFrequencyForNewClient("postpaid");
+    expect(frequency).toBe("after_each_visit");
+    const { clientId, visitId } = await completedVisit({
+      cadence: "postpaid",
+      // The column's own default when the helper says nothing.
+      frequency: frequency ?? "monthly",
+    });
+    const { data: c } = await admin
+      .from("clients")
+      .select("billing_frequency")
+      .eq("id", clientId)
+      .single();
+    expect(c?.billing_frequency).toBe("after_each_visit");
+
+    expect(await complete(visitId)).toMatchObject({ invoiced: true, totalCents: 2000 });
+    const list = await invoices(clientId);
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ status: "open", total_cents: 2000 });
+    expect(await complete(visitId)).toEqual({ invoiced: false, reason: "already invoiced" });
+    expect(await invoices(clientId)).toHaveLength(1);
+  });
+
   it("the first completed visit has its open invoice, for its price, with no extra click", async () => {
     const { clientId, visitId } = await completedVisit();
     const r = await complete(visitId);
@@ -218,9 +246,14 @@ describe.skipIf(!enabled)("a visit billed after each visit is invoiced when comp
     expect(await invoices(clientId)).toHaveLength(0);
   });
 
-  it("a monthly client opens no invoice at completion: the run bills the month", async () => {
-    const { clientId, visitId } = await completedVisit({ frequency: "monthly" });
-    expect((await complete(visitId)).invoiced).toBe(false);
-    expect(await invoices(clientId)).toHaveLength(0);
+  it("a postpaid client without Bill after each visit opens no invoice at completion: the run bills the period", async () => {
+    for (const frequency of ["monthly", "weekly"]) {
+      const { clientId, visitId } = await completedVisit({ cadence: "postpaid", frequency });
+      expect(await complete(visitId)).toEqual({
+        invoiced: false,
+        reason: "not billed after each visit",
+      });
+      expect(await invoices(clientId)).toHaveLength(0);
+    }
   });
 });

@@ -182,3 +182,15 @@ export function voidedInvoiceCount(visitId: string, links: VisitLink[]): number 
       .map((l) => l.invoice.id),
   ).size;
 }
+
+/** The billing frequency a new client is saved with (#859). The new-client
+ *  form offers a postpaid plan as "Bill after each visit", so that is what
+ *  the client is billed on: invoiced at completion, not on the monthly run.
+ *  A prepaid plan, or no plan, leaves the column's default alone. Weekly,
+ *  monthly, quarterly and yearly stay a choice the office makes on the
+ *  client afterwards (Edit client -> Billing frequency). */
+export function billingFrequencyForNewClient(
+  planCadence: "postpaid" | "prepaid" | null | undefined,
+): "after_each_visit" | undefined {
+  return planCadence === "postpaid" ? "after_each_visit" : undefined;
+}
