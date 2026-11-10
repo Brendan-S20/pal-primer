@@ -229,6 +229,17 @@ describe("gap 1: live taps for the production demo org only; Detroit Doo refused
     expect(mode(DETROIT_DOO_ORG, false, parseOrgIds(undefined))).toBe("off");
   });
 
+  it("an unset or empty deny list changes nobody else", () => {
+    for (const raw of [undefined, "", " , "]) {
+      const none = parseOrgIds(raw);
+      expect(none.size).toBe(0);
+      expect(mode(DEMO_ORG, false, none)).toBe("live");
+      expect(mode(OTHER_ORG, false, none)).toBe("off");
+    }
+    // And Detroit Doo on the list does not touch the demo org.
+    expect(mode(DEMO_ORG, false, parseOrgIds(DETROIT_DOO_ORG))).toBe("live");
+  });
+
   it("test mode is unchanged for everyone: Stripe's simulated reader", () => {
     for (const id of [DEMO_ORG, DETROIT_DOO_ORG, OTHER_ORG])
       expect(mode(id, true)).toBe("simulated");

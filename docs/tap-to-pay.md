@@ -194,8 +194,9 @@ refund it."
    profile with the Tap to Pay on iPhone capability), iPhone XS or newer, on
    the latest iOS.
 2. **Which business:** the production demo org, Demo Pet Waste Co, only. It
-   is the one business the code lets take live taps. Never a customer's
-   business. The demo org needs a charge-ready live connected account and a
+   is the one business the code lets take live taps. Never Detroit Doo
+   Disposal (refused by id, Brendan's 7:57 AM ET decision), never any other
+   customer's business. The demo org needs a charge-ready live connected account and a
    business address (Settings, Client portal); the Terminal Location is made
    on the first tap.
 3. **What to record:** the announcement, Enable Tap to Pay on iPhone from
