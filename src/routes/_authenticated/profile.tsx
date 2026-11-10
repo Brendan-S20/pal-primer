@@ -37,7 +37,7 @@ import { CalendarFeedCard } from "@/components/CalendarFeedCard";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { useMyProfile } from "@/hooks/useMyProfile";
 import { supabase } from "@/integrations/supabase/client";
-import { appOrigin } from "@/lib/app-origin";
+import { passwordResetRedirectHere } from "@/lib/password-recovery";
 import { useRoleLabel } from "@/components/CommercialOnly";
 import {
   changeMyEmail,
@@ -147,7 +147,7 @@ function ProfilePage() {
   });
 
   const resetPassword = useMutation({
-    mutationFn: () => resetFn({ data: { redirectTo: `${appOrigin()}/auth` } }),
+    mutationFn: async () => resetFn({ data: { redirectTo: await passwordResetRedirectHere() } }),
     onSuccess: (r) => toast.success(`Password reset link sent to ${r.sentTo}.`),
     onError: (e: Error) => toast.error(e.message),
   });
@@ -265,13 +265,22 @@ function ProfilePage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="pf-phone">Phone</Label>
+              <Label htmlFor="pf-phone">Your phone</Label>
               <Input
                 id="pf-phone"
+                type="tel"
+                autoComplete="tel"
+                aria-describedby="pf-phone-hint"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="Optional"
               />
+              {/* #787: this is the person's own number. The number customers
+                  see is the business's office phone, a different field, and
+                  a blank here next to a filled portal read as lost data. */}
+              <p id="pf-phone-hint" className="text-xs text-muted-foreground">
+                Your own number. Clients see the office phone in Settings → Client portal.
+              </p>
             </div>
           </div>
           <Button

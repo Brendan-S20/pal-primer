@@ -366,6 +366,7 @@ function BillingPage() {
           <PlanPicker
             currentSlug={data.planSlug}
             currentInterval={currentInterval}
+            paid={!!data.isPaidTier}
             onSelect={onPickPlan}
             switchingPlanId={switchPlan.isPending ? switchPlan.variables?.planId : null}
             chooseLabel={data.isPaidTier ? "Switch to this plan" : "Choose plan"}

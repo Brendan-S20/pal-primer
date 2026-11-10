@@ -961,7 +961,10 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     viewAccount: "عرض حسابك وتعديله",
     expandMenu: "إظهار أسماء القائمة",
     collapseMenu: "إخفاء أسماء القائمة",
+    showAllMenus: "عرض كل القوائم",
+    hideAllMenus: "عرض قوائم أقل",
     group: {
+      "Get started": "البدء",
       Overview: "نظرة عامة",
       Operations: "العمليات",
       Field: "الميدان",
@@ -971,6 +974,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
       Platform: "المنصة",
     },
     item: {
+      setup: "الإعداد الموجّه",
       dashboard: "لوحة التحكم",
       inbox: "صندوق الوارد",
       leads: "العملاء المحتملون",
@@ -1404,6 +1408,16 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     checkAgain: "تحقق مرة أخرى",
     couldNotCheck: "تعذّر التحقق الآن. حاول مرة أخرى بعد قليل.",
     stillOff: "لا يزال الوصول متوقفًا. اطلب من المالك إعادة تفعيلك.",
+  },
+  staySummary: {
+    title: "ملخصات الإقامات",
+    description:
+      "عندما تُتخطّى الزيارة الأخيرة في إقامة أو تفوت، يتلقى العميل ملخص نهاية الإقامة في الليلة التالية.",
+    catchUpLabel: "إرسال ملخصات الإقامات التي انتهت قبل تفعيل هذا الخيار (آخر 7 أيام)",
+    catchUpHelp:
+      "عند الإيقاف: الإقامات التي تنتهي من الآن فقط. الملخص الذي أُرسل من قبل لا يُرسل مرة أخرى أبدًا.",
+    saved: "تم حفظ إعداد ملخصات الإقامات",
+    onlyOwner: "يمكن للمالك أو مدير المكتب فقط تغيير هذا.",
   },
 };
 

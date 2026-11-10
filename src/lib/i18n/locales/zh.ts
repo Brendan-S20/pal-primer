@@ -869,7 +869,10 @@ const zh: TranslationsWithPlurals<"other"> = {
     viewAccount: "查看和编辑你的账号",
     expandMenu: "显示菜单名称",
     collapseMenu: "隐藏菜单名称",
+    showAllMenus: "显示所有菜单",
+    hideAllMenus: "显示更少菜单",
     group: {
+      "Get started": "开始使用",
       Overview: "概览",
       Operations: "运营",
       Field: "现场",
@@ -879,6 +882,7 @@ const zh: TranslationsWithPlurals<"other"> = {
       Platform: "平台",
     },
     item: {
+      setup: "设置向导",
       dashboard: "仪表盘",
       inbox: "收件箱",
       leads: "潜在客户",
@@ -1262,6 +1266,14 @@ const zh: TranslationsWithPlurals<"other"> = {
     checkAgain: "重新检查",
     couldNotCheck: "暂时无法检查，请稍后再试。",
     stillOff: "仍处于关闭状态。请让负责人重新启用你。",
+  },
+  staySummary: {
+    title: "寄养总结",
+    description: "当一次寄养的最后一次上门被跳过或错过时，客户仍会在第二天晚上收到寄养总结。",
+    catchUpLabel: "为开启此功能之前结束的寄养发送总结（最近 7 天）",
+    catchUpHelp: "关闭：仅限从现在起结束的寄养。已经发送过的总结不会再次发送。",
+    saved: "寄养总结设置已保存",
+    onlyOwner: "只有负责人或办公室经理可以更改此设置。",
   },
 };
 

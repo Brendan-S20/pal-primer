@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // One van is one groomer. Booking refused a groom on top of another for the
 // same groomer; moving one to another day or dragging it to another groomer
@@ -118,6 +118,19 @@ const groom = (over: Row): Row => ({
   groom_summary: "Full groom",
   services: { service_line: "mobile_grooming" },
   ...over,
+});
+
+// DAY and NEXT are fixed calendar days, and moving a visit onto a day that
+// is already over is refused (booking-dates.ts) before the clash check runs.
+// Without a pinned clock this file passed until 2026-11-09 and then failed
+// on the past-day refusal instead of the clash it is about. Only Date is
+// faked, so promises and timers run as normal.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-01T12:00:00Z"));
+});
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 beforeEach(() => {

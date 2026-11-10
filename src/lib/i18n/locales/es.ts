@@ -907,7 +907,10 @@ const es: Translations = {
     viewAccount: "Ver y editar tu cuenta",
     expandMenu: "Mostrar los nombres del menú",
     collapseMenu: "Ocultar los nombres del menú",
+    showAllMenus: "Mostrar todos los menús",
+    hideAllMenus: "Mostrar menos menús",
     group: {
+      "Get started": "Primeros pasos",
       Overview: "Resumen",
       Operations: "Operaciones",
       Field: "Campo",
@@ -917,6 +920,7 @@ const es: Translations = {
       Platform: "Plataforma",
     },
     item: {
+      setup: "Configuración guiada",
       dashboard: "Panel",
       inbox: "Bandeja de entrada",
       leads: "Prospectos",
@@ -1318,6 +1322,17 @@ const es: Translations = {
     checkAgain: "Comprobar de nuevo",
     couldNotCheck: "No se pudo comprobar ahora. Inténtalo de nuevo en un momento.",
     stillOff: "Sigue desactivado. Pide al dueño que te reactive.",
+  },
+  staySummary: {
+    title: "Resúmenes de estancias",
+    description:
+      "Cuando la última visita de una estancia se omite o se pierde, el cliente igual recibe el resumen de la estancia la noche siguiente.",
+    catchUpLabel:
+      "Enviar resúmenes de estancias que terminaron antes de activar esto (últimos 7 días)",
+    catchUpHelp:
+      "Desactivado: solo las estancias que terminen a partir de ahora. Un resumen que ya se envió nunca se vuelve a enviar.",
+    saved: "Ajuste de resúmenes de estancias guardado",
+    onlyOwner: "Solo un dueño o un gerente de oficina puede cambiar esto.",
   },
 };
 

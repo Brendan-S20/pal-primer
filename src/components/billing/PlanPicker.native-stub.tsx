@@ -39,6 +39,7 @@ function StoreBuildNote() {
 export function PlanPicker(_props: {
   currentSlug?: string | null;
   currentInterval?: BillingInterval | null;
+  paid?: boolean;
   onSelect?: (planId: string, interval: BillingInterval) => void;
   selecting?: boolean;
   switchingPlanId?: string | null;

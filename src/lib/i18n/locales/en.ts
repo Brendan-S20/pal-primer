@@ -916,7 +916,10 @@ const en = {
     viewAccount: "View and edit your account",
     expandMenu: "Show menu labels",
     collapseMenu: "Hide menu labels",
+    showAllMenus: "Show all menus",
+    hideAllMenus: "Show fewer menus",
     group: {
+      "Get started": "Get started",
       Overview: "Overview",
       Operations: "Operations",
       Field: "Field",
@@ -926,6 +929,7 @@ const en = {
       Platform: "Platform",
     },
     item: {
+      setup: "Guided setup",
       dashboard: "Dashboard",
       inbox: "Inbox",
       leads: "Leads",
@@ -1338,6 +1342,18 @@ const en = {
     checkAgain: "Check again",
     couldNotCheck: "Couldn't check right now. Try again in a moment.",
     stillOff: "Still turned off. Ask the owner to reactivate you.",
+  },
+  /** Settings > Services, pet sitting: the nightly stay-summary catch-up
+   *  (#747, migration 20261109170000). */
+  staySummary: {
+    title: "Stay summaries",
+    description:
+      "When a stay's last visit is skipped or missed, the client still gets the end-of-stay summary the next night.",
+    catchUpLabel: "Send summaries for stays that ended before you turned this on (last 7 days)",
+    catchUpHelp:
+      "Off: only stays that end from now on. A summary that was already sent is never sent again.",
+    saved: "Stay summary setting saved",
+    onlyOwner: "Only an owner or office manager can change this.",
   },
 };
 

@@ -36,12 +36,13 @@ export function defaultPlanWeekdays(
   return [firstVisitWeekday];
 }
 
-/** The property hazards the wizard offers. Bees, sharp objects and "dog in
- *  the yard during service" are a yard's, asked of a business that scoops;
- *  the rest matter at any door. A hazard already ticked is never hidden
- *  (the wizard starts with none ticked). */
+/** The property hazards the wizard offers. Bees, sharp objects, "dog in the
+ *  yard during service" and "do NOT enter if dog is outside" (the yard gate,
+ *  #768) are a yard's, asked of a business that scoops; the rest matter at
+ *  any door. A hazard already ticked is never hidden (the wizard starts with
+ *  none ticked). */
 export const PROPERTY_HAZARDS = [
-  ["doNotEnterIfDogOut", "Do NOT enter if dog is outside", false],
+  ["doNotEnterIfDogOut", "Do NOT enter if dog is outside", true],
   ["aggressiveDog", "Aggressive dog", false],
   ["escapeRisk", "Escape risk (close gate)", false],
   ["invisibleFence", "Invisible fence", false],
@@ -56,8 +57,11 @@ export type PropertyHazardKey = (typeof PROPERTY_HAZARDS)[number][0];
 export function propertyHazardsFor(
   lines: readonly ServiceLine[],
   ticked: Partial<Record<PropertyHazardKey, boolean>> = {},
+  /** The line of the service the client is set up for, when known (#768): a
+   *  walk client of a business that also scoops is not asked about the yard. */
+  planLine?: ServiceLine | null,
 ): { key: PropertyHazardKey; label: string }[] {
-  const petWaste = runsPetWaste(lines);
+  const petWaste = runsPetWaste(lines) && (planLine == null || planLine === "pet_waste");
   return PROPERTY_HAZARDS.filter(([key, , yardOnly]) => petWaste || !yardOnly || ticked[key]).map(
     ([key, label]) => ({ key, label }),
   );

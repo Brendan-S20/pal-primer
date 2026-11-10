@@ -20,6 +20,7 @@ import {
 } from "@/lib/properties.functions";
 import { BoundarySketch, type PolygonGeoJSON } from "@/components/BoundarySketch";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
+import { partsFromPick } from "@/lib/address/pick";
 import { AddressAutocomplete, type ResolvedAddress } from "@/components/AddressAutocomplete";
 // (Badge replaced by MetaChip per Stage 3 taxonomy.)
 import { MetaChip, SectionLabel } from "@/components/client-detail/primitives";
@@ -38,17 +39,8 @@ import {
   walkAccessSave,
   type AccessMethod,
 } from "@/lib/walk-access";
+import { propertyHazardsFor } from "@/lib/new-client-plan";
 
-const HAZARD_FIELDS: Array<[string, string]> = [
-  ["doNotEnterIfDogOut", "Do NOT enter if dog is outside"],
-  ["aggressiveDog", "Aggressive dog"],
-  ["escapeRisk", "Escape risk (close gate)"],
-  ["invisibleFence", "Invisible fence"],
-  ["dogInYardDuringService", "Dog in yard during service"],
-  ["beesWasps", "Bees / wasps"],
-  ["sharpObjects", "Sharp objects"],
-  ["slipperySurfaces", "Slippery surfaces"],
-];
 
 export function PropertyDrawer({
   open,
@@ -178,17 +170,13 @@ export function PropertyDrawer({
   }
 
   function applyResolved(r: ResolvedAddress) {
+    // Every part from the match, the unit included: carrying "#4" from a
+    // previous selection onto a different address would save a wrong unit
+    // (lib/address/pick.ts, #783).
+    const parts = partsFromPick(r.address);
     setForm((f) => ({
       ...f,
-      street: r.address.street,
-      // Each match owns the unit: carrying "#4" from a previous selection
-      // onto a different address would save a wrong unit.
-      unit: r.address.unit ?? "",
-      city: r.address.city,
-      region: r.address.region ?? "",
-      postalCode: r.address.postalCode,
-      latitude: r.address.latitude,
-      longitude: r.address.longitude,
+      ...parts,
       addressSource: "matched",
     }));
     setMatchedZoneName(r.zoneName);
@@ -650,7 +638,9 @@ export function PropertyDrawer({
         <div className="rounded-md border bg-muted/20 p-3">
           <SectionLabel>Safety &amp; access hazards</SectionLabel>
           <div className="mt-2 grid gap-1 text-sm sm:grid-cols-2">
-            {HAZARD_FIELDS.map(([k, label]) => (
+            {/* The wizard's list and rule (#768): a yard's hazards are asked
+                of a business that scoops, and one already ticked stays. */}
+            {propertyHazardsFor(serviceLines, form).map(({ key: k, label }) => (
               <label key={k} className="flex items-center gap-2">
                 <input
                   type="checkbox"

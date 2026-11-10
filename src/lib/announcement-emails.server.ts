@@ -25,7 +25,7 @@
 // and not one actual trial. An announcement aimed at people mid-trial would
 // have gone to the six accounts that predate trials entirely.
 
-import { systemFooterHtml, systemHeaderHtml } from "@/lib/email-templates/_brand";
+import { systemFooterHtml, systemFooterText, systemHeaderHtml } from "@/lib/email-templates/_brand";
 
 export type AnnouncementSendResult = {
   id: string;
@@ -60,6 +60,11 @@ export function renderAnnouncementHtml(title: string, body: string, severity: st
   </div>
   ${systemFooterHtml("Sent by HoundStack · Platform announcement")}
   </div></body></html>`;
+}
+
+/** The text/plain part: the title, the body, and the same close as the HTML. */
+export function renderAnnouncementText(title: string, body: string): string {
+  return `${title}\n\n${body}\n\n${systemFooterText("Sent by HoundStack · Platform announcement")}`;
 }
 
 /**
@@ -117,7 +122,7 @@ async function sendOne(supabaseAdmin: any, a: any): Promise<AnnouncementSendResu
   const suppressedSet = new Set((suppressed ?? []).map((s: any) => s.email.toLowerCase()));
 
   const html = renderAnnouncementHtml(a.title, a.body, a.severity);
-  const text = `${a.title}\n\n${a.body}`;
+  const text = renderAnnouncementText(a.title, a.body);
   const subject = `[HoundStack] ${a.title}`;
 
   let enqueued = 0;

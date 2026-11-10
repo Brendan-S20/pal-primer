@@ -117,8 +117,14 @@ describe("messaging consent cannot be a condition of service", () => {
   });
 
   it("only records consent when the box was actually ticked", () => {
-    // The opt-in must not ride along with account creation.
-    expect(getStarted).toMatch(/if \(smsConsent && phone\.trim\(\)\)/);
+    // The opt-in must not ride along with account creation. The sequence
+    // moved to src/lib/finish-signup.ts (2026-11-09) so a failed step can be
+    // retried; the screen hands it the box's own state.
+    const finish = readFileSync(join(root, "src/lib/finish-signup.ts"), "utf8");
+    expect(finish).toMatch(/if \(form\.smsConsent && phone && !progress\.consentSaved\)/);
+    expect(getStarted).toMatch(
+      /\{ email, password, orgName, displayName, phone, smsConsent, promoCode \}/,
+    );
   });
 
   // ── Twilio's SECOND rejection: "Consent for Messaging Cannot Be Part of

@@ -124,6 +124,27 @@ function watchSignedInUser() {
   });
 }
 
+/**
+ * The auth server has just said yes, so the next check need not ask again.
+ *
+ * /auth calls this with the user `signInWithPassword` returned: that answer
+ * IS the auth server verifying the password, milliseconds ago. Without it,
+ * the _authenticated guard asked getUser() again on the very next navigation,
+ * and a refusal there (#785: a 401/403 moments after a good password, which
+ * supabase-js answers by dropping the session it had just saved) redirected
+ * to /auth with nothing on screen to say why. The person was back at the
+ * start of the form and assumed their password was wrong; the same password
+ * worked on the second try.
+ *
+ * Grants nothing a server call would not check again: every server function
+ * verifies the token itself (see IDENTITY_REUSE_MS). And it ends exactly as a
+ * reused answer does, at once, on a sign-out or a change of user.
+ */
+export function trustFreshSignIn(user: User, now = Date.now()) {
+  verified = { userId: user.id, user, at: now };
+  watchSignedInUser();
+}
+
 /** For tests, and for any path that wants the next check to ask. */
 export function forgetVerifiedIdentity() {
   verified = null;

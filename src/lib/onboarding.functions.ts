@@ -1,7 +1,13 @@
 import { createServerFn, createServerOnlyFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { AuthedContext } from "@/lib/server-fn-context";
-import { OFFERED_SERVICE_LINES, runsPetWaste, serviceLinesOrDefault } from "@/lib/service-lines";
+import {
+  OFFERED_SERVICE_LINES,
+  dayEndQuestion,
+  runsPetWaste,
+  serviceLinesOrDefault,
+} from "@/lib/service-lines";
+import { walksPricedForSetup } from "@/lib/setup-walk-prices";
 
 export type OnboardingStepId = "business" | "zones" | "clients" | "staff" | "dump_site" | "payouts";
 
@@ -38,15 +44,18 @@ export type PricePart = {
   label: string;
   description: string;
   done: boolean;
-  /** Where the part is finished. The area part is also finished inline on
-   *  /setup; the rest are on Settings, Services. */
+  /** Where the part is finished outside setup. The area and walks parts are
+   *  also finished inline on /setup (#769); the rest are on Settings,
+   *  Services. */
   to: "/zones" | "/settings/services";
   cta: string;
 };
 
-/** How the multi-line step's description names each part. */
+/** How the multi-line step's description names each part: by what a client
+ *  buys, not by the tool that prices it. "Pet waste zones and walks" read to
+ *  a walker as a scooping product with walks bolted on (#768). */
 const PART_NOUN: Record<PricePartId, (petWaste: boolean) => string> = {
-  area: (petWaste) => (petWaste ? "pet waste zones" : "your service area"),
+  area: (petWaste) => (petWaste ? "pet waste visits" : "your service area"),
   walks: () => "walks",
   stays: () => "stays",
   grooms: () => "grooms",
@@ -198,19 +207,33 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
   // keeps its id, its place and its reason (/setup walks the ids), and
   // asks the question that business can answer. A business that does not
   // run pet waste is never asked about a dump site.
-  const endOfDay = petWaste
-    ? {
-        label: "Where the day ends",
-        description:
-          "Where the crew unloads at the end of the day. Routes end there, so adding it usually cuts a lot of driving.",
-        cta: "Add dump site",
-      }
-    : {
-        label: "Where does your day end?",
-        description:
-          "Set where each tech finishes the day: home, the shop, wherever the van parks. Routes end there instead of at the last stop, which usually cuts a lot of driving.",
-        cta: "Set day's end",
-      };
+  //
+  // #768: a business that scoops AND walks (or sits, or grooms) used to get
+  // the dump-site wording whole, because `petWaste` was true. Its walkers do
+  // not unload anywhere. It now reads the neutral question, and the dump site
+  // is offered on the form as the pet-waste half (dayEndQuestion "both").
+  const dayEnd = dayEndQuestion(orgLines);
+  const endOfDay =
+    dayEnd === "dump_site"
+      ? {
+          label: "Where the day ends",
+          description:
+            "Where the crew unloads at the end of the day. Routes end there, so adding it usually cuts a lot of driving.",
+          cta: "Add dump site",
+        }
+      : dayEnd === "both"
+        ? {
+            label: "Where does your day end?",
+            description:
+              "Set where each person finishes the day: home, the shop, wherever they park. Routes end there instead of at the last stop, which usually cuts a lot of driving. Pet waste routes can end at a dump site instead.",
+            cta: "Set day's end",
+          }
+        : {
+            label: "Where does your day end?",
+            description:
+              "Set where each person finishes the day: home, the shop, wherever they park. Routes end there instead of at the last stop, which usually cuts a lot of driving.",
+            cta: "Set day's end",
+          };
 
   // ── WHAT A FIRST SESSION HAS TO LEAVE BEHIND ────────────────────────
   //
@@ -381,7 +404,7 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
     ? (
         await supabase
           .from("services")
-          .select("base_price_cents")
+          .select("base_price_cents, default_duration_min")
           .eq("organization_id", orgId)
           .eq("service_line", "dog_walking")
           .eq("active", true)
@@ -397,8 +420,10 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
           .eq("active", true)
       ).data
     : null;
-  // Signup seeds the walks with blank prices; done means one has a price.
-  const walksDone = (walks ?? []).some((w) => (w.base_price_cents ?? 0) > 0);
+  // Signup seeds the walks with blank prices. Done means the 30-minute AND
+  // the 60-minute walk have one (#769): "some walk has a price" ticked the
+  // step for one price on one walk and left the rest "No price yet".
+  const walksDone = walksPricedForSetup(walks ?? []);
   // Signup seeds the stays with starter prices; done means one was saved.
   const staysDone = (stays ?? []).some((s) => s.updated_at !== s.created_at);
   const groomDone = !!groomingSetup?.data?.groom_setup_reviewed_at;
@@ -491,15 +516,17 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
       gate: "/settings/services",
     });
   } else if (orgLines.includes("dog_walking")) {
-    // A walking business prices each walk on Settings, Services; a zone's
-    // per-visit price is what a pet-waste plan is quoted from, so asking a
-    // walker for one sends them to a number no walk ever reads.
+    // A walking business prices each walk; a zone's per-visit price is what a
+    // pet-waste plan is quoted from, so asking a walker for one sends them to
+    // a number no walk ever reads. Asked HERE, on /setup (#769): the step was
+    // a link to Settings, Services, and an owner who did not follow it
+    // finished setup with every walk unpriced.
     Object.assign(zonesStep, {
       label: "Price your walks",
       description:
-        "Set what a 30-minute walk, a 60-minute walk and a drop-in cost. New clients are quoted these prices. Your service area is on Zones.",
+        "Set what a 30-minute walk and a 60-minute walk cost, and a drop-in if you offer one. New clients are quoted these prices. Your service area is on Zones.",
       done: walksDone,
-      to: "/settings/services",
+      to: "/setup",
       cta: "Price walks",
       gate: "/settings/services",
     });

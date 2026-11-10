@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -18,6 +18,7 @@ import { titleHead } from "@/lib/page-title";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { IMPORT_CANCEL_CONFIRM } from "@/lib/import-cancel-confirm";
+import { invalidateOnboardingStatus } from "@/hooks/useOnboardingStatus";
 
 export const Route = createFileRoute("/_authenticated/imports/$batchId")({
   head: () => titleHead("Import"),
@@ -28,6 +29,7 @@ function BatchDetail() {
   const tz = useOrgTimezone();
   const { batchId } = Route.useParams();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const getFn = useServerFn(getImportBatch);
   const commitFn = useServerFn(commitImport);
   const cancelFn = useServerFn(cancelImport);
@@ -95,6 +97,8 @@ function BatchDetail() {
     try {
       const s = await commitFn({ data: { batchId } });
       toast.success(committedSentence(s));
+      // Imported clients finish the clients setup step.
+      void invalidateOnboardingStatus(qc);
       refetch();
     } catch (e: any) {
       toast.error(e?.message ?? "Commit failed");
@@ -112,6 +116,7 @@ function BatchDetail() {
       await retryFn({ data: { batchId } });
       const s = await commitFn({ data: { batchId } });
       toast.success(committedSentence(s));
+      void invalidateOnboardingStatus(qc);
     } catch (e) {
       toast.error((e as Error)?.message ?? "The import did not finish");
     } finally {

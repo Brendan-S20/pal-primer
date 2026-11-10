@@ -29,3 +29,37 @@ export function takeSignupEmail(): string | null {
     return null;
   }
 }
+
+/**
+ * The sentence registerAccount refuses a taken address with. Shared so the
+ * page can recognise it and send the person to sign in, with the address
+ * filled in and a reset one tap away, instead of leaving them on an error
+ * (#765). A person who was taken off a business and tries to "start again"
+ * from /get-started is exactly who reads it.
+ */
+export const EMAIL_ALREADY_REGISTERED = "That email already has an account. Sign in instead.";
+
+const EXISTING_KEY = "hs.existing-account-email";
+
+/** Hand a taken address to /auth, which opens on the password step. */
+export function handOffExistingAccount(email: string | null | undefined): void {
+  const value = (email ?? "").trim();
+  if (!value || typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(EXISTING_KEY, value);
+  } catch {
+    // Storage off: /auth asks for the address again. Never fatal.
+  }
+}
+
+/** Read once, then removed. */
+export function takeExistingAccount(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const value = window.sessionStorage.getItem(EXISTING_KEY);
+    window.sessionStorage.removeItem(EXISTING_KEY);
+    return value && value.trim() ? value.trim() : null;
+  } catch {
+    return null;
+  }
+}

@@ -79,8 +79,28 @@ on:
   # The tests/support files are what the DB tests import. #683 changed only
   # select-embeds.ts, which decides every query every-select-embed-resolves
   # sends; without them the fix to that test would not have run it.
+  #
+  # src/** routes to the browser jobs only (Four widths + the one-off cases),
+  # never the database job. Product asked for it so a UI change in src/ gets
+  # browser coverage on its PR without someone dispatching viewports=true by
+  # hand. The gate in `changes` still keeps a src-only PR off the Docker replay.
+  #
+  # Build-config files belong here for the same reason as playwright.config.ts:
+  # they change how the app is built and how every browser job starts, without
+  # necessarily touching src/ or a spec. #815 changed vite.config.ts and this
+  # filter left it out, so Four widths and the one-off cases never started on
+  # that PR and had to be dispatched by hand. There is no postcss.config or
+  # tailwind.config in the repo; Tailwind is wired through the Vite plugin in
+  # vite.config.ts.
   pull_request:
     paths:
+      - "src/**"
+      - "vite.config.ts"
+      - "vitest.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "bun.lock"
+      - "tsconfig*.json"
       - "supabase/migrations/**"
       - "supabase/proofs/**"
       - "tests/integration/*.db.test.ts"
@@ -229,6 +249,13 @@ jobs:
               tests/support/select-embeds.ts|tests/support/withheld-columns.ts) database=true ;;
               tests/e2e/*|playwright.e2e.config.ts)        database=true ;;
               tests/viewports/*|playwright.config.ts)      viewports=true ;;
+              # App source: the browser jobs only, never the database replay.
+              src/*)                                       viewports=true ;;
+              # Build config changes how the app is built for every browser
+              # job, so it routes to the viewports jobs only, like src/.
+              vite.config.ts|vitest.config.ts)             viewports=true ;;
+              package.json|package-lock.json|bun.lock)     viewports=true ;;
+              tsconfig*.json)                              viewports=true ;;
               # The workflow itself changes what both jobs DO, so it runs both.
               .github/workflows/sandboxes.yml)             database=true; viewports=true ;;
             esac
