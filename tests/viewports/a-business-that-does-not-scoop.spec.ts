@@ -167,6 +167,36 @@ for (const { w, h, label } of WIDTHS) {
       await measure(page, w, `/setup end of day (dog walking) @${w}px`);
     });
 
+    test(`/setup step 1 says routes, not trucks, and shows the workday @${w}px`, async ({
+      page,
+    }) => {
+      // #768 and #769: the address help named trucks, and the 08:00-17:00
+      // workday every arrival window is computed from was never shown.
+      await open(page, "owner", DOG_WALKING, "/setup?step=business", w, h);
+      await expectServiceLineChoices(page);
+      await expect(page.getByText(/trucks/i)).toHaveCount(0);
+      await expect(page.getByText("Where routes start each day", { exact: false })).toBeVisible();
+      // What is STORED, not the column default: the stub's org starts at
+      // 07:30, and a form that showed 08:00 here would be the silent default.
+      await expect(page.getByLabel("Starts")).toHaveValue("07:30");
+      await expect(page.getByLabel("Ends")).toHaveValue("17:00");
+      await measure(page, w, `/setup step 1 (dog walking) @${w}px`);
+    });
+
+    test(`/setup prices the walks in place, the drop-in optional @${w}px`, async ({ page }) => {
+      // #769: the step was a button to Settings, Services.
+      await open(page, "owner", DOG_WALKING, "/setup?step=zones", w, h);
+      await expect(page.getByRole("heading", { name: "Price your walks" })).toBeVisible({
+        timeout: FIRST_PAINT_MS,
+      });
+      await expect(page.getByLabel(/^30-minute walk \(\$\)$/)).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByLabel(/^60-minute walk \(\$\)$/)).toBeVisible();
+      await expect(page.getByLabel(/^Drop-in visit \(20 min\) \(\$\), optional$/)).toBeVisible();
+      await expect(page.getByRole("link", { name: "Price walks" })).toHaveCount(0);
+      await expect(page.getByText(/dump|trucks|yard/i)).toHaveCount(0);
+      await measure(page, w, `/setup prices (dog walking) @${w}px`);
+    });
+
     test(`the new-client wizard has no Outline step @${w}px`, async ({ page }) => {
       await open(page, "owner", DOG_WALKING, "/clients/new", w, h);
       await expect(page.getByRole("heading", { name: /new client/i }).first()).toBeVisible({
@@ -177,6 +207,59 @@ for (const { w, h, label } of WIDTHS) {
       // Services") in the header.
       await expect(page.getByText("Outline", { exact: true })).toHaveCount(0);
       await measure(page, w, `/clients/new (dog walking) @${w}px`);
+    });
+
+    // Onboarding audit 2026-11-09, D2: a residential client went through Dogs
+    // on a blank row, the plan billed for one dog, and the new client's
+    // Summary opened on "no dog is on file". Continue now stays on Dogs with
+    // an inline alert until one is named; a commercial / HOA account may
+    // still go on with none.
+    test(`the wizard will not leave Dogs with no named dog @${w}px`, async ({ page }) => {
+      await open(page, "owner", DOG_WALKING, "/clients/new", w, h);
+      await expect.poll(() => allText(page), { timeout: FIRST_PAINT_MS }).toContain("Step 1 of 4");
+      const next = page.getByRole("button", { name: "Continue", exact: true });
+      await page.locator("#dn").fill("Rivera household");
+      await next.click();
+      await expect.poll(() => allText(page)).toContain("Step 2 of 4");
+      await page.locator("#st").fill("4417 North Wolcott Avenue");
+      await page.locator("#ci").fill("Chicago");
+      await page.locator("#rg").fill("IL");
+      await page.locator("#pc").fill("60640");
+      await next.click();
+      await expect.poll(() => allText(page)).toContain("Step 3 of 4");
+
+      await next.click();
+      const alert = page.locator("#needs-a-named-dog");
+      await expect(alert).toBeVisible();
+      await expect(alert).toHaveAttribute("role", "alert");
+      await expect(alert).toContainText("Add at least one dog's name to continue");
+      await expect.poll(() => allText(page)).toContain("Step 3 of 4");
+      await expect(page.getByPlaceholder("Bailey").first()).toHaveAttribute("aria-invalid", "true");
+      await measure(page, w, `/clients/new Dogs, none named (dog walking) @${w}px`);
+
+      await page.getByPlaceholder("Bailey").first().fill("Biscuit");
+      await next.click();
+      await expect.poll(() => allText(page)).toContain("Step 4 of 4");
+      await expect(page.getByRole("button", { name: "Create client" })).toBeVisible();
+    });
+
+    test(`a commercial / HOA account may still skip Dogs @${w}px`, async ({ page }) => {
+      await open(page, "owner", DOG_WALKING, "/clients/new", w, h);
+      await expect.poll(() => allText(page), { timeout: FIRST_PAINT_MS }).toContain("Step 1 of 4");
+      const next = page.getByRole("button", { name: "Continue", exact: true });
+      await page.getByText("Commercial / HOA", { exact: true }).click();
+      await page.locator("#dn").fill("Oakwood HOA");
+      await next.click();
+      await expect.poll(() => allText(page)).toContain("Step 2 of 4");
+      await page.locator("#st").fill("4417 North Wolcott Avenue");
+      await page.locator("#ci").fill("Chicago");
+      await page.locator("#rg").fill("IL");
+      await page.locator("#pc").fill("60640");
+      await next.click();
+      await expect.poll(() => allText(page)).toContain("Step 3 of 4");
+      await next.click();
+      await expect.poll(() => allText(page)).toContain("Step 4 of 4");
+      await expect(page.locator("#needs-a-named-dog")).toHaveCount(0);
     });
 
     test(`Settings → Business defaults says what the business runs @${w}px`, async ({ page }) => {
@@ -358,5 +441,45 @@ for (const w of [390, 820, 1024, 1440]) {
     await page.getByRole("button", { name: "Bill it", exact: true }).click();
     await expect.poll(() => billed.length).toBe(1);
     expect(billed[0]).toContain("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+  });
+}
+
+// #768/#769: a business that scoops AND walks. The dump site and the yard are
+// the pet-waste half of each step, not the whole of it, and the walks are
+// priced beside the area.
+const MIXED = ["pet_waste", "dog_walking"];
+
+for (const { w, h, label } of WIDTHS) {
+  test.describe(`a business that scoops and walks, ${label}`, () => {
+    test(`/setup's end-of-day step asks where the day ends, the dump site under pet waste @${w}px`, async ({
+      page,
+    }) => {
+      await open(page, "owner", MIXED, "/setup?step=dump_site", w, h);
+      await expect(page.getByRole("heading", { name: "Where does your day end?" })).toBeVisible({
+        timeout: FIRST_PAINT_MS,
+      });
+      await expect(page.getByText(/crew unloads/i)).toHaveCount(0);
+      const petWasteHalf = page.locator("[data-setup-pet-waste-day-end]");
+      await expect(petWasteHalf.getByText("For your pet waste routes")).toBeVisible();
+      await expect(petWasteHalf.getByRole("button", { name: "Add dump site" })).toBeVisible();
+      await measure(page, w, `/setup end of day (scoops and walks) @${w}px`);
+    });
+
+    test(`/setup's price step prices walks and the pet waste area in place @${w}px`, async ({
+      page,
+    }) => {
+      await open(page, "owner", MIXED, "/setup?step=zones", w, h);
+      await expect(page.getByRole("heading", { name: "Price your services" })).toBeVisible({
+        timeout: FIRST_PAINT_MS,
+      });
+      await expect(page.getByText(/pet waste visits and walks/)).toBeVisible();
+      await expect(page.getByText(/pet waste zones/i)).toHaveCount(0);
+      const walks = page.locator('[data-setup-price-form="walks"]');
+      await expect(walks.getByLabel(/^30-minute walk \(\$\)$/)).toBeVisible({ timeout: 15_000 });
+      await expect(walks.getByLabel(/^60-minute walk \(\$\)$/)).toBeVisible();
+      await expect(page.locator('[data-setup-price-form="area"]')).toBeVisible();
+      await expect(page.getByRole("link", { name: "Price walks" })).toHaveCount(0);
+      await measure(page, w, `/setup prices (scoops and walks) @${w}px`);
+    });
   });
 }

@@ -168,11 +168,15 @@ beforeEach(() => {
 describe("the directory lists the members that exist", () => {
   it("returns all fifteen users with email, organization and role", async () => {
     const page = await list();
-    expect(page.total).toBe(15);
-    expect(page.rows).toHaveLength(15);
+    // Fifteen members, plus the one account with no role, which since #765 is
+    // listed (labelled, not hidden) so support can find it and send a reset.
+    expect(page.total).toBe(16);
+    expect(page.rows).toHaveLength(16);
     expect(page.scan.membershipRows).toBe(15);
     expect(page.scan.accountsComplete).toBe(true);
-    for (const row of page.rows) {
+    const members = page.rows.filter((r: any) => !r.no_business);
+    expect(members).toHaveLength(15);
+    for (const row of members) {
       const membership = h.roles.find((r) => r.user_id === row.user_id)!;
       expect(row.email).toMatch(/^member\d\d@example\.test$/);
       expect(row.organizations).toEqual([
@@ -183,8 +187,11 @@ describe("the directory lists the members that exist", () => {
         },
       ]);
     }
-    // The one account with no role is counted, not listed.
+    // The one account with no role is counted AND listed (#765).
     expect(page.scan.unattached).toBe(1);
+    expect(page.rows.filter((r: any) => r.no_business).map((r: any) => r.email)).toEqual([
+      "admin@example.test",
+    ]);
   });
 
   it("narrows by role and by organization without losing anybody", async () => {

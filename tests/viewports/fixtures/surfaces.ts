@@ -408,7 +408,8 @@ export const SURFACES: Surface[] = [
     path: "/platform/users",
     proof: (p) => p.getByText("Global directory across every tenant").first(),
     proofLabel: "the directory strapline",
-    expectsData: "of 173 users",
+    // "accounts" since #765: accounts with no business are listed too.
+    expectsData: "of 173 accounts",
   },
   {
     id: "/platform/plans",

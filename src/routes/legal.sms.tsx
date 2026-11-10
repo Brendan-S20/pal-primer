@@ -22,7 +22,7 @@ export const Route = createFileRoute("/legal/sms")({
 
 function SmsPolicyPage() {
   return (
-    <LegalShell title="SMS Consent & Messaging Policy" updated="October 7, 2026">
+    <LegalShell title="SMS Consent & Messaging Policy" updated="November 9, 2026">
       <section>
         <h2>The short version</h2>
         <p>
@@ -63,8 +63,8 @@ function SmsPolicyPage() {
       <section>
         <h2>What messages we send</h2>
         <p>
-          <strong>Text messaging is coming soon and is pending carrier registration.</strong> No
-          text messages are sent under this program until that registration is complete.
+          <strong>Texts from {APP_NAME}&apos;s own number start once its carrier registration is
+          complete.</strong> No text messages are sent under this program until then.
         </p>
         <p>
           Account holders who opt in may receive verification codes, security alerts, billing
@@ -80,8 +80,9 @@ function SmsPolicyPage() {
       <section>
         <h2>How consent is collected</h2>
         <p>
-          Business users may opt in on the last step of account creation by entering a mobile number
-          and ticking a consent box that is unticked by default. Both the number and the box are
+          Account holders may opt in on the last step of account creation at{" "}
+          <a href="/get-started">app.houndstack.com/get-started</a> by entering a mobile number and
+          ticking a consent box that is unticked by default. Both the number and the box are
           optional, and the account is created whether or not they are filled in. The box carries
           this language:
         </p>

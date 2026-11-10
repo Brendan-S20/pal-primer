@@ -369,12 +369,14 @@ export function isZonePriced(s: Pick<ServiceDraft, "service_line">): boolean {
 }
 
 /**
- * Where a one-off pet-waste visit's price is set (#641). Not on Settings ->
- * Services: a pet-waste service is priced by zone for plans, and a one-off
- * reads organizations.one_off_price_cents, which only the Client portal card
- * (PortalBookingCard, setPortalBookingSettings) writes. The dispatcher's
- * One-off dialog, the Services form and the server's refusals all name the
- * same place, so they say it with the same words and link to the same field.
+ * Where a one-off pet-waste visit's price is set (#641). A pet-waste service
+ * is priced by zone for plans, and a one-off reads
+ * organizations.one_off_price_cents. Since #788 that one number is edited
+ * from two screens, the Client portal card (PortalBookingCard) and the
+ * pet-waste service form on Settings -> Services, both through
+ * setPortalBookingSettings, so there is still exactly one price. The
+ * dispatcher's One-off dialog and the server's refusals name the portal
+ * field, so they say it with the same words and link to the same field.
  */
 export const ONE_OFF_PRICE_SETTING = "Settings → Client portal → Price of an extra visit";
 export const ONE_OFF_PRICE_SETTING_PATH = "/settings/client-portal" as const;
@@ -469,4 +471,120 @@ export function sortServices<T extends Pick<Service, "active" | "service_line" |
       lineIndex(a.service_line) - lineIndex(b.service_line) ||
       a.name.localeCompare(b.name),
   );
+}
+
+/* ------------------------------------------------------------------------
+ * Pet waste on Settings -> Services (#788).
+ *
+ * A pet-waste service has no price of its own (isZonePriced): a repeating
+ * plan is priced by its zone, and a one-time cleanup by the owner's
+ * extra-visit price (organizations.one_off_price_cents, one-time-cleanup.ts).
+ * The Services screen used to say so and show no number at all, which a new
+ * owner read as "there is nowhere to put my $75". These helpers let the
+ * screen show both real amounts and edit the one-time price in place,
+ * reading the SAME two settings the booking link, the portal and quotes
+ * price from, so Services, zones and the portal never hold three prices.
+ * --------------------------------------------------------------------- */
+
+/** The bounds of organizations_one_off_price_cents_check, the same ones
+ *  setPortalBookingSettings validates. */
+export const ONE_TIME_CLEANUP_MAX_CENTS = 1_000_000;
+
+/** The label on the Services form's one-time price field. */
+export const ONE_TIME_CLEANUP_PRICE_LABEL = "One-time cleanup price ($)";
+
+/** The zone fields lowestZoneVisitCents reads; listZones returns more. */
+export type ZoneVisitPrice = {
+  base_price_cents: number | null;
+  pricing_mode?: string | null;
+  enabled?: boolean | null;
+  /** "commercial" zones price businesses, not yards; null serves both. */
+  account_type?: string | null;
+};
+
+/**
+ * The lowest per-visit price any switched-on, flat-priced zone charges, or
+ * null when no zone has one yet. Area-priced zones (per square foot or acre)
+ * have no single visit price, so they are left out rather than guessed at,
+ * and so are commercial zones, whose rate is not what a homeowner pays.
+ * This is the "from" figure, before any cadence multiplier or extra dog.
+ */
+export function lowestZoneVisitCents(
+  zones: readonly ZoneVisitPrice[] | null | undefined,
+): number | null {
+  let low: number | null = null;
+  for (const z of zones ?? []) {
+    if (z.enabled === false) continue;
+    if (z.account_type === "commercial") continue;
+    if ((z.pricing_mode ?? "flat") !== "flat") continue;
+    const c = z.base_price_cents;
+    if (typeof c !== "number" || !Number.isInteger(c) || c < 0) continue;
+    if (low === null || c < low) low = c;
+  }
+  return low;
+}
+
+/** How a pet-waste service's prices read in the Services list: both real
+ *  amounts once set, and what is still missing when they are not. */
+export function petWastePriceLabel(input: {
+  zoneFromCents: number | null;
+  oneTimeCents: number | null;
+}): string {
+  const plans =
+    input.zoneFromCents === null
+      ? "Plans: no zone price yet"
+      : `Plans from ${formatServiceMoney(input.zoneFromCents)} per visit, by zone`;
+  const once =
+    input.oneTimeCents === null
+      ? "One-time cleanup: no price yet"
+      : `One-time cleanup ${formatServiceMoney(input.oneTimeCents)}`;
+  return `${plans} · ${once}`;
+}
+
+/**
+ * The one-time price field as setPortalBookingSettings' input, or the
+ * sentence that says why it is not a price, or null when nothing changed
+ * (so saving a service does not rewrite a setting nobody touched).
+ *
+ * Auto-accept is carried as it was, and switched off only when the price is
+ * cleared, exactly as the Client portal card does: a booking made with
+ * nobody looking needs a price (the server refuses the pair otherwise).
+ */
+export function oneTimeCleanupPriceUpdate(
+  input: string,
+  current: { priceCents: number | null; autoAccept: boolean },
+): { data: { autoAccept: boolean; priceCents: number | null } } | { problem: string } | null {
+  const cents = parseDollarsToCents(input);
+  if (Number.isNaN(cents))
+    return { problem: "Enter the one-time cleanup price as dollars and cents, like 75.00." };
+  if (cents !== null && cents > ONE_TIME_CLEANUP_MAX_CENTS)
+    return {
+      problem: `The one-time cleanup price is more than ${formatServiceMoney(ONE_TIME_CLEANUP_MAX_CENTS)}.`,
+    };
+  if (cents === current.priceCents) return null;
+  return { data: { autoAccept: current.autoAccept && cents !== null, priceCents: cents } };
+}
+
+/** What the Services form knows about the one-time cleanup setting
+ *  (getPortalBookingSettings). */
+export type OneTimeCleanupSetting = {
+  priceCents: number | null;
+  autoAccept: boolean;
+  /** manage_settings, which setPortalBookingSettings asks for. */
+  canEdit: boolean;
+};
+
+/**
+ * The one-time price a Save on the Services form also writes, for a
+ * pet-waste service: setPortalBookingSettings' input, a problem sentence, or
+ * null when there is nothing to write (another line, a field that was not
+ * offered, a caller who may not change it, or a price that did not change).
+ */
+export function petWasteOneTimeSave(
+  line: ServiceLine,
+  typed: string | null,
+  setting: OneTimeCleanupSetting | null,
+): ReturnType<typeof oneTimeCleanupPriceUpdate> {
+  if (line !== "pet_waste" || typed === null || !setting?.canEdit) return null;
+  return oneTimeCleanupPriceUpdate(typed, setting);
 }

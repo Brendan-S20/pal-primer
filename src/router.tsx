@@ -7,6 +7,7 @@ import { RouteError, RouteNotFound } from "./components/RouteError";
 import { RoutePending } from "./components/PageSkeletons";
 import { installPageTransitions, pageViewTransition } from "./lib/motion/page-transitions";
 import { PENDING_MIN_VISIBLE_MS, PENDING_SHOW_AFTER_MS } from "./lib/motion/pending";
+import { guardRouterStartTransition } from "./lib/app-mounted";
 import {
   isImpersonationExpiredError,
   notifyImpersonationExpired,
@@ -126,7 +127,12 @@ export const getRouter = () => {
     defaultPendingComponent: RoutePending,
   });
 
-  if (typeof window !== "undefined") installPageTransitions(router);
+  if (typeof window !== "undefined") {
+    installPageTransitions(router);
+    // No router.startTransition call reaches <Transitioner>'s setState before
+    // React has committed it (lib/app-mounted.ts, "THE THIRD PATH").
+    guardRouterStartTransition(router);
+  }
 
   return router;
 };

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 import { buildClientNamePatch } from "@/lib/client-name";
+import { needsANamedDog, SERVER_NEEDS_A_NAMED_DOG } from "@/lib/new-client-dogs";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   // Through the shared gate, so a person whose access is turned off is
@@ -878,7 +879,7 @@ export const getFieldClientInfo = createServerFn({ method: "GET" })
     const { data: properties, error: propErr } = await supabaseAdmin
       .from("properties")
       .select(
-        "id, label, street, city, region, postal_code, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, archived_at",
+        "id, label, street, city, region, postal_code, parking_notes, van_power_available, van_water_available, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, archived_at",
       )
       .eq("client_id", data.clientId)
       .eq("organization_id", caller.orgId)
@@ -1526,6 +1527,13 @@ export const onboardClient = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => onboardSchema.parse(d))
   .handler(async ({ data, context }) => {
+    // A residential client is somebody's dogs. Created with none, its plan
+    // billed for one and the Summary's first words were "no dog is on file"
+    // (onboarding audit 2026-11-09, D2). Refused before anything is read or
+    // written; commercial / HOA may still have none. lib/new-client-dogs.
+    if (needsANamedDog(data.accountType, data.dogs)) {
+      throw new Error(SERVER_NEEDS_A_NAMED_DOG);
+    }
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
 
@@ -1756,6 +1764,7 @@ export const onboardClient = createServerFn({ method: "POST" })
 
     // 4) subscription
     let firstVisitOn: string | null = null;
+    let soloOwner: { assigned: number; putOnRoutes: boolean } | null = null;
     if (data.subscription) {
       // At the set price (#728): the price and zone the server worked out
       // above, never the browser's.
@@ -1832,6 +1841,15 @@ export const onboardClient = createServerFn({ method: "POST" })
         .limit(1)
         .maybeSingle();
       firstVisitOn = first?.scheduled_on ?? null;
+
+      // D13: in a business whose only person is the owner saving this, the
+      // visits are theirs; there is nobody else they could go to.
+      const { giveSoloOwnerThePlan } = await import("@/lib/solo-owner-route.server");
+      soloOwner = await giveSoloOwnerThePlan(supabase, {
+        orgId,
+        userId,
+        subscriptionId: subRow!.id,
+      });
     }
 
     // 5) office note. The client and everything under it already exist, so a
@@ -1953,6 +1971,10 @@ export const onboardClient = createServerFn({ method: "POST" })
       officeNoteSaved,
       leadLinked,
       firstCleanupInvoiced,
+      // How many of the plan's visits went to the owner because nobody else
+      // is in the business, and whether that put them on routes (D13).
+      soloOwnerAssigned: soloOwner?.assigned ?? 0,
+      soloOwnerPutOnRoutes: soloOwner?.putOnRoutes ?? false,
     };
   });
 

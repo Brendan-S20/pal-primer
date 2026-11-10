@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { completeFromOffice, useOfficeCompleteOverride } from "@/components/OfficeCompleteOverride";
 import { warnLessonClashes } from "@/components/training/lessonClashWarning";
-import { humanizeRole } from "@/lib/humanize";
+import { useRoleLabel } from "@/components/CommercialOnly";
 import { orgLocalTime } from "@/lib/org-day";
 import { visitEta } from "@/lib/visit-eta";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
@@ -145,6 +145,7 @@ function toLocalISO(d: Date) {
   return new Date(d.getTime() - off * 60_000).toISOString().slice(0, 10);
 }
 function RoutesPage() {
+  const roleLabel = useRoleLabel();
   // The ORG's today, not the phone's. This is the dispatch board: drag a
   // card, bulk-reassign a lane, complete from the office, and the day it
   // opens on is the day those actions land on. It asked the device, the
@@ -1290,7 +1291,7 @@ function RoutesPage() {
                           <div className="min-w-0">
                             <div className="truncate text-sm">{s.display_name}</div>
                             <div className="text-2xs text-muted-foreground capitalize">
-                              {s.role ? humanizeRole(s.role) : "—"}
+                              {s.role ? roleLabel(s.role) : "—"}
                               {/* Only ever shown for someone being switched OFF,
                                 where it is the consequence rather than trivia:
                                 their lane is about to disappear with work
@@ -1747,7 +1748,7 @@ function RoutesPage() {
                         key={s.id}
                         id={s.id}
                         title={s.display_name}
-                        subtitle={s.role ? humanizeRole(s.role) : undefined}
+                        subtitle={s.role ? roleLabel(s.role) : undefined}
                         offRoutes={offRoutes}
                         offToday={away}
                         items={columns[s.id] ?? []}

@@ -24,6 +24,7 @@ import { useIntlLocale } from "@/lib/i18n";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { Camera, Plus, X } from "lucide-react";
 import { pageTitle, useDocumentTitle } from "@/lib/page-title";
+import { invalidateOnboardingStatus } from "@/hooks/useOnboardingStatus";
 
 export const Route = createFileRoute("/_authenticated/waste-log")({
   head: () => ({ meta: [{ title: pageTitle("Waste log") }] }),
@@ -107,6 +108,7 @@ function WasteLogPage() {
     onSuccess: () => {
       toast.success(t("wasteLog.facilityAdded"));
       qc.invalidateQueries({ queryKey: ["waste-facilities"] });
+      void invalidateOnboardingStatus(qc);
       setNewFacility({ name: "", address: "" });
     },
     onError: (e: Error) => toast.error(e.message),

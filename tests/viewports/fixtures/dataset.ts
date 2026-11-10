@@ -717,6 +717,20 @@ export const ROUTING_HEALTH = {
 export function platformUsers(offset: number, limit: number) {
   const rows = [];
   for (let i = offset; i < Math.min(offset + limit, PLATFORM_USER_TOTAL); i++) {
+    // Since #765 an account with no business is a row, with a badge where the
+    // organizations go. Every eleventh row is one, so the first page draws it.
+    if (i % 11 === 3) {
+      rows.push({
+        user_id: `77777777-0000-4000-8000-${String(300000000000 + i).slice(0, 12)}`,
+        email: `removed.teammate.${i}.longmailboxname@detroit-doo-disposal-example.example.com`,
+        last_sign_in_at: null,
+        created_at: iso(new Date(Date.now() - (i + 30) * 864e5)),
+        organizations: [],
+        no_business: true,
+        platform_admin: false,
+      });
+      continue;
+    }
     rows.push({
       user_id: `77777777-0000-4000-8000-${String(300000000000 + i).slice(0, 12)}`,
       email: `dispatcher.${i}.longmailboxname@whitfield-ramirez-yard-services.example.com`,

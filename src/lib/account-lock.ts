@@ -28,6 +28,29 @@ export const LOCKED_DATA_DAYS = 30;
 
 export const ACCOUNT_LOCKED_MESSAGE = "Your account is locked. Choose a plan to unlock it.";
 
+/**
+ * What a non-owner reads while the account is locked (Brendan, 2026-11-09, on
+ * #748). They cannot choose a plan, so the notice says whose move it is, in
+ * one line, rather than the owner's "Choose a plan to unlock it".
+ */
+export function nonOwnerLockedNotice(reason: AccountLockReason): string {
+  return reason === "plan_ended"
+    ? "This account's plan has ended. Ask the owner to subscribe."
+    : "This account's trial has ended. Ask the owner to subscribe.";
+}
+
+/**
+ * What a CUSTOMER reads when the business they are paying is locked. Worded
+ * like the existing "can't take cards" refusal: it does not tell the
+ * business's own client about the business's HoundStack bill.
+ */
+export const BUSINESS_PAYMENTS_PAUSED_MESSAGE =
+  "This business can't take card payments online right now. Please contact them directly.";
+
+/** What staff read when a charge is refused because the account is locked. */
+export const PAYMENTS_LOCKED_MESSAGE =
+  "This account can't take payments until the owner subscribes.";
+
 export type AccountLockReason = "trial_ended" | "plan_ended";
 
 export type AccountLock =
@@ -54,7 +77,10 @@ export type LockInput = {
 
 const DAY_MS = 86_400_000;
 
-export function accountLockFor(org: LockInput | null | undefined, now: Date = new Date()): AccountLock {
+export function accountLockFor(
+  org: LockInput | null | undefined,
+  now: Date = new Date(),
+): AccountLock {
   if (!org || org.is_comped) return { locked: false };
   const state: TrialState = trialStateFor(
     {
@@ -130,10 +156,14 @@ export const SERVER_FNS_OPEN_WHEN_LOCKED: Record<string, "*" | readonly string[]
   "src/lib/delete-account.functions.ts": "*",
 };
 
-export function serverFnOpenWhenLocked(meta: { name?: string; filename?: string } | null | undefined): boolean {
+export function serverFnOpenWhenLocked(
+  meta: { name?: string; filename?: string } | null | undefined,
+): boolean {
   if (!meta?.filename) return false;
   const file = meta.filename.replace(/\\/g, "/").replace(/^\.?\//, "");
-  const key = Object.keys(SERVER_FNS_OPEN_WHEN_LOCKED).find((k) => file === k || file.endsWith(`/${k}`));
+  const key = Object.keys(SERVER_FNS_OPEN_WHEN_LOCKED).find(
+    (k) => file === k || file.endsWith(`/${k}`),
+  );
   if (!key) return false;
   const allowed = SERVER_FNS_OPEN_WHEN_LOCKED[key];
   return allowed === "*" || (!!meta.name && allowed.includes(meta.name));

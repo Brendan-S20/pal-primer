@@ -99,6 +99,19 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     saveNotes: "حفظ الملاحظات",
     notesSaved: "تم حفظ الملاحظات",
     history: "آخر جلسات التجميل",
+    addonsTitle: "الإضافات في جلسة التجميل هذه",
+    addonsHint: "لا تُحتسب إلا الإضافات المحددة كمنجزة.",
+    addonFallback: "إضافة",
+    addonQuantity: "{{name}} ×{{count}}",
+    addonDone: "تم",
+    addonNotDone: "لم يتم",
+    addonMarkedDone: "تم تحديد {{name}} كمنجز",
+    addonMarkedNotDone: "تم تحديد {{name}} كغير منجز. لن يُحتسب.",
+    vanLabel: "توصيلات الشاحنة:",
+    vanTitle: "توصيلات الشاحنة",
+    vanPower: "الكهرباء متوفرة",
+    vanWater: "الماء متوفر",
+    vanNone: "لا توجد كهرباء أو ماء مسجلة. أحضر ما يلزمك.",
   },
   groomRequest: {
     asked: "طلب {{service}} لـ {{pet}} يوم {{day}}، {{window}}.",
@@ -248,6 +261,9 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     previewReadOnly: "معاينة · للقراءة فقط",
     noTechnicians: "لا يوجد فنيون نشطون في مؤسستك بعد.",
     pickTechnician: "اختر فنيًا من الأعلى لمعاينة يومه.",
+    selectTrainer: "(اختر مدربًا)",
+    noTrainers: "لا يوجد مدربون نشطون في مؤسستك بعد.",
+    pickTrainer: "اختر مدربًا من الأعلى لمعاينة يومه.",
     previewNothingScheduled: "لا شيء مجدول لـ {{name}} يوم {{day}}.",
     viewMySchedule: "عرض جدولي",
     myRoute: "مساري",
@@ -435,6 +451,15 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     after: "بعد {{time}}",
     by: "قبل {{time}}",
     over8h: "أكثر من 8 س · بدأت {{time}}",
+  },
+  role: {
+    owner: "المالك",
+    office_manager: "مدير المكتب",
+    dispatcher: "منسق المواعيد",
+    tech: "فني",
+    trainer: "مدرب",
+    platform_admin: "مسؤول المنصة",
+    other: "عضو في الفريق",
   },
   serviceLine: {
     pet_waste: "إزالة فضلات الحيوانات",
@@ -936,7 +961,10 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     viewAccount: "عرض حسابك وتعديله",
     expandMenu: "إظهار أسماء القائمة",
     collapseMenu: "إخفاء أسماء القائمة",
+    showAllMenus: "عرض كل القوائم",
+    hideAllMenus: "عرض قوائم أقل",
     group: {
+      "Get started": "البدء",
       Overview: "نظرة عامة",
       Operations: "العمليات",
       Field: "الميدان",
@@ -946,6 +974,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
       Platform: "المنصة",
     },
     item: {
+      setup: "الإعداد الموجّه",
       dashboard: "لوحة التحكم",
       inbox: "صندوق الوارد",
       leads: "العملاء المحتملون",
@@ -1332,6 +1361,11 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     history: "الدروس السابقة",
     historyForDog: "الدروس السابقة لـ <dog>{{dog}}</dog>",
     historyEmpty: "لا توجد دروس سابقة مسجلة.",
+    whichDog: "أي كلب",
+    chooseDogFirst: "اختر الكلب قبل تسجيل أي شيء. لكل كلب تقدمه الخاص.",
+    skillProgress: "المهارات بمرور الوقت",
+    skillProgressForDog: "مهارات <dog>{{dog}}</dog> بمرور الوقت",
+    skillTrendLabel: "{{skill}}: الدرجات من الأقدم إلى الأحدث",
     lessonUsesSession: "هذا الدرس يستخدم جلسة من الباقة.",
     lessonGivenBack: "هذا الدرس لا يستخدم جلسة.",
     giveSessionBack: "إعادة الجلسة",
@@ -1360,6 +1394,9 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     chooseDog: "اختر كلبًا",
     dogRequiredHint: "لدى هذا المنزل أكثر من كلب. يُحفظ التقدم والواجب لكل كلب.",
     shareProgress: "مشاركة ملاحظات الدروس والواجبات مع العملاء",
+    seriesSkipClosed: "سلاسل الدروس الجديدة تتخطى العطلات وأيام الإغلاق",
+    seriesSkipClosedHint:
+      "لا تحجز السلسلة الأسبوعية درسًا في يوم عطلة أو يوم إغلاق. يمكن تغيير ذلك لكل سلسلة عند إنشائها أو تعديلها.",
     shareProgressHint:
       "يرى العملاء ملاحظة كل درس وواجبه في صفحة التدريب في بوابتهم. تظهر الدرجات والتواريخ والجلسات المتبقية في كل الأحوال.",
   },
@@ -1371,6 +1408,16 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     checkAgain: "تحقق مرة أخرى",
     couldNotCheck: "تعذّر التحقق الآن. حاول مرة أخرى بعد قليل.",
     stillOff: "لا يزال الوصول متوقفًا. اطلب من المالك إعادة تفعيلك.",
+  },
+  staySummary: {
+    title: "ملخصات الإقامات",
+    description:
+      "عندما تُتخطّى الزيارة الأخيرة في إقامة أو تفوت، يتلقى العميل ملخص نهاية الإقامة في الليلة التالية.",
+    catchUpLabel: "إرسال ملخصات الإقامات التي انتهت قبل تفعيل هذا الخيار (آخر 7 أيام)",
+    catchUpHelp:
+      "عند الإيقاف: الإقامات التي تنتهي من الآن فقط. الملخص الذي أُرسل من قبل لا يُرسل مرة أخرى أبدًا.",
+    saved: "تم حفظ إعداد ملخصات الإقامات",
+    onlyOwner: "يمكن للمالك أو مدير المكتب فقط تغيير هذا.",
   },
 };
 

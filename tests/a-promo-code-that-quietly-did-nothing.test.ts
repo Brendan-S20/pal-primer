@@ -124,6 +124,8 @@ describe("and it reaches the owner while they can still stop", () => {
 
 const ORG = readFileSync(join(process.cwd(), "src/lib/org.functions.ts"), "utf8");
 const SIGNUP = readFileSync(join(process.cwd(), "src/routes/get-started.tsx"), "utf8");
+// The sequence moved here on 2026-11-09, so a failed step can be retried.
+const FINISH = readFileSync(join(process.cwd(), "src/lib/finish-signup.ts"), "utf8");
 
 function captureBlock(): string {
   const code = ORG.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
@@ -169,11 +171,11 @@ describe("and the signup screen is the last place that can say it", () => {
   it("warns on false and stays quiet on null", () => {
     // `=== false` and not a truthiness check: null is the ordinary case of
     // somebody who typed no promo code, and warning them would be nonsense.
-    expect(SIGNUP).toMatch(/boot\?\.promoStored === false/);
+    expect(FINISH).toMatch(/boot\?\.promoStored === false\) deps\.onPromoLost/);
   });
 
   it("says the account is fine, so the warning does not read as a failed signup", () => {
-    const i = SIGNUP.indexOf("boot?.promoStored === false");
+    const i = SIGNUP.indexOf("onPromoLost:");
     const block = SIGNUP.slice(i, i + 600);
     expect(block).toMatch(/Your account is set up/);
     expect(block).toMatch(/Contact us before you subscribe/);

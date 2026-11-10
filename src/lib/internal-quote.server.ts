@@ -36,14 +36,26 @@ export async function internalQuote(supabase: any, orgId: string, data: Internal
   if (zErr) throw new Error(zErr.message);
 
   const { matchZone } = await import("@/lib/zone-match");
-  const z = matchZone((zones ?? []) as any[], {
-    postalCode: data.postalCode,
-    point:
-      data.latitude != null && data.longitude != null
-        ? { lat: data.latitude, lng: data.longitude }
-        : null,
-    accountType: data.accountType ?? null,
-  });
+  const pinned =
+    data.latitude != null && data.longitude != null
+      ? { lat: data.latitude, lng: data.longitude }
+      : null;
+  const z =
+    matchZone((zones ?? []) as any[], {
+      postalCode: data.postalCode,
+      point: pinned,
+      accountType: data.accountType ?? null,
+    }) ??
+    // No pin, and no zone lists the ZIP. A drawn area that lists no ZIPs
+    // (made in setup before it filled them, or saved with its chips removed)
+    // could only ever be reached by a pin, so an address typed by hand fell
+    // through to "No zone matches ZIP 48226" inside a 10-mile circle on
+    // Detroit (onboarding audit 2026-11-09, D1). Place the ZIP at its Census
+    // center -- the point "Fill ZIPs from the area" asks of the same shape --
+    // and ask the matcher again, so its precedence still decides.
+    (pinned
+      ? null
+      : await matchByZipCenter(supabase, orgId, (zones ?? []) as any[], data, matchZone));
 
   if (!z) return { available: false as const };
   const { perVisitMultiplier } = await import("@/lib/frequency-multipliers");
@@ -120,4 +132,39 @@ export async function internalQuote(supabase: any, orgId: string, data: Internal
       commercial: null,
     },
   };
+}
+
+/** The zone a ZIP's Census center falls in, for an address with no pin.
+ *  Null when no drawn zone's search box holds the ZIP's center, or when the
+ *  lookup fails: the Plan step then says no zone matches, as it did before. */
+async function matchByZipCenter(
+  supabase: any,
+  orgId: string,
+  zones: any[],
+  data: InternalQuoteInput,
+  matchZone: typeof import("@/lib/zone-match").matchZone,
+) {
+  const zip = data.postalCode.trim().match(/^(\d{5})(?:-\d{4})?$/)?.[1];
+  if (!zip) return null;
+  const { zoneShape } = await import("@/lib/lead-service-area");
+  const { zipCentroidsForShape } = await import("@/lib/zone-zip-fill.server");
+  for (const zone of zones) {
+    if (zone.enabled === false) continue;
+    const shape = zoneShape(zone);
+    if (!shape) continue;
+    try {
+      const found = await zipCentroidsForShape(supabase, orgId, shape);
+      if (found.status !== "ok") continue;
+      const c = found.centroids.find((x) => x.zip === zip);
+      if (!c) continue;
+      return matchZone(zones, {
+        postalCode: zip,
+        point: { lat: c.lat, lng: c.lng },
+        accountType: data.accountType ?? null,
+      });
+    } catch (e) {
+      console.error(`[internal-quote] ZIP center lookup failed for org ${orgId}:`, e);
+    }
+  }
+  return null;
 }

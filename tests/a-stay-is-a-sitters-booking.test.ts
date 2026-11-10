@@ -319,7 +319,10 @@ describe("the server", () => {
   const fns = read("src/lib/stays.functions.ts");
 
   it("books a stay through transactional confirmation and the shared generator", () => {
-    expect(fns).toMatch(/requirePermission\(supabase, context\.userId, "manage_pricing"\)/);
+    // Booking, not pricing (#616): a dispatcher books at the set price, and
+    // stayPriceRefusal keeps a typed price or deposit to manage_pricing.
+    expect(fns).toMatch(/requirePermission\(supabase, context\.userId, "booking"\)/);
+    expect(fns).toMatch(/stayPriceRefusal\(canSetPrices, data\)/);
     expect(fns).toMatch(/rpc\("confirm_stay"/);
     const booking = read("supabase/migrations/20261024080300_a-client-asks-for-a-stay.sql");
     expect(booking).toContain("ARRAY[0,1,2,3,4,5,6]");
