@@ -246,7 +246,8 @@ function UsersPage() {
           {/* A scan that ran short says so. Everything on this screen is a
               count of something, and a count nobody can trust is worse than
               no count. */}
-          {scan && (!scan.membershipsComplete || !scan.accountsComplete) ? (
+          {scan &&
+          (!scan.membershipsComplete || !scan.accountsComplete || scan.unreadableAccounts) ? (
             <div
               role="status"
               className="mb-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-950"
@@ -264,6 +265,14 @@ function UsersPage() {
                     Read {scan.accounts.toLocaleString()} accounts but could not resolve an email
                     for every user shown. Rows without one show a user id, and a search by email
                     will not match them.
+                  </li>
+                ) : null}
+                {scan.unreadableAccounts ? (
+                  <li>
+                    {scan.unreadableAccounts.toLocaleString()} account
+                    {scan.unreadableAccounts === 1 ? " could" : "s could"} not be read at all: the
+                    auth service rejects rows with empty (NULL) token fields. Those need a data
+                    repair; every other account is listed.
                   </li>
                 ) : null}
               </ul>

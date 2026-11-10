@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { useOrgServices } from "@/components/client-detail/ServicePicker";
 import { setSetupWalkPrices } from "@/lib/setup-walk-prices.functions";
 import { setupWalkFields, setupWalkPricesProblem, walkPriceCents } from "@/lib/setup-walk-prices";
+import { stepSave } from "@/lib/setup-step-save";
 
 // ── /setup, step 2: what a walk costs (#769) ──────────────────────────────
 //
@@ -43,26 +44,32 @@ export function WalkPricesForm({
   const valueOf = (id: string, cents: number | null) =>
     typed[id] ?? (cents != null && cents > 0 ? (cents / 100).toFixed(2) : "");
 
-  const m = useMutation({
-    mutationFn: async () => {
-      const rows = fields.map(({ walk, required }) => ({
-        id: walk.id,
-        name: walk.name,
-        required,
-        cents: walkPriceCents(valueOf(walk.id, walk.base_price_cents)),
-      }));
-      const problem = setupWalkPricesProblem(rows);
-      if (problem) throw new Error(problem);
-      await saveFn({ data: { prices: rows.map(({ id, cents }) => ({ id, cents })) } });
-    },
-    onSuccess: async () => {
-      toast.success("Walk prices saved");
-      setTyped({});
-      await qc.invalidateQueries({ queryKey: ["services"] });
-      onSaved();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  // The setup contract (stepSave, #795): advance only on success, say a
+  // failure, and refresh what Settings → Services and the new-client picker
+  // read (["services", "all"], under ["services"]) after either, since the
+  // walks are written one at a time and a failure can leave some saved.
+  const m = useMutation(
+    stepSave({
+      qc,
+      save: async () => {
+        const rows = fields.map(({ walk, required }) => ({
+          id: walk.id,
+          name: walk.name,
+          required,
+          cents: walkPriceCents(valueOf(walk.id, walk.base_price_cents)),
+        }));
+        const problem = setupWalkPricesProblem(rows);
+        if (problem) throw new Error(problem);
+        await saveFn({ data: { prices: rows.map(({ id, cents }) => ({ id, cents })) } });
+      },
+      refresh: [["services"], ["onboarding-status"]],
+      saved: () => {
+        toast.success("Walk prices saved");
+        setTyped({});
+      },
+      onSaved,
+    }),
+  );
 
   if (isLoading) return <p className="text-sm text-muted-foreground">Loading your walks…</p>;
 

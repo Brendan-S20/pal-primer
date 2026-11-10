@@ -37,7 +37,7 @@ import { CalendarFeedCard } from "@/components/CalendarFeedCard";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { useMyProfile } from "@/hooks/useMyProfile";
 import { supabase } from "@/integrations/supabase/client";
-import { appOrigin } from "@/lib/app-origin";
+import { passwordResetRedirectHere } from "@/lib/password-recovery";
 import { useRoleLabel } from "@/components/CommercialOnly";
 import {
   changeMyEmail,
@@ -147,7 +147,7 @@ function ProfilePage() {
   });
 
   const resetPassword = useMutation({
-    mutationFn: () => resetFn({ data: { redirectTo: `${appOrigin()}/auth` } }),
+    mutationFn: async () => resetFn({ data: { redirectTo: await passwordResetRedirectHere() } }),
     onSuccess: (r) => toast.success(`Password reset link sent to ${r.sentTo}.`),
     onError: (e: Error) => toast.error(e.message),
   });

@@ -209,6 +209,59 @@ for (const { w, h, label } of WIDTHS) {
       await measure(page, w, `/clients/new (dog walking) @${w}px`);
     });
 
+    // Onboarding audit 2026-11-09, D2: a residential client went through Dogs
+    // on a blank row, the plan billed for one dog, and the new client's
+    // Summary opened on "no dog is on file". Continue now stays on Dogs with
+    // an inline alert until one is named; a commercial / HOA account may
+    // still go on with none.
+    test(`the wizard will not leave Dogs with no named dog @${w}px`, async ({ page }) => {
+      await open(page, "owner", DOG_WALKING, "/clients/new", w, h);
+      await expect.poll(() => allText(page), { timeout: FIRST_PAINT_MS }).toContain("Step 1 of 4");
+      const next = page.getByRole("button", { name: "Continue", exact: true });
+      await page.locator("#dn").fill("Rivera household");
+      await next.click();
+      await expect.poll(() => allText(page)).toContain("Step 2 of 4");
+      await page.locator("#st").fill("4417 North Wolcott Avenue");
+      await page.locator("#ci").fill("Chicago");
+      await page.locator("#rg").fill("IL");
+      await page.locator("#pc").fill("60640");
+      await next.click();
+      await expect.poll(() => allText(page)).toContain("Step 3 of 4");
+
+      await next.click();
+      const alert = page.locator("#needs-a-named-dog");
+      await expect(alert).toBeVisible();
+      await expect(alert).toHaveAttribute("role", "alert");
+      await expect(alert).toContainText("Add at least one dog's name to continue");
+      await expect.poll(() => allText(page)).toContain("Step 3 of 4");
+      await expect(page.getByPlaceholder("Bailey").first()).toHaveAttribute("aria-invalid", "true");
+      await measure(page, w, `/clients/new Dogs, none named (dog walking) @${w}px`);
+
+      await page.getByPlaceholder("Bailey").first().fill("Biscuit");
+      await next.click();
+      await expect.poll(() => allText(page)).toContain("Step 4 of 4");
+      await expect(page.getByRole("button", { name: "Create client" })).toBeVisible();
+    });
+
+    test(`a commercial / HOA account may still skip Dogs @${w}px`, async ({ page }) => {
+      await open(page, "owner", DOG_WALKING, "/clients/new", w, h);
+      await expect.poll(() => allText(page), { timeout: FIRST_PAINT_MS }).toContain("Step 1 of 4");
+      const next = page.getByRole("button", { name: "Continue", exact: true });
+      await page.getByText("Commercial / HOA", { exact: true }).click();
+      await page.locator("#dn").fill("Oakwood HOA");
+      await next.click();
+      await expect.poll(() => allText(page)).toContain("Step 2 of 4");
+      await page.locator("#st").fill("4417 North Wolcott Avenue");
+      await page.locator("#ci").fill("Chicago");
+      await page.locator("#rg").fill("IL");
+      await page.locator("#pc").fill("60640");
+      await next.click();
+      await expect.poll(() => allText(page)).toContain("Step 3 of 4");
+      await next.click();
+      await expect.poll(() => allText(page)).toContain("Step 4 of 4");
+      await expect(page.locator("#needs-a-named-dog")).toHaveCount(0);
+    });
+
     test(`Settings → Business defaults says what the business runs @${w}px`, async ({ page }) => {
       await open(page, "owner", DOG_WALKING, "/settings/business", w, h);
       await expectServiceLineChoices(page);

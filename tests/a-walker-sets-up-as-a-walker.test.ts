@@ -367,7 +367,8 @@ describe("#769 the walks are priced in setup, and both lengths have to be", () =
   it("the form writes the same services Settings → Services and the plan picker read", () => {
     const form = codeOnly(read("src/components/SetupWalkPrices.tsx"));
     expect(form).toMatch(/useOrgServices\(\)/);
-    expect(form).toMatch(/invalidateQueries\(\{ queryKey: \["services"\] \}\)/);
+    expect(form).toMatch(/useMutation\(\s*stepSave\(/);
+    expect(form).toMatch(/refresh: \[\["services"\], \["onboarding-status"\]\]/);
     const server = codeOnly(read("src/lib/setup-walk-prices.functions.ts"));
     expect(server).toMatch(/requirePermission\([^)]*"manage_pricing"\)/);
     expect(server).toMatch(/\.update\(\{ base_price_cents: p\.cents \}\)/);

@@ -71,9 +71,12 @@ describe("the list", () => {
 
 describe("the call sites", () => {
   it("signup sends the device's zone", () => {
-    expect(read("src/routes/get-started.tsx")).toMatch(
-      /bootstrapOrganization\(\{[\s\S]{0,600}timezone: deviceTimezone\(\)/,
+    // The sequence lives in src/lib/finish-signup.ts since 2026-11-09; the
+    // screen hands it the device's zone.
+    expect(read("src/lib/finish-signup.ts")).toMatch(
+      /bootstrapOrganization\(\{[\s\S]{0,600}timezone: deps\.timezone\(\)/,
     );
+    expect(read("src/routes/get-started.tsx")).toMatch(/timezone: deviceTimezone,/);
   });
   it("the setup step preselects from the device and the address", () => {
     const src = read("src/routes/_authenticated/setup.tsx");

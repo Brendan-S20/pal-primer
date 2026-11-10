@@ -367,7 +367,9 @@ describe("a lock-screen link opens My Day and nothing else", () => {
   it("the scheme is the app's, and the OAuth hand-back is a different host", () => {
     expect(read("ios/App/App/Info.plist")).toContain(`<string>${APP_URL_SCHEME}</string>`);
     expect(read("capacitor.config.ts")).toContain(`appId: "${APP_URL_SCHEME}"`);
-    expect(read("src/lib/native-oauth.ts")).toContain(`"${APP_URL_SCHEME}://auth-callback"`);
+    expect(read("src/lib/native-oauth-redirect.ts")).toContain(
+      `"${APP_URL_SCHEME}://auth-callback"`,
+    );
     expect(LIVE_ACTIVITY_LINK_HOST).not.toBe("auth-callback");
   });
 });
