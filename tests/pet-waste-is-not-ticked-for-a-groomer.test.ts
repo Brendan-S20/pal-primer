@@ -120,7 +120,9 @@ describe("setup step 1 with a ?service= request (#710) and without", () => {
 
   it("#711's draft keeps only what was touched, so a restore wins over the start", () => {
     const setup = read("src/routes/_authenticated/setup.tsx");
-    expect(setup).toMatch(/value: \{ lines, name, phone, address, tz \}/);
+    // D14 added the office email and the portal address to the same draft,
+    // under the same null-means-untouched rule.
+    expect(setup).toMatch(/value: \{ lines, name, phone, address, tz, officeEmail, portalSlug \}/);
     expect(setup).toMatch(/setLines\(d\.lines\)/);
   });
 });

@@ -869,7 +869,10 @@ const zh: TranslationsWithPlurals<"other"> = {
     viewAccount: "查看和编辑你的账号",
     expandMenu: "显示菜单名称",
     collapseMenu: "隐藏菜单名称",
+    showAllMenus: "显示所有菜单",
+    hideAllMenus: "显示更少菜单",
     group: {
+      "Get started": "开始使用",
       Overview: "概览",
       Operations: "运营",
       Field: "现场",
@@ -879,6 +882,7 @@ const zh: TranslationsWithPlurals<"other"> = {
       Platform: "平台",
     },
     item: {
+      setup: "设置向导",
       dashboard: "仪表盘",
       inbox: "收件箱",
       leads: "潜在客户",

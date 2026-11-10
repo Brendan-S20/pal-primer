@@ -293,12 +293,11 @@ describe("Get started: the auth server still refuses the password at the end", (
 
   it("a refusal that is not about the password stays a form error, with no password field added", async () => {
     await throughToFinish();
-    h.registerAccount.mockRejectedValueOnce(
-      new Error("That email already has an account. Sign in instead."),
-    );
+    // (A taken address is not this case: since #782 it goes to sign-in.)
+    h.registerAccount.mockRejectedValueOnce(new Error("Could not create the account right now."));
     await press(/Create my workspace/);
     expect($("#gs-pass-again")).toBeNull();
-    expect(host.textContent).toContain("already has an account");
+    expect(host.textContent).toContain("Could not create the account right now.");
   });
 });
 

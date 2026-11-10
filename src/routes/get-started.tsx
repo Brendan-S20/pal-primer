@@ -33,7 +33,12 @@ import { APP_NAME } from "@/lib/scoop";
 import { isValidOrgName } from "@/lib/dna-linkage";
 import { pageTitle } from "@/lib/page-title";
 import { deviceTimezone } from "@/lib/org-timezone";
-import { handOffSignupEmail, takeSignupEmail } from "@/lib/signup-email";
+import {
+  EMAIL_ALREADY_REGISTERED,
+  handOffExistingAccount,
+  handOffSignupEmail,
+  takeSignupEmail,
+} from "@/lib/signup-email";
 import { finishSignup, newSignupProgress, signupErrorMessage } from "@/lib/finish-signup";
 import {
   clearSignupDraft,
@@ -86,6 +91,26 @@ export { SMS_CONSENT_TEXT } from "@/components/SmsOptInFields";
 // look like a required stage of signing up — Twilio read the flow that way and
 // rejected the toll-free verification for it (30475).
 const STEPS = ["Your account", "Your business", "Finish"] as const;
+
+/**
+ * A taken address goes to sign-in, never to an error on a sign-up form (#765).
+ *
+ * "That email already has an account. Sign in instead." was true and left the
+ * person on a form that could not proceed, with a password they may not know.
+ * A teammate who was taken off a business and tries to start again lands here
+ * first. /auth opens on the password step with the address filled in and
+ * "Forgot password?" beside it. An invitation token, if there is one, is
+ * already kept (rememberInviteToken) and is accepted after that sign-in.
+ */
+function sendToSignIn(navigate: ReturnType<typeof useNavigate>, email: string) {
+  handOffExistingAccount(email);
+  navigate({ to: "/auth" });
+}
+
+/** True when a thrown error is registerAccount's "already has an account". */
+function isTakenEmail(err: unknown): boolean {
+  return err instanceof Error && err.message === EMAIL_ALREADY_REGISTERED;
+}
 
 function GetStartedPage() {
   const search = Route.useSearch();
@@ -229,7 +254,7 @@ function NewBusinessPage() {
     try {
       const r = await checkEmailAccount({ data: { email: email.trim() } });
       if (r.exists) {
-        setError("That email already has an account. Sign in instead.");
+        sendToSignIn(navigate, email);
         return;
       }
       if (r.pendingInvite) {
@@ -274,6 +299,7 @@ function NewBusinessPage() {
         setPasswordRejected(passwordRejectionMessage((err as Error).message));
         return;
       }
+      if (isTakenEmail(err)) return sendToSignIn(navigate, email);
       setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
     }
   };
@@ -401,6 +427,9 @@ function NewBusinessPage() {
         setPasswordRejected(passwordRejectionMessage((err as Error).message));
         return;
       }
+      // Only before this page created the account: after that, a retry skips
+      // registerAccount (#795) and a taken address is not the problem.
+      if (!progress.current.registered && isTakenEmail(err)) return sendToSignIn(navigate, email);
       setError(signupErrorMessage(err, progress.current));
     }
   };
@@ -690,6 +719,7 @@ function JoinTeamPage({ token }: { token: string }) {
         setPasswordRejected(passwordRejectionMessage((err as Error).message));
         return;
       }
+      if (isTakenEmail(err)) return sendToSignIn(navigate, email);
       setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
     }
   };

@@ -2,6 +2,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { appOrigin } from "@/lib/app-origin";
+import { EMAIL_ALREADY_REGISTERED } from "@/lib/signup-email";
+import { SIGNUP_ORG_PENDING } from "@/lib/signup-marker";
 import {
   isPasswordRejection,
   passwordRejectionMessage,
@@ -73,6 +75,10 @@ export const registerAccount = createServerFn({ method: "POST" })
       email: data.email,
       password: data.password,
       email_confirm: true,
+      // A business was named, and is about to be built. Until it is, an empty
+      // user_roles means "finish my signup"; after, it means "I was taken off
+      // a business" (#765). app_metadata: the person cannot write it.
+      app_metadata: data.orgName ? { [SIGNUP_ORG_PENDING]: true } : undefined,
       user_metadata: {
         org_name: data.orgName || undefined,
         display_name: data.displayName,
@@ -82,7 +88,7 @@ export const registerAccount = createServerFn({ method: "POST" })
     });
     if (error) {
       if (/already/i.test(error.message)) {
-        throw new Error("That email already has an account. Sign in instead.");
+        throw new Error(EMAIL_ALREADY_REGISTERED);
       }
       // A password the shared rules passed but the auth server still refused
       // (its leaked-password check): marked as being about the password, so
@@ -91,6 +97,30 @@ export const registerAccount = createServerFn({ method: "POST" })
       throw new Error(error.message);
     }
     return { ok: true };
+  });
+
+/**
+ * Clear the signup marker for an account that has a membership (#765).
+ *
+ * Most joins clear it where they happen (bootstrapOrganization,
+ * acceptPlatformInvite). An invitation accepted by the database function
+ * cannot write app_metadata, so the first sign-in that finds a membership
+ * settles it here. Only ever clears, and only for the caller, and only once
+ * the service role has seen the membership itself.
+ */
+export const settleSignupMarker = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data } = await (supabaseAdmin as any)
+      .from("user_roles")
+      .select("organization_id")
+      .eq("user_id", context.userId)
+      .limit(1);
+    if (!data?.length) return { cleared: false };
+    const { clearSignupMarker } = await import("@/lib/signup-marker");
+    await clearSignupMarker(supabaseAdmin, context.userId);
+    return { cleared: true };
   });
 
 // Mint a verification token and queue the email (same Resend queue the auth

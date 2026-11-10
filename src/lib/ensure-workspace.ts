@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { bootstrapOrganization } from "@/lib/org.functions";
+import { isUnfinishedSignup } from "@/lib/signup-marker";
 
 /**
  * The browser's own IANA zone, for the one moment it is worth asking.
@@ -164,6 +165,7 @@ export async function acceptPendingInvite(token = pendingInviteToken()): Promise
 export type BootstrapUser = {
   id: string;
   email?: string | null;
+  app_metadata?: Record<string, any> | null;
   user_metadata?: Record<string, any> | null;
 };
 
@@ -228,6 +230,18 @@ export async function ensureBootstrapped(
     .eq("user_id", user.id)
     .maybeSingle();
   if (existing) {
+    // A member who still carries the signup marker (joined through an
+    // invitation the database accepted) has it cleared now, so that being
+    // taken off this business later cannot read as an unfinished signup
+    // (#765). Best effort: it only matters once the membership is gone.
+    if (isUnfinishedSignup(user)) {
+      try {
+        const { settleSignupMarker } = await import("@/lib/auth-entry.functions");
+        await settleSignupMarker();
+      } catch (err) {
+        console.error("settling the signup marker failed", err);
+      }
+    }
     // Already somebody's teammate, arriving through an invitation link. The
     // database either records the invite as used (same business) or says why
     // it cannot be (a different one); either way the person finds out here
@@ -255,13 +269,25 @@ export async function ensureBootstrapped(
     (typeof md.full_name === "string" && md.full_name.trim()) ||
     (typeof md.name === "string" && md.name.trim()) ||
     emailLocal;
+  // The name typed at signup counts ONLY for a signup that has not finished
+  // (#765). `org_name` is never cleared, so an account that was on a business
+  // and was taken off it still carries that business's name; reading it here
+  // built them a second business under it, with them as owner. Whether the
+  // signup is unfinished is a marker only the server writes
+  // (lib/signup-marker.ts).
+  const freshSignup = isUnfinishedSignup(user);
   const typedOrgName =
     (overrides.orgName && overrides.orgName.trim()) ||
-    (typeof md.org_name === "string" && md.org_name.trim()) ||
+    (freshSignup && typeof md.org_name === "string" && md.org_name.trim()) ||
     null;
   // Nothing in the session names the business, and the caller can ask. Stop
   // here rather than minting an organization the owner cannot rename.
   if (!typedOrgName && overrides.requireOrgName) return NEEDS_ORG_NAME;
+  // An account that used to belong to a business is not guessed a new one by
+  // a caller that cannot ask, either: /no-workspace is where that is decided.
+  if (!typedOrgName && typeof md.org_name === "string" && md.org_name.trim()) {
+    return NEEDS_ORG_NAME;
+  }
   const orgName: string = typedOrgName || `${displayName}'s Organization`;
 
   // OAuth signups round-trip through the provider, so referral/UTM attribution
