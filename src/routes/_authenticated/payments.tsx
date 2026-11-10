@@ -32,7 +32,7 @@ import { describeStripeRates } from "@/lib/processing-fee";
 import { getTipSettings, setTipsEnabled } from "@/lib/tips.functions";
 import { Switch } from "@/components/ui/switch";
 import { getPlatformFeeSentence } from "@/lib/platform-fee.functions";
-import { sendEmailVerification } from "@/lib/auth-entry.functions";
+import { ResendVerificationButton } from "@/components/ResendVerificationButton";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
@@ -49,20 +49,6 @@ import {
   withTimeout,
   type BalanceSummaryData,
 } from "@/lib/payments-load";
-
-function ResendVerification() {
-  const sendFn = useServerFn(sendEmailVerification);
-  const m = useMutation({
-    mutationFn: () => sendFn(),
-    onSuccess: () => toast.success("Verification email sent. Check your inbox"),
-    onError: (e: Error) => toast.error(e.message),
-  });
-  return (
-    <Button variant="outline" size="sm" onClick={() => m.mutate()} disabled={m.isPending}>
-      {m.isPending ? "Sending…" : "Resend verification email"}
-    </Button>
-  );
-}
 
 // Promoted from Settings -> Payments to the main sidebar (punch list #9): this
 // is the tenant-facing money view (balances, payments, payouts), not app
@@ -227,7 +213,7 @@ function PaymentsSettings() {
             You can use everything else right away, but before connecting Stripe and moving money,
             we need to confirm your email address. Check your inbox for the verification link.
           </p>
-          <ResendVerification />
+          <ResendVerificationButton />
         </div>
       ) : !cfg?.connected ? (
         <div className="space-y-4 rounded-lg border bg-card p-4">

@@ -79,14 +79,18 @@ export function stepsFor<T extends { gate?: string }>(
   return steps.filter((s) => !s.gate || canAccess(role, s.gate));
 }
 
-/** Where to (re)start: the remembered step if it is still one of theirs,
- *  otherwise the first one not yet done, otherwise the first. */
+/** Where to (re)start: the remembered step if it is still one of theirs AND
+ *  still open, otherwise the first one not yet done, otherwise the first.
+ *
+ *  A remembered step that is done is not resumed (#772): an owner who
+ *  finished zones and left was sent back to /setup?step=zones by "Continue
+ *  setup", a step with nothing left to do, while the next open one waited. */
 export function startingStep(
   steps: readonly Pick<OnboardingStep, "id" | "done">[],
   remembered: string | null | undefined,
 ): OnboardingStepId | null {
   if (!steps.length) return null;
-  const hit = steps.find((s) => s.id === remembered);
+  const hit = steps.find((s) => s.id === remembered && !s.done);
   if (hit) return hit.id;
   return (steps.find((s) => !s.done) ?? steps[0]).id;
 }
@@ -113,10 +117,8 @@ export function setupBanner(
 } {
   const total = steps.length;
   const done = steps.filter((s) => s.done).length;
-  // A remembered step only resumes; when it is already done, the banner's
-  // "Next" is the first step still open, not the one they last looked at.
-  const rememberedOpen = steps.some((s) => s.id === remembered && !s.done) ? remembered : null;
-  const step = startingStep(steps, rememberedOpen);
+  // A remembered step only resumes while it is open (startingStep).
+  const step = startingStep(steps, remembered);
   const started = done > 0 || !!remembered;
   return {
     done,
