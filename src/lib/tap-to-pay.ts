@@ -25,6 +25,18 @@
 import { hasPermission } from "@/lib/permissions";
 import type { AppRole } from "@/hooks/useMyRole";
 
+/** Stripe's Tap to Pay per-transaction fee (US), in cents. The business that
+ *  takes the tap bears it (owner decision, 2026-11-10): Stripe bills it to
+ *  the connected account on a direct charge, and where Stripe would bill the
+ *  platform instead, tap-to-pay.server.ts recovers it through the
+ *  application fee. Shown on the button before the first tap. */
+export const TAP_TO_PAY_FEE_CENTS = 10;
+
+/** "$0.10", for the sentence on the button. */
+export function tapToPayFeeLabel(): string {
+  return "$" + (TAP_TO_PAY_FEE_CENTS / 100).toFixed(2);
+}
+
 export type TapToPayPlatform = "ios" | "android" | "web" | string;
 
 export type TapToPayGateInput = {

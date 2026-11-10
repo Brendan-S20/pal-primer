@@ -19,7 +19,12 @@ import { Button } from "@/components/ui/button";
 import { SectionLabel } from "@/components/client-detail/primitives";
 import { usePermissions } from "@/hooks/useMyRole";
 import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
-import { describeTapToPayError, tapToPayGate, TAP_TO_PAY_MESSAGES } from "@/lib/tap-to-pay";
+import {
+  describeTapToPayError,
+  tapToPayFeeLabel,
+  tapToPayGate,
+  TAP_TO_PAY_MESSAGES,
+} from "@/lib/tap-to-pay";
 import {
   createTapToPayConnectionToken,
   createTapToPayPaymentIntent,
@@ -187,7 +192,8 @@ export function TapToPayButton({
         <p className="mt-1.5 text-xs text-destructive">{error}</p>
       ) : (
         <p className="mt-1.5 text-xs text-muted-foreground">
-          The client taps their card or phone on this phone. Nothing is saved.
+          The client taps their card or phone on this phone. Nothing is saved. Each tap costs your
+          business {tapToPayFeeLabel()} on top of the card rate, shown in your Stripe fees.
         </p>
       )}
     </div>

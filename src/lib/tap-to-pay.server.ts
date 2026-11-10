@@ -26,6 +26,7 @@
 import type Stripe from "stripe";
 import { platformFeeCents } from "@/lib/platform-fee";
 import { tipMetadata } from "@/lib/tips";
+import { TAP_TO_PAY_FEE_CENTS } from "@/lib/tap-to-pay";
 
 /** Marks a Terminal Location as the one this product made for an org. */
 export const TAP_TO_PAY_LOCATION_TAG = "houndstack_tap_to_pay";
@@ -87,7 +88,90 @@ export function parseLocationAddress(
 export const TAP_TO_PAY_ADDRESS_MISSING =
   "Tap to Pay needs the business address (street, city, state and ZIP). Add it under Settings, Client portal, then try again.";
 
-type StripeLike = Pick<Stripe, "terminal" | "paymentIntents">;
+type StripeLike = Pick<Stripe, "terminal" | "paymentIntents"> & {
+  accounts: { retrieve: (id: string) => Promise<unknown> };
+};
+
+// ── WHO PAYS STRIPE'S PER-TAP FEE ─────────────────────────────────────────
+//
+// Owner decision (2026-11-10, on #757): the business that takes a tap bears
+// Stripe's Tap to Pay per-transaction fee, and the platform is never billed
+// net for a tenant's taps.
+//
+// A direct charge alone does not settle that. On Connect, Stripe bills its
+// fees to whoever the connected account's `controller.fees.payer` names.
+// HoundStack creates its accounts with the legacy `type: "express"`
+// (stripe-connect.server.ts, ensureExpressAccount) and sets no controller,
+// which Stripe records as `controller.fees.payer: "application_express"`
+// (docs.stripe.com/connect/migrate-to-controller-properties). For DIRECT
+// charges Stripe's own table puts payment processing fees on the connected
+// account under that setting, and its Terminal-on-Connect page says that with
+// direct charges "the connected account is responsible for the cost of Stripe
+// fees" (docs.stripe.com/connect/direct-charges-fee-payer-behavior,
+// docs.stripe.com/terminal/features/connect?connect-charge-type=direct).
+//
+// That is a property of each account, not of this code, so it is read from
+// the account on every tap rather than assumed:
+//
+//   "account", "application_express", "application_custom"
+//                    -> Stripe debits the business's own balance for the
+//                       per-tap fee on a direct charge. Nothing is added;
+//                       adding it would charge the business twice.
+//   "application"    -> the platform is billed, so the tap intent's
+//   or unreadable       application fee carries TAP_TO_PAY_FEE_CENTS on top
+//                       of platformFeeCents, which moves it from the
+//                       business's settlement to the platform. Unreadable
+//                       counts as the platform paying: a wrong guess that way
+//                       costs the business ten cents, the other way is the
+//                       exact leak the owner ruled out.
+//
+// The customer is charged the amount due, never more: the application fee
+// comes out of what the business is paid, and the invoice is credited the
+// full charge exactly as before. Take payment is not touched.
+
+// TAP_TO_PAY_FEE_CENTS lives in src/lib/tap-to-pay.ts so the button can say it too.
+export { TAP_TO_PAY_FEE_CENTS };
+
+/** Stripe's smallest card charge in USD. Below it Stripe refuses the intent. */
+export const STRIPE_MIN_CHARGE_CENTS = 50;
+
+/** The connected account's `controller.fees.payer`, or null if it cannot be read. */
+export async function connectedAccountFeePayer(
+  stripe: Pick<StripeLike, "accounts">,
+  stripeAccount: string,
+): Promise<string | null> {
+  try {
+    const acct = (await stripe.accounts.retrieve(stripeAccount)) as {
+      controller?: { fees?: { payer?: string | null } | null } | null;
+    } | null;
+    return acct?.controller?.fees?.payer ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Payers under which Stripe bills a DIRECT charge's fees to the connected
+ *  account. "application" is the one setting where the platform is billed. */
+const CONNECTED_ACCOUNT_PAYS_ON_DIRECT_CHARGES = new Set([
+  "account",
+  "application_express",
+  "application_custom",
+]);
+
+/** True when Stripe would bill the platform for a tap's fee (or it cannot be told). */
+export function platformPaysStripeFees(feePayer: string | null): boolean {
+  return feePayer === null || !CONNECTED_ACCOUNT_PAYS_ON_DIRECT_CHARGES.has(feePayer);
+}
+
+/** The tap's application fee: the platform fee, plus the per-tap fee when the
+ *  platform would otherwise be billed for it. */
+export function tapToPayApplicationFeeCents(
+  platformFee: number | undefined,
+  feePayer: string | null,
+): number | undefined {
+  if (!platformPaysStripeFees(feePayer)) return platformFee;
+  return (platformFee ?? 0) + TAP_TO_PAY_FEE_CENTS;
+}
 
 /** The org's Terminal Location on its connected account, created on first use. */
 export async function ensureTerminalLocation(
@@ -158,6 +242,12 @@ export async function createCardPresentIntent(
   customerId: string | null,
 ): Promise<Stripe.PaymentIntent> {
   const opts = { stripeAccount };
+  if (dueCents < STRIPE_MIN_CHARGE_CENTS) {
+    throw new Error(
+      "Stripe can't take a card payment under $0.50. Record a cash or check payment instead.",
+    );
+  }
+  const feePayer = await connectedAccountFeePayer(stripe, stripeAccount);
   if (invoice.stripe_payment_intent_id) {
     let existing: Stripe.PaymentIntent | null = null;
     try {
@@ -196,9 +286,21 @@ export async function createCardPresentIntent(
       ...tipMetadata(0),
     },
   };
+  // The platform fee is Take payment's, from the same helper on the same
+  // inputs; the per-tap fee rides on top only when the platform would be billed.
+  const tapFeeCents = platformPaysStripeFees(feePayer) ? TAP_TO_PAY_FEE_CENTS : 0;
   return await stripe.paymentIntents.create(
     {
       ...createParams,
+      application_fee_amount: tapToPayApplicationFeeCents(
+        createParams.application_fee_amount,
+        feePayer,
+      ),
+      metadata: {
+        ...createParams.metadata,
+        tap_to_pay_fee_cents: String(tapFeeCents),
+        connect_fee_payer: feePayer ?? "unknown",
+      },
       payment_method_types: ["card_present"],
       // Captured on confirm, so payment_intent.succeeded fires and the
       // existing webhook path marks the invoice paid with no second step.

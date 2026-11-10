@@ -94,8 +94,24 @@ function db() {
   };
 }
 
-function fakeStripe(opts: { locations?: any[]; existingPi?: any } = {}) {
+function fakeStripe(
+  opts: {
+    locations?: any[];
+    existingPi?: any;
+    feePayer?: string | null;
+    accountFails?: boolean;
+  } = {},
+) {
   return {
+    // HoundStack's accounts are legacy `type: "express"`, which Stripe reports
+    // as fees.payer "application_express". That is the default here.
+    accounts: {
+      retrieve: vi.fn(async () => {
+        if (opts.accountFails) throw new Error("Stripe unavailable");
+        const payer = "feePayer" in opts ? opts.feePayer : "application_express";
+        return { id: "acct_tenant", controller: { fees: { payer } } };
+      }),
+    },
     terminal: {
       locations: {
         list: vi.fn(async () => ({ data: opts.locations ?? [] })),
@@ -121,9 +137,15 @@ import {
   createConnectionToken,
   ensureTerminalLocation,
   parseLocationAddress,
+  connectedAccountFeePayer,
+  platformPaysStripeFees,
+  STRIPE_MIN_CHARGE_CENTS,
+  tapToPayApplicationFeeCents,
   TAP_TO_PAY_ADDRESS_MISSING,
+  TAP_TO_PAY_FEE_CENTS,
   TAP_TO_PAY_SOURCE,
 } from "@/lib/tap-to-pay.server";
+import { invoiceDueCents } from "@/lib/ar";
 import {
   createTapToPayConnectionToken,
   createTapToPayPaymentIntent,
@@ -237,6 +259,123 @@ describe("the connection token", () => {
       { location: "tml_1" },
       { stripeAccount: "acct_tenant" },
     );
+  });
+});
+
+describe("who pays Stripe's per-tap fee (owner decision, 2026-11-10)", () => {
+  const inv = (over: Record<string, unknown> = {}) => ({
+    id: INVOICE_ID,
+    organization_id: ORG.id,
+    total_cents: 10_000,
+    tax_cents: 0,
+    credit_applied_cents: 0,
+    amount_paid_cents: 0,
+    currency: "usd",
+    stripe_payment_intent_id: null,
+    ...over,
+  });
+  const feeOf = async (
+    feePayer: string | null,
+    invoice: ReturnType<typeof inv>,
+    accountFails = false,
+  ) => {
+    const stripe = fakeStripe({ feePayer, accountFails });
+    const due = invoiceDueCents(invoice);
+    await createCardPresentIntent(stripe as any, "acct_tenant", invoice, due, null);
+    const [params] = stripe.paymentIntents.create.mock.calls[0] as any[];
+    return { params, due, stripe };
+  };
+
+  it("is a named constant of ten cents, not a number written into the charge", () => {
+    expect(TAP_TO_PAY_FEE_CENTS).toBe(10);
+  });
+
+  it("reads the fee payer from the connected account itself", async () => {
+    const stripe = fakeStripe({ feePayer: "application" });
+    expect(await connectedAccountFeePayer(stripe as any, "acct_tenant")).toBe("application");
+    expect(stripe.accounts.retrieve).toHaveBeenCalledWith("acct_tenant");
+    expect(
+      await connectedAccountFeePayer(fakeStripe({ accountFails: true }) as any, "acct_x"),
+    ).toBeNull();
+  });
+
+  it("maps every fee payer Stripe defines to who is billed on a direct charge", () => {
+    // docs.stripe.com/connect/direct-charges-fee-payer-behavior
+    expect(platformPaysStripeFees("account")).toBe(false);
+    expect(platformPaysStripeFees("application_express")).toBe(false);
+    expect(platformPaysStripeFees("application_custom")).toBe(false);
+    expect(platformPaysStripeFees("application")).toBe(true);
+    // Unreadable is treated as the platform paying: the business bears it.
+    expect(platformPaysStripeFees(null)).toBe(true);
+  });
+
+  it("legacy Express (HoundStack today): Stripe bills the business, so nothing is added", async () => {
+    const { params, due } = await feeOf("application_express", inv());
+    expect(params.application_fee_amount).toBe(platformFeeCents(due, inv()));
+    expect(params.metadata.tap_to_pay_fee_cents).toBe("0");
+    expect(params.metadata.connect_fee_payer).toBe("application_express");
+    expect(params.amount).toBe(10_000);
+  });
+
+  it("platform pays: the application fee carries the platform fee plus ten cents", async () => {
+    const { params, due } = await feeOf("application", inv());
+    expect(params.application_fee_amount).toBe((platformFeeCents(due, inv()) ?? 0) + 10);
+    expect(params.metadata.tap_to_pay_fee_cents).toBe("10");
+    // The client is charged the amount due, never the fee.
+    expect(params.amount).toBe(due);
+  });
+
+  it("an account that cannot be read is charged as if the platform pays", async () => {
+    const { params, due } = await feeOf(null, inv(), true);
+    expect(params.application_fee_amount).toBe((platformFeeCents(due, inv()) ?? 0) + 10);
+    expect(params.metadata.connect_fee_payer).toBe("unknown");
+  });
+
+  it("after a partial payment: charges what is left, the per-tap fee stays ten cents", async () => {
+    const partly = inv({ amount_paid_cents: 6_000 });
+    const { params, due } = await feeOf("application", partly);
+    expect(due).toBe(4_000);
+    expect(params.amount).toBe(4_000);
+    expect(params.application_fee_amount).toBe((platformFeeCents(4_000, partly) ?? 0) + 10);
+  });
+
+  it("after account credit: same, on the amount net of credit", async () => {
+    const credited = inv({ credit_applied_cents: 2_500, amount_paid_cents: 1_000 });
+    const { params, due } = await feeOf("application", credited);
+    expect(due).toBe(6_500);
+    expect(params.amount).toBe(6_500);
+    expect(params.application_fee_amount).toBe((platformFeeCents(6_500, credited) ?? 0) + 10);
+  });
+
+  it("the per-tap fee is added to whatever platform fee is set, not instead of it", () => {
+    expect(tapToPayApplicationFeeCents(undefined, "application")).toBe(10);
+    expect(tapToPayApplicationFeeCents(45, "application")).toBe(55);
+    expect(tapToPayApplicationFeeCents(45, "application_express")).toBe(45);
+    expect(tapToPayApplicationFeeCents(undefined, "account")).toBeUndefined();
+  });
+
+  it("refuses an amount Stripe would refuse, before touching Stripe", async () => {
+    const stripe = fakeStripe({ feePayer: "application" });
+    await expect(
+      createCardPresentIntent(
+        stripe as any,
+        "acct_tenant",
+        inv(),
+        STRIPE_MIN_CHARGE_CENTS - 1,
+        null,
+      ),
+    ).rejects.toThrow(/under \$0\.50/);
+    expect(stripe.paymentIntents.create).not.toHaveBeenCalled();
+  });
+
+  it("Take payment is unchanged: no per-tap fee anywhere in invoices.functions.ts", () => {
+    const takePayment = readFileSync("src/lib/invoices.functions.ts", "utf8");
+    expect(takePayment).not.toMatch(/TAP_TO_PAY_FEE_CENTS|tapToPayApplicationFeeCents/);
+  });
+
+  it("the business is told the fee before it taps", () => {
+    const button = readFileSync("src/components/TapToPayButton.tsx", "utf8");
+    expect(button).toMatch(/Each tap costs\s+your\s+business \{tapToPayFeeLabel\(\)\}/);
   });
 });
 
@@ -505,7 +644,9 @@ describe("the wiring around it", () => {
     const form = readFileSync("src/components/StaffInvoicePayForm.tsx", "utf8");
     expect(form).toMatch(/\{IS_NATIVE_BUNDLE && TapToPayButton && \(\s*<Suspense/);
     // Lazily, behind the flag: no static import for the web build to keep.
-    expect(form).toMatch(/const TapToPayButton =\s*import\.meta\.env\.VITE_NATIVE_BUNDLE === "1"\s*\?\s*lazy\(/);
+    expect(form).toMatch(
+      /const TapToPayButton =\s*import\.meta\.env\.VITE_NATIVE_BUNDLE === "1"\s*\?\s*lazy\(/,
+    );
     expect(form).not.toMatch(/^import .*TapToPayButton/m);
   });
 

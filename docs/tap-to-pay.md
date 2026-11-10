@@ -33,6 +33,54 @@ on the payment method type, so **the webhook needed no change**. After the SDK
 confirms, the app also calls `reconcileInvoiceNow`, as the card form does, so
 the screen flips to paid without waiting for the webhook.
 
+## Who pays Stripe's $0.10 per tap
+
+Owner decision (2026-11-10): the business that takes the tap bears Stripe's
+per-tap fee, and the platform is never billed net for a tenant's taps.
+
+**Which fee payer HoundStack's connected accounts have.** They are created in
+`ensureExpressAccount` (`src/lib/stripe-connect.server.ts:159-169`) with the
+legacy `type: "express"` and no `controller`. Stripe records that as
+`controller.fees.payer: "application_express"`
+([migrate-to-controller-properties](https://docs.stripe.com/connect/migrate-to-controller-properties)).
+For **direct** charges, Stripe's fee table puts payment processing fees on the
+**connected account** under `application_express`
+([direct-charges-fee-payer-behavior](https://docs.stripe.com/connect/direct-charges-fee-payer-behavior)),
+and its Terminal-on-Connect page says that with direct charges "the connected
+account is responsible for the cost of Stripe fees"
+([terminal/features/connect](https://docs.stripe.com/terminal/features/connect?connect-charge-type=direct)).
+So for every account HoundStack creates today, the per-tap fee lands on the
+business, and nothing is added for taps.
+
+**The code does not assume that.** On every tap, `createCardPresentIntent`
+(`src/lib/tap-to-pay.server.ts`) reads `controller.fees.payer` from the
+account:
+
+| `fees.payer` | Who Stripe bills for a direct charge | Application fee on the tap |
+| --- | --- | --- |
+| `account`, `application_express`, `application_custom` | the business | `platformFeeCents(dueCents, invoice)` (Take payment's) |
+| `application`, or unreadable | the platform | `platformFeeCents(...) + TAP_TO_PAY_FEE_CENTS` (10) |
+
+The client is always charged the amount due and nothing more. The application
+fee comes out of what the business is paid, and the invoice is credited the
+full charge, as before. The intent's metadata records `tap_to_pay_fee_cents`
+and `connect_fee_payer`, so a payout can be traced back. Take payment is
+unchanged.
+
+**What the business sees.** The Tap to pay card says, before the first tap,
+"Each tap costs your business $0.10 on top of the card rate, shown in your
+Stripe fees." In the business's Stripe payments view, the tap fee appears
+either as a Stripe fee (`application_express`) or as an application fee
+(`application`).
+
+**Test-mode proof (not yet run; needs Stripe test keys).** Take one simulated
+`card_present` charge on a test-mode Express account (see the $1.00 path
+below; use $1.00 or more), then open the charge's balance transaction **on the
+connected account** (`stripe balance_transactions retrieve txn_... --stripe-account acct_...`)
+and check `fee_details`. Under `application_express` the Stripe fee, Terminal
+included, is listed there and the PI's application fee is the platform fee
+only. Also check the platform's balance shows no fee debit for that charge.
+
 ## Who sees the button
 
 `tapToPayGate` in `src/lib/tap-to-pay.ts`, all of:
