@@ -6,7 +6,9 @@ under *Paste-ready replacements* is yours to paste into the Twilio console.
 
 **The filing is account holders only.** The HoundStack toll-free number texts
 people who use HoundStack, and nobody else. Texting is not live yet: the pages
-say "Text messaging is coming soon and is pending carrier registration." Every
+say "Texts from HoundStack's own number start once its carrier registration is
+complete." (until 2026-11-09: "Text messaging is coming soon and is pending
+carrier registration."; reworded in #751 with the fact unchanged). Every
 section below was brought in line with that on 2026-10-07. An earlier version
 proposed a two-population filing (account holders and the businesses' own
 clients); that plan is superseded, and so is any text here that still reads

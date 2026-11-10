@@ -61,21 +61,52 @@ export function takeWaitingAppUrl(kind: AppUrlKind): string | null {
   return value;
 }
 
+/**
+ * Sort one URL that opened the app. Exported (through loadClassifier) so it
+ * can be tested without a device.
+ *
+ * A PASSWORD-RECOVERY link is sorted first, into a "path" to /reset-password
+ * carrying its tokens. Two ways one arrives (2026-11-09):
+ *
+ *   - iOS: the reset was requested in the app, so Supabase hands back to the
+ *     custom scheme, consulting.thenorth.houndstack://auth-callback#…
+ *     &type=recovery. Treated as an OAuth hand-back, it became a session and
+ *     /auth landed it (bootstrapping a workspace) without a new password.
+ *   - Android: the root `/` is a claimed App Link, and the root is where
+ *     Supabase sends a recovery whose redirect is not allow-listed. It came
+ *     through as the path "/#access_token=…", which nothing read.
+ *
+ * /reset-password needs no session to open (lib/pending-deep-link.ts), so it
+ * is pushed as soon as the router is idle, signed in or not, and the page
+ * turns the tokens into a session itself.
+ */
+export async function loadClassifier(): Promise<(url: string) => [AppUrlKind, string]> {
+  const [{ appLinkTarget }, { liveActivityLinkTarget }, recovery] = await Promise.all([
+    import("@/lib/android-app-links"),
+    import("@/lib/live-activity-links"),
+    import("@/lib/password-recovery"),
+  ]);
+  return (url) => {
+    const reset = recovery.recoveryForwardPath(url);
+    if (reset) {
+      recovery.markRecoveryPending();
+      return ["path", reset];
+    }
+    const path = appLinkTarget(url) ?? liveActivityLinkTarget(url);
+    return path ? ["path", path] : ["other", url];
+  };
+}
+
 function attachOnce(): Promise<void> {
   if (!attached) {
     attached = (async () => {
       // Classifiers loaded BEFORE the listener goes on, so a retained launch
       // URL, delivered the moment it attaches, is sorted synchronously.
-      const [{ App }, { appLinkTarget }, { liveActivityLinkTarget }] = await Promise.all([
-        import("@capacitor/app"),
-        import("@/lib/android-app-links"),
-        import("@/lib/live-activity-links"),
-      ]);
+      const [{ App }, classify] = await Promise.all([import("@capacitor/app"), loadClassifier()]);
       // Never removed: it is the app's, not a screen's. Screens unsubscribe.
       await App.addListener("appUrlOpen", ({ url }) => {
-        const path = appLinkTarget(url) ?? liveActivityLinkTarget(url);
-        if (path) dispatchAppUrl("path", path);
-        else dispatchAppUrl("other", url);
+        const [kind, value] = classify(url);
+        dispatchAppUrl(kind, value);
       });
     })();
     attached.catch(() => {

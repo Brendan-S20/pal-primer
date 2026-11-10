@@ -209,11 +209,21 @@ export const deleteAnnouncement = createServerFn({ method: "POST" })
 // complete one is the fault this whole change is about; it would be a poor
 // trade to close it at the top and reopen it at the bottom.
 //
-// The population is still "users with an organization membership", unchanged.
-// Accounts with no `user_roles` row at all — abandoned signups, platform
-// admins — were invisible here before and still are. That is a different hole
-// with a different answer (it changes what the page MEANS, not how much of it
-// you can see) and it is not this change.
+// ── ACCOUNTS WITH NO BUSINESS ARE LISTED TOO (#765, 2026-11-09) ───────────
+//
+// Until then the population was "users with an organization membership", and
+// an account with no `user_roles` row was only counted (`unattached`). That
+// hid exactly the account support needed to find: Detroit Doo Disposal's
+// removed teammate, whose address could not sign in, reset, or sign up, could
+// not be searched for here or sent a reset from here. Nine more orphaned
+// accounts were in the same place.
+//
+// So with no org/role filter the account scan runs to the end of
+// `auth.users`, and every account with no membership is a row of its own,
+// `no_business: true`, labelled "No business" (or "Platform admin" for the
+// accounts that hold no role by design). Under an org or role filter nothing
+// changes: an account with no business cannot match one. Member rows are
+// built exactly as before.
 
 export type PlatformUserRow = {
   user_id: string;
@@ -221,6 +231,10 @@ export type PlatformUserRow = {
   last_sign_in_at: string | null;
   created_at: string | null;
   organizations: Array<{ id: string; name: string; role: string }>;
+  /** An account with no organization membership at all (#765). */
+  no_business?: boolean;
+  /** Holds no membership by design: a platform admin. */
+  platform_admin?: boolean;
 };
 
 /** How much of the directory each scan actually managed to read. */
@@ -248,6 +262,9 @@ export type DirectoryScan = {
    * subtracting it would report every member the filter excluded as unattached.
    */
   unattached: number | null;
+  /** Accounts skipped because GoTrue cannot read their NULL token columns
+   *  (#767). Each is a data repair, not something this page can fix. */
+  unreadableAccounts?: number;
 };
 
 /**
@@ -298,6 +315,9 @@ const MAX_ACCOUNT_PAGES = 50;
 // getUserById per unresolved member is the cheaper of the two.
 const MAX_DIRECT_LOOKUPS = 2000;
 const LOOKUP_CONCURRENCY = 20;
+/** Extra listUsers calls allowed to isolate NULL-token rows (#767): about
+ *  twenty per bad row at ACCOUNT_PAGE_SIZE 1000. */
+const MAX_BISECT_CALLS = 200;
 
 type MembershipRow = { user_id: string; role: string; organization_id: string | null };
 
@@ -328,6 +348,18 @@ async function loadMemberships(
     if (batch.length < MEMBERSHIP_CHUNK) return { rows, complete: true };
   }
   return { rows, complete: false };
+}
+
+/** Platform admins hold no membership by design; the directory labels them
+ *  as such rather than as "No business". A failed read labels nobody. */
+async function loadPlatformAdminIds(supabaseAdmin: any): Promise<Set<string>> {
+  try {
+    const { data, error } = await supabaseAdmin.from("platform_admins").select("user_id");
+    if (error) return new Set();
+    return new Set(((data ?? []) as Array<{ user_id: string }>).map((r) => r.user_id));
+  } catch {
+    return new Set();
+  }
 }
 
 /** Organization names for the ids we actually have, in `.in()`-sized batches. */
@@ -375,6 +407,9 @@ const accountInfo = (u: any): AccountInfo => ({
 export async function loadAccounts(
   supabaseAdmin: any,
   memberIds: string[],
+  /** Read every account, not only enough to resolve the members: the
+   *  unfiltered directory lists the accounts that have no business (#765). */
+  opts: { wholeDirectory?: boolean } = {},
 ): Promise<{
   byId: Map<string, AccountInfo>;
   accounts: number;
@@ -384,21 +419,60 @@ export async function loadAccounts(
    *  Returned because "how many accounts exist" is only answerable then — see
    *  `unattached` on DirectoryScan. */
   exhausted: boolean;
+  /** Accounts GoTrue could not read at all because of NULL token columns
+   *  (#767). They are skipped, not fatal; the screen reports the count. */
+  unreadable: number;
 }> {
   const byId = new Map<string, AccountInfo>();
   let scannedPages = 0;
   let exhausted = false;
+  let unreadable = 0;
+  let bisectCalls = 0;
+
+  // One window of `auth.users`, returned as how many SLOTS it covered (rows
+  // read plus rows GoTrue could not read), so callers' "short page means the
+  // end" arithmetic is unchanged.
+  //
+  // #767: a single row with a NULL token column makes GoTrue answer the
+  // whole page with a 500 Scan error. Rather than lose every account on that
+  // page — which is how an orphaned owner became unfindable — re-read the
+  // window in smaller pieces until the bad rows are isolated at perPage 1,
+  // count them, and keep everything else. Only for that exact error, and only
+  // within MAX_BISECT_CALLS; anything else still throws to the #446 fallback.
+  const readWindow = async ({
+    page,
+    perPage,
+  }: {
+    page: number;
+    perPage: number;
+  }): Promise<number> => {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+    if (!error) {
+      const users = (data?.users ?? []) as any[];
+      for (const u of users) byId.set(u.id, accountInfo(u));
+      return users.length;
+    }
+    if (!isNullTokenScanError(error.message)) throw new Error(error.message);
+    if (perPage === 1) {
+      unreadable += 1;
+      return 1;
+    }
+    const k = smallestFactor(perPage);
+    const size = perPage / k;
+    let slots = 0;
+    for (let j = 0; j < k; j++) {
+      if (++bisectCalls > MAX_BISECT_CALLS) throw new Error(error.message);
+      const n = await readWindow({ page: (page - 1) * k + j + 1, perPage: size });
+      slots += n;
+      if (n < size) break; // past the end of auth.users
+    }
+    return slots;
+  };
 
   const readPage = async (page: number) => {
-    const { data, error } = await supabaseAdmin.auth.admin.listUsers({
-      page,
-      perPage: ACCOUNT_PAGE_SIZE,
-    });
-    if (error) throw new Error(error.message);
-    const users = (data?.users ?? []) as any[];
-    for (const u of users) byId.set(u.id, accountInfo(u));
+    const n = await readWindow({ page, perPage: ACCOUNT_PAGE_SIZE });
     scannedPages += 1;
-    return users.length;
+    return n;
   };
 
   // The list endpoint is one all-or-nothing call: a single account it cannot
@@ -424,7 +498,7 @@ export async function loadAccounts(
 
   const stillMissing = () => memberIds.filter((id) => !byId.has(id));
 
-  if (!listFailed && !exhausted && memberIds.length > MAX_DIRECT_LOOKUPS) {
+  if (!listFailed && !exhausted && (opts.wholeDirectory || memberIds.length > MAX_DIRECT_LOOKUPS)) {
     while (!exhausted && scannedPages < MAX_ACCOUNT_PAGES) {
       const n = await tryReadPage(scannedPages + 1);
       if (n === null) break;
@@ -450,14 +524,48 @@ export async function loadAccounts(
     missing = stillMissing();
   }
 
-  return { byId, accounts: byId.size, complete: missing.length === 0, exhausted };
+  if (unreadable) {
+    console.warn(
+      `[platform directory] ${unreadable} account(s) skipped: NULL token columns in auth.users (#767)`,
+    );
+  }
+  return { byId, accounts: byId.size, complete: missing.length === 0, exhausted, unreadable };
 }
 
-/** Case-insensitive match on email, user id, or any organization name. */
+/**
+ * GoTrue's answer when an `auth.users` row has NULL in a token column it scans
+ * into a Go string (confirmation_token, recovery_token, email_change_token_new,
+ * email_change...). Rows inserted with raw SQL instead of the admin API get
+ * that way (#767).
+ */
+export function isNullTokenScanError(message: string | null | undefined): boolean {
+  return /Scan error on column .*converting NULL to string is unsupported/i.test(message ?? "");
+}
+
+/** What the platform admin is told instead of the Go scan error. */
+export function nullTokenAccountMessage(): string {
+  return (
+    "The auth service cannot read this account: its row in auth.users has empty " +
+    "(NULL) token fields, usually from a SQL seed. It needs a data repair (#767)."
+  );
+}
+
+function smallestFactor(n: number): number {
+  for (let f = 2; f * f <= n; f++) if (n % f === 0) return f;
+  return n;
+}
+
+/** What the directory calls an account with no membership. Searching for it
+ *  lists them all. */
+export const NO_BUSINESS_LABEL = "No business";
+
+/** Case-insensitive match on email, user id, any organization name, or the
+ *  "No business" label. */
 export function matchesDirectorySearch(row: PlatformUserRow, search: string): boolean {
   const s = search.toLowerCase().trim();
   if (!s) return true;
   return (
+    (row.no_business === true && !row.platform_admin && NO_BUSINESS_LABEL.toLowerCase().includes(s)) ||
     (row.email ?? "").toLowerCase().includes(s) ||
     row.user_id.toLowerCase().includes(s) ||
     row.organizations.some((o) => o.name.toLowerCase().includes(s))
@@ -530,16 +638,21 @@ export const listPlatformUsers = createServerFn({ method: "GET" })
       new Set(memberships.rows.map((r) => r.organization_id).filter(Boolean)),
     ) as string[];
 
-    const [orgName, accounts] = await Promise.all([
+    // Unfiltered, the directory is every account (#765), so the scan reads to
+    // the end of auth.users even when there are no members at all.
+    const filtered = Boolean(data.organization_id || data.role);
+    const [orgName, accounts, platformAdmins] = await Promise.all([
       loadOrgNames(supabaseAdmin, orgIds),
-      memberIds.length
-        ? loadAccounts(supabaseAdmin, memberIds)
+      memberIds.length || !filtered
+        ? loadAccounts(supabaseAdmin, memberIds, { wholeDirectory: !filtered })
         : Promise.resolve({
             byId: new Map<string, AccountInfo>(),
             accounts: 0,
             complete: true,
             exhausted: false,
+            unreadable: 0,
           }),
+      filtered ? Promise.resolve(new Set<string>()) : loadPlatformAdminIds(supabaseAdmin),
     ]);
 
     const orgsByUser = new Map<string, PlatformUserRow["organizations"]>();
@@ -566,6 +679,24 @@ export const listPlatformUsers = createServerFn({ method: "GET" })
       };
     });
 
+    // Every account the scan read that holds no membership, as a row (#765).
+    // Never under a filter: an account with no business matches no org/role.
+    if (!filtered) {
+      const members = new Set(memberIds);
+      for (const [uid, info] of accounts.byId) {
+        if (members.has(uid)) continue;
+        all.push({
+          user_id: uid,
+          email: info.email,
+          last_sign_in_at: info.last_sign_in_at,
+          created_at: info.created_at,
+          organizations: [],
+          no_business: true,
+          platform_admin: platformAdmins.has(uid),
+        });
+      }
+    }
+
     const page = selectDirectoryPage(all, {
       search: data.search,
       offset: data.offset,
@@ -582,10 +713,11 @@ export const listPlatformUsers = createServerFn({ method: "GET" })
         membershipsComplete: memberships.complete,
         accounts: accounts.accounts,
         accountsComplete: accounts.complete,
+        unreadableAccounts: accounts.unreadable,
         unattached: unattachedCount({
           exhausted: accounts.exhausted,
           membershipsComplete: memberships.complete,
-          filtered: Boolean(data.organization_id || data.role),
+          filtered,
           accounts: accounts.byId.size,
           members: memberIds.length,
         }),
@@ -628,7 +760,11 @@ export const getPlatformUserDetail = createServerFn({ method: "GET" })
       supabaseAdmin.auth.admin.mfa.listFactors({ userId: data.userId }),
       supabaseAdmin.from("user_roles").select("organization_id, role").eq("user_id", data.userId),
     ]);
-    if (userErr) throw new Error(userErr.message);
+    if (userErr) {
+      throw new Error(
+        isNullTokenScanError(userErr.message) ? nullTokenAccountMessage() : userErr.message,
+      );
+    }
     const user = userRes.user;
     if (!user) throw new Error("User not found");
 
@@ -686,9 +822,11 @@ export const sendPasswordReset = createServerFn({ method: "POST" })
       type: "recovery",
       email,
     });
-    if (linkErr) throw new Error(linkErr.message);
+    // No organization is looked up on this path, on purpose (#765): an account
+    // with no business is the one most likely to need a reset from support.
+    if (linkErr) throw new Error(`Couldn't create a reset link: ${linkErr.message}`);
     const actionLink = linkData.properties?.action_link;
-    if (!actionLink) throw new Error("Failed to generate a recovery link.");
+    if (!actionLink) throw new Error("Couldn't create a reset link. Try again.");
 
     let delivered = false;
     const resendApiKey = process.env.RESEND_API_KEY;

@@ -26,6 +26,9 @@ const bookSchema = z.object({
   everyWeeks: z.number().int().min(1).max(26).nullable(),
   staffId: z.string().uuid().nullable(),
   parkingNotes: z.string().max(1000).nullable(),
+  // Van hookups at the address (#412). Absent leaves them as they are.
+  vanPower: z.boolean().optional(),
+  vanWater: z.boolean().optional(),
   acknowledgeWarning: z.boolean(),
 });
 
@@ -121,7 +124,7 @@ export const groomBookingOptions = createServerFn({ method: "GET" })
     const [props, services, dogs, addons, staff, rules, settings] = await Promise.all([
       supabase
         .from("properties")
-        .select("id, street, city, parking_notes")
+        .select("id, street, city, parking_notes, van_power_available, van_water_available")
         .eq("client_id", data.clientId)
         .eq("organization_id", orgId)
         .is("archived_at", null)

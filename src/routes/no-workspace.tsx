@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -8,7 +8,8 @@ import { PublicShell } from "@/components/PublicShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ensureBootstrapped } from "@/lib/ensure-workspace";
+import { acceptPendingInvite, ensureBootstrapped } from "@/lib/ensure-workspace";
+import { recoveryRedirectTarget } from "@/lib/password-recovery";
 import { isValidOrgName } from "@/lib/dna-linkage";
 import { Building2 } from "lucide-react";
 import { APP_NAME } from "@/lib/scoop";
@@ -55,6 +56,13 @@ import { pageTitle } from "@/lib/page-title";
 // that creates its own org can never accept the invitation afterwards (BUG-18),
 // and on this page, where an unfinished invite is one of the three ways to
 // arrive, getting that backwards would stand a new trap where the old one was.
+// 2026-11-09 (#765): a THIRD audience, the one this page was failing. A person
+// who was on a business and was taken off it. Their account still carried the
+// business's name from signup, and the sign-in path used to build them a new
+// business under it. Now it sends them here, and the page says the two things
+// that are true for them: start a business of your own, or ask the owner to
+// invite you again. A re-invitation is picked up by "Check for an invitation"
+// without signing out, and by the next sign-in either way.
 export const Route = createFileRoute("/no-workspace")({
   ssr: false,
   // No hydration timer for a client-only route; see _authenticated/route.tsx.
@@ -67,6 +75,7 @@ export const Route = createFileRoute("/no-workspace")({
 
 function NoWorkspacePage() {
   const navigate = useNavigate();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [email, setEmail] = useState<string | null>(null);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
@@ -75,6 +84,15 @@ function NoWorkspacePage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const canSubmit = isValidOrgName(orgName) && displayName.trim().length > 0;
+
+  // A reset link that reached this page is still a reset: the password comes
+  // first, the business after (#765).
+  useEffect(() => {
+    // The same check /auth makes (lib/password-recovery.ts, #780): a tab
+    // that is mid-recovery is sent to /reset-password, not offered a form.
+    const recovery = recoveryRedirectTarget(window.location.href);
+    if (recovery) router.history.replace(recovery);
+  }, [router]);
 
   useEffect(() => {
     let cancelled = false;
@@ -144,6 +162,33 @@ function NoWorkspacePage() {
     }
   };
 
+  const [checking, setChecking] = useState(false);
+  const [inviteNote, setInviteNote] = useState<string | null>(null);
+  /** For the person whose owner has just re-invited them. The same accept
+   *  the sign-in path runs (token, then email), so there is still one copy of
+   *  the invitation sequence. */
+  const checkForInvite = async () => {
+    setInviteNote(null);
+    setError(null);
+    setChecking(true);
+    try {
+      const joined = await acceptPendingInvite();
+      if (joined) {
+        queryClient.removeQueries({ queryKey: ["my-org"] });
+        queryClient.removeQueries({ queryKey: ["platform-context"] });
+        navigate({ to: "/dashboard" });
+        return;
+      }
+      setInviteNote(
+        "No invitation for this email yet. Ask the business owner to invite this address again, then check here or sign in again.",
+      );
+    } catch (err) {
+      setInviteNote(err instanceof Error ? err.message : "Couldn't check for an invitation.");
+    } finally {
+      setChecking(false);
+    }
+  };
+
   const signOut = async () => {
     await signOutAndClearDevice();
     window.location.href = "/auth";
@@ -155,12 +200,29 @@ function NoWorkspacePage() {
         <Building2 className="mx-auto h-8 w-8 text-muted-foreground shrink-0" />
         <h1 className="mt-3 text-lg font-semibold">No workspace yet</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          {email ? <strong className="text-foreground">{email}</strong> : "This account"} is signed
-          in but isn't part of a {APP_NAME} workspace yet. If you're setting up a new business, fill
-          in the form below. If you were invited to someone else's workspace, open the invitation
-          link again. It attaches your account to theirs.
+          You&apos;re not part of a business right now. Create a new one below,
+          or ask your owner to re-invite you.
         </p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {email ? (
+            <strong className="break-words text-foreground">{email}</strong>
+          ) : (
+            "This account"
+          )}{" "}
+          is signed in to {APP_NAME}. An invitation sent to this address joins you to that
+          business: open its link, or check for it here.
+        </p>
+        {inviteNote && (
+          <p role="status" className="mt-3 break-words text-sm text-muted-foreground">
+            {inviteNote}
+          </p>
+        )}
         <div className="mt-5 flex flex-col gap-2">
+          {!isPlatformAdmin && (
+            <Button variant="outline" onClick={checkForInvite} disabled={checking || busy}>
+              {checking ? "Checking..." : "Check for an invitation"}
+            </Button>
+          )}
           {isPlatformAdmin && (
             <Button asChild>
               <Link to="/platform">Go to the platform console</Link>

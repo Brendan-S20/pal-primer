@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
+import { stepSave } from "@/lib/setup-step-save";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
@@ -51,36 +52,37 @@ export function DayEndPanel({ done, onSaved }: { done: boolean; onSaved: () => v
   // Nobody who already has an end point is overwritten: that was chosen.
   const open = runners.filter((s) => s.end_latitude == null);
 
-  const m = useMutation({
-    mutationFn: async () => {
-      let point = pin;
-      if (!point) {
-        const { geo } = await pointFn({ data: { query: address.trim() } });
-        point = geo ? { lat: geo.latitude, lng: geo.longitude } : null;
-      }
-      // Done means the planner has an end it can use, so an address it
-      // cannot place is not saved as one.
-      if (!point)
-        throw new Error("We could not find that address on the map. Check it and try again.");
-      for (const s of open) {
-        await saveFn({
-          data: {
-            staffId: s.id,
-            endAddress: address.trim(),
-            endLatitude: point.lat,
-            endLongitude: point.lng,
-          },
-        });
-      }
-    },
-    onSuccess: () => {
-      toast.success("Saved. Routes end there now.");
-      qc.invalidateQueries({ queryKey: ["staff-addresses"] });
-      qc.invalidateQueries({ queryKey: ["staff"] });
-      onSaved();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  // One write per route-runner, in turn: a failure part-way leaves the
+  // earlier ones saved, so stepSave refreshes the lists either way.
+  const m = useMutation(
+    stepSave({
+      qc,
+      save: async () => {
+        let point = pin;
+        if (!point) {
+          const { geo } = await pointFn({ data: { query: address.trim() } });
+          point = geo ? { lat: geo.latitude, lng: geo.longitude } : null;
+        }
+        // Done means the planner has an end it can use, so an address it
+        // cannot place is not saved as one.
+        if (!point)
+          throw new Error("We could not find that address on the map. Check it and try again.");
+        for (const s of open) {
+          await saveFn({
+            data: {
+              staffId: s.id,
+              endAddress: address.trim(),
+              endLatitude: point.lat,
+              endLongitude: point.lng,
+            },
+          });
+        }
+      },
+      refresh: [["staff-addresses"], ["org-users"], ["staff"]],
+      saved: "Saved. Routes end there now.",
+      onSaved,
+    }),
+  );
 
   const usersLink = (
     <Link to="/settings/users" className="underline">

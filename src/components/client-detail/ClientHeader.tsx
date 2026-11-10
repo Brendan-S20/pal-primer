@@ -3,6 +3,7 @@
 // DERIVED from service states (QA follow-up 4.2) so a manual flag can't
 // contradict reality; missing contact info renders as warning chips.
 import { linkUrl } from "@/lib/app-origin";
+import { formatAddressLine } from "@/lib/address/from-place";
 import { lazy, Suspense, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -306,9 +307,7 @@ export function ClientHeader({
                 const dest =
                   navProperty.latitude != null && navProperty.longitude != null
                     ? `${navProperty.latitude},${navProperty.longitude}`
-                    : encodeURIComponent(
-                        `${navProperty.street}, ${navProperty.city} ${navProperty.postal_code}`,
-                      );
+                    : encodeURIComponent(formatAddressLine({ ...navProperty, unit: null }));
                 window.open(
                   `https://www.google.com/maps/dir/?api=1&destination=${dest}`,
                   "_blank",

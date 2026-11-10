@@ -4,12 +4,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { DateField, TimeField } from "@/components/fields";
 import { PetCareFields } from "@/components/PetCareFields";
 import { PortalVisitReport } from "@/components/portal/VisitReport";
-import { portalListStays, portalRequestStay } from "@/lib/portal-stays.functions";
+import {
+  PORTAL_PET_NAME_MAX,
+  portalAddPet,
+  portalListStays,
+  portalRequestStay,
+} from "@/lib/portal-stays.functions";
 import { money, usePortalCtx, usePortalTimezone } from "@/lib/portal-ui";
 import { orgToday } from "@/lib/org-day";
 import {
@@ -23,7 +29,16 @@ import {
   arrivalWindowProblem,
   STAY_STATUS_LABEL,
 } from "@/lib/stays";
-import { cleanMeds, medsProblem, speciesLabel, type PetCare } from "@/lib/pets";
+import {
+  cleanMeds,
+  medsProblem,
+  PET_SPECIES,
+  PET_SPECIES_LABEL,
+  SPECIES_NOTE_MAX,
+  speciesLabel,
+  type PetCare,
+  type PetSpecies,
+} from "@/lib/pets";
 
 const selectClass = "min-h-11 w-full min-w-0 rounded-md border bg-background px-3 text-sm";
 
@@ -130,8 +145,8 @@ export function PortalStayRequest() {
             Request another stay
           </Button>
         </div>
-      ) : opts.services.length === 0 || opts.pets.length === 0 || opts.properties.length === 0 ? (
-        <p className="text-sm">Contact the office to add a pet or arrange a sitting service.</p>
+      ) : opts.services.length === 0 || opts.properties.length === 0 ? (
+        <p className="text-sm">Contact the office to arrange a sitting service.</p>
       ) : (
         <form
           className="space-y-4"
@@ -277,6 +292,19 @@ export function PortalStayRequest() {
                 )}
               </div>
             ))}
+            {pets.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                No pets on file at this home yet. Add the pets this stay is for.
+              </p>
+            )}
+            <PortalAddPet
+              key={propertyId}
+              propertyId={propertyId}
+              onAdded={(id) => {
+                if (!petIds.includes(id)) setPets([...petIds, id]);
+                qc.invalidateQueries({ queryKey: ["portal", token, "stays"] });
+              }}
+            />
             <p className="text-xs text-muted-foreground">
               Care changes are sent to the office with this request. They apply after the office
               confirms it.
@@ -385,5 +413,113 @@ export function PortalStayTimeline() {
         </article>
       ))}
     </section>
+  );
+}
+
+/** "Add a pet" inside the stay request (#411): a cat, or any pet the office
+ *  has not recorded yet. Name and kind only; care goes with the request. */
+function PortalAddPet({
+  propertyId,
+  onAdded,
+}: {
+  propertyId: string;
+  onAdded: (id: string) => void;
+}) {
+  const { token } = usePortalCtx();
+  const add = useServerFn(portalAddPet);
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [species, setSpecies] = useState<PetSpecies>("cat");
+  const [note, setNote] = useState("");
+  const mut = useMutation({
+    mutationFn: () =>
+      add({
+        data: {
+          token,
+          propertyId,
+          name,
+          species,
+          speciesNote: species === "other" ? note : null,
+        },
+      }),
+    onSuccess: (r) => {
+      toast.success(r.added ? `${name.trim()} added.` : `${name.trim()} is already on file.`);
+      onAdded(r.id);
+      setName("");
+      setNote("");
+      setOpen(false);
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  if (!open)
+    return (
+      <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
+        Add a pet
+      </Button>
+    );
+  const problem = !name.trim() ? "Enter your pet's name." : null;
+  return (
+    <div className="space-y-3 rounded border p-3" data-portal-add-pet>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="min-w-0">
+          <Label htmlFor="portal-pet-name">Pet's name</Label>
+          <Input
+            id="portal-pet-name"
+            className="min-h-11"
+            value={name}
+            maxLength={PORTAL_PET_NAME_MAX}
+            autoComplete="off"
+            onChange={(e) => setName(e.target.value)}
+          />
+        </div>
+        <div className="min-w-0">
+          <Label htmlFor="portal-pet-species">Kind of pet</Label>
+          <select
+            id="portal-pet-species"
+            className={selectClass}
+            value={species}
+            onChange={(e) => setSpecies(e.target.value as PetSpecies)}
+          >
+            {PET_SPECIES.map((sp) => (
+              <option key={sp} value={sp}>
+                {PET_SPECIES_LABEL[sp]}
+              </option>
+            ))}
+          </select>
+        </div>
+        {species === "other" && (
+          <div className="min-w-0 sm:col-span-2">
+            <Label htmlFor="portal-pet-note">What kind? (rabbit, bird, fish)</Label>
+            <Input
+              id="portal-pet-note"
+              className="min-h-11"
+              value={note}
+              maxLength={SPECIES_NOTE_MAX}
+              autoComplete="off"
+              onChange={(e) => setNote(e.target.value)}
+            />
+          </div>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          size="sm"
+          disabled={!!problem || mut.isPending}
+          onClick={() => mut.mutate()}
+        >
+          {mut.isPending ? "Adding…" : "Add pet"}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          disabled={mut.isPending}
+          onClick={() => setOpen(false)}
+        >
+          Cancel
+        </Button>
+      </div>
+    </div>
   );
 }

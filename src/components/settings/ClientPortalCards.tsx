@@ -24,6 +24,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { useMyRole } from "@/hooks/useMyRole";
+import { useMyProfile } from "@/hooks/useMyProfile";
+import { portalSlugFromName } from "@/lib/setup-prefill";
 import { isValidOrgName } from "@/lib/dna-linkage";
 import { linkOrigin } from "@/lib/app-origin";
 import {
@@ -44,10 +46,16 @@ export function PortalAddressCard() {
 
   const q = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn(), staleTime: 60_000 });
   const currentSlug = (q.data?.organization as any)?.portal_slug as string | undefined;
+  const orgName = (q.data?.organization as { name?: string | null } | undefined)?.name ?? undefined;
   const [slug, setSlug] = useState("");
+  // A business with no address yet (one set up before setup step 1 asked for
+  // it, D14) is shown the one its name gives, ready to save, rather than an
+  // empty box after `/portal/`. Shown, not saved: Save address saves it.
+  const suggested = !currentSlug && !!orgName && slug === portalSlugFromName(orgName);
   useEffect(() => {
     if (currentSlug) setSlug(currentSlug);
-  }, [currentSlug]);
+    else if (orgName) setSlug((s) => s || portalSlugFromName(orgName));
+  }, [currentSlug, orgName]);
 
   const mut = useMutation({
     mutationFn: () => setFn({ data: { slug } }),
@@ -111,6 +119,7 @@ export function PortalAddressCard() {
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
+          {suggested ? "Suggested from your business name. Save it to turn the address on. " : ""}
           Letters, numbers, and hyphens only. Existing client links keep working automatically.
         </p>
       </CardContent>
@@ -125,6 +134,7 @@ export function BrandingCard() {
   const q = useQuery({ queryKey: ["org-branding"], queryFn: () => getFn() });
   const { role } = useMyRole();
   const canEdit = role === "owner" || role === "office_manager";
+  const { authEmail } = useMyProfile();
 
   const [orgName, setOrgName] = useState("");
   const [brandColor, setBrandColor] = useState("#16a34a");
@@ -170,8 +180,12 @@ export function BrandingCard() {
           portalAutoApplyChanges: autoApply,
         },
       }),
-    onSuccess: () => {
+    onSuccess: (res) => {
       toast.success("Business details saved");
+      // The office phone saved; only its copy to the owner's Profile did not (#787).
+      if (res?.profilePhoneWarning) toast.warning(res.profilePhoneWarning);
+      // A first office phone may also have filled the owner's Profile phone.
+      qc.invalidateQueries({ queryKey: ["my-profile"] });
       qc.invalidateQueries({ queryKey: ["org-branding"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -262,10 +276,26 @@ export function BrandingCard() {
                 Replies to invoices and reminders come back to this address.
               </p>
             ) : (
-              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                Add one. Invoices and reminders are sent from a no-reply address, so any client who
-                hits Reply today is writing to nobody.
-              </p>
+              <div className="mt-1 space-y-1">
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  Add one. Invoices and reminders are sent from a no-reply address, so any client
+                  who hits Reply today is writing to nobody.
+                </p>
+                {/* One tap to the address the owner already reads (D14). It
+                    fills the field; Save below saves it, like any edit. */}
+                {authEmail && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="max-w-full"
+                    data-use-sign-in-email
+                    onClick={() => setContactEmail(authEmail)}
+                  >
+                    <span className="min-w-0 truncate">Use {authEmail}</span>
+                  </Button>
+                )}
+              </div>
             )}
           </div>
           <div>

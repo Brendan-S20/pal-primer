@@ -1,15 +1,27 @@
-// Settings > Services, for a business that runs pet sitting: how many days
-// before a stay its deposit stays refundable (migration 20261024080900).
-// Office screen, English.
+// Settings > Services, for a business that runs pet sitting (the page
+// renders this card only then): how many days before a stay its deposit
+// stays refundable (migration 20261024080900), and whether the nightly
+// stay-summary catch sends summaries for stays that ended before it went live
+// (migration 20261109170000, #747). The deposit copy is English, as office
+// screens are; the catch-up copy is translated (staySummary.* in en, es, ar,
+// zh) because Product asked for it in all four.
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getStayDepositRule, setStayDepositRule } from "@/lib/stay-deposit.functions";
+import { Switch } from "@/components/ui/switch";
+import { usePermissions } from "@/hooks/useMyRole";
+import {
+  canSetStaySummaryCatchUp,
+  getStayDepositRule,
+  setStayDepositRule,
+  setStaySummaryCatchUp,
+} from "@/lib/stay-deposit.functions";
 
 export function StayDepositCard({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
@@ -74,6 +86,56 @@ export function StayDepositCard({ canEdit }: { canEdit: boolean }) {
           <p className="basis-full text-xs text-destructive">Enter a whole number from 0 to 365.</p>
         )}
       </form>
+      <StaySummaryCatchUp catchUp={data?.summaryCatchUp} />
     </section>
+  );
+}
+
+/** The nightly stay-summary catch-up (#747). Off by default: no backlog of
+ *  summaries for stays that ended before the catch went live. An owner or
+ *  office manager changes it; the server and set_stay_summary_catch_up
+ *  refuse anyone else. */
+function StaySummaryCatchUp({ catchUp }: { catchUp: boolean | undefined }) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const { role } = usePermissions();
+  const canChange = canSetStaySummaryCatchUp(role);
+  const set = useServerFn(setStaySummaryCatchUp);
+  const id = useId();
+  const save = useMutation({
+    mutationFn: (on: boolean) => set({ data: { on } }),
+    onSuccess: () => {
+      toast.success(t("staySummary.saved"));
+      qc.invalidateQueries({ queryKey: ["stay-deposit-rule"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const checked = save.isPending ? save.variables === true : catchUp === true;
+  return (
+    <div className="space-y-2 border-t pt-3" data-stay-summary-catch-up>
+      <div className="min-w-0">
+        <h4 className="text-sm font-semibold">{t("staySummary.title")}</h4>
+        <p className="text-sm text-muted-foreground">{t("staySummary.description")}</p>
+      </div>
+      <div className="flex items-start gap-3">
+        <Switch
+          id={`${id}-catch-up`}
+          className="mt-0.5"
+          checked={checked}
+          disabled={!canChange || catchUp === undefined || save.isPending}
+          onCheckedChange={(on) => save.mutate(on)}
+          aria-describedby={`${id}-catch-up-help`}
+        />
+        <div className="min-w-0 flex-1">
+          <Label htmlFor={`${id}-catch-up`} className="leading-snug">
+            {t("staySummary.catchUpLabel")}
+          </Label>
+          <p id={`${id}-catch-up-help`} className="text-xs text-muted-foreground">
+            {t("staySummary.catchUpHelp")}
+            {!canChange && <> {t("staySummary.onlyOwner")}</>}
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }

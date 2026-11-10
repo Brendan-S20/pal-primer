@@ -2,6 +2,7 @@
 // alerts, visits (next + recent), active services, property snapshot.
 // RIGHT (secondary): notes and the compact communication preview.
 import { useQuery } from "@tanstack/react-query";
+import { TextingNotLiveText } from "@/components/TextingNotLive";
 import { useServerFn } from "@tanstack/react-start";
 import { AlertTriangle, CalendarClock, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -388,9 +389,12 @@ function CommunicationCard({ client, onGoToTab }: { client: any; onGoToTab: (t: 
       ) : (
         <p className="mt-2 text-sm text-muted-foreground">
           No messages yet.
-          {!texting
-            ? " Texting your clients is coming soon."
-            : client.primary_phone
+          {!texting ? (
+            <>
+              {" "}
+              <TextingNotLiveText />
+            </>
+          ) : client.primary_phone
               ? ""
               : " Add a phone number to text this client."}
         </p>

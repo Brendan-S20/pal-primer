@@ -81,6 +81,19 @@ const es: Translations = {
     saveNotes: "Guardar notas",
     notesSaved: "Notas guardadas",
     history: "Últimas peluquerías",
+    addonsTitle: "Extras de esta peluquería",
+    addonsHint: "Solo se cobran los extras marcados como hechos.",
+    addonFallback: "Extra",
+    addonQuantity: "{{name}} ×{{count}}",
+    addonDone: "Hecho",
+    addonNotDone: "No hecho",
+    addonMarkedDone: "{{name}} marcado como hecho",
+    addonMarkedNotDone: "{{name}} marcado como no hecho. No se cobrará.",
+    vanLabel: "Conexiones de la camioneta:",
+    vanTitle: "Conexiones de la camioneta",
+    vanPower: "Hay electricidad",
+    vanWater: "Hay agua",
+    vanNone: "No consta electricidad ni agua. Lleva lo tuyo.",
   },
   groomRequest: {
     asked: "Pidió {{service}} para {{pet}} el {{day}}, {{window}}.",
@@ -234,6 +247,9 @@ const es: Translations = {
     previewReadOnly: "Vista previa · solo lectura",
     noTechnicians: "Todavía no hay técnicos activos en tu organización.",
     pickTechnician: "Elige un técnico arriba para ver su día.",
+    selectTrainer: "(Selecciona un entrenador)",
+    noTrainers: "Todavía no hay entrenadores activos en tu organización.",
+    pickTrainer: "Elige un entrenador arriba para ver su día.",
     previewNothingScheduled: "{{name}} no tiene nada programado el {{day}}.",
     viewMySchedule: "Ver mi calendario",
     myRoute: "Mi ruta",
@@ -390,6 +406,15 @@ const es: Translations = {
     after: "Después de {{time}}",
     by: "Antes de {{time}}",
     over8h: "Más de 8 h · empezó {{time}}",
+  },
+  role: {
+    owner: "Propietario",
+    office_manager: "Gerente de oficina",
+    dispatcher: "Despachador",
+    tech: "Técnico",
+    trainer: "Entrenador",
+    platform_admin: "Administrador de la plataforma",
+    other: "Miembro del equipo",
   },
   serviceLine: {
     pet_waste: "Recolección de desechos",
@@ -882,7 +907,10 @@ const es: Translations = {
     viewAccount: "Ver y editar tu cuenta",
     expandMenu: "Mostrar los nombres del menú",
     collapseMenu: "Ocultar los nombres del menú",
+    showAllMenus: "Mostrar todos los menús",
+    hideAllMenus: "Mostrar menos menús",
     group: {
+      "Get started": "Primeros pasos",
       Overview: "Resumen",
       Operations: "Operaciones",
       Field: "Campo",
@@ -892,6 +920,7 @@ const es: Translations = {
       Platform: "Plataforma",
     },
     item: {
+      setup: "Configuración guiada",
       dashboard: "Panel",
       inbox: "Bandeja de entrada",
       leads: "Prospectos",
@@ -1279,6 +1308,9 @@ const es: Translations = {
     chooseDog: "Elija un perro",
     dogRequiredHint: "Este hogar tiene más de un perro. El progreso y la tarea se guardan por perro.",
     shareProgress: "Compartir las notas y la tarea de cada clase con los clientes",
+    seriesSkipClosed: "Las nuevas series de clases se saltan los festivos y los días cerrados",
+    seriesSkipClosedHint:
+      "Una serie semanal no reserva clase en un día festivo o de cierre. Cada serie puede cambiarlo al crearla o editarla.",
     shareProgressHint:
       "Los clientes ven la nota y la tarea de cada clase en la página de entrenamiento de su portal. Las puntuaciones, las fechas y las sesiones restantes se muestran siempre.",
   },
@@ -1290,6 +1322,17 @@ const es: Translations = {
     checkAgain: "Comprobar de nuevo",
     couldNotCheck: "No se pudo comprobar ahora. Inténtalo de nuevo en un momento.",
     stillOff: "Sigue desactivado. Pide al dueño que te reactive.",
+  },
+  staySummary: {
+    title: "Resúmenes de estancias",
+    description:
+      "Cuando la última visita de una estancia se omite o se pierde, el cliente igual recibe el resumen de la estancia la noche siguiente.",
+    catchUpLabel:
+      "Enviar resúmenes de estancias que terminaron antes de activar esto (últimos 7 días)",
+    catchUpHelp:
+      "Desactivado: solo las estancias que terminen a partir de ahora. Un resumen que ya se envió nunca se vuelve a enviar.",
+    saved: "Ajuste de resúmenes de estancias guardado",
+    onlyOwner: "Solo un dueño o un gerente de oficina puede cambiar esto.",
   },
 };
 
