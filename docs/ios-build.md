@@ -94,11 +94,17 @@ The bundled web app has no server of its own, so server functions are sent to
 an absolute origin baked in at build time:
 
 - default: `https://app.houndstack.com`
-- staging: `npm run build:native:staging` with `NATIVE_API_ORIGIN`,
-  `NATIVE_SUPABASE_URL` and `NATIVE_SUPABASE_PUBLISHABLE_KEY` set, then
-  `npx cap sync ios`. Not `npm run cap:sync`, which rebuilds for production
-  first. What the staging host has to be, and why a dev server cannot stand
-  in for it, is in `docs/native-qa-staging.md`.
+- staging (optional, isolated, and not stood up): `npm run build:native:staging`
+  with `NATIVE_API_ORIGIN`, `NATIVE_SUPABASE_URL` and
+  `NATIVE_SUPABASE_PUBLISHABLE_KEY` set, then `npx cap sync ios`. Not
+  `npm run cap:sync`, which rebuilds for production first. What the staging
+  host would have to be, and why a dev server cannot stand in for it, is in
+  `docs/native-qa-staging.md`.
+
+Acceptance testing uses the default: a production bundle signed into the
+production demo org (`organizations.slug` is `demo`, `@demo.test` accounts).
+It needs no staging build. Who the demo org is, and the safety rules for
+testing in production, are in `docs/native-qa-staging.md`.
 
 Auth, Supabase and Stripe all behave exactly as they do on the web.
 
