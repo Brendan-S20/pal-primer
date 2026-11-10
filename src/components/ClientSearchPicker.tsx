@@ -92,14 +92,18 @@ export function ClientSearchPicker({
           placeholder="Search name, phone, email, address or ID"
           className="ps-8"
           autoComplete="off"
-          role="combobox"
-          aria-expanded="true"
           aria-controls={id ? `${id}-results` : undefined}
         />
       </div>
+      {/* A list of buttons, not a listbox of options. Each row is a real
+          button you Tab to and press, and an option that CONTAINS a button
+          is axe's nested-interactive: a screen reader announces "option",
+          and the control inside it is not reachable the way it says. A real
+          listbox would need arrow-key focus management this picker does not
+          have, so it no longer claims to be one (gaps-r2-11 part 2). */}
       <ul
         id={id ? `${id}-results` : undefined}
-        role="listbox"
+        aria-label="Matching clients"
         className="mt-1 max-h-56 overflow-y-auto rounded-md border bg-background"
       >
         {results.isLoading ? (
@@ -114,7 +118,7 @@ export function ClientSearchPicker({
           </li>
         ) : (
           hits.map((c) => (
-            <li key={c.id} role="option" aria-selected="false">
+            <li key={c.id}>
               <button
                 type="button"
                 className="flex min-h-10 w-full flex-col items-start justify-center px-3 py-1.5 text-start text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none touch:min-h-11"
