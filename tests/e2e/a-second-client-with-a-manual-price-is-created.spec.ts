@@ -182,3 +182,78 @@ test("a create that fails says why, and keeps saying it", async ({ page }) => {
     await removeClientsNamed(name);
   }
 });
+
+// #784, Nov 10 2026 retest: the same second client with NO email, but Create
+// client pressed on a draft the wizard read back from the device. The tester's
+// screenshot has the draft-restored banner over "Create client did not
+// finish. Cannot read properties of undefined (reading 'trim')". A stored
+// draft is whatever JSON was kept, and a key it never had (an older build's
+// draft, a field added since) came back undefined into state the wizard then
+// trimmed. So the keys are taken out of the stored draft here, the page is
+// reloaded, and the restored wizard must still create the client.
+test("a second client with no email is created from a restored draft", async ({ page }) => {
+  test.setTimeout(120_000);
+  const name = `QA Test Client 2 no email (fake) ${Date.now()}`;
+  const pageErrors: string[] = [];
+  page.on("pageerror", (e) => pageErrors.push(e.message));
+
+  try {
+    await wizardToPlan(page, name, "$20");
+
+    // The draft the wizard has been writing as it was typed, on the Plan
+    // step, with the $20 in it.
+    const findDraft = () =>
+      page.evaluate(() => {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i)!;
+          if (!k.startsWith("hs:form-draft:") || !k.endsWith(":new-client")) continue;
+          if (JSON.parse(localStorage.getItem(k)!).value?.priceOverride === "$20") return k;
+        }
+        return null;
+      });
+    await expect
+      .poll(findDraft, { message: "the wizard kept a draft on this device" })
+      .not.toBeNull();
+    const draftKey = (await findDraft())!;
+
+    await page.evaluate((key) => {
+      const row = JSON.parse(localStorage.getItem(key)!);
+      delete row.value.primaryEmail;
+      delete row.value.accessNotes;
+      delete row.value.officeNote;
+      localStorage.setItem(key, JSON.stringify(row));
+    }, draftKey);
+
+    await page.reload();
+    await expect(page.locator("[data-draft-restored]"), "the draft-restored banner").toBeVisible({
+      timeout: 20_000,
+    });
+
+    const create = page.getByRole("button", { name: /^create client$/i });
+    await expect(create, "the restored draft opens on Plan").toBeVisible({ timeout: 20_000 });
+    await expect(create).toBeEnabled();
+    await create.click();
+
+    await expect
+      .poll(
+        async () => {
+          if (/\/clients\/[0-9a-f-]{36}/.test(page.url())) return "navigated";
+          const alert = page.getByTestId("create-client-error");
+          if (await alert.count()) return `error: ${await alert.innerText()}`;
+          return "nothing";
+        },
+        { timeout: 30_000, message: "Create client created the client" },
+      )
+      .toBe("navigated");
+
+    const rows = await clientsNamed(name);
+    expect(rows.length, "exactly one client written").toBe(1);
+    expect(
+      pageErrors.filter((m) => /trim/.test(m)),
+      "no trim of undefined",
+    ).toEqual([]);
+    expect(pageErrors, "nothing thrown in the page").toEqual([]);
+  } finally {
+    await removeClientsNamed(name);
+  }
+});

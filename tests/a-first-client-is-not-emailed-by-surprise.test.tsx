@@ -185,7 +185,7 @@ describe("the new-client wizard", () => {
 
   it("passes the box to the server, and nothing else turns it on", () => {
     expect(wizard).toMatch(
-      /sendWelcome: sendWelcome && !welcomeTurnedOffInSettings && !!primaryEmail\.trim\(\),/,
+      /sendWelcome: sendWelcome && !welcomeTurnedOffInSettings && !!primaryEmail\?\.trim\(\),/,
     );
     expect(wizard.match(/setSendWelcome\(/g)?.length ?? 0).toBe(0);
     expect(wizard).toMatch(/onCheckedChange=\{setSendWelcome\}/);

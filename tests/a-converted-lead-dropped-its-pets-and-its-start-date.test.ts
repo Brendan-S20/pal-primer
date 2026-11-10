@@ -148,7 +148,7 @@ describe("the wiring", () => {
   });
 
   it("saves the access note to the property", () => {
-    expect(wizard).toMatch(/accessNotes:\s*accessNotes\.trim\(\)/);
+    expect(wizard).toMatch(/accessNotes:\s*accessNotes\?\.trim\(\)/);
     expect(onboard).toMatch(/access_notes:\s*data\.accessNotes/);
   });
 

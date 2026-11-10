@@ -80,6 +80,7 @@ import { useFormDraft } from "@/hooks/useFormDraft";
 import { afterClientBookChanged } from "@/lib/client-book-queries";
 import { DraftRestoredNotice } from "@/components/DraftRestoredNotice";
 import { newClientDraftForm } from "@/lib/form-drafts";
+import { withNewClientDraftDefaults } from "@/lib/new-client-draft";
 import { needsANamedDog } from "@/lib/new-client-dogs";
 import { NeedsANamedDogAlert } from "@/components/NeedsANamedDogAlert";
 
@@ -679,7 +680,7 @@ function NewClientWizardForm({
   const [dogs, setDogs] = useState<Dog[]>(() => prefill.dogs.map((d) => ({ ...d })));
   // Only a named dog is saved as a dog record: the database refuses a blank or
   // placeholder name, and a tech cannot use one.
-  const validDogs = dogs.filter((d) => d.name.trim().length > 0);
+  const validDogs = dogs.filter((d) => (d.name ?? "").trim().length > 0);
   // The plan is priced from the ROWS on the Dogs step, named or not. It used to
   // count named dogs only, which was harmless while the step always opened on
   // one blank row, and wrong once a lead that said "3 dogs" opens it on three:
@@ -767,7 +768,7 @@ function NewClientWizardForm({
   const commercial = accountType === "commercial";
   const quoteKey = useMemo(
     () => ({
-      postalCode: postalCode.trim(),
+      postalCode: postalCode?.trim() ?? "",
       accountType,
       dogCount,
       frequency: frequency === "one_time" ? "weekly" : frequency,
@@ -922,7 +923,11 @@ function NewClientWizardForm({
       fcChoice,
       fcOverride,
     },
-    restore: (d) => {
+    // A stored draft may lack any key (an older build, a field added since):
+    // every text field comes back a string, so nothing below trims undefined
+    // (#784, lib/new-client-draft).
+    restore: (stored) => {
+      const d = withNewClientDraftDefaults(stored);
       setStep(d.step);
       setGroomInstead(d.groomInstead);
       setDisplayName(d.displayName);
@@ -976,7 +981,7 @@ function NewClientWizardForm({
           accountType,
           primaryEmail: primaryEmail || undefined,
           primaryPhone: primaryPhone || undefined,
-          sendWelcome: sendWelcome && !welcomeTurnedOffInSettings && !!primaryEmail.trim(),
+          sendWelcome: sendWelcome && !welcomeTurnedOffInSettings && !!primaryEmail?.trim(),
           street,
           city,
           region: region || undefined,
@@ -988,7 +993,7 @@ function NewClientWizardForm({
           longitude: geo?.lng,
           gateCode: gateCode || undefined,
           parkingNotes: parkingNotes || undefined,
-          accessNotes: accessNotes.trim() || undefined,
+          accessNotes: accessNotes?.trim() || undefined,
           hazardNotes: hazardNotes || undefined,
           visitContactName: vcName || undefined,
           visitContactPhone: vcPhone || undefined,
@@ -1030,7 +1035,7 @@ function NewClientWizardForm({
                 zoneId: zoneQuote ? (zoneQuote.zoneId as string) : undefined,
                 billingCadence: billsClients ? billingCadence : "postpaid",
               },
-          officeNote: officeNote.trim() || undefined,
+          officeNote: officeNote?.trim() || undefined,
           fromLeadId: fromLead?.id,
           firstCleanup:
             !planSkipped && fcCents != null && fcCents > 0
@@ -1162,7 +1167,7 @@ function NewClientWizardForm({
   });
 
   const canNext = (() => {
-    if (current === "Contact") return displayName.trim().length > 0;
+    if (current === "Contact") return (displayName ?? "").trim().length > 0;
     // Region/State is required — the property is unusable downstream without it
     // (routing, zone pricing, geocoding all need it). Finding #13.
     if (current === "Property") return !!(street && city && region && postalCode);
@@ -2135,9 +2140,9 @@ function NewClientWizardForm({
           </div>
         )}
 
-        {step === steps.length - 1 && primaryEmail.trim() && (
+        {step === steps.length - 1 && primaryEmail?.trim() && (
           <WelcomeEmailOptIn
-            email={primaryEmail.trim()}
+            email={primaryEmail?.trim() ?? ""}
             orgName={(orgData?.organization as { name?: string } | null | undefined)?.name}
             checked={sendWelcome}
             onCheckedChange={setSendWelcome}
