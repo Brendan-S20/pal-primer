@@ -37,6 +37,35 @@ export function tapToPayFeeLabel(): string {
   return "$" + (TAP_TO_PAY_FEE_CENTS / 100).toFixed(2);
 }
 
+/** The per-tap fee a charge's application fee carried, from the
+ *  `tap_to_pay_fee_cents` its PaymentIntent was created with. 0 for every
+ *  charge that is not a tap, and for anything malformed. */
+export function tapToPayFeeFromMetadata(
+  metadata: Record<string, string> | null | undefined,
+): number {
+  const raw = metadata?.tap_to_pay_fee_cents;
+  if (typeof raw !== "string" || !/^\d{1,6}$/.test(raw)) return 0;
+  return Number(raw);
+}
+
+/**
+ * The part of an application fee that a refund or a lost dispute may hand back.
+ *
+ * Everything except the per-tap fee. Where the platform is the fee payer, the
+ * tap's application fee is platform fee + TAP_TO_PAY_FEE_CENTS, and the ten
+ * cents recovers a fee Stripe billed the platform and does not return when a
+ * charge is refunded or disputed. Reversing it proportionally would leave the
+ * platform paying for the tenant's tap, which the owner ruled out
+ * (2026-11-10). The platform-fee part still comes back exactly as before.
+ */
+export function reversibleApplicationFeeCents(
+  feeCents: number,
+  metadata: Record<string, string> | null | undefined,
+): number {
+  if (!Number.isFinite(feeCents) || feeCents <= 0) return 0;
+  return Math.max(0, feeCents - tapToPayFeeFromMetadata(metadata));
+}
+
 export type TapToPayPlatform = "ios" | "android" | "web" | string;
 
 export type TapToPayGateInput = {

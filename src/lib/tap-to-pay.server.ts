@@ -140,14 +140,37 @@ export async function connectedAccountFeePayer(
   stripe: Pick<StripeLike, "accounts">,
   stripeAccount: string,
 ): Promise<string | null> {
-  try {
-    const acct = (await stripe.accounts.retrieve(stripeAccount)) as {
-      controller?: { fees?: { payer?: string | null } | null } | null;
-    } | null;
-    return acct?.controller?.fees?.payer ?? null;
-  } catch {
-    return null;
+  // Two attempts: a transient failure here would otherwise be charged as if
+  // the platform pays, which on an Express account bills the business the
+  // per-tap fee twice. A second failure is logged so it can be reconciled.
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const acct = (await stripe.accounts.retrieve(stripeAccount)) as {
+        controller?: { fees?: { payer?: string | null } | null } | null;
+      } | null;
+      const payer = acct?.controller?.fees?.payer ?? null;
+      if (!payer) console.warn("Tap to Pay: no controller.fees.payer on", stripeAccount);
+      return payer;
+    } catch (e) {
+      lastError = e;
+    }
   }
+  console.warn(
+    "Tap to Pay: could not read the fee payer; charged as if the platform pays",
+    stripeAccount,
+    lastError,
+  );
+  return null;
+}
+
+/** The idempotency key for a tap's PaymentIntent. Two phones pressing for the
+ *  same invoice at the same moment get the same intent rather than one each.
+ *  The intent the invoice pointed at goes in the key, so the next tap after a
+ *  cancelled or failed one (which the invoice now points at) gets a new
+ *  intent instead of the cancelled one back. */
+export function tapToPayIdempotencyKey(invoice: TapToPayInvoice, dueCents: number): string {
+  return `tap-to-pay:${invoice.id}:${dueCents}:${invoice.stripe_payment_intent_id ?? "none"}`;
 }
 
 /** Payers under which Stripe bills a DIRECT charge's fees to the connected
@@ -306,6 +329,6 @@ export async function createCardPresentIntent(
       // existing webhook path marks the invoice paid with no second step.
       capture_method: "automatic",
     },
-    opts,
+    { ...opts, idempotencyKey: tapToPayIdempotencyKey(invoice, dueCents) },
   );
 }

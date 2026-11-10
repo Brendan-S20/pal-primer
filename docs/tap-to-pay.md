@@ -67,9 +67,17 @@ full charge, as before. The intent's metadata records `tap_to_pay_fee_cents`
 and `connect_fee_payer`, so a payout can be traced back. Take payment is
 unchanged.
 
+**Refunds and disputes.** Stripe does not return the fee it billed for a
+refunded or disputed tap, so the per-tap part of the application fee is never
+handed back: the `charge.refunded` and dispute branches of
+`src/routes/api/public/hooks/stripe.ts` reverse
+`reversibleApplicationFeeCents(fee, metadata)` (the fee minus the intent's
+`tap_to_pay_fee_cents`) proportionally, as they always have for the platform
+fee. Under `application_express` that part is zero, so nothing changes there.
+
 **What the business sees.** The Tap to pay card says, before the first tap,
-"Each tap costs your business $0.10 on top of the card rate, shown in your
-Stripe fees." In the business's Stripe payments view, the tap fee appears
+"Each tap costs your business $0.10 on top of the card rate, taken out of the
+payout and shown in Stripe." In the business's Stripe payments view, the tap fee appears
 either as a Stripe fee (`application_express`) or as an application fee
 (`application`).
 
@@ -143,5 +151,8 @@ Uses Stripe **test** keys only. No live charge.
   Developer options **off** (Stripe refuses a phone with them on).
 - One live $1 charge, refunded, after Brendan approves.
 - Confirmation that Terminal is enabled for Connect direct charges on the live
-  platform, and a decision on who absorbs Stripe's per-tap Terminal fee.
-  (The Apple entitlement request is done: granted 2026-11-09.)
+  platform, and that the live platform is on standard blended pricing, not
+  IC+ (Stripe bills "Interchange Plus Payment Fees" to the platform under
+  `application_express`, which reading `fees.payer` cannot detect).
+  (Done: Apple entitlement granted 2026-11-09; the business bears the per-tap
+  fee, decided 2026-11-10.)

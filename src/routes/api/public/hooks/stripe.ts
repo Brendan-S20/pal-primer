@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { feeReversalCents } from "@/lib/platform-fee";
+import { reversibleApplicationFeeCents } from "@/lib/tap-to-pay";
 import { makeStripe, warnOnApiVersionMismatch } from "@/lib/stripe-client.server";
 import { bookedGroomPhrase, onlineGroomBookingFrom } from "@/lib/groom-online";
 import {
@@ -631,6 +632,33 @@ async function provisionSignup(
     }
 
     await supabaseAdmin.from("signup_requests").update(refundPatch).eq("id", signupRequestId);
+  }
+}
+
+/**
+ * The metadata a charge's PaymentIntent was created with, for the fee
+ * reversal. A charge made by a PaymentIntent normally carries a copy; when it
+ * does not (or there is no charge object, as on a dispute), the intent is read
+ * from the connected account it lives on. Null on any failure: the caller then
+ * treats the charge as carrying no per-tap fee, which is the behaviour every
+ * non-tap charge has always had.
+ */
+async function chargeMetadata(
+  charge: { metadata?: Record<string, string> | null } | null,
+  paymentIntentId: string | null,
+  stripeAccount: string | null | undefined,
+): Promise<Record<string, string> | null> {
+  const fromCharge = charge?.metadata;
+  if (fromCharge && Object.keys(fromCharge).length > 0) return fromCharge;
+  if (!paymentIntentId || !stripeAccount) return null;
+  try {
+    const { connectStripe } = await import("@/lib/stripe-connect.server");
+    const stripe = await connectStripe();
+    const pi = await stripe.paymentIntents.retrieve(paymentIntentId, {}, { stripeAccount });
+    return (pi?.metadata as Record<string, string> | undefined) ?? null;
+  } catch (e) {
+    console.error("fee reversal: could not read the intent's metadata", { paymentIntentId }, e);
+    return null;
   }
 }
 
@@ -1602,8 +1630,13 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               if (feeId) {
                 try {
                   const fee = await stripe.applicationFees.retrieve(feeId);
+                  // Tap to Pay (#579): the per-tap part of the fee is not
+                  // handed back. See reversibleApplicationFeeCents.
                   const target = feeReversalCents(
-                    Number(fee?.amount ?? 0),
+                    reversibleApplicationFeeCents(
+                      Number(fee?.amount ?? 0),
+                      await chargeMetadata(obj, paymentIntentId, event.account),
+                    ),
                     Number(obj?.amount ?? 0),
                     Number(obj?.amount_refunded ?? 0),
                   );
@@ -1716,7 +1749,11 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                         Number(pay.surcharge_cents ?? 0) +
                         Number(pay.tip_cents ?? 0);
                       const target = feeReversalCents(
-                        Number(fee.amount ?? 0),
+                        // Tap to Pay (#579): never the per-tap part.
+                        reversibleApplicationFeeCents(
+                          Number(fee.amount ?? 0),
+                          await chargeMetadata(null, paymentIntentId, event.account),
+                        ),
                         chargeTotal,
                         // The DISPUTED amount, not the charge total. A partial
                         // dispute takes part of the charge and should take the

@@ -193,7 +193,8 @@ export function TapToPayButton({
       ) : (
         <p className="mt-1.5 text-xs text-muted-foreground">
           The client taps their card or phone on this phone. Nothing is saved. Each tap costs your
-          business {tapToPayFeeLabel()} on top of the card rate, shown in your Stripe fees.
+          business {tapToPayFeeLabel()} on top of the card rate, taken out of the payout and shown
+          in Stripe.
         </p>
       )}
     </div>

@@ -138,6 +138,7 @@ import {
   ensureTerminalLocation,
   parseLocationAddress,
   connectedAccountFeePayer,
+  tapToPayIdempotencyKey,
   platformPaysStripeFees,
   STRIPE_MIN_CHARGE_CENTS,
   tapToPayApplicationFeeCents,
@@ -146,6 +147,8 @@ import {
   TAP_TO_PAY_SOURCE,
 } from "@/lib/tap-to-pay.server";
 import { invoiceDueCents } from "@/lib/ar";
+import { feeReversalCents } from "@/lib/platform-fee";
+import { reversibleApplicationFeeCents, tapToPayFeeFromMetadata } from "@/lib/tap-to-pay";
 import {
   createTapToPayConnectionToken,
   createTapToPayPaymentIntent,
@@ -290,6 +293,32 @@ describe("who pays Stripe's per-tap fee (owner decision, 2026-11-10)", () => {
     expect(TAP_TO_PAY_FEE_CENTS).toBe(10);
   });
 
+  it("retries a failed fee-payer read once before charging as if the platform pays", async () => {
+    const stripe = fakeStripe({ feePayer: "application_express" });
+    stripe.accounts.retrieve.mockRejectedValueOnce(new Error("blip"));
+    expect(await connectedAccountFeePayer(stripe as any, "acct_tenant")).toBe(
+      "application_express",
+    );
+    expect(stripe.accounts.retrieve).toHaveBeenCalledTimes(2);
+    const down = fakeStripe({ accountFails: true });
+    expect(await connectedAccountFeePayer(down as any, "acct_tenant")).toBeNull();
+    expect(down.accounts.retrieve).toHaveBeenCalledTimes(2);
+  });
+
+  it("two presses share an intent; a tap after a cancelled one gets a new intent", () => {
+    const base = { id: INVOICE_ID, organization_id: ORG.id, total_cents: 100, currency: "usd" };
+    const a = tapToPayIdempotencyKey({ ...base, stripe_payment_intent_id: null }, 100);
+    const b = tapToPayIdempotencyKey({ ...base, stripe_payment_intent_id: null }, 100);
+    expect(a).toBe(b);
+    const afterCancel = tapToPayIdempotencyKey(
+      { ...base, stripe_payment_intent_id: "pi_tap" },
+      100,
+    );
+    expect(afterCancel).not.toBe(a);
+    // A different amount due (a partial payment landed) is a different intent.
+    expect(tapToPayIdempotencyKey({ ...base, stripe_payment_intent_id: null }, 60)).not.toBe(a);
+  });
+
   it("reads the fee payer from the connected account itself", async () => {
     const stripe = fakeStripe({ feePayer: "application" });
     expect(await connectedAccountFeePayer(stripe as any, "acct_tenant")).toBe("application");
@@ -379,13 +408,70 @@ describe("who pays Stripe's per-tap fee (owner decision, 2026-11-10)", () => {
   });
 });
 
+describe("a refunded or disputed tap never hands the per-tap fee back", () => {
+  // What the charge.refunded / dispute branches of hooks/stripe.ts compute:
+  // feeReversalCents(reversibleApplicationFeeCents(fee, metadata), charge, refunded).
+  const reversal = (fee: number, meta: Record<string, string>, charge: number, refunded: number) =>
+    feeReversalCents(reversibleApplicationFeeCents(fee, meta), charge, refunded);
+  const platformPays = { channel: "tap_to_pay", tap_to_pay_fee_cents: "10" };
+  const expressPays = { channel: "tap_to_pay", tap_to_pay_fee_cents: "0" };
+
+  it("reads the per-tap fee off the intent's metadata, and nothing off anything else", () => {
+    expect(tapToPayFeeFromMetadata(platformPays)).toBe(10);
+    expect(tapToPayFeeFromMetadata(expressPays)).toBe(0);
+    expect(tapToPayFeeFromMetadata({ source: "staff_inline" })).toBe(0);
+    expect(tapToPayFeeFromMetadata({ tap_to_pay_fee_cents: "-5" })).toBe(0);
+    expect(tapToPayFeeFromMetadata({ tap_to_pay_fee_cents: "ten" })).toBe(0);
+    expect(tapToPayFeeFromMetadata(null)).toBe(0);
+  });
+
+  it("platform pays, full refund, no platform fee: nothing is handed back, the 10 cents stays", () => {
+    // fee = platformFee (none today) + 10
+    expect(reversal(10, platformPays, 4_000, 4_000)).toBe(0);
+  });
+
+  it("platform pays, full refund, with a platform fee: only the platform fee comes back", () => {
+    // fee = 200 platform + 10 tap, on a $400 charge.
+    expect(reversal(210, platformPays, 40_000, 40_000)).toBe(200);
+  });
+
+  it("platform pays, partial refund: the platform fee comes back pro rata, the 10 cents never", () => {
+    expect(reversal(210, platformPays, 40_000, 10_000)).toBe(50);
+    expect(reversal(10, platformPays, 4_000, 1_000)).toBe(0);
+  });
+
+  it("legacy Express (business pays Stripe): refunds behave exactly as they always have", () => {
+    expect(reversal(200, expressPays, 40_000, 40_000)).toBe(200);
+    expect(reversal(200, expressPays, 40_000, 10_000)).toBe(50);
+    // A fee of nothing reverses nothing, as before.
+    expect(reversal(0, expressPays, 4_000, 4_000)).toBe(0);
+  });
+
+  it("a charge that is not a tap is unchanged", () => {
+    expect(reversal(200, { source: "portal_inline" }, 40_000, 40_000)).toBe(
+      feeReversalCents(200, 40_000, 40_000),
+    );
+  });
+
+  it("both reversal sites in the webhook use it", () => {
+    const hook = readFileSync("src/routes/api/public/hooks/stripe.ts", "utf8");
+    const uses =
+      hook.match(/feeReversalCents\(\s*(?:\/\/[^\n]*\s*)*reversibleApplicationFeeCents\(/g) ?? [];
+    expect(uses).toHaveLength(2);
+    expect(hook).not.toMatch(/feeReversalCents\(\s*Number\(fee/);
+  });
+});
+
 describe("the card_present PaymentIntent", () => {
   it("is a direct charge for the amount due with Take payment's fee", async () => {
     const stripe = fakeStripe();
     const inv = { ...state.invoice, total_cents: 25_000, tax_cents: 2_000 };
     await createCardPresentIntent(stripe as any, "acct_tenant", inv, 25_000, "cus_1");
     const [params, opts] = stripe.paymentIntents.create.mock.calls[0] as any[];
-    expect(opts).toEqual({ stripeAccount: "acct_tenant" });
+    expect(opts).toEqual({
+      stripeAccount: "acct_tenant",
+      idempotencyKey: `tap-to-pay:${INVOICE_ID}:25000:none`,
+    });
     expect(params.amount).toBe(25_000);
     expect(params.payment_method_types).toEqual(["card_present"]);
     expect(params.capture_method).toBe("automatic");
@@ -458,7 +544,10 @@ describe("the server functions", () => {
     const r = await createTapToPayPaymentIntent({ data: { invoiceId: INVOICE_ID } });
     expect(r).toEqual({ clientSecret: "pi_tap_secret", amountCents: 100, currency: "usd" });
     const [params, opts] = state.stripe.paymentIntents.create.mock.calls[0];
-    expect(opts).toEqual({ stripeAccount: "acct_tenant" });
+    expect(opts).toEqual({
+      stripeAccount: "acct_tenant",
+      idempotencyKey: `tap-to-pay:${INVOICE_ID}:100:none`,
+    });
     expect(params.amount).toBe(100);
     expect(params.application_fee_amount).toBe(platformFeeCents(100, state.invoice));
     expect(state.updates).toContainEqual({
