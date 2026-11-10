@@ -428,8 +428,36 @@ describe("assign by capacity", () => {
     expect(fn).not.toMatch(/\.from\("walk_groups"\)\s*\.update/);
     expect(fn).toContain('if (outcome === "assigned")');
     expect(fn).toContain("planWalkerCapacity(summaries, walkers, dayLoad)");
-    expect(fn).toContain('rpc("is_staff_off"');
     expect(fn).toContain("p.active && p.is_field_tech && p.routingAvailable");
+  });
+
+  it("asks is_staff_off as the service role, only after the office check, only about its own staff", () => {
+    const server = read("src/lib/walk-groups.functions.ts");
+    const fn = server.slice(
+      server.indexOf("export const assignWalkGroupsByCapacity"),
+      server.indexOf("export const setWalkerDogCap"),
+    );
+    // is_staff_off is service-role only (20260810140000). Through the
+    // signed-in client it failed on production with "permission denied".
+    expect(server).not.toMatch(/context\.supabase\.rpc\("is_staff_off"/);
+    expect(server).toContain('admin.rpc("is_staff_off"');
+    // The office check comes first; the service-role question after it.
+    const check = fn.indexOf("await requireWalkGroupOffice(context.supabase, context.userId)");
+    const asked = fn.indexOf("await staffOffOn(");
+    expect(check).toBeGreaterThan(-1);
+    expect(asked).toBeGreaterThan(check);
+    // Every id is confirmed to be this org's staff, on the service role,
+    // before any is asked about.
+    const helper = server.slice(
+      server.indexOf("async function staffOffOn("),
+      server.indexOf("export const assignWalkGroupsByCapacity"),
+    );
+    expect(helper).toMatch(
+      /\.from\("staff"\)\s*\.select\("id"\)\s*\.eq\("organization_id", orgId\)/,
+    );
+    expect(helper.indexOf('.eq("organization_id", orgId)')).toBeLessThan(
+      helper.indexOf('admin.rpc("is_staff_off"'),
+    );
   });
 });
 
