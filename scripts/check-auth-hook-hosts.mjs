@@ -63,11 +63,13 @@
 //   - every ENABLED hook whose URI is http(s) is resolved and probed as above
 //     (pg-functions:// hooks run inside Postgres and have no host).
 //
-// The token comes from SUPABASE_ACCESS_TOKEN (a repo secret in the scheduled
-// workflow, .github/workflows/auth-hook-health.yml) and is never printed, nor is
-// the config response; only hook field names and redacted URIs are. A missing
-// token is a failure (exit 2), not a skip: a daily check that silently stops
-// checking is the three months #764 already had.
+// The token comes from SUPABASE_ACCESS_TOKEN in the caller's environment and is
+// never printed, nor is the config response; only hook field names and
+// redacted URIs are. No Management API token is stored in GitHub (per
+// Brendan). This is a manual, local tool: per Brendan (2026-11-09) the daily
+// health check is not needed, so nothing in CI runs it. A missing token under
+// --live is a failure (exit 2), not a skip: the caller asked for the live
+// check.
 //
 // Usage:
 //   node scripts/check-auth-hook-hosts.mjs
@@ -321,7 +323,7 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
   if (!override) {
     console.log(
       "· no SUPABASE_ACCESS_TOKEN: checking the expected URI, NOT the live Auth setting " +
-        "(the daily auth-hook-health workflow checks the live one).",
+        "(the daily live check runs outside GitHub).",
     );
   }
   const uris = hookUrisFromEnv(env);

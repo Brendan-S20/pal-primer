@@ -133,6 +133,13 @@ describe("the pages", () => {
     expect(routed).toBe(calls);
   });
 
+  it("the business signup (finishSignup, #795) routes a taken address too, but only before it registered", () => {
+    const fin = started.slice(started.indexOf("const finish = async"));
+    expect(fin.slice(0, fin.indexOf("return ("))).toMatch(
+      /if \(!progress\.current\.registered && isTakenEmail\(err\)\) return sendToSignIn\(navigate, email\);\s*setError\(signupErrorMessage\(err, progress\.current\)\);/,
+    );
+  });
+
   it("/auth opens on the password step with the address, and offers the reset as a button", () => {
     expect(auth).toMatch(
       /const taken = takeExistingAccount\(\);[\s\S]{0,120}setEmail\(taken\);\s*setStage\("password"\);\s*setOfferReset\(true\);/,

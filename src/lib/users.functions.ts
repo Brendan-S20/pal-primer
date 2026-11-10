@@ -469,13 +469,29 @@ export const setStaffRouting = createServerFn({ method: "POST" })
     }
     if (data.routingAvailable !== undefined) patch.routing_available = data.routingAvailable;
     if (Object.keys(patch).length === 0) return { ok: true };
-    const { error } = await (context.supabase.from("staff") as any)
+    const { data: rows, error } = await (context.supabase.from("staff") as any)
       .update(patch)
       .eq("id", data.staffId)
-      .eq("organization_id", orgId);
+      .eq("organization_id", orgId)
+      .select("id");
     if (error) throw new Error(error.message);
+    refuseUnwrittenStaff(rows);
     return { ok: true };
   });
+
+/**
+ * An UPDATE that matches no row is a successful UPDATE, so a staff write that
+ * RLS (or a restrictive policy such as two-step sign-in) refused came back as
+ * `{ error: null }`, and setup said "You're on the schedule" over a row that
+ * never changed. Same rule as updateOwnOrg: ask for the row back, and refuse
+ * to claim success without it.
+ */
+export const STAFF_WRITE_NOT_SAVED =
+  "That change wasn't saved: the team member's record could not be written. Reload and try again; if it keeps happening, tell support what you were changing.";
+
+function refuseUnwrittenStaff(rows: unknown): void {
+  if (!Array.isArray(rows) || rows.length === 0) throw new Error(STAFF_WRITE_NOT_SAVED);
+}
 
 export const listStaffAddresses = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -518,12 +534,14 @@ export const setStaffAddresses = createServerFn({ method: "POST" })
     if (data.endAddress !== undefined) patch.end_address = data.endAddress || null;
     if (data.endLatitude !== undefined) patch.end_latitude = data.endLatitude;
     if (data.endLongitude !== undefined) patch.end_longitude = data.endLongitude;
-    const { error } = await context.supabase
+    const { data: rows, error } = await context.supabase
       .from("staff")
       .update(patch as any)
       .eq("id", data.staffId)
-      .eq("organization_id", orgId);
+      .eq("organization_id", orgId)
+      .select("id");
     if (error) throw new Error(error.message);
+    refuseUnwrittenStaff(rows);
     return { ok: true };
   });
 

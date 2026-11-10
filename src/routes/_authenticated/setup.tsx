@@ -36,6 +36,8 @@ import {
 import { useServiceLineAvailability } from "@/hooks/useServiceLineAvailability";
 import { getDispatchSettings, updateDispatchSettings } from "@/lib/visits.functions";
 import { createZone, geocodePostal } from "@/lib/zones.functions";
+import { adoptSetupAreaPrice } from "@/lib/setup-price.functions";
+import { stepSave } from "@/lib/setup-step-save";
 import { createOrgInvite, listStaffAddresses, setStaffRouting } from "@/lib/users.functions";
 import { upsertFacility } from "@/lib/stations.functions";
 import { getStripeConnectStatus } from "@/lib/stripe-connect.functions";
@@ -423,41 +425,44 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
     (lines !== null || mayPreselect) &&
     (linesVal.length !== savedLines.length || linesVal.some((l) => !savedLines.includes(l)));
 
-  const m = useMutation({
-    mutationFn: async () => {
-      // First, because it decides what the later steps ask: a business that
-      // does not run pet waste is asked where its day ends, not for a dump
-      // site.
-      if (linesChanged) await saveLinesFn({ data: { lines: linesVal } });
-      // The country, when the address says it plainly ("TX 78701" is US) and
-      // nobody has chosen one yet: it decides miles or km on the board
-      // (#496). A choice made in Settings > Business is never overwritten.
-      const country = b?.country ? undefined : (countryFromAddress(addressVal) ?? undefined);
-      await saveBrandingFn({
-        data: {
-          name: nameVal.trim() || undefined,
-          contactPhone: phoneVal.trim() || null,
-          contactAddress: addressVal.trim() || null,
-          country,
-        },
-      });
-      if (writeTz) await saveDispatchFn({ data: { timezone: tzVal } });
-    },
-    onSuccess: () => {
-      draft.clear();
-      toast.success("Business details saved");
-      qc.invalidateQueries({ queryKey: ["org-branding"] });
-      qc.invalidateQueries({ queryKey: ["dispatch-settings"] });
-      qc.invalidateQueries({ queryKey: ["my-org"] });
-      if (linesChanged) {
-        setLines(null);
-        qc.invalidateQueries({ queryKey: ["my-org-features"] });
-        qc.invalidateQueries({ queryKey: ["services"] });
-      }
-      onSaved();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  // Refreshed on failure too (stepSave): the three writes run in turn, so a
+  // failure in the second leaves the first saved, and Settings must show it.
+  const m = useMutation(
+    stepSave({
+      qc,
+      save: async () => {
+        // First, because it decides what the later steps ask: a business that
+        // does not run pet waste is asked where its day ends, not for a dump
+        // site.
+        if (linesChanged) await saveLinesFn({ data: { lines: linesVal } });
+        // The country, when the address says it plainly ("TX 78701" is US) and
+        // nobody has chosen one yet: it decides miles or km on the board
+        // (#496). A choice made in Settings > Business is never overwritten.
+        const country = b?.country ? undefined : (countryFromAddress(addressVal) ?? undefined);
+        await saveBrandingFn({
+          data: {
+            name: nameVal.trim() || undefined,
+            contactPhone: phoneVal.trim() || null,
+            contactAddress: addressVal.trim() || null,
+            country,
+          },
+        });
+        if (writeTz) await saveDispatchFn({ data: { timezone: tzVal } });
+      },
+      refresh: [
+        ["org-branding"],
+        ["dispatch-settings"],
+        ["my-org"],
+        ...(linesChanged ? [["my-org-features"], ["services"]] : []),
+      ],
+      saved: () => {
+        draft.clear();
+        toast.success("Business details saved");
+        if (linesChanged) setLines(null);
+      },
+      onSaved,
+    }),
+  );
 
   return (
     <form
@@ -657,6 +662,10 @@ function ServiceAreaPanel({
   const brandingQ = useQuery({ queryKey: ["org-branding"], queryFn: () => brandingFn() });
   const createFn = useServerFn(createZone);
   const postalFn = useServerFn(geocodePostal);
+  const adoptFn = useServerFn(adoptSetupAreaPrice);
+  // The zone this form already created, so a retry after the price step
+  // failed does not create a second one.
+  const createdZone = useRef<string | null>(null);
 
   const [name, setName] = useState("Main service area");
   const [miles, setMiles] = useState<number>(15);
@@ -667,39 +676,53 @@ function ServiceAreaPanel({
   const b = brandingQ.data;
   const pinned = b?.latitude != null && b?.longitude != null;
 
-  const m = useMutation({
-    mutationFn: async () => {
-      let center = pinned ? { lat: Number(b!.latitude), lng: Number(b!.longitude) } : null;
-      if (!center) {
-        const r = await postalFn({ data: { postalCode: zip.trim() } });
-        if (!r.point) throw new Error("We could not find that ZIP code. Check it and try again.");
-        center = { lat: r.point.latitude, lng: r.point.longitude };
-      }
-      const cents = (v: string) => Math.round(parseFloat(v) * 100);
-      return createFn({
-        data: {
-          name: name.trim(),
-          geoMatchMode: "radius",
-          // List the ZIPs the circle holds, as "Fill ZIPs from the area" on
-          // Zones does. Without them the signup page and the lead form,
-          // which match by ZIP alone, could not quote the area setup made
-          // (onboarding audit 2026-11-09, D1).
-          fillZipsFromShape: true,
-          centerLatitude: center.lat,
-          centerLongitude: center.lng,
-          radiusMeters: Math.round(miles * 1609.344),
-          basePriceCents: cents(price),
-          perDogAddlCents: extraDog.trim() ? cents(extraDog) : 0,
-        },
-      });
-    },
-    onSuccess: () => {
-      toast.success("Service area saved");
-      qc.invalidateQueries({ queryKey: ["zones"] });
-      onSaved();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  const m = useMutation(
+    stepSave({
+      qc,
+      save: async () => {
+        const cents = (v: string) => Math.round(parseFloat(v) * 100);
+        const basePriceCents = cents(price);
+        const perDogAddlCents = extraDog.trim() ? cents(extraDog) : 0;
+        if (!createdZone.current) {
+          let center = pinned ? { lat: Number(b!.latitude), lng: Number(b!.longitude) } : null;
+          if (!center) {
+            const r = await postalFn({ data: { postalCode: zip.trim() } });
+            if (!r.point)
+              throw new Error("We could not find that ZIP code. Check it and try again.");
+            center = { lat: r.point.latitude, lng: r.point.longitude };
+          }
+          const zone = await createFn({
+            data: {
+              name: name.trim(),
+              geoMatchMode: "radius",
+              // List the ZIPs the circle holds, as "Fill ZIPs from the area" on
+              // Zones does. Without them the signup page and the lead form,
+              // which match by ZIP alone, could not quote the area setup made
+              // (onboarding audit 2026-11-09, D1).
+              fillZipsFromShape: true,
+              centerLatitude: center.lat,
+              centerLongitude: center.lng,
+              radiusMeters: Math.round(miles * 1609.344),
+              basePriceCents,
+              perDogAddlCents,
+            },
+          });
+          createdZone.current = zone.id;
+        }
+        // The same price is the business's Standard price and the default
+        // service's price, where those are still blank (#766). One answer to
+        // "what do I charge per visit", not a zone at $25 and Standard at $30.
+        await adoptFn({ data: { basePriceCents, perDogAddlCents } });
+      },
+      // Zones, Settings > Business > Standard pricing, Settings > Services.
+      refresh: [["zones"], ["zone-coverage"], ["std-pricing"], ["services"]],
+      saved: () => {
+        createdZone.current = null;
+        toast.success("Service area saved");
+      },
+      onSaved,
+    }),
+  );
 
   const priceOk = parseFloat(price) > 0;
 
@@ -862,31 +885,33 @@ function StaffPanel({ onSaved }: { onSaved: () => void }) {
     { id: string; is_field_tech: boolean | null } | undefined;
   const iRunRoutes = !!mine?.is_field_tech;
 
-  const selfMut = useMutation({
-    mutationFn: () => routingFn({ data: { staffId: me!.id, isFieldTech: true } }),
-    onSuccess: () => {
-      toast.success("You're on the schedule");
-      qc.invalidateQueries({ queryKey: ["staff-addresses"] });
-      qc.invalidateQueries({ queryKey: ["staff"] });
-      onSaved();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  const selfMut = useMutation(
+    stepSave({
+      qc,
+      save: () => routingFn({ data: { staffId: me!.id, isFieldTech: true } }),
+      // Settings > Users reads both of the first two.
+      refresh: [["staff-addresses"], ["org-users"], ["staff"]],
+      saved: "You're on the schedule",
+      onSaved,
+    }),
+  );
 
-  const inviteMut = useMutation({
-    mutationFn: () => inviteFn({ data: { email: email.trim(), role: "tech" } }),
-    // The Team page's honest wording (#568): "sent" only when the provider
-    // accepted it, otherwise "not sent" and the link to send by hand (#612).
-    onSuccess: (r) => {
-      const to = email.trim();
-      if (r.emailSent) toast.success(`Invite sent to ${to}`);
-      else toastNotSent("Invite", to, r.link);
-      setEmail("");
-      qc.invalidateQueries({ queryKey: ["org-invites"] });
-      onSaved();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  const inviteMut = useMutation(
+    stepSave({
+      qc,
+      save: () => inviteFn({ data: { email: email.trim(), role: "tech" } }),
+      refresh: [["org-invites"]],
+      // The Team page's honest wording (#568): "sent" only when the provider
+      // accepted it, otherwise "not sent" and the link to send by hand (#612).
+      saved: (r) => {
+        const to = email.trim();
+        if (r.emailSent) toast.success(`Invite sent to ${to}`);
+        else toastNotSent("Invite", to, r.link);
+        setEmail("");
+      },
+      onSaved,
+    }),
+  );
 
   return (
     <div className="space-y-5">
@@ -968,16 +993,18 @@ function DumpSitePanel({ done, onSaved }: { done: boolean; onSaved: () => void }
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
 
-  const m = useMutation({
-    mutationFn: () =>
-      saveFn({ data: { name: name.trim() || "Dump site", address: address.trim() } }),
-    onSuccess: () => {
-      toast.success("Dump site saved");
-      qc.invalidateQueries({ queryKey: ["facilities"] });
-      onSaved();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+  const m = useMutation(
+    stepSave({
+      qc,
+      save: () => saveFn({ data: { name: name.trim() || "Dump site", address: address.trim() } }),
+      // The key the Waste log and Settings > Business > Dump sites read. This
+      // said "facilities", a key nothing reads, so those lists kept showing
+      // no dump site until something else refreshed them.
+      refresh: [["waste-facilities"]],
+      saved: "Dump site saved",
+      onSaved,
+    }),
+  );
 
   const start = brandingQ.data?.contact_address;
 

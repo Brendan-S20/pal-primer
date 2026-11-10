@@ -12,7 +12,7 @@
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   EXPECTED_SEND_EMAIL_HOOK_URI,
@@ -210,14 +210,17 @@ describe("what it checks by default", () => {
     expect(redactUri("not a url")).toBe("<unparseable hook URI>");
   });
 
-  it("is wired into local CI and the workflow", () => {
+  it("is a manual tool: no CI job, workflow or npm script runs it (Brendan, 2026-11-09: not needed)", () => {
     const read = (p: string) =>
       readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), "utf8");
-    expect(read("scripts/ci-local.sh")).toContain("scripts/check-auth-hook-hosts.mjs");
-    expect(read(".github/workflows/ci.yml")).toContain("scripts/check-auth-hook-hosts.mjs");
-    expect(JSON.parse(read("package.json")).scripts["check:auth-hooks"]).toBe(
-      "node scripts/check-auth-hook-hosts.mjs",
-    );
+    expect(read("scripts/ci-local.sh")).not.toContain("check-auth-hook-hosts");
+    expect(read(".github/workflows/ci.yml")).not.toContain("check-auth-hook-hosts");
+    expect(JSON.parse(read("package.json")).scripts["check:auth-hooks"]).toBeUndefined();
+    expect(
+      existsSync(
+        fileURLToPath(new URL("../.github/workflows/auth-hook-health.yml", import.meta.url)),
+      ),
+    ).toBe(false);
   });
 });
 
@@ -437,26 +440,5 @@ describe("--live reads the hook Auth is actually configured with", () => {
     expect(src.match(/method:\s*"POST"/g) ?? []).toHaveLength(1);
     expect(src).toMatch(/\/v1\/projects\/\$\{encodeURIComponent\(ref\)\}\/config\/auth/);
     expect(PROD_SUPABASE_REF).toBe("vsxzrbxublqrcfnxfwcu");
-  });
-});
-
-describe("a daily scheduled workflow runs the live check and fails loudly", () => {
-  const wf = readFileSync(
-    fileURLToPath(new URL("../.github/workflows/auth-hook-health.yml", import.meta.url)),
-    "utf8",
-  );
-
-  it("runs on a daily cron and by hand", () => {
-    expect(wf).toMatch(/schedule:\s*\n\s*#[^\n]*\n\s*- cron: "\d+ \d+ \* \* \*"/);
-    expect(wf).toMatch(/workflow_dispatch:/);
-  });
-
-  it("runs the LIVE check with the Management API token from secrets, and never softens a failure", () => {
-    expect(wf).toContain("node scripts/check-auth-hook-hosts.mjs --live");
-    expect(wf).toContain("SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}");
-    expect(wf).not.toMatch(/continue-on-error/);
-    expect(wf).not.toMatch(/--dns-only/);
-    expect(wf).not.toMatch(/AUTH_HOOK_URIS|AUTH_SEND_EMAIL_HOOK_URI/);
-    expect(wf).toMatch(/permissions:\s*\n\s*contents: read/);
   });
 });

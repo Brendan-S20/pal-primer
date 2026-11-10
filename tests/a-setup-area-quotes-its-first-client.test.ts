@@ -225,10 +225,11 @@ describe("setup's area is written with the ZIPs it holds", () => {
 
   it("Setup step 2 asks for the fill", () => {
     const src = read("src/routes/_authenticated/setup.tsx");
-    const call = src.slice(
-      src.indexOf("return createFn({"),
-      src.indexOf("return createFn({") + 600,
-    );
+    // `await createFn({` since #795: the setup save also adopts the price
+    // after the zone is made, so the call is no longer the return value.
+    const at = src.indexOf("createFn({");
+    expect(at, "setup.tsx no longer calls createFn").toBeGreaterThan(-1);
+    const call = src.slice(at, at + 600);
     expect(call).toMatch(/geoMatchMode: "radius"/);
     expect(call).toMatch(/fillZipsFromShape: true/);
   });
