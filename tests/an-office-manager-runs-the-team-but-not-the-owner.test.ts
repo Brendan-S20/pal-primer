@@ -54,7 +54,8 @@ const db = {
     return api;
   },
   rpc: async (fn: string, args: unknown) => (
-    state.rpcs.push({ fn, args }), { data: null, error: null }
+    state.rpcs.push({ fn, args }),
+    { data: null, error: null }
   ),
 };
 
@@ -174,13 +175,16 @@ describe("Settings -> Users", () => {
 describe("the migration", () => {
   const sql = readFileSync(MIGRATION, "utf8");
   const fn = (name: string) =>
-    sql.match(new RegExp(`CREATE OR REPLACE FUNCTION public\\.${name}[\\s\\S]*?\\$function\\$;`))?.[0] ??
-    "";
+    sql.match(
+      new RegExp(`CREATE OR REPLACE FUNCTION public\\.${name}[\\s\\S]*?\\$function\\$;`),
+    )?.[0] ?? "";
 
   it("set_staff_active lets an office manager in, but never onto an owner", () => {
     const body = fn("set_staff_active");
     expect(body).toMatch(/has_role\(auth\.uid\(\), _org, 'owner'::app_role\)/);
-    expect(body).toMatch(/ELSIF public\.has_role\(auth\.uid\(\), _org, 'office_manager'::app_role\)/);
+    expect(body).toMatch(
+      /ELSIF public\.has_role\(auth\.uid\(\), _org, 'office_manager'::app_role\)/,
+    );
     expect(body).toMatch(/IF public\.staff_row_is_an_owner\(_staff_id\) THEN/);
     expect(body).not.toMatch(/'dispatcher'|'tech'/);
   });
@@ -209,14 +213,18 @@ describe("the migration", () => {
     expect(p).toMatch(/NOT public\.staff_row_is_an_owner\(id\)/);
     expect(p).not.toMatch(/'owner'::public\.staff_role/);
     // INSERT of an owner and DELETE stay owner-only: not touched here.
-    expect(sql).not.toMatch(/DROP POLICY IF EXISTS "Only an owner (adds an owner|removes a person)"/);
+    expect(sql).not.toMatch(
+      /DROP POLICY IF EXISTS "Only an owner (adds an owner|removes a person)"/,
+    );
   });
 
   it("the helper it adds asks who is calling, and is closed to anon", () => {
     const body = fn("staff_row_is_an_owner");
     expect(body).toMatch(/SECURITY DEFINER/);
     expect(body).toMatch(/public\.is_org_member\(auth\.uid\(\), s\.organization_id\)/);
-    expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.staff_row_is_an_owner\(uuid\) FROM PUBLIC, anon;/);
+    expect(sql).toMatch(
+      /REVOKE ALL ON FUNCTION public\.staff_row_is_an_owner\(uuid\) FROM PUBLIC, anon;/,
+    );
   });
 
   it("enables no RLS of its own and counts restrictive policies only", () => {
@@ -257,20 +265,23 @@ if (!reachable) {
   );
 }
 
-describe.skipIf(!reachable)("an office manager runs the team but not the owner, in a real database", () => {
-  it("has the files it runs", () => {
-    expect(existsSync(MIGRATION)).toBe(true);
-    expect(existsSync(PROOF)).toBe(true);
-  });
-
-  it("by RPC and REST: an office manager changes a tech, never the owner, never above their own role", () => {
-    const r = spawnSync(psql!, [DB_URL, "-X", "-v", `migration=${MIGRATION}`, "-f", PROOF], {
-      encoding: "utf8",
-      timeout: 300_000,
+describe.skipIf(!reachable)(
+  "an office manager runs the team but not the owner, in a real database",
+  () => {
+    it("has the files it runs", () => {
+      expect(existsSync(MIGRATION)).toBe(true);
+      expect(existsSync(PROOF)).toBe(true);
     });
-    const out = `${r.stdout}\n${r.stderr}`;
-    expect(r.status, out).toBe(0);
-    expect(out).not.toMatch(/PROOF FAILED/);
-    expect(out).toMatch(/ALL AN-OFFICE-MANAGER-RUNS-THE-TEAM PROOFS PASSED/);
-  });
-});
+
+    it("by RPC and REST: an office manager changes a tech, never the owner, never above their own role", () => {
+      const r = spawnSync(psql!, [DB_URL, "-X", "-v", `migration=${MIGRATION}`, "-f", PROOF], {
+        encoding: "utf8",
+        timeout: 300_000,
+      });
+      const out = `${r.stdout}\n${r.stderr}`;
+      expect(r.status, out).toBe(0);
+      expect(out).not.toMatch(/PROOF FAILED/);
+      expect(out).toMatch(/ALL AN-OFFICE-MANAGER-RUNS-THE-TEAM PROOFS PASSED/);
+    });
+  },
+);
