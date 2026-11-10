@@ -18,7 +18,7 @@ import { titleHead } from "@/lib/page-title";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { IMPORT_CANCEL_CONFIRM } from "@/lib/import-cancel-confirm";
-import { invalidateOnboardingStatus } from "@/hooks/useOnboardingStatus";
+import { afterClientBookChanged } from "@/lib/client-book-queries";
 
 export const Route = createFileRoute("/_authenticated/imports/$batchId")({
   head: () => titleHead("Import"),
@@ -97,8 +97,9 @@ function BatchDetail() {
     try {
       const s = await commitFn({ data: { batchId } });
       toast.success(committedSentence(s));
-      // Imported clients finish the clients setup step.
-      void invalidateOnboardingStatus(qc);
+      // Imported clients finish the clients setup step, and move every
+      // client count: /clients, the dashboard, the setup banner (#790).
+      void afterClientBookChanged(qc);
       refetch();
     } catch (e: any) {
       toast.error(e?.message ?? "Commit failed");
@@ -116,7 +117,7 @@ function BatchDetail() {
       await retryFn({ data: { batchId } });
       const s = await commitFn({ data: { batchId } });
       toast.success(committedSentence(s));
-      void invalidateOnboardingStatus(qc);
+      void afterClientBookChanged(qc);
     } catch (e) {
       toast.error((e as Error)?.message ?? "The import did not finish");
     } finally {

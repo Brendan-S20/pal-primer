@@ -18,6 +18,7 @@ import { lookupInviteByToken } from "@/lib/platform-onboarding.functions";
 import { acceptPendingInvite, rememberInviteToken } from "@/lib/ensure-workspace";
 import { humanizeRole } from "@/lib/humanize";
 import { toast } from "sonner";
+import { sendWithVerifyNotice } from "@/lib/verify-email-copy";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -393,7 +394,13 @@ function NewBusinessPage() {
           acceptPendingInvite: () => acceptPendingInvite(null),
           bootstrapOrganization: (a) => bootstrapOrganization(a as never),
           recordSmsConsent: (a) => recordSmsConsent(a),
-          sendEmailVerification: () => sendEmailVerification(),
+          // The notice about the verify link (#776) is drawn when the send
+          // itself settles, which can be after finishSignup returns (#824).
+          sendEmailVerification: sendWithVerifyNotice(
+            () => sendEmailVerification(),
+            email,
+            (message) => toast(message, { duration: 15000 }),
+          ),
           readAttribution: readSignupAttribution,
           clearAttribution: clearSignupAttribution,
           timezone: deviceTimezone,
