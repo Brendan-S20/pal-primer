@@ -65,7 +65,7 @@ import { serverErrorMessage } from "@/lib/server-outcome";
 import { createFailedMessage } from "@/lib/create-client-error";
 import { typedPriceCents } from "@/lib/typed-price";
 import { useFormDraft } from "@/hooks/useFormDraft";
-import { invalidateOnboardingStatus } from "@/hooks/useOnboardingStatus";
+import { afterClientBookChanged } from "@/lib/client-book-queries";
 import { DraftRestoredNotice } from "@/components/DraftRestoredNotice";
 import { newClientDraftForm } from "@/lib/form-drafts";
 import { needsANamedDog } from "@/lib/new-client-dogs";
@@ -1046,11 +1046,13 @@ function NewClientWizardForm({
         );
       if (leadLinked === false)
         toast.error("The lead could not be marked converted. Mark it from the Leads page.");
-      qc.invalidateQueries({ queryKey: ["clients"] });
       qc.invalidateQueries({ queryKey: ["my-org"] });
       // The first client finishes a setup step; the banner on the page this
-      // navigates to must say so (D9).
-      void invalidateOnboardingStatus(qc);
+      // navigates to must say so (D9). And the /clients header, the
+      // dashboard's active clients and AR, and that banner must not paint
+      // the zero they cached before this client existed (#790): reset, not
+      // invalidate, so their next paint is a skeleton and then the server.
+      void afterClientBookChanged(qc);
       if (fromLead) qc.invalidateQueries({ queryKey: ["leads"] });
       if (fromQuote) {
         // Best effort: the client exists either way.
