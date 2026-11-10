@@ -713,20 +713,6 @@ jobs:
         # See the note on `if: always()` below the first check.
         if: always() && steps.psql.conclusion == 'success'
 
-      - name: Every auth hook points at a host that resolves and answers
-        # #764 criterion 6. The Send Email hook pointed at
-        # www.app.houndstack.com for three months after that host went
-        # NXDOMAIN, and every password reset failed. The hook URI is a remote
-        # Supabase Auth setting: with SUPABASE_ACCESS_TOKEN present the script
-        # reads it (Management API GET only) and checks the LIVE value; without
-        # it, the expected URI. The daily alert is auth-hook-health.yml; this
-        # is the same check on every push to main. Prints host and path only.
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-        run: node scripts/check-auth-hook-hosts.mjs
-        continue-on-error: ${{ github.event_name == 'pull_request' }}
-        if: always() && steps.psql.conclusion == 'success'
-
       - name: Stripe charges what the catalog says
         # The database stores a price in cents AND a Stripe price id. The app
         # renders the cents; Stripe charges the id. Nothing compared them until
