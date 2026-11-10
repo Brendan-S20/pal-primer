@@ -11,7 +11,6 @@
  *  Pure, so the wizard and the tests read one copy. Only the STARTING values
  *  live here: everything stays one tap away, and nothing is refused. */
 
-import { WORK_WEEK } from "@/lib/weekday-set";
 import { runsPetWaste, type ServiceLine } from "@/lib/service-lines";
 
 /** Lines whose ordinary customer is on a repeating plan from day one. */
@@ -25,15 +24,71 @@ export function planStartsSkipped(lines: readonly ServiceLine[], known = true): 
   return !lines.some((l) => PLAN_FIRST_LINES.includes(l));
 }
 
-/** The days a weekly plan of this line starts on. A walk is a weekday thing;
- *  anything else starts on the first visit's weekday alone (0 = Sunday), so
- *  a groom or a lesson is once a week, not five times. */
+/** The days a weekly plan starts on: the first visit's weekday alone
+ *  (0 = Sunday), for every line (#774).
+ *
+ *  A walk used to start on Monday to Friday. An owner who switched the
+ *  service from pet waste to a 30-minute walk got five walks a week without
+ *  choosing them, and the plan was saved that way. One day is what a person
+ *  can see and add to: each tap on Days each week adds a day, so a five-day
+ *  walker is four taps away, and nobody is booked for days they never picked.
+ *  `line` is kept so a line can be given its own start again, on purpose. */
 export function defaultPlanWeekdays(
-  line: ServiceLine | null | undefined,
+  _line: ServiceLine | null | undefined,
   firstVisitWeekday: number,
 ): number[] {
-  if (line === "dog_walking") return [...WORK_WEEK];
   return [firstVisitWeekday];
+}
+
+/** The day the wizard's First visit starts on: tomorrow on the business's
+ *  calendar. Today, created in the evening, meant a visit that night after
+ *  the route had ended (persona review, 2026-09-27). The form says so, and
+ *  Today is one tap (#774). */
+export function defaultFirstVisit(orgToday: string): string {
+  return nextDay(orgToday);
+}
+
+/** The sentence under First visit, about the day actually chosen (#774
+ *  review): today, tomorrow (the default, and why), the day a lead asked
+ *  for, or another day. `dayLabel` is that day as the form writes dates. */
+export function firstVisitHint(opts: {
+  startedOn: string;
+  orgToday: string;
+  leadStart?: string | null;
+  dayLabel: string;
+}): string {
+  const moves = "If that isn't a work day or a service day, it moves to the next one.";
+  if (opts.leadStart && opts.startedOn === opts.leadStart)
+    return `Starts ${opts.dayLabel}, the day the lead asked for. ${moves}`;
+  if (opts.startedOn === opts.orgToday) return `Starts today. ${moves}`;
+  if (opts.startedOn === nextDay(opts.orgToday))
+    return `Starts tomorrow, the default, so a client added after today's route is not put on it. ${moves}`;
+  return `Starts ${opts.dayLabel}. ${moves}`;
+}
+
+/** The next calendar day after a YYYY-MM-DD day. */
+export function nextDay(day: string): string {
+  return new Date(Date.parse(`${day}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+}
+
+/** What the Plan step does when the owner picks a different service (#774).
+ *  Days chosen for the old service are dropped, so the new one starts from
+ *  its own default, and the step says so (`notice`) instead of keeping a
+ *  set the owner picked for something else. No change, no notice. */
+export function serviceSwitch(opts: {
+  from: string | null | undefined;
+  to: string;
+  hadDays: boolean;
+  toName: string | null | undefined;
+}): { reset: boolean; notice: string | null } {
+  if (!opts.to || opts.to === (opts.from ?? "")) return { reset: false, notice: null };
+  const name = opts.toName?.trim() || "the new service";
+  return {
+    reset: true,
+    notice: opts.hadDays
+      ? `Days reset for ${name}. They start on the first visit's day again.`
+      : `Days set for ${name}: the first visit's day. Tap more days to add them.`,
+  };
 }
 
 /** The property hazards the wizard offers. Bees, sharp objects, "dog in the

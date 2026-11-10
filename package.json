@@ -53,6 +53,7 @@
     "@ai-sdk/anthropic": "4.0.6",
     "@capacitor-community/apple-sign-in": "^7.1.0",
     "@capacitor-community/in-app-review": "^8.0.0",
+    "@capacitor-community/stripe-terminal": "8.3.0",
     "@capacitor/android": "^8.4.1",
     "@capacitor/app": "^8.1.0",
     "@capacitor/browser": "^8.0.4",
@@ -110,9 +111,9 @@
     "@supabase/supabase-js": "^2.110.1",
     "@tailwindcss/vite": "^4.2.1",
     "@tanstack/react-query": "^5.101.1",
-    "@tanstack/react-router": "^1.170.16",
-    "@tanstack/react-start": "^1.168.26",
-    "@tanstack/router-plugin": "^1.168.18",
+    "@tanstack/react-router": "1.170.42",
+    "@tanstack/react-start": "1.168.61",
+    "@tanstack/router-plugin": "~1.168.18",
     "ai": "^7.0.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -155,6 +156,7 @@
     "@lovable.dev/vite-tanstack-config": "2.26.5",
     "@playwright/test": "^1.62.1",
     "@types/js-yaml": "4.0.9",
+    "@types/jsdom": "^21.1.7",
     "@types/leaflet": "^1.9.21",
     "@types/node": "^22.16.5",
     "@types/papaparse": "^5.5.2",
@@ -173,12 +175,21 @@
     "globals": "^15.15.0",
     "happy-dom": "^21.0.4",
     "js-yaml": "4.3.0",
+    "jsdom": "^26.1.0",
     "nitro": "3.0.260603-beta",
     "prettier": "^3.7.3",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.56.1",
     "vite": "^8.0.16",
     "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "seroval": "1.7.10",
+    "seroval-plugins": "1.7.8"
+  },
+  "resolutions": {
+    "seroval": "1.7.10",
+    "seroval-plugins": "1.7.8"
   },
   "pnpm": {
     "overrides": {

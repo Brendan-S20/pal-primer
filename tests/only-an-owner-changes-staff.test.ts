@@ -238,6 +238,23 @@ describe("a save that finds the session gone", () => {
     expect(page).toMatch(/readDraft<AddressDraft>\(addressDraftKey\(staff\.id\)\)/);
     expect(page).toMatch(/forgetDraft\(addressDraftKey\(staff\.id\)\);/);
   });
+
+  it("the invite panel's send, revoke and resend say so too, not a raw 'Unauthorized'", () => {
+    // Acceptance audit of #659 at a2d7e9d: the four staff saves used the
+    // signed-out toast, but the three invite mutations on the same page still
+    // showed the server's raw message ("Unauthorized: ...") when the session
+    // had gone, with no way back to sign in.
+    const page = read("src/routes/_authenticated/settings.users.tsx");
+    const start = page.indexOf("function InvitePanel()");
+    const end = page.indexOf("function StaffAddressEditor(");
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const panel = page.slice(start, end);
+    expect(panel).toMatch(/const signedOut = useSignedOutToast\(\);/);
+    const onErrors = panel.match(/onError: \(e\) => \{\n[^\n]*\n[^\n]*/g) ?? [];
+    expect(onErrors).toHaveLength(3);
+    for (const line of onErrors) expect(line).toMatch(/if \(!signedOut\(e\)\)|signedOut\(e\) \|\|/);
+  });
 });
 
 // ── The proof, in a real database ─────────────────────────────────────────

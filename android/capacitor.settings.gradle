@@ -8,6 +8,9 @@ project(':capacitor-community-apple-sign-in').projectDir = new File('../node_mod
 include ':capacitor-community-in-app-review'
 project(':capacitor-community-in-app-review').projectDir = new File('../node_modules/@capacitor-community/in-app-review/android')
 
+include ':capacitor-community-stripe-terminal'
+project(':capacitor-community-stripe-terminal').projectDir = new File('../node_modules/@capacitor-community/stripe-terminal/android')
+
 include ':capacitor-app'
 project(':capacitor-app').projectDir = new File('../node_modules/@capacitor/app/android')
 

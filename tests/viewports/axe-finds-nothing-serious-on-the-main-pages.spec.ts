@@ -34,12 +34,12 @@ import { settle, openExtras } from "./fixtures/settle-surface";
  *
  * ── ONE DEFERRED LIST, AND WHY IT EXISTS ──────────────────────────────────
  *
- * Part 1 (#709, still a draft when this landed) is changing a set of files,
- * and part 2 was written not to touch them so the two can merge in either
- * order. Some findings live in exactly those files. `DEFERRED` names them by
- * rule and file, and nothing else is tolerated. Merged with #709, the
- * first group goes away; the second is still found and is part 3.
- * The list may only shrink: when an entry stops being found, delete it.
+ * Part 1 (#709) changed a set of files, and part 2 was written not to
+ * touch them so the two could merge in either order. Some findings live in
+ * exactly those files and #709 did not fix them. `DEFERRED` names them by
+ * rule and file, and nothing else is tolerated: they are part 3. The
+ * entries #709 itself fixed were deleted when it landed. The list may only
+ * shrink: when an entry stops being found, delete it.
  *
  * ── WHAT IS DELIBERATELY LEFT OUT ─────────────────────────────────────────
  *
@@ -70,17 +70,12 @@ const AXE_SURFACES = SURFACES.filter((s) => !s.path.startsWith("/platform"));
 
 test.describe.configure({ mode: "parallel" });
 
-/** `rule @ file` findings in files draft #709 is changing. Not a backlog to
- *  grow: a new finding anywhere else, or a new rule in one of these files,
- *  fails. */
+/** `rule @ file` findings left in the files #709 changed (part 3). Not a
+ *  backlog to grow: a new finding anywhere else, or a new rule in one of
+ *  these files, fails. */
 const DEFERRED = new Set([
-  // Fixed by #709 itself.
-  "aria-progressbar-name @ src/components/OnboardingChecklist.tsx",
-  "button-name @ src/routes/_authenticated/clients.index.tsx",
-  "button-name @ src/routes/_authenticated/leads.tsx",
-  "nested-interactive @ src/routes/_authenticated/routes.tsx",
-  "scrollable-region-focusable @ src/routes/_authenticated/reports.tsx",
-  // Still found with #709 merged on top (measured 2026-11-09): part 3.
+  // Still found with #709 merged (measured 2026-11-09, and again once #709
+  // was on main on 2026-11-10): part 3.
   //   Users & roles: the Select at 241 (button-name) and a native <select>
   //   at 440 with no label. Clients list: amber-600 / emerald-600 billing
   //   and balance text on white (3.2:1 / 3.69:1). Reports: amber-600 and

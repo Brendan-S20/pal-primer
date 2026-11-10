@@ -33,6 +33,7 @@ import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { withDeadline } from "@/lib/offline/run-or-queue";
 import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
 import { rememberLandingPath, readLandingPath } from "@/lib/offline/read-cache";
+import { lookupLandingPath as lookupLandingPathFrom } from "@/lib/landing-path";
 import { pageTitle } from "@/lib/page-title";
 import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
 import { takeLinkForLanding } from "@/lib/pending-deep-link";
@@ -46,43 +47,24 @@ import {
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: pageTitle("Sign in") },
-      { name: "description", content: `Sign in to ${APP_NAME}.` },
+      // Not "Sign in" alone (#791): this is also where a new owner starts.
+      { title: pageTitle("Sign in or create an account") },
+      { name: "description", content: `Sign in to ${APP_NAME}, or create an account.` },
     ],
   }),
   component: AuthPage,
 });
 
-/** Two Supabase round trips. Bounded because this sits between "we know who
+/** Two Supabase reads, made at the same time. Bounded because this sits between "we know who
  *  you are" and `navigate()` — an unbounded await here strands the user on the
  *  sign-in form just as surely as failing to identify them would. Native only;
  *  the web build awaits the lookup exactly as it always has. */
 const LANDING_DEADLINE_MS = 5_000;
 
 /** The two queries themselves, shared by both platforms so there is one
- *  definition of which role lands where. */
-async function lookupLandingPath(userId: string): Promise<string> {
-  // Platform admins always land in the platform console — never inside a
-  // tenant dashboard (impersonation uses a separate magic-link session).
-  const { data: isPlatform } = await supabase.rpc("is_platform_admin", { _user_id: userId });
-  if (isPlatform) return "/platform";
-
-  const { data, error } = await supabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId)
-    .maybeSingle();
-  // A failed lookup is not "no role". Reading it as one sent a tech to
-  // /dashboard and remembered that over their /my-day; the caller falls back
-  // to the remembered answer instead.
-  if (error) throw error;
-  const role = data?.role;
-  if (role === "tech") return "/my-day";
-  if (role === "dispatcher") return "/routes";
-  // owner, office_manager, or no role yet (fresh signup, where /dashboard
-  // triggers onboarding).
-  return "/dashboard";
-}
+ *  definition of which role lands where. They run side by side since #786;
+ *  see lib/landing-path.ts. */
+const lookupLandingPath = (userId: string) => lookupLandingPathFrom(supabase as never, userId);
 
 // Where a given role should land immediately after sign-in.
 //
@@ -562,6 +544,15 @@ function AuthPage() {
     }
   };
 
+  /** Straight to the Get-started walkthrough (#791). An address already typed
+   *  goes with it the same way Continue hands it on (#651), and one that turns
+   *  out to have an account comes back here on the password step (#765). */
+  const createAccount = () => {
+    setAlert(null);
+    if (emailValid) handOffSignupEmail(email);
+    navigate({ to: "/get-started", search: {} as never });
+  };
+
   // Asks nothing about memberships, and must not: an account with no business
   // is exactly who needs this most (#765).
   // One helper for every reset request (lib/password-recovery.ts): the
@@ -614,6 +605,24 @@ function AuthPage() {
             <Button type="submit" disabled={loading || !emailValid} className="w-full">
               {loading ? "Checking…" : "Continue"}
             </Button>
+            {/* A new owner's way in, as a control rather than a line of footer
+                copy (#791). The screen read as sign-in only. Not offered on an
+                invitation: an invited teammate joins a business, and the email
+                step above already carries the invite to /get-started. */}
+            {!inviteToken && (
+              <div className="space-y-2 pt-1">
+                <p className="text-center text-sm text-muted-foreground">New to {APP_NAME}?</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={createAccount}
+                  disabled={loading}
+                >
+                  Create an account
+                </Button>
+              </div>
+            )}
           </form>
         ) : (
           <form onSubmit={handleSignIn} className="mt-4 space-y-3">
@@ -818,10 +827,6 @@ function AuthPage() {
         </div>
       )}
       {signOutDialog}
-
-      <p className="text-center text-xs text-muted-foreground">
-        New here? Entering your email above walks you straight into account setup.
-      </p>
     </PublicShell>
   );
 }

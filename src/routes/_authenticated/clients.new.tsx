@@ -64,12 +64,20 @@ import {
   serviceDaysFor,
   serviceDaysPerWeek,
 } from "@/lib/weekday-set";
-import { defaultPlanWeekdays, planStartsSkipped, propertyHazardsFor } from "@/lib/new-client-plan";
+import {
+  defaultFirstVisit,
+  defaultPlanWeekdays,
+  firstVisitHint,
+  nextDay,
+  planStartsSkipped,
+  propertyHazardsFor,
+  serviceSwitch,
+} from "@/lib/new-client-plan";
 import { serverErrorMessage } from "@/lib/server-outcome";
 import { createFailedMessage } from "@/lib/create-client-error";
 import { typedPriceCents } from "@/lib/typed-price";
 import { useFormDraft } from "@/hooks/useFormDraft";
-import { invalidateOnboardingStatus } from "@/hooks/useOnboardingStatus";
+import { afterClientBookChanged } from "@/lib/client-book-queries";
 import { DraftRestoredNotice } from "@/components/DraftRestoredNotice";
 import { newClientDraftForm } from "@/lib/form-drafts";
 import { needsANamedDog } from "@/lib/new-client-dogs";
@@ -366,11 +374,6 @@ const FREQS = [
 // The wizard's steps come from newClientWizardSteps (lib/service-lines): the
 // Outline step is pet-waste-only. Steps are addressed by NAME below, never by
 // position, so dropping one cannot move the Plan step's quote onto Dogs.
-
-/** The next calendar day after an org-calendar day (YYYY-MM-DD). */
-function tomorrowOf(day: string): string {
-  return new Date(Date.parse(`${day}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
-}
 
 /** 0 = Sunday, the numbering subscriptions.preferred_weekdays uses. */
 function weekdayOf(day: string): number {
@@ -712,13 +715,15 @@ function NewClientWizardForm({
   const skipPlan = skipPlanChoice ?? planStartsSkipped(lines, linesKnown);
   // No subscription is written for a groom lead: the groom is booked next.
   const planSkipped = skipPlan || booksGroom;
-  // When the service starts, on the business's calendar. Tomorrow by default:
-  // today, created in the evening, meant a visit that night after the route
-  // had ended, with nobody on it and nobody told (persona review, 2026-09-27).
-  // From a lead, the day it asked to start (#657), unless that has passed.
+  // When the service starts, on the business's calendar. Tomorrow by default
+  // (defaultFirstVisit): today, created in the evening, meant a visit that
+  // night after the route had ended (persona review, 2026-09-27). The form
+  // states that, and Today is one tap (#774). From a lead, the day it asked
+  // to start (#657), unless that has passed.
   const orgTodayStr = useOrgToday();
+  const orgTomorrowStr = nextDay(orgTodayStr);
   const [startedOn, setStartedOn] = useState(() =>
-    leadStartDate(prefill.startDate, orgTodayStr, tomorrowOf(orgTodayStr)),
+    leadStartDate(prefill.startDate, orgTodayStr, defaultFirstVisit(orgTodayStr)),
   );
   const askedStartPassed = !!prefill.startDate && prefill.startDate < orgTodayStr;
   const [serviceDays, setServiceDays] = useState<number[] | null>(null);
@@ -730,9 +735,27 @@ function NewClientWizardForm({
   // (servicePriceCents), never from a zone, and sold by the day of the week.
   const walkLike = !!chosenService && !isZonePriced(chosenService);
   const serviceCents = walkLike ? servicePriceCents(chosenService!, { pets: dogCount }) : null;
-  // The days a weekly plan runs on until the owner says: Monday to Friday
-  // for a walk, the first visit's weekday for anything else (F-04).
+  // The days a weekly plan runs on until the owner says: the first visit's
+  // weekday (F-04, #774). Never a full work week the owner did not pick.
   const [weekdayChoice, setWeekdays] = useState<number[] | null>(null);
+  // #774: a different service drops the days picked for the old one, and the
+  // Plan step says so rather than keeping them silently.
+  const [daysNotice, setDaysNotice] = useState<string | null>(null);
+  const chooseService = (id: string) => {
+    const from = effectiveServiceId(serviceId, orgServices, pickerLines);
+    const hadDays = weekdayChoice !== null || serviceDays !== null;
+    const sw = serviceSwitch({
+      from,
+      to: id,
+      hadDays,
+      toName: orgServices.find((x) => x.id === id)?.name,
+    });
+    setServiceId(id);
+    if (!sw.reset) return;
+    setWeekdays(null);
+    setServiceDays(null);
+    setDaysNotice(hadDays || current === "Plan" ? sw.notice : null);
+  };
   const weekdays =
     weekdayChoice ?? defaultPlanWeekdays(chosenService?.service_line, weekdayOf(startedOn));
   const setDays = walkLike && frequency === "weekly";
@@ -1071,11 +1094,13 @@ function NewClientWizardForm({
         );
       if (leadLinked === false)
         toast.error("The lead could not be marked converted. Mark it from the Leads page.");
-      qc.invalidateQueries({ queryKey: ["clients"] });
       qc.invalidateQueries({ queryKey: ["my-org"] });
       // The first client finishes a setup step; the banner on the page this
-      // navigates to must say so (D9).
-      void invalidateOnboardingStatus(qc);
+      // navigates to must say so (D9). And the /clients header, the
+      // dashboard's active clients and AR, and that banner must not paint
+      // the zero they cached before this client existed (#790): reset, not
+      // invalidate, so their next paint is a skeleton and then the server.
+      void afterClientBookChanged(qc);
       if (fromLead) qc.invalidateQueries({ queryKey: ["leads"] });
       if (fromQuote) {
         // Best effort: the client exists either way.
@@ -1370,7 +1395,7 @@ function NewClientWizardForm({
                   currentId={null}
                   services={orgServices}
                   isLoading={servicesLoading}
-                  onChange={setServiceId}
+                  onChange={chooseService}
                   lines={pickerLines}
                 />
                 <p className="text-xs text-muted-foreground">
@@ -1757,9 +1782,18 @@ function NewClientWizardForm({
                     currentId={null}
                     services={orgServices}
                     isLoading={servicesLoading}
-                    onChange={setServiceId}
+                    onChange={chooseService}
                     lines={pickerLines}
                   />
+                )}
+                {daysNotice && (
+                  <p
+                    role="status"
+                    data-days-reset
+                    className="rounded-md border bg-muted/40 px-3 py-2 text-sm"
+                  >
+                    {daysNotice}
+                  </p>
                 )}
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-2">
@@ -1832,9 +1866,37 @@ function NewClientWizardForm({
                       value={startedOn}
                       // The service day follows this date until the owner picks days.
                       onChange={(e) => setStartedOn(e.target.value)}
+                      aria-describedby="started-on-hint"
                     />
-                    <p className="text-xs text-muted-foreground">
-                      If that isn&apos;t a work day or a service day, it moves to the next one.
+                    <div className="flex flex-wrap gap-1.5" data-first-visit-quick>
+                      {(
+                        [
+                          ["Today", orgTodayStr],
+                          ["Tomorrow", orgTomorrowStr],
+                        ] as const
+                      ).map(([label, day]) => (
+                        <button
+                          key={label}
+                          type="button"
+                          aria-pressed={startedOn === day}
+                          onClick={() => setStartedOn(day)}
+                          className={`h-9 min-w-11 shrink-0 rounded-md border px-3 text-sm touch:min-h-11 ${
+                            startedOn === day
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-input bg-background"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <p id="started-on-hint" className="text-xs text-muted-foreground">
+                      {firstVisitHint({
+                        startedOn,
+                        orgToday: orgTodayStr,
+                        leadStart: prefill.startDate,
+                        dayLabel: formatDay(startedOn),
+                      })}
                     </p>
                     {askedStartPassed && (
                       <p className="text-xs text-muted-foreground">
@@ -1855,7 +1917,9 @@ function NewClientWizardForm({
                       <p className="text-xs text-muted-foreground">
                         {weekdays.length === 0
                           ? "Choose at least one day."
-                          : "One visit on each day, every week, billed per visit. Blackout days and client holds are skipped, not moved."}
+                          : weekdayChoice === null
+                            ? "Starts on the first visit's day. Tap more days for more visits a week. One visit on each day, billed per visit."
+                            : "One visit on each day, every week, billed per visit. Blackout days and client holds are skipped, not moved."}
                       </p>
                     </div>
                   )}

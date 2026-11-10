@@ -6,6 +6,7 @@ import type { Database } from "@/integrations/supabase/types";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { platformFeeCents } from "@/lib/platform-fee";
+import { withPassThroughFees } from "@/lib/radar-fee";
 import { resolveSupabaseUrl } from "@/lib/supabase-url";
 import { parseFirstCleanupPricing } from "@/lib/first-cleanup";
 import { parseQuoteOptions, signupChargeFromQuote } from "@/lib/signup-charge";
@@ -1023,13 +1024,18 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
     const stripe = await connectStripe();
 
     const amountCents = charge.amountCents;
+    // A card signup is screened by Radar, billed to the platform under
+    // application_express, so it rides on the application fee (#825).
+    const signupMethodTypes = ["card"];
+    const { radarPassThrough } = await import("@/lib/connect-fee-payer.server");
+    const radar = await radarPassThrough(stripe, acct.accountId, signupMethodTypes);
     const pi = await stripe.paymentIntents.create(
       {
         amount: amountCents,
-        application_fee_amount: platformFeeCents(amountCents),
+        application_fee_amount: withPassThroughFees(platformFeeCents(amountCents), radar.cents),
         currency: q.currency,
         receipt_email: data.email.toLowerCase(),
-        payment_method_types: ["card"],
+        payment_method_types: signupMethodTypes,
         // "first visit", not "first month": the recurring price is PER VISIT
         // (see the note in SignupFlow.tsx), and the credit this funds pays
         // for exactly one.
@@ -1041,6 +1047,7 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
           signup_request_id: sr.id,
           organization_id: q.organization_id,
           source: "signup_inline",
+          ...radar.metadata,
         },
       },
       { stripeAccount: acct.accountId },

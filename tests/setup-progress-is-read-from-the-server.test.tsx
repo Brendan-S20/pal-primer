@@ -145,7 +145,10 @@ describe("D9: a finished step leaves the banner as soon as it is finished", () =
     expect(onSuccess, "the onboardClient mutation's onSuccess was not found").toMatch(
       /draft\.clear\(\)/,
     );
-    expect(onSuccess).toMatch(/invalidateOnboardingStatus\(qc\)/);
+    // afterClientBookChanged resets the status, which is invalidating and
+    // more: the stale copy is dropped rather than shown during the refetch
+    // (#790; tests/a-first-client-does-not-paint-as-zero.test.tsx).
+    expect(onSuccess).toMatch(/invalidateOnboardingStatus\(qc\)|afterClientBookChanged\(qc\)/);
   });
 
   it("the setup surfaces share one query, which nothing holds fresh for 30 seconds", () => {
