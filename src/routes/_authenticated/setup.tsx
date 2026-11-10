@@ -48,7 +48,8 @@ import {
   SETUP_WORKDAY_DEFAULTS,
   businessSaveBlocked,
   workdayField,
-  workdayProblem,
+  workdayWriteFor,
+  workdayWriteProblem,
 } from "@/lib/setup-workday";
 import {
   preselectedServiceLines,
@@ -475,15 +476,15 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
   const dayStartVal =
     dayStart ?? workdayField(dispatch?.workday_start, SETUP_WORKDAY_DEFAULTS.start);
   const dayEndVal = dayEnd ?? workdayField(dispatch?.workday_end, SETUP_WORKDAY_DEFAULTS.end);
-  // Each hour is written only when it is the owner's answer: typed here, or
-  // read from the database and shown. Until the read succeeds the field shows
-  // the 08:00-17:00 fallback, and writing that would replace stored hours
-  // nobody saw (#797 review).
-  const workdayLoaded = dispatchQ.isSuccess;
-  const workdayWrite = {
-    ...(dayStart !== null || workdayLoaded ? { workday_start: dayStartVal } : {}),
-    ...(dayEnd !== null || workdayLoaded ? { workday_end: dayEndVal } : {}),
-  };
+  // Each hour only when it is the owner's answer: typed, or read back and
+  // shown (workdayWriteFor, #797 review).
+  const workdayWrite = workdayWriteFor({
+    typedStart: dayStart,
+    typedEnd: dayEnd,
+    loaded: dispatchQ.isSuccess,
+    start: dayStartVal,
+    end: dayEndVal,
+  });
   // A visitor who came for one line (?service=, site-r2-03) sees that line
   // ticked instead of the bare pet-waste default. Only once the stored answer
   // is actually known and before this step is done, so it can never write over
@@ -581,7 +582,7 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
         }
         // Enter in a field submits too; the held button alone does not stop it.
         if (businessSaveBlocked(m.isPending, dispatchQ)) return;
-        const hours = workdayProblem(dayStartVal, dayEndVal);
+        const hours = workdayWriteProblem(workdayWrite);
         if (hours) {
           toast.error(hours);
           return;
@@ -725,6 +726,12 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
             />
           </div>
         </div>
+        {dispatchQ.isError && (
+          <p className="text-xs text-destructive" role="note" data-setup-workday-unread>
+            We could not read your saved hours. Type them here, or set them in Settings, Scheduling.
+            Hours you leave alone are not changed.
+          </p>
+        )}
         <p className="text-xs text-muted-foreground">
           Arrival windows start at the start of your workday, and a day that runs past the end is
           flagged. You can change this later in Settings, Scheduling.

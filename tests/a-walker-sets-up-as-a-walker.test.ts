@@ -428,19 +428,18 @@ describe("#769 setup shows and saves the workday", () => {
     );
     expect(business).toMatch(/id="setup-workday-start"/);
     expect(business).toMatch(/id="setup-workday-end"/);
-    // Each hour only when it was typed or read back: a fallback shown while
-    // the stored hours were still loading must not be written over them.
-    expect(business).toMatch(/const workdayLoaded = dispatchQ\.isSuccess;/);
+    // Each hour only when it was typed or read back (workdayWriteFor, run as
+    // behaviour below), and the check is on what will be written.
     expect(business).toMatch(
-      /dayStart !== null \|\| workdayLoaded \? \{ workday_start: dayStartVal \} : \{\}/,
-    );
-    expect(business).toMatch(
-      /dayEnd !== null \|\| workdayLoaded \? \{ workday_end: dayEndVal \} : \{\}/,
+      /workdayWriteFor\(\{\s*typedStart: dayStart,\s*typedEnd: dayEnd,\s*loaded: dispatchQ\.isSuccess,/,
     );
     expect(business).toMatch(
       /const dispatchWrite = \{ \.\.\.\(writeTz \? \{ timezone: tzVal \} : \{\}\), \.\.\.workdayWrite \};/,
     );
     expect(business).toMatch(/await saveDispatchFn\(\{ data: dispatchWrite \}\)/);
-    expect(business).toMatch(/workdayProblem\(dayStartVal, dayEndVal\)/);
+    expect(business).toMatch(/workdayWriteProblem\(workdayWrite\)/);
+    // A failed read says so, instead of quietly showing 08:00-17:00.
+    expect(business).toMatch(/dispatchQ\.isError && \(/);
+    expect(business).toMatch(/We could not read your saved hours/);
   });
 });

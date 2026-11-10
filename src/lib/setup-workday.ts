@@ -37,3 +37,36 @@ export type DispatchRead = { isSuccess: boolean; isError: boolean };
 export function businessSaveBlocked(saving: boolean, dispatch: DispatchRead): boolean {
   return saving || !(dispatch.isSuccess || dispatch.isError);
 }
+
+/** The hours step 1 writes (#797 review). An hour is written only when it is
+ *  the owner's answer: typed here, or read back from the database and shown.
+ *  Until the read succeeds the field shows the 08:00-17:00 fallback, and
+ *  writing that would replace stored hours nobody saw. */
+export function workdayWriteFor(a: {
+  typedStart: string | null;
+  typedEnd: string | null;
+  loaded: boolean;
+  start: string;
+  end: string;
+}): { workday_start?: string; workday_end?: string } {
+  return {
+    ...(a.typedStart !== null || a.loaded ? { workday_start: a.start } : {}),
+    ...(a.typedEnd !== null || a.loaded ? { workday_end: a.end } : {}),
+  };
+}
+
+/** What the form refuses about the hours it is about to WRITE. Both written:
+ *  the day has to end after it starts. One written (typed after a failed
+ *  read): only its own shape, because the other side is a stored hour this
+ *  page could not read, and comparing against the fallback would refuse a
+ *  good answer or pass a bad one. None written: nothing to check. */
+export function workdayWriteProblem(w: {
+  workday_start?: string;
+  workday_end?: string;
+}): string | null {
+  if (w.workday_start !== undefined && w.workday_end !== undefined)
+    return workdayProblem(w.workday_start, w.workday_end);
+  const one = w.workday_start ?? w.workday_end;
+  if (one === undefined) return null;
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(one) ? null : "Enter a time like 08:00.";
+}
