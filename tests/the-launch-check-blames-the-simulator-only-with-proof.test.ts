@@ -42,7 +42,7 @@ import { neverStarted, SIMULATOR_NEVER_STARTED } from "../scripts/ios-launch-nev
 const root = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
 const fixture = (name: string) => ({
-  log: read(`tests/fixtures/ios-launch-smoke/${name}.log`),
+  log: read(`tests/fixtures/ios-launch-smoke/${name}.log.txt`),
   processes: read(`tests/fixtures/ios-launch-smoke/${name}.processes.txt`),
 });
 const codeOnly = (src: string) =>
