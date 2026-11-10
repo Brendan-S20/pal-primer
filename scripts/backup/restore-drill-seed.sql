@@ -16,9 +16,13 @@
 
 BEGIN;
 
-INSERT INTO auth.users (id, instance_id, aud, role, email, email_confirmed_at, created_at, updated_at)
+-- The four token columns are '' and not NULL: GoTrue cannot read a row with
+-- NULL in them, and auth.admin.listUsers 500s (#767).
+INSERT INTO auth.users (id, instance_id, aud, role, email, email_confirmed_at, created_at, updated_at,
+                        confirmation_token, recovery_token, email_change_token_new, email_change)
 VALUES ('d0000000-0000-4000-8000-00000000d001', '00000000-0000-0000-0000-000000000000',
-        'authenticated', 'authenticated', 'owner@restore-drill.invalid', now(), now(), now())
+        'authenticated', 'authenticated', 'owner@restore-drill.invalid', now(), now(), now(),
+        '', '', '', '')
 ON CONFLICT (id) DO NOTHING;
 
 SET LOCAL app.allow_protected_org_write = '1';
