@@ -10,6 +10,7 @@ import {
 import { installSignedInSession } from "./fixtures/session";
 import { installStubBackend, type StubReport } from "./fixtures/stub-backend";
 import { SURFACES, type Surface } from "./fixtures/surfaces";
+import { watchForFreeze } from "./fixtures/frozen-renderer";
 
 /**
  * The other half of the browser sweep: the pages you have to be signed in to
@@ -205,8 +206,18 @@ async function settle(page: Page, surface: Surface, widthLabel: string) {
 /** Whatever the surface says has to be opened, plus proof it opened. */
 async function openExtras(page: Page, surface: Surface, widthLabel: string) {
   if (!surface.open) return;
+  const freeze = await watchForFreeze(page);
   await surface.open(page);
   await page.waitForTimeout(400);
+  // #813: twice on CI the page froze right here, and the assertion below
+  // could not say so. Its first look at the page is not bounded by its own
+  // timeout, so a frozen renderer turned a 10s check into the 90s test
+  // timeout with a message about a sheet that "never appeared". Asking the
+  // page first fails a frozen one in seconds, with the stack it is stuck in.
+  await freeze.expectAnswers(
+    `${surface.id} at ${widthLabel}`,
+    `after opening ${surface.openedLabel ?? "it"}`,
+  );
   if (surface.opened) {
     await expect(
       surface.opened(page).first(),
