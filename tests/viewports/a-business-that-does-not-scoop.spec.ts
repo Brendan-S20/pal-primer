@@ -327,6 +327,74 @@ for (const { w, h, label } of WIDTHS.filter((s) => s.w === 360 || s.w === 1280))
   });
 }
 
+// #774: a business that scoops and walks. On Plan, the owner starts on Pet
+// waste removal and switches the service to a 30-minute walk. Days each week
+// used to come up Monday to Friday, five walks nobody picked; it now starts
+// on one day (the first visit's), says the days were set, and First visit
+// has Today one tap away.
+for (const { w, h, label } of WIDTHS) {
+  test(`switching to a walk on Plan does not pick five days, ${label} @${w}px`, async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await open(page, "owner", ["pet_waste", "dog_walking"], "/clients/new", w, h);
+    await expect.poll(() => allText(page), { timeout: FIRST_PAINT_MS }).toContain("Step 1 of");
+    const next = page.getByRole("button", { name: "Continue", exact: true });
+    await page.locator("#dn").fill("Rex QA");
+    await next.click();
+    await expect.poll(() => allText(page)).toContain("Step 2 of");
+    await page.locator("#st").fill("4417 North Wolcott Avenue");
+    await page.locator("#ci").fill("Chicago");
+    await page.locator("#rg").fill("IL");
+    await page.locator("#pc").fill("60640");
+    const plan = page.getByRole("button", { name: "Create client" });
+    for (let i = 0; i < 4 && !(await plan.isVisible()); i++) {
+      const bailey = page.getByPlaceholder("Bailey").first();
+      if (await bailey.isVisible()) await bailey.fill("Rex");
+      await next.click();
+      await page.waitForTimeout(300);
+    }
+    await expect(plan).toBeVisible();
+
+    const service = page.locator("#nc-service");
+    await expect(service).toBeVisible();
+    const walkValue = await service
+      .locator("option", { hasText: /^30-minute walk/ })
+      .first()
+      .getAttribute("value");
+    await service.selectOption(walkValue!);
+
+    const days = page.getByRole("group", { name: "Days each week" });
+    await expect(days).toBeVisible();
+    await expect(days.getByRole("button", { pressed: true })).toHaveCount(1);
+    await expect(page.locator("[data-days-reset]")).toContainText("Days set for 30-minute walk");
+
+    // Pick a second day, then switch away and back: the picked days go.
+    await days.getByRole("button", { pressed: false }).first().click();
+    await expect(days.getByRole("button", { pressed: true })).toHaveCount(2);
+    const other = await service
+      .locator("option", { hasText: /^60-minute walk/ })
+      .first()
+      .getAttribute("value");
+    await service.selectOption(other!);
+    await expect(days.getByRole("button", { pressed: true })).toHaveCount(1);
+    await expect(page.locator("[data-days-reset]")).toContainText("Days reset for 60-minute walk");
+
+    const hint = page.locator("#started-on-hint");
+    await expect(hint).toContainText("Starts tomorrow, the default");
+    const today = page.getByRole("button", { name: "Today", exact: true });
+    await expect(page.getByRole("button", { name: "Tomorrow", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await today.click();
+    await expect(today).toHaveAttribute("aria-pressed", "true");
+    await expect(hint).toContainText("Starts today.");
+    await expect(hint).not.toContainText("tomorrow");
+    await measure(page, w, `/clients/new Plan, walk after pet waste @${w}px`);
+  });
+}
+
 for (const w of [390, 820, 1024, 1440]) {
   test(`grooming setup keeps its travel buffer and request inbox @${w}px`, async ({ page }) => {
     test.setTimeout(180_000);
