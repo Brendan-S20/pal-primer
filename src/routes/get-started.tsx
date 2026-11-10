@@ -22,6 +22,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PublicShell } from "@/components/PublicShell";
+import { PasswordField } from "@/components/PasswordField";
+import {
+  isPasswordAcceptable,
+  isPasswordRejection,
+  passwordRejectionMessage,
+} from "@/lib/password-policy";
 import { SMS_CONSENT_TEXT, SmsOptInFields, SmsOptInHeading } from "@/components/SmsOptInFields";
 import { APP_NAME } from "@/lib/scoop";
 import { isValidOrgName } from "@/lib/dna-linkage";
@@ -121,6 +127,14 @@ function NewBusinessPage() {
   // Drawn again partway through, with no password to hand (it is never kept):
   // the last step asks for it once more (#785 (a)).
   const [askPasswordAgain, setAskPasswordAgain] = useState(false);
+  // The auth server refused a password the rules passed (its leaked-password
+  // check, #807). Said on a password field on the step the person is on, so
+  // nothing else they typed has to be walked back through or typed again.
+  const [passwordRejected, setPasswordRejected] = useState<string | null>(null);
+  const changePassword = (value: string) => {
+    setPassword(value);
+    setPasswordRejected(null);
+  };
   // Nothing is written until what was kept has been read back, so the first,
   // empty render can never overwrite a draft it was about to restore.
   const draftRead = useRef(false);
@@ -206,7 +220,8 @@ function NewBusinessPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const step0Valid = /.+@.+\..+/.test(email) && password.length >= 8;
+  const step0Valid = /.+@.+\..+/.test(email) && isPasswordAcceptable(password);
+  const passwordOk = isPasswordAcceptable(password);
 
   const continueFromAccount = async () => {
     setError(null);
@@ -252,6 +267,13 @@ function NewBusinessPage() {
       navigate({ to: "/auth" });
     } catch (err) {
       setBusy(false);
+      if (isPasswordRejection(err)) {
+        // The join form has no password field of its own (it was typed on
+        // the first step); one appears and stays while a new one is typed.
+        setAskPasswordAgain(true);
+        setPasswordRejected(passwordRejectionMessage((err as Error).message));
+        return;
+      }
       setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
     }
   };
@@ -264,7 +286,7 @@ function NewBusinessPage() {
             className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault();
-              if (displayName.trim()) join();
+              if (displayName.trim() && passwordOk && !passwordRejected) join();
             }}
           >
             <div className="min-w-0">
@@ -288,6 +310,14 @@ function NewBusinessPage() {
                 This is how your team and customers will see you.
               </p>
             </div>
+            {askPasswordAgain && (
+              <PasswordField
+                id="gs-pass-join"
+                value={password}
+                onChange={changePassword}
+                serverError={passwordRejected}
+              />
+            )}
             {error && (
               <p className="text-sm text-destructive">
                 {error}{" "}
@@ -303,12 +333,17 @@ function NewBusinessPage() {
                 onClick={() => {
                   setInvited(false);
                   setError(null);
+                  setPasswordRejected(null);
                 }}
                 disabled={busy}
               >
                 Back
               </Button>
-              <Button type="submit" className="flex-1" disabled={!displayName.trim() || busy}>
+              <Button
+                type="submit"
+                className="flex-1"
+                disabled={!displayName.trim() || !passwordOk || !!passwordRejected || busy}
+              >
                 {busy ? "Joining…" : "Create account and join"}
               </Button>
             </div>
@@ -357,6 +392,15 @@ function NewBusinessPage() {
       navigate({ to: "/onboarding" });
     } catch (err) {
       setBusy(false);
+      // A refused password, before any account exists: put the password
+      // field on this step with the server's reason beside it (#807). Not a
+      // line at the foot of a step with no password on it, and never back to
+      // the first step (#785).
+      if (!progress.current.registered && isPasswordRejection(err)) {
+        setAskPasswordAgain(true);
+        setPasswordRejected(passwordRejectionMessage((err as Error).message));
+        return;
+      }
       setError(signupErrorMessage(err, progress.current));
     }
   };
@@ -413,18 +457,12 @@ function NewBusinessPage() {
                 placeholder="you@yourbusiness.com"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="gs-pass">Password</Label>
-              <Input
-                id="gs-pass"
-                type="password"
-                required
-                minLength={8}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="At least 8 characters"
-              />
-            </div>
+            <PasswordField
+              id="gs-pass"
+              value={password}
+              onChange={changePassword}
+              serverError={passwordRejected}
+            />
             {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" className="w-full" disabled={!step0Valid || checking}>
               {checking ? "Checking…" : "Continue"}
@@ -521,26 +559,24 @@ function NewBusinessPage() {
             className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault();
-              finish();
+              if (passwordOk && !passwordRejected) finish();
             }}
           >
             {askPasswordAgain && (
-              <div className="space-y-2">
-                <Label htmlFor="gs-pass-again">Your password</Label>
-                <Input
-                  id="gs-pass-again"
-                  type="password"
-                  required
-                  minLength={8}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="At least 8 characters"
-                />
-                <p className="break-words text-xs text-muted-foreground">
-                  For {email.trim() || "your account"}. We never keep it on this device, so it is
-                  asked for again after the page reloads.
-                </p>
-              </div>
+              <PasswordField
+                id="gs-pass-again"
+                label="Your password"
+                value={password}
+                onChange={changePassword}
+                serverError={passwordRejected}
+                hint={
+                  <p className="break-words text-xs text-muted-foreground">
+                    {passwordRejected
+                      ? `Choose a different password for ${email.trim() || "your account"}. Everything else you entered is kept.`
+                      : `For ${email.trim() || "your account"}. We never keep it on this device, so it is asked for again after the page reloads.`}
+                  </p>
+                }
+              />
             )}
             <SmsOptInHeading />
             <SmsOptInFields
@@ -561,7 +597,11 @@ function NewBusinessPage() {
               >
                 Back
               </Button>
-              <Button type="submit" className="flex-1" disabled={busy || password.length < 8}>
+              <Button
+                type="submit"
+                className="flex-1"
+                disabled={busy || !passwordOk || !!passwordRejected}
+              >
                 {busy
                   ? "Creating your workspace…"
                   : progress.current.registered
@@ -603,6 +643,7 @@ function JoinTeamPage({ token }: { token: string }) {
   const [displayName, setDisplayName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [passwordRejected, setPasswordRejected] = useState<string | null>(null);
 
   useEffect(() => {
     rememberInviteToken(token);
@@ -617,7 +658,11 @@ function JoinTeamPage({ token }: { token: string }) {
   }, [invite?.email]);
 
   const emailMatches = !!invite?.email && email.trim().toLowerCase() === invite.email.toLowerCase();
-  const valid = emailMatches && password.length >= 8 && displayName.trim().length > 0;
+  const valid =
+    emailMatches &&
+    isPasswordAcceptable(password) &&
+    !passwordRejected &&
+    displayName.trim().length > 0;
 
   const join = async () => {
     setError(null);
@@ -641,6 +686,10 @@ function JoinTeamPage({ token }: { token: string }) {
       navigate({ to: "/auth" });
     } catch (err) {
       setBusy(false);
+      if (isPasswordRejection(err)) {
+        setPasswordRejected(passwordRejectionMessage((err as Error).message));
+        return;
+      }
       setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
     }
   };
@@ -711,18 +760,15 @@ function JoinTeamPage({ token }: { token: string }) {
                 maxLength={80}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="gs-pass">Password</Label>
-              <Input
-                id="gs-pass"
-                type="password"
-                required
-                minLength={8}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="At least 8 characters"
-              />
-            </div>
+            <PasswordField
+              id="gs-pass"
+              value={password}
+              onChange={(v) => {
+                setPassword(v);
+                setPasswordRejected(null);
+              }}
+              serverError={passwordRejected}
+            />
             {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" className="w-full" disabled={!valid || busy}>
               {busy ? "Joining…" : "Create account and join"}

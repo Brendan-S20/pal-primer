@@ -31,6 +31,12 @@
 
 import { appUrl, linkOrigin } from "@/lib/app-origin";
 import { NATIVE_OAUTH_REDIRECT } from "@/lib/native-oauth-redirect";
+import {
+  PASSWORD_MIN_LENGTH,
+  isPasswordRejection,
+  passwordProblem,
+  passwordRejectionMessage,
+} from "@/lib/password-policy";
 
 export const RESET_PASSWORD_PATH = "/reset-password";
 export const SUPPORT_EMAIL = "support@houndstack.com";
@@ -451,14 +457,14 @@ async function hasSession(client: RecoveryClient): Promise<boolean> {
 
 // ── THE NEW PASSWORD ──────────────────────────────────────────────────────
 
-export const MIN_PASSWORD_LENGTH = 8;
+// The rules themselves live in lib/password-policy.ts, shared with every other
+// form that sets a password and with registerAccount (#807).
+export const MIN_PASSWORD_LENGTH = PASSWORD_MIN_LENGTH;
 
 /** The form's own checks, before anything is sent. Null when it may go. */
 export function validateNewPassword(password: string, confirm: string): string | null {
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    return `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
-  }
-  if (password.trim().length === 0) return "Password can't be only spaces.";
+  const problem = passwordProblem(password);
+  if (problem) return problem;
   if (password !== confirm) return "Passwords don't match.";
   return null;
 }
@@ -474,17 +480,12 @@ export function describeUpdatePasswordError(err: ResetErrorLike): {
     return { message: "That's your current password. Choose a new one.", linkDead: false };
   }
   if (
-    code === "weak_password" ||
+    isPasswordRejection(err) ||
     msg.includes("weak") ||
     msg.includes("should be at least") ||
     msg.includes("should contain")
   ) {
-    return {
-      message: err.message
-        ? `That password is too weak: ${err.message}`
-        : "That password is too weak. Try a longer one.",
-      linkDead: false,
-    };
+    return { message: passwordRejectionMessage(err.message), linkDead: false };
   }
   if (
     code === "session_not_found" ||

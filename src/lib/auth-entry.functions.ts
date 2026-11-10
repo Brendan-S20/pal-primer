@@ -2,6 +2,11 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { appOrigin } from "@/lib/app-origin";
+import {
+  isPasswordRejection,
+  passwordRejectionMessage,
+  passwordSchema,
+} from "@/lib/password-policy";
 
 function appUrl() {
   return appOrigin();
@@ -51,7 +56,8 @@ export const registerAccount = createServerFn({ method: "POST" })
     z
       .object({
         email: z.string().trim().email().max(255),
-        password: z.string().min(8).max(200),
+        // The same rules every password form shows and checks (#807).
+        password: passwordSchema,
         // Absent for an invited teammate, who joins a business instead of
         // naming one.
         orgName: z.string().trim().min(1).max(120).optional(),
@@ -78,6 +84,10 @@ export const registerAccount = createServerFn({ method: "POST" })
       if (/already/i.test(error.message)) {
         throw new Error("That email already has an account. Sign in instead.");
       }
+      // A password the shared rules passed but the auth server still refused
+      // (its leaked-password check): marked as being about the password, so
+      // Get started shows it on a password field rather than as a dead end.
+      if (isPasswordRejection(error)) throw new Error(passwordRejectionMessage(error.message));
       throw new Error(error.message);
     }
     return { ok: true };
