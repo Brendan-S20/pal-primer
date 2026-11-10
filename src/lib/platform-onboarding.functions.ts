@@ -379,6 +379,9 @@ export const acceptPlatformInvite = createServerFn({ method: "POST" })
         { onConflict: "user_id,organization_id,role" as any },
       );
     if (roleErr) throw new Error(roleErr.message);
+    // A membership now exists; the signup marker must not outlive it (#765).
+    const { clearSignupMarker } = await import("@/lib/signup-marker");
+    await clearSignupMarker(supabaseAdmin, context.userId);
 
     // Mark accepted.
     await supabaseAdmin

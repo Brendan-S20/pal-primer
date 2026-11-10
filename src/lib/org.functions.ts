@@ -113,11 +113,17 @@ export const bootstrapOrganization = createServerFn({ method: "POST" })
     });
     if (error) throw new Error(error.message);
 
-    // The number typed at signup, where Settings and Profile read it. Not
-    // best-effort: a lost write here is exactly the "didn't save" this was
-    // reported as, so it throws, and the signup screen offers to try again.
-    // Safe to re-run: it fills only what is still empty.
+    // The signup is finished: from here on an empty user_roles means the
+    // person was taken off a business, not that theirs was never built
+    // (#765, lib/signup-marker.ts).
     if (orgId) {
+      const { clearSignupMarker } = await import("@/lib/signup-marker");
+      await clearSignupMarker(supabaseAdmin, userId);
+
+      // The number typed at signup, where Settings and Profile read it. Not
+      // best-effort: a lost write here is exactly the "didn't save" this was
+      // reported as, so it throws, and the signup screen offers to try again.
+      // Safe to re-run: it fills only what is still empty.
       const { applySignupEmail, applySignupPhone } = await import("@/lib/signup-contact.server");
       const admin = supabaseAdmin as unknown as import("@/lib/signup-contact.server").AdminClient;
       // The address they signed in with, from auth rather than the browser.
