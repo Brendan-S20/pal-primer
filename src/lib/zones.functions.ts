@@ -632,6 +632,34 @@ export const zipsInZoneShape = createServerFn({ method: "POST" })
     return zipsInsideShape(supabase, orgId, data);
   });
 
+/**
+ * Fill every drawn area that lists no ZIPs, in one click (#793).
+ *
+ * #778 fills a NEW setup area's ZIPs. An area saved before it still lists
+ * none, so the signup page and lead form -- which match a visitor by ZIP
+ * alone -- quote nobody in it. This is the owner's way out without opening
+ * each one: the same inside-the-shape fill as "Fill ZIPs from the area",
+ * applied only to areas whose list is empty, never adding a ZIP another zone
+ * already quotes (see src/lib/zone-zip-backfill.ts). `dryRun` returns the
+ * plan and writes nothing.
+ */
+export const fillEmptyZoneZips = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ dryRun: z.boolean().optional() }).parse(d ?? {}))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { orgId } = await requirePermission(supabase, userId, "manage_pricing");
+    const { planOrgZoneZipBackfill, applyZoneZipBackfill } =
+      await import("@/lib/zone-zip-backfill.server");
+    const { backfillSummary } = await import("@/lib/zone-zip-backfill");
+    const plan = await planOrgZoneZipBackfill(supabase, orgId);
+    if (data.dryRun) return { plan, written: [] as string[], propertiesUpdated: 0, summary: null };
+    const written = await applyZoneZipBackfill(supabase, orgId, plan);
+    const propertiesUpdated =
+      written.length > 0 ? await redetectBestEffort(supabase, orgId, userId) : 0;
+    return { plan, written, propertiesUpdated, summary: backfillSummary(plan, written) };
+  });
+
 export const deleteZone = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
