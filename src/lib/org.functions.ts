@@ -22,6 +22,10 @@ const bootstrapSchema = z.object({
   // bootstrap_organization asks it. An unrecognised zone is dropped there
   // rather than raised on, so a browser string can never block a signup.
   timezone: z.string().trim().max(64).optional(),
+  // The mobile number from Get-started's last step. Saved as the business's
+  // contact phone and the owner's own phone where neither is set yet (see
+  // signup-contact.server.ts); until 2026-11-09 it only reached user_metadata.
+  phone: z.string().trim().max(40).optional(),
   // The service line the visitor came for (/sign-up?service=, site-r2-03).
   // Only an offered line passes; anything else is dropped, not raised on.
   serviceLine: z
@@ -108,6 +112,28 @@ export const bootstrapOrganization = createServerFn({ method: "POST" })
       _timezone: data.timezone || undefined,
     });
     if (error) throw new Error(error.message);
+
+    // The number typed at signup, where Settings and Profile read it. Not
+    // best-effort: a lost write here is exactly the "didn't save" this was
+    // reported as, so it throws, and the signup screen offers to try again.
+    // Safe to re-run: it fills only what is still empty.
+    if (orgId) {
+      const { applySignupEmail, applySignupPhone } = await import("@/lib/signup-contact.server");
+      const admin = supabaseAdmin as unknown as import("@/lib/signup-contact.server").AdminClient;
+      // The address they signed in with, from auth rather than the browser.
+      const { data: who } = await supabaseAdmin.auth.admin.getUserById(userId);
+      await applySignupEmail(admin, {
+        orgId: orgId as string,
+        email: who?.user?.email,
+      });
+      if (data.phone) {
+        await applySignupPhone(admin, {
+          orgId: orgId as string,
+          userId,
+          phone: data.phone,
+        });
+      }
+    }
 
     // The line the visitor came for (site-r2-03 / F-06). Only for somebody who
     // had no business before this call -- an idempotent re-run for an existing
@@ -204,11 +230,14 @@ export const recordSmsConsent = createServerFn({ method: "POST" })
       .eq("id", orgId);
     if (error) throw new Error(error.message);
 
-    await (supabaseAdmin as any)
+    // Checked, like the write above: this error used to be dropped, so a
+    // consent that "saved" could leave Profile without the number it covers.
+    const { error: staffError } = await (supabaseAdmin as any)
       .from("staff")
       .update({ phone: data.phone })
       .eq("organization_id", orgId)
       .eq("user_id", userId);
+    if (staffError) throw new Error(staffError.message);
     return { ok: true };
   });
 
