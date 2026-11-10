@@ -186,7 +186,7 @@ export function OnboardingChecklist({
       </div>
 
       <div className="mt-3">
-        <Progress value={pct} />
+        <Progress value={pct} aria-label="Setup progress" />
       </div>
 
       {!allDone && (

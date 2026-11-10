@@ -266,7 +266,7 @@ function UsersPage() {
                                 value={u.role}
                                 onValueChange={(v) => changeRole.mutate({ userId: u.user_id, role: v })}
                               >
-                                <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+                                <SelectTrigger className="w-44" aria-label={`Role for ${u.display_name ?? u.email}`}><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                   {ROLES.map((r) => (
                                     <SelectItem key={r} value={r}>

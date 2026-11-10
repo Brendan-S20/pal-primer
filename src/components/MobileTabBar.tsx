@@ -66,7 +66,7 @@ export function techTabUrls(petWaste: boolean): string[] {
 // whole of the bar's height is a hit area and not just the icon and label.
 const tabClass = (active: boolean) =>
   `flex h-full min-h-12 w-full flex-col items-center justify-center gap-0.5 px-1 pb-1.5 pt-2 text-3xs font-medium transition-colors ${
-    active ? "text-primary" : "text-muted-foreground hover:text-foreground"
+    active ? "text-primary" : "text-muted-foreground-strong hover:text-foreground"
   }`;
 
 /**

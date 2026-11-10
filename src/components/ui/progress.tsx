@@ -12,6 +12,10 @@ const Progress = React.forwardRef<
   <ProgressPrimitive.Root
     ref={ref}
     className={cn("relative h-2 w-full overflow-hidden rounded-full bg-primary/20", className)}
+    // `value` is read for the indicator below and was never handed on, so
+    // Radix drew every bar as indeterminate: no aria-valuenow, and a screen
+    // reader heard "busy" on a setup that was half done (gaps-r2-11).
+    value={value}
     {...props}
   >
     <ProgressPrimitive.Indicator

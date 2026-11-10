@@ -126,7 +126,7 @@ function LeadsPage() {
           </Link>
           <div className="w-full sm:w-48">
             <Select value={filter} onValueChange={setFilter}>
-              <SelectTrigger>
+              <SelectTrigger aria-label="Filter by status">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -175,7 +175,7 @@ function LeadsPage() {
                     }
                     disabled={bulkStatusM.isPending}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger aria-label="Set status of the selected leads">
                       <SelectValue placeholder="Mark as…" />
                     </SelectTrigger>
                     <SelectContent>
@@ -386,7 +386,7 @@ function LeadsPage() {
                       mut.mutate({ id: l.id, status: v as (typeof STATUSES)[number] })
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger aria-label={`Status of ${l.name}`}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
