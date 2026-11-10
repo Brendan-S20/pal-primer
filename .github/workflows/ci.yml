@@ -698,6 +698,27 @@ jobs:
         # See the note on `if: always()` below the first check.
         if: always() && steps.psql.conclusion == 'success'
 
+      # RLS scopes SELECT, INSERT, UPDATE and DELETE. It has no TRUNCATE
+      # policy, so a client role holding TRUNCATE can empty a table, every
+      # tenant's rows at once. Supabase's default privileges hand anon and
+      # authenticated TRUNCATE, TRIGGER and REFERENCES on every new public
+      # table; a census found 106 tables holding them (#842), and
+      # 20261110130000 revokes them. This asks production that no public table
+      # has regained them. The proof beside that migration asks the same of
+      # the schema the migrations build (sandboxes.yml).
+      - name: No visitor or signed-in user can empty a public table
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::SUPABASE_DB_URL secret is not set — the public-table grant check cannot run."
+            exit 1
+          fi
+          node scripts/check-public-table-grants.mjs
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        # See the note on `if: always()` below the first check.
+        if: always() && steps.psql.conclusion == 'success'
+
       - name: The published app origin answers the native preflight
         # §3 item 6 of the brief listed this as two curls "only you can confirm".
         # They sat unrun, and when finally run the answer was that the

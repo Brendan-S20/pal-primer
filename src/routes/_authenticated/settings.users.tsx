@@ -43,6 +43,7 @@ import {
   returnHereAfterSignIn,
 } from "@/lib/signed-out";
 import { invalidateOnboardingStatus } from "@/hooks/useOnboardingStatus";
+import { prefetchUsersPage } from "@/lib/settings-prefetch";
 
 const USERS_PAGE = "/settings/users";
 type AddressDraft = { start: string; end: string };
@@ -66,6 +67,12 @@ function useSignedOutToast() {
 
 export const Route = createFileRoute("/_authenticated/settings/users")({
   head: () => titleHead("Users & roles", "Settings"),
+  // #786: the page's reads start with the navigation (or the hover before
+  // it), not after its chunk has loaded and mounted. Nothing is awaited.
+  // See lib/settings-prefetch.ts.
+  loader: ({ context }) => {
+    prefetchUsersPage(context.queryClient, context.organization?.role);
+  },
   component: UsersPage,
 });
 
@@ -260,7 +267,7 @@ function UsersPage() {
                                 value={u.role}
                                 onValueChange={(v) => changeRole.mutate({ userId: u.user_id, role: v })}
                               >
-                                <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+                                <SelectTrigger className="w-44" aria-label={`Role for ${u.display_name ?? u.email}`}><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                   {ROLES.map((r) => (
                                     <SelectItem key={r} value={r}>
@@ -350,6 +357,7 @@ function UsersPage() {
 function InvitePanel() {
   const roleLabel = useRoleLabel();
   const qc = useQueryClient();
+  const signedOut = useSignedOutToast();
   const createFn = useServerFn(createOrgInvite);
   const listFn = useServerFn(listOrgInvites);
   const revokeFn = useServerFn(revokeOrgInvite);
@@ -414,7 +422,10 @@ function InvitePanel() {
       void invalidateOnboardingStatus(qc);
       qc.invalidateQueries({ queryKey: ["org-invites"] });
     },
-    onError: (e) => toastServerError(e, { fallback: "Couldn't send the invite. Try again." }),
+    // The typed address survives either way: setEmail("") runs on success only.
+    onError: (e) => {
+      if (!signedOut(e)) toastServerError(e, { fallback: "Couldn't send the invite. Try again." });
+    },
   });
   const revokeMut = useMutation({
     mutationFn: (id: string) => revokeFn({ data: { id } }),
@@ -424,7 +435,9 @@ function InvitePanel() {
       setSent((s) => (s?.id === id ? null : s));
       qc.invalidateQueries({ queryKey: ["org-invites"] });
     },
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e) => {
+      if (!signedOut(e)) toast.error((e as Error).message);
+    },
   });
   const resendMut = useMutation({
     mutationFn: (id: string) => resendFn({ data: { id } }),
@@ -432,7 +445,9 @@ function InvitePanel() {
       reportSend(invites.find((i) => i.id === id)?.email ?? "them", r, "resent", id);
       qc.invalidateQueries({ queryKey: ["org-invites"] });
     },
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e) => {
+      if (!signedOut(e)) toast.error((e as Error).message);
+    },
   });
 
   return (

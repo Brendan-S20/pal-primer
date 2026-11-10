@@ -81,9 +81,22 @@ test.describe("a technician's chrome does not change shape between tabs", () => 
     await page.goto("/waste-log", { waitUntil: "domcontentloaded" });
     await expect(page.locator("body")).toBeVisible({ timeout: FIRST_PAINT_MS });
     await page.waitForLoadState("networkidle").catch(() => {});
-    expect(
-      await searchVisible(page),
-      "an office role lost the search field — they reach a client by typing a name",
-    ).toBe(true);
+    // The same proof-of-render the tech half uses. Without it this read the
+    // DOM once, and on a slow CI runner (Sandboxes run 42841038528, after
+    // #709) that once was while the router's pending page was still up — a
+    // "Loading…" status and skeletons, no shell, no header — so it reported
+    // a lost field that was never drawn yet, not one that was taken away.
+    await expect(page.getByRole("navigation", { name: "Primary" })).toBeVisible({
+      timeout: FIRST_PAINT_MS,
+    });
+    // And polled rather than sampled: the header paints with the shell, but
+    // the role that decides whether it is hidden resolves on its own query.
+    // A field that never appears still fails here, with the same message.
+    await expect
+      .poll(() => searchVisible(page), {
+        message: "an office role lost the search field — they reach a client by typing a name",
+        timeout: FIRST_PAINT_MS,
+      })
+      .toBe(true);
   });
 });

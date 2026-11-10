@@ -127,3 +127,46 @@ describe("loading is not an empty account", () => {
     expect(html).toContain("No clients yet");
   });
 });
+
+// #790: after the first client was saved, /clients read "0 total" with the
+// client's row listed under it, and the dashboard painted "$0.00" AR and no
+// active clients before settling at 1 and $20.00. Both were caches from
+// before the client existed. See tests/a-first-client-does-not-paint-as-zero.test.tsx.
+describe("#790: a cached zero is not painted over a client that exists", () => {
+  const row = { id: "c1", active: true, display_name: "First client", outstanding_cents: 2000, active_subscription_count: 1 };
+
+  it("/clients does not say 0 total above a row the list just read", () => {
+    // The summary as it was read before the client existed...
+    qc.setQueryData(SUMMARY_KEY, { stats: rosterStats([]), tags: [], tagSpellings: {} }, { updatedAt: 1_000 });
+    // ...and the list, read since, holding the new client.
+    const rows = filterRoster([row], {});
+    qc.setQueryData(CLIENTS_KEY, { rows, matched: 1, offset: 0 }, { updatedAt: 2_000 });
+    const html = render(ClientsRoute);
+    expect(html).toContain("First client");
+    for (const stale of ["0 total", "0 active", "0 archived"]) expect(html).not.toContain(stale);
+    expect(html).toContain("hs-skeleton");
+  });
+
+  it("/clients shows the summary once it has been read after the list, whatever it says", () => {
+    const rows = filterRoster([row], {});
+    qc.setQueryData(CLIENTS_KEY, { rows, matched: 1, offset: 0 }, { updatedAt: 2_000 });
+    qc.setQueryData(SUMMARY_KEY, { stats: rosterStats([row]), tags: [], tagSpellings: {} }, { updatedAt: 3_000 });
+    expect(render(ClientsRoute)).toContain("1 total");
+    // A disagreement read AFTER the list is the server's answer, not a stale
+    // cache: shown, so the tiles can never be held on a skeleton for good.
+    qc.setQueryData(SUMMARY_KEY, { stats: rosterStats([]), tags: [], tagSpellings: {} }, { updatedAt: 4_000 });
+    expect(render(ClientsRoute)).toContain("0 total");
+  });
+
+  it("the dashboard does not paint the pre-client zero once a client is saved", async () => {
+    const { afterClientBookChanged } = await import("@/lib/client-book-queries");
+    qc.setQueryData(["dashboard-summary"], { ...summary, activeClients: 0, arOpenCents: 0, mtdRevenueCents: 0 });
+    expect(render(DashboardRoute)).toContain("$0.00");
+    await afterClientBookChanged(qc);
+    const pending = render(DashboardRoute);
+    expect(pending).not.toContain("$0.00");
+    expect(pending).toContain("hs-skeleton");
+    qc.setQueryData(["dashboard-summary"], { ...summary, activeClients: 1, arOpenCents: 2000, mtdRevenueCents: 0 });
+    expect(render(DashboardRoute)).toContain("$20.00");
+  });
+});
