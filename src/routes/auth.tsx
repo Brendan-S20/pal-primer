@@ -36,7 +36,7 @@ import { rememberLandingPath, readLandingPath } from "@/lib/offline/read-cache";
 import { lookupLandingPath as lookupLandingPathFrom } from "@/lib/landing-path";
 import { pageTitle } from "@/lib/page-title";
 import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
-import { takeLinkForLanding } from "@/lib/pending-deep-link";
+import { signedInAgain, takeLinkForLanding } from "@/lib/pending-deep-link";
 import {
   clearRecoveryPending,
   passwordResetRedirectHere,
@@ -327,6 +327,7 @@ function AuthPage() {
       if (cancelled) return;
       // Signed in after all: a hand-off still held is not a failure to report.
       signInLanded();
+      signedInAgain();
       if (isNewOrg === NEEDS_ORG_NAME) return navigate({ to: "/no-workspace" });
       if (isNewOrg) return navigate({ to: "/onboarding" });
       const to = await landingPathForUser(identity.userId, identity.verified);
@@ -348,8 +349,10 @@ function AuthPage() {
       setLoading(false);
       return setError(error.message);
     }
-    // Signed in with a password: whatever reset this tab started is over.
+    // Signed in with a password: whatever reset this tab started is over, and
+    // so is the sign-out before it, so the guard may hold a page again.
     clearRecoveryPending();
+    signedInAgain();
     let isNewOrg: boolean | typeof NEEDS_ORG_NAME = false;
     if (data.user) {
       // The auth server verified this user just now. Without this the guard

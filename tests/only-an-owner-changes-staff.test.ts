@@ -208,9 +208,7 @@ describe("a save that finds the session gone", () => {
 
   it("holds the page, and /auth delivers it after sign-in", async () => {
     const { returnHereAfterSignIn } = await import("@/lib/signed-out");
-    const { takeLinkForLanding, __resetDeepLinkForTests } = await import(
-      "@/lib/pending-deep-link"
-    );
+    const { takeLinkForLanding, __resetDeepLinkForTests } = await import("@/lib/pending-deep-link");
     __resetDeepLinkForTests();
     returnHereAfterSignIn("/settings/users");
     // The function /auth's land() calls (#700), so this is the real delivery.
@@ -224,7 +222,7 @@ describe("a save that finds the session gone", () => {
   it("the guard holds the page before it sends a signed-out reload to /auth", () => {
     const guard = read("src/routes/_authenticated/route.tsx");
     expect(guard).toMatch(
-      /returnHereAfterSignIn\(location\.href\);\s*throw redirect\(\{ to: "\/auth" \}\);/,
+      /returnHereAfterSignIn\(`\$\{location\.pathname\}\$\{location\.searchStr\}`\);\s*throw redirect\(\{ to: "\/auth" \}\);/,
     );
   });
 

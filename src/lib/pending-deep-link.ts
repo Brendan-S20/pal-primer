@@ -37,12 +37,75 @@ let held: { path: string; at: number } | null = null;
  *  the router still reads /auth, has nobody left to take it, so it is pushed. */
 let landed = false;
 
+/** An intentional sign-out is under way, or finished, and nobody has signed
+ *  in since. The guard must not hold the page it is being signed out of
+ *  (#785): that page belongs to the session that just ended. */
+let signingOut = false;
+
+/**
+ * A link as an in-app PATH (with its search and hash), or null. Never a full
+ * URL: `/auth` delivers a hold with `router.history.push`, which takes a
+ * path, and the _authenticated guard used to hold `location.href` (#785). A
+ * URL on this page's own origin is reduced to its path; any other origin is
+ * not ours to open.
+ */
+export function asAppPath(link: string): string | null {
+  if (typeof link !== "string") return null;
+  const raw = link.trim();
+  if (!raw) return null;
+  if (raw.startsWith("/") && !raw.startsWith("//")) return raw;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  const here = typeof window === "undefined" ? null : (window.location?.origin ?? null);
+  if (!here || url.origin !== here) return null;
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+/** A page to come back to after sign-in: an in-app path that is not the
+ *  sign-in form itself. Holding /auth sends a person who just signed in back
+ *  to the form (#785). */
+export function asReturnPath(link: string): string | null {
+  const path = asAppPath(link);
+  if (!path) return null;
+  const pathname = path.split(/[?#]/, 1)[0];
+  if (pathname === "/auth" || pathname.startsWith("/auth/")) return null;
+  return path;
+}
+
 /** Hold a link until something can deliver it. A bare `/` is "open the
  *  app", not a target, so it is not held. A later link replaces an earlier
- *  one: the last tap is the one the person meant. */
+ *  one: the last tap is the one the person meant. Only a path is ever held. */
 export function holdDeepLink(path: string, now = Date.now()): void {
-  if (!path || path === "/") return;
-  held = { path, at: now };
+  const normalized = asAppPath(path);
+  if (!normalized || normalized === "/") return;
+  held = { path: normalized, at: now };
+}
+
+/** The guard's and a save's "come back here after sign-in" (#659). Refused
+ *  while an intentional sign-out is under way: the page being left is not
+ *  where the next sign-in should go. A tapped app link is not refused (it
+ *  goes through holdDeepLink directly): the person meant it. */
+export function holdReturnPath(path: string, now = Date.now()): void {
+  if (signingOut) return;
+  const normalized = asReturnPath(path);
+  if (normalized) holdDeepLink(normalized, now);
+}
+
+/** An intentional sign-out starts: drop any held return path, and do not
+ *  take a new one until somebody signs in (#785). */
+export function beginSignOut(): void {
+  forgetDeepLink();
+  signingOut = true;
+}
+
+/** A password was accepted, or /auth found a session: the guard may hold
+ *  pages again. */
+export function signedInAgain(): void {
+  signingOut = false;
 }
 
 /** The held link, left in place, or null when there is none or it is stale. */
@@ -128,4 +191,5 @@ export async function routeDeepLink(path: string, env: DeepLinkEnv): Promise<voi
 /** Tests only. */
 export function __resetDeepLinkForTests(): void {
   forgetDeepLink();
+  signingOut = false;
 }

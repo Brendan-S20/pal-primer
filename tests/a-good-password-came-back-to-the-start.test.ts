@@ -10,9 +10,9 @@
  *      does not ask the auth server again, and the trust ends exactly as a
  *      reused answer does (a sign-out, another user).
  *   2. lib/sign-in-handoff.ts: a hand-off that resolves back on /auth is
- *      reported and gives the form back; one that lands anywhere else is
- *      dropped; a stale one is never reported; the password never reaches
- *      storage.
+ *      reported and gives the form back, even after a resolve somewhere else
+ *      first; it is dropped only once the signed-in shell has drawn; a stale
+ *      one is never reported; the password never reaches storage.
  *
  * And a source check on /auth for the wiring the browser spec cannot name a
  * line for: the label on each button, and the order of the hand-off.
@@ -172,16 +172,53 @@ describe("a sign-in that came back to /auth says so (lib/sign-in-handoff.ts)", (
     expect(takeBouncedSignIn()).toMatchObject({ email: "owner@example.test" });
   });
 
-  it("a navigation that lands anywhere else drops the hand-off, and watches nothing more", () => {
+  it("a navigation that resolves anywhere else first is not a landing: a later bounce still says so", () => {
+    // #785 regression after #799: the FIRST resolve after a hand-off used to
+    // decide it. A page on the way, then the guard's redirect to /auth, read
+    // as "landed" and then as a first visit: an empty email step, no error.
     const fired: string[] = [];
     const target = { dispatchEvent: (e: Event) => (fired.push(e.type), true) };
     let resolved: ((e: { toLocation: { pathname: string } }) => void) | null = null;
     handOffSignIn("owner@example.test", "pw");
-    watchSignInLanding((_e, fn) => ((resolved = fn), () => {}), target);
+    const stop = watchSignInLanding((_e, fn) => ((resolved = fn), () => {}), target);
     resolved!({ toLocation: { pathname: "/dashboard" } });
+    resolved!({ toLocation: { pathname: "/auth" } });
+    expect(fired).toEqual([SIGN_IN_BOUNCED]);
+    expect(takeBouncedSignIn()).toEqual({ email: "owner@example.test", password: "pw" });
+    stop();
+  });
+
+  it("the hand-off is dropped once the signed-in shell has drawn, and nothing more is watched", () => {
+    const fired: string[] = [];
+    const target = { dispatchEvent: (e: Event) => (fired.push(e.type), true) };
+    let resolved: ((e: { toLocation: { pathname: string } }) => void) | null = null;
+    let unsubscribed = 0;
+    handOffSignIn("owner@example.test", "pw");
+    watchSignInLanding((_e, fn) => ((resolved = fn), () => void (unsubscribed += 1)), target);
+    resolved!({ toLocation: { pathname: "/dashboard" } });
+    signInLanded(); // what the _authenticated shell does when it mounts
+    expect(unsubscribed).toBe(1);
     resolved!({ toLocation: { pathname: "/auth" } }); // a sign-out later
     expect(fired).toEqual([]);
     expect(takeBouncedSignIn()).toBeNull();
+  });
+
+  it("a hand-off nobody resolved stops being watched when it goes stale", () => {
+    vi.useFakeTimers();
+    try {
+      const fired: string[] = [];
+      const target = { dispatchEvent: (e: Event) => (fired.push(e.type), true) };
+      let resolved: ((e: { toLocation: { pathname: string } }) => void) | null = null;
+      let unsubscribed = 0;
+      handOffSignIn("owner@example.test", "pw");
+      watchSignInLanding((_e, fn) => ((resolved = fn), () => void (unsubscribed += 1)), target);
+      vi.advanceTimersByTime(SIGN_IN_HANDOFF_TTL_MS + 1);
+      expect(unsubscribed).toBe(1);
+      resolved!({ toLocation: { pathname: "/auth" } });
+      expect(fired).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

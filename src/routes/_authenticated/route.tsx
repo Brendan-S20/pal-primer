@@ -26,6 +26,7 @@ import { AccountLockedShell } from "@/components/AccountLockedShell";
 import { reportClientError, setMonitoringIdentity } from "@/lib/monitoring/client";
 import { needsSecondStep } from "@/lib/mfa";
 import { returnHereAfterSignIn } from "@/lib/signed-out";
+import { signInLanded } from "@/lib/sign-in-handoff";
 import { getPlatformContext } from "@/lib/platform.functions";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { SetupGuideBanner } from "@/components/SetupGuideBanner";
@@ -101,7 +102,9 @@ export const Route = createFileRoute("/_authenticated")({
         // session gone used to land on the role's page, not this one. /auth
         // delivers the held page (lib/pending-deep-link.ts). This route is
         // ssr: false, so the hold is in this tab's memory, never a server's.
-        returnHereAfterSignIn(location.href);
+        // A PATH, not a URL (#785): /auth pushes it with router.history.push.
+        // Refused while a sign-out is under way (lib/pending-deep-link.ts).
+        returnHereAfterSignIn(`${location.pathname}${location.searchStr}`);
         throw redirect({ to: "/auth" });
       }
 
@@ -283,8 +286,18 @@ function useApiRecovery() {
   }, [identityVerified, router, queryClient]);
 }
 
+/** The guard let this person in and the shell has drawn: a sign-in /auth
+ *  handed on has landed, and only now is its hand-off dropped (#785). A
+ *  resolve anywhere earlier is not proof; the guard can still bounce. */
+function useSignInLanded() {
+  useEffect(() => {
+    signInLanded();
+  }, []);
+}
+
 function AppShell() {
   useApiRecovery();
+  useSignInLanded();
   const redirecting = useMatches({
     select: (matches) => matches.some((match) => match.staticData.clientRedirect),
   });

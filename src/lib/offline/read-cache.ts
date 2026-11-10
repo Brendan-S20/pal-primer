@@ -28,6 +28,8 @@ import {
 } from "./read-cache-policy";
 import { asLastGoodCopy, hasLastGoodCopy, savedCopiesToKeep } from "./last-good-copy";
 import { clearAllFormDrafts } from "@/lib/form-drafts";
+import { beginSignOut } from "@/lib/pending-deep-link";
+import { signInLanded } from "@/lib/sign-in-handoff";
 
 /** Coalesces the burst of cache events a single page load produces into one
  * write. localStorage writes are synchronous and block the UI thread, which on
@@ -473,6 +475,12 @@ export async function signOutAndClearDevice(): Promise<void> {
   // it drops the queue silently rather than leaving it unreachable. Losing an
   // unsyncable queue is bad; leaving customer photos on a device nobody can
   // clear is worse, and it is the one this used to do.
+  // First, before anything awaits (#785): a guard that runs while this
+  // sign-out is in flight must not hold the page being left as the next
+  // sign-in's return path, and a sign-in hand-off still held must not make
+  // the next visit to /auth say a good password bounced.
+  beginSignOut();
+  signInLanded();
   try {
     const { resolveOfflineUserId } = await import("@/lib/offline/action-owner");
     const { clearQueueForUser } = await import("@/lib/offline/queue");

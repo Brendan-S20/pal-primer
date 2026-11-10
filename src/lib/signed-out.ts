@@ -11,7 +11,7 @@
 // the page with lib/pending-deep-link.ts, which /auth already delivers after
 // sign-in. Nothing new on /auth: it reuses the hold it has for app links.
 
-import { holdDeepLink } from "@/lib/pending-deep-link";
+import { holdReturnPath } from "@/lib/pending-deep-link";
 
 export const SIGNED_OUT_MESSAGE =
   "You've been signed out. Sign in again to save. What you typed is kept, and you'll come back here.";
@@ -27,9 +27,11 @@ export function isSignedOutError(e: unknown): boolean {
   return typeof message === "string" && message.startsWith("Unauthorized");
 }
 
-/** Remember the page so /auth returns to it after sign-in. */
+/** Remember the page so /auth returns to it after sign-in. A path, never a
+ *  full URL or /auth itself, and nothing while a sign-out is under way
+ *  (#785, lib/pending-deep-link.ts). */
 export function returnHereAfterSignIn(path: string): void {
-  holdDeepLink(path);
+  holdReturnPath(path);
 }
 
 const DRAFT_PREFIX = "houndstack.draft.";

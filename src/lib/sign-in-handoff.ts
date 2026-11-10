@@ -59,8 +59,10 @@ export function handOffSignIn(email: string, password: string, now = Date.now())
   }
 }
 
-/** The sign-in got where it was going, or the person is signed in anyway. */
+/** The sign-in got where it was going (the signed-in shell has drawn), the
+ *  person is signed in anyway, or they signed out: the hand-off is over. */
 export function signInLanded(): void {
+  stopWatching?.();
   heldPassword = null;
   try {
     store()?.removeItem(SIGN_IN_HANDOFF_KEY);
@@ -94,28 +96,59 @@ export type ResolvedSubscribe = (
   fn: (e: { toLocation: { pathname: string } }) => void,
 ) => () => void;
 
+/** The watcher a sign-in started, so a second sign-in, a landing or a
+ *  sign-out can end it. One at a time: there is one form. */
+let stopWatching: (() => void) | null = null;
+
+function isAuthPath(pathname: string): boolean {
+  return pathname === "/auth" || pathname === "/auth/";
+}
+
 /**
- * Watch the ONE navigation a sign-in starts. Where it resolves decides it: on
- * /auth, the guard sent the person back, and the page is told; anywhere else,
- * they arrived, and the handoff is dropped. Not tied to the /auth component,
- * which unmounts on a successful landing and may be drawn afresh on a bounce.
+ * Watch where the sign-in goes until it has settled. A resolve on /auth means
+ * the guard sent the person back, and the page is told. A resolve anywhere
+ * else is NOT a landing (#785, regression after #799): the first resolve
+ * after a hand-off can be a page on the way (a held return path, a
+ * superseded navigation, a layout that has not run its guard yet) and the
+ * guard can still bounce them to /auth after it. Until 2026-11-10 that first
+ * resolve dropped the hand-off, and the later bounce looked like a first
+ * visit: an empty email step, no error.
+ *
+ * So the hand-off is dropped only when the person is actually on a signed-in
+ * page (the _authenticated shell calls signInLanded when it has drawn), when
+ * /auth finds them signed in, on a sign-out, or when it goes stale. Not tied
+ * to the /auth component, which unmounts on a successful landing and may be
+ * drawn afresh on a bounce.
  */
 export function watchSignInLanding(
   subscribe: ResolvedSubscribe,
   target: Pick<Window, "dispatchEvent"> | null = typeof window === "undefined" ? null : window,
+  ttlMs = SIGN_IN_HANDOFF_TTL_MS,
 ): () => void {
-  let stop: (() => void) | null = null;
+  stopWatching?.();
   let done = false;
-  stop = subscribe("onResolved", (e) => {
+  let unsubscribe: (() => void) | null = null;
+  let expiry: ReturnType<typeof setTimeout> | null = null;
+  const stop = () => {
     if (done) return;
     done = true;
-    stop?.();
-    if (e.toLocation.pathname === "/auth") target?.dispatchEvent(new Event(SIGN_IN_BOUNCED));
-    else signInLanded();
-  });
-  if (done) stop();
-  return () => {
-    done = true;
-    stop?.();
+    if (expiry !== null) clearTimeout(expiry);
+    unsubscribe?.();
+    if (stopWatching === stop) stopWatching = null;
   };
+  stopWatching = stop;
+  unsubscribe = subscribe("onResolved", (e) => {
+    if (done || !isAuthPath(e.toLocation.pathname)) return;
+    stop();
+    target?.dispatchEvent(new Event(SIGN_IN_BOUNCED));
+  });
+  if (done) unsubscribe();
+  else
+    expiry = setTimeout(() => {
+      // Nothing came back in time: whatever happens on /auth later is not
+      // this sign-in's bounce. takeBouncedSignIn refuses it as stale too.
+      stop();
+      heldPassword = null;
+    }, ttlMs);
+  return stop;
 }
