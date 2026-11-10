@@ -43,6 +43,10 @@ import { toast } from "sonner";
 import { getEmailSendStatus } from "@/lib/notifications.functions";
 import { reportQueuedSend } from "@/lib/send-report";
 import { useOrgToday } from "@/hooks/useOrgToday";
+import { getMyOrg } from "@/lib/org.functions";
+import { getEmailSettings } from "@/lib/email-settings.functions";
+import { WelcomeEmailOptIn } from "@/components/client-detail/WelcomeEmailOptIn";
+import { WELCOME_EMAIL_DEFAULT_CHECKED } from "@/lib/welcome-email";
 import { formatDay } from "@/lib/format";
 import { titleHead } from "@/lib/page-title";
 import {
@@ -60,7 +64,15 @@ import {
   serviceDaysFor,
   serviceDaysPerWeek,
 } from "@/lib/weekday-set";
-import { defaultPlanWeekdays, planStartsSkipped, propertyHazardsFor } from "@/lib/new-client-plan";
+import {
+  defaultFirstVisit,
+  defaultPlanWeekdays,
+  firstVisitHint,
+  nextDay,
+  planStartsSkipped,
+  propertyHazardsFor,
+  serviceSwitch,
+} from "@/lib/new-client-plan";
 import { serverErrorMessage } from "@/lib/server-outcome";
 import { createFailedMessage } from "@/lib/create-client-error";
 import { typedPriceCents } from "@/lib/typed-price";
@@ -363,11 +375,6 @@ const FREQS = [
 // Outline step is pet-waste-only. Steps are addressed by NAME below, never by
 // position, so dropping one cannot move the Plan step's quote onto Dogs.
 
-/** The next calendar day after an org-calendar day (YYYY-MM-DD). */
-function tomorrowOf(day: string): string {
-  return new Date(Date.parse(`${day}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
-}
-
 /** 0 = Sunday, the numbering subscriptions.preferred_weekdays uses. */
 function weekdayOf(day: string): number {
   return new Date(`${day}T12:00:00Z`).getUTCDay();
@@ -543,6 +550,24 @@ function NewClientWizardForm({
   const [accountType, setAccountType] = useState<"residential" | "commercial">("residential");
   const [primaryEmail, setPrimaryEmail] = useState(prefill.primaryEmail);
   const [primaryPhone, setPrimaryPhone] = useState(prefill.primaryPhone);
+  // Opt-in, never ticked for you, and not kept in the draft: a restored draft
+  // starts unticked too (onboarding audit 2026-11-09, D4).
+  const [sendWelcome, setSendWelcome] = useState(WELCOME_EMAIL_DEFAULT_CHECKED);
+  const orgFn = useServerFn(getMyOrg);
+  const { data: orgData } = useQuery({
+    queryKey: ["my-org"],
+    queryFn: () => orgFn(),
+    staleTime: 60_000,
+  });
+  // The owner's Welcome toggle (Settings, Emails). Off, the box is disabled
+  // and says why rather than promising a send the server will refuse.
+  const emailSettingsFn = useServerFn(getEmailSettings);
+  const { data: emailSettings } = useQuery({
+    queryKey: ["email-settings"],
+    queryFn: () => emailSettingsFn(),
+    staleTime: 60_000,
+  });
+  const welcomeTurnedOffInSettings = emailSettings?.notify_email_welcome === false;
   const [officeNote, setOfficeNote] = useState(prefill.officeNote);
 
   // property
@@ -690,13 +715,15 @@ function NewClientWizardForm({
   const skipPlan = skipPlanChoice ?? planStartsSkipped(lines, linesKnown);
   // No subscription is written for a groom lead: the groom is booked next.
   const planSkipped = skipPlan || booksGroom;
-  // When the service starts, on the business's calendar. Tomorrow by default:
-  // today, created in the evening, meant a visit that night after the route
-  // had ended, with nobody on it and nobody told (persona review, 2026-09-27).
-  // From a lead, the day it asked to start (#657), unless that has passed.
+  // When the service starts, on the business's calendar. Tomorrow by default
+  // (defaultFirstVisit): today, created in the evening, meant a visit that
+  // night after the route had ended (persona review, 2026-09-27). The form
+  // states that, and Today is one tap (#774). From a lead, the day it asked
+  // to start (#657), unless that has passed.
   const orgTodayStr = useOrgToday();
+  const orgTomorrowStr = nextDay(orgTodayStr);
   const [startedOn, setStartedOn] = useState(() =>
-    leadStartDate(prefill.startDate, orgTodayStr, tomorrowOf(orgTodayStr)),
+    leadStartDate(prefill.startDate, orgTodayStr, defaultFirstVisit(orgTodayStr)),
   );
   const askedStartPassed = !!prefill.startDate && prefill.startDate < orgTodayStr;
   const [serviceDays, setServiceDays] = useState<number[] | null>(null);
@@ -708,9 +735,27 @@ function NewClientWizardForm({
   // (servicePriceCents), never from a zone, and sold by the day of the week.
   const walkLike = !!chosenService && !isZonePriced(chosenService);
   const serviceCents = walkLike ? servicePriceCents(chosenService!, { pets: dogCount }) : null;
-  // The days a weekly plan runs on until the owner says: Monday to Friday
-  // for a walk, the first visit's weekday for anything else (F-04).
+  // The days a weekly plan runs on until the owner says: the first visit's
+  // weekday (F-04, #774). Never a full work week the owner did not pick.
   const [weekdayChoice, setWeekdays] = useState<number[] | null>(null);
+  // #774: a different service drops the days picked for the old one, and the
+  // Plan step says so rather than keeping them silently.
+  const [daysNotice, setDaysNotice] = useState<string | null>(null);
+  const chooseService = (id: string) => {
+    const from = effectiveServiceId(serviceId, orgServices, pickerLines);
+    const hadDays = weekdayChoice !== null || serviceDays !== null;
+    const sw = serviceSwitch({
+      from,
+      to: id,
+      hadDays,
+      toName: orgServices.find((x) => x.id === id)?.name,
+    });
+    setServiceId(id);
+    if (!sw.reset) return;
+    setWeekdays(null);
+    setServiceDays(null);
+    setDaysNotice(hadDays || current === "Plan" ? sw.notice : null);
+  };
   const weekdays =
     weekdayChoice ?? defaultPlanWeekdays(chosenService?.service_line, weekdayOf(startedOn));
   const setDays = walkLike && frequency === "weekly";
@@ -931,6 +976,7 @@ function NewClientWizardForm({
           accountType,
           primaryEmail: primaryEmail || undefined,
           primaryPhone: primaryPhone || undefined,
+          sendWelcome: sendWelcome && !welcomeTurnedOffInSettings && !!primaryEmail.trim(),
           street,
           city,
           region: region || undefined,
@@ -999,6 +1045,7 @@ function NewClientWizardForm({
       welcomeStatusHandle,
       welcomeTurnedOff,
       welcomeLink,
+      welcomeRequested,
       officeNoteSaved,
       leadLinked,
       firstCleanupInvoiced,
@@ -1027,7 +1074,8 @@ function NewClientWizardForm({
       // "Welcome email sent" only once the provider has taken it; with email
       // off, "not sent" and the portal link to send by hand (#612). Quiet when
       // the owner turned welcome emails off in Settings: nothing is missing.
-      if (primaryEmail && !welcomeTurnedOff) {
+      // Quiet too when nobody ticked "Email them a welcome": nothing was asked.
+      if (welcomeRequested && primaryEmail && !welcomeTurnedOff) {
         void reportQueuedSend(
           {
             ok: welcomeEmailed,
@@ -1345,7 +1393,7 @@ function NewClientWizardForm({
                   currentId={null}
                   services={orgServices}
                   isLoading={servicesLoading}
-                  onChange={setServiceId}
+                  onChange={chooseService}
                   lines={pickerLines}
                 />
                 <p className="text-xs text-muted-foreground">
@@ -1732,9 +1780,18 @@ function NewClientWizardForm({
                     currentId={null}
                     services={orgServices}
                     isLoading={servicesLoading}
-                    onChange={setServiceId}
+                    onChange={chooseService}
                     lines={pickerLines}
                   />
+                )}
+                {daysNotice && (
+                  <p
+                    role="status"
+                    data-days-reset
+                    className="rounded-md border bg-muted/40 px-3 py-2 text-sm"
+                  >
+                    {daysNotice}
+                  </p>
                 )}
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-2">
@@ -1807,9 +1864,37 @@ function NewClientWizardForm({
                       value={startedOn}
                       // The service day follows this date until the owner picks days.
                       onChange={(e) => setStartedOn(e.target.value)}
+                      aria-describedby="started-on-hint"
                     />
-                    <p className="text-xs text-muted-foreground">
-                      If that isn&apos;t a work day or a service day, it moves to the next one.
+                    <div className="flex flex-wrap gap-1.5" data-first-visit-quick>
+                      {(
+                        [
+                          ["Today", orgTodayStr],
+                          ["Tomorrow", orgTomorrowStr],
+                        ] as const
+                      ).map(([label, day]) => (
+                        <button
+                          key={label}
+                          type="button"
+                          aria-pressed={startedOn === day}
+                          onClick={() => setStartedOn(day)}
+                          className={`h-9 min-w-11 shrink-0 rounded-md border px-3 text-sm touch:min-h-11 ${
+                            startedOn === day
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-input bg-background"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <p id="started-on-hint" className="text-xs text-muted-foreground">
+                      {firstVisitHint({
+                        startedOn,
+                        orgToday: orgTodayStr,
+                        leadStart: prefill.startDate,
+                        dayLabel: formatDay(startedOn),
+                      })}
                     </p>
                     {askedStartPassed && (
                       <p className="text-xs text-muted-foreground">
@@ -1830,7 +1915,9 @@ function NewClientWizardForm({
                       <p className="text-xs text-muted-foreground">
                         {weekdays.length === 0
                           ? "Choose at least one day."
-                          : "One visit on each day, every week, billed per visit. Blackout days and client holds are skipped, not moved."}
+                          : weekdayChoice === null
+                            ? "Starts on the first visit's day. Tap more days for more visits a week. One visit on each day, billed per visit."
+                            : "One visit on each day, every week, billed per visit. Blackout days and client holds are skipped, not moved."}
                       </p>
                     </div>
                   )}
@@ -2044,6 +2131,16 @@ function NewClientWizardForm({
               </>
             )}
           </div>
+        )}
+
+        {step === steps.length - 1 && primaryEmail.trim() && (
+          <WelcomeEmailOptIn
+            email={primaryEmail.trim()}
+            orgName={(orgData?.organization as { name?: string } | null | undefined)?.name}
+            checked={sendWelcome}
+            onCheckedChange={setSendWelcome}
+            turnedOffInSettings={welcomeTurnedOffInSettings}
+          />
         )}
 
         {/* Nav */}

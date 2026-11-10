@@ -698,6 +698,27 @@ jobs:
         # See the note on `if: always()` below the first check.
         if: always() && steps.psql.conclusion == 'success'
 
+      # RLS scopes SELECT, INSERT, UPDATE and DELETE. It has no TRUNCATE
+      # policy, so a client role holding TRUNCATE can empty a table, every
+      # tenant's rows at once. Supabase's default privileges hand anon and
+      # authenticated TRUNCATE, TRIGGER and REFERENCES on every new public
+      # table; a census found 106 tables holding them (#842), and
+      # 20261110130000 revokes them. This asks production that no public table
+      # has regained them. The proof beside that migration asks the same of
+      # the schema the migrations build (sandboxes.yml).
+      - name: No visitor or signed-in user can empty a public table
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::SUPABASE_DB_URL secret is not set — the public-table grant check cannot run."
+            exit 1
+          fi
+          node scripts/check-public-table-grants.mjs
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        # See the note on `if: always()` below the first check.
+        if: always() && steps.psql.conclusion == 'success'
+
       - name: The published app origin answers the native preflight
         # §3 item 6 of the brief listed this as two curls "only you can confirm".
         # They sat unrun, and when finally run the answer was that the
@@ -823,3 +844,64 @@ jobs:
       # app's terms change is expected until the site's copy is updated.
       - name: Does www.houndstack.com/terms show this repo's terms
         run: npm run check:terms:live
+
+  bun:
+    name: bun frozen install and build (the Lovable path)
+    # ── WHY THIS JOB EXISTS ──────────────────────────────────────────────
+    #
+    # Lovable publishes with bun: `bun install --frozen-lockfile`, then
+    # `bun run build`. Everything else here uses npm and package-lock.json,
+    # so #810 merged green while publishing main was broken twice over. It
+    # added happy-dom to package.json and package-lock.json but not to
+    # bun.lock, so the frozen install refused to run. And bun lays out
+    # node_modules differently from npm (it hoisted happy-dom's entities 7
+    # where npm keeps 4.5.0), which broke an alias in vite.config.ts that only
+    # the bun layout could hit. Production stayed on #812 until both were fixed.
+    #
+    # This runs alongside `verify`'s `npm ci` and does not replace it.
+    # The frozen install fails when bun.lock disagrees with package.json; the
+    # build fails when bun's layout breaks something npm's does not.
+    #
+    # ── THE LOVABLE CACHE URLS IN bun.lock ───────────────────────────────
+    #
+    # Most older bun.lock entries resolve to Lovable's npm cache
+    # (europe-west*-npm.pkg.dev/lovable-core-prod/...) rather than the public
+    # registry. A cold install from outside Lovable fetched every one of them
+    # on 2026-11-10. If that ever stops, this job fails red, and the step after
+    # the install says so. It is never skipped and never continue-on-error:
+    # a check that goes green without installing anything is no check.
+    #
+    # Unix runner like `migrations` and `deployment`: bash, no Git Bash step.
+    runs-on: ${{ vars.UNIX_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # `bun run build` runs vite and scripts/check-pwa-output.mjs through
+      # their `node` shebangs, so Node is needed as well as bun.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: bun install --frozen-lockfile
+        id: install
+        run: bun install --frozen-lockfile 2>&1 | tee "$RUNNER_TEMP/bun-install.log"; exit "${PIPESTATUS[0]}"
+
+      - name: Say why the install failed
+        if: failure() && steps.install.outcome == 'failure'
+        run: |
+          if grep -q "lockfile is frozen" "$RUNNER_TEMP/bun-install.log"; then
+            echo "::error::bun.lock is out of date with package.json. Run \`bun install\` and commit bun.lock."
+          elif grep -Eq "pkg\.dev|lovable-core-prod" "$RUNNER_TEMP/bun-install.log"; then
+            echo "::error::A Lovable npm cache URL recorded in bun.lock could not be fetched from this runner. This job cannot measure the Lovable path until it can; it stays red rather than pretending."
+          else
+            echo "::error::bun install --frozen-lockfile failed; see the step above."
+          fi
+          exit 1
+
+      - name: bun run build
+        run: bun run build

@@ -7,7 +7,21 @@
 // always got. If the walks cannot be read before the move, the weather email
 // still goes, so the client hears something.
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// The fixtures are fixed walk days in October 2026, and the date formatters
+// drop the year only when it is the CURRENT year, so against the real clock
+// these assertions turn red on 2027-01-01 (found by running the suite under
+// faketime for #843). Pin the clock for the whole file instead of making the
+// days relative to today. Only Date is faked, so promises and timers run as
+// normal.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-01T12:00:00-06:00"));
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const ORG = "org-1";
 

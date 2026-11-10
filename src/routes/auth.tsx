@@ -47,8 +47,9 @@ import {
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: pageTitle("Sign in") },
-      { name: "description", content: `Sign in to ${APP_NAME}.` },
+      // Not "Sign in" alone (#791): this is also where a new owner starts.
+      { title: pageTitle("Sign in or create an account") },
+      { name: "description", content: `Sign in to ${APP_NAME}, or create an account.` },
     ],
   }),
   component: AuthPage,
@@ -543,6 +544,15 @@ function AuthPage() {
     }
   };
 
+  /** Straight to the Get-started walkthrough (#791). An address already typed
+   *  goes with it the same way Continue hands it on (#651), and one that turns
+   *  out to have an account comes back here on the password step (#765). */
+  const createAccount = () => {
+    setAlert(null);
+    if (emailValid) handOffSignupEmail(email);
+    navigate({ to: "/get-started", search: {} as never });
+  };
+
   // Asks nothing about memberships, and must not: an account with no business
   // is exactly who needs this most (#765).
   // One helper for every reset request (lib/password-recovery.ts): the
@@ -595,6 +605,24 @@ function AuthPage() {
             <Button type="submit" disabled={loading || !emailValid} className="w-full">
               {loading ? "Checking…" : "Continue"}
             </Button>
+            {/* A new owner's way in, as a control rather than a line of footer
+                copy (#791). The screen read as sign-in only. Not offered on an
+                invitation: an invited teammate joins a business, and the email
+                step above already carries the invite to /get-started. */}
+            {!inviteToken && (
+              <div className="space-y-2 pt-1">
+                <p className="text-center text-sm text-muted-foreground">New to {APP_NAME}?</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={createAccount}
+                  disabled={loading}
+                >
+                  Create an account
+                </Button>
+              </div>
+            )}
           </form>
         ) : (
           <form onSubmit={handleSignIn} className="mt-4 space-y-3">
@@ -799,10 +827,6 @@ function AuthPage() {
         </div>
       )}
       {signOutDialog}
-
-      <p className="text-center text-xs text-muted-foreground">
-        New here? Entering your email above walks you straight into account setup.
-      </p>
     </PublicShell>
   );
 }

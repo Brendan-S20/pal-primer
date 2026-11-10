@@ -17,6 +17,7 @@ import {
   FileText,
   Users,
   Inbox,
+  MessageSquareQuote,
   Megaphone,
   TrendingUp,
   Activity,
@@ -63,6 +64,13 @@ const NAV = [
       { to: "/platform/invites" as const, label: "Invites", icon: UserPlus },
       { to: "/platform/users" as const, label: "Users", icon: Users },
       { to: "/platform/website-submissions" as const, label: "Website forms", icon: Inbox },
+      // The directory's review moderation queue (#630): nothing is public
+      // until it is approved here.
+      {
+        to: "/platform/directory-reviews" as const,
+        label: "Directory reviews",
+        icon: MessageSquareQuote,
+      },
       { to: "/platform/signals" as const, label: "Franchise signals", icon: Radar },
     ],
   },
