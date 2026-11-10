@@ -48,8 +48,8 @@ export function OperatorIdentity({ className }: { className?: string }) {
     <p className={className}>
       {APP_NAME} is operated by The North Consulting LLC, 2222 West Grand River Avenue STE A,
       Okemos, MI 48864. Contact:{" "}
-      <a href="mailto:brendan@houndstack.com" className="underline hover:text-foreground">
-        brendan@houndstack.com
+      <a href="mailto:support@houndstack.com" className="underline hover:text-foreground">
+        support@houndstack.com
       </a>
     </p>
   );

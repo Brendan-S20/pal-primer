@@ -7,18 +7,18 @@
 //
 // - mail sent AS a business opens with its logo (or name) over a stripe in its
 //   colour, and ends "Powered by HoundStack";
-// - system mail opens with the HoundStack band and ends with the operator
-//   line naming The North Consulting LLC;
+// - system mail opens with the HoundStack band and ends with the company
+//   signature, whose legal line names The North Consulting LLC;
 // - the weekly digest is system mail about a business, so it has both: the
 //   business's header and a footer that reads "Powered by HoundStack" above
-//   the operator line.
+//   the company's support, web and legal lines.
 
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import * as React from "react";
 import { render } from "react-email";
 import { TEMPLATES } from "@/lib/email-templates/registry";
-import { OPERATOR_LINE, safeHexColor, safeLogoUrl } from "@/lib/email-templates/_brand";
+import { COMPANY, safeHexColor, safeLogoUrl } from "@/lib/email-templates/_brand";
 import { existsSync } from "node:fs";
 import { SignupEmail } from "@/lib/email-templates/signup";
 import { InviteEmail } from "@/lib/email-templates/invite";
@@ -67,7 +67,7 @@ describe("mail sent as a business", () => {
     const out = await html(t.component, { ...(t.previewData ?? {}), ...brand });
     const close = out.slice(out.lastIndexOf("background-color:#5e845e"));
     expect(close).toMatch(/Powered by(<!-- -->)?\s*<a[^>]*>HoundStack<\/a>/);
-    expect(close).toContain(OPERATOR_LINE);
+    expect(close).toContain(COMPANY.legalLine);
     expect(close).toContain('href="https://houndstack.com"');
     expect(close).toContain('href="mailto:support@houndstack.com"');
     // The business still opens the email: no HoundStack band on tenant mail.
@@ -175,17 +175,18 @@ describe("system mail", () => {
   ];
 
   it.each(SYSTEM)(
-    "%s opens with the HoundStack band and names the operator",
+    "%s opens with the HoundStack band and closes with the company signature",
     async (_n, C, props) => {
       const out = await html(C, props);
       expect(out).toContain("background-color:#142937");
       expect(out).toContain(WORDMARK);
-      expect(out).toContain(OPERATOR_LINE);
+      expect(out).toContain(COMPANY.legalLine);
+      expect(out).toContain(`src="${COMPANY.logoUrl}"`);
       expect(out).not.toContain("Powered by");
     },
   );
 
-  it("the operator line matches the public site word for word", () => {
+  it("the public site still names the operator in the filing's words", () => {
     const footer = read("src/components/PublicFooter.tsx").replace(/\s+/g, " ");
     expect(footer).toContain(
       "{APP_NAME} is operated by The North Consulting LLC, 2222 West Grand River Avenue STE A, Okemos, MI 48864.",
@@ -205,13 +206,13 @@ describe("system mail", () => {
 });
 
 describe("the weekly digest", () => {
-  it("has the business's header and a Powered by HoundStack footer with the operator", async () => {
+  it("has the business's header and a Powered by HoundStack footer with the legal line", async () => {
     const t = TEMPLATES["weekly-digest"];
     const out = await html(t.component, { ...t.previewData, ...brand });
     expect(out).toContain(`src="${LOGO}"`);
     expect(out).toContain("3px solid #7c3aed");
     expect(out).toMatch(/Powered by(<!-- -->)?\s*<a[^>]*>HoundStack<\/a>/);
-    expect(out).toContain(OPERATOR_LINE);
+    expect(out).toContain(COMPANY.legalLine);
     expect(out).toContain("background-color:#5e845e");
     expect(out).toContain('href="mailto:support@houndstack.com"');
     expect(out).toContain("Settings → Emails");
@@ -225,7 +226,7 @@ describe("the weekly digest", () => {
 });
 
 describe("platform mail built by hand", () => {
-  it("the trial notice wears the HoundStack band and operator line, copy unchanged", async () => {
+  it("the trial notice wears the HoundStack band and company signature, copy unchanged", async () => {
     const { renderTrialNoticeHtml } = await import("@/lib/trial-expiry-emails.server");
     const out = renderTrialNoticeHtml({
       orgName: "Riverbend Pet Services",
@@ -235,7 +236,7 @@ describe("platform mail built by hand", () => {
     });
     expect(out).toContain("background-color:#142937");
     expect(out).toContain(WORDMARK);
-    expect(out).toContain(OPERATOR_LINE);
+    expect(out).toContain(COMPANY.legalLine);
     expect(out).toContain(
       "Sent by HoundStack · You are receiving this because your workspace is in a free trial.",
     );
@@ -243,12 +244,12 @@ describe("platform mail built by hand", () => {
     expect(out).toContain("Plans start at $79 a month with your first teammate included.");
   });
 
-  it("an announcement wears the HoundStack band and operator line", async () => {
+  it("an announcement wears the HoundStack band and company signature", async () => {
     const { renderAnnouncementHtml } = await import("@/lib/announcement-emails.server");
     const out = renderAnnouncementHtml("Scheduled maintenance", "Sunday 2am to 3am.", "info");
     expect(out).toContain("background-color:#142937");
     expect(out).toContain(WORDMARK);
-    expect(out).toContain(OPERATOR_LINE);
+    expect(out).toContain(COMPANY.legalLine);
     expect(out).toContain("Sent by HoundStack · Platform announcement");
     expect(out).toContain("Scheduled maintenance");
   });

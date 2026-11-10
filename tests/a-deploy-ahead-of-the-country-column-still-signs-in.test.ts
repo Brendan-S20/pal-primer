@@ -193,7 +193,8 @@ describe("updateWithCountryFallback", () => {
     expect(body).toMatch(
       /const \{ countryColumnMissing \} = await updateWithCountryFallback\(patch,/,
     );
-    expect(body).toMatch(/return \{ ok: true, countryColumnMissing \};/);
+    // Other fields may follow it (profilePhoneWarning, #787); this one stays.
+    expect(body).toMatch(/return \{ ok: true, countryColumnMissing(, \w+)* \};/);
     expect(body).not.toMatch(/updateOwnOrg\(supabase, orgId, patch\)/);
   });
 });

@@ -37,11 +37,16 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { BoundarySketch, formatArea, type PolygonGeoJSON } from "@/components/BoundarySketch";
 import { AddressAutocomplete, type ResolvedAddress } from "@/components/AddressAutocomplete";
+import { partsFromPick } from "@/lib/address/pick";
 import { Check, ChevronRight, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { getEmailSendStatus } from "@/lib/notifications.functions";
 import { reportQueuedSend } from "@/lib/send-report";
 import { useOrgToday } from "@/hooks/useOrgToday";
+import { getMyOrg } from "@/lib/org.functions";
+import { getEmailSettings } from "@/lib/email-settings.functions";
+import { WelcomeEmailOptIn } from "@/components/client-detail/WelcomeEmailOptIn";
+import { WELCOME_EMAIL_DEFAULT_CHECKED } from "@/lib/welcome-email";
 import { formatDay } from "@/lib/format";
 import { titleHead } from "@/lib/page-title";
 import {
@@ -60,10 +65,15 @@ import {
   serviceDaysPerWeek,
 } from "@/lib/weekday-set";
 import { defaultPlanWeekdays, planStartsSkipped, propertyHazardsFor } from "@/lib/new-client-plan";
-import { toastServerError } from "@/lib/server-outcome";
+import { serverErrorMessage } from "@/lib/server-outcome";
+import { createFailedMessage } from "@/lib/create-client-error";
+import { typedPriceCents } from "@/lib/typed-price";
 import { useFormDraft } from "@/hooks/useFormDraft";
+import { invalidateOnboardingStatus } from "@/hooks/useOnboardingStatus";
 import { DraftRestoredNotice } from "@/components/DraftRestoredNotice";
 import { newClientDraftForm } from "@/lib/form-drafts";
+import { needsANamedDog } from "@/lib/new-client-dogs";
+import { NeedsANamedDogAlert } from "@/components/NeedsANamedDogAlert";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -462,10 +472,58 @@ function NewClientWizardForm({
     leadBooksAGroom(leadServiceLine, lines);
   const [groomInstead, setGroomInstead] = useState(true);
   const booksGroom = groomLead && groomInstead;
-  const steps = newClientWizardSteps(petWaste).filter((s) => !(booksGroom && s === "Plan"));
+  // ── Which service (the catalog) ─────────────────────────────────────────
+  // A business that sells more than one thing picks it here; one that sells
+  // only pet waste removal has nothing to pick, sees no picker, and its plan
+  // takes the business's default on insert, exactly as before the catalog.
+  // Started from a lead, the service the lead asked for, when it is one of
+  // the business's; the plan form's picker (ServicesTab) is the same control.
+  const [serviceId, setServiceId] = useState<string>(prefill.serviceId ?? "");
+  // A business without pet waste is not offered (or started on) the seeded
+  // "Pet waste removal" it still has (RC3), and its one service is the plan's
+  // service even with no picker to show: a walker with one walk was quoted
+  // from a zone, as a cleanup.
+  const offersServicePicker = servicePickerOptions(orgServices, null, pickerLines).length > 1;
+  const chosenService =
+    offersServicePicker || (linesKnown && !petWaste)
+      ? (orgServices.find(
+          (x) => x.id === effectiveServiceId(serviceId, orgServices, pickerLines),
+        ) ?? null)
+      : null;
+  // #768: the line this client is being set up for, once a service is
+  // chosen (the picker on Property, or a lead's). A business that scoops and
+  // walks is asked for a yard outline, and the yard's hazards, only for a
+  // pet-waste client. Nothing chosen reads as the picker's default, which
+  // for a business that scoops is pet waste removal, so the yard stays.
+  const planLine = chosenService?.service_line ?? null;
+  // The early picker: a business that scoops AND sells something else says
+  // what the client is for before the Outline step, so the Outline step is
+  // only there when it is a pet-waste client. One state with the Plan step's
+  // picker, so a choice made here is the choice shown there.
+  const asksServiceEarly =
+    linesKnown && petWaste && offersServicePicker && lines.some((l) => l !== "pet_waste");
+  const steps = newClientWizardSteps(petWaste, planLine).filter(
+    (s) => !(booksGroom && s === "Plan"),
+  );
   // Clamped: if the answer arrives while somebody is on the last step, the
   // list can be one shorter than the index they were on.
   const current: NewClientStep = steps[Math.min(step, steps.length - 1)];
+  // When the list changes under somebody (the Outline step coming or going
+  // as the service changes), they stay on the step they were on, by name.
+  const stepsKey = steps.join("|");
+  const shownSteps = useRef<{ key: string; steps: readonly NewClientStep[] }>({
+    key: stepsKey,
+    steps,
+  });
+  useEffect(() => {
+    const before = shownSteps.current;
+    shownSteps.current = { key: stepsKey, steps };
+    if (before.key === stepsKey) return;
+    const was = before.steps[Math.min(step, before.steps.length - 1)];
+    const now = steps.indexOf(was);
+    if (now >= 0 && now !== step) setStep(now);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepsKey]);
   // Every step opened at the BOTTOM. Next and Back sit at the foot of the
   // card, the step is swapped in place, and the window keeps the scroll
   // offset the press was made at — so the new step started at its buttons
@@ -489,6 +547,24 @@ function NewClientWizardForm({
   const [accountType, setAccountType] = useState<"residential" | "commercial">("residential");
   const [primaryEmail, setPrimaryEmail] = useState(prefill.primaryEmail);
   const [primaryPhone, setPrimaryPhone] = useState(prefill.primaryPhone);
+  // Opt-in, never ticked for you, and not kept in the draft: a restored draft
+  // starts unticked too (onboarding audit 2026-11-09, D4).
+  const [sendWelcome, setSendWelcome] = useState(WELCOME_EMAIL_DEFAULT_CHECKED);
+  const orgFn = useServerFn(getMyOrg);
+  const { data: orgData } = useQuery({
+    queryKey: ["my-org"],
+    queryFn: () => orgFn(),
+    staleTime: 60_000,
+  });
+  // The owner's Welcome toggle (Settings, Emails). Off, the box is disabled
+  // and says why rather than promising a send the server will refuse.
+  const emailSettingsFn = useServerFn(getEmailSettings);
+  const { data: emailSettings } = useQuery({
+    queryKey: ["email-settings"],
+    queryFn: () => emailSettingsFn(),
+    staleTime: 60_000,
+  });
+  const welcomeTurnedOffInSettings = emailSettings?.notify_email_welcome === false;
   const [officeNote, setOfficeNote] = useState(prefill.officeNote);
 
   // property
@@ -534,16 +610,21 @@ function NewClientWizardForm({
   // geocode effect is guarded by `if (geo) return;`, so a pin left over from
   // the address the user has just corrected would be the pin they draw a
   // boundary on — for the wrong house, with no way to tell from the map.
+  //
+  // Every part, unconditionally (#783). This read `if (r.address.region)
+  // setRegion(...)`, which kept a typed state under a suggestion's city; the
+  // shared helper is the one place that decides what a pick replaces.
   function applyResolvedAddress(r: ResolvedAddress) {
-    setStreet(r.address.street);
-    setCity(r.address.city);
-    if (r.address.region) setRegion(r.address.region);
-    setPostalCode(r.address.postalCode);
-    if (r.address.latitude != null && r.address.longitude != null) {
+    const parts = partsFromPick(r.address);
+    setStreet(parts.street);
+    setCity(parts.city);
+    setRegion(parts.region);
+    setPostalCode(parts.postalCode);
+    if (parts.latitude != null && parts.longitude != null) {
       // A provider match is a better pin than the Outline step's Nominatim
       // lookup, and it saves the round trip: the effect there is a fallback
       // for hand-typed addresses now.
-      setGeo({ lat: r.address.latitude, lng: r.address.longitude });
+      setGeo({ lat: parts.latitude, lng: parts.longitude });
       setGeoStatus("ok");
     } else {
       setGeo(null);
@@ -601,6 +682,12 @@ function NewClientWizardForm({
   // one blank row, and wrong once a lead that said "3 dogs" opens it on three:
   // an owner who has not learned the names yet would have priced one dog.
   const dogCount = Math.max(1, dogs.length);
+  // But a residential client needs at least one of those rows NAMED: with
+  // none, nothing is saved as a dog while the plan bills for one, and the new
+  // client's Summary opened on "no dog is on file" (audit 2026-11-09, D2).
+  // Commercial / HOA may skip the step. lib/new-client-dogs; the server
+  // refuses the same thing.
+  const needsDog = needsANamedDog(accountType, dogs);
 
   // plan
   const [frequency, setFrequency] = useState<(typeof FREQS)[number]["value"]>(
@@ -639,24 +726,6 @@ function NewClientWizardForm({
   // on (R2-44), even after switching from Twice weekly to Weekly.
   const effectiveServiceDays = serviceDaysFor(serviceDays ?? [weekdayOf(startedOn)], frequency);
 
-  // ── Which service (the catalog) ─────────────────────────────────────────
-  // A business that sells more than one thing picks it here; one that sells
-  // only pet waste removal has nothing to pick, sees no picker, and its plan
-  // takes the business's default on insert, exactly as before the catalog.
-  // Started from a lead, the service the lead asked for, when it is one of
-  // the business's; the plan form's picker (ServicesTab) is the same control.
-  const [serviceId, setServiceId] = useState<string>(prefill.serviceId ?? "");
-  // A business without pet waste is not offered (or started on) the seeded
-  // "Pet waste removal" it still has (RC3), and its one service is the plan's
-  // service even with no picker to show: a walker with one walk was quoted
-  // from a zone, as a cleanup.
-  const offersServicePicker = servicePickerOptions(orgServices, null, pickerLines).length > 1;
-  const chosenService =
-    offersServicePicker || (linesKnown && !petWaste)
-      ? (orgServices.find(
-          (x) => x.id === effectiveServiceId(serviceId, orgServices, pickerLines),
-        ) ?? null)
-      : null;
   // A walk, a sit or a groom: priced from its service through the one rule
   // (servicePriceCents), never from a zone, and sold by the day of the week.
   const walkLike = !!chosenService && !isZonePriced(chosenService);
@@ -680,9 +749,25 @@ function NewClientWizardForm({
       dogCount,
       frequency: frequency === "one_time" ? "weekly" : frequency,
       boundaryAreaSqm: boundaryAreaSqm ?? undefined,
+      // The address's pin, when the picker or the Outline step found one: a
+      // drawn zone is matched by where the house is, not only by the ZIPs it
+      // lists. onboardClient prices the plan with the same pin, so what this
+      // step shows is what is booked (onboarding audit 2026-11-09, D1).
+      latitude: geo?.lat,
+      longitude: geo?.lng,
       ...(commercial ? { unitCount: unitsN, stationCount: stationsN } : {}),
     }),
-    [postalCode, accountType, dogCount, frequency, boundaryAreaSqm, commercial, unitsN, stationsN],
+    [
+      postalCode,
+      accountType,
+      dogCount,
+      frequency,
+      boundaryAreaSqm,
+      geo,
+      commercial,
+      unitsN,
+      stationsN,
+    ],
   );
 
   const quoteQ = useQuery({
@@ -707,12 +792,20 @@ function NewClientWizardForm({
       ? ((zoneQuote.recurringPriceCents as number | null) ?? null)
       : null;
 
+  // Booking, not pricing (#728): a dispatcher starts a plan at the set price,
+  // the one shown above, and the server refuses any other. Billing it in
+  // advance is a billing decision, which stays with whoever manages billing.
+  const { can: canPlan } = usePermissions();
+  const setsPrices = canPlan("manage_pricing");
+  const billsClients = canPlan("manage_client_billing");
+
   // No zone quote and nothing typed means no price, not $25. The old
   // fallback saved $25.00 for anyone who left the box empty, while the box
   // showed a grey placeholder that looked like a suggestion.
   const priceCents = (() => {
-    const override = parseFloat(priceOverride);
-    if (!isNaN(override) && override > 0) return Math.round(override * 100);
+    if (!setsPrices) return suggestedCents;
+    const override = typedPriceCents(priceOverride);
+    if (override != null) return override;
     if (suggestedCents != null) return suggestedCents;
     return null;
   })();
@@ -846,6 +939,12 @@ function NewClientWizardForm({
     reset: onDiscarded,
   });
 
+  // Why the last Create client did not finish, kept on the page under the
+  // button until the next try (#784). The toast alone was gone in four
+  // seconds, after which the wizard read exactly as if the press had done
+  // nothing: still open, button enabled, no client.
+  const [createError, setCreateError] = useState<string | null>(null);
+
   const mutation = useMutation({
     mutationFn: () =>
       onboardFn({
@@ -854,6 +953,7 @@ function NewClientWizardForm({
           accountType,
           primaryEmail: primaryEmail || undefined,
           primaryPhone: primaryPhone || undefined,
+          sendWelcome: sendWelcome && !welcomeTurnedOffInSettings && !!primaryEmail.trim(),
           street,
           city,
           region: region || undefined,
@@ -905,7 +1005,7 @@ function NewClientWizardForm({
                 dogCount: accountType === "residential" ? dogCount : undefined,
                 unitCount: accountType === "commercial" ? unitsN : undefined,
                 zoneId: zoneQuote ? (zoneQuote.zoneId as string) : undefined,
-                billingCadence,
+                billingCadence: billsClients ? billingCadence : "postpaid",
               },
           officeNote: officeNote.trim() || undefined,
           fromLeadId: fromLead?.id,
@@ -922,19 +1022,37 @@ function NewClientWizardForm({
       welcomeStatusHandle,
       welcomeTurnedOff,
       welcomeLink,
+      welcomeRequested,
       officeNoteSaved,
       leadLinked,
       firstCleanupInvoiced,
+      soloOwnerAssigned,
+      soloOwnerPutOnRoutes,
     }) => {
+      // A 200 with no client in it is not a client.
+      if (!id) {
+        const msg = createFailedMessage(null);
+        setCreateError(msg);
+        toast.error(msg);
+        return;
+      }
       draft.clear();
       const parts = ["Client created."];
       if (firstVisitOn) parts.push(`First visit ${formatDay(firstVisitOn)}.`);
+      // D13: say who the visits went to, and where that is changed.
+      if (soloOwnerAssigned > 0)
+        parts.push(
+          soloOwnerPutOnRoutes
+            ? "You're the only one on the team, so its visits are yours and you're now on routes. Invite a tech any time in Settings, Users & roles."
+            : "Its visits are on your route.",
+        );
       if (firstCleanupInvoiced) parts.push("First cleanup invoiced.");
       toast.success(parts.join(" "), { duration: 8000 });
       // "Welcome email sent" only once the provider has taken it; with email
       // off, "not sent" and the portal link to send by hand (#612). Quiet when
       // the owner turned welcome emails off in Settings: nothing is missing.
-      if (primaryEmail && !welcomeTurnedOff) {
+      // Quiet too when nobody ticked "Email them a welcome": nothing was asked.
+      if (welcomeRequested && primaryEmail && !welcomeTurnedOff) {
         void reportQueuedSend(
           {
             ok: welcomeEmailed,
@@ -955,6 +1073,9 @@ function NewClientWizardForm({
         toast.error("The lead could not be marked converted. Mark it from the Leads page.");
       qc.invalidateQueries({ queryKey: ["clients"] });
       qc.invalidateQueries({ queryKey: ["my-org"] });
+      // The first client finishes a setup step; the banner on the page this
+      // navigates to must say so (D9).
+      void invalidateOnboardingStatus(qc);
       if (fromLead) qc.invalidateQueries({ queryKey: ["leads"] });
       if (fromQuote) {
         // Best effort: the client exists either way.
@@ -987,13 +1108,19 @@ function NewClientWizardForm({
     // A role the subscriptions policy refuses (a dispatcher at the plan step)
     // gets the policy's own words back, which name a table and not a reason
     // (#662).
-    onError: (e) =>
-      toastServerError(e, {
+    onError: (e) => {
+      const opts = {
         fallback: "The client could not be saved. Try again.",
         refused: planSkipped
           ? undefined
-          : 'Your role is not allowed to set up a subscription. Tick "Skip subscription for now" to save the client without one, and ask the owner to add it.',
-      }),
+          : 'Your role is not allowed to set up this subscription. Tick "Skip subscription for now" to save the client without one, and ask the owner to add it.',
+      };
+      // One sentence, in the toast and under the button: the server's reason,
+      // or, when no answer came, a word to check before pressing again.
+      const msg = createFailedMessage(e, serverErrorMessage(e, opts));
+      toast.error(msg);
+      setCreateError(msg);
+    },
   });
 
   // The lead's email already belongs to a client. The old one-tap conversion
@@ -1015,7 +1142,7 @@ function NewClientWizardForm({
     // (routing, zone pricing, geocoding all need it). Finding #13.
     if (current === "Property") return !!(street && city && region && postalCode);
     if (current === "Outline") return true; // outline sketch optional
-    if (current === "Dogs") return true;
+    if (current === "Dogs") return !needsDog;
     return true;
   })();
 
@@ -1235,6 +1362,22 @@ function NewClientWizardForm({
         {/* STEP 1 — Property */}
         {current === "Property" && (
           <div className="space-y-5">
+            {asksServiceEarly && (
+              <div className="space-y-1" data-new-client-service-early>
+                <ServicePicker
+                  id="nc-service-early"
+                  value={serviceId}
+                  currentId={null}
+                  services={orgServices}
+                  isLoading={servicesLoading}
+                  onChange={setServiceId}
+                  lines={pickerLines}
+                />
+                <p className="text-xs text-muted-foreground">
+                  What this client is for. A yard outline is only asked for pet waste removal.
+                </p>
+              </div>
+            )}
             {attempted && !(street && city && region && postalCode) && (
               <div
                 role="alert"
@@ -1413,7 +1556,7 @@ function NewClientWizardForm({
               <div className="mt-2 grid gap-1 text-sm sm:grid-cols-2">
                 {/* The yard's hazards are asked of a business that scoops
                     (F-06); propertyHazardsFor keeps one that is ticked. */}
-                {propertyHazardsFor(lines, hz).map(({ key: k, label }) => (
+                {propertyHazardsFor(lines, hz, planLine).map(({ key: k, label }) => (
                   <label key={k} className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -1477,17 +1620,23 @@ function NewClientWizardForm({
         {/* STEP 3 — Dogs */}
         {current === "Dogs" && (
           <div className="space-y-4">
-            {accountType === "commercial" && (
+            {accountType === "commercial" ? (
               <p className="text-sm text-muted-foreground">
                 Skip if this is a commercial/HOA account. Otherwise add any resident dogs.
               </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Add at least one {sitting ? "pet" : "dog"} by name. A residential client needs one
+                on file before a plan can bill for it.
+              </p>
             )}
+            {attempted && needsDog && <NeedsANamedDogAlert pets={sitting} />}
             {fromLead && (fromLead.dogCount ?? 0) > 0 && (
               <p className="text-sm text-muted-foreground">
                 The lead said {fromLead.dogCount} dog{fromLead.dogCount === 1 ? "" : "s"}, so there
-                {dogs.length === 1 ? " is a row" : ` are ${dogs.length} rows`} below. Name them now
-                or later: the plan is priced for one dog per row, and a row without a name is not
-                saved as a dog.
+                {dogs.length === 1 ? " is a row" : ` are ${dogs.length} rows`} below. Name at least
+                one now; the rest can wait. The plan is priced for one dog per row, and a row
+                without a name is not saved as a dog.
               </p>
             )}
             {dogs.map((d, i) => (
@@ -1497,6 +1646,10 @@ function NewClientWizardForm({
                     <Label className="text-xs">Name</Label>
                     <Input
                       value={d.name}
+                      aria-invalid={attempted && needsDog && i === 0 ? true : undefined}
+                      aria-describedby={
+                        attempted && needsDog && i === 0 ? "needs-a-named-dog" : undefined
+                      }
                       onChange={(e) => {
                         const next = [...dogs];
                         next[i] = { ...next[i], name: e.target.value };
@@ -1626,12 +1779,13 @@ function NewClientWizardForm({
                   <div className="space-y-2">
                     <Label>Billing</Label>
                     <select
-                      value={billingCadence}
+                      value={billsClients ? billingCadence : "postpaid"}
                       onChange={(e) => setBillingCadence(e.target.value as any)}
+                      disabled={!billsClients}
                       className="h-10 w-full rounded-md border bg-background px-3 text-sm"
                     >
                       <option value="postpaid">Bill after each visit</option>
-                      <option value="prepaid">Prepaid credits</option>
+                      {billsClients && <option value="prepaid">Prepaid credits</option>}
                     </select>
                   </div>
                   {accountType === "commercial" && (
@@ -1761,7 +1915,9 @@ function NewClientWizardForm({
                           quoteQ.data &&
                           !("quote" in (quoteQ.data as any)) && (
                             <div className="text-sm text-amber-600">
-                              No zone matches ZIP {postalCode}. Set price manually below.
+                              {setsPrices
+                                ? `No zone matches ZIP ${postalCode}. Set price manually below.`
+                                : `No zone matches ZIP ${postalCode}, so there is no set price.`}
                             </div>
                           )}
                         {walkLike && serviceCents == null && (
@@ -1802,29 +1958,49 @@ function NewClientWizardForm({
                   </div>
                 )}
 
-                <div className="space-y-2">
-                  <Label htmlFor="po">
-                    {suggestedCents != null ? "Price per visit (override)" : "Price per visit"}
-                  </Label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">$</span>
-                    <Input
-                      id="po"
-                      inputMode="decimal"
-                      placeholder={
-                        suggestedCents != null ? (suggestedCents / 100).toFixed(2) : "Enter a price"
-                      }
-                      value={priceOverride}
-                      onChange={(e) => setPriceOverride(e.target.value)}
-                      className="max-w-[160px]"
-                    />
-                    {priceCents != null && (
-                      <span className="text-xs text-muted-foreground">
-                        Final: <strong>{money(priceCents)}</strong> / visit
-                      </span>
+                {!setsPrices ? (
+                  <div className="space-y-1 text-sm">
+                    {suggestedCents != null ? (
+                      <p>
+                        Price per visit: <strong>{money(suggestedCents)}</strong>, the set price.
+                        Only an owner or office manager can change it.
+                      </p>
+                    ) : (
+                      !quoteQ.isFetching && (
+                        <p role="alert" className="text-amber-600">
+                          There is no set price for this plan. Tick "Skip subscription for now" to
+                          save the client, and ask an owner or office manager to add the plan.
+                        </p>
+                      )
                     )}
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="po">
+                      {suggestedCents != null ? "Price per visit (override)" : "Price per visit"}
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">$</span>
+                      <Input
+                        id="po"
+                        inputMode="decimal"
+                        placeholder={
+                          suggestedCents != null
+                            ? (suggestedCents / 100).toFixed(2)
+                            : "Enter a price"
+                        }
+                        value={priceOverride}
+                        onChange={(e) => setPriceOverride(e.target.value)}
+                        className="max-w-[160px]"
+                      />
+                      {priceCents != null && (
+                        <span className="text-xs text-muted-foreground">
+                          Final: <strong>{money(priceCents)}</strong> / visit
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {offersFirstCleanup && fcPricing && (
                   <div className="space-y-3 rounded-md border p-4">
@@ -1895,6 +2071,16 @@ function NewClientWizardForm({
           </div>
         )}
 
+        {step === steps.length - 1 && primaryEmail.trim() && (
+          <WelcomeEmailOptIn
+            email={primaryEmail.trim()}
+            orgName={(orgData?.organization as { name?: string } | null | undefined)?.name}
+            checked={sendWelcome}
+            onCheckedChange={setSendWelcome}
+            turnedOffInSettings={welcomeTurnedOffInSettings}
+          />
+        )}
+
         {/* Nav */}
         <div className="mt-6 flex items-center justify-between border-t pt-4">
           <Button
@@ -1927,7 +2113,18 @@ function NewClientWizardForm({
               <Button
                 type="button"
                 disabled={mutation.isPending || linkMutation.isPending || needsPrice || needsDays}
-                onClick={() => mutation.mutate()}
+                onClick={() => {
+                  setCreateError(null);
+                  // Not disabled: a groom lead's last step IS Dogs, and a
+                  // restored draft can open on Plan with none named. Either
+                  // way the press lands on Dogs with the inline alert.
+                  if (needsDog) {
+                    setAttempted(true);
+                    setStep(steps.indexOf("Dogs"));
+                    return;
+                  }
+                  mutation.mutate();
+                }}
               >
                 {mutation.isPending
                   ? "Creating…"
@@ -1940,6 +2137,20 @@ function NewClientWizardForm({
               )}
               {!needsPrice && needsDays && (
                 <p className="text-xs text-muted-foreground">Choose at least one day first.</p>
+              )}
+              {!needsPrice && !needsDays && needsDog && current !== "Dogs" && (
+                <p className="text-xs text-muted-foreground">
+                  Add a {sitting ? "pet" : "dog"} on the {sitting ? "Pets" : "Dogs"} step first.
+                </p>
+              )}
+              {createError && !mutation.isPending && (
+                <p
+                  role="alert"
+                  data-testid="create-client-error"
+                  className="max-w-md break-words text-end text-sm text-destructive"
+                >
+                  {createError}
+                </p>
               )}
             </div>
           )}

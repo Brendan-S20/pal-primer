@@ -771,7 +771,12 @@ const src = (f: string) => readFileSync(join(ROOT, f), "utf8");
 /** The body of one exported server function. */
 function fn(file: string, name: string) {
   const s = src(file);
-  const at = s.indexOf(`export const ${name} =`);
+  // A module-private helper the exported handlers delegate to counts too
+  // (#730: the portal's reschedule and skip share requestVisitChange).
+  const at =
+    [`export const ${name} =`, `async function ${name}(`]
+      .map((k) => s.indexOf(k))
+      .find((i) => i > -1) ?? -1;
   expect(at, `${name} in ${file}`).toBeGreaterThan(-1);
   const rest = s.slice(at + 1);
   const end = rest.indexOf("\nexport ");
@@ -780,8 +785,8 @@ function fn(file: string, name: string) {
 
 describe("every path that changes a tech's day is watched", () => {
   it.each([
-    ["src/lib/portal.functions.ts", "portalRescheduleVisit", "portal_reschedule_visit"],
-    ["src/lib/portal.functions.ts", "portalRequestSkip", "portal_request_skip"],
+    // #730: both portal changes go through one RPC, in one helper.
+    ["src/lib/portal.functions.ts", "requestVisitChange", "portal_request_visit_change"],
     ["src/lib/portal.functions.ts", "portalRequestVacationHold", "portal_request_vacation_hold"],
     ["src/lib/visits.functions.ts", "completeVisitFromOffice", "office_complete_visit"],
   ])("%s %s watches before %s and finishes after it", (file, name, rpc) => {
@@ -798,12 +803,16 @@ describe("every path that changes a tech's day is watched", () => {
     expect(pushRoutes).toBeGreaterThan(write);
   });
 
+  it("the portal's reschedule and skip both go through the watched helper", () => {
+    for (const name of ["portalRescheduleVisit", "portalRequestSkip"]) {
+      expect(fn("src/lib/portal.functions.ts", name), name).toMatch(
+        /return requestVisitChange\(session, data\.token, \{/,
+      );
+    }
+  });
+
   it("a customer is nobody on the staff: the portal's watches name no actor and the session's org", () => {
-    for (const name of [
-      "portalRescheduleVisit",
-      "portalRequestSkip",
-      "portalRequestVacationHold",
-    ]) {
+    for (const name of ["requestVisitChange", "portalRequestVacationHold"]) {
       const body = fn("src/lib/portal.functions.ts", name);
       expect(body, name).toMatch(
         /startRouteWatch\(\{\s*actorUserId: null,\s*orgId: session\.organizationId,/,

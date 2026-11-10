@@ -17,6 +17,42 @@
  * Arabic writes six forms for each, Chinese one — see TranslationsWithPlurals.
  */
 const en = {
+  petSafety: {
+    open: "Safety log",
+    title: "Safety log",
+    description: "Safety notes and incidents for this pet, with when, who reported it and any photo. Entries cannot be edited or deleted; add a new one to correct a mistake.",
+    entryType: "Entry type",
+    type: {
+      incident: "Incident",
+      note: "Safety note",
+    },
+    kind: {
+      bite: "Bite",
+      scratch: "Scratch",
+      aggression: "Aggression",
+      escape: "Escape or slipped lead",
+      injury_to_pet: "Pet was hurt",
+      injury_to_person: "Person was hurt",
+      illness: "Illness",
+      property_damage: "Property damage",
+      other: "Other",
+    },
+    kindLabel: "What kind",
+    when: "When it happened",
+    whatHappened: "What happened",
+    note: "Note",
+    photo: "Photo (optional)",
+    photoAlt: "Incident photo",
+    save: "Add to log",
+    saved: "Added to the safety log",
+    notSaved: "Not saved. Try again.",
+    loading: "Loading…",
+    loadFailed: "The safety log could not be loaded.",
+    empty: "Nothing logged for this pet yet.",
+    reportedBy: "Reported by",
+    incidentCount_one: "{{count}} incident",
+    incidentCount_other: "{{count}} incidents",
+  },
   vaccineStatus: {
     ok: "Up to date",
     expiring: "Expires soon",
@@ -52,6 +88,19 @@ const en = {
     saveNotes: "Save notes",
     notesSaved: "Groom notes saved",
     history: "Last grooms",
+    addonsTitle: "Add-ons on this groom",
+    addonsHint: "Only add-ons marked done are billed.",
+    addonFallback: "Add-on",
+    addonQuantity: "{{name}} ×{{count}}",
+    addonDone: "Done",
+    addonNotDone: "Not done",
+    addonMarkedDone: "{{name}} marked done",
+    addonMarkedNotDone: "{{name}} marked not done. It won't be billed.",
+    vanLabel: "Van hookups:",
+    vanTitle: "Van hookups",
+    vanPower: "Power available",
+    vanWater: "Water available",
+    vanNone: "No power or water on file. Bring your own.",
   },
   groomRequest: {
     asked: "Asked for {{service}} for {{pet}} on {{day}}, {{window}}.",
@@ -202,6 +251,9 @@ const en = {
     previewReadOnly: "Preview · read-only",
     noTechnicians: "No active technicians in your organization yet.",
     pickTechnician: "Pick a technician above to preview their day.",
+    selectTrainer: "(Select trainer)",
+    noTrainers: "No active trainers in your organization yet.",
+    pickTrainer: "Pick a trainer above to preview their day.",
     previewNothingScheduled: "{{name}} has nothing scheduled on {{day}}.",
     viewMySchedule: "View my schedule",
     myRoute: "My route",
@@ -371,6 +423,15 @@ const en = {
   /** What kind of work a stop is, by service line (services, phase 2). The
    *  business's own name for the service is its text and is not translated;
    *  this is the line it belongs to. */
+  role: {
+    owner: "Owner",
+    office_manager: "Office manager",
+    dispatcher: "Dispatcher",
+    tech: "Technician",
+    trainer: "Trainer",
+    platform_admin: "Platform admin",
+    other: "Team member",
+  },
   serviceLine: {
     pet_waste: "Pet waste removal",
     dog_walking: "Dog walking",
@@ -568,6 +629,8 @@ const en = {
     clientInfo: "Client info",
     started: "Started",
     startQueued: "Queued. Starts when back online",
+    vaccineStartWarn: "Started. Missing or expired vaccine: {{pets}}",
+    vaccineStartBlocked: "Not started. A required vaccine is missing or expired, and this business does not start a visit until it is updated. Ask the office.",
     completed: "Completed",
     completedWithNotices: "Completed. Client notices: {{notices}}.",
     completedWithNoticesPending:
@@ -856,7 +919,10 @@ const en = {
     viewAccount: "View and edit your account",
     expandMenu: "Show menu labels",
     collapseMenu: "Hide menu labels",
+    showAllMenus: "Show all menus",
+    hideAllMenus: "Show fewer menus",
     group: {
+      "Get started": "Get started",
       Overview: "Overview",
       Operations: "Operations",
       Field: "Field",
@@ -866,6 +932,7 @@ const en = {
       Platform: "Platform",
     },
     item: {
+      setup: "Guided setup",
       dashboard: "Dashboard",
       inbox: "Inbox",
       leads: "Leads",
@@ -1227,6 +1294,11 @@ const en = {
     history: "Earlier lessons",
     historyForDog: "Earlier lessons for <dog>{{dog}}</dog>",
     historyEmpty: "No earlier lessons recorded.",
+    whichDog: "Which dog",
+    chooseDogFirst: "Choose the dog before you record anything. Each dog keeps its own progress.",
+    skillProgress: "Skills over time",
+    skillProgressForDog: "<dog>{{dog}}</dog>'s skills over time",
+    skillTrendLabel: "{{skill}}: scores from oldest to latest",
     lessonUsesSession: "This lesson uses a session from the package.",
     lessonGivenBack: "This lesson does not use a session.",
     giveSessionBack: "Give the session back",
@@ -1256,6 +1328,9 @@ const en = {
     chooseDog: "Choose a dog",
     dogRequiredHint: "This household has more than one dog. Progress and homework are kept per dog.",
     shareProgress: "Share lesson notes and homework with clients",
+    seriesSkipClosed: "New lesson series skip holidays and closed days",
+    seriesSkipClosedHint:
+      "A weekly series books no lesson on a holiday or blackout date. Each series can change this when it is created or edited.",
     shareProgressHint:
       "Clients see each lesson's note and homework on the Training page of their portal. Scores, dates and sessions left show either way.",
   },
@@ -1270,6 +1345,18 @@ const en = {
     checkAgain: "Check again",
     couldNotCheck: "Couldn't check right now. Try again in a moment.",
     stillOff: "Still turned off. Ask the owner to reactivate you.",
+  },
+  /** Settings > Services, pet sitting: the nightly stay-summary catch-up
+   *  (#747, migration 20261109170000). */
+  staySummary: {
+    title: "Stay summaries",
+    description:
+      "When a stay's last visit is skipped or missed, the client still gets the end-of-stay summary the next night.",
+    catchUpLabel: "Send summaries for stays that ended before you turned this on (last 7 days)",
+    catchUpHelp:
+      "Off: only stays that end from now on. A summary that was already sent is never sent again.",
+    saved: "Stay summary setting saved",
+    onlyOwner: "Only an owner or office manager can change this.",
   },
 };
 

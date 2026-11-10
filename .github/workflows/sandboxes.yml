@@ -24,10 +24,14 @@ name: Sandboxes
 # Both jobs are minutes slower than the whole of `verify`, and both need
 # software the runner may not have (Docker, the Supabase CLI, a browser). Tying
 # PR feedback to them would make the common case wait on the rare one. So this
-# runs on main and on demand, and reports its prerequisites loudly instead of
-# dying on a confusing ENOENT three steps in — the same shape as the `Find
+# runs on main, on demand, on a batch/* branch through batch.yml, and on a
+# pull request only once it is out of draft. It reports its prerequisites
+# loudly instead of dying on a confusing ENOENT three steps in — the same shape as the `Find
 # psql` step in ci.yml, and for the same reason.
 on:
+  # By hand, and from batch.yml on a batch/* branch: on a dispatch both heavy
+  # jobs run unconditionally (the gate below says so), which is what a batch
+  # of several approved PRs merged together needs exactly once.
   workflow_dispatch:
   push:
     branches: [main]
@@ -75,8 +79,28 @@ on:
   # The tests/support files are what the DB tests import. #683 changed only
   # select-embeds.ts, which decides every query every-select-embed-resolves
   # sends; without them the fix to that test would not have run it.
+  #
+  # src/** routes to the browser jobs only (Four widths + the one-off cases),
+  # never the database job. Product asked for it so a UI change in src/ gets
+  # browser coverage on its PR without someone dispatching viewports=true by
+  # hand. The gate in `changes` still keeps a src-only PR off the Docker replay.
+  #
+  # Build-config files belong here for the same reason as playwright.config.ts:
+  # they change how the app is built and how every browser job starts, without
+  # necessarily touching src/ or a spec. #815 changed vite.config.ts and this
+  # filter left it out, so Four widths and the one-off cases never started on
+  # that PR and had to be dispatched by hand. There is no postcss.config or
+  # tailwind.config in the repo; Tailwind is wired through the Vite plugin in
+  # vite.config.ts.
   pull_request:
     paths:
+      - "src/**"
+      - "vite.config.ts"
+      - "vitest.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "bun.lock"
+      - "tsconfig*.json"
       - "supabase/migrations/**"
       - "supabase/proofs/**"
       - "tests/integration/*.db.test.ts"
@@ -90,6 +114,14 @@ on:
       - "tests/viewports/**"
       - "playwright.config.ts"
       - ".github/workflows/sandboxes.yml"
+    # ── DRAFT, THEN READY ───────────────────────────────────────────────────
+    #
+    # The three defaults plus ready_for_review, so marking a PR "Ready for
+    # review" starts this workflow even with no new push. On a DRAFT the gate
+    # job below still runs and says what the change would affect, then answers
+    # false for both heavy jobs; from Ready on, every push runs them as it
+    # always did. Merging needs Ready, so a merge is never gated on a draft run.
+    types: [opened, synchronize, reopened, ready_for_review]
 
 # ── CANCEL SUPERSEDED PULL-REQUEST RUNS, NEVER main ─────────────────────
 #
@@ -173,6 +205,7 @@ jobs:
         shell: bash
         env:
           EVENT: ${{ github.event_name }}
+          DRAFT: ${{ github.event.pull_request.draft }}
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
@@ -216,10 +249,26 @@ jobs:
               tests/support/select-embeds.ts|tests/support/withheld-columns.ts) database=true ;;
               tests/e2e/*|playwright.e2e.config.ts)        database=true ;;
               tests/viewports/*|playwright.config.ts)      viewports=true ;;
+              # App source: the browser jobs only, never the database replay.
+              src/*)                                       viewports=true ;;
+              # Build config changes how the app is built for every browser
+              # job, so it routes to the viewports jobs only, like src/.
+              vite.config.ts|vitest.config.ts)             viewports=true ;;
+              package.json|package-lock.json|bun.lock)     viewports=true ;;
+              tsconfig*.json)                              viewports=true ;;
               # The workflow itself changes what both jobs DO, so it runs both.
               .github/workflows/sandboxes.yml)             database=true; viewports=true ;;
             esac
           done <<< "$changed"
+
+          # A draft gets the answer, not the run. Both jobs are reported as
+          # what they WOULD be, so the log says what Ready for review will
+          # start, and then both are switched off until it is pressed.
+          if [ "$DRAFT" = "true" ]; then
+            echo "draft pull request: would run database=$database, viewports=$viewports once marked Ready for review; neither runs now."
+            database=false
+            viewports=false
+          fi
 
           for v in "$database" "$viewports"; do
             case "$v" in
@@ -273,6 +322,48 @@ jobs:
           # does need the cache.
           cache: ${{ (vars.UNIX_RUNNER || vars.CI_RUNNER) == '' && 'npm' || '' }}
       - run: npm ci
+
+      # ── ON A GITHUB-HOSTED LINUX RUNNER, BRING WHAT THE MAC ALREADY HAS ─
+      #
+      # The Mac has Docker Desktop and a brew-installed Supabase CLI, and the
+      # check below was written for it. On 2026-11-07 UNIX_RUNNER moved to
+      # ubuntu-latest while the Mac was offline, and every run failed in that
+      # check with "Missing on this runner: supabase" (runs 42379608839,
+      # 41779015531, 41779020096): hosted Ubuntu has Docker running but no
+      # Supabase CLI. These two steps run on hosted Linux ONLY, so the Mac's
+      # preinstalled path and the refusal on Windows are both untouched, and
+      # the check below still runs everywhere and still decides.
+      #
+      # `latest` for the same reason backup.yml gives: the local stack must be
+      # at least as new as what config.toml is written for (#720).
+      - name: Install the Supabase CLI (GitHub-hosted Linux only)
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # The 15 GiB guard below is NOT lowered for hosted runners: a cold
+      # start really is the whole Supabase stack. A hosted image ships with
+      # toolchains this job never touches (.NET, Android SDK, GHC, CodeQL),
+      # and removing them is the room. Only when short, so a roomy image
+      # pays nothing; and psql, which the proofs and the E2E harness call,
+      # is installed if a future image drops it.
+      - name: Make room and fill gaps (GitHub-hosted Linux only)
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
+        run: |
+          avail_kb=$(df -Pk . | awk 'NR==2 {print $4}')
+          echo "$((avail_kb / 1048576)) GiB free before cleanup"
+          if [ "$avail_kb" -lt 15728640 ]; then
+            sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+              /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/share/swift
+            sudo docker image prune --all --force >/dev/null || true
+            avail_kb=$(df -Pk . | awk 'NR==2 {print $4}')
+            echo "$((avail_kb / 1048576)) GiB free after removing unused toolchains"
+          fi
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+          fi
+          psql --version
 
       - name: Find Docker and the Supabase CLI
         id: prereq
@@ -372,7 +463,12 @@ jobs:
             if [ "${st:-0}" -gt 0 ]; then
               pct=$(awk -v t="$st" -v f="$sf" 'BEGIN{printf "%d", (t-f)*100/t}')
               echo "swap ${pct}% used, load ${load1} on ${cores} cores"
-              [ "$pct" -ge 50 ] && echo "::warning::Swap is ${pct}% full on this runner, load ${load1} on ${cores} cores. Treat timeouts and SIGBUS here as suspect and re-run once. See docs/owner-actions-before-submission.md §12."
+              # `if`, not `[ ] && echo`: as the step's last command the
+              # latter exits 1 whenever swap is UNDER 50%, failing a check
+              # that is meant only to warn (first hit on hosted Linux).
+              if [ "$pct" -ge 50 ]; then
+                echo "::warning::Swap is ${pct}% full on this runner, load ${load1} on ${cores} cores. Treat timeouts and SIGBUS here as suspect and re-run once. See docs/owner-actions-before-submission.md §12."
+              fi
             else
               echo "no swap configured; load ${load1} on ${cores} cores"
             fi

@@ -108,6 +108,11 @@ export async function requireOrgStripeAccount(
   orgId: string,
   opts: { audience?: "staff" | "customer" } = {},
 ): Promise<OrgStripeAccount> {
+  // A locked account (trial over with no plan, or a plan that has ended)
+  // takes no payments until the owner subscribes. Checked before the account
+  // is even looked up, so every charge path refuses the same way.
+  const { refuseChargesIfLocked } = await import("@/lib/account-lock.server");
+  await refuseChargesIfLocked(orgId, { audience: opts.audience });
   const acct = await resolveOrgStripeAccount(orgId);
   if (opts.audience === "customer") {
     if (!acct || !acct.chargesEnabled) throw new Error(CUSTOMER_CARDS_UNAVAILABLE);

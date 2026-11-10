@@ -9,12 +9,9 @@ import { useServerFn } from "@tanstack/react-start";
 import { Loader2, MapPin } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
-import {
-  addressSearchStatus,
-  autocompleteAddress,
-  resolveAddress,
-} from "@/lib/address.functions";
+import { addressSearchStatus, autocompleteAddress, resolveAddress } from "@/lib/address.functions";
 import type { AddressDetails } from "@/lib/address/provider.server";
+import { enterPicks, pickOutcome, searchQuery } from "@/lib/address/pick";
 
 export interface ResolvedAddress {
   address: AddressDetails;
@@ -120,6 +117,15 @@ export function AddressAutocomplete({
   >([]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
+  // Was the highlighted row reached with the arrow keys? Only then does
+  // Enter pick it (see enterPicks).
+  const activeByKeyboard = useRef(false);
+  // The field's text as of the latest render, for telling whether the person
+  // kept typing while a pick was being resolved.
+  const latestValue = useRef(value);
+  latestValue.current = value;
+  // A list that arrives after focus has left would open over the next field.
+  const focused = useRef(false);
   const [searching, setSearching] = useState(false);
   const [resolving, setResolving] = useState(false);
   // One billing session per focus->select cycle.
@@ -152,7 +158,8 @@ export function AddressAutocomplete({
     onChangeText(text);
     if (!enabled) return;
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    if (text.trim().length < MIN_CHARS) {
+    const query = searchQuery(text);
+    if (query.length < MIN_CHARS) {
       // Invalidate any in-flight request so its late response can't reopen
       // the list with suggestions for the longer, now-deleted query.
       requestSeq.current++;
@@ -166,12 +173,13 @@ export function AddressAutocomplete({
       setSearching(true);
       try {
         const r = await autocompleteFn({
-          data: { query: text.trim(), sessionToken: ensureSession() },
+          data: { query, sessionToken: ensureSession() },
         });
         if (seq !== requestSeq.current) return; // stale response
         setSuggestions(r.suggestions ?? []);
-        setOpen((r.suggestions ?? []).length > 0);
+        setOpen(focused.current && (r.suggestions ?? []).length > 0);
         setActive(-1);
+        activeByKeyboard.current = false;
       } catch {
         if (seq === requestSeq.current) {
           setSuggestions([]);
@@ -183,7 +191,7 @@ export function AddressAutocomplete({
     }, DEBOUNCE_MS);
   }
 
-  async function select(s: { id: string; mainText: string }) {
+  async function select(s: { id: string; mainText: string; secondaryText: string }) {
     // Kill the pending debounce and any in-flight search: a keystroke less
     // than 300ms before the click must not reopen the list (or bill a whole
     // new Google session) after the form is already filled.
@@ -192,16 +200,35 @@ export function AddressAutocomplete({
     setSearching(false);
     setOpen(false);
     setResolving(true);
+    const textAtPick = latestValue.current;
+    let resolved: ResolvedAddress | null = null;
     try {
-      const r = await resolveFn({
-        data: { placeId: s.id, sessionToken: ensureSession() },
-      });
+      resolved = (await resolveFn({
+        // The row itself goes too: when Google's place has no house-number
+        // component, the street line comes from what was picked (#805).
+        data: {
+          placeId: s.id,
+          sessionToken: ensureSession(),
+          mainText: s.mainText,
+          secondaryText: s.secondaryText,
+        },
+      })) as ResolvedAddress;
       sessionToken.current = ""; // session ends at details
-      onResolved(r as ResolvedAddress);
     } catch (e) {
-      // Details failed: keep whatever text is typed; manual entry still works.
-      onChangeText(s.mainText);
       console.warn("address resolve failed", e);
+    }
+    try {
+      // All or nothing (#783, lib/address/pick.ts). A pick replaces every
+      // part or none: a failed or partial match, or one that lands after the
+      // person kept typing, leaves the typed text exactly as typed. This used
+      // to write the suggestion's street line over it on failure, leaving the
+      // typed city and ZIP beside a street from somewhere else.
+      const outcome = pickOutcome({
+        details: resolved?.address ?? null,
+        textAtPick,
+        textNow: latestValue.current,
+      });
+      if (outcome.kind === "replace" && resolved) onResolved(resolved);
     } finally {
       setResolving(false);
     }
@@ -211,12 +238,14 @@ export function AddressAutocomplete({
     if (!open || suggestions.length === 0) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
+      activeByKeyboard.current = true;
       setActive((a) => (a + 1) % suggestions.length);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
+      activeByKeyboard.current = true;
       setActive((a) => (a <= 0 ? suggestions.length - 1 : a - 1));
     } else if (e.key === "Enter") {
-      if (active >= 0) {
+      if (enterPicks({ active, activeByKeyboard: activeByKeyboard.current })) {
         e.preventDefault();
         void select(suggestions[active]);
       }
@@ -248,10 +277,21 @@ export function AddressAutocomplete({
           aria-invalid={ariaInvalid}
           onChange={(e) => handleInput(e.target.value)}
           onKeyDown={onKeyDown}
+          onFocus={() => {
+            focused.current = true;
+          }}
           onBlur={() => {
+            focused.current = false;
             // Abandoned search: end the billing session so the next search
             // starts a fresh token instead of riding an expired one.
             if (!resolving) sessionToken.current = "";
+            // Close when focus leaves (#783). The list is absolutely placed
+            // over the fields below — City, State, ZIP on the new-client form
+            // — and Tab used to leave it open there, so a tap meant for the
+            // ZIP box picked a far-away suggestion instead. Choosing a row
+            // does not blur: its mousedown is prevented.
+            setOpen(false);
+            setActive(-1);
           }}
           placeholder={placeholder ?? (enabled ? t("address.placeholder") : undefined)}
           required={required}
@@ -283,7 +323,10 @@ export function AddressAutocomplete({
               id={`${listId}-${i}`}
               role="option"
               aria-selected={i === active}
-              onMouseEnter={() => setActive(i)}
+              onMouseEnter={() => {
+                activeByKeyboard.current = false;
+                setActive(i);
+              }}
               onMouseDown={(e) => {
                 e.preventDefault();
                 void select(s);

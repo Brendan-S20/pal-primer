@@ -24,7 +24,9 @@ name: iOS launch
 # On a pull request or a push to main that touches the native project, the
 # web bundle's native config, or this check. Weekly as well, because the
 # fault this exists for arrives with a NEW Xcode on an unchanged repo, and a
-# path filter cannot see that. And by hand.
+# path filter cannot see that. And by hand, which batch.yml does on a batch/*
+# branch whose diff against main touches the paths below. Not on a DRAFT
+# pull request: the run starts when the PR is marked Ready for review.
 #
 # ── WHERE ───────────────────────────────────────────────────────────────────
 #
@@ -47,6 +49,10 @@ on:
       - "package-lock.json"
       - "scripts/ios-launch-smoke.sh"
       - ".github/workflows/ios-launch.yml"
+    # The defaults plus ready_for_review: a DRAFT pull request does not start
+    # the Mac (see the job's `if:`); marking it Ready for review does, and so
+    # does every later push while it is not a draft.
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
     paths:
@@ -71,6 +77,9 @@ permissions:
 jobs:
   launch:
     name: The app launches on the newest Xcode
+    # Skipped (which reads as passing) on a draft; the ready_for_review run is
+    # the one a merge is gated on.
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ${{ fromJSON(vars.IOS_LAUNCH_RUNNER_JSON || '["self-hosted","macOS"]') }}
     timeout-minutes: 150
     steps:
@@ -111,3 +120,34 @@ jobs:
             ${{ runner.temp }}/ios-launch-smoke/crashes/
           retention-days: 14
           if-no-files-found: ignore
+
+      # ── LEAVE THE MAC WITH NO SIMULATOR RUNNING ─────────────────────────
+      #
+      # Leftover booted simulators keep crashing Apple's PosterBoard process
+      # on the self-hosted Mac. The smoke script shuts down and deletes its
+      # own devices on the way out, but only when it gets that far: a failed
+      # or cancelled run leaves them booted. So, whatever happened above:
+      # shut everything down, delete every device the script created (it
+      # names them "HS launch smoke <device> iOS <version>"), and delete any
+      # device whose runtime is gone. This step can never fail the job:
+      # continue-on-error, no `set -e`, and every command ends in `|| true`.
+      - name: Shut down and delete the simulators
+        if: always()
+        continue-on-error: true
+        run: |
+          xcrun simctl shutdown all || true
+          xcrun simctl list devices -j 2>/dev/null | python3 -I -c '
+          import json, sys
+          try:
+              devices = json.load(sys.stdin).get("devices", {})
+          except Exception:
+              devices = {}
+          for runtime in devices.values():
+              for d in runtime:
+                  if d.get("name", "").startswith("HS launch smoke "):
+                      print(d["udid"])
+          ' | while read -r udid; do
+            echo "deleting smoke simulator $udid"
+            xcrun simctl delete "$udid" || true
+          done || true
+          xcrun simctl delete unavailable || true

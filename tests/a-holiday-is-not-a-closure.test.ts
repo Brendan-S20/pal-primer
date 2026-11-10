@@ -22,7 +22,10 @@ describe("which night a holiday prices", () => {
 
 describe("the migration", () => {
   it("bills from holiday_dates and never from blackout_dates", () => {
-    const bill = sql.slice(sql.indexOf("FUNCTION public.stay_visit_bill"), sql.indexOf("$function$;"));
+    const bill = sql.slice(
+      sql.indexOf("FUNCTION public.stay_visit_bill"),
+      sql.indexOf("$function$;"),
+    );
     expect(bill).toMatch(/public\.holiday_dates/);
     expect(bill).not.toMatch(/blackout_dates/);
     const invoice = sql.slice(sql.indexOf("FUNCTION public.invoice_stay"));
@@ -44,7 +47,10 @@ describe("the migration", () => {
 describe("Settings", () => {
   it("shows the holiday list to a sitting business on the services page", () => {
     const page = read("src/routes/_authenticated/settings.services.tsx");
-    expect(page).toMatch(/lines\.includes\("pet_sitting"\) && <HolidayDatesCard/);
+    // A training business sees it too, for its lesson series (R2-49).
+    expect(page).toMatch(
+      /\(lines\.includes\("pet_sitting"\) \|\| lines\.includes\("training"\)\) && \(\s*<HolidayDatesCard/,
+    );
     expect(page).not.toMatch(/Settings &gt; Blackouts/);
     const card = read("src/components/settings/HolidayDatesCard.tsx");
     expect(card).toMatch(/the night that starts on the date counts/);

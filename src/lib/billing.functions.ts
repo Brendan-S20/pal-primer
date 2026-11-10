@@ -1166,43 +1166,18 @@ export const removeOrgPaymentMethod = createServerFn({ method: "POST" })
     const customerId = realCustomerId(s.stripeCustomerId);
     if (!customerId) throw new Error("No saved payment methods yet.");
     const stripe = await platformStripe();
-
-    const pm = await stripe.paymentMethods.retrieve(data.paymentMethodId);
-    const pmCustomer = typeof pm.customer === "string" ? pm.customer : pm.customer?.id;
-    if (pmCustomer !== customerId) throw new Error("That card doesn't belong to your account.");
-
-    const customer: any = await stripe.customers.retrieve(customerId);
-    const defaultId = await orgDefaultPaymentMethodId(stripe, customer, s.stripeSubscriptionId);
-    const pms = await stripe.customers.listPaymentMethods(customerId, { type: "card", limit: 20 });
-    const others = (pms.data ?? []).filter((m: any) => m.card && m.id !== data.paymentMethodId);
-    const wasDefault = data.paymentMethodId === defaultId || others.length === 0;
-    const subActive =
-      !!s.stripeSubscriptionId &&
-      (s.billingStatus === "active" || s.billingStatus === "past_due" || s.billingStatus === "grace");
-
-    // Guard: never leave a live subscription with no card on file. If another
-    // card remains it gets promoted below instead.
-    if (wasDefault && subActive && others.length === 0) {
-      throw new Error("Add another card first. An active subscription needs a card on file.");
-    }
-
-    await stripe.paymentMethods.detach(data.paymentMethodId);
-
-    if (wasDefault && others.length > 0) {
-      await stripe.customers.update(customerId, {
-        invoice_settings: { default_payment_method: others[0].id },
-      });
-      if (s.stripeSubscriptionId) {
-        try {
-          await stripe.subscriptions.update(s.stripeSubscriptionId, {
-            default_payment_method: others[0].id,
-          });
-        } catch (e: any) {
-          if (e?.code !== "resource_missing") throw e;
-        }
-      }
-    }
-    return { ok: true };
+    // Detached in Stripe, not only hidden here; an "already detached" card is
+    // success and a refused detach is an error (src/lib/org-card-removal.server.ts).
+    const { removeOrgCard } = await import("@/lib/org-card-removal.server");
+    return removeOrgCard({
+      stripe: stripe as any,
+      customerId,
+      subscriptionId: s.stripeSubscriptionId,
+      billingStatus: s.billingStatus,
+      paymentMethodId: data.paymentMethodId,
+      defaultIdFor: (customer) =>
+        orgDefaultPaymentMethodId(stripe, customer, s.stripeSubscriptionId),
+    });
   });
 
 export const refreshBillingStatus = createServerFn({ method: "POST" })

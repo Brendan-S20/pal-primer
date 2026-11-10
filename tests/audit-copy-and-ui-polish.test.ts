@@ -6,13 +6,17 @@ const root = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
 
 describe("Oct 11 audit copy and UI fixes", () => {
-  it("keeps Messages from offering compose while texting is coming soon", () => {
+  // site-r2-05: Managed texting is on sale, so "coming soon" became the
+  // business's own state (Under review, Setup needed, ...), read by
+  // TextingNotLiveText. Compose is still offered only once texting is live.
+  it("keeps Messages from offering compose until texting is live", () => {
     const page = read("src/routes/_authenticated/messages.tsx");
     const index = read("src/routes/_authenticated/messages.index.tsx");
     expect(page).toMatch(/\{texting && \(\s*<Button[\s\S]{0,500}New message/);
-    expect(page).toMatch(/Once texting your clients arrives/);
+    expect(page).toMatch(/Once your texting is live/);
     expect(index).toMatch(/texting\s*\?/);
-    expect(index).toMatch(/Texting your clients is coming soon/);
+    expect(index).toMatch(/<TextingNotLiveText \/>/);
+    expect(index).not.toMatch(/coming soon/i);
   });
 
   it("shows no visits before geocoding help on an empty route day", () => {

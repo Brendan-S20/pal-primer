@@ -5,6 +5,20 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 import { buildClientNamePatch } from "@/lib/client-name";
+import { needsANamedDog, SERVER_NEEDS_A_NAMED_DOG } from "@/lib/new-client-dogs";
+
+/**
+ * Whether a new client is sent the welcome email: only when the person
+ * creating them ticked the box AND there is an address to send it to. Unset
+ * is no -- a pilot walking through setup must never email a real client by
+ * surprise (onboarding audit 2026-11-09, D4).
+ */
+export function shouldSendWelcome(data: {
+  sendWelcome?: boolean | null;
+  primaryEmail?: string | null;
+}): boolean {
+  return data.sendWelcome === true && !!data.primaryEmail?.trim();
+}
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   // Through the shared gate, so a person whose access is turned off is
@@ -752,6 +766,8 @@ const createClientSchema = z.object({
   accountType: z.enum(["residential", "commercial"]),
   primaryEmail: z.string().email().or(z.literal("")).optional(),
   primaryPhone: z.string().max(40).optional(),
+  /** Opt-in, as onboardClient's: absent or false sends nothing. */
+  sendWelcome: z.boolean().optional(),
 });
 
 export const createClient = createServerFn({ method: "POST" })
@@ -784,8 +800,9 @@ export const createClient = createServerFn({ method: "POST" })
       });
     }
 
-    // Fire welcome email (best-effort; never block client creation)
-    if (data.primaryEmail) {
+    // Welcome email only when the person creating the client asked for it
+    // (see onboardClient). Best-effort; never blocks client creation.
+    if (shouldSendWelcome(data)) {
       try {
         const { buildPortalLink } = await import("@/lib/portal-links.server");
         const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
@@ -878,7 +895,7 @@ export const getFieldClientInfo = createServerFn({ method: "GET" })
     const { data: properties, error: propErr } = await supabaseAdmin
       .from("properties")
       .select(
-        "id, label, street, city, region, postal_code, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, archived_at",
+        "id, label, street, city, region, postal_code, parking_notes, van_power_available, van_water_available, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, archived_at",
       )
       .eq("client_id", data.clientId)
       .eq("organization_id", caller.orgId)
@@ -1239,6 +1256,69 @@ export const regeneratePortalLink = createServerFn({ method: "POST" })
   });
 
 /**
+ * Send the welcome email (and portal link) to an existing client, on a
+ * person's click. Since the wizard stopped sending it unasked (onboarding
+ * audit 2026-11-09, D4), this is how a client created without it gets their
+ * invite later. Same template, same portal link, and the same refusals as
+ * every other send: the owner's Welcome toggle in Settings, the client's
+ * email opt-out and the suppression list all still apply (enqueueAppEmail).
+ * A manual send, so an imported client's comms hold does not stop it.
+ */
+export const sendClientWelcomeEmail = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) => getClientSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { orgId } = await requirePermission(supabase, userId, "message_clients");
+    const { data: c, error } = await supabase
+      .from("clients")
+      .select("id, organization_id, primary_email, portal_token")
+      .eq("id", data.clientId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!c || c.organization_id !== orgId) throw new Error("That client was not found.");
+    const recipient = (c.primary_email as string | null)?.trim() || null;
+    if (!recipient) throw new Error("This client has no email address.");
+
+    const { buildPortalLink } = await import("@/lib/portal-links.server");
+    const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
+    const link = (await buildPortalLink(orgId, c.portal_token as string | null)) ?? null;
+    const sent = await enqueueAppEmail({
+      organizationId: orgId,
+      clientId: data.clientId,
+      templateName: "welcome",
+      notifyKey: "notify_email_welcome",
+      requireProvider: true,
+      manual: true,
+      templateData: { portalUrl: link ?? undefined },
+    });
+    let statusHandle: string | null = null;
+    if (sent.ok && sent.messageId) {
+      const { signEmailStatusHandle } = await import("@/lib/email/status-handle.server");
+      statusHandle = signEmailStatusHandle(
+        orgId,
+        { kind: "client", id: data.clientId },
+        sent.messageId,
+      );
+      const { logActivity } = await import("@/lib/activity.server");
+      await logActivity(supabase, {
+        orgId,
+        clientId: data.clientId,
+        actorUserId: userId,
+        kind: "client.welcome_sent",
+        summary: `Sent the welcome email to ${recipient}`,
+      });
+    }
+    return {
+      ok: sent.ok,
+      reason: sent.reason ?? null,
+      statusHandle,
+      recipient,
+      link,
+    };
+  });
+
+/**
  * Read (mint) a one-time verification code for a client, so the office can
  * read it aloud when a client can't receive SMS/email. This is a sensitive
  * account-takeover-adjacent action (it hands out a valid sign-in code), so it
@@ -1403,107 +1483,8 @@ export const getInternalQuote = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
-    const { data: org, error: oErr } = await supabase
-      .from("organizations")
-      .select("currency, frequency_multipliers")
-      .eq("id", orgId)
-      .single();
-    if (oErr) throw new Error(oErr.message);
-
-    const { data: zones, error: zErr } = await supabase
-      .from("zones")
-      .select(
-        "id, name, priority, account_type, postal_prefix, zip_codes, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, area_max_charge_cents, commercial_base_cents, commercial_per_unit_cents, commercial_per_acre_cents, commercial_per_station_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, enabled",
-      )
-      .eq("organization_id", orgId);
-    if (zErr) throw new Error(zErr.message);
-
-    const { matchZone } = await import("@/lib/zone-match");
-    const z = matchZone((zones ?? []) as any[], {
-      postalCode: data.postalCode,
-      point:
-        data.latitude != null && data.longitude != null
-          ? { lat: data.latitude, lng: data.longitude }
-          : null,
-      accountType: data.accountType ?? null,
-    });
-
-    if (!z) return { available: false as const };
-    const { perVisitMultiplier } = await import("@/lib/frequency-multipliers");
-    const mult = perVisitMultiplier(org.frequency_multipliers as any, data.frequency);
-    const mode = (z.pricing_mode ?? "flat") as "flat" | "per_sqft" | "per_acre";
-
-    // A commercial account (an HOA, a park) is priced from the zone's
-    // commercial rates: base + per unit + per acre + per station, then the
-    // frequency multiplier. The wizard used to ask for a quote only for a
-    // residential account, so a commercial plan was saved with no zone and a
-    // price somebody typed (#658, R2-21).
-    if (data.accountType === "commercial") {
-      const { computeCommercialZonePrice, zoneHasCommercialPricing } =
-        await import("@/lib/pricing");
-      const rated = zoneHasCommercialPricing(z as any);
-      const price = rated
-        ? computeCommercialZonePrice(z as any, {
-            unitCount: data.unitCount ?? 0,
-            stationCount: data.stationCount ?? 0,
-            boundaryAreaSqm: data.boundaryAreaSqm,
-            multiplier: mult,
-          })
-        : null;
-      return {
-        available: true as const,
-        quote: {
-          zoneId: z.id as string,
-          zoneName: z.name as string,
-          pricingMode: "commercial" as const,
-          areaBasisCents: price?.acreageCents ?? null,
-          basePriceCents: price?.perVisitCents ?? null,
-          perDogAddlCents: 0,
-          // null: the zone has no commercial rates, so the office sets the
-          // price; the zone is still the plan's.
-          recurringPriceCents: price?.recurringCents ?? null,
-          initialCleanupCents: z.initial_cleanup_cents ?? 0,
-          currency: org.currency as string,
-          commercial: price
-            ? {
-                baseCents: price.baseCents,
-                unitCents: price.unitCents,
-                acreageCents: price.acreageCents,
-                stationCents: price.stationCents,
-              }
-            : null,
-        },
-      };
-    }
-
-    const { computeZoneVisitPrice } = await import("@/lib/pricing");
-    const price = computeZoneVisitPrice(
-      {
-        base_price_cents: z.base_price_cents,
-        per_dog_addl_cents: z.per_dog_addl_cents,
-        pricing_mode: mode,
-        price_per_sqft_cents: Number(z.price_per_sqft_cents ?? 0),
-        price_per_acre_cents: z.price_per_acre_cents,
-        area_min_charge_cents: z.area_min_charge_cents,
-        area_max_charge_cents: z.area_max_charge_cents,
-      },
-      { dogCount: data.dogCount, boundaryAreaSqm: data.boundaryAreaSqm, multiplier: mult },
-    );
-    return {
-      available: true as const,
-      quote: {
-        zoneId: z.id as string,
-        zoneName: z.name as string,
-        pricingMode: mode,
-        areaBasisCents: price.areaBasisCents,
-        basePriceCents: price.perVisitCents,
-        perDogAddlCents: z.per_dog_addl_cents ?? 0,
-        recurringPriceCents: price.recurringCents,
-        initialCleanupCents: z.initial_cleanup_cents ?? 0,
-        currency: org.currency as string,
-        commercial: null,
-      },
-    };
+    const { internalQuote } = await import("@/lib/internal-quote.server");
+    return internalQuote(supabase, orgId, data);
   });
 
 // ---------- Composite onboarding: client + property + dogs + subscription ----------
@@ -1514,6 +1495,13 @@ const onboardSchema = z.object({
   accountType: z.enum(["residential", "commercial"]),
   primaryEmail: z.string().email().or(z.literal("")).optional(),
   primaryPhone: z.string().max(40).optional(),
+  // The welcome email (and portal link) to primaryEmail. OPT-IN: absent or
+  // false sends nothing. It used to go to every new client with an email, so
+  // the first client typed in during setup -- often a real customer, or the
+  // owner trying the form -- was emailed with no warning (onboarding audit
+  // 2026-11-09, D4). The wizard shows the subject and the recipient beside
+  // an unchecked box; only ticking it sends.
+  sendWelcome: z.boolean().optional(),
   // property
   street: z.string().min(1).max(200),
   city: z.string().min(1).max(120),
@@ -1625,6 +1613,13 @@ export const onboardClient = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => onboardSchema.parse(d))
   .handler(async ({ data, context }) => {
+    // A residential client is somebody's dogs. Created with none, its plan
+    // billed for one and the Summary's first words were "no dog is on file"
+    // (onboarding audit 2026-11-09, D2). Refused before anything is read or
+    // written; commercial / HOA may still have none. lib/new-client-dogs.
+    if (needsANamedDog(data.accountType, data.dogs)) {
+      throw new Error(SERVER_NEEDS_A_NAMED_DOG);
+    }
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
 
@@ -1633,6 +1628,52 @@ export const onboardClient = createServerFn({ method: "POST" })
     // than after a client exists with half of what they asked for.
     if (data.firstCleanup) {
       await requirePermission(supabase, userId, "manage_client_billing");
+    }
+
+    // A plan is booking (#728). Someone who sets prices types any price, as
+    // before. Anyone else who books (a dispatcher) books the plan at the set
+    // price the server works out here from the business's own zones and
+    // services, the price the wizard showed; a different price, or billing in
+    // advance, is refused BEFORE anything is written, never quietly replaced.
+    // The subscriptions write policy stays manage_pricing, so that plan is
+    // written as the service role, onto the client and property this request
+    // has just created in the caller's own business.
+    let planAtSetPrice: { cents: number; zoneId: string | null } | null = null;
+    if (data.subscription) {
+      const caller = await requirePermission(supabase, userId, "booking");
+      if (caller.orgId !== orgId) throw new Error("Not authorized");
+      const { hasPermission } = await import("@/lib/permissions");
+      if (!hasPermission(caller.role, "manage_pricing")) {
+        const s = data.subscription;
+        const { PLAN_CADENCE_IS_BILLING, planSetPriceCents } =
+          await import("@/lib/plan-set-price.server");
+        const { priceOverrideRefusal } = await import("@/lib/booking-price.server");
+        if (
+          (s.billingCadence ?? "postpaid") !== "postpaid" &&
+          !hasPermission(caller.role, "manage_client_billing")
+        )
+          throw new Error(PLAN_CADENCE_IS_BILLING);
+        const isRes = data.accountType === "residential";
+        const set = await planSetPriceCents(supabase, {
+          orgId,
+          accountType: data.accountType,
+          frequency: s.frequency,
+          serviceId: s.serviceId ?? null,
+          postalCode: data.postalCode,
+          latitude: data.latitude,
+          longitude: data.longitude,
+          boundaryAreaSqm: data.boundaryAreaSqm,
+          dogCount: isRes ? (s.dogCount ?? Math.max(1, data.dogs?.length ?? 1)) : 1,
+          unitCount: isRes ? undefined : (s.unitCount ?? 1),
+          stationCount: isRes ? undefined : (data.stationCount ?? 0),
+        });
+        if (set.cents == null) throw new Error(set.reason);
+        if (s.priceCents !== set.cents) throw new Error(priceOverrideRefusal(set.cents));
+        // The zone is the quote's, not one the browser names.
+        if (s.zoneId && set.zoneId && s.zoneId !== set.zoneId)
+          throw new Error(priceOverrideRefusal(set.cents));
+        planAtSetPrice = { cents: set.cents, zoneId: set.zoneId };
+      }
     }
 
     // 0) the lead this client is converted from, if any. Checked BEFORE the
@@ -1809,8 +1850,18 @@ export const onboardClient = createServerFn({ method: "POST" })
 
     // 4) subscription
     let firstVisitOn: string | null = null;
+    let soloOwner: { assigned: number; putOnRoutes: boolean } | null = null;
     if (data.subscription) {
-      const s = data.subscription;
+      // At the set price (#728): the price and zone the server worked out
+      // above, never the browser's.
+      const s = planAtSetPrice
+        ? {
+            ...data.subscription,
+            priceCents: planAtSetPrice.cents,
+            zoneId: planAtSetPrice.zoneId ?? undefined,
+            billingCadence: "postpaid" as const,
+          }
+        : data.subscription;
       const isRes = data.accountType === "residential";
       if (s.startedOn) {
         const { data: orgRow } = await supabase
@@ -1829,29 +1880,32 @@ export const onboardClient = createServerFn({ method: "POST" })
       const { normalizeWeekdays } = await import("@/lib/weekday-set");
       const weekdays =
         s.frequency === "weekly" && s.weekdays?.length ? normalizeWeekdays(s.weekdays) : null;
-      const { data: subRow, error: sErr } = await supabase
-        .from("subscriptions")
-        .insert({
-          organization_id: orgId,
-          client_id: clientId,
-          property_id: propertyId,
-          account_type: data.accountType,
-          frequency: s.frequency,
-          price_cents: s.priceCents,
-          dog_count: isRes ? (s.dogCount ?? data.dogs?.length ?? 1) : null,
-          unit_count: !isRes ? (s.unitCount ?? 1) : null,
-          // The zone the wizard quoted from; for a commercial plan with no
-          // quote, the zone the property is in, so the plan is not saved
-          // zoneless and flagged "No pricing zone recorded" (#658, R2-21).
-          zone_id: s.zoneId ?? (!isRes ? autoZoneId : null),
-          billing_cadence: s.billingCadence ?? "postpaid",
-          preferred_weekdays: !weekdays && s.preferredWeekdays?.length ? s.preferredWeekdays : null,
-          ...(s.startedOn ? { started_on: s.startedOn } : {}),
-          ...(s.serviceId ? { service_id: s.serviceId } : {}),
-          ...(weekdays ? { weekdays } : {}),
-        })
-        .select("id")
-        .single();
+      const planRow = {
+        organization_id: orgId,
+        client_id: clientId,
+        property_id: propertyId,
+        account_type: data.accountType,
+        frequency: s.frequency,
+        price_cents: s.priceCents,
+        dog_count: isRes ? (s.dogCount ?? data.dogs?.length ?? 1) : null,
+        unit_count: !isRes ? (s.unitCount ?? 1) : null,
+        // The zone the wizard quoted from; for a commercial plan with no
+        // quote, the zone the property is in, so the plan is not saved
+        // zoneless and flagged "No pricing zone recorded" (#658, R2-21).
+        zone_id: s.zoneId ?? (!isRes ? autoZoneId : null),
+        billing_cadence: s.billingCadence ?? "postpaid",
+        preferred_weekdays: !weekdays && s.preferredWeekdays?.length ? s.preferredWeekdays : null,
+        ...(s.startedOn ? { started_on: s.startedOn } : {}),
+        ...(s.serviceId ? { service_id: s.serviceId } : {}),
+        ...(weekdays ? { weekdays } : {}),
+      };
+      // A plan at the set price is written past the pricing policy, as the
+      // service role, by insertPlanAtSetPrice, which re-checks that the
+      // client and property written above are the caller's business's.
+      // Anyone who sets prices writes it with their own key, as before.
+      const { data: subRow, error: sErr } = planAtSetPrice
+        ? await (await import("@/lib/plan-set-price.server")).insertPlanAtSetPrice(planRow)
+        : await supabase.from("subscriptions").insert(planRow).select("id").single();
       if (sErr) {
         await undoClient();
         throw new Error(sErr.message);
@@ -1873,6 +1927,15 @@ export const onboardClient = createServerFn({ method: "POST" })
         .limit(1)
         .maybeSingle();
       firstVisitOn = first?.scheduled_on ?? null;
+
+      // D13: in a business whose only person is the owner saving this, the
+      // visits are theirs; there is nobody else they could go to.
+      const { giveSoloOwnerThePlan } = await import("@/lib/solo-owner-route.server");
+      soloOwner = await giveSoloOwnerThePlan(supabase, {
+        orgId,
+        userId,
+        subscriptionId: subRow!.id,
+      });
     }
 
     // 5) office note. The client and everything under it already exist, so a
@@ -1952,7 +2015,7 @@ export const onboardClient = createServerFn({ method: "POST" })
     let welcomeStatusHandle: string | null = null;
     let welcomeTurnedOff = false;
     let welcomeLink: string | null = null;
-    if (data.primaryEmail) {
+    if (shouldSendWelcome(data)) {
       try {
         const { buildPortalLink } = await import("@/lib/portal-links.server");
         const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
@@ -1991,9 +2054,14 @@ export const onboardClient = createServerFn({ method: "POST" })
       welcomeStatusHandle,
       welcomeTurnedOff,
       welcomeLink,
+      welcomeRequested: shouldSendWelcome(data),
       officeNoteSaved,
       leadLinked,
       firstCleanupInvoiced,
+      // How many of the plan's visits went to the owner because nobody else
+      // is in the business, and whether that put them on routes (D13).
+      soloOwnerAssigned: soloOwner?.assigned ?? 0,
+      soloOwnerPutOnRoutes: soloOwner?.putOnRoutes ?? false,
     };
   });
 

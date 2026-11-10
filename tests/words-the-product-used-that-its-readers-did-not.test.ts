@@ -177,7 +177,7 @@ describe("a role has one label in the whole product", () => {
   const ROLES = ["owner", "office_manager", "dispatcher", "tech"] as const;
 
   it("labels every role the app can assign", () => {
-    expect(ROLES.map(humanizeRole)).toEqual([
+    expect(ROLES.map((role) => humanizeRole(role))).toEqual([
       "Owner",
       "Office manager",
       "Dispatcher",
@@ -214,6 +214,9 @@ describe("a role has one label in the whole product", () => {
         // The one definition, and the generated database types.
         if (childRel === "lib/humanize.ts") continue;
         if (childRel === "integrations/supabase/types.ts") continue;
+        // The tech-screen translations of those labels (`role.*`, train-17):
+        // one map per language, read through roleLabelKey in humanize.ts.
+        if (/^lib\/i18n\/locales\/[a-z]{2}\.ts$/.test(childRel)) continue;
         if (!statSync(join(ROOT, full)).isFile()) continue;
         const src = codeOnly(readFileSync(join(ROOT, full), "utf8"));
         if (shapes.some((re) => re.test(src))) offenders.push(childRel);
@@ -233,8 +236,13 @@ describe("a role has one label in the whole product", () => {
   });
 
   it("routes the two pages that had their own copies through the shared one", () => {
-    expect(codeOnly(profile())).toMatch(/humanizeRole\(staff\.role\)/);
-    expect(codeOnly(settingsUsers())).toMatch(/humanizeRole\(r\)/);
+    // Through useRoleLabel since train-17: humanizeRole with the business's
+    // service lines, so a training-only business reads "Trainer".
+    expect(codeOnly(profile())).toMatch(/roleLabel\(staff\.role\)/);
+    expect(codeOnly(settingsUsers())).toMatch(/roleLabel\(r\)/);
+    expect(codeOnly(read("src/components/CommercialOnly.tsx")())).toMatch(
+      /return \(role\) => humanizeRole\(role, known \? lines : null\)/,
+    );
   });
 });
 

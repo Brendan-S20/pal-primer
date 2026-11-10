@@ -42,6 +42,7 @@ import { medLine, readRequestedCare } from "@/lib/stays";
 const root = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
 const MIGRATION = "20261031130000_a-client-care-edit-waits-for-the-office.sql";
+const DISPATCHER_MIGRATION = "20261109120000_a-dispatcher-books-a-stay-at-the-set-price.sql";
 
 /** The body of the last CREATE OR REPLACE of `fn` across every migration. */
 function latestBody(fn: string): { file: string; body: string } {
@@ -73,7 +74,10 @@ describe("the database stages a client's care edit and applies it at confirm", (
 
   it("confirm_stay applies staged care before the snapshot, and marks it as the client's", () => {
     const { file, body } = latestBody("confirm_stay");
-    expect(file).toBe(MIGRATION);
+    // 20261109120000 restates confirm_stay to let a dispatcher confirm at the
+    // set price; its body is this file's but for that one permission block
+    // (pinned in tests/a-dispatcher-books-a-stay-and-a-client-adds-a-cat).
+    expect(file).toBe(DISPATCHER_MIGRATION);
     const apply = body.indexOf("_st.requested_care");
     const snapshot = body.indexOf("SET care_snapshot");
     const confirmed = body.indexOf("SET status = 'confirmed'");

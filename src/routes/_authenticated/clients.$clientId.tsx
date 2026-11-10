@@ -1,3 +1,4 @@
+import { PetSafetyLog } from "@/components/PetSafetyLog";
 import { useServiceLines } from "@/components/CommercialOnly";
 // Client detail page (docs/client-detail-refactor.md): a persistent header,
 // eight tabs, read-only by default, editing in right-side drawers. The heavy
@@ -336,6 +337,7 @@ function ClientDetail() {
             fieldData.ownVisitLines ?? null,
             serviceLines.includes("pet_waste"),
           )}
+          petExtra={(d) => <PetSafetyLog dogId={d.id} name={d.name ?? ""} />}
         />
       );
     }

@@ -729,6 +729,28 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
             return new Response("ok", { status: 200 });
           }
 
+          // A late-change fee on a portal reschedule or cancel (#730). Settled
+          // only here: matched by PaymentIntent AND event.account in the
+          // database, and recorded once per event id, so a duplicate delivery
+          // or another tenant's event changes nothing. A database error
+          // throws to the 500 below and Stripe retries.
+          if (
+            (event.type === "payment_intent.succeeded" ||
+              event.type === "payment_intent.payment_failed") &&
+            (event.data.object as { metadata?: Record<string, string> } | null)?.metadata
+              ?.source === "portal_change_fee"
+          ) {
+            const { recordPortalChangeFeeEvent } = await import("@/lib/portal-change-fees.server");
+            const settled = await recordPortalChangeFeeEvent(supabaseAdmin as any, event as any);
+            // Never acknowledge an event that settled nothing it should have
+            // (#730 review, finding 2): non-2xx, so Stripe delivers it again.
+            if (settled === "unknown") {
+              console.warn("portal change fee event matched no fee yet; asking Stripe to retry", event.id);
+              return new Response("Fee not found yet", { status: 409 });
+            }
+            return new Response("ok", { status: 200 });
+          }
+
           if (event.type === "setup_intent.succeeded") {
             // The durable backstop for saving a card.
             //
@@ -1294,7 +1316,10 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               .from("payments")
               // tax_cents: the sales-tax share inside amount_cents, which a
               // refund gives back to the customer but never took off revenue.
-              .select("id, organization_id, amount_cents, surcharge_cents, tip_cents, tax_cents")
+              // status: whether the re-read has to move it (below).
+              .select(
+                "id, organization_id, amount_cents, surcharge_cents, tip_cents, tax_cents, status",
+              )
               .eq("stripe_payment_intent_id", piId)
               .maybeSingle();
             if (!rpay) return new Response("ok", { status: 200 });
@@ -1333,6 +1358,8 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
             // What went back, re-read from Stripe, so it REPLACES the stored
             // figure: on the payment (which moves the invoice's amount paid
             // and refunded) and on a provisioned signup it paid for.
+            const { paymentStatusAfterReread, refundIdFromReread } =
+              await import("@/lib/refund-outcome");
             {
               const { recordRefundOnPayment, recordRefundOnSignup } =
                 await import("@/lib/refund-outcome.server");
@@ -1343,7 +1370,10 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 supabaseAdmin,
                 { organizationId: rpay.organization_id, paymentIntentId: piId },
                 {
-                  refundId: null,
+                  // This event IS the refund, so it knows the id even when
+                  // charge.refunded could not find it (#675). Not a failed
+                  // one: no money went back on that.
+                  refundId: refundIdFromReread(refund),
                   amountRefundedCents: trueRefunded,
                   at: new Date().toISOString(),
                   authoritative: true,
@@ -1351,13 +1381,20 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               );
             }
 
-            // The payment's own status has to follow, or the charge path keeps
-            // treating a payment as refunded when the money never went back.
-            if (trueRefunded <= 0) {
-              await (supabaseAdmin as any)
-                .from("payments")
-                .update({ status: "succeeded" })
-                .eq("id", rpay.id);
+            // The payment's own status has to follow, after refunded_cents is
+            // written: back to 'succeeded' when nothing went back, or the
+            // charge path keeps treating it as refunded; to 'refunded' when
+            // money went back on a payment charge.refunded never flipped, or
+            // the invoice keeps reading Paid in full (#674).
+            {
+              const next = paymentStatusAfterReread(rpay.status, trueRefunded);
+              if (next) {
+                await (supabaseAdmin as any)
+                  .from("payments")
+                  .update({ status: next })
+                  .eq("id", rpay.id)
+                  .eq("status", rpay.status);
+              }
             }
 
             if (refund?.status === "failed" || refund?.status === "canceled") {

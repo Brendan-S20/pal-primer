@@ -200,6 +200,15 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
             } catch (error) {
               console.error("stay ending notices failed", org.id, error);
             }
+            // A stay whose last visit was skipped or just went missed (above)
+            // had no completion to send its summary from (#411). Once per
+            // stay, whichever path sends it.
+            try {
+              const { sendSettledStaySummaries } = await import("@/lib/sit-report.server");
+              perOrg.stay_summaries_emailed = await sendSettledStaySummaries(org.id, todayStr);
+            } catch (error) {
+              console.error("settled stay summaries failed", org.id, error);
+            }
           }
 
           if (org.auto_invoice_enabled) {
@@ -1016,6 +1025,10 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
   const { resolveOrgStripeAccount, connectStripe } = await import("@/lib/stripe-connect.server");
   const acct = await resolveOrgStripeAccount(orgId);
   if (!acct || !acct.chargesEnabled) return 0;
+  // A locked account takes no payments until the owner subscribes, and that
+  // includes the saved cards autopay would charge tonight.
+  const { lockForOrg } = await import("@/lib/account-lock.server");
+  if ((await lockForOrg(orgId).catch(() => ({ locked: false }))).locked) return 0;
   const { data: org } = await supabaseAdmin
     .from("organizations")
     .select("dunning_retry_days, dunning_pause_after_failures, service_lines")

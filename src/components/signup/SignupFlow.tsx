@@ -126,6 +126,8 @@ import {
   quoteRequestMessage,
 } from "@/lib/public-booking-mode";
 import { groomTimeLabel } from "@/lib/groom-online";
+import { OneTimeCleanupPriceLines } from "@/components/signup/OneTimeCleanupPriceLines";
+import { ONE_TIME_CLEANUP_COPY } from "@/lib/one-time-cleanup";
 import type { ServiceLine } from "@/lib/service-lines";
 
 // Module-scoped Stripe.js cache keyed by publishable key + connected account
@@ -698,45 +700,60 @@ export function SignupFlow({
   const quotedPack = quotedMode === "package" ? (quote?.package ?? null) : null;
   const quotedOnce = quotedMode === "one_time";
   const quotedRepeats = quotedMode === "recurring";
+  // A pet-waste service sold as one visit is a one-time cleanup (D12): its
+  // own two lines and their total, priced by the owner's settings.
+  const quotedCleanupOnce = quotedOnce && line === "pet_waste";
 
   // The price lines, drawn twice below `lg`: in the answer under step 1 and
   // in the quote panel at the bottom. One copy of the markup, so the two
   // cannot disagree.
   const priceLines = quote ? (
     <>
-      {showsFirstCleanup && (
-        <div className="flex items-baseline justify-between gap-3">
-          <div className="min-w-0 text-sm">
-            First cleanup (one-time)
-            {pickedOption && (
-              <span className="block break-words text-xs text-muted-foreground">
-                Last cleaned: {pickedOption.label}
-              </span>
-            )}
-          </div>
-          <div className="shrink-0 font-medium">
-            {firstCleanupCents == null ? "Answer above" : money(firstCleanupCents, quote.currency)}
-          </div>
-        </div>
-      )}
-      {extraLines.map((l, i) => (
-        <div key={`${i}-${l.label}`} className="flex items-baseline justify-between gap-3">
-          <div className="min-w-0 break-words text-sm text-muted-foreground">{l.label}</div>
-          <div className="shrink-0 text-sm text-muted-foreground">
-            {l.addOn ? "+" : ""}
-            {money(l.cents, quote.currency)}
-          </div>
-        </div>
-      ))}
-      <div className="flex items-baseline justify-between gap-3">
-        <div className="min-w-0 text-sm">
-          {quotedPack
-            ? PACKAGE_COPY.lineLabel(quotedPack.name, quotedPack.sessions_count)
-            : quotedOnce
-              ? ONE_TIME_COPY.lineLabel
-              : `${perVisitLineLabel(line, groom)} (${bookingCadenceLabel(line, frequency)})`}
-        </div>
-        {/* PER VISIT, not per month. `public_quote` returns
+      {quotedCleanupOnce ? (
+        <OneTimeCleanupPriceLines
+          visitCents={quote.recurring_price_cents}
+          firstCleanupCents={firstCleanupCents}
+          showsFirstCleanup={showsFirstCleanup}
+          lastCleanedLabel={pickedOption?.label ?? null}
+          currency={quote.currency}
+        />
+      ) : (
+        <>
+          {showsFirstCleanup && (
+            <div className="flex items-baseline justify-between gap-3">
+              <div className="min-w-0 text-sm">
+                First cleanup (one-time)
+                {pickedOption && (
+                  <span className="block break-words text-xs text-muted-foreground">
+                    Last cleaned: {pickedOption.label}
+                  </span>
+                )}
+              </div>
+              <div className="shrink-0 font-medium">
+                {firstCleanupCents == null
+                  ? "Answer above"
+                  : money(firstCleanupCents, quote.currency)}
+              </div>
+            </div>
+          )}
+          {extraLines.map((l, i) => (
+            <div key={`${i}-${l.label}`} className="flex items-baseline justify-between gap-3">
+              <div className="min-w-0 break-words text-sm text-muted-foreground">{l.label}</div>
+              <div className="shrink-0 text-sm text-muted-foreground">
+                {l.addOn ? "+" : ""}
+                {money(l.cents, quote.currency)}
+              </div>
+            </div>
+          ))}
+          <div className="flex items-baseline justify-between gap-3">
+            <div className="min-w-0 text-sm">
+              {quotedPack
+                ? PACKAGE_COPY.lineLabel(quotedPack.name, quotedPack.sessions_count)
+                : quotedOnce
+                  ? ONE_TIME_COPY.lineLabel
+                  : `${perVisitLineLabel(line, groom)} (${bookingCadenceLabel(line, frequency)})`}
+            </div>
+            {/* PER VISIT, not per month. `public_quote` returns
             `round(base_visit_cents × frequency_multiplier)`, and
             pricing.ts documents it as "Per-visit price after the
             frequency multiplier": the multipliers price LESS frequent
@@ -745,10 +762,12 @@ export function SignupFlow({
             this one said /mo and the line below sold "a prepaid first
             month" for what buys ONE visit. Weekly service at $25 read
             "$25.00/mo". */}
-        <div className="shrink-0 font-medium">
-          {quotedRepeats ? `${perVisit}/${lineCopy.visit}` : perVisit}
-        </div>
-      </div>
+            <div className="shrink-0 font-medium">
+              {quotedRepeats ? `${perVisit}/${lineCopy.visit}` : perVisit}
+            </div>
+          </div>
+        </>
+      )}
       <div className="border-t pt-3 text-xs text-muted-foreground">
         {firstCleanupCents == null ? (
           <>Tell us when your yard was last cleaned to see today's total.</>
@@ -762,7 +781,7 @@ export function SignupFlow({
           <>
             {ONE_TIME_COPY.chargedTodayLead}{" "}
             <strong className="text-foreground">{money(todayCents ?? 0, quote.currency)}</strong>.{" "}
-            {ONE_TIME_COPY.chargedOnce}
+            {quotedCleanupOnce ? ONE_TIME_CLEANUP_COPY.chargedOnce : ONE_TIME_COPY.chargedOnce}
             {groom && <span className="mt-2 block">{GROOM_COPY.orRequest}</span>}
           </>
         ) : (
