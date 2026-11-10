@@ -6,7 +6,7 @@ import { useMyRole, canAccess, type AppRole } from "@/hooks/useMyRole";
 import { getPlatformContext } from "@/lib/platform.functions";
 import { getFranchiseContext } from "@/lib/franchise.functions";
 import { getReviewQueueCount } from "@/lib/review-queue.functions";
-import { getOnboardingStatus } from "@/lib/onboarding.functions";
+import { useOnboardingStatus } from "@/hooks/useOnboardingStatus";
 import { SETUP_PATH, promptsSetup, stepsFor, useSetupGuide } from "@/lib/setup-guide";
 import {
   LayoutDashboard,
@@ -336,13 +336,9 @@ export function firstRunNav(
 export function useFirstRun(): boolean {
   const { role } = useMyRole();
   const guide = useSetupGuide();
-  const statusFn = useServerFn(getOnboardingStatus);
-  const q = useQuery({
-    queryKey: ["onboarding-status"],
-    queryFn: () => statusFn(),
-    enabled: promptsSetup(role) && guide.phase === "open",
-    staleTime: 30_000,
-  });
+  // The shared query (D5/D9): one answer for the banner, checklist, /setup
+  // and the nav, refreshed by every mutation that finishes a step.
+  const q = useOnboardingStatus({ enabled: promptsSetup(role) && guide.phase === "open" });
   return isFirstRun({ role, phase: guide.phase, status: q.data, failed: q.isError });
 }
 

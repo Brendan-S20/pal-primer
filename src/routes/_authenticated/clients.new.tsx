@@ -65,6 +65,7 @@ import { serverErrorMessage } from "@/lib/server-outcome";
 import { createFailedMessage } from "@/lib/create-client-error";
 import { typedPriceCents } from "@/lib/typed-price";
 import { useFormDraft } from "@/hooks/useFormDraft";
+import { invalidateOnboardingStatus } from "@/hooks/useOnboardingStatus";
 import { DraftRestoredNotice } from "@/components/DraftRestoredNotice";
 import { newClientDraftForm } from "@/lib/form-drafts";
 import { needsANamedDog } from "@/lib/new-client-dogs";
@@ -1001,6 +1002,8 @@ function NewClientWizardForm({
       officeNoteSaved,
       leadLinked,
       firstCleanupInvoiced,
+      soloOwnerAssigned,
+      soloOwnerPutOnRoutes,
     }) => {
       // A 200 with no client in it is not a client.
       if (!id) {
@@ -1012,6 +1015,13 @@ function NewClientWizardForm({
       draft.clear();
       const parts = ["Client created."];
       if (firstVisitOn) parts.push(`First visit ${formatDay(firstVisitOn)}.`);
+      // D13: say who the visits went to, and where that is changed.
+      if (soloOwnerAssigned > 0)
+        parts.push(
+          soloOwnerPutOnRoutes
+            ? "You're the only one on the team, so its visits are yours and you're now on routes. Invite a tech any time in Settings, Users & roles."
+            : "Its visits are on your route.",
+        );
       if (firstCleanupInvoiced) parts.push("First cleanup invoiced.");
       toast.success(parts.join(" "), { duration: 8000 });
       // "Welcome email sent" only once the provider has taken it; with email
@@ -1038,6 +1048,9 @@ function NewClientWizardForm({
         toast.error("The lead could not be marked converted. Mark it from the Leads page.");
       qc.invalidateQueries({ queryKey: ["clients"] });
       qc.invalidateQueries({ queryKey: ["my-org"] });
+      // The first client finishes a setup step; the banner on the page this
+      // navigates to must say so (D9).
+      void invalidateOnboardingStatus(qc);
       if (fromLead) qc.invalidateQueries({ queryKey: ["leads"] });
       if (fromQuote) {
         // Best effort: the client exists either way.

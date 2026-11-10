@@ -20,7 +20,11 @@ import { useMyProfile } from "@/hooks/useMyProfile";
 import { useFormDraft } from "@/hooks/useFormDraft";
 import { DraftRestoredNotice } from "@/components/DraftRestoredNotice";
 import {
-  getOnboardingStatus,
+  invalidateOnboardingStatus,
+  ONBOARDING_STATUS_KEY,
+  useOnboardingStatus,
+} from "@/hooks/useOnboardingStatus";
+import {
   ONBOARDING_STEP_IDS,
   type OnboardingStep,
   type OnboardingStepId,
@@ -130,8 +134,7 @@ function SetupPage() {
   const { step: stepParam } = Route.useSearch();
   const guide = useSetupGuide();
   const qc = useQueryClient();
-  const statusFn = useServerFn(getOnboardingStatus);
-  const { data } = useQuery({ queryKey: ["onboarding-status"], queryFn: () => statusFn() });
+  const { data } = useOnboardingStatus();
 
   const steps = useMemo(() => stepsFor(data?.steps ?? [], role), [data, role]);
   const current = useMemo(() => {
@@ -204,8 +207,8 @@ function SetupPage() {
   // with parts is done when the server says every part is, never because one
   // form on it saved.
   const saved = async () => {
-    await qc.invalidateQueries({ queryKey: ["onboarding-status"] });
-    const fresh = qc.getQueryData<typeof data>(["onboarding-status"]);
+    await invalidateOnboardingStatus(qc);
+    const fresh = qc.getQueryData<typeof data>(ONBOARDING_STATUS_KEY);
     const list = stepsFor(fresh?.steps ?? steps, role).map((s) =>
       s.id === current.id && !s.parts ? { ...s, done: true } : s,
     );
@@ -774,8 +777,8 @@ function PricesPanel({
   // parts and stay here while the others are still open; move on only once
   // the server says every part is done.
   const partSaved = async () => {
-    await qc.invalidateQueries({ queryKey: ["onboarding-status"] });
-    const fresh = qc.getQueryData<{ steps: OnboardingStep[] }>(["onboarding-status"]);
+    await invalidateOnboardingStatus(qc);
+    const fresh = qc.getQueryData<{ steps: OnboardingStep[] }>(ONBOARDING_STATUS_KEY);
     const now = fresh?.steps.find((s) => s.id === step.id);
     if (now?.parts?.every((p) => p.done)) onSaved();
   };
@@ -1269,7 +1272,7 @@ function StaffPanel({ onSaved }: { onSaved: () => void }) {
       qc,
       save: () => routingFn({ data: { staffId: me!.id, isFieldTech: true } }),
       // Settings > Users reads both of the first two.
-      refresh: [["staff-addresses"], ["org-users"], ["staff"]],
+      refresh: [ONBOARDING_STATUS_KEY, ["staff-addresses"], ["org-users"], ["staff"]],
       saved: "You're on the schedule",
       onSaved,
     }),
@@ -1279,7 +1282,7 @@ function StaffPanel({ onSaved }: { onSaved: () => void }) {
     stepSave({
       qc,
       save: () => inviteFn({ data: { email: email.trim(), role: "tech" } }),
-      refresh: [["org-invites"]],
+      refresh: [ONBOARDING_STATUS_KEY, ["org-invites"]],
       // The Team page's honest wording (#568): "sent" only when the provider
       // accepted it, otherwise "not sent" and the link to send by hand (#612).
       saved: (r) => {

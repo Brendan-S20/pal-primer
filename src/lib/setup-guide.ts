@@ -91,6 +91,43 @@ export function startingStep(
   return (steps.find((s) => !s.done) ?? steps[0]).id;
 }
 
+/** What the banner says, decided from the server's progress (D5).
+ *
+ *  "Started" used to be `!!readRememberedStep(...)`: a localStorage key
+ *  written only on the device /setup was opened on. On any other device, or
+ *  after storage was cleared, an owner five steps in was greeted with "Set up
+ *  your business in 6 short steps ... Start setup" directly above a checklist
+ *  reading "5 of 6 steps done". The steps done ARE the progress, and they come
+ *  from getOnboardingStatus; the device record only decides which step the
+ *  button resumes at. */
+export function setupBanner(
+  steps: readonly Pick<OnboardingStep, "id" | "done" | "label">[],
+  remembered: string | null | undefined,
+): {
+  done: number;
+  total: number;
+  started: boolean;
+  step: OnboardingStepId | null;
+  nextLabel: string | null;
+  cta: string;
+} {
+  const total = steps.length;
+  const done = steps.filter((s) => s.done).length;
+  // A remembered step only resumes; when it is already done, the banner's
+  // "Next" is the first step still open, not the one they last looked at.
+  const rememberedOpen = steps.some((s) => s.id === remembered && !s.done) ? remembered : null;
+  const step = startingStep(steps, rememberedOpen);
+  const started = done > 0 || !!remembered;
+  return {
+    done,
+    total,
+    started,
+    step,
+    nextLabel: steps.find((s) => s.id === step)?.label ?? null,
+    cta: started ? `Continue setup (${done} of ${total})` : "Start setup",
+  };
+}
+
 /** The first step still open after `from`, wrapping to any open one before it,
  *  or null when every step is done. */
 export function nextOpenStep(

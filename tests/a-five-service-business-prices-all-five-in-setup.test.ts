@@ -145,7 +145,8 @@ describe("saving the area on a step with parts", () => {
   });
 
   it("moves on only when the refreshed step has every part done", () => {
-    expect(panel).toMatch(/invalidateQueries\(\{ queryKey: \["onboarding-status"\] \}\)/);
+    // Through the shared helper since D9 (onboarding audit 2026-11-09).
+    expect(panel).toMatch(/await invalidateOnboardingStatus\(qc\)/);
     expect(panel).toMatch(/parts\?\.every\(\(p\) => p\.done\)\) onSaved\(\)/);
   });
 
