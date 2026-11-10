@@ -63,7 +63,12 @@ for (const size of WIDTHS) {
         overrides: {
           checkEmailAccount: { exists: false, pendingInvite: false },
           registerAccount: () => {
-            throw new StubRefusal(`That password can't be used: ${LEAKED}`);
+            // The auth server's own words, raw. registerAccount adds the
+            // app's prefix on the server, which this stub stands in for;
+            // the browser has to recognise the raw text too (#807
+            // follow-up). The prefixed shape is pinned in
+            // the-auth-servers-own-refusal-reaches-the-password-field.test.ts.
+            throw new StubRefusal(LEAKED);
           },
         },
       });

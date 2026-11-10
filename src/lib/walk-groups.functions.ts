@@ -223,6 +223,48 @@ export const deleteWalkGroup = createServerFn({ method: "POST" })
   });
 
 /**
+ * Which of THIS org's staff are off on `day`.
+ *
+ * public.is_staff_off is service-role only: 20260810140000 revoked it from
+ * authenticated, because it takes any staff id and answers about anyone's
+ * time off with no tenant check. Asked through the signed-in client, Assign
+ * by capacity failed on production with "permission denied for function
+ * is_staff_off" (#733 follow-up; caught by the live-migrations job's
+ * check-rpc-grants).
+ *
+ * So it is asked as the service role, and that is only safe because of what
+ * comes before and here:
+ *   - the caller has already passed can_write_org for `orgId`
+ *     (requireWalkGroupOffice, the first line of the handler);
+ *   - every id is confirmed, again on the service role, to be a staff row of
+ *     `orgId` before any is asked about. An id from anywhere else refuses the
+ *     whole call rather than being skipped, so nothing about another
+ *     business's people is ever looked up.
+ * No GRANT changes: the function stays out of authenticated's reach.
+ */
+async function staffOffOn(orgId: string, staffIds: string[], day: string): Promise<Set<string>> {
+  if (staffIds.length === 0) return new Set();
+  const { supabaseAdmin: admin } = await import("@/integrations/supabase/client.server");
+  const { data: mine, error: staffError } = await admin
+    .from("staff")
+    .select("id")
+    .eq("organization_id", orgId)
+    .in("id", staffIds);
+  if (staffError) throw new Error(staffError.message);
+  const ours = new Set((mine ?? []).map((row) => row.id));
+  if (staffIds.some((id) => !ours.has(id)))
+    throw new Error("A walker for this day is not in your business.");
+  const off = await Promise.all(
+    staffIds.map(async (id) => {
+      const { data: isOff, error } = await admin.rpc("is_staff_off", { _staff_id: id, _day: day });
+      if (error) throw new Error(error.message);
+      return isOff ? id : null;
+    }),
+  );
+  return new Set(off.filter((id): id is string => Boolean(id)));
+}
+
+/**
  * Assign by capacity (#731): give each group that has no walker to the walker
  * with room for its dogs and the lightest day. planWalkerCapacity decides;
  * this reads the day and writes only what it decided.
@@ -254,17 +296,11 @@ export const assignWalkGroupsByCapacity = createServerFn({ method: "POST" })
           )
       : { data: [], error: null };
     if (skills.error) throw new Error(skills.error.message);
-    const off = await Promise.all(
-      routable.map(async (p) => {
-        const { data: isOff, error } = await context.supabase.rpc("is_staff_off", {
-          _staff_id: p.id,
-          _day: data.day,
-        });
-        if (error) throw new Error(error.message);
-        return isOff ? p.id : null;
-      }),
+    const offIds = await staffOffOn(
+      orgId,
+      routable.map((p) => p.id),
+      data.day,
     );
-    const offIds = new Set(off.filter(Boolean));
     const walkers: WalkerCapacity[] = routable
       .filter((p) => !offIds.has(p.id))
       .map((p) => ({
