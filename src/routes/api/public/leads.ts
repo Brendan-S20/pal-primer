@@ -23,6 +23,13 @@
 // behind the honeypot, the time-to-submit check and the rate limit in
 // lib/public-form-guard.ts. A refusal says one calm thing and writes nothing. A
 // lead that IS written is told to the office (lib/lead-notify.server.ts).
+//
+// A quote from HoundStack's own directory (#630) comes here too, naming the
+// business by its DIRECTORY slug instead of its portal slug. That slug
+// resolves only while the profile is published (directory_org_for_quote,
+// service role), the lead is stored as source = 'directory', and a second
+// quote from the same email to the same business within 24 hours is merged
+// into the first rather than written twice.
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
@@ -52,6 +59,7 @@ import {
   bookingDetailsProblem,
   normalizeBookingDetails,
 } from "@/lib/booking-details";
+import { DIRECTORY_LEAD_SOURCE, DIRECTORY_QUOTE_MERGE_HOURS } from "@/lib/directory";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -62,40 +70,49 @@ const CORS = {
 
 const jsonHeaders = { "Content-Type": "application/json", ...CORS };
 
-const leadSchema = z.object({
-  // Which business this lead belongs to (the tenant's portal slug). Required so
-  // an embedded/hosted form routes to the right org (finding #25).
-  slug: z.string().trim().min(1).max(120),
-  name: z.string().trim().min(1).max(120),
-  email: z.string().trim().email().max(255),
-  phone: z.string().trim().max(40).optional().or(z.literal("")),
-  company: z.string().trim().max(120).optional().or(z.literal("")),
-  location: z.string().trim().max(200).optional().or(z.literal("")),
-  dog_count: z.coerce.number().int().min(0).max(999).optional().nullable(),
-  frequency: z.string().trim().max(40).optional().or(z.literal("")),
-  message: z.string().trim().max(2000).optional().or(z.literal("")),
-  source: z.string().trim().max(60).optional(),
-  // The service asked about (phase 5), when the business offers more than
-  // one. An id from public_services, checked below against the business the
-  // slug resolved to; a business that sells one thing never sends it.
-  service_id: z.string().uuid().optional().nullable(),
-  // The extras picked for that service on the booking link (#560): add-on
-  // ids and a size per pet. Named on the lead for the office, read back from
-  // the business's own rows; a website's own form sends neither.
-  add_on_ids: z.array(z.string().uuid()).max(MAX_ADD_ONS).optional(),
-  pet_sizes: z
-    .array(z.enum([...PET_SIZES, ""] as [string, ...string[]]))
-    .max(20)
-    .optional(),
-  // The first visit's answers (#527): the pets by name, how to get in, and
-  // when to start. All optional here; see the check below for why.
-  ...bookingDetailsSchema.shape,
-  // The spam filters (public-form-guard.ts). Unknown rather than a bounded
-  // string, so a script that stuffs the honeypot with a novel gets the same
-  // calm refusal as one that writes a word, not a validation error naming it.
-  [HONEYPOT_FIELD]: z.unknown().optional(),
-  [ELAPSED_FIELD]: z.unknown().optional(),
-});
+const leadSchema = z
+  .object({
+    // Which business this lead belongs to (the tenant's portal slug). Required so
+    // an embedded/hosted form routes to the right org (finding #25).
+    // Optional only because a directory quote names `directory_slug` instead;
+    // exactly one of the two is required (refined below).
+    slug: z.string().trim().min(1).max(120).optional(),
+    // A quote from the directory (#630): the business's published directory
+    // slug. Never a portal slug, and never resolved for an unpublished profile.
+    directory_slug: z.string().trim().min(1).max(120).optional(),
+    name: z.string().trim().min(1).max(120),
+    email: z.string().trim().email().max(255),
+    phone: z.string().trim().max(40).optional().or(z.literal("")),
+    company: z.string().trim().max(120).optional().or(z.literal("")),
+    location: z.string().trim().max(200).optional().or(z.literal("")),
+    dog_count: z.coerce.number().int().min(0).max(999).optional().nullable(),
+    frequency: z.string().trim().max(40).optional().or(z.literal("")),
+    message: z.string().trim().max(2000).optional().or(z.literal("")),
+    source: z.string().trim().max(60).optional(),
+    // The service asked about (phase 5), when the business offers more than
+    // one. An id from public_services, checked below against the business the
+    // slug resolved to; a business that sells one thing never sends it.
+    service_id: z.string().uuid().optional().nullable(),
+    // The extras picked for that service on the booking link (#560): add-on
+    // ids and a size per pet. Named on the lead for the office, read back from
+    // the business's own rows; a website's own form sends neither.
+    add_on_ids: z.array(z.string().uuid()).max(MAX_ADD_ONS).optional(),
+    pet_sizes: z
+      .array(z.enum([...PET_SIZES, ""] as [string, ...string[]]))
+      .max(20)
+      .optional(),
+    // The first visit's answers (#527): the pets by name, how to get in, and
+    // when to start. All optional here; see the check below for why.
+    ...bookingDetailsSchema.shape,
+    // The spam filters (public-form-guard.ts). Unknown rather than a bounded
+    // string, so a script that stuffs the honeypot with a novel gets the same
+    // calm refusal as one that writes a word, not a validation error naming it.
+    [HONEYPOT_FIELD]: z.unknown().optional(),
+    [ELAPSED_FIELD]: z.unknown().optional(),
+  })
+  .refine((d) => !!d.slug !== !!d.directory_slug, {
+    message: "Name the business by exactly one of slug or directory_slug",
+  });
 
 const refused = (status: number) =>
   new Response(JSON.stringify({ error: CALM_REFUSAL }), { status, headers: jsonHeaders });
@@ -142,10 +159,33 @@ export const Route = createFileRoute("/api/public/leads")({
         // Resolve the tenant from its public slug (SECURITY DEFINER RPC, so it
         // works for the anonymous key). Lead capture matches portal_slug and is
         // not gated on public_signup_enabled (#3).
-        const { data: orgRows } = await supabase.rpc("public_get_org_for_lead_form", {
-          _slug: data.slug,
-        });
-        const orgId = (orgRows as Array<{ id: string }> | null)?.[0]?.id ?? null;
+        //
+        // A directory quote resolves its directory slug instead, and only a
+        // PUBLISHED profile of a live business answers. That lookup is the
+        // service role's (a visitor cannot turn a slug into an org id), and
+        // `source` is then 'directory' whatever the body said. A body that
+        // claims 'directory' without a directory slug is refused: that label
+        // means "came through the directory" and nothing else may write it.
+        const fromDirectory = !!data.directory_slug;
+        if (!fromDirectory && data.source === DIRECTORY_LEAD_SOURCE) {
+          return new Response(JSON.stringify({ error: "Invalid input" }), {
+            status: 400,
+            headers: jsonHeaders,
+          });
+        }
+        let orgId: string | null = null;
+        if (fromDirectory) {
+          const { supabaseAdmin: admin } = await import("@/integrations/supabase/client.server");
+          const { data: dirOrg } = await (admin as any).rpc("directory_org_for_quote", {
+            _slug: data.directory_slug,
+          });
+          orgId = typeof dirOrg === "string" ? dirOrg : null;
+        } else {
+          const { data: orgRows } = await supabase.rpc("public_get_org_for_lead_form", {
+            _slug: data.slug!,
+          });
+          orgId = (orgRows as Array<{ id: string }> | null)?.[0]?.id ?? null;
+        }
         if (!orgId) {
           return new Response(JSON.stringify({ error: "Unknown business" }), {
             status: 404,
@@ -270,8 +310,37 @@ export const Route = createFileRoute("/api/public/leads")({
         // this line says and nothing the caller sent: a submission is always a
         // new, untouched lead. That was the dropped INSERT policy's rule; it
         // lives where the write is now.
-        const source = data.source || "website";
+        const source = fromDirectory ? DIRECTORY_LEAD_SOURCE : data.source || "website";
         const location = data.location || null;
+
+        // A directory quote sent twice (a double tap, or the same person
+        // asking again tomorrow morning) is ONE lead: within 24 hours, the
+        // same email to the same business is merged into the open lead it
+        // already has, and the office is not told twice. The turn above was
+        // still taken, so a script repeating itself is still rate limited.
+        if (fromDirectory) {
+          const since = new Date(
+            Date.now() - DIRECTORY_QUOTE_MERGE_HOURS * 3_600_000,
+          ).toISOString();
+          const { data: earlier } = await (supabaseAdmin.from("leads") as any)
+            .select("id")
+            .eq("organization_id", orgId)
+            .eq("source", DIRECTORY_LEAD_SOURCE)
+            .eq("email", data.email.toLowerCase())
+            .gte("created_at", since)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (earlier?.id) {
+            return new Response(
+              JSON.stringify({ ok: true, merged: true, serviceArea: "unknown" }),
+              {
+                status: 200,
+                headers: jsonHeaders,
+              },
+            );
+          }
+        }
         const { data: lead, error } = await (supabaseAdmin.from("leads") as any)
           .insert({
             organization_id: orgId,

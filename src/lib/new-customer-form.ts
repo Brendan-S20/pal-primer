@@ -262,6 +262,8 @@ export function leadOriginLabel(source: string, signup: LeadSignupState): string
     // ai-receptionist.server.ts: capture_lead, and book_visit for a number
     // that is not a client (it is never booked, only made a lead).
     if (source === "sms_receptionist") return "Texted the AI receptionist";
+    // A quote request from HoundStack's own directory (#630).
+    if (source === "directory") return "Quote request from the HoundStack directory";
     return source.replace(/[_-]+/g, " ").replace(/^\w/, (c) => c.toUpperCase());
   }
   const where = source === LEAD_SOURCE.doorSignup ? "at the door" : "online";
