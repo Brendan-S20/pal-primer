@@ -1,7 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { feeReversalCents } from "@/lib/platform-fee";
-import { reversibleApplicationFeeCents } from "@/lib/tap-to-pay";
+import {
+  readChargeMetadata,
+  reversibleFeeBaseCents,
+  type ChargeMetadataRead,
+} from "@/lib/tap-to-pay";
 import { makeStripe, warnOnApiVersionMismatch } from "@/lib/stripe-client.server";
 import { bookedGroomPhrase, onlineGroomBookingFrom } from "@/lib/groom-online";
 import {
@@ -636,30 +640,29 @@ async function provisionSignup(
 }
 
 /**
- * The metadata a charge's PaymentIntent was created with, for the fee
- * reversal. A charge made by a PaymentIntent normally carries a copy; when it
- * does not (or there is no charge object, as on a dispute), the intent is read
- * from the connected account it lives on. Null on any failure: the caller then
- * treats the charge as carrying no per-tap fee, which is the behaviour every
- * non-tap charge has always had.
+ * The charge's PaymentIntent metadata, for the fee reversal (#579): off the
+ * charge when it carries a copy, else read from the intent on the connected
+ * account. `readable: false` when neither works; the callers then skip the
+ * reversal rather than assume the charge carries no per-tap fee (see
+ * reversibleFeeBaseCents in src/lib/tap-to-pay.ts).
  */
-async function chargeMetadata(
+async function chargeMetadataRead(
   charge: { metadata?: Record<string, string> | null } | null,
   paymentIntentId: string | null,
   stripeAccount: string | null | undefined,
-): Promise<Record<string, string> | null> {
-  const fromCharge = charge?.metadata;
-  if (fromCharge && Object.keys(fromCharge).length > 0) return fromCharge;
-  if (!paymentIntentId || !stripeAccount) return null;
-  try {
-    const { connectStripe } = await import("@/lib/stripe-connect.server");
-    const stripe = await connectStripe();
-    const pi = await stripe.paymentIntents.retrieve(paymentIntentId, {}, { stripeAccount });
-    return (pi?.metadata as Record<string, string> | undefined) ?? null;
-  } catch (e) {
-    console.error("fee reversal: could not read the intent's metadata", { paymentIntentId }, e);
-    return null;
-  }
+): Promise<ChargeMetadataRead> {
+  return readChargeMetadata(
+    charge,
+    paymentIntentId,
+    stripeAccount
+      ? async (id) => {
+          const { connectStripe } = await import("@/lib/stripe-connect.server");
+          const connect = await connectStripe();
+          const pi = await connect.paymentIntents.retrieve(id, {}, { stripeAccount });
+          return pi?.metadata as Record<string, string> | undefined;
+        }
+      : null,
+  );
 }
 
 export const Route = createFileRoute("/api/public/hooks/stripe")({
@@ -1631,18 +1634,30 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 try {
                   const fee = await stripe.applicationFees.retrieve(feeId);
                   // Tap to Pay (#579): the per-tap part of the fee is not
-                  // handed back. See reversibleApplicationFeeCents.
-                  const target = feeReversalCents(
-                    reversibleApplicationFeeCents(
-                      Number(fee?.amount ?? 0),
-                      await chargeMetadata(obj, paymentIntentId, event.account),
-                    ),
-                    Number(obj?.amount ?? 0),
-                    Number(obj?.amount_refunded ?? 0),
-                  );
-                  const delta = target - Number(fee?.amount_refunded ?? 0);
-                  if (delta > 0) {
-                    await stripe.applicationFees.createRefund(feeId, { amount: delta });
+                  // handed back, and when the intent's metadata cannot be read
+                  // nothing is reversed at all. See reversibleFeeBaseCents.
+                  const read = await chargeMetadataRead(obj, paymentIntentId, event.account);
+                  const base = reversibleFeeBaseCents(Number(fee?.amount ?? 0), read);
+                  if (base === null) {
+                    console.error(
+                      "application fee reversal SKIPPED: the charge's intent metadata could not be read, so a Tap to Pay fee cannot be ruled out. Reverse by hand if this is not a tap.",
+                      {
+                        feeId,
+                        chargeId: obj?.id ?? null,
+                        paymentIntentId,
+                        reason: read.readable ? null : read.reason,
+                      },
+                    );
+                  } else {
+                    const target = feeReversalCents(
+                      base,
+                      Number(obj?.amount ?? 0),
+                      Number(obj?.amount_refunded ?? 0),
+                    );
+                    const delta = target - Number(fee?.amount_refunded ?? 0);
+                    if (delta > 0) {
+                      await stripe.applicationFees.createRefund(feeId, { amount: delta });
+                    }
                   }
                 } catch (e) {
                   console.error(
@@ -1748,21 +1763,34 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                         Number(pay.amount_cents ?? 0) +
                         Number(pay.surcharge_cents ?? 0) +
                         Number(pay.tip_cents ?? 0);
-                      const target = feeReversalCents(
-                        // Tap to Pay (#579): never the per-tap part.
-                        reversibleApplicationFeeCents(
-                          Number(fee.amount ?? 0),
-                          await chargeMetadata(null, paymentIntentId, event.account),
-                        ),
-                        chargeTotal,
-                        // The DISPUTED amount, not the charge total. A partial
-                        // dispute takes part of the charge and should take the
-                        // matching part of the fee.
-                        amount,
-                      );
-                      const delta = target - Number(fee.amount_refunded ?? 0);
-                      if (delta > 0) {
-                        await stripe.applicationFees.createRefund(fee.id, { amount: delta });
+                      // Tap to Pay (#579): never the per-tap part, and nothing
+                      // at all when the intent's metadata cannot be read.
+                      const read = await chargeMetadataRead(null, paymentIntentId, event.account);
+                      const base = reversibleFeeBaseCents(Number(fee.amount ?? 0), read);
+                      if (base === null) {
+                        console.error(
+                          "application fee reversal on dispute SKIPPED: the charge's intent metadata could not be read, so a Tap to Pay fee cannot be ruled out. Reverse by hand if this is not a tap.",
+                          {
+                            feeId: fee.id,
+                            chargeId,
+                            paymentIntentId,
+                            disputeRef,
+                            reason: read.readable ? null : read.reason,
+                          },
+                        );
+                      } else {
+                        const target = feeReversalCents(
+                          base,
+                          chargeTotal,
+                          // The DISPUTED amount, not the charge total. A partial
+                          // dispute takes part of the charge and should take the
+                          // matching part of the fee.
+                          amount,
+                        );
+                        const delta = target - Number(fee.amount_refunded ?? 0);
+                        if (delta > 0) {
+                          await stripe.applicationFees.createRefund(fee.id, { amount: delta });
+                        }
                       }
                     }
                   } catch (e) {

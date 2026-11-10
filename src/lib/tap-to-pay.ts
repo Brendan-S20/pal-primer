@@ -66,6 +66,61 @@ export function reversibleApplicationFeeCents(
   return Math.max(0, feeCents - tapToPayFeeFromMetadata(metadata));
 }
 
+/** What a fee reversal learned about the charge's PaymentIntent metadata.
+ *  `readable: false` means it could not be learned at all, which is not the
+ *  same as "this charge carries no per-tap fee". */
+export type ChargeMetadataRead =
+  | { readable: true; metadata: Record<string, string> }
+  | { readable: false; reason: string };
+
+/**
+ * The metadata a charge's PaymentIntent was created with. A charge made by a
+ * PaymentIntent normally carries a copy; when it does not (or there is no
+ * charge object, as on a dispute), the intent is read through `readIntent`,
+ * which the webhook points at the connected account the intent lives on.
+ * Never throws: a failure comes back as `readable: false`.
+ */
+export async function readChargeMetadata(
+  charge: { metadata?: Record<string, string> | null } | null,
+  paymentIntentId: string | null,
+  readIntent: ((id: string) => Promise<Record<string, string> | null | undefined>) | null,
+): Promise<ChargeMetadataRead> {
+  const fromCharge = charge?.metadata;
+  if (fromCharge && Object.keys(fromCharge).length > 0) {
+    return { readable: true, metadata: fromCharge };
+  }
+  if (!paymentIntentId) return { readable: false, reason: "no payment intent" };
+  if (!readIntent) return { readable: false, reason: "no connected account" };
+  try {
+    return { readable: true, metadata: (await readIntent(paymentIntentId)) ?? {} };
+  } catch (e) {
+    return { readable: false, reason: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * The part of an application fee a refund or dispute may hand back, given what
+ * could be learned about the charge's metadata, or null when that cannot be
+ * decided safely and nothing should be reversed. The webhook feeds a number
+ * into feeReversalCents exactly as before; null means skip and log.
+ *
+ * Null when the metadata is unreadable. Assuming "no per-tap fee" there would
+ * hand a tap's ten cents back on the `application` fee payer, and the platform
+ * would pay for the tenant's tap (owner decision, 2026-11-10). Skipping is the
+ * safer error: the platform fee is zero today, a redelivery of the event
+ * recomputes the target from scratch (the caller sends only the difference
+ * from what Stripe has already returned), and the caller logs the charge so
+ * the office can reverse by hand. Readable metadata behaves exactly as before.
+ *
+ * Deliberately not importing @/lib/platform-fee: this module ships to the
+ * app, and the fee term stays off the client
+ * (tests/a-pricing-term-that-shipped-to-the-browser.test.ts).
+ */
+export function reversibleFeeBaseCents(feeCents: number, read: ChargeMetadataRead): number | null {
+  if (!read.readable) return null;
+  return reversibleApplicationFeeCents(feeCents, read.metadata);
+}
+
 export type TapToPayPlatform = "ios" | "android" | "web" | string;
 
 export type TapToPayGateInput = {

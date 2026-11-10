@@ -81,13 +81,38 @@ payout and shown in Stripe." In the business's Stripe payments view, the tap fee
 either as a Stripe fee (`application_express`) or as an application fee
 (`application`).
 
-**Test-mode proof (not yet run; needs Stripe test keys).** Take one simulated
-`card_present` charge on a test-mode Express account (see the $1.00 path
-below; use $1.00 or more), then open the charge's balance transaction **on the
-connected account** (`stripe balance_transactions retrieve txn_... --stripe-account acct_...`)
-and check `fee_details`. Under `application_express` the Stripe fee, Terminal
-included, is listed there and the PI's application fee is the platform fee
-only. Also check the platform's balance shows no fee debit for that charge.
+**Live pricing check (read-only, done 2026-11-10).** The live Connect platform
+`acct_1U0CVSQUHYdejlaV` is on standard blended pricing, not IC+. Evidence,
+from the connected accounts' own balance transactions:
+
+- `ch_3UXBtRH7o0ny3UiP0CxQsNBp` on `acct_1U0oZzH7o0ny3UiP`:
+  `txn_3UXBtRH7o0ny3UiP02bEe6Qx`, amount 6000, fee 204, net 5796.
+  `fee_details` is one line: `{ type: stripe_fee, amount: 204, description:
+  "Stripe processing fees", application: null }` (2.9% + 30c).
+- `ch_3UXQlPQg89H4tWg50gmDreSN` on `acct_1UUvxbQg89H4tWg5`:
+  `txn_3UXQlPQg89H4tWg50Xv69PHh`, amount 2000, fee 88, net 1912.
+  `fee_details` is one line: `{ type: stripe_fee, amount: 88, description:
+  "Stripe processing fees", application: null }` (2.9% + 30c).
+
+Neither has an interchange-plus or network-cost line, and the fee sits on the
+connected account. Under `application_express` that means the "nothing added"
+branch does not leak.
+
+**Test-mode tap proof: STILL NOT RUN.** It needs HoundStack's Connect
+platform test-mode access, which the automation does not have yet. Nothing
+here claims it passed. The steps:
+
+1. Take one simulated `card_present` charge on a test-mode Express account
+   (see the $1.00 path below; use $1.00 or more).
+2. Open the charge's balance transaction **on the connected account**
+   (`stripe balance_transactions retrieve txn_... --stripe-account acct_...`)
+   and check `fee_details`: under `application_express` the Stripe fee,
+   Terminal included, is listed there.
+3. Check the PaymentIntent's `application_fee_amount` is the platform fee only
+   (no per-tap ten cents).
+4. Check the platform's balance shows no fee debit for that charge.
+5. Refund the charge and check the application fee reversal: the platform-fee
+   part comes back pro rata, a per-tap part never does.
 
 ## Who sees the button
 

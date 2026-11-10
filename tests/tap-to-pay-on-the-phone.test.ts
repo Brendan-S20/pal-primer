@@ -148,7 +148,12 @@ import {
 } from "@/lib/tap-to-pay.server";
 import { invoiceDueCents } from "@/lib/ar";
 import { feeReversalCents } from "@/lib/platform-fee";
-import { reversibleApplicationFeeCents, tapToPayFeeFromMetadata } from "@/lib/tap-to-pay";
+import {
+  readChargeMetadata,
+  reversibleFeeBaseCents,
+  reversibleApplicationFeeCents,
+  tapToPayFeeFromMetadata,
+} from "@/lib/tap-to-pay";
 import {
   createTapToPayConnectionToken,
   createTapToPayPaymentIntent,
@@ -453,12 +458,73 @@ describe("a refunded or disputed tap never hands the per-tap fee back", () => {
     );
   });
 
-  it("both reversal sites in the webhook use it", () => {
+  it("both reversal sites in the webhook use it, and skip when the metadata is unreadable", () => {
     const hook = readFileSync("src/routes/api/public/hooks/stripe.ts", "utf8");
-    const uses =
-      hook.match(/feeReversalCents\(\s*(?:\/\/[^\n]*\s*)*reversibleApplicationFeeCents\(/g) ?? [];
-    expect(uses).toHaveLength(2);
+    expect(hook.match(/reversibleFeeBaseCents\(/g) ?? []).toHaveLength(2);
+    expect(hook.match(/if \(base === null\) \{\s*console\.error\(/g) ?? []).toHaveLength(2);
+    expect(hook.match(/feeReversalCents\(\s*base,/g) ?? []).toHaveLength(2);
     expect(hook).not.toMatch(/feeReversalCents\(\s*Number\(fee/);
+    expect(hook).not.toMatch(/reversibleApplicationFeeCents\(/);
+  });
+});
+
+describe("a refund whose tap metadata cannot be read hands nothing back", () => {
+  // Full refund of a $40.00 tap under the `application` fee payer: the
+  // application fee was 200 (platform) + 10 (tap).
+  const tapMeta = { channel: "tap_to_pay", tap_to_pay_fee_cents: "10" };
+  // What both webhook sites do: skip on null, else feeReversalCents(base, ...).
+  const target = (
+    fee: number,
+    read: Awaited<ReturnType<typeof readChargeMetadata>>,
+    charge: number,
+    refunded: number,
+  ) => {
+    const base = reversibleFeeBaseCents(fee, read);
+    return base === null ? null : feeReversalCents(base, charge, refunded);
+  };
+  const fullRefund = (read: Awaited<ReturnType<typeof readChargeMetadata>>) =>
+    target(210, read, 4_000, 4_000);
+
+  it("metadata on the charge: read from it, intent never fetched, behaviour unchanged", async () => {
+    const readIntent = vi.fn();
+    const read = await readChargeMetadata({ metadata: tapMeta }, "pi_tap", readIntent);
+    expect(read).toEqual({ readable: true, metadata: tapMeta });
+    expect(readIntent).not.toHaveBeenCalled();
+    expect(fullRefund(read)).toBe(200);
+  });
+
+  it("metadata read from the intent when the charge carries none: behaviour unchanged", async () => {
+    const readIntent = vi.fn(async () => tapMeta);
+    const read = await readChargeMetadata({ metadata: {} }, "pi_tap", readIntent);
+    expect(readIntent).toHaveBeenCalledWith("pi_tap");
+    expect(read).toEqual({ readable: true, metadata: tapMeta });
+    expect(fullRefund(read)).toBe(200);
+  });
+
+  it("a readable non-tap charge reverses exactly as it always has", async () => {
+    const read = await readChargeMetadata({ metadata: { source: "portal_inline" } }, "pi_x", null);
+    expect(target(200, read, 40_000, 40_000)).toBe(feeReversalCents(200, 40_000, 40_000));
+    const viaIntent = await readChargeMetadata(null, "pi_x", async () => ({}));
+    expect(target(200, viaIntent, 40_000, 10_000)).toBe(feeReversalCents(200, 40_000, 10_000));
+  });
+
+  it("the intent read throws: unreadable, and nothing is reversed (the 10 cents is never handed back)", async () => {
+    const readIntent = vi.fn(async () => {
+      throw new Error("Stripe unavailable");
+    });
+    const read = await readChargeMetadata(null, "pi_tap", readIntent);
+    expect(read).toEqual({ readable: false, reason: "Stripe unavailable" });
+    expect(fullRefund(read)).toBeNull();
+  });
+
+  it("no intent id, or no connected account to read it from: also unreadable", async () => {
+    expect(await readChargeMetadata({ metadata: {} }, null, async () => tapMeta)).toEqual({
+      readable: false,
+      reason: "no payment intent",
+    });
+    const noAccount = await readChargeMetadata(null, "pi_tap", null);
+    expect(noAccount).toEqual({ readable: false, reason: "no connected account" });
+    expect(fullRefund(noAccount)).toBeNull();
   });
 });
 
