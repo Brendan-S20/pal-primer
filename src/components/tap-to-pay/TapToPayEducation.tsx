@@ -21,8 +21,8 @@ export function educationPages(platform: string) {
       title: `How to take a payment with ${name}`,
       body: [
         `Open an invoice and press ${name}. It is first in the payment options.`,
-        `Hand the ${phone} to the customer, or hold it facing them, with the screen up.`,
-        `The customer holds their card or their phone near the top of your ${phone} until they see Done.`,
+        `Hand the ${phone} to the client, or hold it facing them, with the screen up.`,
+        `The client holds their card or their phone near the top of your ${phone} until they see Done.`,
       ],
     },
     {
@@ -38,16 +38,16 @@ export function educationPages(platform: string) {
       id: "pin",
       title: "When the card asks for a PIN",
       body: [
-        `Some cards ask for a PIN. The screen shows a PIN pad, and the customer types their PIN on your ${phone}.`,
-        "Turn the screen toward the customer and look away while they type.",
-        "Accessibility options are on the PIN screen for customers who need them, including VoiceOver.",
+        `Some cards ask for a PIN. The screen shows a PIN pad, and the client types their PIN on your ${phone}.`,
+        "Turn the screen toward the client and look away while they type.",
+        "Accessibility options are on the PIN screen for clients who need them, including VoiceOver.",
       ],
     },
     {
       id: "trouble",
       title: "If a tap doesn't work",
       body: [
-        `Ask the customer to hold the card still near the top of the ${phone}, and to take it out of a thick wallet or case.`,
+        `Ask the client to hold the card still near the top of the ${phone}, and to take it out of a thick wallet or case.`,
         "If the card is declined, nothing is charged. Ask for another card.",
         "No signal means no approval. Move to where you have signal, or record a cash or check payment.",
       ],

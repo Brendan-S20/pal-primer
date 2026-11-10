@@ -294,7 +294,7 @@ export function TapToPayButton({
           {phase.kind === "collecting" && (
             <>
               <p className="mt-2 text-sm font-medium" role="status">
-                Ask the customer to hold their card near the top of the phone.
+                Ask the client to hold their card near the top of the phone.
               </p>
               <Button variant="outline" className="mt-2 h-11 w-full" onClick={cancel}>
                 Cancel

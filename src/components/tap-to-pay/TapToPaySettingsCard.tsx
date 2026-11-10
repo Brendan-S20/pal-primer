@@ -1,4 +1,4 @@
-// Tap to Pay on iPhone in Payments settings (Apple's review guide 3.5, 3.6,
+// Tap to Pay on iPhone in Payments, Account tab (Apple's review guide 3.5, 3.6,
 // 3.8.1, 3.9.1, 4.3, 1.4): turn it on outside checkout, see whether it is on,
 // reopen the merchant education. Native app only: payments.tsx loads this
 // lazily behind an inline VITE_NATIVE_BUNDLE check, so the web build carries

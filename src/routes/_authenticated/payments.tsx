@@ -281,13 +281,6 @@ function PaymentsSettings() {
             settings={
               cfg.chargesEnabled ? (
                 <div className="space-y-4">
-                  {/* Tap to Pay on iPhone (Apple's review guide 3.6): enabled
-                      outside checkout. Native app only; the web build drops it. */}
-                  {TapToPaySettingsCard && (
-                    <Suspense fallback={null}>
-                      <TapToPaySettingsCard />
-                    </Suspense>
-                  )}
                   <ProcessingFeeCard />
                   <TipsCard />
                 </div>
@@ -295,6 +288,14 @@ function PaymentsSettings() {
             }
             accountExtras={
               <>
+                {/* Tap to Pay on iPhone (Apple's review guide 3.6): enabled
+                    outside checkout, in the Account tab. Native app only; the
+                    web build drops it. */}
+                {TapToPaySettingsCard && cfg.chargesEnabled && (
+                  <Suspense fallback={null}>
+                    <TapToPaySettingsCard />
+                  </Suspense>
+                )}
                 {/* Was a permanently-visible amber box at the foot of the page,
                     warning about a hypothetical ("if you connect a different
                     account") whether or not anybody was switching. A warning

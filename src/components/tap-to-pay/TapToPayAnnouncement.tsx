@@ -117,7 +117,7 @@ export function TapToPayAnnouncement() {
         <h2 className="mt-6 text-2xl font-semibold">Accept payments with {TAP_TO_PAY_ON_IPHONE}</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           Take contactless credit and debit cards, Apple Pay and other digital wallets right on your
-          iPhone. No extra hardware, no card reader to carry. The customer taps, and the invoice is
+          iPhone. No extra hardware, no card reader to carry. The client taps, and the invoice is
           paid.
         </p>
         {!s.canAcceptTerms && <p className="mt-4 text-sm">{TAP_TO_PAY_MESSAGES.askAdmin}</p>}

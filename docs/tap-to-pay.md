@@ -137,7 +137,7 @@ for its reader; `describeTapToPayError` turns the answer into a sentence.
 | 1.5, 5.6 warm-up at launch and on foreground | `startTapToPayOnLaunch` in `src/lib/tap-to-pay-terminal.ts`, started by the `_authenticated` layout (`tap_to_pay_warm_up` step). Connects the reader only where Apple's terms are already accepted, so it never raises Apple's sheet |
 | 1.6 terms status from Apple each time | `isTapToPayAccountLinked` on every tap and every Settings visit, never cached |
 | 3.1, 3.3, 6.2 awareness | `TapToPayAnnouncement`: full screen, once per phone, for an iPhone merchant whose business has Tap to Pay available |
-| 3.5, 3.6 enable outside checkout | "Enable Tap to Pay on iPhone" on the announcement and on Payments, Settings (`TapToPaySettingsCard`). This is where the owner accepts Apple's terms |
+| 3.5, 3.6 enable outside checkout | "Enable Tap to Pay on iPhone" on the announcement and on Payments, Account tab (`TapToPaySettingsCard`). This is where the owner accepts Apple's terms |
 | 3.8, 3.8.1 admin only, ask your admin | `canAcceptTapToPayTerms`, `TapToPayNeedsAdminError`, `TAP_TO_PAY_MESSAGES.askAdmin` |
 | 3.9.1, 5.7 setup progress | `TapToPayProgress`, fed by the plugin's `StartInstallingUpdate`, `ReaderSoftwareUpdateProgress` and `FinishInstallingUpdate` events |
 | 4.1, 4.2, 4.5, 4.6, 4.7 education, PIN entry | `TapToPayEducation`: how to tap, cards and wallets, PIN entry, if a tap does not work. On iOS 18+ it first offers Apple's own guide through `ProximityReaderDiscovery` (`ios/App/App/TapToPay/TapToPayEducationPlugin.swift`) |
@@ -190,7 +190,7 @@ refund it."
    The demo business needs a charge-ready live connected account and a
    business address (Settings, Client portal).
 3. **What to record:** the announcement, Enable Tap to Pay on iPhone from
-   Payments (Apple's terms sheet, then the setup meter), How it works, then a
+   Payments, Account tab (Apple's terms sheet, then the setup meter), How it works, then a
    $1.00 invoice: Tap to Pay on iPhone first in the list, Apple's tap screen,
    Processing payment, Payment approved, Send receipt.
 4. **The charge:** live mode. Brendan taps **his own real card** for $1.00.

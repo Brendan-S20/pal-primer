@@ -450,7 +450,7 @@ describe("the wiring", () => {
     );
   });
 
-  it("the Settings entry is in Payments, native only", () => {
+  it("the Settings entry is in Payments, Account tab, native only", () => {
     const page = readFileSync("src/routes/_authenticated/payments.tsx", "utf8");
     expect(page).toMatch(
       /const TapToPaySettingsCard =\s*import\.meta\.env\.VITE_NATIVE_BUNDLE === "1"/,
