@@ -143,3 +143,42 @@ export function addonLine(a: PendingAddon): VisitInvoiceLine {
     amountCents: a.amount_cents,
   };
 }
+
+/** What, beyond the visit itself, decides whether completing it invoices it
+ *  (#859). The billing run reads the same three: it skips an inactive client
+ *  and an org with automatic invoicing off, and bills an after-each-visit
+ *  client through today rather than at the end of a period. */
+export type CompletionBilling = {
+  billingFrequency: string | null;
+  clientActive: boolean | null;
+  autoInvoiceEnabled: boolean | null;
+};
+
+/** Whether completing this visit should invoice it there and then (#605,
+ *  decision D2: invoice at completion; #859). Only a completed visit on a
+ *  POSTPAID plan whose client is billed after each visit. A prepaid visit was
+ *  paid from the balance by finalize_visit_completion and gets no invoice; a
+ *  weekly or monthly client is billed for the period by the run; a package
+ *  lesson is on its package invoice. Whether the visit is already on a live
+ *  invoice is visitInvoiceBlocker's question, asked separately. */
+export function invoicesAtCompletion(v: BillableVisit, c: CompletionBilling): boolean {
+  return (
+    v.status === "completed" &&
+    v.subscription?.billing_cadence === "postpaid" &&
+    !v.client_package_id &&
+    c.billingFrequency === "after_each_visit" &&
+    c.clientActive !== false &&
+    c.autoInvoiceEnabled === true
+  );
+}
+
+/** How many void invoices have billed this visit. Each void gives the work
+ *  back, so it is the visit's billing GENERATION: the first invoice is
+ *  generation 0, the one made after voiding it generation 1. */
+export function voidedInvoiceCount(visitId: string, links: VisitLink[]): number {
+  return new Set(
+    links
+      .filter((l) => l.visit_id === visitId && l.invoice.status === "void")
+      .map((l) => l.invoice.id),
+  ).size;
+}

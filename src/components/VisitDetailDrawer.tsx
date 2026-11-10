@@ -344,6 +344,9 @@ export function VisitDetailDrawer({
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["visit-detail", visitId] });
     qc.invalidateQueries({ queryKey: ["visits"] });
+    // Completing a visit billed after each visit invoices it (#859).
+    qc.invalidateQueries({ queryKey: ["visit-invoicing", visitId] });
+    qc.invalidateQueries({ queryKey: ["invoices"] });
   };
 
   // Pinned to its tech: auto-routing never moves it to someone else, even on

@@ -488,6 +488,14 @@ export const completeVisit = createServerFn({ method: "POST" })
       _checked_items: data.checkedItems ?? undefined,
     });
     if (error) throw new Error(error.message);
+    // Billed after each visit on a postpaid plan: the invoice now, not
+    // tonight (#859, D2). Made with the service role, because a tech holds no
+    // billing permission; once per visit however often a replay arrives;
+    // nothing for a prepaid plan. Never throws.
+    {
+      const { invoiceAtCompletionSafely } = await import("@/lib/visit-completion-invoice.server");
+      await invoiceAtCompletionSafely({ visitId: data.visitId, actorUserId: context.userId });
+    }
     try {
       const { data: v } = await context.supabase
         .from("visits")

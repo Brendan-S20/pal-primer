@@ -712,6 +712,11 @@ export const completeVisitFromOffice = createServerFn({ method: "POST" })
     // A lesson that leaves one session on its package. Never throws.
     const { afterLessonSessionChange } = await import("@/lib/training-portal.server");
     await afterLessonSessionChange(data.visitId);
+    // Billed after each visit on a postpaid plan: the invoice now, not
+    // tonight (#859, D2). Once per visit however often this runs; nothing for
+    // a prepaid plan. Never throws.
+    const { invoiceAtCompletionSafely } = await import("@/lib/visit-completion-invoice.server");
+    await invoiceAtCompletionSafely({ visitId: data.visitId, actorUserId: userId });
     return { ok: true as const };
   });
 
