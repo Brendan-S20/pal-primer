@@ -112,7 +112,14 @@ export function isAppMounted(): boolean {
 // updated at once, and every store subscriber reads it when it mounts. After
 // the first commit every call goes to Transitioner's function, unchanged.
 
-type StartTransition = (fn: () => void) => void;
+// router-core 1.171+ types this as (fn, expectedMatches) => Promise<boolean>.
+// Extra arguments are forwarded so Transitioner still sees the matches it
+// now passes in. `any` here is deliberate: the previous 1-arg form and the
+// new 2-arg form both have to be assignable to this wrapper type.
+type StartTransition = (
+  fn: () => void,
+  ...args: any[]
+) => void | Promise<boolean>;
 
 /**
  * Install the guard on a router (client only; see above). Returns the router.
@@ -132,11 +139,11 @@ export function guardRouterStartTransition<R extends { startTransition: StartTra
     configurable: true,
     enumerable: true,
     get(): StartTransition {
-      return (fn) => {
+      return (fn, ...args) => {
         // Assigned by a render that has not committed: do the router's work
         // now, without that render's setState.
-        if (fromRender && !mounted) return routerDefault(fn);
-        return current(fn);
+        if (fromRender && !mounted) return routerDefault(fn, ...args);
+        return current(fn, ...args);
       };
     },
     set(next: StartTransition) {
