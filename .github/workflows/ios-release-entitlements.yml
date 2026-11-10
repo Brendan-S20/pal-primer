@@ -1,0 +1,95 @@
+name: iOS release entitlements
+
+# ── WHAT THIS DOES ──────────────────────────────────────────────────────────
+#
+# Builds Debug and Release on the Mac, reads the entitlements Xcode RESOLVED
+# for each, and fails unless Release leaves out Tap to Pay on iPhone
+# (com.apple.developer.proximity-reader.payment.acceptance) and Debug keeps
+# it. Then archives Release for a device with signing off, which is the step
+# Xcode Cloud runs before export. scripts/ios-release-entitlements-check.sh is
+# the implementation and says what it does not prove: it does NOT export,
+# because distribution signing lives with Xcode Cloud.
+#
+# ── WHY ─────────────────────────────────────────────────────────────────────
+#
+# #855: Xcode Cloud failed "Exporting for App Store / Ad Hoc Distribution" on
+# every archive after #847, because #757 put a development-only entitlement in
+# the one file both configurations signed with. Xcode Cloud archives main
+# only, so nothing ran this question on a pull request.
+#
+# ── WHEN ────────────────────────────────────────────────────────────────────
+#
+# On a pull request (drafts included: it is two builds and an archive, not
+# four simulators) or a push to main that touches the iOS project, and by hand.
+
+on:
+  pull_request:
+    paths:
+      - "ios/App/App/*.entitlements"
+      - "ios/App/App/Info.plist"
+      - "ios/App/App.xcodeproj/project.pbxproj"
+      - "scripts/ios-release-entitlements-check.sh"
+      - ".github/workflows/ios-release-entitlements.yml"
+  push:
+    branches: [main]
+    paths:
+      - "ios/App/App/*.entitlements"
+      - "ios/App/App/Info.plist"
+      - "ios/App/App.xcodeproj/project.pbxproj"
+      - "scripts/ios-release-entitlements-check.sh"
+      - ".github/workflows/ios-release-entitlements.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ios-release-entitlements-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  entitlements:
+    name: Release signs without Tap to Pay, Debug keeps it
+    runs-on: ${{ fromJSON(vars.IOS_LAUNCH_RUNNER_JSON || '["self-hosted","macOS"]') }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # With lifecycle scripts: postinstall (scripts/patch-native-plugins.mjs)
+      # is what lets Swift Package Manager resolve at all.
+      - name: Install
+        run: npm ci
+
+      - name: Build the web bundle for native
+        run: npm run build:native
+
+      - name: Copy it into the iOS project
+        run: npx cap sync ios
+
+      - name: Build both configurations and read their entitlements
+        run: scripts/ios-release-entitlements-check.sh
+        env:
+          CHECK_OUT: ${{ runner.temp }}/ios-release-entitlements
+
+      - name: Keep the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-release-entitlements
+          path: |
+            ${{ runner.temp }}/ios-release-entitlements/*.log
+            ${{ runner.temp }}/ios-release-entitlements/*.txt
+            ${{ runner.temp }}/ios-release-entitlements/summary.md
+          retention-days: 14
+          if-no-files-found: ignore
+
+      # The derived data is a few GB on a shared Mac.
+      - name: Clean up
+        if: always()
+        continue-on-error: true
+        run: rm -rf "${{ runner.temp }}/ios-release-entitlements" || true

@@ -180,3 +180,35 @@ describe("the app knows which it is, and hides the button when it is not entitle
     expect(tapToPayEntitled("android", undefined)).toBe(true);
   });
 });
+
+describe("a Mac measures what Xcode resolves, on every pull request that could change it", () => {
+  const wf = read(".github/workflows/ios-release-entitlements.yml");
+  const code = wf
+    .split("\n")
+    .filter((l) => !/^\s*#/.test(l))
+    .join("\n");
+
+  it("runs on a pull request touching the entitlements, Info.plist or the project, drafts included", () => {
+    for (const p of [
+      "ios/App/App/*.entitlements",
+      "ios/App/App/Info.plist",
+      "ios/App/App.xcodeproj/project.pbxproj",
+    ]) {
+      expect(code).toContain(`"${p}"`);
+    }
+    // ios-launch.yml skips drafts; this one must not, or the question goes
+    // unasked on exactly the draft that changes the answer.
+    expect(code).not.toMatch(/pull_request\.draft/);
+  });
+
+  it("runs the check script, which asserts both directions", () => {
+    expect(code).toMatch(/run: scripts\/ios-release-entitlements-check\.sh/);
+    const script = read("scripts/ios-release-entitlements-check.sh");
+    expect(script).toContain('KEY="com.apple.developer.proximity-reader.payment.acceptance"');
+    expect(script).toMatch(
+      /CONFIG" = Debug \]; then WANT_KEY=yes; WANT_FLAG=YES; else WANT_KEY=no; WANT_FLAG=NO/,
+    );
+    // Nothing measured must not read as a pass.
+    expect(script).toMatch(/nothing was measured\."\s*\n\s*fail=1/);
+  });
+});
