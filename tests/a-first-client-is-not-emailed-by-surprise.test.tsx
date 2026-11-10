@@ -109,6 +109,10 @@ const FIRST_CLIENT = {
   postalCode: "48201",
   latitude: 42.33,
   longitude: -83.05,
+  // A residential client must arrive with a named dog (#779,
+  // lib/new-client-dogs); without one onboardClient refuses before the
+  // welcome-email decision is ever reached.
+  dogs: [{ name: "Bailey" }],
 };
 
 const onboard = (extra: Record<string, unknown> = {}) =>
