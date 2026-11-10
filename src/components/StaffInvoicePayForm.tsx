@@ -342,6 +342,22 @@ export function StaffInvoicePayForm({
         </div>
       )}
 
+      {/* Tap to Pay (#579): NATIVE ONLY. The phone is the reader; the button
+          decides for itself whether this phone and this role may use it
+          (src/lib/tap-to-pay.ts). The web build drops this branch. */}
+      {IS_NATIVE_BUNDLE && TapToPayButton && (
+        <Suspense fallback={null}>
+          <TapToPayButton
+            invoiceId={invoiceId}
+            invoiceStatus={inv.status}
+            dueCents={dueCents}
+            currencyLabel={fmtCents(dueCents, currency)}
+            cardPaymentsReady={cardReady}
+            onPaid={refresh}
+          />
+        </Suspense>
+      )}
+
       {/* 3. New card entry. */}
       {!cardReady ? (
         <div className="rounded-lg border bg-card p-3">
