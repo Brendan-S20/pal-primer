@@ -4,6 +4,7 @@
 // with detected/override badges, dogs per property (deactivate, don't
 // delete), commercial-only fields, and Archive / Delete-when-allowed.
 import { PetSizeFields } from "@/components/client-detail/PetSizeFields";
+import { formatAddressLine } from "@/lib/address/from-place";
 import {
   NO_HANDLING,
   PetHandlingFields,
@@ -412,10 +413,7 @@ function PropertyCard({
         className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
       >
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="font-medium">
-            {p.street}
-            {p.unit ? `, ${p.unit}` : ""}, {p.city} {p.postal_code}
-          </span>
+          <span className="font-medium">{formatAddressLine(p)}</span>
           <MetaChip>{isCommercial ? "Commercial" : "Residential"}</MetaChip>
           {effectiveZone && (
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
@@ -467,7 +465,7 @@ function PropertyCard({
                 const dest =
                   p.latitude != null && p.longitude != null
                     ? `${p.latitude},${p.longitude}`
-                    : encodeURIComponent(`${p.street}, ${p.city} ${p.postal_code}`);
+                    : encodeURIComponent(formatAddressLine({ ...p, unit: null }));
                 window.open(
                   `https://www.google.com/maps/dir/?api=1&destination=${dest}`,
                   "_blank",

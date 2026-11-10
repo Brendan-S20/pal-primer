@@ -82,7 +82,9 @@ describe("the price step at a business with all five lines", () => {
     const step = await priceStep(ALL_FIVE);
     expect(step.label).toBe("Price your services");
     expect(step.label).not.toMatch(/sitting/);
-    expect(step.description).toMatch(/pet waste zones, walks, stays, grooms and lessons/);
+    // #768: named by what a client buys, not the tool that prices it.
+    expect(step.description).toMatch(/pet waste visits, walks, stays, grooms and lessons/);
+    expect(step.description).not.toMatch(/zones/);
     expect(step.parts?.map((p) => p.id)).toEqual(["area", "walks", "stays", "grooms", "lessons"]);
     expect(step.to).toBe("/setup");
     expect(step.gate).toBe("/zones");
@@ -137,17 +139,19 @@ describe("saving the area on a step with parts", () => {
   );
 
   it("does not hand the area form the advancing onSaved", () => {
-    expect(panel).toMatch(/<ServiceAreaPanel[\s\S]*?onSaved=\{areaSaved\}/);
+    expect(panel).toMatch(/<ServiceAreaPanel[\s\S]*?onSaved=\{partSaved\}/);
+    expect(panel).toMatch(/<WalkPricesForm[\s\S]*?onSaved=\{partSaved\}/);
     expect(panel).not.toMatch(/onSaved=\{onSaved\}/);
   });
 
   it("moves on only when the refreshed step has every part done", () => {
-    expect(panel).toMatch(/invalidateQueries\(\{ queryKey: \["onboarding-status"\] \}\)/);
+    // Through the shared helper since D9 (onboarding audit 2026-11-09).
+    expect(panel).toMatch(/await invalidateOnboardingStatus\(qc\)/);
     expect(panel).toMatch(/parts\?\.every\(\(p\) => p\.done\)\) onSaved\(\)/);
   });
 
   it("says Save area, not Save and continue, while other parts are open", () => {
-    expect(panel).toMatch(/saveLabel=\{othersOpen \? "Save area" : undefined\}/);
+    expect(panel).toMatch(/saveLabel=\{openBesides\("area"\) \? "Save area" : undefined\}/);
   });
 
   it("never forces a step with parts to done on Setup's side", () => {
@@ -167,7 +171,8 @@ describe("two lines without pet waste or training", () => {
 describe("a business with one line keeps the step for that line", () => {
   it.each([
     [["pet_waste"], "Your service area and price", "/setup"],
-    [["dog_walking"], "Price your walks", "/settings/services"],
+    // #769: priced on /setup itself, not a link out to Settings.
+    [["dog_walking"], "Price your walks", "/setup"],
     [["pet_sitting"], "Price your sitting services", "/settings/services"],
     [["mobile_grooming"], "Review your grooming prices, vaccines and buffer", "/setup"],
     // R2-47: a trainer's step is the lessons, not the pet-waste area form.

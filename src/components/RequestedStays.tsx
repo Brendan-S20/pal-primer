@@ -53,7 +53,13 @@ export function RequestedStays() {
               </p>
             </div>
             {s.notes && <p className="whitespace-pre-wrap break-words text-sm">{s.notes}</p>}
-            {can("manage_pricing") && <ConfirmStayButton stayId={s.id} clientId={s.client_id} />}
+            {can("booking") && (
+              <ConfirmStayButton
+                stayId={s.id}
+                clientId={s.client_id}
+                canSetDeposit={can("manage_pricing")}
+              />
+            )}
           </li>
         ))}
       </ul>

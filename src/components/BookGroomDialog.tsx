@@ -93,6 +93,15 @@ export function BookGroomDialog({
   const [everyWeeks, setEveryWeeks] = useState<"" | "4" | "6" | "8">("");
   const [staffId, setStaffId] = useState("");
   const [parkingNotes, setParkingNotes] = useState("");
+  // Van hookups at the address (#412), read with its parking notes.
+  const [vanPower, setVanPower] = useState(false);
+  const [vanWater, setVanWater] = useState(false);
+  const fillVanFrom = (
+    p: { van_power_available?: boolean | null; van_water_available?: boolean | null } | undefined,
+  ) => {
+    setVanPower(p?.van_power_available === true);
+    setVanWater(p?.van_water_available === true);
+  };
   const [acknowledgeWarning, setAcknowledgeWarning] = useState(false);
   // A prefilled address's parking notes are read once, after the options load.
   const parkingFilled = useRef(false);
@@ -118,6 +127,7 @@ export function BookGroomDialog({
     setEveryWeeks("");
     setStaffId("");
     setParkingNotes("");
+    fillVanFrom(undefined);
     setAcknowledgeWarning(false);
     parkingFilled.current = false;
     petsFilled.current = false;
@@ -135,12 +145,13 @@ export function BookGroomDialog({
     if (!propertyId && options.properties.length === 1) {
       setPropertyId(options.properties[0].id);
       setParkingNotes(options.properties[0].parking_notes ?? "");
+      fillVanFrom(options.properties[0]);
     }
     if (prefill && !parkingFilled.current && propertyId === prefill.propertyId) {
       parkingFilled.current = true;
-      setParkingNotes(
-        options.properties.find((p) => p.id === prefill.propertyId)?.parking_notes ?? "",
-      );
+      const prefilled = options.properties.find((p) => p.id === prefill.propertyId);
+      setParkingNotes(prefilled?.parking_notes ?? "");
+      fillVanFrom(prefilled);
     }
     if (!serviceId && options.services.length === 1) setServiceId(options.services[0].id);
     if (startFrom && !prefill && !petsFilled.current && propertyId) {
@@ -241,6 +252,8 @@ export function BookGroomDialog({
           everyWeeks: everyWeeks === "" ? null : Number(everyWeeks),
           staffId: staffId || null,
           parkingNotes,
+          vanPower,
+          vanWater,
           acknowledgeWarning,
         },
       }),
@@ -316,6 +329,7 @@ export function BookGroomDialog({
                   setPropertyId(id);
                   const property = options.properties.find((p) => p.id === id);
                   setParkingNotes(property?.parking_notes ?? "");
+                  fillVanFrom(property);
                   setPetIds([]);
                   setAcknowledgeWarning(false);
                 }}
@@ -534,6 +548,24 @@ export function BookGroomDialog({
                 value={parkingNotes}
                 onChange={(e) => setParkingNotes(e.target.value)}
               />
+              <div className="flex flex-wrap gap-x-6">
+                <label className="flex min-h-11 items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={vanPower}
+                    onChange={(e) => setVanPower(e.target.checked)}
+                  />
+                  <span>Power the van can plug into</span>
+                </label>
+                <label className="flex min-h-11 items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={vanWater}
+                    onChange={(e) => setVanWater(e.target.checked)}
+                  />
+                  <span>Water the van can fill from</span>
+                </label>
+              </div>
             </div>
 
             {quote && (

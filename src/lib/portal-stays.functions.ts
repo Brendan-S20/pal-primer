@@ -2,7 +2,14 @@ import { customerCanRequestStay } from "@/lib/service-lines";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import type { Json } from "@/integrations/supabase/types";
-import { cleanMeds, medsProblem, readMeds, type PetCare } from "@/lib/pets";
+import {
+  cleanMeds,
+  medsProblem,
+  PET_SPECIES,
+  readMeds,
+  SPECIES_NOTE_MAX,
+  type PetCare,
+} from "@/lib/pets";
 import {
   arrivalWindowProblem,
   DEFAULT_OVERNIGHT_ARRIVAL,
@@ -366,4 +373,118 @@ export const portalRequestStay = createServerFn({ method: "POST" })
     });
     if (requestError) throw new Error(requestError.message);
     return { id };
+  });
+
+// ── A client adds a pet (#411) ─────────────────────────────────────────────
+//
+// A sitter's client often has a cat the office has never heard of: a scooping
+// or walking business only ever recorded dogs, and the portal showed "Contact
+// the office to add a pet" in place of the whole stay request. This lets the
+// client add the pet from the request form itself: name, and dog / cat /
+// other ("rabbit").
+//
+// Only where a stay can be requested: a business that runs pet sitting, with
+// the platform's sitting switch on. A pet-waste or walking business's portal
+// is unchanged. The pet lands at one of the client's own homes; nothing else
+// about it (temperament, vet, care) is the client's to set here, and care is
+// sent with the stay request as before, staged until the office confirms.
+//
+// Written as the service role after the portal session and the home's owner
+// are checked, as every portal write is. A second press of the button, or a
+// replay, finds the active pet of that name at that home and returns it
+// rather than adding a twin.
+
+export const PORTAL_PET_NAME_MAX = 60;
+
+export const portalAddPetSchema = tokenSchema.extend({
+  propertyId: z.string().uuid(),
+  name: z
+    .string()
+    .trim()
+    .min(1, "Enter your pet's name.")
+    .max(PORTAL_PET_NAME_MAX, `Keep the name to ${PORTAL_PET_NAME_MAX} characters.`),
+  species: z.enum(PET_SPECIES),
+  speciesNote: z
+    .string()
+    .trim()
+    .max(SPECIES_NOTE_MAX, `Keep the kind of pet to ${SPECIES_NOTE_MAX} characters.`)
+    .nullable()
+    .optional(),
+});
+
+export type PortalAddPetInput = z.infer<typeof portalAddPetSchema>;
+
+/** What the dogs row holds for the pet a client typed. species_note only for
+ *  "other", and empty becomes null. */
+export function portalPetRow(input: Pick<PortalAddPetInput, "name" | "species" | "speciesNote">): {
+  name: string;
+  species: (typeof PET_SPECIES)[number];
+  species_note: string | null;
+} {
+  const note = input.species === "other" ? (input.speciesNote ?? "").trim() : "";
+  return { name: input.name.trim(), species: input.species, species_note: note || null };
+}
+
+export const portalAddPet = createServerFn({ method: "POST" })
+  .inputValidator((d) => portalAddPetSchema.parse(d))
+  .handler(async ({ data }) => {
+    const { requirePortalSession } = await import("@/lib/portal-auth.server");
+    const session = await requirePortalSession(data.token);
+    if (!customerCanRequestStay(await loadAvailability()))
+      throw new Error("Pet sitting is coming soon.");
+    const sb = await admin();
+    const { data: org, error: orgError } = await sb
+      .from("organizations")
+      .select("service_lines")
+      .eq("id", session.organizationId)
+      .single();
+    if (orgError) throw new Error(orgError.message);
+    if (!org.service_lines?.includes("pet_sitting"))
+      throw new Error("Contact the office to add a pet.");
+    const { data: home, error: homeError } = await sb
+      .from("properties")
+      .select("id")
+      .eq("id", data.propertyId)
+      .eq("organization_id", session.organizationId)
+      .eq("client_id", session.clientId)
+      .is("archived_at", null)
+      .maybeSingle();
+    if (homeError) throw new Error(homeError.message);
+    if (!home) throw new Error("Choose one of your homes.");
+    const row = portalPetRow(data);
+    const { data: existing, error: existingError } = await sb
+      .from("dogs")
+      .select("id, name, species")
+      .eq("property_id", home.id)
+      .eq("active", true)
+      .ilike(
+        "name",
+        row.name.replace(/[\\%_]/g, (c) => `\\${c}`),
+      );
+    if (existingError) throw new Error(existingError.message);
+    const twin = (existing ?? []).find((d) => (d.species ?? "dog") === row.species);
+    if (twin) return { id: twin.id as string, added: false };
+    const { data: pet, error } = await sb
+      .from("dogs")
+      .insert({ organization_id: session.organizationId, property_id: home.id, ...row })
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    // The pet is added either way; the history line is best-effort.
+    try {
+      const { logActivity } = await import("@/lib/activity.server");
+      await logActivity(sb, {
+        orgId: session.organizationId,
+        clientId: session.clientId,
+        propertyId: home.id,
+        actorUserId: null,
+        actorLabel: "Client (portal)",
+        kind: "dog.added",
+        summary: `Client added ${row.species === "dog" ? "dog" : "pet"} ${row.name} from the portal`,
+        meta: { pet_id: pet.id, species: row.species, source: "portal" },
+      });
+    } catch {
+      // Best-effort: the pet is already saved.
+    }
+    return { id: pet.id as string, added: true };
   });

@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { TextingNotLiveText, TextingStateBadge } from "@/components/TextingNotLive";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useSuspenseQuery, queryOptions } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -13,7 +14,6 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { pageTitle } from "@/lib/page-title";
 import { useClientTexting } from "@/hooks/useClientTexting";
-import { ComingSoonBadge } from "@/components/ComingSoonBadge";
 import { useServiceLines } from "@/components/CommercialOnly";
 
 const key = ["automation"] as const;
@@ -180,7 +180,12 @@ function AutomationPage() {
           <p className="text-xs text-muted-foreground">
             {texting
               ? "By email, and by text to clients who have agreed to texts. "
-              : "By email, to clients who have not opted out. Texting your clients is coming soon; the text part of this reminder starts then. "}
+              : (
+                <>
+                  By email, to clients who have not opted out.{" "}
+                  <TextingNotLiveText tail="The text part of this reminder starts once texting is live." />{" "}
+                </>
+              )}
             Reminders re-send at most every {remDays} day(s).
           </p>
         </CardContent>
@@ -268,7 +273,11 @@ function AutomationPage() {
                 arrival window.{" "}
                 {texting
                   ? "By text when the client can be texted, otherwise by email."
-                  : "By email. Texting your clients is coming soon."}
+                  : (
+                    <>
+                      By email. <TextingNotLiveText />
+                    </>
+                  )}
               </span>
             </span>
             <input
@@ -301,7 +310,7 @@ function AutomationPage() {
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center gap-2">
             Text notifications
-            {!texting && <ComingSoonBadge />}
+            {!texting && <TextingStateBadge />}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
@@ -310,7 +319,7 @@ function AutomationPage() {
               "Turn individual automated texts on or off. A client is texted only once they have agreed to texts and have not replied STOP."
             ) : (
               <>
-                Texting your clients is coming soon. Until then, these messages go by email: the
+                <TextingNotLiveText /> Until then, these messages go by email: the
                 overdue and declined-card reminders, the day-before reminder, the on-my-way notice
                 and the visit-completed note each have their own switch in{" "}
                 <Link to="/settings/emails" className="text-primary underline">

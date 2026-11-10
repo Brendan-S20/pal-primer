@@ -269,7 +269,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   // ── Communications ─────────────────────────────────────────────────────────
   {
     slug: "texting-setup",
-    title: "Texting your clients (coming soon): setup, consent, and STOP",
+    title: "Texting your clients: setup, consent, and STOP",
     section: "Communications",
     body: [
       // IMP-9: this told customers two-way texting ran on "your own Twilio
@@ -284,9 +284,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
       // 2026-10-29 (#538): one subaccount per business, registered in that
       // business's own name (toll-free verification by default). The owner
       // files it from Settings > Texting.
-      "Your business texts from its own toll-free number, registered with US carriers in your business's legal name. There is no Twilio account to connect: fill in your business details in [Texting settings](/settings/sms) and HoundStack files the registration for you. Twilio says review takes up to three business days, and nothing is texted to your clients until it is approved. Until then, visit reminders, on-my-way notices, review requests, overdue and declined-card reminders, and portal sign-in codes go by email instead. Texting settings shows where your registration stands.",
-      "While texting is coming soon, the texting controls in the app (New message in [Messages](/messages), the composer on a client's page, the text switches in [Automation](/settings/automation)) show a Coming soon badge instead of sending. Your settings are kept, and they light up on their own when your number is ready.",
-      "Once it arrives, every text includes opt-out instructions, and a client who replies STOP is blocked from further texts automatically. A client is texted only after they have agreed to texts, which you can record now on their Communication tab. Consent details live in the public [SMS policy](/legal/sms).",
+      // 2026-11-09 (site-r2-05): Managed texting is on sale. Nothing here says
+      // "coming soon"; after submitting, texting is "Under review, usually
+      // ready shortly" until HoundStack switches it on.
+      "Texting your clients is the **Managed texting** add-on on [Plan & billing](/settings/billing). Your business texts from its own toll-free number, registered with US carriers in your business's legal name. There is no Twilio account to connect: add Managed texting, fill in your business details in [Texting settings](/settings/sms), and HoundStack files the registration for you.",
+      "After you submit, Texting settings shows **Under review, usually ready shortly** until we switch your number on, and we tell you the moment it is live. Until then, visit reminders, on-my-way notices, review requests, overdue and declined-card reminders, and portal sign-in codes go by email instead, and the texting controls in the app (New message in [Messages](/messages), the composer on a client's page, the text switches in [Automation](/settings/automation)) show an Under review badge instead of sending. Your settings are kept, and they light up on their own when your number is live.",
+      "Once it is live, every text includes opt-out instructions, and a client who replies STOP is blocked from further texts automatically. A client is texted only after they have agreed to texts, which you can record now on their Communication tab. Consent details live in the public [SMS policy](/legal/sms).",
       "Pick which automated texts go out in [Automation](/settings/automation), under Text notifications; the emails that stand in for them are in [Emails](/settings/emails). Per-client opt-outs show on the client's page.",
     ],
     appLink: { to: "/settings/sms", label: "Open Texting settings" },

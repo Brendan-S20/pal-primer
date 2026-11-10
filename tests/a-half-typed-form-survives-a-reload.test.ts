@@ -212,7 +212,10 @@ describe("the wiring", () => {
       expect(src).toMatch(
         /draft\.restored && <DraftRestoredNotice onDiscard=\{draft\.discard\} \/>/,
       );
-      const success = src.slice(src.indexOf("onSuccess:"));
+      // setup.tsx saves through stepSave (src/lib/setup-step-save.ts), whose
+      // `saved` runs from onSuccess, so it is the same moment under that name.
+      const marker = file.endsWith("setup.tsx") ? "saved: () =>" : "onSuccess:";
+      const success = src.slice(src.indexOf(marker));
       expect(success.slice(0, success.indexOf("toast.success"))).toMatch(/draft\.clear\(\)/);
     });
   }

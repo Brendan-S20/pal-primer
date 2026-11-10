@@ -217,13 +217,17 @@ describe("the token survives every page between the email and the join", () => {
   });
 
   it("the new-business path tries the invitation before it builds anything", () => {
+    // The new-business sequence moved to src/lib/finish-signup.ts
+    // (2026-11-09); Get started hands it acceptPendingInvite(null).
     const gs = read("src/routes/get-started.tsx");
-    const body = gs.slice(
+    const page = gs.slice(
       gs.indexOf("function NewBusinessPage"),
       gs.indexOf("function JoinTeamPage"),
     );
-    const accept = body.indexOf("acceptPendingInvite(null)");
-    const boot = body.indexOf("bootstrapOrganization({");
+    expect(page).toMatch(/acceptPendingInvite: \(\) => acceptPendingInvite\(null\)/);
+    const body = read("src/lib/finish-signup.ts");
+    const accept = body.indexOf("deps.acceptPendingInvite()");
+    const boot = body.indexOf("deps.bootstrapOrganization({");
     expect(accept, "Get started never looks for an invitation").toBeGreaterThan(-1);
     expect(accept).toBeLessThan(boot);
   });

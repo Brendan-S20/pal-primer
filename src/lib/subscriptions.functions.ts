@@ -5,7 +5,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { formatWeekdaySet, normalizeWeekdays } from "@/lib/weekday-set";
 import { MAX_MULTIPLIER, MIN_MULTIPLIER } from "@/lib/frequency-multipliers";
-import { endServiceDecision } from "@/lib/subscription-form";
+import { endServiceDecision, seriesRulesPatch } from "@/lib/subscription-form";
 
 // Scheduling model (client detail refactor): the five UI choices map to
 //   Weekly            -> weekly (interval_weeks null/1)
@@ -67,6 +67,14 @@ function cadenceWords(frequency: string, weekdays?: number[] | null): string {
   return weekdays?.length ? formatWeekdaySet(weekdays, "en-US") : frequency.replace(/_/g, " ");
 }
 
+/** A lesson series' rules (R2-49, migration 20261102172500). Omitted on an
+ *  update: the plan keeps what it has. null skip = the business default;
+ *  null limit = open-ended. */
+const seriesRuleFields = {
+  skipClosedDays: z.boolean().nullable().optional(),
+  sessionLimit: z.number().int().min(1).max(520).nullable().optional(),
+};
+
 export const createSubSchema = z
   .object({
     clientId: z.string().uuid(),
@@ -97,6 +105,7 @@ export const createSubSchema = z
     // gives the plan the business's default service; omitted on update, the
     // plan keeps the one it has.
     serviceId: z.string().uuid().optional(),
+    ...seriesRuleFields,
   })
   .refine((v) => !v.endsOn || !v.startedOn || v.endsOn >= v.startedOn, {
     message: "End date can't be before the start date",
@@ -218,6 +227,7 @@ export async function createSubscriptionPlans(
         latest_time: data.latestTime ?? null,
         ...(data.serviceId ? { service_id: data.serviceId } : {}),
         ...(stayId ? { stay_id: stayId } : {}),
+        ...seriesRulesPatch(data),
       })),
     )
     .select("id");
@@ -288,6 +298,7 @@ const updateSubSchema = z
     // gives the plan the business's default service; omitted on update, the
     // plan keeps the one it has.
     serviceId: z.string().uuid().optional(),
+    ...seriesRuleFields,
   })
   .refine((v) => !v.endsOn || !v.startedOn || v.endsOn >= v.startedOn, {
     message: "End date can't be before the start date",
@@ -299,6 +310,54 @@ const updateSubSchema = z
   .refine((v) => !v.earliestTime || !v.latestTime || v.earliestTime < v.latestTime, {
     message: "The window's earliest time must be before its latest time",
   });
+
+/** Remove a series' upcoming scheduled visits that break its rules after an
+ *  edit: on a closed or holiday date when it skips them, or past its count.
+ *  Lessons already taught, missed or skipped are never touched. */
+async function trimSeriesVisits(
+  supabase: any,
+  orgId: string,
+  subscriptionId: string,
+  rules: { skipClosed: boolean; sessionLimit: number | null; today: string },
+) {
+  const { seriesVisitsToDrop } = await import("@/lib/subscription-form");
+  const none = { data: [], error: null };
+  const [visits, blackouts, holidays] = await Promise.all([
+    supabase
+      .from("visits")
+      .select("id, scheduled_on, status, skip_billable")
+      .eq("organization_id", orgId)
+      .eq("subscription_id", subscriptionId),
+    rules.skipClosed
+      ? supabase
+          .from("blackout_dates")
+          .select("blackout_on")
+          .eq("organization_id", orgId)
+          .gte("blackout_on", rules.today)
+      : none,
+    rules.skipClosed
+      ? supabase
+          .from("holiday_dates")
+          .select("holiday_on")
+          .eq("organization_id", orgId)
+          .gte("holiday_on", rules.today)
+      : none,
+  ]);
+  for (const r of [visits, blackouts, holidays]) if (r.error) throw new Error(r.error.message);
+  const closedDays = new Set<string>([
+    ...((blackouts.data ?? []) as { blackout_on: string }[]).map((b) => b.blackout_on),
+    ...((holidays.data ?? []) as { holiday_on: string }[]).map((h) => h.holiday_on),
+  ]);
+  const drop = seriesVisitsToDrop(visits.data ?? [], { ...rules, closedDays });
+  if (!drop.length) return;
+  const { error } = await supabase
+    .from("visits")
+    .delete()
+    .in("id", drop)
+    .eq("organization_id", orgId)
+    .eq("status", "scheduled");
+  if (error) throw new Error(error.message);
+}
 
 /** dog_count / unit_count for an update, shaped by the plan's account type.
  *  Exported for tests. */
@@ -325,7 +384,7 @@ export const updateSubscription = createServerFn({ method: "POST" })
     const { data: before } = await supabase
       .from("subscriptions")
       .select(
-        "organization_id, client_id, account_type, dog_count, unit_count, price_cents, frequency, weekdays, started_on, ends_on, status, service_id, earliest_time, latest_time",
+        "organization_id, client_id, client_package_id, stay_id, account_type, dog_count, unit_count, price_cents, frequency, weekdays, started_on, ends_on, status, service_id, earliest_time, latest_time",
       )
       .eq("id", data.subscriptionId)
       .single();
@@ -390,10 +449,28 @@ export const updateSubscription = createServerFn({ method: "POST" })
         ...(data.serviceId ? { service_id: data.serviceId } : {}),
         // A plan priced from its service cannot have come from a zone's rate.
         ...(zonePriced ? {} : { priced_from_zone_id: null }),
+        ...seriesRulesPatch(data),
       })
       .eq("id", data.subscriptionId)
       .select("organization_id");
     if (error) throw new Error(error.message);
+
+    // A series that now skips closed days, or stops sooner, loses the
+    // upcoming visits that break the rule; the horizon run below can only add
+    // dates the rule allows (visits_follow_series_rules).
+    // Not a one-time plan, a package's or a stay's: the office chose those dates.
+    if (
+      before?.organization_id &&
+      data.frequency !== "one_time" &&
+      !before.client_package_id &&
+      !before.stay_id &&
+      (data.skipClosedDays === true || data.sessionLimit != null)
+    )
+      await trimSeriesVisits(supabase, before.organization_id, data.subscriptionId, {
+        skipClosed: data.skipClosedDays === true,
+        sessionLimit: data.sessionLimit ?? null,
+        today,
+      });
 
     const { recomputePropertyEstimate } = await import("@/lib/estimate.server");
     await recomputePropertyEstimate(supabase, data.propertyId);
@@ -598,7 +675,7 @@ export const listSubscriptionsForClient = createServerFn({ method: "GET" })
     const { data: rows, error } = await supabase
       .from("subscriptions")
       .select(
-        "id, account_type, frequency, price_cents, priced_at, priced_from_zone_id, price_overridden_at, dog_count, unit_count, zone_id, status, started_on, ends_on, property_id, billing_cadence, preferred_weekdays, weekdays, interval_weeks, interval_days, paused_at, end_reason, end_notes, earliest_time, latest_time, service_id, services(name, service_line), stay_id, groom_addons",
+        "id, account_type, frequency, price_cents, priced_at, priced_from_zone_id, price_overridden_at, dog_count, unit_count, zone_id, status, started_on, ends_on, property_id, billing_cadence, preferred_weekdays, weekdays, interval_weeks, interval_days, paused_at, end_reason, end_notes, earliest_time, latest_time, client_package_id, skip_closed_days, session_limit, service_id, services(name, service_line), stay_id, groom_addons",
       )
       .eq("client_id", data.clientId)
       .order("created_at");

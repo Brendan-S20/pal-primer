@@ -24,10 +24,14 @@ name: Sandboxes
 # Both jobs are minutes slower than the whole of `verify`, and both need
 # software the runner may not have (Docker, the Supabase CLI, a browser). Tying
 # PR feedback to them would make the common case wait on the rare one. So this
-# runs on main and on demand, and reports its prerequisites loudly instead of
-# dying on a confusing ENOENT three steps in — the same shape as the `Find
+# runs on main, on demand, on a batch/* branch through batch.yml, and on a
+# pull request only once it is out of draft. It reports its prerequisites
+# loudly instead of dying on a confusing ENOENT three steps in — the same shape as the `Find
 # psql` step in ci.yml, and for the same reason.
 on:
+  # By hand, and from batch.yml on a batch/* branch: on a dispatch both heavy
+  # jobs run unconditionally (the gate below says so), which is what a batch
+  # of several approved PRs merged together needs exactly once.
   workflow_dispatch:
   push:
     branches: [main]
@@ -75,8 +79,28 @@ on:
   # The tests/support files are what the DB tests import. #683 changed only
   # select-embeds.ts, which decides every query every-select-embed-resolves
   # sends; without them the fix to that test would not have run it.
+  #
+  # src/** routes to the browser jobs only (Four widths + the one-off cases),
+  # never the database job. Product asked for it so a UI change in src/ gets
+  # browser coverage on its PR without someone dispatching viewports=true by
+  # hand. The gate in `changes` still keeps a src-only PR off the Docker replay.
+  #
+  # Build-config files belong here for the same reason as playwright.config.ts:
+  # they change how the app is built and how every browser job starts, without
+  # necessarily touching src/ or a spec. #815 changed vite.config.ts and this
+  # filter left it out, so Four widths and the one-off cases never started on
+  # that PR and had to be dispatched by hand. There is no postcss.config or
+  # tailwind.config in the repo; Tailwind is wired through the Vite plugin in
+  # vite.config.ts.
   pull_request:
     paths:
+      - "src/**"
+      - "vite.config.ts"
+      - "vitest.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "bun.lock"
+      - "tsconfig*.json"
       - "supabase/migrations/**"
       - "supabase/proofs/**"
       - "tests/integration/*.db.test.ts"
@@ -90,6 +114,14 @@ on:
       - "tests/viewports/**"
       - "playwright.config.ts"
       - ".github/workflows/sandboxes.yml"
+    # ── DRAFT, THEN READY ───────────────────────────────────────────────────
+    #
+    # The three defaults plus ready_for_review, so marking a PR "Ready for
+    # review" starts this workflow even with no new push. On a DRAFT the gate
+    # job below still runs and says what the change would affect, then answers
+    # false for both heavy jobs; from Ready on, every push runs them as it
+    # always did. Merging needs Ready, so a merge is never gated on a draft run.
+    types: [opened, synchronize, reopened, ready_for_review]
 
 # ── CANCEL SUPERSEDED PULL-REQUEST RUNS, NEVER main ─────────────────────
 #
@@ -173,6 +205,7 @@ jobs:
         shell: bash
         env:
           EVENT: ${{ github.event_name }}
+          DRAFT: ${{ github.event.pull_request.draft }}
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
@@ -216,10 +249,26 @@ jobs:
               tests/support/select-embeds.ts|tests/support/withheld-columns.ts) database=true ;;
               tests/e2e/*|playwright.e2e.config.ts)        database=true ;;
               tests/viewports/*|playwright.config.ts)      viewports=true ;;
+              # App source: the browser jobs only, never the database replay.
+              src/*)                                       viewports=true ;;
+              # Build config changes how the app is built for every browser
+              # job, so it routes to the viewports jobs only, like src/.
+              vite.config.ts|vitest.config.ts)             viewports=true ;;
+              package.json|package-lock.json|bun.lock)     viewports=true ;;
+              tsconfig*.json)                              viewports=true ;;
               # The workflow itself changes what both jobs DO, so it runs both.
               .github/workflows/sandboxes.yml)             database=true; viewports=true ;;
             esac
           done <<< "$changed"
+
+          # A draft gets the answer, not the run. Both jobs are reported as
+          # what they WOULD be, so the log says what Ready for review will
+          # start, and then both are switched off until it is pressed.
+          if [ "$DRAFT" = "true" ]; then
+            echo "draft pull request: would run database=$database, viewports=$viewports once marked Ready for review; neither runs now."
+            database=false
+            viewports=false
+          fi
 
           for v in "$database" "$viewports"; do
             case "$v" in

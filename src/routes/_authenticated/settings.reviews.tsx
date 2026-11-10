@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { TextingNotLiveText, TextingStateBadge } from "@/components/TextingNotLive";
 import { AiSection, ReviewPanel } from "@/components/ai/AiPanels";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -15,7 +16,6 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { titleHead } from "@/lib/page-title";
 import { useClientTexting } from "@/hooks/useClientTexting";
-import { ComingSoonBadge } from "@/components/ComingSoonBadge";
 
 export const Route = createFileRoute("/_authenticated/settings/reviews")({
   head: () => titleHead("Reviews & referrals", "Settings"),
@@ -118,11 +118,11 @@ function ReviewsSettings() {
         <div>
           <label className="mb-1 flex flex-wrap items-center gap-2 text-sm font-medium">
             Text message template
-            {!texting && <ComingSoonBadge />}
+            {!texting && <TextingStateBadge />}
           </label>
           {!texting && (
             <p className="mb-1 text-xs text-muted-foreground">
-              Texting your clients is coming soon. You can write the message now, ready for it.
+              <TextingNotLiveText tail="You can write the message now, ready for it." />
             </p>
           )}
           <Textarea

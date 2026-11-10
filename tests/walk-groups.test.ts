@@ -404,7 +404,7 @@ describe("office group controls", () => {
   it("uses dispatch's existing permission and limits membership writes to scheduled visits", () => {
     const server = read("src/lib/walk-groups.functions.ts");
     expect(server).toContain('rpc("can_write_org", { _user_id: userId, _org_id: orgId })');
-    expect(server.match(/await requireWalkGroupOffice\(/g)).toHaveLength(4);
+    expect(server.match(/await requireWalkGroupOffice\(/g)).toHaveLength(5);
     expect(server).toContain('.eq("status", "scheduled")');
     expect(server).toContain("throw new Error(error.message)");
   });

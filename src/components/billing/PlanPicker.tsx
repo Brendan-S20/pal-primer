@@ -80,6 +80,7 @@ function StoreBuildNote() {
 export function PlanPicker({
   currentSlug,
   currentInterval,
+  paid,
   onSelect,
   selecting,
   switchingPlanId,
@@ -89,6 +90,12 @@ export function PlanPicker({
   /** The org's live billing interval (from the subscription's plan item);
    *  the Monthly | Annual toggle defaults to it. */
   currentInterval?: BillingInterval | null;
+  /** Whether `currentSlug` is a plan the business PAYS for (billing state's
+   *  isPaidTier). On a free trial the org still has a plan slug, the plan the
+   *  trial runs on, and that card is not "Current plan" (D3, onboarding audit
+   *  2026-11-09): nothing was bought, no card is on file, and the banner above
+   *  says so. Required so a new caller has to decide. */
+  paid: boolean;
   onSelect: (planId: string, planName: string, interval: BillingInterval) => void;
   selecting?: boolean;
   /** Plan currently being switched to (in-place switch in flight): its card
@@ -210,12 +217,16 @@ export function PlanPicker({
           const cardInterval: BillingInterval =
             billingInterval === "year" && p.annual_price_cents != null ? "year" : "month";
           const isAnnualCard = cardInterval === "year";
+          // Current means paid for. The trial's plan is marked as the trial's,
+          // and stays choosable: choosing it is how the trial is bought.
           const isCurrent =
+            paid &&
             !!currentSlug &&
             p.slug === currentSlug &&
             (currentInterval ?? "month") === cardInterval;
+          const isTrialPlan = !paid && !!currentSlug && p.slug === currentSlug;
           const isSamePlanOtherInterval =
-            !!currentSlug && p.slug === currentSlug && !isCurrent && !!currentInterval;
+            paid && !!currentSlug && p.slug === currentSlug && !isCurrent && !!currentInterval;
           const isSwitching = switchingPlanId === p.id;
           const features: string[] = Array.isArray(p.features)
             ? p.features
@@ -235,9 +246,10 @@ export function PlanPicker({
                     : ""
               }`}
             >
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-semibold">{p.name}</h3>
                 {isCurrent && <Badge>Current plan</Badge>}
+                {isTrialPlan && <Badge variant="secondary">Included in your trial</Badge>}
               </div>
               <div className="mt-2 flex flex-wrap items-baseline gap-2">
                 {custom ? (
