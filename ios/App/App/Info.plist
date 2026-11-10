@@ -26,10 +26,12 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>HoundStack does not use Bluetooth itself. The Stripe card payment software inside the app can connect to a Stripe card reader over Bluetooth; taking a payment by tapping a card on this phone does not need it.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>HoundStack uses the camera so your crew can photograph completed work, gate or yard conditions, and DNA sample collections, and attach them to the visit record.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>HoundStack shows your position on the route map so you can see where you are relative to the next stop. If your business turns on live tracking, your location is sent to HoundStack while you are driving to a customer, from the on-my-way message until you start the visit, so the customer sees roughly where you are and your office knows if you will be late. Location is used only while the app is open.</string>
+	<string>HoundStack shows your position on the route map so you can see where you are relative to the next stop. If your business turns on live tracking, your location is sent to HoundStack while you are driving to a customer, from the on-my-way message until you start the visit, so the customer sees roughly where you are and your office knows if you will be late. When you take a card payment by tapping it on your phone, Stripe also checks the phone's location, as card networks require, to protect the payment against fraud. Location is used only while the app is open.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>HoundStack uses your location only while the app is open: to show where you are on your route and, if your business turns on live tracking, to send your location while you drive to a customer so they see roughly where you are and your office knows if you will be late. HoundStack never asks for location in the background or when the app is closed.</string>
 	<key>NSSupportsLiveActivities</key>
