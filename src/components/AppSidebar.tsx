@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
@@ -6,6 +6,8 @@ import { useMyRole, canAccess, type AppRole } from "@/hooks/useMyRole";
 import { getPlatformContext } from "@/lib/platform.functions";
 import { getFranchiseContext } from "@/lib/franchise.functions";
 import { getReviewQueueCount } from "@/lib/review-queue.functions";
+import { getOnboardingStatus } from "@/lib/onboarding.functions";
+import { SETUP_PATH, promptsSetup, stepsFor, useSetupGuide } from "@/lib/setup-guide";
 import {
   LayoutDashboard,
   Users,
@@ -37,6 +39,8 @@ import {
   PanelLeftOpen,
   UserCog,
   GraduationCap,
+  Sparkles,
+  ChevronDown,
 } from "lucide-react";
 import { Megaphone } from "lucide-react";
 import { openTimeClock, useMyClock } from "@/components/TimeClock";
@@ -261,6 +265,87 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
   },
 ];
 
+// ── FIRST RUN: THE WALKTHROUGH'S FOUR, AND THE REST BEHIND ONE TAP (D6) ──
+//
+// Onboarding audit, 2026-11-09: an owner who had just created a workspace
+// landed on /onboarding and /setup with Dashboard, Schedule, Clients,
+// Invoices, Payments, Inbox, Leads, Campaigns, Waste log, Neighbor canvassing
+// and the rest down the side, before the business had a name, an address or a
+// price. The pilot walkthrough read that as half-built.
+//
+// While the guided setup is open and not finished, the sidebar leads with what
+// the walkthrough needs and puts every other entry behind one disclosure.
+// Nothing is removed: the disclosure opens the same groups, filtered by the
+// same isNavItemVisible. Finishing setup, "Not now", "Finish later" or
+// dismissing the checklist each give the whole sidebar back. The phone needs
+// no change: its tab bar already keeps everything else behind More.
+
+/** The guided setup's own entry, first while it is the job in hand. */
+export const SETUP_NAV_ITEM: NavItem = { title: "Guided setup", url: SETUP_PATH, icon: Sparkles };
+
+/** The entries the walkthrough uses, after Setup: Schedule and Clients are
+ *  where its steps send the owner, Settings is where everything else lives. */
+export const FIRST_RUN_NAV_URLS = ["/routes", "/clients", "/settings"] as const;
+
+export const FIRST_RUN_GROUP_LABEL = "Get started";
+
+/**
+ * Whether the sidebar is in first-run focus. The same people and the same
+ * moment as the setup banner (SetupGuideBanner): the owner, with the guide
+ * open, not dismissed, and steps left. ON while the status is still loading,
+ * so a new owner does not see the full list flash first; OFF if the read
+ * failed, because a nav that cannot tell should not hide anything.
+ */
+export function isFirstRun(o: {
+  role: AppRole | null;
+  phase: "unknown" | "open" | "closed";
+  status:
+    { dismissed: boolean; steps: ReadonlyArray<{ done: boolean; gate?: string }> } | undefined;
+  failed: boolean;
+}): boolean {
+  if (!promptsSetup(o.role) || o.phase !== "open" || o.failed) return false;
+  if (!o.status) return true;
+  if (o.status.dismissed) return false;
+  const steps = stepsFor(o.status.steps, o.role);
+  return steps.some((s) => !s.done);
+}
+
+/** The first-run sidebar: the walkthrough's entries, and every other visible
+ *  entry in its usual group for the disclosure. */
+export function firstRunNav(
+  groups: ReadonlyArray<{ label: string; items: NavItem[] }>,
+  role: AppRole | null,
+  v: NavVisibility,
+): { core: NavItem[]; rest: Array<{ label: string; items: NavItem[] }> } {
+  const all = groups.flatMap((g) => g.items);
+  const core = [
+    SETUP_NAV_ITEM,
+    ...FIRST_RUN_NAV_URLS.map((u) => all.find((i) => i.url === u)).filter((i): i is NavItem => !!i),
+  ].filter((i) => isNavItemVisible(i, role, v));
+  const coreUrls = new Set(core.map((i) => i.url));
+  const rest = groups
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((i) => !coreUrls.has(i.url) && isNavItemVisible(i, role, v)),
+    }))
+    .filter((g) => g.items.length > 0);
+  return { core, rest };
+}
+
+/** isFirstRun for the signed-in person, on the banner's own query. */
+export function useFirstRun(): boolean {
+  const { role } = useMyRole();
+  const guide = useSetupGuide();
+  const statusFn = useServerFn(getOnboardingStatus);
+  const q = useQuery({
+    queryKey: ["onboarding-status"],
+    queryFn: () => statusFn(),
+    enabled: promptsSetup(role) && guide.phase === "open",
+    staleTime: 30_000,
+  });
+  return isFirstRun({ role, phase: guide.phase, status: q.data, failed: q.isError });
+}
+
 /**
  * The answers every nav consumer needs before it can decide what to show.
  *
@@ -330,11 +415,7 @@ export function useNavVisibility(): NavVisibility {
   };
 }
 
-export function isNavItemVisible(
-  it: NavItem,
-  role: AppRole | null,
-  v: NavVisibility,
-): boolean {
+export function isNavItemVisible(it: NavItem, role: AppRole | null, v: NavVisibility): boolean {
   return (
     canAccess(role, it.url) &&
     (!it.commercialOnly || v.commercialEnabled) &&
@@ -365,7 +446,9 @@ function TimeClockSidebarItem({ collapsed }: { collapsed: boolean }) {
         {!collapsed && (
           <>
             <span className="min-w-0 flex-1 truncate">{t("clock.label")}</span>
-            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{clock.status}</span>
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+              {clock.status}
+            </span>
           </>
         )}
       </SidebarMenuButton>
@@ -435,10 +518,18 @@ export function AppSidebar() {
   // security boundary on its own; the routes and the server functions behind
   // them keep their own gates. See isNavItemVisible for why they live there.
   const navVisibility = useNavVisibility();
-  const visibleGroups = NAV_GROUPS.map((g) => ({
-    ...g,
-    items: g.items.filter((it) => isNavItemVisible(it, role, navVisibility)),
-  })).filter((g) => g.items.length > 0);
+  const firstRun = useFirstRun();
+  const [showAllChosen, setShowAllChosen] = useState(false);
+  const focus = firstRun ? firstRunNav(NAV_GROUPS, role, navVisibility) : null;
+  // Opened by hand, or because the page on screen is one of the entries
+  // behind it (reached from the palette or a link): the lit entry is shown.
+  const showAll = showAllChosen || !!focus?.rest.some((g) => g.items.some((i) => isActive(i.url)));
+  const visibleGroups = focus
+    ? [{ label: FIRST_RUN_GROUP_LABEL, items: focus.core }, ...(showAll ? focus.rest : [])]
+    : NAV_GROUPS.map((g) => ({
+        ...g,
+        items: g.items.filter((it) => isNavItemVisible(it, role, navVisibility)),
+      })).filter((g) => g.items.length > 0);
 
   // On /settings/users both Team and Settings match the path. The longer,
   // more specific entry is the one lit.
@@ -506,7 +597,7 @@ export function AppSidebar() {
         )}
       </SidebarHeader>
       <SidebarContent>
-        {visibleGroups.map((group) => (
+        {visibleGroups.map((group, groupIndex) => (
           <SidebarGroup key={group.label}>
             {!collapsed && <SidebarGroupLabel>{navGroupLabel(t, group.label)}</SidebarGroupLabel>}
             <SidebarGroupContent>
@@ -554,6 +645,38 @@ export function AppSidebar() {
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
+                {/* First run: the rest of the sidebar, one tap away. Under the
+                    walkthrough's entries rather than at the foot, so it is on
+                    screen on a 13-inch laptop without scrolling the nav. */}
+                {focus && groupIndex === 0 && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      type="button"
+                      onClick={() => setShowAllChosen(!showAll)}
+                      aria-expanded={showAll}
+                      aria-label={
+                        collapsed
+                          ? showAll
+                            ? t("nav.hideAllMenus")
+                            : t("nav.showAllMenus")
+                          : undefined
+                      }
+                      tooltip={showAll ? t("nav.hideAllMenus") : t("nav.showAllMenus")}
+                      data-first-run-more=""
+                      className="text-sidebar-foreground/70"
+                    >
+                      <ChevronDown
+                        className={`h-4 w-4 shrink-0 transition-transform ${showAll ? "rotate-180" : ""}`}
+                        aria-hidden="true"
+                      />
+                      {!collapsed && (
+                        <span className="min-w-0 truncate">
+                          {showAll ? t("nav.hideAllMenus") : t("nav.showAllMenus")}
+                        </span>
+                      )}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

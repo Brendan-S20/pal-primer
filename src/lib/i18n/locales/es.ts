@@ -907,7 +907,10 @@ const es: Translations = {
     viewAccount: "Ver y editar tu cuenta",
     expandMenu: "Mostrar los nombres del menú",
     collapseMenu: "Ocultar los nombres del menú",
+    showAllMenus: "Mostrar todos los menús",
+    hideAllMenus: "Mostrar menos menús",
     group: {
+      "Get started": "Primeros pasos",
       Overview: "Resumen",
       Operations: "Operaciones",
       Field: "Campo",
@@ -917,6 +920,7 @@ const es: Translations = {
       Platform: "Plataforma",
     },
     item: {
+      setup: "Configuración guiada",
       dashboard: "Panel",
       inbox: "Bandeja de entrada",
       leads: "Prospectos",
