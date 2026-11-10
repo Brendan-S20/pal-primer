@@ -143,6 +143,92 @@ REVOKE TRUNCATE, TRIGGER, REFERENCES ON TABLE
   public.time_entries
 FROM anon, authenticated;
 
+-- ── AND THE NEXT TABLE ────────────────────────────────────────────────────
+--
+-- The 106 got these privileges from default privileges, not from anybody
+-- writing a GRANT: Supabase records, per creating role,
+--   ALTER DEFAULT PRIVILEGES FOR ROLE <role> IN SCHEMA public
+--     GRANT ALL ON TABLES TO anon, authenticated, service_role;
+-- so every new table arrives with them again. Take the three off those
+-- defaults for the two roles that create public tables. SELECT, INSERT,
+-- UPDATE and DELETE stay in the defaults, and service_role is untouched.
+--
+-- postgres is the role these migrations run as, and may always alter its own
+-- defaults.
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  REVOKE TRUNCATE, TRIGGER, REFERENCES ON TABLES FROM anon, authenticated;
+
+-- supabase_admin's defaults can only be altered by a member of supabase_admin,
+-- which postgres is not on a hosted project. Where it is permitted, do it;
+-- where it is not, say so loudly rather than let "changed" and "could not
+-- change" read the same in the log. The tables this repo creates are created
+-- by postgres, which is the half that must hold.
+DO $supabase_admin$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_admin') THEN
+    RAISE WARNING 'SKIPPED: no supabase_admin role here, so no supabase_admin default privileges to change';
+    RETURN;
+  END IF;
+  BEGIN
+    EXECUTE 'ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public '
+            'REVOKE TRUNCATE, TRIGGER, REFERENCES ON TABLES FROM anon, authenticated';
+    RAISE NOTICE 'supabase_admin default privileges in public no longer grant TRUNCATE, TRIGGER or REFERENCES to anon or authenticated';
+  EXCEPTION WHEN insufficient_privilege THEN
+    RAISE WARNING 'SKIPPED: % may not alter supabase_admin''s default privileges (%). Tables supabase_admin creates in public will still arrive with TRUNCATE, TRIGGER and REFERENCES for anon and authenticated; the proof and scripts/check-public-table-grants.mjs will name any such table.',
+      current_user, SQLERRM;
+  END;
+END
+$supabase_admin$;
+
+-- Asserted by experiment as well as by reading pg_default_acl, because in
+-- 20260809180000 a recorded default said one thing and the next object
+-- created said another. A table created here, as postgres, in public, must
+-- arrive with none of the three for either role, and still with whatever
+-- SELECT the defaults give (this file must not have taken more than three).
+DO $default_probe$
+DECLARE
+  _stored text[];
+  _held text[];
+  _select_after boolean;
+BEGIN
+  SELECT array_agg(format('%s default %s on new public tables for %s',
+                          d.defaclrole::regrole, x.privilege_type, x.grantee::regrole)
+                   ORDER BY x.grantee::regrole::text, x.privilege_type)
+    INTO _stored
+    FROM pg_default_acl d
+    CROSS JOIN LATERAL aclexplode(d.defaclacl) x
+   WHERE d.defaclrole = 'postgres'::regrole
+     AND d.defaclobjtype = 'r'
+     AND d.defaclnamespace IN (0, 'public'::regnamespace)
+     AND x.grantee IN ('anon'::regrole, 'authenticated'::regrole)
+     AND x.privilege_type IN ('TRUNCATE', 'TRIGGER', 'REFERENCES');
+  IF _stored IS NOT NULL THEN
+    RAISE EXCEPTION E'postgres default privileges still grant:\n  %', array_to_string(_stored, E'\n  ');
+  END IF;
+
+  -- The experiment answers for whichever role creates the table, so it is
+  -- only run as postgres. The stored-row check above holds either way.
+  IF current_user <> 'postgres' THEN
+    RAISE WARNING 'SKIPPED: the new-table experiment runs only as postgres, and this is %; the stored postgres defaults were still checked', current_user;
+    RETURN;
+  END IF;
+  EXECUTE 'CREATE TABLE public._default_grant_probe_842 (id int)';
+  SELECT array_agg(format('%s holds %s', r.role, p.priv) ORDER BY r.role, p.priv)
+    INTO _held
+    FROM (VALUES ('anon'), ('authenticated')) AS r(role)
+    CROSS JOIN (VALUES ('TRUNCATE'), ('TRIGGER'), ('REFERENCES')) AS p(priv)
+   WHERE has_table_privilege(r.role, 'public._default_grant_probe_842', p.priv);
+  _select_after := has_table_privilege('authenticated', 'public._default_grant_probe_842', 'SELECT');
+  EXECUTE 'DROP TABLE public._default_grant_probe_842';
+
+  IF _held IS NOT NULL THEN
+    RAISE EXCEPTION E'a table postgres creates in public still arrives with:\n  %', array_to_string(_held, E'\n  ');
+  END IF;
+  RAISE NOTICE 'a new public table arrives with no TRUNCATE, TRIGGER or REFERENCES for anon or authenticated (authenticated SELECT by default: %)',
+    _select_after;
+END
+$default_probe$;
+
 -- What this file establishes, asserted from any starting state: no public
 -- base table, the 106 above or the 37 already clean, lets anon or
 -- authenticated TRUNCATE, TRIGGER or REFERENCES it, directly, through PUBLIC

@@ -202,7 +202,7 @@ const AFFECTED = [...BOTH, ...AUTHENTICATED_ONLY, ...REFERENCES_AND_TRIGGER];
 /** Every `public.<name>` a REVOKE in the migration names. */
 const revoked = () => {
   const names: string[] = [];
-  for (const stmt of MIGRATION.match(/REVOKE[^;]*;/g) ?? []) {
+  for (const stmt of MIGRATION.match(/^REVOKE[^;]*;/gm) ?? []) {
     for (const m of stmt.matchAll(/public\.([a-z_][a-z0-9_]*)/g)) names.push(m[1]);
   }
   return names;
@@ -230,7 +230,7 @@ describe("the migration", () => {
   });
 
   it("revokes exactly TRUNCATE, TRIGGER and REFERENCES, from both client roles", () => {
-    const stmts = MIGRATION.match(/REVOKE[^;]*;/g) ?? [];
+    const stmts = MIGRATION.match(/^REVOKE[^;]*;/gm) ?? [];
     expect(stmts).toHaveLength(3);
     for (const s of stmts) {
       expect(s).toMatch(/^REVOKE TRUNCATE, TRIGGER, REFERENCES ON TABLE\s/);
@@ -250,6 +250,49 @@ describe("the migration", () => {
     expect(MIGRATION).toMatch(/relnamespace = 'public'::regnamespace/);
     expect(MIGRATION).toMatch(/has_table_privilege\(r\.role, c\.oid, p\.priv\)/);
     expect(MIGRATION).toMatch(/RAISE EXCEPTION/);
+  });
+});
+
+describe("the default privileges", () => {
+  it("take the three off postgres's defaults in public, for both client roles", () => {
+    expect(MIGRATION).toMatch(
+      /^ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public\s+REVOKE TRUNCATE, TRIGGER, REFERENCES ON TABLES FROM anon, authenticated;/m,
+    );
+  });
+
+  it("try supabase_admin's too, and warn rather than fail where that is not permitted", () => {
+    expect(MIGRATION).toMatch(
+      /'ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public '\s*'REVOKE TRUNCATE, TRIGGER, REFERENCES ON TABLES FROM anon, authenticated'/,
+    );
+    expect(MIGRATION).toMatch(
+      /EXCEPTION WHEN insufficient_privilege THEN\s+RAISE WARNING 'SKIPPED:/,
+    );
+  });
+
+  it("change nothing else in them: no GRANT, no SELECT/INSERT/UPDATE/DELETE, no service_role", () => {
+    const alters = MIGRATION.match(/ALTER DEFAULT PRIVILEGES[^;']*/g) ?? [];
+    expect(alters.length).toBeGreaterThanOrEqual(2);
+    for (const a of alters) {
+      expect(a).not.toMatch(/\bGRANT\b/);
+      expect(a).not.toMatch(/\b(SELECT|INSERT|UPDATE|DELETE|ALL)\b/);
+      expect(a).not.toMatch(/service_role/);
+    }
+  });
+
+  it("are proved by creating a table, not only by reading pg_default_acl", () => {
+    expect(MIGRATION).toMatch(/aclexplode\(d\.defaclacl\)/);
+    expect(MIGRATION).toMatch(/EXECUTE 'CREATE TABLE public\._default_grant_probe_842 \(id int\)'/);
+    expect(MIGRATION).toMatch(/EXECUTE 'DROP TABLE public\._default_grant_probe_842'/);
+    expect(PROOF).toMatch(
+      /ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT TRUNCATE ON TABLES TO authenticated;/,
+    );
+    expect(PROOF).toMatch(/authenticated holds TRUNCATE on public\._proof_next_table_842/);
+  });
+
+  it("are read by the live check: postgres fails, supabase_admin warns", () => {
+    expect(CHECK).toMatch(/pg_default_acl/);
+    expect(CHECK).toMatch(/MUST_HOLD = \["postgres"\]/);
+    expect(CHECK).toMatch(/WARN_ONLY = \["supabase_admin"\]/);
   });
 });
 
@@ -279,6 +322,7 @@ describe("the proof", () => {
     expect(PROOF).toMatch(/GRANT TRIGGER ON TABLE public\.clients TO PUBLIC;/);
     expect(PROOF).toMatch(/INCONCLUSIVE/);
     expect(PROOF).toMatch(/ROLLBACK TO SAVEPOINT mutation;\s*ROLLBACK;\s*$/);
+    expect(PROOF).toMatch(/^BEGIN;/m);
   });
 });
 

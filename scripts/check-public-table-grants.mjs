@@ -30,6 +30,14 @@
 // an inherited grant counts. Every table is checked, not a list: the point is
 // that the next table cannot quietly regain them.
 //
+// It also reads the DEFAULT privileges, which are what put the grants back on
+// the next table. postgres creates this repo's tables and 20261110130000
+// takes the three out of its defaults in public, so a postgres default that
+// still hands them out FAILS. supabase_admin's defaults may only be changed
+// by a member of supabase_admin, which postgres is not on a hosted project,
+// so those are a WARNING: true, printed, and not something a migration here
+// can fix. The per-table check above still names any table either role makes.
+//
 // ── WHAT IT DOES NOT ANSWER ───────────────────────────────────────────────
 //
 // Whether SELECT/INSERT/UPDATE/DELETE are right. RLS and the policy tests own
@@ -43,6 +51,11 @@ import { execFileSync } from "node:child_process";
 
 export const PRIVILEGES = ["TRUNCATE", "TRIGGER", "REFERENCES"];
 export const ROLES = ["anon", "authenticated"];
+// Default privileges that must not hand the three out: a finding.
+export const MUST_HOLD = ["postgres"];
+// Default privileges this repo may not be permitted to change: a warning.
+export const WARN_ONLY = ["supabase_admin"];
+const DEFAULT_ROLES = [...MUST_HOLD, ...WARN_ONLY];
 
 export const SQL = `
 SELECT 'checked', count(*)::text, ''
@@ -55,7 +68,18 @@ SELECT 'held', c.relname, r.role || ' ' || p.priv
   CROSS JOIN (VALUES ${PRIVILEGES.map((p) => `('${p}')`).join(", ")}) AS p(priv)
  WHERE c.relnamespace = 'public'::regnamespace
    AND c.relkind IN ('r', 'p')
-   AND has_table_privilege(r.role, c.oid, p.priv);`;
+   AND has_table_privilege(r.role, c.oid, p.priv)
+UNION ALL
+SELECT 'default', d.defaclrole::regrole::text,
+       x.grantee::regrole::text || ' ' || x.privilege_type ||
+       CASE WHEN d.defaclnamespace = 0 THEN ' (every schema)' ELSE '' END
+  FROM pg_default_acl d
+  CROSS JOIN LATERAL aclexplode(d.defaclacl) x
+ WHERE d.defaclobjtype = 'r'
+   AND d.defaclrole::regrole::text IN (${DEFAULT_ROLES.map((r) => `'${r}'`).join(", ")})
+   AND (d.defaclnamespace = 0 OR d.defaclnamespace = 'public'::regnamespace)
+   AND x.grantee::regrole::text IN (${ROLES.map((r) => `'${r}'`).join(", ")})
+   AND x.privilege_type IN (${PRIVILEGES.map((p) => `'${p}'`).join(", ")});`;
 
 function main() {
   const dbUrl = process.env.SUPABASE_DB_URL;
@@ -102,7 +126,32 @@ function main() {
     `\nchecked ${checked} public base table(s) for ${PRIVILEGES.join(", ")} held by ${ROLES.join(" or ")}`,
   );
 
+  const defaults = lines.filter((l) => l[0] === "default");
+  const failingDefaults = defaults.filter(([, role]) => MUST_HOLD.includes(role));
+  const warnDefaults = defaults.filter(([, role]) => WARN_ONLY.includes(role));
+  if (warnDefaults.length) {
+    console.log(
+      `\n! ${WARN_ONLY.join(", ")} default privileges in public still grant, on every table that role creates:\n` +
+        warnDefaults.map(([, role, g]) => `    ${role}: ${g}`).join("\n") +
+        "\n  Not a failure: postgres may not alter another role's defaults on a hosted project.\n" +
+        "  Any table that role creates is still named by the per-table check.",
+    );
+  }
+
+  let failed = false;
+  if (failingDefaults.length) {
+    failed = true;
+    console.error(
+      `\n✗ postgres default privileges still hand out, on every new public table:\n` +
+        failingDefaults.map(([, role, g]) => `    ${role}: ${g}`).join("\n") +
+        "\n  Fix it in a migration:\n" +
+        "    ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public\n" +
+        "      REVOKE TRUNCATE, TRIGGER, REFERENCES ON TABLES FROM anon, authenticated;",
+    );
+  }
+
   if (byTable.size) {
+    failed = true;
     console.error(
       `\n✗ ${byTable.size} public table(s), ${held.length} grant(s), still let a client role\n` +
         "  TRUNCATE, TRIGGER or REFERENCES them. RLS does not protect TRUNCATE.\n",
@@ -113,13 +162,16 @@ function main() {
     console.error(
       "\n  Fix it in a migration:\n" +
         "    REVOKE TRUNCATE, TRIGGER, REFERENCES ON TABLE public.<table> FROM anon, authenticated;\n" +
-        "  A new table gets these back from Supabase's default privileges, so the\n" +
-        "  migration that creates it is where the REVOKE belongs.",
+        "  A table gets these from its creating role's default privileges, so check\n" +
+        "  those too (above).",
     );
-    process.exit(1);
   }
+  if (failed) process.exit(1);
 
-  console.log("✓ no public table lets anon or authenticated TRUNCATE, TRIGGER or REFERENCES it\n");
+  console.log(
+    "✓ no public table lets anon or authenticated TRUNCATE, TRIGGER or REFERENCES it,\n" +
+      "  and postgres's default privileges no longer hand them to the next one\n",
+  );
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();
