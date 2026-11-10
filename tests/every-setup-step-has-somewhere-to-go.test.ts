@@ -30,6 +30,7 @@ const read = (p: string) => readFileSync(resolve(ROOT, p), "utf8");
 const STATUS = "src/lib/onboarding.functions.ts";
 const PAGE = "src/routes/_authenticated/setup.tsx";
 const BANNER = "src/components/SetupGuideBanner.tsx";
+const FOOTER = "src/components/SetupStepFooter.tsx";
 const FIXTURE = "tests/viewports/fixtures/stub-backend.ts";
 
 /** Comments blanked, same length, so prose that names a step cannot stand in
@@ -182,8 +183,12 @@ describe("there is always a way past a step", () => {
     // Both branches of the footer carry one: Next or Done when the step is
     // done, Skip for now or Skip and finish when it is not. A step whose
     // forward button depended on finishing it is the dead end the owner hit.
-    const src = codeOnly(read(PAGE));
-    const footer = src.slice(src.indexOf("current.done ? ("), src.indexOf("</section>"));
+    // The bar is its own component since #771 (so a step's Save can sit in
+    // it); the page draws it under every step, with the step's done state.
+    const page = codeOnly(read(PAGE));
+    expect(page).toMatch(/<SetupStepFooter[^>]*done=\{current\.done\}/);
+    const src = codeOnly(read(FOOTER));
+    const footer = src.slice(src.indexOf("{done ? ("), src.indexOf("data-setup-primary-slot"));
     expect(footer).toMatch(/data-setup-action=\{isLast \? "done" : "next"\}/);
     expect(footer).toMatch(/data-setup-action=\{isLast \? "done" : "skip"\}/);
   });
@@ -191,7 +196,7 @@ describe("there is always a way past a step", () => {
   it("floats nothing over the app", () => {
     // The tour's controls were taken away by whatever opened underneath its
     // fixed, full-screen layer. The guide has no layer to take.
-    for (const f of [PAGE, BANNER]) {
+    for (const f of [PAGE, BANNER, FOOTER]) {
       const src = codeOnly(read(f));
       expect(src, `${f} draws a fixed overlay`).not.toMatch(/\bfixed\b[^"]*\binset-0\b/);
       expect(src, `${f} reaches for a z-index`).not.toMatch(/\bz-\[?\d/);
