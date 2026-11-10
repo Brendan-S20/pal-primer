@@ -253,6 +253,39 @@ describe.skipIf(!enabled)("#729 pet safety log and the owner's vaccine Start rul
     expect(await statusOf(replay)).toBe("in_progress");
   });
 
+  it("BLOCK holds against a tech writing the visit row directly, not only through start_visit", async () => {
+    // Acceptance audit of #729 at a2d7e9d: the rule lived only inside
+    // start_visit_as, and the visits UPDATE policy lets the assigned tech
+    // write their own row, so PATCH /rest/v1/visits {status:'in_progress'}
+    // started a blocked visit with no RPC involved.
+    await setRuleAsService(orgId, "block");
+    const visitId = await groomVisit(tech.staffId);
+    const direct = await tech.client
+      .from("visits")
+      .update({ status: "in_progress", started_at: new Date().toISOString() })
+      .eq("id", visitId)
+      .select("id");
+    expect(direct.error?.message).toMatch(/^VACCINE_START_BLOCKED: .*Biscuit \(rabies\)/);
+    expect(await statusOf(visitId)).toBe("scheduled");
+    // The RPC still refuses with the same words, and still lets a replay from
+    // before the rule through: the guard trusts start_visit's own decision.
+    expect((await tech.client.rpc("start_visit", { _visit_id: visitId })).error?.message).toMatch(
+      /^VACCINE_START_BLOCKED/,
+    );
+    const replay = await groomVisit(tech.staffId);
+    const before = new Date(Date.now() - 10 * 60_000).toISOString();
+    expect(
+      (await tech.client.rpc("start_visit", { _visit_id: replay, _started_at: before })).error,
+    ).toBeNull();
+    expect(await statusOf(replay)).toBe("in_progress");
+    // Under WARN the direct write is not this guard's business.
+    await setRuleAsService(orgId, "warn");
+    const warned = await groomVisit(tech.staffId);
+    const ok = await tech.client.from("visits").update({ status: "in_progress" }).eq("id", warned);
+    expect(ok.error).toBeNull();
+    expect(await statusOf(warned)).toBe("in_progress");
+  });
+
   it("BLOCK leaves other lines alone, and a business whose grooming vaccine rule is off", async () => {
     await setRuleAsService(orgId, "block");
     const walkService = await insert("services", {
