@@ -28,6 +28,11 @@
 // a wrong guess that way costs the business five cents, the other way is the
 // leak the owner ruled out.
 //
+// Accounts created from #825 on are `account` (Brendan, 2026-11-10: "Make
+// new businesses liable, if Stripe allows"; NEW_CONNECTED_ACCOUNT_CONTROLLER
+// in stripe-connect.server.ts). Stripe bills Radar to those businesses
+// itself, so nothing is added for them; adding it would bill them twice.
+//
 // ── WHAT IS SCREENED ─────────────────────────────────────────────────────
 //
 // Radar screens online card payments. A bank debit (`us_bank_account`) is not
@@ -135,12 +140,22 @@ export function radarFeeMetadata(
 }
 
 /**
- * What the business is told, on the Payments page, before it connects and
- * again beside the processing-fee setting. Same plain style as the tap-fee
- * line on the Tap to pay card. Not said for taps or bank payments, because
- * neither is screened.
+ * What the business is told on the Payments page, for its account's fee
+ * payer. Same plain style as the tap-fee line on the Tap to pay card. Not
+ * about taps or bank payments, because neither is screened.
+ *
+ * Under `account` (every account created from #825 on) Stripe bills Radar to
+ * the business itself, at whatever its own Stripe pricing says, so this does
+ * not name an amount it cannot know. Every other payer, an unreadable one
+ * included, carries the five cents HoundStack passes through.
  */
-export function radarFeeSentence(): string {
+export function radarFeeSentence(feePayer: string | null | undefined): string {
+  if (feePayer === "account") {
+    return (
+      "Stripe bills its own fees, fraud checks (Radar) included, straight to your Stripe " +
+      "account, and shows them in your Stripe Dashboard."
+    );
+  }
   return (
     `Each online card payment also costs your business ${radarFeeLabel()} for Stripe's ` +
     `fraud check (Radar), taken out of the payout and shown in Stripe as an application fee.`

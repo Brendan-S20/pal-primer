@@ -1,12 +1,14 @@
 // Who Stripe bills for a connected account's direct charges, read from the
 // account itself (#757, #825).
 //
-// HoundStack creates every connected account with the legacy
-// `type: "express"` (stripe-connect.server.ts, ensureExpressAccount), which
-// Stripe records as `controller.fees.payer: "application_express"`. That is a
-// property of each account, not of this code, so the charge paths that pass a
-// Stripe cost through to the business read it at the charge rather than
-// assume it:
+// Accounts created before #825 are legacy `type: "express"`, which Stripe
+// records as `controller.fees.payer: "application_express"`. Accounts created
+// from #825 on use NEW_CONNECTED_ACCOUNT_CONTROLLER
+// (stripe-connect.server.ts, ensureConnectedAccount), whose fee payer is
+// `account`: Stripe bills those businesses directly and nothing is passed
+// through. Both kinds are live at once, and the fee payer is fixed when an
+// account is created, so the charge paths that pass a Stripe cost through to
+// the business read it at the charge rather than assume it:
 //
 //   * the per-tap fee (src/lib/tap-to-pay.server.ts) is added only where the
 //     platform would be billed: `application`, or unreadable;

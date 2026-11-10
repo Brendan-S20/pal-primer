@@ -9,11 +9,57 @@ Radar screening fee (#825, this page).
 Brendan's decision for Radar (Nov 10 2026, 1:45 AM ET), word for word:
 "Pass Radar fees to each business, like the tap fee".
 
+## Two kinds of connected account (#825, acceptance item 3)
+
+Brendan's decision (Nov 10 2026, 1:57 AM ET), word for word: "Make new
+businesses liable, if Stripe allows".
+
+| | Accounts created before #825 | Accounts created from #825 on |
+| --- | --- | --- |
+| Created with | `type: "express"` | explicit `controller` (`NEW_CONNECTED_ACCOUNT_CONTROLLER`, `src/lib/connect-account-settings.ts`) |
+| `controller.losses.payments` | `application` (the platform is liable for refunds, disputes, negative balances) | `stripe` (the business is liable) |
+| `controller.fees.payer` | `application_express` | `account` |
+| `controller.requirement_collection` | `stripe` | `stripe` (Stripe still collects KYC) |
+| `controller.stripe_dashboard.type` | `express` | `full` (the business logs in at dashboard.stripe.com) |
+| Radar passed through | yes, 5 cents per screened card payment | no: Stripe bills Radar to the business itself |
+| Tap fee passed through | no (Stripe bills it to the business) | no (Stripe bills it to the business) |
+
+This is Stripe's generally available Standard configuration
+([migrate-to-controller-properties](https://docs.stripe.com/connect/migrate-to-controller-properties)).
+It is written as controller properties, not `type: "standard"`, so the
+settings are readable in one place and pinned by
+`tests/a-new-business-carries-its-own-losses.test.ts`.
+
+**Existing accounts are not changed.** Nothing reads, updates or migrates an
+existing account; `ensureConnectedAccount` returns an org's account as it is.
+Stripe fixes the dashboard type and the fee payer when an account is created
+("You can't change the `controller.stripe_dashboard.type` of an existing
+connected account"; "You can specify the fee payer only when you create an
+account"), so the live Express accounts stay on `losses.payments:
+application` and `fees.payer: application_express`, and the platform stays
+liable for them. Moving one would mean a new account and re-onboarding.
+
+**What changes for a new business.** Onboarding is still Stripe-hosted (the
+embedded onboarding component, or an `account_onboarding` Account Link), and
+the in-app Payments, Payouts, Balances and Disputes components work as
+before. The difference is the dashboard: the business gets a full Stripe
+Dashboard at dashboard.stripe.com instead of the Express Dashboard. HoundStack
+creates no Express login links, so no link changes. Disconnecting cannot delete
+a live account with a full dashboard; it drops HoundStack's reference and the
+business keeps its Stripe account.
+
+**Not used: the preview.** Keeping the Express Dashboard with
+`losses.payments: stripe` is a public preview that needs a preview API
+version for account creation
+([managed-risk](https://docs.stripe.com/connect/risk-management/managed-risk)).
+The platform stays on its pinned GA version (`STRIPE_API_VERSION` in
+`src/lib/stripe-client.server.ts`).
+
 ## Why Radar landed on the platform
 
 Every tenant charge is a direct charge on the business's connected account,
-and every account is created with the legacy `type: "express"`
-(`src/lib/stripe-connect.server.ts:159-169`), which Stripe records as
+and every account that existed when #825 was found was created with the
+legacy `type: "express"`, which Stripe records as
 `controller.fees.payer: "application_express"`.
 
 Stripe's fee-payer table for direct charges
@@ -49,7 +95,8 @@ separate decision and this change does not touch it.
   `stripe_fee`) and the platform-side debit is not tied to a charge we can
   read at charge time.
 - **Who is billed** is read from the account on each charge
-  (`connectedAccountFeePayer`, two attempts):
+  (`connectedAccountFeePayer`, two attempts), because both kinds of account
+  above are live at once:
 
   | `fees.payer` | Radar billed to | Added to the application fee |
   | --- | --- | --- |
@@ -109,10 +156,18 @@ kept and any platform-fee part (zero today) is logged for a person to reverse.
 
 ## What the business is told
 
-The Payments page says, before connecting and beside the processing-fee
-setting: "Each online card payment also costs your business $0.05 for
-Stripe's fraud check (Radar), taken out of the payout and shown in Stripe as
-an application fee."
+The Payments page reads the account's fee payer (`getStripeConnectFeePayer`)
+and says, beside the processing-fee setting:
+
+- on an account created before #825: "Each online card payment also costs
+  your business $0.05 for Stripe's fraud check (Radar), taken out of the
+  payout and shown in Stripe as an application fee."
+- on an account created since (`account`): "Stripe bills its own fees, fraud
+  checks (Radar) included, straight to your Stripe account, and shows them in
+  your Stripe Dashboard."
+
+Before a business connects, it is told the second, because that is the
+account it will get.
 
 ## Known gaps
 
@@ -129,5 +184,14 @@ an application fee."
   screening, and that the pass-through lands on the connected account, is
   still to be shown in Stripe test mode. That proof is outstanding and needs
   a separate, approved check.
-- **Loss liability** (`controller.losses.payments: application`, the Nov 8
-  reserve) is a separate yes/no for Brendan and is not changed here.
+- **Loss liability on existing accounts.** The live Express accounts stay
+  `losses.payments: application`, so the platform still covers their
+  refunds, disputes and negative balances (the Nov 8 reserve). Only new
+  accounts move.
+- **An unreadable new account.** If the fee-payer read fails twice on an
+  `account` business, the charge carries five cents of Radar that Stripe also
+  bills the business directly. Same direction of error as above, and logged.
+- **The new create call itself** (controller properties plus the requested
+  `card_payments` and `transfers` capabilities) has not been run against
+  Stripe; it is pinned by fixtures only, and needs the same approved
+  test-mode check.

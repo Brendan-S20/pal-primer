@@ -38,9 +38,10 @@ the screen flips to paid without waiting for the webhook.
 Owner decision (2026-11-10): the business that takes the tap bears Stripe's
 per-tap fee, and the platform is never billed net for a tenant's taps.
 
-**Which fee payer HoundStack's connected accounts have.** They are created in
-`ensureExpressAccount` (`src/lib/stripe-connect.server.ts:159-169`) with the
-legacy `type: "express"` and no `controller`. Stripe records that as
+**Which fee payer HoundStack's connected accounts have.** Accounts created
+before #825 were made by `ensureExpressAccount` (now `ensureConnectedAccount`
+in `src/lib/stripe-connect.server.ts`) with the legacy `type: "express"` and
+no `controller`. Stripe records that as
 `controller.fees.payer: "application_express"`
 ([migrate-to-controller-properties](https://docs.stripe.com/connect/migrate-to-controller-properties)).
 For **direct** charges, Stripe's fee table puts payment processing fees on the
@@ -49,8 +50,10 @@ For **direct** charges, Stripe's fee table puts payment processing fees on the
 and its Terminal-on-Connect page says that with direct charges "the connected
 account is responsible for the cost of Stripe fees"
 ([terminal/features/connect](https://docs.stripe.com/terminal/features/connect?connect-charge-type=direct)).
-So for every account HoundStack creates today, the per-tap fee lands on the
-business, and nothing is added for taps.
+So for every account HoundStack created before #825, the per-tap fee lands on
+the business, and nothing is added for taps. Accounts created from #825 on
+are `fees.payer: account` (see `docs/stripe-connect-fees.md`), where Stripe
+bills every fee to the business, so nothing is added for them either.
 
 **The code does not assume that.** On every tap, `createCardPresentIntent`
 (`src/lib/tap-to-pay.server.ts`) reads `controller.fees.payer` from the

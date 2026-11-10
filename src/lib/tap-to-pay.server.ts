@@ -102,10 +102,12 @@ type StripeLike = Pick<Stripe, "terminal" | "paymentIntents"> & {
 //
 // A direct charge alone does not settle that. On Connect, Stripe bills its
 // fees to whoever the connected account's `controller.fees.payer` names.
-// HoundStack creates its accounts with the legacy `type: "express"`
-// (stripe-connect.server.ts, ensureExpressAccount) and sets no controller,
-// which Stripe records as `controller.fees.payer: "application_express"`
-// (docs.stripe.com/connect/migrate-to-controller-properties). For DIRECT
+// HoundStack created its accounts before #825 with the legacy
+// `type: "express"` and no controller, which Stripe records as
+// `controller.fees.payer: "application_express"`
+// (docs.stripe.com/connect/migrate-to-controller-properties). Accounts
+// created from #825 on are `account` (NEW_CONNECTED_ACCOUNT_CONTROLLER in
+// stripe-connect.server.ts), where Stripe bills every fee to the business. For DIRECT
 // charges Stripe's own table puts payment processing fees on the connected
 // account under that setting, and its Terminal-on-Connect page says that with
 // direct charges "the connected account is responsible for the cost of Stripe
