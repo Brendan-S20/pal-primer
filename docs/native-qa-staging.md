@@ -1,19 +1,94 @@
-# Native QA against staging
+# Native QA: acceptance runs on production, in the demo org
 
-How to put a shipped-style native bundle (iOS or Android) in front of QA
-without it touching production, and without anyone editing code to do it.
+Acceptance testing of HoundStack, web or native, runs against **production,
+signed into the production demo org**. Not a separate staging location.
 
-This page extends #663 (native-r2-04, "Supabase URL as a build setting"). It
-does not repeat what #663 built; it says how to use it for QA, and what the
-far end has to be for it to work. The build-time settings and their guards are
-documented where they live: `vite.config.ts` (the `WHICH SUPABASE A NATIVE
-BUILD TALKS TO (#623)` block), `scripts/build-native.mjs` and
-`scripts/native-prod-hosts.mjs`, and pinned by
-`tests/a-staging-binary-talks-only-to-staging.test.ts`.
+Decision: Brendan, relayed on Nov 10, 2026 at 1:45 AM ET, in his words: "Use
+the production demo org for acceptance testing". It is recorded on #737, the
+PR that first added this page.
+
+PR #737 described a separate staging Supabase project and a
+non-`houndstack.com` API host as the QA target for a shipped-style native
+bundle. That stack was never stood up, and testers do not need it, or any
+other non-production host, to complete acceptance testing. The build guards
+behind it are real and still tested, so that path stays documented below as an
+**optional isolated path**, not the acceptance path.
+
+---
+
+## The acceptance path
+
+### What to test
+
+- **Web:** `https://app.houndstack.com`.
+- **iOS / Android:** a production bundle. That is `npm run build:native`
+  (which `npm run cap:sync`, `cap:sync:android` and `android:debug` run for
+  you), or a TestFlight / internal-track build. It sends server functions to
+  `https://app.houndstack.com` and signs in to the production Supabase
+  project. No environment file, no extra build settings.
+
+Say which build at the start of the run: `git rev-parse --short HEAD` for a
+local build, or the store build number. A local native build must be of the
+commit production is running. A bundle from a different commit asks for
+server-function ids production does not have, and any function added, renamed
+or moved since then fails with a 404 (the first reason in the next section).
+
+### How to know you are in the demo org
+
+The acceptance target is **the production organization whose
+`organizations.slug` is `demo`**. Nothing else.
+
+- **Slug `demo`.** That is the identifier that decides. The workspace has been
+  called **Demo Pet Waste Co** (`docs/ios-qa-results.md`,
+  `docs/owner-actions-before-submission.md`), but a name can be edited and the
+  slug is what the code checks.
+- **Metro Detroit seed data** from `seed_demo_org` (#320; section 3 of
+  `docs/app-store-submission.md`). Clients such as `Riverside HOA` are seed
+  data.
+- **Accounts end in `@demo.test`**, for example `owner@demo.test`.
+  `tech@demo.test` and `dispatcher@demo.test` also appear in this repo.
+  Passwords are supplied by the owner and are not in this repo.
+- **Invites from the demo org must use `@demo.test`.** The server refuses any
+  other address (`src/lib/users.functions.ts`).
+
+Before the first action, check the account you signed in with ends in
+`@demo.test` and the business shown is the demo org. If either is not true,
+sign out and stop.
+
+**The Reseed card is not proof.** `isDemoOrganization()` in
+`src/lib/demo-org.ts` is `is_comped === true || slug === "demo"`. It decides
+who may see the Reseed button; it does not name the acceptance target. Comped
+orgs include design partners and real businesses, and they are off limits.
+Only the org with slug `demo` is the acceptance target.
+
+### Safety rules
+
+These hold for every acceptance run. A step that cannot be done inside them is
+recorded as **not run**, with the reason. That is a correct result, not a
+failure (the rule at the top of `docs/device-qa-script.md`).
+
+1. **Demo or test records only.** Use the demo org's own seeded data, records
+   you create inside the demo org, and `@demo.test` accounts. Nothing else.
+2. **No real org's data.** Never touch Detroit Doo Disposal's data, never sign
+   in as or send anything to `detroitdoodisposal@gmail.com`, and never open,
+   read or change any other real organization's data. This includes comped
+   and design-partner orgs.
+3. **No real messages.** Send no real customer emails or texts. Do not fire
+   Twilio, production email or push at a real person. Do not add a real phone
+   number or email address to a demo record to see a message arrive. If a
+   flow would contact a real customer, stop and mark it not run.
+4. **No money.** Do not take a card payment or start a checkout in
+   production. Checking that the control is there is fine; submitting it is
+   not. One real charge stays with the owner (`CLAUDE.md`).
+5. **Do not Reseed casually.** Reseed wipes and rebuilds the demo org for
+   everyone testing in it at the time. Press it only when the run calls for
+   it and nobody else is mid-run.
 
 ---
 
 ## Why a native bundle cannot just point at a dev server
+
+This is why acceptance uses production rather than a laptop.
 
 The bundle QA installs is the bundle the store gets: `npm run build:native`,
 a production `vite build` that boots from `capacitor://localhost` (iOS) or
@@ -39,19 +114,35 @@ for two independent reasons (native-r2-05):
 There is also a transport rule underneath both: the shipped binary does not
 relax ATS (iOS) or cleartext (Android). `capacitor.config.ts` only permits
 `http://` when `CAP_SERVER_URL` is set for live reload, and an `https://localhost`
-page on Android cannot fetch an `http://` origin at all. **The staging API must
-be served over HTTPS with a publicly trusted certificate.**
+page on Android cannot fetch an `http://` origin at all. Production is served
+over HTTPS with a publicly trusted certificate, which is one more reason
+acceptance runs there. **An optional staging API would have to be served the
+same way.**
 
 Live reload (`CAP_SERVER_URL=… npx cap run ios`, `docs/ios-build.md`) is not a
 substitute. It makes the WebView load the dev server's pages, so the origin,
-the ids and the transport are all the dev server's — useful for development,
-and not a test of the binary.
+the ids and the transport are all the dev server's. That is useful for
+development, and not a test of the binary.
 
 ---
 
-## What "staging" is
+## Optional isolated path: a separate staging stack
 
-Two things, both owned by whoever operates the infrastructure — not QA, and
+**Not the acceptance path.** None of this exists today, and acceptance testing
+does not need it. It is here for a future case that needs a backend with no
+production data in it at all, because the guards that keep such a build off
+production are real and are tested.
+
+This extends #663 (native-r2-04, "Supabase URL as a build setting"). It does
+not repeat what #663 built. The build-time settings and their guards are
+documented where they live: `vite.config.ts` (the `WHICH SUPABASE A NATIVE
+BUILD TALKS TO (#623)` block), `scripts/build-native.mjs` and
+`scripts/native-prod-hosts.mjs`, and pinned by
+`tests/a-staging-binary-talks-only-to-staging.test.ts`.
+
+### What "staging" is
+
+Two things, both owned by whoever operates the infrastructure (not QA), and
 not set up by anything in this repo:
 
 | Piece                         | What it must be                                                                                                                                                                                               | Why                                                                                                                                                        |
@@ -64,7 +155,7 @@ in this repo) is the `.env.example` list with every value swapped for
 staging's:
 
 - `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_PROJECT_ID`,
-  `SERVICE_ROLE_KEY` — the **staging** project. These are what server
+  `SERVICE_ROLE_KEY`: the **staging** project. These are what server
   functions use to check the binary's bearer token, so they must name the
   same project as the binary's `NATIVE_SUPABASE_URL`; if they differ, sign-in
   succeeds and the first server call fails as unauthenticated.
@@ -76,7 +167,7 @@ staging's:
   `cors.server.ts` and are admitted without it. It is only for an extra
   origin, such as a preview host calling the API from a browser.
 
-**Known gap — do not QA the staging web app in a browser.** A hosted
+**Known gap: do not QA the staging web app in a browser.** A hosted
 `npm run build` compiles `src/integrations/supabase/client.ts` with the
 production Supabase literal (the `VITE_SUPABASE_*` override is dev-only, on
 purpose). So the staging web app's _server_ talks to staging while its
@@ -84,9 +175,7 @@ _browser pages_ sign in to production. It is an API host for the binary, not a
 second website; browser QA stays on `npm run dev` or `npm run test:e2e`
 against a local stack.
 
----
-
-## Building a staging binary (QA)
+### Building a staging binary (optional)
 
 No code edits. Set three values, build, sync.
 
@@ -95,7 +184,7 @@ No code edits. Set three values, build, sync.
    asks for).
 2. Copy `docs/native-qa-staging.env.example` to a file **outside the repo**
    and fill in the three values. The
-   publishable key is not a secret — it ships inside the binary — but it is
+   publishable key is not a secret (it ships inside the binary), but it is
    staging's, and it does not belong in git.
 3. Load it and build:
 
@@ -124,7 +213,7 @@ No code edits. Set three values, build, sync.
 4. Open and run as usual (`npx cap open ios`, or
    `android/build-debug.sh assembleDebug` for a debug APK).
 
-### What refuses to build, so you do not have to check by eye
+#### What refuses to build, so you do not have to check by eye
 
 From #663, unchanged:
 
@@ -137,7 +226,7 @@ From #663, unchanged:
   `✓ staging native bundle contains no houndstack.com host and no production Supabase ref`.
   If you did not see it, you do not have a staging bundle.
 
-### Checks that are not automated (one minute, before installing)
+#### Checks that are not automated (one minute, before installing)
 
 ```bash
 S=https://<your-staging-web-app-host>
@@ -164,9 +253,7 @@ If (1) returns no `access-control-allow-origin`, the host is a dev server, an
 old deploy from before the CORS middleware, or not this app; every server call
 from the binary will fail with full signal.
 
----
-
-## What a staging binary proves, and what it does not
+### What a staging binary proves, and what it does not
 
 It proves the bundle QA installs, built the way the store build is built,
 works end to end against a real backend: sign-in, server functions, RLS,
@@ -188,9 +275,7 @@ It does not prove:
   background location, the lock-screen route and sign in with Apple/Google
   need a physical device.
 
----
-
-## If something is wrong
+### If something is wrong
 
 | Symptom                                                                 | Likely cause                                                                                                                    |
 | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
@@ -199,4 +284,4 @@ It does not prove:
 | Sign-in works, the first screen says unauthenticated                    | Binary and staging server point at different Supabase projects. Compare `NATIVE_SUPABASE_URL` with the server's `SUPABASE_URL`. |
 | App shows a dev server's pages, or a blank screen with no network       | `CAP_SERVER_URL` was set when `npx cap sync` ran. Unset it and sync again; check (3) shows nothing.                             |
 | Sign-in fails with `Invalid login credentials` for a known staging user | The bundle is production: `cap:sync` (or another script that runs `build:native`) ran after the staging build.                  |
-| Build refuses with a production host                                    | Working as intended — one of the three values is production's.                                                                  |
+| Build refuses with a production host                                    | Working as intended: one of the three values is production's.                                                                   |

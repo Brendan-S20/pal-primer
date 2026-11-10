@@ -600,6 +600,10 @@ async function provisionSignup(
             // reverse the application fee as part of the same call. Keeping a
             // fee on a sale that was unwound and refunded in full would be
             // charging the tenant for our own failure.
+            //
+            // That includes any Stripe cost passed through on the fee, such
+            // as Radar (#825): this sale failed on HoundStack's side, so the
+            // platform absorbs it and the business is handed back all of it.
             refund_application_fee: true,
           },
           {
@@ -1690,7 +1694,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                       reversed_cents: Math.max(0, delta),
                     };
                     console.error(
-                      "application fee reversal: the charge's intent metadata could not be read, so up to the per-tap fee was held back. Check whether this was a tap.",
+                      "application fee reversal: the charge's intent metadata could not be read, so up to the per-tap fee was held back (it also covers a Radar fee). Check whether this was a tap or a screened card payment.",
                       detail,
                     );
                     await recordFeeReversalForReview(
@@ -1846,7 +1850,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                           reversed_cents: Math.max(0, delta),
                         };
                         console.error(
-                          "application fee reversal on dispute: the charge's intent metadata could not be read, so up to the per-tap fee was held back. Check whether this was a tap.",
+                          "application fee reversal on dispute: the charge's intent metadata could not be read, so up to the per-tap fee was held back (it also covers a Radar fee). Check whether this was a tap or a screened card payment.",
                           detail,
                         );
                         await recordFeeReversalForReview(

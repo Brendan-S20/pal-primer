@@ -45,7 +45,7 @@ export const Route = createFileRoute("/portal/$slug/$token")({
           </p>
         </>
       }
-      detail={error.message}
+      detail={error instanceof Error ? error.message : String(error)}
     />
   ),
   notFoundComponent: () => (

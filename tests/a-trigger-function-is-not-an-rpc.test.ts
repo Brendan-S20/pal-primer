@@ -326,7 +326,13 @@ describe("no trigger function is executable by a signed-in user", () => {
     // to stay_summary_catch_up or stay_summaries_live_at that is not
     // set_stay_summary_catch_up(), and stamps the go-live moment when pet
     // sitting is added. Revoked from PUBLIC, anon and authenticated there.
-    expect(triggerFunctions().size).toBe(109);
+    //
+    // 109 -> 110 (20261110140000, a blocked Start holds against a direct
+    // write, #729): visits_vaccine_start_guard applies the owner's BLOCK rule
+    // to a signed-in tech's own UPDATE of visits.status, so a PATCH cannot do
+    // what start_visit refuses. Revoked from PUBLIC, anon and authenticated
+    // there.
+    expect(triggerFunctions().size).toBe(110);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

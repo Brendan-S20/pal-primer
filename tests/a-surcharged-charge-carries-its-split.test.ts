@@ -151,7 +151,11 @@ describe("the platform fee is taken on the base, never on the surcharge", () => 
     const feeLine = [
       // The second argument is the invoice, whose sales tax the fee is not
       // taken on (20260929110000).
-      ...before.matchAll(/application_fee_amount: platformFeeCents\((\w+)(?:, \w+)?\)/g),
+      // It may be wrapped in withPassThroughFees, which adds Stripe's Radar
+      // fee on top (#825); the platform fee inside is still on the base.
+      ...before.matchAll(
+        /application_fee_amount:\s*(?:withPassThroughFees\(\s*)?platformFeeCents\((\w+)(?:, \w+)?\)/g,
+      ),
     ].pop();
     expect(feeLine?.[1]).toBe("dueCents");
   });

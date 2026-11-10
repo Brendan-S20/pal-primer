@@ -48,6 +48,7 @@ import {
   nowAsCalledAt,
 } from "@/components/training/ClientCalledAtField";
 import { orgToday } from "@/lib/org-day";
+import { markVisitCompletedInClientHistory } from "@/lib/client-visit-history-cache";
 import { toastSaveError } from "@/lib/stale-write-toast";
 import { visitBookedCents } from "@/lib/booked-value";
 import { visitServiceLabel } from "@/lib/subscription-form";
@@ -1107,7 +1108,10 @@ function VisitDetailDrawer({
         askWhy,
       ),
     onSuccess: (done) => {
-      if (done) afterAction("Visit marked completed");
+      if (!done) return;
+      // The row says what the toast says, now, not after the refetch (#789).
+      markVisitCompletedInClientHistory(qc, clientId, v.id);
+      afterAction("Visit marked completed");
     },
     onError: (e) => toast.error((e as Error).message),
   });

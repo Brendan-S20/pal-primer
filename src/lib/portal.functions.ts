@@ -7,6 +7,7 @@ import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
 import { visitEta } from "@/lib/visit-eta";
 import { appUrl } from "@/lib/app-origin";
 import { platformFeeCents } from "@/lib/platform-fee";
+import { methodTypesForRail, withPassThroughFees } from "@/lib/radar-fee";
 import { taxShareCents } from "@/lib/sales-tax";
 import { tipChoiceSchema, tippedCharge } from "@/lib/tips";
 import { formatDay } from "@/lib/format";
@@ -1258,11 +1259,18 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
     });
     const { stayInvoicePaymentTypes } = await import("@/lib/stay-payment.server");
     const stayRails = await stayInvoicePaymentTypes(invoice.id, invoice.organization_id, []);
+    // The saved method's rail is known, so a bank debit carries no Radar fee
+    // and a card does (#825).
+    const { radarPassThrough } = await import("@/lib/connect-fee-payer.server");
+    const radar = await radarPassThrough(stripe, stripeAccount, methodTypesForRail(quote.rail));
     try {
       const pi = await stripe.paymentIntents.create(
         {
           amount: quote.totalCents,
-          application_fee_amount: platformFeeCents(dueCents, invoice),
+          application_fee_amount: withPassThroughFees(
+            platformFeeCents(dueCents, invoice),
+            radar.cents,
+          ),
           currency: invoice.currency ?? "usd",
           customer: c.stripe_customer_id,
           payment_method: c.default_payment_method_id,
@@ -1274,6 +1282,7 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
             organization_id: invoice.organization_id,
             source: "portal_saved_card",
             ...surchargeMetadata(quote),
+            ...radar.metadata,
           },
         },
         {
@@ -2346,11 +2355,16 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
         .eq("id", cRow.id);
     }
 
+    // Stripe bills Radar's screening of this charge to the platform under
+    // application_express, so it rides on the application fee (#825).
+    const { radarPassThrough } = await import("@/lib/connect-fee-payer.server");
+    const radar = await radarPassThrough(stripe, acct.accountId, paymentMethodTypes);
     const currency = (invoice.currency ?? "usd").toLowerCase();
     const metadata = {
       invoice_id: invoice.id,
       organization_id: invoice.organization_id,
       source: "portal_inline",
+      ...radar.metadata,
       // Always written, "0" included: Stripe merges metadata on update.
       ...charge.metadata,
     };
@@ -2391,7 +2405,10 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
             // a $1.00 fee — 2%, not 0.5% — out of the tenant's settlement. At
             // $1.00 due the fee equalled the whole charge.
             // On the invoice, never on the tip.
-            application_fee_amount: platformFeeCents(charge.platformFeeBaseCents),
+            application_fee_amount: withPassThroughFees(
+              platformFeeCents(charge.platformFeeBaseCents),
+              radar.cents,
+            ),
             currency,
             metadata,
             setup_future_usage: "off_session" as const,
@@ -2429,7 +2446,10 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     if (!pi) {
       const createParams = {
         amount: charge.amountCents,
-        application_fee_amount: platformFeeCents(charge.platformFeeBaseCents),
+        application_fee_amount: withPassThroughFees(
+          platformFeeCents(charge.platformFeeBaseCents),
+          radar.cents,
+        ),
         currency,
         customer: customerId,
         setup_future_usage: "off_session" as const,

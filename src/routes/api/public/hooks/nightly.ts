@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { appOrigin } from "@/lib/app-origin";
 import { platformFeeCents } from "@/lib/platform-fee";
+import { methodTypesForRail, withPassThroughFees } from "@/lib/radar-fee";
 import { invoiceEmailTaxData, taxShareCents } from "@/lib/sales-tax";
 import { fetchAllPages } from "@/lib/supabase-paging.server";
 import { invoiceDueCents } from "@/lib/ar";
@@ -1160,10 +1161,15 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
       const { stayInvoicePaymentTypes } = await import("@/lib/stay-payment.server");
       const stayRails = org?.service_lines?.includes("pet_sitting")
         ? await stayInvoicePaymentTypes(inv.id, inv.organization_id, []) : [];
+      // Radar on an autopay card charge is billed to the platform under
+      // application_express, so it rides on the application fee (#825). The
+      // saved method's rail is known: a bank debit carries none.
+      const { radarPassThrough } = await import("@/lib/connect-fee-payer.server");
+      const radar = await radarPassThrough(stripe, acct.accountId, methodTypesForRail(quote.rail));
       const pi = await stripe.paymentIntents.create(
         {
           amount: quote.totalCents,
-          application_fee_amount: platformFeeCents(dueCents, inv),
+          application_fee_amount: withPassThroughFees(platformFeeCents(dueCents, inv), radar.cents),
           currency: inv.currency ?? "usd",
           customer: c.stripe_customer_id,
           payment_method: c.default_payment_method_id,
@@ -1175,6 +1181,7 @@ async function runAutopayForOrg(supabaseAdmin: any, orgId: string): Promise<numb
             organization_id: inv.organization_id,
             source: "autopay",
             ...surchargeMetadata(quote),
+            ...radar.metadata,
           },
         },
         {

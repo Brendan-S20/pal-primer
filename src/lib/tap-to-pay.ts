@@ -24,6 +24,7 @@
 // Deliberately a new file: src/lib/native.ts is not touched by this feature.
 import { hasPermission } from "@/lib/permissions";
 import type { AppRole } from "@/hooks/useMyRole";
+import { radarFeeFromMetadata } from "@/lib/radar-fee";
 
 /** Stripe's Tap to Pay per-transaction fee (US), in cents. The business that
  *  takes the tap bears it (owner decision, 2026-11-10): Stripe bills it to
@@ -48,11 +49,23 @@ export function tapToPayFeeFromMetadata(
   return Number(raw);
 }
 
+/** The Stripe costs a charge's application fee carried on the business's
+ *  behalf: the per-tap fee (#757) plus the Radar fee (#825), from the
+ *  intent's metadata. Neither comes back from Stripe on a refund or dispute. */
+export function passedThroughFeeCents(metadata: Record<string, string> | null | undefined): number {
+  return tapToPayFeeFromMetadata(metadata) + radarFeeFromMetadata(metadata);
+}
+
 /**
  * The part of an application fee that a refund or a lost dispute may hand back.
  *
- * Everything except the per-tap fee. Where the platform is the fee payer, the
- * tap's application fee is platform fee + TAP_TO_PAY_FEE_CENTS, and the ten
+ * Everything except the Stripe costs passed through to the business: the
+ * per-tap fee and, since #825, the Radar screening fee (`radar_fee_cents`).
+ * Stripe keeps its Radar fee on a refunded or disputed charge just as it
+ * keeps the tap fee, so handing that part back would leave the platform
+ * paying for the business's screening.
+ *
+ * Where the platform is the fee payer, the tap's application fee is platform fee + TAP_TO_PAY_FEE_CENTS, and the ten
  * cents recovers a fee Stripe billed the platform and does not return when a
  * charge is refunded or disputed. Reversing it proportionally would leave the
  * platform paying for the tenant's tap, which the owner ruled out
@@ -63,7 +76,7 @@ export function reversibleApplicationFeeCents(
   metadata: Record<string, string> | null | undefined,
 ): number {
   if (!Number.isFinite(feeCents) || feeCents <= 0) return 0;
-  return Math.max(0, feeCents - tapToPayFeeFromMetadata(metadata));
+  return Math.max(0, feeCents - passedThroughFeeCents(metadata));
 }
 
 /** What a fee reversal learned about the charge's PaymentIntent metadata.
@@ -111,7 +124,10 @@ export async function readChargeMetadata(
  * assuming "no per-tap fee" would hand it back on the `application` fee payer,
  * so the platform would pay for the tenant's tap (owner decision, 2026-11-10).
  * Taking ten cents off covers that case, and otherwise leaves the business
- * short at most ten cents pro rata. It is never a reason to skip: the webhook
+ * short at most ten cents pro rata. It covers the Radar fee (#825) too: a tap
+ * is `card_present`, which Radar does not screen, so a charge carries the tap
+ * fee or the Radar fee and never both, and RADAR_SCREENING_FEE_CENTS (5) is
+ * below the ten cents held back. It is never a reason to skip: the webhook
  * answers 2xx, so Stripe does NOT redeliver the event, and a skipped reversal
  * would stay skipped. The caller files a platform audit row for every
  * unreadable case so a person can square the ten cents by hand.

@@ -8,7 +8,7 @@
 // in — status "error", data still there — the same approach as
 // my-day-in-arabic-reads-right-to-left.
 
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -69,6 +69,20 @@ vi.mock("@/integrations/supabase/client", () => ({
 
 import i18n from "@/lib/i18n";
 import { Route } from "@/routes/_authenticated/my-day";
+
+// The fixtures are fixed days in October 2026, and the date formatters drop
+// the year only when it is the CURRENT year, so against the real clock these
+// assertions turn red on 2027-01-01 (found by running the suite under
+// faketime for #843). Pin the clock for the whole file instead of making the
+// days relative to today. Only Date is faked, so promises and timers run as
+// normal.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-01T12:00:00-06:00"));
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function myDay(visits = defaultVisits()) {
   return {
