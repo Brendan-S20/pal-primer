@@ -36,6 +36,11 @@ import { PetWastePriceFields } from "@/components/settings/PetWastePriceFields";
 import { getPortalBookingSettings, setPortalBookingSettings } from "@/lib/portal-booking.functions";
 import { listZones } from "@/lib/zones.functions";
 import {
+  ONE_TIME_PRICE_LOAD_ERROR,
+  formAfterSave,
+  saveServiceThenOneTimePrice,
+} from "@/lib/service-save";
+import {
   PRICE_UNIT_LABEL,
   centsToDollarInput,
   defaultServiceLine,
@@ -305,17 +310,29 @@ function ServicesPage() {
     mutationFn: async (f: FormState) => {
       const plan = savePlanOf(f, oneTime);
       if ("problem" in plan) throw new Error(plan.problem);
-      const r = f.id
-        ? await update({ data: { id: f.id, ...plan.draft } })
-        : await create({ data: plan.draft });
-      if (plan.oneTime) await setPortalBooking({ data: plan.oneTime });
-      return r;
+      return saveServiceThenOneTimePrice({
+        id: f.id,
+        draft: plan.draft,
+        oneTime: plan.oneTime,
+        create: (draft) => create({ data: draft }),
+        update: (id, draft) => update({ data: { id, ...draft } }),
+        setOneTimePrice: (data) => setPortalBooking({ data }),
+      });
     },
-    onSuccess: (_r, f) => {
-      toast.success(f.id ? "Service saved" : "Service added");
-      setForm(null);
+    onSuccess: (r, f) => {
       refresh();
       qc.invalidateQueries({ queryKey: ["portal-booking-settings"] });
+      // The service is saved even if the price is not (#812 review): stay
+      // open on the saved row, so Save retries the price and updates that
+      // row rather than adding a second service.
+      const next = formAfterSave(f, r);
+      if (!next.close) {
+        setForm(next.form);
+        setFormError(next.error);
+        return;
+      }
+      toast.success(f.id ? "Service saved" : "Service added");
+      setForm(null);
     },
     onError: (e: Error) => setFormError(e.message),
   });
@@ -477,6 +494,7 @@ function ServicesPage() {
               lines={lines}
               oneTime={oneTime}
               zoneFromCents={zoneFromCents}
+              oneTimeLoadError={portalQ.isError ? ONE_TIME_PRICE_LOAD_ERROR : null}
               error={formError}
               saving={save.isPending}
               onSubmit={() => save.mutate(form)}
@@ -494,6 +512,7 @@ function ServiceForm({
   lines,
   oneTime,
   zoneFromCents,
+  oneTimeLoadError,
   error,
   saving,
   onSubmit,
@@ -503,6 +522,7 @@ function ServiceForm({
   lines: readonly ServiceLine[];
   oneTime: OneTimeSetting;
   zoneFromCents: number | null;
+  oneTimeLoadError: string | null;
   error: string | null;
   saving: boolean;
   onSubmit: () => void;
@@ -623,6 +643,7 @@ function ServiceForm({
           <PetWastePriceFields
             oneTimePrice={form.oneTimePrice}
             savedOneTimeCents={oneTime?.priceCents ?? null}
+            loadError={oneTimeLoadError}
             zoneFromCents={zoneFromCents}
             onOneTimePriceChange={(v) => setForm({ ...form, oneTimePrice: v })}
           />

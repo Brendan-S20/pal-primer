@@ -37,9 +37,17 @@ import {
   servicePriceLabel,
 } from "@/lib/services";
 import {
+  ONE_TIME_BLANK_MEANS,
   ONE_TIME_PRICE_INPUT_ID,
   PetWastePriceFields,
 } from "@/components/settings/PetWastePriceFields";
+import {
+  ONE_TIME_PRICE_LOAD_ERROR,
+  formAfterSave,
+  saveServiceThenOneTimePrice,
+  type OneTimePriceWrite,
+} from "@/lib/service-save";
+import type { ServiceDraft } from "@/lib/services";
 import { oneTimeCleanupVisitCents } from "@/lib/one-time-cleanup";
 
 const read = (file: string) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
@@ -152,9 +160,12 @@ describe("saving persists the amount the list shows (#788)", () => {
       'import { getPortalBookingSettings, setPortalBookingSettings } from "@/lib/portal-booking.functions";',
     );
     expect(src).toMatch(/const plan = savePlanOf\(f, oneTime\);/);
-    expect(src).toMatch(
-      /if \(plan\.oneTime\) await setPortalBooking\(\{ data: plan\.oneTime \}\);/,
-    );
+    // The order and the failure handling are saveServiceThenOneTimePrice's
+    // and formAfterSave's, driven for real in "a price that fails to save"
+    // below; this only pins that the page goes through them.
+    expect(src).toMatch(/return saveServiceThenOneTimePrice\(\{/);
+    expect(src).toMatch(/setOneTimePrice: \(data\) => setPortalBooking\(\{ data \}\)/);
+    expect(src).toMatch(/const next = formAfterSave\(f, r\);/);
     // Same cache keys as the portal card and the zones page, so a save on any
     // of the three shows on the others.
     expect(src).toContain('queryKey: ["portal-booking-settings"]');
@@ -201,6 +212,14 @@ describe("the zone 'from' figure", () => {
         { base_price_cents: 2200, pricing_mode: null, enabled: true },
         { base_price_cents: 1000, pricing_mode: "flat", enabled: false },
         { base_price_cents: 500, pricing_mode: "per_sqft", enabled: true },
+        // A commercial rate is not what a homeowner's plan starts from.
+        { base_price_cents: 900, pricing_mode: "flat", enabled: true, account_type: "commercial" },
+        {
+          base_price_cents: 2300,
+          pricing_mode: "flat",
+          enabled: true,
+          account_type: "residential",
+        },
         { base_price_cents: null, pricing_mode: "flat", enabled: true },
       ]),
     ).toBe(2200);
@@ -210,5 +229,159 @@ describe("the zone 'from' figure", () => {
     expect(lowestZoneVisitCents([])).toBeNull();
     expect(lowestZoneVisitCents(undefined)).toBeNull();
     expect(lowestZoneVisitCents([{ base_price_cents: null }])).toBeNull();
+  });
+});
+
+describe("a price that fails to save does not make a second service (#812 review)", () => {
+  const DRAFT: ServiceDraft = {
+    name: "One-time cleanup",
+    service_line: "pet_waste",
+    price_unit: "visit",
+    base_price_cents: null,
+    extra_pet_cents: 0,
+    default_duration_min: null,
+  };
+  const PRICE: OneTimePriceWrite = { autoAccept: false, priceCents: 7500 };
+
+  /** A pretend backend: services by id, and the org's one price. */
+  function backend(priceFailures: number) {
+    const services = new Map<string, ServiceDraft>();
+    let failuresLeft = priceFailures;
+    const state = { oneOffPriceCents: null as number | null, creates: 0, updates: 0 };
+    return {
+      state,
+      services,
+      create: vi.fn(async (d: ServiceDraft) => {
+        state.creates += 1;
+        const id = `svc-${state.creates}`;
+        services.set(id, d);
+        return { id };
+      }),
+      update: vi.fn(async (id: string, d: ServiceDraft) => {
+        if (!services.has(id)) throw new Error("That service was not found.");
+        state.updates += 1;
+        services.set(id, d);
+        return { id };
+      }),
+      setOneTimePrice: vi.fn(async (data: OneTimePriceWrite) => {
+        if (failuresLeft > 0) {
+          failuresLeft -= 1;
+          throw new Error("Failed to fetch");
+        }
+        state.oneOffPriceCents = data.priceCents;
+        return { ok: true };
+      }),
+    };
+  }
+
+  /** One press of Save, the way the page does it: the writes, then what the
+   *  dialog does with the answer. */
+  async function pressSave(form: { id: string | null }, be: ReturnType<typeof backend>) {
+    const r = await saveServiceThenOneTimePrice({
+      id: form.id,
+      draft: DRAFT,
+      oneTime: PRICE,
+      create: be.create,
+      update: be.update,
+      setOneTimePrice: be.setOneTimePrice,
+    });
+    return formAfterSave(form, r);
+  }
+
+  it("keeps the dialog open on the saved row, says so, and the retry updates that row", async () => {
+    const be = backend(1);
+    const first = await pressSave({ id: null }, be);
+    expect(first.close).toBe(false);
+    if (first.close) throw new Error("unreachable");
+    expect(first.form.id).toBe("svc-1");
+    expect(first.error).toBe(
+      "Service added, but the one-time cleanup price was not saved: Failed to fetch. Press Save to try the price again.",
+    );
+    expect(be.services.size).toBe(1);
+    expect(be.state.oneOffPriceCents).toBeNull();
+
+    const second = await pressSave(first.form, be);
+    expect(second).toEqual({ close: true });
+    expect(be.create).toHaveBeenCalledTimes(1);
+    expect(be.update).toHaveBeenCalledTimes(1);
+    expect(be.update).toHaveBeenCalledWith("svc-1", DRAFT);
+    expect(be.services.size).toBe(1);
+    expect(be.state.oneOffPriceCents).toBe(7500);
+  });
+
+  it("still makes one service however many times the price fails", async () => {
+    const be = backend(3);
+    let form: { id: string | null } = { id: null };
+    for (let i = 0; i < 4; i += 1) {
+      const next = await pressSave(form, be);
+      if (next.close) break;
+      form = next.form;
+    }
+    expect(be.create).toHaveBeenCalledTimes(1);
+    expect(be.services.size).toBe(1);
+    expect(be.state.oneOffPriceCents).toBe(7500);
+  });
+
+  it("an edit whose price fails says saved, not added, and keeps its own id", async () => {
+    const be = backend(1);
+    await be.create(DRAFT);
+    const next = await pressSave({ id: "svc-1" }, be);
+    expect(next).toMatchObject({ close: false, form: { id: "svc-1" } });
+    if (next.close) throw new Error("unreachable");
+    expect(next.error).toMatch(/^Service saved, but the one-time cleanup price was not saved/);
+  });
+
+  it("a service that fails to save throws before any price is written", async () => {
+    const be = backend(0);
+    be.create.mockRejectedValueOnce(new Error("You already have a service with that name."));
+    await expect(pressSave({ id: null }, be)).rejects.toThrow("already have a service");
+    expect(be.setOneTimePrice).not.toHaveBeenCalled();
+  });
+
+  it("with no price to write, it saves the service and closes", async () => {
+    const be = backend(0);
+    const r = await saveServiceThenOneTimePrice({
+      id: null,
+      draft: DRAFT,
+      oneTime: null,
+      create: be.create,
+      update: be.update,
+      setOneTimePrice: be.setOneTimePrice,
+    });
+    expect(formAfterSave({ id: null }, r)).toEqual({ close: true });
+    expect(be.setOneTimePrice).not.toHaveBeenCalled();
+  });
+});
+
+describe("the copy says what a blank one-time price does, everywhere it is read (#812 review)", () => {
+  it("names the booking link, the office's one-off and the portal's extra visits", () => {
+    expect(ONE_TIME_BLANK_MEANS).toMatch(/booking link charges the zone's visit price/);
+    expect(ONE_TIME_BLANK_MEANS).toMatch(/office types a price for each one-off visit/);
+    expect(ONE_TIME_BLANK_MEANS).toMatch(/wait for you to price and book them/);
+    const html = fields();
+    expect(html).toContain(ONE_TIME_BLANK_MEANS.replace(/'/g, "&#x27;"));
+    expect(html).not.toMatch(/Left blank, a one-time cleanup uses the zone/);
+  });
+
+  it("says the price could not be loaded rather than 'No price yet'", () => {
+    const html = fields({ oneTimePrice: null, loadError: ONE_TIME_PRICE_LOAD_ERROR });
+    expect(html).toContain("could not be loaded");
+    expect(html).not.toContain("No price yet.");
+  });
+});
+
+describe("more prices typed by hand", () => {
+  const none = { priceCents: null, autoAccept: false };
+  it("refuses a negative and a third decimal", () => {
+    expect(oneTimeCleanupPriceUpdate("-5", none)).toHaveProperty("problem");
+    expect(oneTimeCleanupPriceUpdate("75.999", none)).toHaveProperty("problem");
+  });
+  it("takes zero and a thousands separator", () => {
+    expect(oneTimeCleanupPriceUpdate("0", none)).toEqual({
+      data: { autoAccept: false, priceCents: 0 },
+    });
+    expect(oneTimeCleanupPriceUpdate("$1,000.50", none)).toEqual({
+      data: { autoAccept: false, priceCents: 100050 },
+    });
   });
 });

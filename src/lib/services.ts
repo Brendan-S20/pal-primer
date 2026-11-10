@@ -498,12 +498,15 @@ export type ZoneVisitPrice = {
   base_price_cents: number | null;
   pricing_mode?: string | null;
   enabled?: boolean | null;
+  /** "commercial" zones price businesses, not yards; null serves both. */
+  account_type?: string | null;
 };
 
 /**
  * The lowest per-visit price any switched-on, flat-priced zone charges, or
  * null when no zone has one yet. Area-priced zones (per square foot or acre)
- * have no single visit price, so they are left out rather than guessed at.
+ * have no single visit price, so they are left out rather than guessed at,
+ * and so are commercial zones, whose rate is not what a homeowner pays.
  * This is the "from" figure, before any cadence multiplier or extra dog.
  */
 export function lowestZoneVisitCents(
@@ -512,6 +515,7 @@ export function lowestZoneVisitCents(
   let low: number | null = null;
   for (const z of zones ?? []) {
     if (z.enabled === false) continue;
+    if (z.account_type === "commercial") continue;
     if ((z.pricing_mode ?? "flat") !== "flat") continue;
     const c = z.base_price_cents;
     if (typeof c !== "number" || !Number.isInteger(c) || c < 0) continue;

@@ -25,10 +25,19 @@ import {
 
 export const ONE_TIME_PRICE_INPUT_ID = "service-one-time-price";
 
+/** What leaving the price blank does, everywhere it is read (#812 review):
+ *  the booking link falls back to the zone (one-time-cleanup.ts), the
+ *  office's One-off dialog has no price to start from
+ *  (booking-price.server.ts), and the portal cannot book an extra visit
+ *  without someone looking (portal.functions.ts canAutoBook). */
+export const ONE_TIME_BLANK_MEANS =
+  "Left blank, your booking link charges the zone's visit price, the office types a price for each one-off visit, and extra visits clients ask for wait for you to price and book them.";
+
 export function PetWastePriceFields({
   oneTimePrice,
   savedOneTimeCents,
   zoneFromCents,
+  loadError = null,
   onOneTimePriceChange,
 }: {
   /** The field's text, or null when it cannot be edited here (the setting
@@ -38,6 +47,8 @@ export function PetWastePriceFields({
   savedOneTimeCents: number | null;
   /** lowestZoneVisitCents over the business's zones; null when none is priced. */
   zoneFromCents: number | null;
+  /** The one-time price could not be read: said, rather than "No price yet". */
+  loadError?: string | null;
   onOneTimePriceChange: (v: string) => void;
 }) {
   return (
@@ -60,11 +71,17 @@ export function PetWastePriceFields({
         {oneTimePrice === null ? (
           <>
             <p className="text-sm font-medium">One-time cleanup</p>
-            <p className="text-sm text-muted-foreground" data-testid="pet-waste-one-time-price">
-              {savedOneTimeCents === null
-                ? "No price yet."
-                : `${formatServiceMoney(savedOneTimeCents)} per cleanup.`}
-            </p>
+            {loadError ? (
+              <p className="text-sm text-destructive" data-testid="pet-waste-one-time-price">
+                {loadError}
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground" data-testid="pet-waste-one-time-price">
+                {savedOneTimeCents === null
+                  ? "No price yet."
+                  : `${formatServiceMoney(savedOneTimeCents)} per cleanup.`}
+              </p>
+            )}
           </>
         ) : (
           <>
@@ -89,8 +106,7 @@ export function PetWastePriceFields({
           >
             Price of an extra visit
           </Link>
-          , so changing it here changes it there. Left blank, a one-time cleanup uses the
-          zone&apos;s visit price.
+          , so changing it here changes it there. {ONE_TIME_BLANK_MEANS}
         </p>
       </div>
     </div>
