@@ -33,6 +33,7 @@ import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { withDeadline } from "@/lib/offline/run-or-queue";
 import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
 import { rememberLandingPath, readLandingPath } from "@/lib/offline/read-cache";
+import { lookupLandingPath as lookupLandingPathFrom } from "@/lib/landing-path";
 import { pageTitle } from "@/lib/page-title";
 import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
 import { takeLinkForLanding } from "@/lib/pending-deep-link";
@@ -54,36 +55,16 @@ export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
 
-/** Two Supabase round trips. Bounded because this sits between "we know who
+/** Two Supabase reads, made at the same time. Bounded because this sits between "we know who
  *  you are" and `navigate()` — an unbounded await here strands the user on the
  *  sign-in form just as surely as failing to identify them would. Native only;
  *  the web build awaits the lookup exactly as it always has. */
 const LANDING_DEADLINE_MS = 5_000;
 
 /** The two queries themselves, shared by both platforms so there is one
- *  definition of which role lands where. */
-async function lookupLandingPath(userId: string): Promise<string> {
-  // Platform admins always land in the platform console — never inside a
-  // tenant dashboard (impersonation uses a separate magic-link session).
-  const { data: isPlatform } = await supabase.rpc("is_platform_admin", { _user_id: userId });
-  if (isPlatform) return "/platform";
-
-  const { data, error } = await supabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId)
-    .maybeSingle();
-  // A failed lookup is not "no role". Reading it as one sent a tech to
-  // /dashboard and remembered that over their /my-day; the caller falls back
-  // to the remembered answer instead.
-  if (error) throw error;
-  const role = data?.role;
-  if (role === "tech") return "/my-day";
-  if (role === "dispatcher") return "/routes";
-  // owner, office_manager, or no role yet (fresh signup, where /dashboard
-  // triggers onboarding).
-  return "/dashboard";
-}
+ *  definition of which role lands where. They run side by side since #786;
+ *  see lib/landing-path.ts. */
+const lookupLandingPath = (userId: string) => lookupLandingPathFrom(supabase as never, userId);
 
 // Where a given role should land immediately after sign-in.
 //

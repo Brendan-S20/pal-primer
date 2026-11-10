@@ -42,6 +42,7 @@ import {
   returnHereAfterSignIn,
 } from "@/lib/signed-out";
 import { invalidateOnboardingStatus } from "@/hooks/useOnboardingStatus";
+import { prefetchUsersPage } from "@/lib/settings-prefetch";
 
 const USERS_PAGE = "/settings/users";
 type AddressDraft = { start: string; end: string };
@@ -65,6 +66,12 @@ function useSignedOutToast() {
 
 export const Route = createFileRoute("/_authenticated/settings/users")({
   head: () => titleHead("Users & roles", "Settings"),
+  // #786: the page's reads start with the navigation (or the hover before
+  // it), not after its chunk has loaded and mounted. Nothing is awaited.
+  // See lib/settings-prefetch.ts.
+  loader: ({ context }) => {
+    prefetchUsersPage(context.queryClient, context.organization?.role);
+  },
   component: UsersPage,
 });
 
