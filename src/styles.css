@@ -513,6 +513,18 @@
   transition-timing-function: var(--motion-ease-standard);
 }
 
+/* A toast's buttons on touch. sonner draws them 24px tall, and an action on a
+   toast is often the only way to the thing it names: Copy link when an invite
+   email did not go out (#775). Same media query as the `touch:` variant.
+   `flex-shrink: 0` because a width floor is not a shrink floor. */
+@media (pointer: coarse), (max-width: 767px) {
+  [data-sonner-toast] [data-button] {
+    min-height: 44px;
+    min-width: 44px;
+    flex-shrink: 0;
+  }
+}
+
 /* ── LIST ENTRANCE ───────────────────────────────────────────────────────
  *
  * `motion-list` on a list's container, with useMotionList()'s ref on it

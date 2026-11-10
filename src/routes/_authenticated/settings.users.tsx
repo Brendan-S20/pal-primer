@@ -29,7 +29,8 @@ import { useMyRole } from "@/hooks/useMyRole";
 import { useRoleLabel } from "@/components/CommercialOnly";
 import { MapPin, ChevronDown, ChevronRight } from "lucide-react";
 import { titleHead } from "@/lib/page-title";
-import { inviteSendToast, replaceInviteQuestion } from "@/lib/invite-copy";
+import { inviteFormHelp, inviteSendToast, replaceInviteQuestion } from "@/lib/invite-copy";
+import { InviteLinkCard, type SentInvite } from "@/components/settings/InviteLinkCard";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { toastServerError } from "@/lib/server-outcome";
 import { ConfirmButton } from "@/components/ConfirmButton";
@@ -356,6 +357,8 @@ function InvitePanel() {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"office_manager" | "dispatcher" | "tech">("tech");
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
+  // The invite just sent, with its link, kept on the form (#775).
+  const [sent, setSent] = useState<SentInvite | null>(null);
 
   const invitesQ = useQuery({ queryKey: ["org-invites"], queryFn: () => listFn() });
   const invites: any[] = (invitesQ.data as any)?.invites ?? [];
@@ -372,16 +375,18 @@ function InvitePanel() {
     to: string,
     r: { emailSent?: boolean; link?: string },
     action: "created" | "resent",
+    id?: string,
   ) => {
     const said = inviteSendToast(action, to, r.emailSent);
+    // Copy link on the toast whether or not the email went out (#775), and
+    // on the form under it, which outlasts the toast.
+    const copy = r.link ? { label: "Copy link", onClick: () => copyLink(r.link) } : undefined;
     if (said.tone === "success") {
-      toast.success(said.message);
+      toast.success(said.message, { action: copy });
     } else {
-      toast.warning(said.message, {
-        duration: 15000,
-        action: r.link ? { label: "Copy link", onClick: () => copyLink(r.link) } : undefined,
-      });
+      toast.warning(said.message, { duration: 15000, action: copy });
     }
+    setSent(r.link ? { id, email: to, link: r.link, emailSent: r.emailSent, action } : null);
   };
   // R2-32: the server refuses your own address and anyone already on the
   // team (a toast, in its words), resends a pending invite under the same
@@ -404,7 +409,7 @@ function InvitePanel() {
     },
     onSuccess: (r) => {
       if (!r || "replaceQuestion" in r) return;
-      reportSend(email.trim(), r, r.resent ? "resent" : "created");
+      reportSend(email.trim(), r, r.resent ? "resent" : "created", r.id);
       setEmail("");
       void invalidateOnboardingStatus(qc);
       qc.invalidateQueries({ queryKey: ["org-invites"] });
@@ -413,13 +418,18 @@ function InvitePanel() {
   });
   const revokeMut = useMutation({
     mutationFn: (id: string) => revokeFn({ data: { id } }),
-    onSuccess: () => { toast.success("Invite revoked"); qc.invalidateQueries({ queryKey: ["org-invites"] }); },
+    onSuccess: (_r, id) => {
+      toast.success("Invite revoked");
+      // A revoked link stops working; do not leave it on the form to copy.
+      setSent((s) => (s?.id === id ? null : s));
+      qc.invalidateQueries({ queryKey: ["org-invites"] });
+    },
     onError: (e) => toast.error((e as Error).message),
   });
   const resendMut = useMutation({
     mutationFn: (id: string) => resendFn({ data: { id } }),
     onSuccess: (r, id) => {
-      reportSend(invites.find((i) => i.id === id)?.email ?? "them", r, "resent");
+      reportSend(invites.find((i) => i.id === id)?.email ?? "them", r, "resent", id);
       qc.invalidateQueries({ queryKey: ["org-invites"] });
     },
     onError: (e) => toast.error((e as Error).message),
@@ -459,8 +469,14 @@ function InvitePanel() {
             {createMut.isPending ? "Sending…" : "Send invite"}
           </Button>
         </form>
+        {sent && (
+          <InviteLinkCard sent={sent} onCopy={copyLink} onDismiss={() => setSent(null)} />
+        )}
         <p className="text-xs text-muted-foreground">
-          We email them a link. If it doesn't arrive, use Copy link below and send it yourself. Their role is set when they join.
+          {inviteFormHelp({
+            pendingCount: invites.filter((i) => i.status === "pending").length,
+            justSent: !!sent,
+          })}
         </p>
 
         {invites.filter((i) => i.status === "pending").length > 0 && (
