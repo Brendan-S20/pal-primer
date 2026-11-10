@@ -265,13 +265,22 @@ function ProfilePage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="pf-phone">Phone</Label>
+              <Label htmlFor="pf-phone">Your phone</Label>
               <Input
                 id="pf-phone"
+                type="tel"
+                autoComplete="tel"
+                aria-describedby="pf-phone-hint"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="Optional"
               />
+              {/* #787: this is the person's own number. The number customers
+                  see is the business's office phone, a different field, and
+                  a blank here next to a filled portal read as lost data. */}
+              <p id="pf-phone-hint" className="text-xs text-muted-foreground">
+                Your own number. Clients see the office phone in Settings → Client portal.
+              </p>
             </div>
           </div>
           <Button

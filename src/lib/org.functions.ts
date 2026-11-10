@@ -461,5 +461,16 @@ export const updateOrgBranding = createServerFn({ method: "POST" })
     const { countryColumnMissing } = await updateWithCountryFallback(patch, (p) =>
       updateOwnOrg(supabase, orgId, p),
     );
+    // The office phone and the owner's Profile phone are one number until the
+    // owner says otherwise (#787). Setup step 1 saves its Business phone
+    // through here, so a number typed (or re-typed) there reaches Profile too.
+    if (data.contactPhone) {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { fillOwnerProfilePhoneFromOffice } = await import("@/lib/signup-contact.server");
+      await fillOwnerProfilePhoneFromOffice(
+        supabaseAdmin as unknown as import("@/lib/signup-contact.server").AdminClient,
+        { orgId, userId, phone: data.contactPhone },
+      );
+    }
     return { ok: true, countryColumnMissing };
   });

@@ -412,3 +412,89 @@ describe("Setup → Settings", () => {
     ]);
   });
 });
+
+// #787: the phone typed at sign-up, in setup, and on Profile is one number.
+// Reproduced from the 2026-11-09 QA run: mobile `555-010-0199` at sign-up,
+// setup step 1's Business phone empty (later `555-`), Profile blank, client
+// portal Office phone `555-010-0199`. Setup step 1 and the portal card both
+// read organizations.contact_phone through getOrgBranding; Profile reads
+// staff.phone through getMyProfile.
+describe("One phone from sign-up to setup, Profile and the portal (#787)", () => {
+  const QA_PHONE = "555-010-0199";
+  const OFFICE_MANAGER = "00000000-0000-4000-8000-0000000000b2";
+
+  it("the sign-up mobile is what setup's Business phone starts with", async () => {
+    const { setupBusinessPhonePrefill } = await import("@/lib/phone-handoff");
+    await signUp({ phone: QA_PHONE });
+    const branding = await call(getOrgBranding);
+    // setup.tsx: `phone ?? b?.contact_phone` with nothing typed yet.
+    expect(branding.contact_phone).toBe(QA_PHONE);
+    expect(setupBusinessPhonePrefill(null, branding.contact_phone)).toBe(QA_PHONE);
+    // A fragment kept on the device does not cover the whole number.
+    expect(setupBusinessPhonePrefill("555-", branding.contact_phone)).toBe(QA_PHONE);
+  });
+
+  it("after sign-up, Profile phone and portal Office phone agree", async () => {
+    await signUp({ phone: QA_PHONE });
+    const portal = (await call(getOrgBranding)).contact_phone;
+    const profile = (await call(getMyProfile)).staff.phone;
+    expect(profile).toBe(QA_PHONE);
+    expect(portal).toBe(profile);
+  });
+
+  it("a Business phone entered in setup also fills a blank Profile phone", async () => {
+    // The QA run: the phone never reached Profile, then was re-typed in setup.
+    await signUp({ phone: undefined });
+    await call(updateOrgBranding, { name: "QA Test Scooping", contactPhone: QA_PHONE });
+    expect((await call(getOrgBranding)).contact_phone).toBe(QA_PHONE);
+    expect((await call(getMyProfile)).staff.phone).toBe(QA_PHONE);
+  });
+
+  it("a Profile phone that is an empty string counts as blank", async () => {
+    await signUp({ phone: undefined });
+    h.db.staff[0].phone = "";
+    h.db.organizations[0].contact_phone = "";
+    await signUp({ phone: QA_PHONE });
+    expect((await call(getOrgBranding)).contact_phone).toBe(QA_PHONE);
+    expect((await call(getMyProfile)).staff.phone).toBe(QA_PHONE);
+  });
+
+  it("a fragment such as `555-` is never stored as the phone", async () => {
+    await signUp({ phone: "555-" });
+    expect((await call(getOrgBranding)).contact_phone).toBeNull();
+    expect((await call(getMyProfile)).staff.phone).toBeNull();
+  });
+
+  it("an owner's own Profile phone is never overwritten by the office phone", async () => {
+    await signUp({ phone: "313-555-0142" });
+    await call(updateOrgBranding, { contactPhone: QA_PHONE });
+    expect((await call(getOrgBranding)).contact_phone).toBe(QA_PHONE);
+    expect((await call(getMyProfile)).staff.phone).toBe("313-555-0142");
+  });
+
+  it("an office manager saving the office phone does not get it as their own", async () => {
+    await signUp({ phone: undefined });
+    h.db.staff.push({
+      id: "staff-om",
+      organization_id: ORG,
+      user_id: OFFICE_MANAGER,
+      display_name: "Office Manager",
+      phone: null,
+      role: "office_manager",
+      active: true,
+    });
+    await updateOrgBranding({
+      data: { contactPhone: QA_PHONE },
+      context: { supabase: fakeClient(), userId: OFFICE_MANAGER },
+    } as any);
+    expect(h.db.staff.find((s) => s.user_id === OFFICE_MANAGER)!.phone).toBeNull();
+  });
+
+  it("a failed Profile fill after a saved office phone says which half failed", async () => {
+    await signUp({ phone: undefined });
+    h.failingWrites.set("staff", "permission denied for table staff");
+    await expect(call(updateOrgBranding, { contactPhone: QA_PHONE })).rejects.toThrow(
+      /office phone was saved.*Profile/i,
+    );
+  });
+});
