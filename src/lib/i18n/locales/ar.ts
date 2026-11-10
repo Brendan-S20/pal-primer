@@ -1005,6 +1005,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
       franchise: "الإتاوات",
       imports: "استيراد",
       "settings/users": "الفريق",
+      "settings/services": "الخدمات",
       settings: "الإعدادات",
       platform: "إدارة المنصة",
     },

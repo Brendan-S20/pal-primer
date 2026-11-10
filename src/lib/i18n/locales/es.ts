@@ -951,6 +951,7 @@ const es: Translations = {
       franchise: "Regalías",
       imports: "Importar",
       "settings/users": "Equipo",
+      "settings/services": "Servicios",
       settings: "Configuración",
       platform: "Administración",
     },
