@@ -121,6 +121,9 @@ on:
       - "tests/viewports/**"
       - "playwright.config.ts"
       - ".github/workflows/sandboxes.yml"
+      - "scripts/backup/**"
+      - "scripts/restore-drill.sh"
+      - "scripts/restore-drill-selftest.sh"
     # ── DRAFT, THEN READY ───────────────────────────────────────────────────
     #
     # The three defaults plus ready_for_review, so marking a PR "Ready for
@@ -255,6 +258,9 @@ jobs:
               tests/support/walk-db.ts|tests/support/org-day.ts) database=true ;;
               tests/support/select-embeds.ts|tests/support/withheld-columns.ts) database=true ;;
               tests/e2e/*|playwright.e2e.config.ts)        database=true ;;
+              # The restore drill's self-test runs in the database job, on
+              # the stack it builds, so the backup scripts route there.
+              scripts/backup/*|scripts/restore-drill.sh|scripts/restore-drill-selftest.sh) database=true ;;
               tests/viewports/*|playwright.config.ts)      viewports=true ;;
               # App source: the browser jobs only, never the database replay.
               src/*)                                       viewports=true ;;
@@ -636,6 +642,7 @@ jobs:
           EOF
 
       - name: Replay every migration into an empty database
+        id: replay
         run: |
           set -o pipefail
           started=""
@@ -757,6 +764,34 @@ jobs:
         run: |
           npx playwright install chromium
           npm run test:e2e
+
+      # ── THE RESTORE DRILL, ON DATA THAT BELONGS TO NOBODY ───────────────
+      #
+      # backup.yml makes an encrypted copy of production every night, and
+      # until this step nothing outside that workflow had ever restored one.
+      # This backs up THIS job's stack -- built from the migrations, seeded
+      # with one made-up business on .invalid addresses -- with the same
+      # dump.sh / crypt.sh / summarize.mjs the nightly job runs, under a
+      # passphrase generated for the run, and then runs
+      # scripts/restore-drill.sh on it: decrypt, restore into a second,
+      # throwaway stack on random ports, every row count against the dump,
+      # every foreign key, then tables vs the migrations, RLS on every public
+      # table, the auth schema and the migration ledger.
+      #
+      # No secret is read and no production backup is downloaded here. The
+      # production drill is restore-drill.yml (weekly, GitHub-hosted) and
+      # backup.yml's Sunday job, with a person on a private machine as the
+      # fallback (docs/runbooks/restore-drill.md). This step only ever sees
+      # seed data, so it is safe on whatever runner this job uses.
+      #
+      # After the E2E suite, which seeds its own tenant; the seed here adds a
+      # second one beside it. It runs even when the E2E suite failed, so a
+      # flaky browser does not hide a backup that no longer restores.
+      - name: The restore drill, on a backup of local seed data
+        if: always() && steps.replay.outcome == 'success'
+        run: |
+          command -v gpg >/dev/null || { echo "::error::gpg is not on this runner. The backup is OpenPGP-encrypted, so the drill cannot open it without gpg. macOS: brew install gnupg"; exit 1; }
+          scripts/restore-drill-selftest.sh
 
       - name: Keep what the E2E suite saw when it failed
         if: failure()
