@@ -90,7 +90,11 @@ export function useOfficeCompleteOverride() {
             value={reason}
             maxLength={250}
             rows={3}
-            placeholder="Client confirmed by phone; tech's phone died"
+            autoFocus
+            // A solid field, and a placeholder that says it is an example:
+            // light text on a transparent box read as already filled in (#789).
+            className="bg-background"
+            placeholder="For example: client confirmed by phone; tech's phone died"
             onChange={(e) => setReason(e.target.value)}
           />
         </div>
