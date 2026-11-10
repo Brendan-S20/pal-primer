@@ -19,8 +19,9 @@ hour after that morning's backup, and on demand (Actions, Restore drill,
 Run workflow). On a GitHub-hosted `ubuntu-latest` runner it:
 
 1. checks `BACKUP_PASSPHRASE` is set, without reading its value. If it is
-   not, the drill job is **skipped**, and the preflight job's warning says
-   which secret to add;
+   not, a **scheduled** run **fails** with an error naming the secret, so
+   nobody mistakes a drill that never ran for a pass. A run started by hand
+   warns and skips the drill job instead;
 2. finds the newest unexpired `db-backup` artifact from a Backup run on
    `main`, and **fails** if there is none (no backup in 30 days is a
    failure, not a skip);
@@ -154,33 +155,49 @@ GitHub.
 
 ## What PASS looks like
 
-The end of the output, from the self-test on seed data (your numbers will
-be production's):
+The end of the output, from the self-test on seed data (2026-11-10):
 
 ```
-180 of 180 tables restored with exactly the rows the backup holds
-  public.organizations   backup        1   restored        1
-  ...
-NOTICE:  all 343 foreign keys in public/reference hold
+183 of 183 tables restored with exactly the rows the backup holds
+NOTICE:  all 350 foreign keys in public/reference hold
 restore verified
 
 checks on the restored database:
-PASS  tables  140 of 140 public tables and views the migrations create are present (140 in the restored public schema)
-PASS  rows    key tables present and organizations is not empty
-        organizations           1
-        clients                10
-        visits                149
-        invoices               34
-        staff                   1
-PASS  rls     140 of 140 public tables have row level security on
-PASS  auth    auth schema present, auth.users has 1 row(s)
-PASS  ledger  512 migration(s) recorded, newest 20261109200000 (this checkout's newest file: 20261109200000)
+PASS  tables  143 of 143 public tables and views the migrations create are present (143 in the restored public schema)
+PASS  rows    5 of 5 key tables present and organizations is not empty
+PASS  rls     143 of 143 public tables have row level security on
+PASS  auth    auth schema present and auth.users is not empty
+PASS  ledger  515 migration(s) recorded, newest 20261110130000 (this checkout's newest file: 20261110130000)
+all restore drill checks passed: 5
 
 RESTORE DRILL: PASS in 22s
 ```
 
 The last line is the verdict. Anything else ends in
 `RESTORE DRILL: FAIL -- <reason>` and a non-zero exit.
+
+**A pass prints no row counts.** The repository is public, and so are the
+weekly drill's logs and summary. A pass says "N of N" and PASS. The row
+counts of the key tables, the `auth.users` count, and each mismatched
+table's counts are printed only when a check fails, because then they are
+what you need to see first. A failure looks like this:
+
+```
+FAIL  ledger  supabase_migrations.schema_migrations is absent in the restore, ...
+row counts (printed because a check failed):
+        organizations           1
+        clients                10
+        visits                149
+        invoices               34
+        staff                   1
+        auth.users              1
+checks failed: ledger
+RESTORE DRILL: FAIL -- one or more checks above failed (23s)
+```
+
+A failed scheduled run therefore puts production's counts in a public log.
+That is the trade: a drill that hides why it failed gets re-run until it
+passes, not fixed.
 
 | Check | Fails when |
 |---|---|
@@ -223,7 +240,9 @@ For a drill by hand, post a comment on #720 with:
 - the backup's file name and the Backup run number it came from;
 - the commit of this repo you ran it from (`git rev-parse --short HEAD`);
 - the summary block from `drill.log`, from `checks on the restored
-  database:` to the `RESTORE DRILL:` line, pasted as code;
+  database:` to the `RESTORE DRILL:` line, pasted as code. On a pass it
+  holds no row counts. On a fail it does, so leave the `row counts` lines
+  out of a public comment;
 - the total time.
 
 Do not attach `drill.log` itself or paste anything above the summary block
@@ -259,4 +278,5 @@ must not drift: the localhost guard, each check failing on the restore it
 exists to catch, the ledger in the backup, and that only `backup.yml` and
 `restore-drill.yml` read a production backup. For the weekly workflow it
 also pins hosted runners, read-only permissions, `BACKUP_PASSPHRASE` as the
-only secret, and the skip when that secret is missing.
+only secret, a scheduled run going red when that secret is missing (and a
+run by hand skipping), and no row counts in the output of a pass.

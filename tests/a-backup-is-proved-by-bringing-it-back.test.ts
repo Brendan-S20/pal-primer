@@ -479,3 +479,105 @@ describe("a check that never ran is not a pass", () => {
     expect(ALL_PASSED_PREFIX).toBe("all restore drill checks passed:");
   });
 });
+
+describe("a public log shows production counts only when something failed", () => {
+  // The repository is public, and so are its Actions logs and step summaries.
+  // A pass says "N of N" and PASS; how many customers, visits and logins
+  // production holds is printed only when a check failed, where it is what a
+  // person needs to see first.
+  const expectedTables = ["clients", "invoices", "organizations", "staff", "visits"];
+  const facts = () => ({
+    relations: [...expectedTables],
+    rls_off: [] as string[],
+    base_tables: expectedTables.length,
+    auth_schema: true,
+    auth_users: true,
+    auth_user_count: 4321,
+    ledger: true,
+    ledger_rows: 515,
+    ledger_newest: "20261110130000",
+    counts: {
+      organizations: 1234,
+      clients: 56789,
+      visits: 987654,
+      invoices: 24680,
+      staff: 1357,
+    } as Record<string, number | null>,
+  });
+  const secretCounts = ["1234", "56789", "987654", "24680", "1357", "4321"];
+  const run = (f: ReturnType<typeof facts>) =>
+    evaluate(f, { expectedTables, repoNewest: "20261110130000" }).lines.join("\n");
+
+  it("a pass prints no row count of any key table, nor of auth.users", () => {
+    const out = run(facts());
+    for (const n of secretCounts) expect(out).not.toContain(n);
+    expect(out).toMatch(/5 of 5 key tables present and organizations is not empty/);
+    expect(out).toMatch(/auth schema present and auth\.users is not empty/);
+  });
+
+  it("a failure prints every key table's count and the auth.users count", () => {
+    const f = facts();
+    f.rls_off = ["clients"];
+    const out = run(f);
+    expect(out).toMatch(/row counts \(printed because a check failed\)/);
+    for (const n of secretCounts) expect(out).toContain(n);
+  });
+
+  it("verify-restore.mjs prints the key tables' counts only inside its failure branch", () => {
+    const v = code("scripts/backup/verify-restore.mjs");
+    const branch = v.indexOf("if (failures.length) {");
+    const keyLoop = v.indexOf("for (const t of KEY_TABLES) {\n    console.log(");
+    expect(branch).toBeGreaterThan(0);
+    expect(keyLoop).toBeGreaterThan(branch);
+    // and nowhere before it
+    expect(v.slice(0, branch)).not.toMatch(/console\.log\([^)]*expected\[t\]/);
+  });
+
+  it("the step summary copies PASS/FAIL lines and totals, never an indented count line", () => {
+    const wf = load(read(".github/workflows/restore-drill.yml")) as { jobs: Record<string, Job> };
+    const summary = wf.jobs.drill.steps.find((s) => s.name === "Summary")!;
+    expect(summary.run).toMatch(
+      /grep -E '\^\(PASS\|FAIL\|RESTORE DRILL:\|::error::\)\|tables restored with exactly'/,
+    );
+  });
+});
+
+describe("a scheduled drill with no passphrase is red, not a green skip", () => {
+  const wf = load(read(".github/workflows/restore-drill.yml")) as { jobs: Record<string, Job> };
+  const run = wf.jobs.preflight.steps.find((s) => s.env?.HAS_PASSPHRASE)!.run!;
+  const sh = (event: string) => {
+    const dir = mkdtempSync(join(tmpdir(), "preflight-"));
+    const out = join(dir, "out");
+    writeFileSync(out, "");
+    try {
+      const stdout = execFileSync("bash", ["-e", "-c", run], {
+        env: {
+          PATH: process.env.PATH,
+          HAS_PASSPHRASE: "false",
+          GITHUB_EVENT_NAME: event,
+          GITHUB_OUTPUT: out,
+        },
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      return { status: 0, stdout, output: readFileSync(out, "utf8") };
+    } catch (e) {
+      const err = e as { status: number; stdout: string };
+      return { status: err.status, stdout: err.stdout, output: readFileSync(out, "utf8") };
+    }
+  };
+
+  it("on schedule: exits 1 with an error naming the secret", () => {
+    const r = sh("schedule");
+    expect(r.status).toBe(1);
+    expect(r.stdout).toMatch(/::error::BACKUP_PASSPHRASE is not set/);
+    expect(r.output).not.toMatch(/ready=true/);
+  });
+
+  it("by hand: warns, sets ready=false, and the drill job is skipped", () => {
+    const r = sh("workflow_dispatch");
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/::warning::BACKUP_PASSPHRASE is not set[\s\S]*SKIPPED/);
+    expect(r.output).toMatch(/ready=false/);
+  });
+});

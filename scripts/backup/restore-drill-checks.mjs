@@ -21,7 +21,8 @@
 //               newest version, set beside the newest file in this checkout.
 //
 // It prints table NAMES and NUMBERS. It never selects a column value, so no
-// row of customer data can reach the terminal or a log.
+// row of customer data can reach the terminal or a log, and it prints a row
+// COUNT only when a check failed (see the end of evaluate()).
 
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync, realpathSync } from "node:fs";
@@ -137,14 +138,8 @@ export function evaluate(facts, { expectedTables, repoNewest }) {
       ? "organizations is EMPTY: a restore of nothing proves nothing"
       : absentKeys.length
         ? `key table(s) absent: ${absentKeys.join(", ")}`
-        : "key tables present and organizations is not empty",
+        : `${DRILL_KEY_TABLES.length} of ${DRILL_KEY_TABLES.length} key tables present and organizations is not empty`,
   );
-  for (const t of DRILL_KEY_TABLES) {
-    const n = facts.counts[t];
-    lines.push(
-      `        ${t.padEnd(15)} ${n === null || n === undefined ? "absent" : String(n).padStart(9)}`,
-    );
-  }
 
   check(
     "rls",
@@ -161,7 +156,9 @@ export function evaluate(facts, { expectedTables, repoNewest }) {
       ? "the auth schema is missing"
       : !facts.auth_users
         ? "auth.users is missing"
-        : `auth schema present, auth.users has ${facts.auth_user_count} row(s)`,
+        : facts.auth_user_count > 0
+          ? "auth schema present and auth.users is not empty"
+          : "auth.users is EMPTY: nobody could sign in to the restored copy",
   );
 
   if (!facts.ledger || !facts.ledger_rows) {
@@ -181,6 +178,23 @@ export function evaluate(facts, { expectedTables, repoNewest }) {
           ? ` (this checkout's newest file: ${repoNewest}${behind ? ", newer than the backup" : ""})`
           : ""),
     );
+  }
+
+  // Row counts only on a failure. This output lands in a PUBLIC repository's
+  // Actions logs (restore-drill.yml), and on a pass "present and not empty"
+  // is all anyone needs; how many customers, visits and logins production
+  // holds is not. On a failure they are the first thing a person needs.
+  if (failed.length) {
+    lines.push("row counts (printed because a check failed):");
+    for (const t of DRILL_KEY_TABLES) {
+      const n = facts.counts[t];
+      lines.push(
+        `        ${t.padEnd(15)} ${n === null || n === undefined ? "absent" : String(n).padStart(9)}`,
+      );
+    }
+    if (facts.auth_users) {
+      lines.push(`        ${"auth.users".padEnd(15)} ${String(facts.auth_user_count).padStart(9)}`);
+    }
   }
 
   return { ok: failed.length === 0, failed, lines };

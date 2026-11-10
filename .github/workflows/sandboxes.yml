@@ -768,11 +768,11 @@ jobs:
       # every foreign key, then tables vs the migrations, RLS on every public
       # table, the auth schema and the migration ledger.
       #
-      # No secret is read and no production backup is downloaded, here or
-      # anywhere else in this repo outside backup.yml: a production drill is
-      # run by a person on a private machine (docs/runbooks/restore-drill.md),
-      # because this repository is public and a backup is every customer's
-      # data.
+      # No secret is read and no production backup is downloaded here. The
+      # production drill is restore-drill.yml (weekly, GitHub-hosted) and
+      # backup.yml's Sunday job, with a person on a private machine as the
+      # fallback (docs/runbooks/restore-drill.md). This step only ever sees
+      # seed data, so it is safe on whatever runner this job uses.
       #
       # After the E2E suite, which seeds its own tenant; the seed here adds a
       # second one beside it. It runs even when the E2E suite failed, so a

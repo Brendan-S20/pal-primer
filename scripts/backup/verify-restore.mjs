@@ -20,7 +20,8 @@
 // with the summary written the night it was made -- so the drill reads the
 // archive it was given, not a different night's.
 //
-// Prints table names and numbers only.
+// Prints table names and numbers only, and a table's row count only when the
+// drill failed (see the end of this file).
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -96,9 +97,6 @@ for (const t of MUST_NOT_BE_EMPTY) {
 }
 
 console.log(`${matched} of ${names.length} tables restored with exactly the rows the backup holds`);
-for (const t of KEY_TABLES) {
-  console.log(`  ${t.padEnd(22)} backup ${String(expected[t] ?? "-").padStart(8)}   restored ${String(actual[t] ?? "-").padStart(8)}`);
-}
 
 try {
   // The SQL reports constraint names and counts only, so its output is safe
@@ -112,7 +110,15 @@ try {
   failures.push("foreign keys do not all hold in the restored database (see above)");
 }
 
+// The key tables' own counts are printed only when something failed. This
+// runs in a PUBLIC repository's logs (backup.yml's Sunday drill and
+// restore-drill.yml), where "N of N match" is all a pass needs to say, and
+// how many customers and logins production has is nobody else's business.
+// On a failure the numbers are what a person needs to see first.
 if (failures.length) {
+  for (const t of KEY_TABLES) {
+    console.log(`  ${t.padEnd(22)} backup ${String(expected[t] ?? "-").padStart(8)}   restored ${String(actual[t] ?? "-").padStart(8)}`);
+  }
   for (const f of failures) console.log(`::error::${f}`);
   process.exit(1);
 }

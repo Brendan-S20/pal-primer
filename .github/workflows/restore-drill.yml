@@ -25,12 +25,16 @@ name: Restore drill
 #     localhost or ::1 before a row is loaded, and the drill refuses a
 #     DOCKER_HOST on another machine. No production or shared database URL
 #     is given to this workflow at all: it reads no SUPABASE_DB_URL.
-#   * The log holds counts, table names and PASS/FAIL. restore.sh masks
-#     anything quoted in a failed COPY, and the passphrase is never echoed.
+#   * The log holds table names, "N of N" totals and PASS/FAIL. restore.sh
+#     masks anything quoted in a failed COPY, and the passphrase is never
+#     echoed.
 #   * One existing secret, by name: BACKUP_PASSPHRASE, the same one
-#     backup.yml seals with. If it is not set, the drill job is SKIPPED and
-#     the preflight job says why, rather than failing in a way that reads
-#     like a broken backup.
+#     backup.yml seals with. If it is not set, a SCHEDULED run fails with an
+#     error naming it (a green run that drilled nothing would be the quiet
+#     failure this exists to prevent); a run by hand warns and skips.
+#   * The repository is public, so its logs are too. A pass prints "N of N
+#     match" and PASS lines only; per-table and key-table row counts, and the
+#     auth.users count, are printed only when a check FAILED.
 #
 # ── WHEN ──────────────────────────────────────────────────────────────────
 #
@@ -71,6 +75,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ "$HAS_PASSPHRASE" != "true" ]; then
+            # On the schedule nobody is watching, so a skip would be a green
+            # run that drilled nothing. It fails, and GitHub emails it. A
+            # person who ran it by hand reads the warning and the skip.
+            if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
+              echo "::error::BACKUP_PASSPHRASE is not set, so no backup can be opened and the weekly restore drill did NOT run. Add the secret (Settings -> Secrets and variables -> Actions) with the same value backup.yml seals with."
+              exit 1
+            fi
             echo "::warning::BACKUP_PASSPHRASE is not set, so there is no way to open a backup. The restore drill is SKIPPED. Add the secret (Settings -> Secrets and variables -> Actions) with the same value backup.yml seals with."
             echo "ready=false" >> "$GITHUB_OUTPUT"
             exit 0
@@ -129,7 +140,8 @@ jobs:
           BACKUP_ARCHIVE="$archive" BACKUP_SUMMARY=drill/summary/summary.json \
             scripts/restore-drill.sh 2>&1 | tee drill/drill.log
 
-      # Counts and PASS/FAIL only, which is all restore-drill.sh prints.
+      # PASS/FAIL lines and "N of N" totals only. Row counts reach the log only
+      # when a check failed, and this filter does not copy them here.
       - name: Summary
         if: always()
         run: |
