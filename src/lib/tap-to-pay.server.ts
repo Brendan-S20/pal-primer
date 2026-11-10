@@ -40,8 +40,7 @@ import { TAP_TO_PAY_FEE_CENTS } from "@/lib/tap-to-pay";
 //
 // So in live mode the real reader is OFF unless the business is named in
 // TAP_TO_PAY_LIVE_ORG_IDS (comma-separated organization ids, server env).
-// Unset, nobody gets it: no production customer by default. Detroit Doo
-// Disposal never gets it, even if its id is put on the list by mistake.
+// Unset, nobody gets it: no production customer by default.
 //
 //   test keys                         -> "simulated" (unchanged)
 //   live keys, org on the list        -> "live", the real phone reader
@@ -49,9 +48,6 @@ import { TAP_TO_PAY_FEE_CENTS } from "@/lib/tap-to-pay";
 export type TapToPayReaderMode = "simulated" | "live" | "off";
 
 export const TAP_TO_PAY_LIVE_ORG_IDS_ENV = "TAP_TO_PAY_LIVE_ORG_IDS";
-
-/** A business that must never take live taps through this switch. */
-const NEVER_LIVE_BUSINESS = /detroit\s*doo/i;
 
 export function liveReaderOrgIds(raw: string | null | undefined): Set<string> {
   return new Set(
@@ -64,11 +60,10 @@ export function liveReaderOrgIds(raw: string | null | undefined): Set<string> {
 
 export function tapToPayReaderMode(input: {
   testKeys: boolean;
-  org: { id: string; name: string | null };
+  org: { id: string };
   liveOrgIds: Set<string>;
 }): TapToPayReaderMode {
   if (input.testKeys) return "simulated";
-  if (NEVER_LIVE_BUSINESS.test(input.org.name ?? "")) return "off";
   return input.liveOrgIds.has(input.org.id.toLowerCase()) ? "live" : "off";
 }
 

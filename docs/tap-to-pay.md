@@ -171,8 +171,7 @@ simulated reader never shows Apple's screens. `tapToPayReaderMode` in
 
 `TAP_TO_PAY_LIVE_ORG_IDS` is a server environment variable, comma-separated
 organization ids. **Unset, no business gets it**, so no production customer
-is enabled by default. Detroit Doo Disposal is refused by name even if its id
-is added by mistake. Prepare, the connection token and the payment intent all
+is enabled by default. Prepare, the connection token and the payment intent all
 check it. There is deliberately no "test keys plus a physical test card"
 path.
 
@@ -186,7 +185,7 @@ refund it."
    the latest iOS.
 2. **Which business:** the designated demo business only. Put its
    organization id, and only its id, in `TAP_TO_PAY_LIVE_ORG_IDS` on the
-   server the build talks to. Never Detroit Doo Disposal, never a customer.
+   server the build talks to. Never a customer's business.
    The demo business needs a charge-ready live connected account and a
    business address (Settings, Client portal).
 3. **What to record:** the announcement, Enable Tap to Pay on iPhone from

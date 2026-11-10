@@ -3,8 +3,8 @@
 // tap-to-pay-apple-review-screens.test.tsx.
 //
 //   gap 1  a live-mode real phone reader for a designated demo business only,
-//          behind TAP_TO_PAY_LIVE_ORG_IDS; never Detroit Doo Disposal, never a
-//          production customer by default; test keys stay on the simulator
+//          behind TAP_TO_PAY_LIVE_ORG_IDS; never a production customer by
+//          default; test keys stay on the simulator
 //   1.4    an iPhone before iOS 17.6 is told to update to the latest iOS
 //   1.5    warm-up at launch and on every return to the foreground
 //   3.8    only the owner accepts Apple's terms; 3.8.1 everyone else is told
@@ -194,18 +194,18 @@ describe("gap 1: the real phone reader in live mode, for a designated demo busin
   const set = liveReaderOrgIds(`${DEMO_ORG}, not-an-id`);
 
   it("test keys always get Stripe's simulated reader (unchanged)", () => {
-    expect(
-      tapToPayReaderMode({ testKeys: true, org: { id: DEMO_ORG, name: "x" }, liveOrgIds: set }),
-    ).toBe("simulated");
+    expect(tapToPayReaderMode({ testKeys: true, org: { id: DEMO_ORG }, liveOrgIds: set })).toBe(
+      "simulated",
+    );
   });
 
   it("live keys: the real reader only for a business on TAP_TO_PAY_LIVE_ORG_IDS", () => {
-    expect(
-      tapToPayReaderMode({ testKeys: false, org: { id: DEMO_ORG, name: "x" }, liveOrgIds: set }),
-    ).toBe("live");
-    expect(
-      tapToPayReaderMode({ testKeys: false, org: { id: OTHER_ORG, name: "x" }, liveOrgIds: set }),
-    ).toBe("off");
+    expect(tapToPayReaderMode({ testKeys: false, org: { id: DEMO_ORG }, liveOrgIds: set })).toBe(
+      "live",
+    );
+    expect(tapToPayReaderMode({ testKeys: false, org: { id: OTHER_ORG }, liveOrgIds: set })).toBe(
+      "off",
+    );
   });
 
   it("no production customer gets it by default: an unset list allows nobody", () => {
@@ -214,18 +214,8 @@ describe("gap 1: the real phone reader in live mode, for a designated demo busin
     expect(
       tapToPayReaderMode({
         testKeys: false,
-        org: { id: DEMO_ORG, name: "x" },
+        org: { id: DEMO_ORG },
         liveOrgIds: liveReaderOrgIds(undefined),
-      }),
-    ).toBe("off");
-  });
-
-  it("never Detroit Doo Disposal, even if its id is put on the list", () => {
-    expect(
-      tapToPayReaderMode({
-        testKeys: false,
-        org: { id: DEMO_ORG, name: "Detroit Doo Disposal" },
-        liveOrgIds: set,
       }),
     ).toBe("off");
   });
