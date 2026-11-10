@@ -239,10 +239,8 @@ describe("a signup that cannot be provisioned gives the money back", () => {
     // app issued at all; Refund on the invoice, refunds.server.ts, is the
     // second, and it deliberately leaves the fee to the webhook.)
     //
-    // Except the part that is not ours (#825): Stripe keeps its Radar fee on a
-    // refund, so when the fee carries one it is kept, not handed back.
-    expect(provision).toMatch(/refund_application_fee: !keepFee/);
-    expect(provision).toMatch(/const keepFee = await signupFeeHasPassThrough\(/);
+    // Radar included (#825): the failure was ours, so the platform absorbs it.
+    expect(provision).toMatch(/refund_application_fee: true/);
     expect(read("src/lib/platform-fee.ts")).toMatch(
       /ONE refund this app issues that is deliberately not routed\s*\n?\/\/\s*through `feeReversalCents`/,
     );

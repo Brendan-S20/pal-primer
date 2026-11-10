@@ -137,12 +137,14 @@ export function radarFeeMetadata(
 /**
  * What the business is told, on the Payments page, before it connects and
  * again beside the processing-fee setting. Same plain style as the tap-fee
- * line on the Tap to pay card. Not said for taps or bank payments, because
- * neither is screened.
+ * line on the Tap to pay card. Worded for what the code does: a payment that
+ * offers card and bank carries the fee before the client picks, so a bank
+ * payment there pays it too; a saved bank account and a tap carry none.
  */
 export function radarFeeSentence(): string {
   return (
-    `Each online card payment also costs your business ${radarFeeLabel()} for Stripe's ` +
-    `fraud check (Radar), taken out of the payout and shown in Stripe as an application fee.`
+    `Each online payment a client can make by card also costs your business ` +
+    `${radarFeeLabel()} for Stripe's fraud check (Radar), even when the client ends up ` +
+    `paying by bank. It is taken out of the payout and shown in Stripe as an application fee.`
   );
 }

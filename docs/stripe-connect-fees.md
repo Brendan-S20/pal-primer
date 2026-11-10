@@ -103,17 +103,20 @@ branches of `src/routes/api/public/hooks/stripe.ts` reverse the rest pro rata.
 At today's zero platform fee that rest is zero. When the intent's metadata
 cannot be read, nothing is reversed and the charge is logged.
 
-The one refund the app issues itself, `provisionSignup` unwinding a signup
-whose provisioning failed, used to send `refund_application_fee: true`. It
-now sends it only when nothing was passed through; otherwise the Radar fee is
-kept and any platform-fee part (zero today) is logged for a person to reverse.
+The one exception is the refund the app issues itself: `provisionSignup`
+unwinding a signup that HoundStack failed to provision. It still sends
+`refund_application_fee: true`, so the business gets the whole fee back,
+Radar part included. The failure was HoundStack's, so the platform absorbs
+that five cents rather than charging the business for its own defect.
 
 ## What the business is told
 
 The Payments page says, before connecting and beside the processing-fee
-setting: "Each online card payment also costs your business $0.05 for
-Stripe's fraud check (Radar), taken out of the payout and shown in Stripe as
-an application fee."
+setting: "Each online payment a client can make by card also costs your
+business $0.05 for Stripe's fraud check (Radar), even when the client ends up
+paying by bank. It is taken out of the payout and shown in Stripe as an
+application fee." It names the bank case because of the first known gap
+below: the fee is set before the client picks how to pay.
 
 ## Known gaps
 

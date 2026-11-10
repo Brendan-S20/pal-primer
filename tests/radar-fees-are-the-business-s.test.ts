@@ -63,6 +63,11 @@ describe("the fee", () => {
     const s = radarFeeSentence();
     expect(s).toContain("$0.05");
     expect(s).toContain("taken out of the payout and shown in Stripe");
+    // Honest about the bank case (owner review on #840): a payment that offers
+    // card and bank carries the fee before the client picks.
+    expect(s).toContain("a client can make by card");
+    expect(s).toContain("even when the client ends up paying by bank");
+    expect(s).not.toMatch(/Each online card payment/);
     expect(s).not.toMatch(/—|–/); // no em or en dashes
     expect(s).not.toMatch(/seamless|robust|elevate|unlock|delve/i);
   });
@@ -370,12 +375,12 @@ describe("every charge path carries it", () => {
     );
   });
 
-  it("the automatic signup refund does not hand the Radar fee back", () => {
-    // provisionSignup used to send refund_application_fee: true, which returns
-    // the whole application fee, Radar part included.
+  it("the automatic signup refund hands the whole fee back: the failure was ours", () => {
+    // provisionSignup unwinds a sale HoundStack failed to provision. The
+    // platform absorbs the Radar part rather than charge the business for
+    // its own defect (owner review on #840).
     const src = code("src/routes/api/public/hooks/stripe.ts");
-    expect(src).toMatch(/refund_application_fee:\s*!keepFee/);
-    expect(src).not.toMatch(/refund_application_fee:\s*true/);
-    expect(src).toMatch(/passedThroughFeeCents\(read\.metadata\) > 0/);
+    expect(src).toMatch(/refund_application_fee:\s*true/);
+    expect(src).not.toMatch(/keepFee/);
   });
 });
