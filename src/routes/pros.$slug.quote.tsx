@@ -58,7 +58,7 @@ export const Route = createFileRoute("/pros/$slug/quote")({
     });
   },
   component: QuotePage,
-  notFoundComponent: QuoteNotListed,
+  notFoundComponent: QuoteNotListedRoute,
 });
 
 const EMPTY: DirectoryQuoteForm = {
@@ -331,4 +331,13 @@ function QuoteNotListed() {
       </div>
     </DirectoryShell>
   );
+}
+
+/** The route's notFoundComponent, on its own (as signup.$slug.tsx does).
+ *  The router's code splitter moves notFoundComponent into a chunk of its
+ *  own and cannot when the same function is also used by the page
+ *  component: the bun (Lovable) build failed with "Export
+ *  'SplitNotFoundComponent' is not defined". */
+function QuoteNotListedRoute() {
+  return <QuoteNotListed />;
 }
