@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isNative, getPositionNative } from "@/lib/native";
-import { AlertTriangle, Loader2, LocateFixed } from "lucide-react";
+import { AlertTriangle, Loader2, LocateFixed, MapPinned } from "lucide-react";
 import type { TileVariant } from "@/lib/map-tiles";
 import { useMapRenderer } from "@/lib/maps/use-map-renderer";
 import {
@@ -236,6 +236,49 @@ export function inSecureContext(): boolean {
   return window.isSecureContext !== false;
 }
 
+/** Every point the map frames: each geocoded stop, plus a tech's start and
+ *  end when the map draws them. An anchor the map does not draw is left out,
+ *  because a frame pulled toward a home base with no marker on it reads as the
+ *  stops being "not on the route" (#773). */
+export function fitTargets(groups: TechGroup[], drawRoutes: boolean): LatLng[] {
+  const all: LatLng[] = [];
+  for (const g of groups) {
+    for (const v of g.visits) {
+      const lat = v.properties?.latitude;
+      const lng = v.properties?.longitude;
+      if (lat != null && lng != null) all.push({ lat, lng });
+    }
+  }
+  if (drawRoutes) {
+    for (const g of groups) {
+      if (g.startLat != null && g.startLng != null) all.push({ lat: g.startLat, lng: g.startLng });
+      if (g.endLat != null && g.endLng != null) all.push({ lat: g.endLat, lng: g.endLng });
+    }
+  }
+  return all;
+}
+
+/** What the map remembers between data passes: which set of stops it last
+ *  framed, and whether the owner has since asked "where am I". */
+export type FitMemory = { fittedKey: string | null; located: boolean };
+
+/** Should this data pass frame the stops?
+ *
+ *  Yes on first paint, with no click. No while the owner is looking at their
+ *  own position and the same day merely refetches: being pulled away a few
+ *  seconds after asking is what the button was pressed to stop. A different
+ *  set of stops (a new day, a pin that just geocoded) frames again, so
+ *  locating never keeps the stops off screen for good (#773). */
+export function nextFit(
+  memory: FitMemory,
+  pointsKey: string,
+  pointCount: number,
+): { fit: boolean; memory: FitMemory } {
+  const next: FitMemory =
+    memory.fittedKey === pointsKey ? memory : { fittedKey: pointsKey, located: false };
+  return { fit: pointCount > 0 && !next.located, memory: next };
+}
+
 export function RouteMap({
   groups,
   height = 380,
@@ -316,8 +359,12 @@ export function RouteMap({
    *  changes (a different day), not when the same day merely refetches — being
    *  yanked away from your own position a few seconds after asking for it is
    *  exactly what the button was pressed to stop. */
-  const suppressFitRef = useRef(false);
-  const fittedKeyRef = useRef<string | null>(null);
+  const fitMemoryRef = useRef<FitMemory>({ fittedKey: null, located: false });
+  /** What the last data pass would frame, for "Show all stops". */
+  const fitTargetsRef = useRef<LatLng[]>([]);
+  /** The owner located themselves and the stops may be off screen: offer the
+   *  way back. State, not just the ref above, because it draws a button. */
+  const [awayFromStops, setAwayFromStops] = useState(false);
 
   const points = useMemo(
     () =>
@@ -356,7 +403,7 @@ export function RouteMap({
     rendererRef.current = renderer;
     // A new map (Google refused the key and the fallback took over) has
     // never been fitted.
-    fittedKeyRef.current = null;
+    fitMemoryRef.current = { fittedKey: null, located: false };
     armedRef.current = false;
     return () => {
       layer.clear();
@@ -494,7 +541,8 @@ export function RouteMap({
           label: { text: "You are here", permanent: true, className: "route-you-are-here-label" },
         }),
       );
-      suppressFitRef.current = true;
+      fitMemoryRef.current = { ...fitMemoryRef.current, located: true };
+      setAwayFromStops(fitTargetsRef.current.length > 0);
       map.setView(here, Math.max(map.getZoom(), 15));
     };
 
@@ -537,6 +585,17 @@ export function RouteMap({
     );
   }, []);
 
+  /** Back to today's stops after "you are here". Locating is the owner's
+   *  choice, and so is leaving it: without this the only way back was a
+   *  different day (#773). */
+  const showStops = useCallback(() => {
+    const map = rendererRef.current;
+    const all = fitTargetsRef.current;
+    fitMemoryRef.current = { ...fitMemoryRef.current, located: false };
+    setAwayFromStops(false);
+    if (map && all.length > 0) map.fitBounds(all, { padding: 30, maxZoom: 14 });
+  }, []);
+
   useEffect(() => {
     return () => {
       if (hintTimer.current) clearTimeout(hintTimer.current);
@@ -558,7 +617,10 @@ export function RouteMap({
     legRefs.current.clear();
     dayLegRefs.current.clear();
     groupOfVisit.current.clear();
-    if (points.length === 0) return;
+    if (points.length === 0) {
+      fitTargetsRef.current = [];
+      return;
+    }
 
     // Draw ordered polylines per tech + numbered markers
     for (const g of groups) {
@@ -713,22 +775,15 @@ export function RouteMap({
       });
     }
 
-    const all: LatLng[] = points.map(({ v }) => ({
-      lat: v.properties!.latitude!,
-      lng: v.properties!.longitude!,
-    }));
-    for (const g of groups) {
-      if (g.startLat != null && g.startLng != null) all.push({ lat: g.startLat, lng: g.startLng });
-      if (g.endLat != null && g.endLng != null) all.push({ lat: g.endLat, lng: g.endLng });
-    }
-    // A genuinely different set of visits (a new day) earns a fresh fit even if
-    // the user located themselves on the previous one; a refetch of the same
-    // day does not.
-    if (fittedKeyRef.current !== pointsKey) {
-      fittedKeyRef.current = pointsKey;
-      suppressFitRef.current = false;
-    }
-    if (all.length > 0 && !suppressFitRef.current) {
+    const all = fitTargets(groups, drawRoutes);
+    fitTargetsRef.current = all;
+    // A genuinely different set of visits (a new day, a pin that just
+    // geocoded) earns a fresh fit even if the user located themselves on the
+    // previous one; a refetch of the same day does not.
+    const decision = nextFit(fitMemoryRef.current, pointsKey, all.length);
+    fitMemoryRef.current = decision.memory;
+    if (!decision.memory.located) setAwayFromStops(false);
+    if (decision.fit) {
       // Cap the zoom so a day with a single geocoded visit fits to
       // neighborhood level instead of snapping to one street (C8).
       map.fitBounds(all, { padding: 30, maxZoom: 14 });
@@ -827,6 +882,19 @@ export function RouteMap({
           )}
           <span className="sr-only">Show my current location</span>
         </button>
+        {awayFromStops && (
+          // Text, not another glyph: two unlabelled round buttons stacked in a
+          // corner is a guessing game. Same 44px floor as the button above.
+          <button
+            type="button"
+            onClick={showStops}
+            aria-label="Show all stops"
+            className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-md border bg-background/95 px-3 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <MapPinned className="h-4 w-4 shrink-0" />
+            Show all stops
+          </button>
+        )}
         {geoError && (
           // `role="alert"` so a screen reader hears it, and a real box on the
           // map so everyone else sees it. Silence was the failure mode being
