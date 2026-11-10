@@ -273,11 +273,12 @@ describe("each setup save refreshes the key its Settings screen reads", () => {
       "src/components/settings/BusinessDetailsCards.tsx",
       '"waste-facilities"',
     ],
-    ["price", /\["std-pricing"\]/, "src/components/StandardPricingCard.tsx", '"std-pricing"'],
+    // #860: the standard price is read where a zone is priced against it.
+    ["price", /\["std-pricing"\]/, "src/routes/_authenticated/settings.zones.tsx", '"std-pricing"'],
     [
       "price",
       /\["zones"\], \["zone-coverage"\]/,
-      "src/routes/_authenticated/zones.tsx",
+      "src/routes/_authenticated/settings.zones.tsx",
       '"zone-coverage"',
     ],
     [

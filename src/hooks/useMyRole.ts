@@ -127,6 +127,10 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   // The service catalog. Same audience as its server gate, manage_pricing,
   // which a dispatcher does not hold. Must precede the "/settings" prefix.
   "/settings/services": ["owner", "office_manager"],
+  // Zones & pricing, moved inside Settings (#864). The same roles that open
+  // /zones (which forwards here): a dispatcher sees zones for routing context,
+  // view-only. Must precede the "/settings" prefix.
+  "/settings/zones": ["owner", "office_manager", "dispatcher"],
   "/settings": ["owner", "office_manager", "tech"],
   "/neighbors": ["owner", "office_manager", "dispatcher", "tech"],
   // H1: the DNA compliance workspace (cross-client registry, fines, violation

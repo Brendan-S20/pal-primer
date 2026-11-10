@@ -109,7 +109,7 @@ for (const w of [360, 768, 1280]) {
     await installStubBackend(context);
     await installZipFill(page);
     await page.setViewportSize({ width: w, height: 900 });
-    await page.goto("/zones");
+    await page.goto("/settings/zones");
     // Same reason as a-zone-that-matches-nobody-says-so.spec.ts: a cold dev
     // server pays for its first server function here, not in the assertion.
     await page.waitForLoadState("networkidle").catch(() => {});
@@ -195,7 +195,7 @@ test("an old drawn zone with no ZIPs offers the fill, and the click fills it", a
   await installStubBackend(context);
   await installZipFill(page);
   await page.setViewportSize({ width: 360, height: 900 });
-  await page.goto("/zones");
+  await page.goto("/settings/zones");
   await page.waitForLoadState("networkidle").catch(() => {});
 
   const button = page.getByRole("button", { name: "Fill ZIPs from the area" });
@@ -236,7 +236,7 @@ test.describe("the new-zone drawer with a finger", () => {
       await installStubBackend(context);
       await installZipFill(page);
       await page.setViewportSize({ width: w, height: 900 });
-      await page.goto("/zones");
+      await page.goto("/settings/zones");
       await page.waitForLoadState("networkidle").catch(() => {});
       await page.getByRole("button", { name: "New zone" }).click({ timeout: 30000 });
 

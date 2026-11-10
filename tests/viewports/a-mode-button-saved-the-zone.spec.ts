@@ -33,7 +33,7 @@ for (const w of [390, 1280]) {
       return route.fallback();
     });
     await page.setViewportSize({ width: w, height: 900 });
-    await page.goto("/zones");
+    await page.goto("/settings/zones");
     await page.waitForLoadState("networkidle").catch(() => {});
 
     await page.getByRole("button", { name: "New zone" }).click({ timeout: 30000 });

@@ -116,6 +116,8 @@ export const APP_LINK_PATH_PREFIXES: readonly string[] = [
   "/settings/sms",
   "/settings/users",
   "/settings/webhooks",
+  // Zones & pricing, inside Settings since #864. /zones above forwards here.
+  "/settings/zones",
 ];
 
 /**

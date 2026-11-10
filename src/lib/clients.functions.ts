@@ -1413,6 +1413,9 @@ const internalQuoteSchema = z.object({
   // dogs (computeCommercialZonePrice). Ignored for residential.
   unitCount: z.coerce.number().int().min(0).max(100_000).optional(),
   stationCount: z.coerce.number().int().min(0).max(200).optional(),
+  // #860: the pet-waste service whose standard price applies outside a zone
+  // override. Only ever looked up among the caller's own business's services.
+  serviceId: z.string().uuid().optional(),
 });
 
 export const getInternalQuote = createServerFn({ method: "POST" })

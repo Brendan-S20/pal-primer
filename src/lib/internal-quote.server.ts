@@ -17,6 +17,10 @@ export type InternalQuoteInput = {
   longitude?: number;
   unitCount?: number;
   stationCount?: number;
+  /** The pet-waste service the plan is for, whose standard price applies
+   *  where no zone overrides it (#860). Omitted: the default pet-waste
+   *  service (defaultPetWasteService). */
+  serviceId?: string;
 };
 
 export async function internalQuote(supabase: any, orgId: string, data: InternalQuoteInput) {
@@ -57,9 +61,42 @@ export async function internalQuote(supabase: any, orgId: string, data: Internal
       ? null
       : await matchByZipCenter(supabase, orgId, (zones ?? []) as any[], data, matchZone));
 
-  if (!z) return { available: false as const };
   const { perVisitMultiplier } = await import("@/lib/frequency-multipliers");
   const mult = perVisitMultiplier(org.frequency_multipliers as any, data.frequency);
+
+  // #860: the service's standard price, which a zone may override. Read for a
+  // residential yard only; a commercial account is priced by zone rates.
+  const { loadPetWasteStandard, petWasteVisitRate } = await import("@/lib/standard-price");
+  const standard =
+    data.accountType === "commercial"
+      ? null
+      : await loadPetWasteStandard(supabase, orgId, data.serviceId ?? null);
+
+  if (!z) {
+    // Outside every zone there is no override to apply, so the office is
+    // offered the standard price (#860). It used to be "No zone matches ZIP
+    // 48933. Set price manually below." with the standard price saved and
+    // never read. A commercial account has no standard to fall back on.
+    const rate = petWasteVisitRate(standard, null);
+    if (!rate) return { available: false as const };
+    const perVisit = rate.baseCents + Math.max(0, data.dogCount - 1) * rate.perDogCents;
+    return {
+      available: true as const,
+      quote: {
+        zoneId: null,
+        zoneName: null,
+        priceSource: "standard" as const,
+        pricingMode: "flat" as const,
+        areaBasisCents: null,
+        basePriceCents: perVisit,
+        perDogAddlCents: rate.perDogCents,
+        recurringPriceCents: Math.round(perVisit * mult),
+        initialCleanupCents: 0,
+        currency: org.currency as string,
+        commercial: null,
+      },
+    };
+  }
   const mode = (z.pricing_mode ?? "flat") as "flat" | "per_sqft" | "per_acre";
 
   // A commercial account (an HOA, a park) is priced from the zone's
@@ -83,6 +120,7 @@ export async function internalQuote(supabase: any, orgId: string, data: Internal
       quote: {
         zoneId: z.id as string,
         zoneName: z.name as string,
+        priceSource: "zone" as const,
         pricingMode: "commercial" as const,
         areaBasisCents: price?.acreageCents ?? null,
         basePriceCents: price?.perVisitCents ?? null,
@@ -104,11 +142,32 @@ export async function internalQuote(supabase: any, orgId: string, data: Internal
     };
   }
 
+  // The zone's override when it has one, the standard price when it does
+  // not (#860). Neither: no price, which the Plan step asks a person for.
+  const rate = petWasteVisitRate(standard, z);
+  if (!rate && mode === "flat") {
+    return {
+      available: true as const,
+      quote: {
+        zoneId: z.id as string,
+        zoneName: z.name as string,
+        priceSource: null,
+        pricingMode: mode,
+        areaBasisCents: null,
+        basePriceCents: null,
+        perDogAddlCents: 0,
+        recurringPriceCents: null,
+        initialCleanupCents: z.initial_cleanup_cents ?? 0,
+        currency: org.currency as string,
+        commercial: null,
+      },
+    };
+  }
   const { computeZoneVisitPrice } = await import("@/lib/pricing");
   const price = computeZoneVisitPrice(
     {
-      base_price_cents: z.base_price_cents,
-      per_dog_addl_cents: z.per_dog_addl_cents,
+      base_price_cents: rate?.baseCents ?? 0,
+      per_dog_addl_cents: rate?.perDogCents ?? 0,
       pricing_mode: mode,
       price_per_sqft_cents: Number(z.price_per_sqft_cents ?? 0),
       price_per_acre_cents: z.price_per_acre_cents,
@@ -122,10 +181,11 @@ export async function internalQuote(supabase: any, orgId: string, data: Internal
     quote: {
       zoneId: z.id as string,
       zoneName: z.name as string,
+      priceSource: rate?.source ?? null,
       pricingMode: mode,
       areaBasisCents: price.areaBasisCents,
       basePriceCents: price.perVisitCents,
-      perDogAddlCents: z.per_dog_addl_cents ?? 0,
+      perDogAddlCents: rate?.perDogCents ?? 0,
       recurringPriceCents: price.recurringCents,
       initialCleanupCents: z.initial_cleanup_cents ?? 0,
       currency: org.currency as string,

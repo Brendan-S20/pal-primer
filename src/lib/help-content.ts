@@ -44,7 +44,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     ],
     steps: [
       "Your business details: the address your routes start from, and the time zone that decides what counts as today.",
-      "Your service area and price: where you work and what you charge per visit. New clients in the area are quoted that price. Draw more areas later in [Zones](/zones); see [Zones: what they are](article:zones).",
+      "Your service area and price: where you work and what you charge per visit. New clients in the area are quoted that price. Draw more areas later in [Zones](/settings/zones); see [Zones: what they are](article:zones).",
       "Your first client: one at a time from [Clients](/clients), or everything at once with [Import](article:import-clients).",
       "Who runs the route: say that you do, or invite a tech in [Users & roles](/settings/users). See [What each role can see and do](article:roles).",
       "Where the day ends: your dump site, so routes finish there instead of wherever the last stop happens to be.",
@@ -113,7 +113,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Zones drive almost everything geographic: [routes](article:routes-planning) are planned per zone, the [weather forecast](article:weather) in the header covers each zone, and reports can break revenue down by zone. Give each zone coordinates (or a postal prefix) so maps and forecasts work.",
       "Rule of thumb: one zone per area a tech can comfortably cover in a day.",
     ],
-    appLink: { to: "/zones", label: "Open Zones" },
+    appLink: { to: "/settings/zones", label: "Open Zones" },
     related: ["routes-planning", "weather", "first-30-minutes"],
   },
   {

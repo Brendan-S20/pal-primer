@@ -2,6 +2,7 @@
 // alerts, visits (next + recent), active services, property snapshot.
 // RIGHT (secondary): notes and the compact communication preview.
 import { useQuery } from "@tanstack/react-query";
+import { zoneOverridesPrice } from "@/lib/standard-price";
 import { TextingNotLiveText } from "@/components/TextingNotLive";
 import { useServerFn } from "@tanstack/react-start";
 import { AlertTriangle, CalendarClock, MessageSquare } from "lucide-react";
@@ -114,7 +115,9 @@ export function SummaryTab({
   // frequency multipliers (which only raise the reference).
   for (const sub of activeSubs) {
     const zone = zones.find((z: any) => z.id === sub.zone_id);
-    if (!zone || !sub.price_cents) continue;
+    // A zone with no price of its own (#860) has no zone baseline to fall
+    // below; the plan is measured against the standard price elsewhere.
+    if (!zone || !sub.price_cents || !zoneOverridesPrice(zone)) continue;
     // Area charge included (QA round 8): omitting boundaryAreaSqm made the
     // baseline too low for per-acre/per-sqft zones, so underpricing alerts
     // under-fired exactly where the price gap is biggest.

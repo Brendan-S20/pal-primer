@@ -310,7 +310,7 @@ export const SURFACES: Surface[] = [
   },
   {
     id: "/zones",
-    path: "/zones",
+    path: "/settings/zones",
     proof: (p) => p.getByRole("heading", { name: "Zones" }).first(),
     proofLabel: 'the "Zones" heading',
     expectsData: "Ravenswood Manor / Lincoln Square North",
@@ -323,7 +323,7 @@ export const SURFACES: Surface[] = [
     // proof the fixture reached the card: expectsData is checked before the
     // editor opens, while it is still text in the summary.
     id: "/zones · first-cleanup pricing",
-    path: "/zones",
+    path: "/settings/zones",
     proof: (p) => p.getByRole("heading", { name: "First cleanup" }),
     proofLabel: 'the "First cleanup" card',
     expectsData: FIRST_CLEANUP_LONG_TIER_LABEL,

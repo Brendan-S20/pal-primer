@@ -290,8 +290,11 @@ const zoneWriteSchema = z.object({
   priceNote: z.string().max(200).optional().nullable(),
   latitude: z.number().min(-90).max(90).optional().nullable(),
   longitude: z.number().min(-180).max(180).optional().nullable(),
-  basePriceCents: z.number().int().min(0).optional(),
-  perDogAddlCents: z.number().int().min(0).optional(),
+  // #860: a zone's price is an OVERRIDE of the service's standard price. NULL
+  // is a real answer ("this zone charges the standard price"), so it is
+  // nullable, the same way areaMaxChargeCents is.
+  basePriceCents: z.number().int().min(0).optional().nullable(),
+  perDogAddlCents: z.number().int().min(0).optional().nullable(),
   initialCleanupCents: z.number().int().min(0).optional(),
   pricingMode: z.enum(["flat", "per_sqft", "per_acre"]).optional(),
   pricePerSqftCents: z.number().min(0).max(10000).optional(),
@@ -380,8 +383,10 @@ export const createZone = createServerFn({ method: "POST" })
         price_note: data.priceNote || null,
         latitude: data.latitude ?? null,
         longitude: data.longitude ?? null,
-        base_price_cents: data.basePriceCents ?? 2500,
-        per_dog_addl_cents: data.perDogAddlCents ?? 500,
+        // No price given: no override, the zone charges the standard price
+        // (#860). It used to be $25 + $5, a number nobody chose.
+        base_price_cents: data.basePriceCents ?? null,
+        per_dog_addl_cents: data.basePriceCents == null ? null : (data.perDogAddlCents ?? 0),
         initial_cleanup_cents: data.initialCleanupCents ?? 0,
         pricing_mode: data.pricingMode ?? "flat",
         price_per_sqft_cents: data.pricePerSqftCents ?? 0,

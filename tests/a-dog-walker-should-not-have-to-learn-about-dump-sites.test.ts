@@ -215,7 +215,10 @@ describe("the gating table: what each set of lines shows", () => {
         /promptWhenMissing=\{petWaste\}/,
       ],
       area_pricing: ["src/components/ZoneDrawer.tsx", /showAreaPricing = petWaste \|\|/],
-      first_cleanup: ["src/routes/_authenticated/zones.tsx", /showFirstCleanup =\s*petWaste \|\|/],
+      first_cleanup: [
+        "src/routes/_authenticated/settings.zones.tsx",
+        /showFirstCleanup =\s*petWaste \|\|/,
+      ],
       deep_clean: [
         "src/routes/_authenticated/settings.automation.tsx",
         /showSeasonal = petWaste \|\|/,
@@ -563,7 +566,7 @@ describe("lines hide; they never refuse a write and never delete", () => {
   it("a module still in use stays visible", () => {
     // A first cleanup, area pricing, a zone fee or a seasonal campaign that is
     // configured is charging somebody; its switch must stay findable.
-    expect(read("src/routes/_authenticated/zones.tsx")).toMatch(
+    expect(read("src/routes/_authenticated/settings.zones.tsx")).toMatch(
       /firstCleanupQ\.data\.pricing\.mode !== "off"/,
     );
     expect(read("src/components/ZoneDrawer.tsx")).toMatch(

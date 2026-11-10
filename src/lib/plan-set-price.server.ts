@@ -11,7 +11,9 @@
 //   * a service that is not zone-priced (a walk, a sit, a groom): its own
 //     price for the pets, through servicePriceCents, as the wizard does;
 //   * anything else: the zone quote (internalQuote), the same function the
-//     wizard asked, with the business's frequency multipliers.
+//     wizard asked, with the business's frequency multipliers. Since #860
+//     that is the zone's override inside a zone that has one, and the
+//     service's standard price everywhere else (standard-price.ts).
 //
 // Null when there is no set price: no zone covers the address, the zone has no
 // rates for this kind of account, the service has no price, or the plan is a
@@ -22,7 +24,7 @@ import { isZonePriced, servicePriceCents } from "@/lib/services";
 import { internalQuote } from "@/lib/internal-quote.server";
 
 export const NO_PLAN_SET_PRICE_ZONE =
-  "No pricing zone covers this address, so there is no set price for this plan. Save the client with the plan skipped, and ask somebody who sets prices to add it.";
+  "No pricing zone covers this address and there is no standard price in Settings → Services, so there is no set price for this plan. Save the client with the plan skipped, and ask somebody who sets prices to add it.";
 export const NO_PLAN_SET_PRICE_RATES =
   "The pricing zone for this address has no rates for this kind of account, so there is no set price for this plan. Save the client with the plan skipped, and ask somebody who sets prices to add it.";
 export const NO_PLAN_SET_PRICE_SERVICE =
@@ -88,11 +90,12 @@ export async function planSetPriceCents(db: any, input: PlanSetPriceInput): Prom
     ...(input.accountType === "commercial"
       ? { unitCount: input.unitCount ?? 1, stationCount: input.stationCount ?? 0 }
       : {}),
+    ...(input.serviceId ? { serviceId: input.serviceId } : {}),
   });
   if (!q.available) return none(NO_PLAN_SET_PRICE_ZONE);
   const cents = q.quote.recurringPriceCents;
   if (cents == null) return none(NO_PLAN_SET_PRICE_RATES);
-  return { cents, zoneId: q.quote.zoneId, reason: null };
+  return { cents, zoneId: q.quote.zoneId ?? null, reason: null };
 }
 
 /**

@@ -82,7 +82,7 @@ describe("the read side stays a read", () => {
 
 describe("the confirm says what will change before it changes it", () => {
   const PAGE = readFileSync(
-    join(process.cwd(), "src/routes/_authenticated/zones.tsx"),
+    join(process.cwd(), "src/routes/_authenticated/settings.zones.tsx"),
     "utf8",
   );
 

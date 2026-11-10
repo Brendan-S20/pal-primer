@@ -870,11 +870,16 @@ export const deleteDraftSubscription = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-// ── Standard pricing (client detail refactor) ─────────────────────────────
+// ── Standard pricing (#860) ───────────────────────────────────────────────
 //
-// The org-wide "Standard Price" that zone pricing is compared against in
-// the precedence display (Standard -> Zone -> Custom -> Promotion -> Final).
-// Null means the org hasn't set one and the comparison row is hidden.
+// The standard price a zone's price is compared against, and that applies
+// wherever no zone overrides it. Since #860 it is the default pet-waste
+// SERVICE's price (Settings → Services, "Standard price"), not the
+// organizations.std_* pair Business defaults used to edit: one setting, read
+// everywhere (standard-price.ts). Migration 20261110150000 copied a saved
+// Business-defaults price onto the service where the service had none.
+// Null means no standard price yet. It is written only by Settings →
+// Services (updateService), so there is no second writer here.
 
 export const getStandardPricing = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -884,39 +889,19 @@ export const getStandardPricing = createServerFn({ method: "GET" })
     const { orgId } = await resolveCaller(supabase, userId);
     const { data, error } = await supabase
       .from("organizations")
-      .select("std_base_price_cents, std_per_dog_addl_cents, frequency_multipliers")
+      .select("frequency_multipliers")
       .eq("id", orgId)
       .single();
     if (error) throw new Error(error.message);
+    const { loadPetWasteStandard } = await import("@/lib/standard-price");
+    const service = await loadPetWasteStandard(supabase, orgId);
     return {
-      basePriceCents: data.std_base_price_cents ?? null,
-      perDogAddlCents: data.std_per_dog_addl_cents ?? null,
+      basePriceCents: service?.base_price_cents ?? null,
+      perDogAddlCents: service?.base_price_cents == null ? null : (service.extra_pet_cents ?? 0),
+      serviceId: service?.id ?? null,
+      serviceName: service?.name ?? null,
       frequencyMultipliers: (data.frequency_multipliers ?? {}) as Record<string, number>,
     };
-  });
-
-export const updateStandardPricing = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d) =>
-    z
-      .object({
-        basePriceCents: z.number().int().min(0).max(1_000_000).nullable(),
-        perDogAddlCents: z.number().int().min(0).max(1_000_000).nullable(),
-      })
-      .parse(d),
-  )
-  .handler(async ({ data, context }) => {
-    const orgId = await loadOrgForCaller(context.supabase, context.userId);
-    // The org UPDATE policy is owner-only, but manage_pricing includes
-    // office managers; this SECURITY DEFINER RPC re-checks the caller's
-    // role in the database and can only touch the two pricing columns.
-    const { error } = await context.supabase.rpc("update_org_standard_pricing", {
-      _org_id: orgId,
-      _std_base_price_cents: data.basePriceCents as never,
-      _std_per_dog_addl_cents: data.perDogAddlCents as never,
-    });
-    if (error) throw new Error(error.message);
-    return { ok: true };
   });
 
 // ── Frequency multipliers (#572, F-07) ────────────────────────────────────

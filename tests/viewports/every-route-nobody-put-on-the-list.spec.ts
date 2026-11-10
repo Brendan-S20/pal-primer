@@ -73,6 +73,8 @@ const REDIRECTS = new Set([
   "billing",
   // Forwards to settings/online-signup since the two public forms became one.
   "settings/lead-form",
+  // Forwards to settings/zones since Zones & pricing moved inside Settings (#864).
+  "zones",
 ]);
 
 /**

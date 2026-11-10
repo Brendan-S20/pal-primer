@@ -100,6 +100,7 @@ import { walkWindowsProblem, type WalkWindow } from "@/lib/subscription-form";
 import { isDog } from "@/lib/pets";
 import { formatMultiplier, perVisitMultiplier } from "@/lib/frequency-multipliers";
 import { StaysSection } from "@/components/client-detail/StaysSection";
+import { zoneOverridesPrice } from "@/lib/standard-price";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -1417,19 +1418,31 @@ function ServiceDrawer({
   // zone price from the Zones page config, so show every component.
   const extraDogs = Math.max(0, dogsForPricing - 1);
   // Standard pricing is per-dog residential math — hidden for commercial.
-  const stdParts =
-    accountType === "residential" && std?.basePriceCents != null
+  // #860: the standard price is the pet-waste SERVICE's own (Settings →
+  // Services): the chosen one's, or the business's default when none is
+  // chosen (getStandardPricing). Same rule as internal-quote.server.ts.
+  const stdSource =
+    chosenService?.service_line === "pet_waste"
       ? {
-          base: std.basePriceCents,
-          dogAdj: extraDogs * (std.perDogAddlCents ?? 0),
-          perDog: std.perDogAddlCents ?? 0,
+          basePriceCents: chosenService.base_price_cents,
+          perDogAddlCents: chosenService.extra_pet_cents ?? 0,
+        }
+      : (std ?? null);
+  const stdParts =
+    accountType === "residential" && stdSource?.basePriceCents != null
+      ? {
+          base: stdSource.basePriceCents,
+          dogAdj: extraDogs * (stdSource.perDogAddlCents ?? 0),
+          perDog: stdSource.perDogAddlCents ?? 0,
         }
       : null;
   const standardCents = stdParts
     ? Math.round((stdParts.base + stdParts.dogAdj) * freqMultiplier)
     : null;
+  // A zone's price is an override (#860): only a zone that HAS one prices
+  // the plan; one without charges the standard price above.
   const zonePrice =
-    accountType === "residential" && pricingZone
+    accountType === "residential" && pricingZone && zoneOverridesPrice(pricingZone)
       ? computeZoneVisitPrice(
           {
             base_price_cents: pricingZone.base_price_cents,
@@ -1530,6 +1543,26 @@ function ServiceDrawer({
       : null;
   const bigDeviation = deviationPct != null && Math.abs(deviationPct) >= 50;
   const referenceName = zoneCents != null ? `${pricingZone?.name} zone` : "standard";
+
+  // #860: a NEW pet-waste plan starts at the price that applies here, the
+  // zone's override inside a zone that has one and the standard price
+  // otherwise, rather than an empty box beside a "Use standard" button.
+  // Once, and only into an empty box: a price somebody typed, or a quote's,
+  // is never replaced. An existing plan keeps its saved price.
+  const prefilledPrice = useRef(false);
+  const offeredCents = zoneCents ?? standardCents;
+  const petWastePlan = !chosenService || chosenService.service_line === "pet_waste";
+  useEffect(() => {
+    if (!open) {
+      prefilledPrice.current = false;
+      return;
+    }
+    if (subscription || prefilledPrice.current || !petWastePlan || offeredCents == null) return;
+    prefilledPrice.current = true;
+    setForm((f) =>
+      f.priceDollars.trim() === "" ? { ...f, priceDollars: (offeredCents / 100).toFixed(2) } : f,
+    );
+  }, [open, subscription, petWastePlan, offeredCents]);
 
   const saveMut = useMutation({
     mutationFn: () => {

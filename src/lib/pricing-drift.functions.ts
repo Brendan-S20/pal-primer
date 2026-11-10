@@ -56,6 +56,11 @@ export const getPricingDrift = createServerFn({ method: "GET" })
       .eq("status", "active");
     if (sErr) throw new Error(sErr.message);
 
+    // #860: a zone with no price of its own charges the standard price, so a
+    // pet-waste plan in it is measured against that, not against nothing.
+    const { loadPetWasteStandard, petWasteVisitRate } = await import("@/lib/standard-price");
+    const defaultStandard = await loadPetWasteStandard(supabase, orgId);
+
     const shaped: DriftSubscription[] = (subs ?? []).map((s: any) => {
       const prop = s.properties;
       // The bare `zones ( … )` embed this replaces became AMBIGUOUS the day
@@ -68,6 +73,9 @@ export const getPricingDrift = createServerFn({ method: "GET" })
       // rule the product already keeps at visits.functions.ts:271 — the
       // dispatcher's assignment wins, the detector's guess fills the gap.
       const z = prop?.zone ?? prop?.auto_zone ?? null;
+      // The plan's own pet-waste service, as loadPetWasteStandard picks it.
+      const standard = s.services?.service_line === "pet_waste" ? s.services : defaultStandard;
+      const rate = z ? petWasteVisitRate(standard, z) : null;
       return {
         id: s.id as string,
         clientId: s.client_id as string,
@@ -83,8 +91,8 @@ export const getPricingDrift = createServerFn({ method: "GET" })
           ? {
               id: z.id as string,
               name: z.name as string,
-              base_price_cents: z.base_price_cents,
-              per_dog_addl_cents: z.per_dog_addl_cents,
+              base_price_cents: rate ? rate.baseCents : z.base_price_cents,
+              per_dog_addl_cents: rate ? rate.perDogCents : z.per_dog_addl_cents,
               pricing_mode: z.pricing_mode,
               // numeric(…) comes back as a string from PostgREST, and
               // `"0.7500" * n` would be a silent NaN in the area maths.
