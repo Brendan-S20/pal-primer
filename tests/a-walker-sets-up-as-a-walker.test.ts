@@ -428,9 +428,19 @@ describe("#769 setup shows and saves the workday", () => {
     );
     expect(business).toMatch(/id="setup-workday-start"/);
     expect(business).toMatch(/id="setup-workday-end"/);
+    // Each hour only when it was typed or read back: a fallback shown while
+    // the stored hours were still loading must not be written over them.
+    expect(business).toMatch(/const workdayLoaded = dispatchQ\.isSuccess;/);
     expect(business).toMatch(
-      /await saveDispatchFn\(\{\s*data: \{[\s\S]*?workday_start: dayStartVal,\s*workday_end: dayEndVal,/,
+      /dayStart !== null \|\| workdayLoaded \? \{ workday_start: dayStartVal \} : \{\}/,
     );
+    expect(business).toMatch(
+      /dayEnd !== null \|\| workdayLoaded \? \{ workday_end: dayEndVal \} : \{\}/,
+    );
+    expect(business).toMatch(
+      /const dispatchWrite = \{ \.\.\.\(writeTz \? \{ timezone: tzVal \} : \{\}\), \.\.\.workdayWrite \};/,
+    );
+    expect(business).toMatch(/await saveDispatchFn\(\{ data: dispatchWrite \}\)/);
     expect(business).toMatch(/workdayProblem\(dayStartVal, dayEndVal\)/);
   });
 });

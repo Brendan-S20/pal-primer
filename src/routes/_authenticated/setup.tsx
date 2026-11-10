@@ -423,6 +423,15 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
   const dayStartVal =
     dayStart ?? workdayField(dispatch?.workday_start, SETUP_WORKDAY_DEFAULTS.start);
   const dayEndVal = dayEnd ?? workdayField(dispatch?.workday_end, SETUP_WORKDAY_DEFAULTS.end);
+  // Each hour is written only when it is the owner's answer: typed here, or
+  // read from the database and shown. Until the read succeeds the field shows
+  // the 08:00-17:00 fallback, and writing that would replace stored hours
+  // nobody saw (#797 review).
+  const workdayLoaded = dispatchQ.isSuccess;
+  const workdayWrite = {
+    ...(dayStart !== null || workdayLoaded ? { workday_start: dayStartVal } : {}),
+    ...(dayEnd !== null || workdayLoaded ? { workday_end: dayEndVal } : {}),
+  };
   // A visitor who came for one line (?service=, site-r2-03) sees that line
   // ticked instead of the bare pet-waste default. Only once the stored answer
   // is actually known and before this step is done, so it can never write over
@@ -445,8 +454,8 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
     (lines !== null || mayPreselect) &&
     (linesVal.length !== savedLines.length || linesVal.some((l) => !savedLines.includes(l)));
 
-  // Refreshed on failure too (stepSave): the three writes run in turn, so a
-  // failure in the second leaves the first saved, and Settings must show it.
+  // Refreshed on failure too (stepSave): the writes run in turn, so a failure
+  // in a later one leaves the earlier ones saved, and Settings must show them.
   const m = useMutation(
     stepSave({
       qc,
@@ -467,15 +476,10 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
             country,
           },
         });
-        // The workday (#769) rides the same write, every time; the zone only
-        // when writeTz says so, as before.
-        await saveDispatchFn({
-          data: {
-            ...(writeTz ? { timezone: tzVal } : {}),
-            workday_start: dayStartVal,
-            workday_end: dayEndVal,
-          },
-        });
+        // The workday (#769) rides the same write, each hour only when it is
+        // known (workdayWrite); the zone only when writeTz says so, as before.
+        const dispatchWrite = { ...(writeTz ? { timezone: tzVal } : {}), ...workdayWrite };
+        if (Object.keys(dispatchWrite).length > 0) await saveDispatchFn({ data: dispatchWrite });
       },
       refresh: [
         ["org-branding"],

@@ -94,7 +94,7 @@ describe("the call sites", () => {
     // #769: the same call now carries the workday, and the zone only when
     // writeTz says so, as before.
     expect(src).toMatch(
-      /await saveDispatchFn\(\{\s*data: \{\s*\.\.\.\(writeTz \? \{ timezone: tzVal \} : \{\}\),/,
+      /const dispatchWrite = \{ \.\.\.\(writeTz \? \{ timezone: tzVal \} : \{\}\),/,
     );
   });
 });
