@@ -52,10 +52,11 @@ for (const width of [390, 1440]) {
   });
 }
 
-// Inject a render failure into a real route module so the shell boundary is
-// exercised through the router's own boundaries, including falsy throws.
+// Inject a render failure into a real route module. The route boundary
+// catches every thrown value, including falsy ones, and RouteError stays
+// inside the signed-in shell.
 for (const thrown of ["undefined", "null", "false", '"unexpected"']) {
-  test(`root shell recovers from thrown ${thrown}`, async ({ page }) => {
+  test(`a route boundary catches a thrown ${thrown}`, async ({ page }) => {
     await installSignedInSession(page);
     await installStubBackend(page);
     let injected = false;
@@ -69,11 +70,9 @@ for (const thrown of ["undefined", "null", "false", '"unexpected"']) {
       await route.fulfill({ response, body });
     });
     await page.goto("/settings/preferences", { waitUntil: "domcontentloaded" });
-    await expect(
-      page.getByRole("heading", {
-        name: thrown === '"unexpected"' ? "Something went wrong" : "This page didn't load",
-      }),
-    ).toBeVisible({ timeout: FIRST_PAINT_MS });
+    await expect(page.getByRole("heading", { name: "Something went wrong" })).toBeVisible({
+      timeout: FIRST_PAINT_MS,
+    });
     expect(injected).toBe(true);
     await expect(page.getByRole("link", { name: "Back to dashboard" })).toHaveAttribute(
       "href",
@@ -81,3 +80,39 @@ for (const thrown of ["undefined", "null", "false", '"unexpected"']) {
     );
   });
 }
+
+// RootShell renders this beside the route tree, so no router boundary is
+// around it. RootRecovery is the backstop that still catches the throw.
+test("the root recovery catches a throw outside the route tree", async ({ page }) => {
+  await installSignedInSession(page);
+  await installStubBackend(page);
+  let injected = false;
+  await page.route("**/src/routes/__root.tsx*", async (route) => {
+    const response = await route.fetch();
+    const source = await response.text();
+    const reactImport = source.match(
+      /import\s+(\w+)\s+from\s+"\/node_modules\/\.vite\/deps\/react\.js/,
+    );
+    const shell = "function RootShell({ children }) {";
+    if (!reactImport || !source.includes(shell)) {
+      await route.fulfill({ response, body: source });
+      return;
+    }
+    const body = source.replace(
+      shell,
+      `${shell}\n  children = ${reactImport[1]}.createElement(function OutsideRouteTree() { throw undefined; });`,
+    );
+    injected = body !== source;
+    await route.fulfill({ response, body });
+  });
+  await page.goto("/settings/preferences", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { name: "This page didn't load" })).toBeVisible({
+    timeout: FIRST_PAINT_MS,
+  });
+  await expect(page.getByText("Try refreshing or return to the dashboard.")).toBeVisible();
+  expect(injected).toBe(true);
+  await expect(page.getByRole("link", { name: "Back to dashboard" })).toHaveAttribute(
+    "href",
+    "/dashboard",
+  );
+});
