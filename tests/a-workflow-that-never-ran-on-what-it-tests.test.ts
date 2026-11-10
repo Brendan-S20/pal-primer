@@ -117,6 +117,34 @@ describe("the workflow runs on the files it tests", () => {
     expect(arm?.[1].trim()).toBe("viewports=true");
   });
 
+  it("admits build-config files and routes them to the browser jobs only", () => {
+    // #815 changed vite.config.ts and the path filter left it out, so Four
+    // widths and the one-off cases never started on that PR. There is no
+    // postcss.config or tailwind.config in the repo.
+    const paths = pullRequestPaths();
+    for (const file of [
+      "vite.config.ts",
+      "vitest.config.ts",
+      "package.json",
+      "package-lock.json",
+      "bun.lock",
+      "tsconfig*.json",
+    ]) {
+      expect(paths).toContain(file);
+    }
+    const gate = gateScript();
+    for (const arm of [
+      /^\s*vite\.config\.ts\|vitest\.config\.ts\)\s*(.*);;\s*$/m,
+      /^\s*package\.json\|package-lock\.json\|bun\.lock\)\s*(.*);;\s*$/m,
+      /^\s*tsconfig\*\.json\)\s*(.*);;\s*$/m,
+    ]) {
+      expect(gate.match(arm)?.[1].trim()).toBe("viewports=true");
+    }
+    expect(gate).not.toMatch(
+      /vite\.config\.ts[\s\S]{0,80}database=true/,
+    );
+  });
+
   it("still admits the migration paths the trigger was added for", () => {
     expect(pullRequestPaths()).toEqual(
       expect.arrayContaining(["supabase/migrations/**", "supabase/proofs/**"]),
