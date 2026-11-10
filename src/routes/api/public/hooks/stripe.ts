@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { feeReversalCents } from "@/lib/platform-fee";
+import { feeReversalCents, platformFeeCents } from "@/lib/platform-fee";
 import {
+  passedThroughFeeCents,
   readChargeMetadata,
   reversibleFeeBaseCents,
   type ChargeMetadataRead,
@@ -588,6 +589,15 @@ async function provisionSignup(
       error_message: (e as Error).message,
     };
     if (paid.paymentIntentId) {
+      // #825: the application fee may carry Stripe's Radar fee for this
+      // charge, which Stripe keeps on a refund. Handing the whole fee back
+      // would leave the platform paying for the business's screening, so it
+      // is refunded with the charge only when nothing was passed through.
+      const keepFee = await signupFeeHasPassThrough(
+        paid.paymentIntentId,
+        paid.amountTotalCents,
+        refundVia,
+      );
       try {
         const refund = await refundVia.stripe.refunds.create(
           {
@@ -600,7 +610,10 @@ async function provisionSignup(
             // reverse the application fee as part of the same call. Keeping a
             // fee on a sale that was unwound and refunded in full would be
             // charging the tenant for our own failure.
-            refund_application_fee: true,
+            //
+            // Unless a Stripe cost was passed through on it (#825), or that
+            // cannot be ruled out; see signupFeeHasPassThrough.
+            refund_application_fee: !keepFee,
           },
           {
             idempotencyKey: `signup-refund-${signupRequestId}`,
@@ -637,6 +650,49 @@ async function provisionSignup(
 
     await supabaseAdmin.from("signup_requests").update(refundPatch).eq("id", signupRequestId);
   }
+}
+
+/**
+ * Whether a signup charge's application fee carries a Stripe cost passed
+ * through to the business (the Radar fee, #825), so the automatic refund
+ * must not hand the whole fee back. True when the intent's metadata cannot be
+ * read: keeping five cents of the business's own cost is the safer error.
+ *
+ * The platform-fee part of such a fee is not reversed here. It is zero today
+ * (PLATFORM_FEE_BPS = 0); if it is not, the charge is logged so the office can
+ * hand it back by hand, as the #757 follow-up already records for taps.
+ */
+async function signupFeeHasPassThrough(
+  paymentIntentId: string,
+  amountCents: number,
+  refundVia: { stripe: import("stripe").Stripe; stripeAccount: string | null },
+): Promise<boolean> {
+  const read = await readChargeMetadata(
+    null,
+    paymentIntentId,
+    refundVia.stripeAccount
+      ? async (id) => {
+          const pi = await refundVia.stripe.paymentIntents.retrieve(
+            id,
+            {},
+            { stripeAccount: refundVia.stripeAccount as string },
+          );
+          return pi?.metadata as Record<string, string> | undefined;
+        }
+      : null,
+  );
+  const keep = !read.readable || passedThroughFeeCents(read.metadata) > 0;
+  if (keep) {
+    // The signup charge's platform fee is platformFeeCents(amount), with no
+    // invoice (signup.functions.ts); zero while the rate is.
+    if (!read.readable || (platformFeeCents(amountCents) ?? 0) > 0) {
+      console.error(
+        "signup refund kept the application fee: it carries a Stripe cost passed through to the business. Reverse any platform-fee part by hand.",
+        { paymentIntentId, reason: read.readable ? null : read.reason },
+      );
+    }
+  }
+  return keep;
 }
 
 /**
@@ -1640,7 +1696,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                   const base = reversibleFeeBaseCents(Number(fee?.amount ?? 0), read);
                   if (base === null) {
                     console.error(
-                      "application fee reversal SKIPPED: the charge's intent metadata could not be read, so a Tap to Pay fee cannot be ruled out. Reverse by hand if this is not a tap.",
+                      "application fee reversal SKIPPED: the charge's intent metadata could not be read, so a Tap to Pay or Radar fee cannot be ruled out. Reverse the platform-fee part by hand.",
                       {
                         feeId,
                         chargeId: obj?.id ?? null,
@@ -1769,7 +1825,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                       const base = reversibleFeeBaseCents(Number(fee.amount ?? 0), read);
                       if (base === null) {
                         console.error(
-                          "application fee reversal on dispute SKIPPED: the charge's intent metadata could not be read, so a Tap to Pay fee cannot be ruled out. Reverse by hand if this is not a tap.",
+                          "application fee reversal on dispute SKIPPED: the charge's intent metadata could not be read, so a Tap to Pay or Radar fee cannot be ruled out. Reverse the platform-fee part by hand.",
                           {
                             feeId: fee.id,
                             chargeId,

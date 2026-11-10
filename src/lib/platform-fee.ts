@@ -89,6 +89,9 @@ import { preTaxShareCents } from "@/lib/sales-tax";
 // That call passes `refund_application_fee: true`, so Stripe reverses the fee
 // in the same operation rather than the webhook learning about it afterwards —
 // the charge is being unwound in full by us, so there is nothing to apportion.
+// The exception is a fee that carries a Stripe cost passed through to the
+// business (the Radar fee, #825, docs/stripe-connect-fees.md): Stripe keeps
+// that on a refund, so the fee is kept rather than handed back.
 // It also writes no `payments` row, which is why the `charge.refunded` branch
 // finds nothing to reconcile and correctly does nothing.
 
