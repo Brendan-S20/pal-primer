@@ -60,7 +60,7 @@ describe("the fee", () => {
   });
 
   it("is told to the business in plain words, in the tap fee's style", () => {
-    const s = radarFeeSentence("application_express");
+    const s = radarFeeSentence();
     expect(s).toContain("$0.05");
     expect(s).toContain("taken out of the payout and shown in Stripe");
     expect(s).not.toMatch(/—|–/); // no em or en dashes

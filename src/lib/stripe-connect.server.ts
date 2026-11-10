@@ -1,22 +1,10 @@
 import { makeStripe } from "@/lib/stripe-client.server";
-import { NEW_CONNECTED_ACCOUNT_CONTROLLER } from "@/lib/connect-account-settings";
-// Server-only helpers for tenant Stripe via Connect.
+// Server-only helpers for tenant Stripe via Connect (Express accounts).
 // HoundStack is the Connect PLATFORM here (STRIPE_CONNECT_* keys) — distinct
 // from the platform's SaaS-billing Stripe (PLATFORM_STRIPE_* / bucket A).
-// Tenant->client charges run on the org's connected account by passing
-// { stripeAccount } to the Connect platform client. Onboarding is
-// Stripe-hosted (Account Links, or the embedded onboarding component); the
-// tenant never shares an API key.
-//
-// Two kinds of account exist (#825, see docs/stripe-connect-fees.md):
-//   * accounts created before #825: legacy `type: "express"`, which Stripe
-//     records as losses.payments "application", fees.payer
-//     "application_express", requirement_collection "stripe", Express
-//     Dashboard. Left exactly as they are: the dashboard type and fee payer
-//     cannot be changed on an existing account.
-//   * accounts created from #825 on: NEW_CONNECTED_ACCOUNT_CONTROLLER below,
-//     Stripe's Standard configuration, so the business is liable for its own
-//     refunds, disputes and negative balances.
+// Tenant->client charges run on the org's connected Express account by passing
+// { stripeAccount } to the Connect platform client. Express uses Stripe-hosted
+// onboarding (Account Links); the tenant never shares an API key.
 
 export type OrgStripeAccount = {
   accountId: string;
@@ -153,44 +141,13 @@ export async function requireOrgStripeAccount(
   return acct;
 }
 
-// NEW_CONNECTED_ACCOUNT_CONTROLLER lives in a module the Payments page can
-// import too, so the screen and the create call cannot disagree.
-export { NEW_CONNECTED_ACCOUNT_CONTROLLER };
-
-/** The `accounts.create` parameters for a business's new connected account. */
-export function newConnectedAccountParams(input: {
-  orgId: string;
-  email?: string | null;
-  businessName?: string | null;
-}) {
-  return {
-    controller: {
-      fees: { ...NEW_CONNECTED_ACCOUNT_CONTROLLER.fees },
-      losses: { ...NEW_CONNECTED_ACCOUNT_CONTROLLER.losses },
-      requirement_collection: NEW_CONNECTED_ACCOUNT_CONTROLLER.requirement_collection,
-      stripe_dashboard: { ...NEW_CONNECTED_ACCOUNT_CONTROLLER.stripe_dashboard },
-    },
-    country: "US",
-    email: input.email || undefined,
-    business_profile: { name: input.businessName || undefined },
-    capabilities: {
-      card_payments: { requested: true },
-      transfers: { requested: true },
-    },
-    metadata: { organization_id: input.orgId },
-  };
-}
-
 /**
- * Ensure the org has a connected account, creating one on first use.
+ * Ensure the org has an Express connected account, creating one on first use.
  * Returns the account id. The account is stored on the org immediately (status
  * pending) so the Account Link onboarding + return flow can find it without an
  * OAuth state handshake.
- *
- * An org that already has an account keeps it, whatever it was created as:
- * nothing here reads, updates or migrates an existing account.
  */
-export async function ensureConnectedAccount(orgId: string, email?: string): Promise<string> {
+export async function ensureExpressAccount(orgId: string, email?: string): Promise<string> {
   const existing = await resolveOrgStripeAccount(orgId);
   if (existing) return existing.accountId;
 
@@ -199,9 +156,17 @@ export async function ensureConnectedAccount(orgId: string, email?: string): Pro
   const { data: org } = await (supabaseAdmin as any)
     .from("organizations").select("name").eq("id", orgId).maybeSingle();
 
-  const acct = await stripe.accounts.create(
-    newConnectedAccountParams({ orgId, email, businessName: org?.name }),
-  );
+  const acct = await stripe.accounts.create({
+    type: "express",
+    country: "US",
+    email: email || undefined,
+    business_profile: { name: org?.name || undefined },
+    capabilities: {
+      card_payments: { requested: true },
+      transfers: { requested: true },
+    },
+    metadata: { organization_id: orgId },
+  });
 
   await (supabaseAdmin as any).from("organizations").update({
     stripe_connect_account_id: acct.id,

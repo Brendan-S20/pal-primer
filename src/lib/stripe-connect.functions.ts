@@ -3,8 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 
-// Tenant Stripe Connect management (new accounts: Standard controller
-// settings, #825; older accounts: Express, unchanged). Connecting the org's own Stripe
+// Tenant Stripe Connect (Express) management. Connecting the org's own Stripe
 // account (bank/payout/identity onboarding) is an owner-level financial action,
 // gated by manage_org_billing — owner-only, matching the /payments route ACL and
 // sidebar nav (H5 #6). Previously gated on manage_settings, which let techs and
@@ -55,7 +54,7 @@ export const getStripeConnectStatus = createServerFn({ method: "GET" })
   });
 
 /**
- * Begin (or resume) Stripe-hosted onboarding. Creates the connected account on first
+ * Begin (or resume) Express onboarding. Creates the connected account on first
  * use, then returns a Stripe-hosted Account Link URL to redirect to. Safe to
  * call again to refresh an expired link — the account is reused.
  */
@@ -72,8 +71,8 @@ export const startStripeConnect = createServerFn({ method: "POST" })
     const { data: userData } = await context.supabase.auth.getUser();
     const email = userData.user?.email ?? undefined;
 
-    const { ensureConnectedAccount, connectStripe } = await import("@/lib/stripe-connect.server");
-    const accountId = await ensureConnectedAccount(orgId, email);
+    const { ensureExpressAccount, connectStripe } = await import("@/lib/stripe-connect.server");
+    const accountId = await ensureExpressAccount(orgId, email);
     const stripe = await connectStripe();
     const link = await stripe.accountLinks.create({
       account: accountId,
@@ -84,7 +83,7 @@ export const startStripeConnect = createServerFn({ method: "POST" })
     return { url: link.url };
   });
 
-/** Ensure the org has a connected account (create on first use), for embedded
+/** Ensure the org has an Express account (create on first use), for embedded
  *  onboarding + dashboard. Returns the account's charge-readiness. */
 export const ensureStripeConnectAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -96,9 +95,9 @@ export const ensureStripeConnectAccount = createServerFn({ method: "POST" })
     );
     await requireVerifiedEmail(orgId);
     const { data: userData } = await context.supabase.auth.getUser();
-    const { ensureConnectedAccount, resolveOrgStripeAccount } =
+    const { ensureExpressAccount, resolveOrgStripeAccount } =
       await import("@/lib/stripe-connect.server");
-    const accountId = await ensureConnectedAccount(orgId, userData.user?.email ?? undefined);
+    const accountId = await ensureExpressAccount(orgId, userData.user?.email ?? undefined);
     const acct = await resolveOrgStripeAccount(orgId);
     return { accountId, chargesEnabled: !!acct?.chargesEnabled };
   });
@@ -215,11 +214,8 @@ export const createStripeAccountSession = createServerFn({ method: "POST" })
 
     // `payouts` and `balances` share three more, and both must state them or
     // neither can. All three are ON by owner decision, against defaults that
-    // would be off — on an account created before #825
-    // `controller.losses.payments` is `application`, so these default to false
-    // and HoundStack, not Stripe, carries a negative balance. On an account
-    // created from #825 on it is `stripe` (NEW_CONNECTED_ACCOUNT_CONTROLLER),
-    // the defaults are already on, and the exposure below is the business's.
+    // would be off — `controller.losses.payments` is `application`, so these
+    // default to false and HoundStack, not Stripe, carries a negative balance.
     //
     // The exposure is real and was raised before this was turned on:
     // `instant_payouts` moves money in minutes, so a refund or chargeback
@@ -272,28 +268,6 @@ export const createStripeAccountSession = createServerFn({ method: "POST" })
       },
     });
     return { clientSecret: session.client_secret, publishableKey: connectPublishableKey() };
-  });
-
-/**
- * The connected account's `controller.fees.payer` (#825), so the Payments page
- * can say who Stripe bills for Radar. Accounts created before #825 report
- * `application_express`; accounts created since report `account`. Null when
- * there is no account or it cannot be read; never throws.
- */
-export const getStripeConnectFeePayer = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const { orgId } = await requirePermission(
-      context.supabase,
-      context.userId,
-      "manage_org_billing",
-    );
-    const { resolveOrgStripeAccount, connectStripe } = await import("@/lib/stripe-connect.server");
-    const acct = await resolveOrgStripeAccount(orgId);
-    if (!acct) return { feePayer: null as string | null };
-    const { connectedAccountFeePayer } = await import("@/lib/connect-fee-payer.server");
-    const stripe = await connectStripe();
-    return { feePayer: await connectedAccountFeePayer(stripe, acct.accountId) };
   });
 
 /** Re-check the connected account's charge-readiness with Stripe. */
@@ -358,11 +332,7 @@ export const auditClientCardRefs = createServerFn({ method: "POST" })
     return { checked, cleared };
   });
 
-/** Delete the connected account where Stripe allows it, and clear the org's
- *  fields. A live account created with the Standard settings (#825) cannot
- *  be deleted by the platform; the business keeps its own Stripe account and
- *  this only drops HoundStack's reference, as it already did for an Express
- *  account with a balance. */
+/** Delete the Express account (platform-owned) and clear the org's fields. */
 export const disconnectStripeConnect = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -379,10 +349,9 @@ export const disconnectStripeConnect = createServerFn({ method: "POST" })
         const stripe = await connectStripe();
         await stripe.accounts.del(acct.accountId);
       } catch (e) {
-        // Express accounts with a balance / activity, and live Standard
-        // accounts, can't be deleted; we still drop our reference so the org
-        // can reconnect a fresh account.
-        console.error("stripe connected account delete failed", (e as Error).message);
+        // Express accounts with a balance / activity can't be deleted; we still
+        // drop our reference so the org can reconnect a fresh account.
+        console.error("stripe express account delete failed", (e as Error).message);
       }
     }
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
