@@ -120,8 +120,11 @@ describe("setup step 1 with a ?service= request (#710) and without", () => {
 
   it("#711's draft keeps only what was touched, so a restore wins over the start", () => {
     const setup = read("src/routes/_authenticated/setup.tsx");
-    // #769 added the workday, kept the same way: null until touched.
-    expect(setup).toMatch(/value: \{ lines, name, phone, address, tz, dayStart, dayEnd \}/);
+    // #769 added the workday and D14 the office email and the portal address,
+    // all under the same null-means-untouched rule.
+    expect(setup).toMatch(
+      /value: \{ lines, name, phone, address, tz, dayStart, dayEnd, officeEmail, portalSlug \}/,
+    );
     expect(setup).toMatch(/setLines\(d\.lines\)/);
   });
 });

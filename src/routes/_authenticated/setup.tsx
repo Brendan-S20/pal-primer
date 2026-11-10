@@ -14,6 +14,7 @@ import { useServiceLines } from "@/components/CommercialOnly";
 import { ServiceLinesChoices } from "@/components/ServiceLinesChoices";
 import { DayEndPanel } from "@/components/SetupDayEndPanel";
 import { WalkPricesForm } from "@/components/SetupWalkPrices";
+import { BusinessSaveButton } from "@/components/SetupBusinessSave";
 import { useMyRole, usePermissions } from "@/hooks/useMyRole";
 import { useMyProfile } from "@/hooks/useMyProfile";
 import { useFormDraft } from "@/hooks/useFormDraft";
@@ -25,11 +26,30 @@ import {
   type OnboardingStepId,
   type PricePart,
 } from "@/lib/onboarding.functions";
-import { getOrgBranding, updateOrgBranding } from "@/lib/org.functions";
+import {
+  getMyOrg,
+  getOrgBranding,
+  setPortalSlug,
+  suggestPortalSlug,
+  updateOrgBranding,
+} from "@/lib/org.functions";
+import {
+  officeEmailPrefill,
+  officeEmailWrite,
+  portalSlugPrefill,
+  portalSlugWrite,
+} from "@/lib/setup-prefill";
+import { slugify } from "@/lib/portal-slug";
+import { linkOrigin } from "@/lib/app-origin";
 import { countryFromAddress } from "@/lib/distance-unit";
 import { setServiceLines } from "@/lib/org-features.functions";
 import { dayEndQuestion, setupAsksServiceLines, type ServiceLine } from "@/lib/service-lines";
-import { SETUP_WORKDAY_DEFAULTS, workdayField, workdayProblem } from "@/lib/setup-workday";
+import {
+  SETUP_WORKDAY_DEFAULTS,
+  businessSaveBlocked,
+  workdayField,
+  workdayProblem,
+} from "@/lib/setup-workday";
 import {
   preselectedServiceLines,
   requestedServiceLine,
@@ -38,6 +58,18 @@ import {
 import { useServiceLineAvailability } from "@/hooks/useServiceLineAvailability";
 import { getDispatchSettings, updateDispatchSettings } from "@/lib/visits.functions";
 import { createZone, geocodePostal } from "@/lib/zones.functions";
+import { getFirstCleanupPricing, setFirstCleanupPricing } from "@/lib/first-cleanup.functions";
+import { getStandardPricing, updateFrequencyMultipliers } from "@/lib/subscriptions.functions";
+import { FIRST_CLEANUP_MODE_LABEL } from "@/lib/first-cleanup";
+import { formatMultiplier, type MultiplierFrequency } from "@/lib/frequency-multipliers";
+import {
+  SETUP_MULTIPLIER_FREQUENCIES,
+  firstCleanupPricingFromSetup,
+  setupFirstCleanupCents,
+  setupMultipliers,
+  storedMultiplier,
+  type SetupFirstCleanup,
+} from "@/lib/setup-pricing";
 import { adoptSetupAreaPrice } from "@/lib/setup-price.functions";
 import { stepSave } from "@/lib/setup-step-save";
 import { createOrgInvite, listStaffAddresses, setStaffRouting } from "@/lib/users.functions";
@@ -346,6 +378,7 @@ function PricingPanel({ step, onSaved }: { step: OnboardingStep; onSaved: () => 
 }
 
 const fieldClass = "space-y-1.5";
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ── 1. The business ────────────────────────────────────────────────────────
 
@@ -374,12 +407,24 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
   const [tz, setTz] = useState<string | null>(null);
   const [dayStart, setDayStart] = useState<string | null>(null);
   const [dayEnd, setDayEnd] = useState<string | null>(null);
+  // The client portal's address and the office email (D14): asked here,
+  // prefilled, so Settings > Client portal is not left with an empty address
+  // and a reply-to nobody reads. null until touched, like the rest.
+  const [officeEmail, setOfficeEmail] = useState<string | null>(null);
+  const [portalSlug, setPortalSlugText] = useState<string | null>(null);
+  const { authEmail } = useMyProfile();
+  const orgFn = useServerFn(getMyOrg);
+  const orgQ = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn(), staleTime: 60_000 });
+  const savedSlug = (orgQ.data?.organization as { portal_slug?: string | null } | undefined)
+    ?.portal_slug;
+  const setSlugFn = useServerFn(setPortalSlug);
+  const suggestSlugFn = useServerFn(suggestPortalSlug);
   // Kept on the device as it is typed (gaps-r2-12): a reload used to clear
   // the services ticked, the phone, the address and the zone. Only what was
   // touched is kept, the same null-means-untouched values as above.
   const draft = useFormDraft({
     form: "setup-business",
-    value: { lines, name, phone, address, tz, dayStart, dayEnd },
+    value: { lines, name, phone, address, tz, dayStart, dayEnd, officeEmail, portalSlug },
     restore: (d) => {
       setLines(d.lines);
       setName(d.name);
@@ -388,6 +433,8 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
       setTz(d.tz);
       setDayStart(d.dayStart ?? null);
       setDayEnd(d.dayEnd ?? null);
+      setOfficeEmail(d.officeEmail ?? null);
+      setPortalSlugText(d.portalSlug ?? null);
     },
     reset: () => {
       setLines(null);
@@ -397,6 +444,8 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
       setTz(null);
       setDayStart(null);
       setDayEnd(null);
+      setOfficeEmail(null);
+      setPortalSlugText(null);
     },
   });
 
@@ -404,6 +453,9 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
   const nameVal = name ?? b?.name ?? "";
   const phoneVal = phone ?? b?.contact_phone ?? "";
   const addressVal = address ?? b?.contact_address ?? "";
+  const officeEmailVal =
+    officeEmail ?? officeEmailPrefill({ saved: b?.contact_email, ownerEmail: authEmail });
+  const portalSlugVal = portalSlug ?? portalSlugPrefill({ saved: savedSlug, name: nameVal });
   const savedTz = (dispatchQ.data?.settings as { timezone?: string | null } | undefined)?.timezone;
   // The device's zone, or the address's, unless somebody already chose one
   // (#654: this read `savedTz ?? Chicago`, and savedTz was the column default).
@@ -454,8 +506,9 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
     (lines !== null || mayPreselect) &&
     (linesVal.length !== savedLines.length || linesVal.some((l) => !savedLines.includes(l)));
 
-  // Refreshed on failure too (stepSave): the writes run in turn, so a failure
-  // in a later one leaves the earlier ones saved, and Settings must show them.
+  // Refreshed on failure too (stepSave): the writes run in turn, so a
+  // failure in a later one leaves the earlier ones saved, and Settings must
+  // show them.
   const m = useMutation(
     stepSave({
       qc,
@@ -468,18 +521,33 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
         // nobody has chosen one yet: it decides miles or km on the board
         // (#496). A choice made in Settings > Business is never overwritten.
         const country = b?.country ? undefined : (countryFromAddress(addressVal) ?? undefined);
+        // Untouched, a business with no office email gets the owner's own
+        // sign-in email (D14); a saved one is never overwritten untouched.
+        const officeEmailToSave = officeEmailWrite({
+          saved: b?.contact_email,
+          typed: officeEmail,
+          ownerEmail: authEmail,
+        });
         await saveBrandingFn({
           data: {
             name: nameVal.trim() || undefined,
             contactPhone: phoneVal.trim() || null,
             contactAddress: addressVal.trim() || null,
             country,
+            contactEmail: officeEmailToSave,
           },
         });
         // The workday (#769) rides the same write, each hour only when it is
         // known (workdayWrite); the zone only when writeTz says so, as before.
         const dispatchWrite = { ...(writeTz ? { timezone: tzVal } : {}), ...workdayWrite };
         if (Object.keys(dispatchWrite).length > 0) await saveDispatchFn({ data: dispatchWrite });
+        // After the name, so a suggested address is the name just saved. A
+        // typed address goes through setPortalSlug, which refuses one that is
+        // taken; an untouched one through suggestPortalSlug, which picks the
+        // nearest free one, so another business's name never blocks this step.
+        const slugWrite = portalSlugWrite({ saved: savedSlug, typed: portalSlug });
+        if (slugWrite.kind === "set") await setSlugFn({ data: { slug: slugWrite.slug } });
+        else if (slugWrite.kind === "suggest") await suggestSlugFn();
       },
       refresh: [
         ["org-branding"],
@@ -489,6 +557,8 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
       ],
       saved: () => {
         draft.clear();
+        setOfficeEmail(null);
+        setPortalSlugText(null);
         toast.success("Business details saved");
         if (linesChanged) setLines(null);
       },
@@ -509,9 +579,15 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
           toast.error("Add your business address. Routes start from it.");
           return;
         }
+        // Enter in a field submits too; the held button alone does not stop it.
+        if (businessSaveBlocked(m.isPending, dispatchQ)) return;
         const hours = workdayProblem(dayStartVal, dayEndVal);
         if (hours) {
           toast.error(hours);
+          return;
+        }
+        if (officeEmailVal.trim() && !EMAIL_RE.test(officeEmailVal.trim())) {
+          toast.error("Check the office email. It should look like you@example.com.");
           return;
         }
         m.mutate();
@@ -571,6 +647,48 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
         </p>
       </div>
       <div className={fieldClass}>
+        <Label htmlFor="setup-office-email">Office email</Label>
+        <Input
+          id="setup-office-email"
+          type="email"
+          value={officeEmailVal}
+          onChange={(e) => setOfficeEmail(e.target.value)}
+          maxLength={255}
+          autoComplete="email"
+          placeholder="hello@your-company.com"
+        />
+        <p className="text-xs text-muted-foreground">
+          Clients who reply to an invoice or a reminder reach this address. Change it any time in
+          Settings, Client portal.
+        </p>
+      </div>
+      <div className={fieldClass}>
+        <Label htmlFor="setup-portal-slug">Client portal address</Label>
+        {/* The prefix is a fixed part of the address and the slug is the part
+            the owner types; on a narrow phone the two wrap rather than
+            pushing the input off the side. */}
+        <div className="flex flex-wrap items-center gap-x-1 gap-y-1.5">
+          <span className="min-w-0 break-all text-sm text-muted-foreground" dir="ltr">
+            {linkOrigin().replace(/^https?:\/\//, "")}/portal/
+          </span>
+          <Input
+            id="setup-portal-slug"
+            className="min-w-0 flex-1 basis-40"
+            dir="ltr"
+            value={portalSlugVal}
+            onChange={(e) => setPortalSlugText(slugify(e.target.value).slice(0, 63))}
+            maxLength={63}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder="your-company"
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Where clients sign in to see visits and pay invoices. Letters, numbers and hyphens.
+        </p>
+      </div>
+      <div className={fieldClass}>
         <Label htmlFor="setup-timezone">Time zone</Label>
         <select
           id="setup-timezone"
@@ -612,9 +730,9 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
           flagged. You can change this later in Settings, Scheduling.
         </p>
       </fieldset>
-      <Button type="submit" disabled={m.isPending} data-setup-action="save">
-        {m.isPending ? "Saving…" : "Save and continue"}
-      </Button>
+      {/* Held until the stored hours are read, so the 08:00-17:00 fallback
+          shown meanwhile cannot be saved over them (#797 review). */}
+      <BusinessSaveButton saving={m.isPending} dispatch={dispatchQ} />
     </form>
   );
 }
@@ -622,6 +740,9 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
 // ── 2. The service area and its price ──────────────────────────────────────
 
 const MILES = [5, 10, 15, 25, 40] as const;
+
+/** What Zones' First cleanup card reads (FirstCleanupPricingCard). */
+const FIRST_CLEANUP_KEY = ["first-cleanup-pricing"];
 
 /** For a business that runs more than one service line (#639): one row per
  *  thing to price, each saying whether it is done and where to do it. The
@@ -754,6 +875,32 @@ function ServiceAreaPanel({
   const [price, setPrice] = useState("");
   const [extraDog, setExtraDog] = useState("");
 
+  // The first cleanup and the schedule prices (D7). Written where Zones and
+  // Settings > Business defaults read them, through their own server
+  // functions: the zone's initial_cleanup_cents plus first_cleanup_pricing's
+  // mode, and frequency_multipliers. See lib/setup-pricing.
+  const fcGetFn = useServerFn(getFirstCleanupPricing);
+  const fcSetFn = useServerFn(setFirstCleanupPricing);
+  const stdGetFn = useServerFn(getStandardPricing);
+  const multSetFn = useServerFn(updateFrequencyMultipliers);
+  const fcQ = useQuery({ queryKey: ["first-cleanup-pricing"], queryFn: () => fcGetFn() });
+  const stdQ = useQuery({ queryKey: ["std-pricing"], queryFn: () => stdGetFn() });
+  const fcPricing = fcQ.data?.pricing;
+  // Tiers by "when was your yard last cleaned" are a Zones decision; setup
+  // says so and leaves them alone.
+  const tiered = fcPricing?.mode === "by_last_cleaned";
+  // No answer until the owner gives one: "Off" is a choice, not a default
+  // nobody read. A business already charging a flat first cleanup starts there.
+  const [firstCleanup, setFirstCleanup] = useState<SetupFirstCleanup | null>(null);
+  const firstCleanupVal: SetupFirstCleanup | null =
+    firstCleanup ?? (fcPricing?.mode === "flat" ? "flat" : null);
+  const [firstCleanupPrice, setFirstCleanupPrice] = useState("");
+  const [multDraft, setMultDraft] = useState<Partial<Record<MultiplierFrequency, string>>>({});
+  const storedMults = stdQ.data?.frequencyMultipliers;
+  const multValue = (f: MultiplierFrequency) =>
+    multDraft[f] ?? formatMultiplier(storedMultiplier(storedMults, f));
+  const pricesLoaded = !!fcQ.data && !!stdQ.data;
+
   const b = brandingQ.data;
   const pinned = b?.latitude != null && b?.longitude != null;
 
@@ -764,6 +911,20 @@ function ServiceAreaPanel({
         const cents = (v: string) => Math.round(parseFloat(v) * 100);
         const basePriceCents = cents(price);
         const perDogAddlCents = extraDog.trim() ? cents(extraDog) : 0;
+        // The first cleanup and the schedule prices (D7) first: they are
+        // idempotent, so a failure here leaves nothing half-made, and the
+        // area (which finishes the step) is saved after them.
+        const mults = setupMultipliers(storedMults, multDraft);
+        if (!mults) throw new Error("Each schedule needs a number between 0.1 and 10.");
+        await multSetFn({ data: mults });
+        let initialCleanupCents: number | undefined;
+        if (!tiered && fcPricing && firstCleanupVal) {
+          const fc = setupFirstCleanupCents(firstCleanupVal, firstCleanupPrice);
+          if (fc == null) throw new Error("Enter what a first cleanup costs, or choose Off.");
+          initialCleanupCents = fc;
+          const next = firstCleanupPricingFromSetup(fcPricing, firstCleanupVal);
+          if (next) await fcSetFn({ data: next });
+        }
         if (!createdZone.current) {
           let center = pinned ? { lat: Number(b!.latitude), lng: Number(b!.longitude) } : null;
           if (!center) {
@@ -786,6 +947,9 @@ function ServiceAreaPanel({
               radiusMeters: Math.round(miles * 1609.344),
               basePriceCents,
               perDogAddlCents,
+              // The zone's own first-cleanup price, which Zones' "flat" mode
+              // reads (D7). Off is an explicit $0.
+              initialCleanupCents,
             },
           });
           createdZone.current = zone.id;
@@ -795,10 +959,12 @@ function ServiceAreaPanel({
         // "what do I charge per visit", not a zone at $25 and Standard at $30.
         await adoptFn({ data: { basePriceCents, perDogAddlCents } });
       },
-      // Zones, Settings > Business > Standard pricing, Settings > Services.
-      refresh: [["zones"], ["zone-coverage"], ["std-pricing"], ["services"]],
+      // Zones, Settings > Business > Standard pricing and Price by schedule,
+      // Settings > Services, and Zones' First cleanup card.
+      refresh: [["zones"], ["zone-coverage"], ["std-pricing"], ["services"], FIRST_CLEANUP_KEY],
       saved: () => {
         createdZone.current = null;
+        setMultDraft({});
         toast.success("Service area saved");
       },
       onSaved,
@@ -806,6 +972,8 @@ function ServiceAreaPanel({
   );
 
   const priceOk = parseFloat(price) > 0;
+  const priceCents = priceOk ? Math.round(parseFloat(price) * 100) : null;
+  const money = (c: number) => `$${(c / 100).toFixed(2)}`;
 
   if (done && !adding) {
     return (
@@ -817,6 +985,16 @@ function ServiceAreaPanel({
           </Link>
           .
         </p>
+        {fcPricing && (
+          <p className="text-sm text-muted-foreground" data-setup-first-cleanup-summary>
+            First cleanup: {FIRST_CLEANUP_MODE_LABEL[fcPricing.mode]}. Every 2 weeks: x
+            {formatMultiplier(storedMultiplier(storedMults, "biweekly"))} of a weekly visit, on{" "}
+            <Link to="/settings/business" className="underline">
+              Business defaults
+            </Link>
+            .
+          </p>
+        )}
         <Button type="button" variant="outline" onClick={() => setAdding(true)}>
           Add another area
         </Button>
@@ -835,6 +1013,22 @@ function ServiceAreaPanel({
         }
         if (!pinned && zip.trim().length < 5) {
           toast.error("Enter the ZIP code at the middle of the area you serve.");
+          return;
+        }
+        if (!tiered && !firstCleanupVal) {
+          toast.error("Choose whether new clients pay for a first cleanup.");
+          return;
+        }
+        if (
+          !tiered &&
+          firstCleanupVal &&
+          setupFirstCleanupCents(firstCleanupVal, firstCleanupPrice) == null
+        ) {
+          toast.error("Enter what a first cleanup costs, or choose Off.");
+          return;
+        }
+        if (!setupMultipliers(storedMults, multDraft)) {
+          toast.error("Each schedule needs a number between 0.1 and 10.");
           return;
         }
         m.mutate();
@@ -912,6 +1106,103 @@ function ServiceAreaPanel({
           />
         </div>
       </div>
+      <fieldset className={fieldClass} data-setup-first-cleanup>
+        <legend className="text-sm font-medium">First cleanup</legend>
+        <p className="text-xs text-muted-foreground">
+          What a new client pays once, for the first visit, when the yard has built up.
+        </p>
+        {tiered ? (
+          <p className="pt-1 text-sm">
+            Priced by when the yard was last cleaned, set on{" "}
+            <Link to="/zones" className="underline">
+              Zones
+            </Link>
+            .
+          </p>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-2 pt-1.5">
+              <Button
+                id="setup-first-cleanup-off"
+                type="button"
+                size="sm"
+                variant={firstCleanupVal === "off" ? "default" : "outline"}
+                aria-pressed={firstCleanupVal === "off"}
+                onClick={() => setFirstCleanup("off")}
+              >
+                Off, no first-cleanup charge
+              </Button>
+              <Button
+                id="setup-first-cleanup-flat"
+                type="button"
+                size="sm"
+                variant={firstCleanupVal === "flat" ? "default" : "outline"}
+                aria-pressed={firstCleanupVal === "flat"}
+                onClick={() => setFirstCleanup("flat")}
+              >
+                Charge a flat price
+              </Button>
+            </div>
+            {firstCleanupVal === "flat" && (
+              <div className={`${fieldClass} pt-2`}>
+                <Label htmlFor="setup-zone-first-cleanup">First cleanup price ($)</Label>
+                <Input
+                  id="setup-zone-first-cleanup"
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  value={firstCleanupPrice}
+                  onChange={(e) => setFirstCleanupPrice(e.target.value)}
+                />
+              </div>
+            )}
+          </>
+        )}
+      </fieldset>
+      <fieldset className={fieldClass} data-setup-schedule-prices>
+        <legend className="text-sm font-medium">Price by schedule</legend>
+        <p className="text-xs text-muted-foreground">
+          Each number is what one visit on that schedule costs, counted in weekly visits. Twice
+          weekly and monthly are on Business defaults.
+        </p>
+        <div className="space-y-2 pt-1.5">
+          {SETUP_MULTIPLIER_FREQUENCIES.map((f) => {
+            const raw = multValue(f);
+            const n = Number(raw);
+            const ok = raw.trim() !== "" && Number.isFinite(n) && n >= 0.1 && n <= 10;
+            return (
+              <div key={f} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                <Label htmlFor={`setup-mult-${f}`} className="min-w-0 flex-1 basis-32 text-sm">
+                  {f === "weekly" ? "Weekly" : "Every 2 weeks"}
+                </Label>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="text-sm text-muted-foreground">x</span>
+                  <Input
+                    id={`setup-mult-${f}`}
+                    type="number"
+                    inputMode="decimal"
+                    min="0.1"
+                    max="10"
+                    step="0.05"
+                    className="w-24"
+                    aria-invalid={!ok}
+                    value={raw}
+                    onChange={(e) => setMultDraft((d) => ({ ...d, [f]: e.target.value }))}
+                  />
+                  <span className="w-28 text-xs text-muted-foreground">
+                    {!ok
+                      ? "Between 0.1 and 10"
+                      : priceCents != null
+                        ? `${money(Math.round(priceCents * n))} a visit`
+                        : null}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </fieldset>
       <p className="text-xs text-muted-foreground">
         You can draw more areas with their own prices on{" "}
         <Link to="/zones" className="underline">
@@ -919,7 +1210,7 @@ function ServiceAreaPanel({
         </Link>{" "}
         later.
       </p>
-      <Button type="submit" disabled={m.isPending} data-setup-action="save">
+      <Button type="submit" disabled={m.isPending || !pricesLoaded} data-setup-action="save">
         {m.isPending ? "Saving…" : saveLabel}
       </Button>
     </form>

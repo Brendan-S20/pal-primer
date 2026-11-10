@@ -25,3 +25,15 @@ export function workdayProblem(start: string, end: string): string | null {
   if (end <= start) return "Your workday has to end after it starts.";
   return null;
 }
+
+// Step 1's Save waits for the stored hours (#797 review): see
+// src/components/SetupBusinessSave.tsx.
+
+/** The slice of the dispatch-settings query Save cares about. */
+export type DispatchRead = { isSuccess: boolean; isError: boolean };
+
+/** Whether Save is held: while saving, or while the stored hours are still
+ *  being read. */
+export function businessSaveBlocked(saving: boolean, dispatch: DispatchRead): boolean {
+  return saving || !(dispatch.isSuccess || dispatch.isError);
+}
