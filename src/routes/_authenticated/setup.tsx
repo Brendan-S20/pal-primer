@@ -95,6 +95,8 @@ import {
 import { titleHead } from "@/lib/page-title";
 import { setupProgressPct } from "@/lib/setup-progress";
 import { APP_NAME } from "@/lib/scoop";
+import { SETUP_VERIFY_EMAIL_FIRST } from "@/lib/verify-email-copy";
+import { ResendVerificationButton } from "@/components/ResendVerificationButton";
 
 // ── THE GUIDED SETUP ──────────────────────────────────────────────────────
 //
@@ -1503,10 +1505,10 @@ function PayoutsPanel() {
   return (
     <div className="space-y-3">
       {s && !s.emailVerified ? (
-        <p className="text-sm">
-          First, verify your email: open the link we sent when you signed up. The Payments page can
-          send it again.
-        </p>
+        <div className="space-y-2">
+          <p className="text-sm">{SETUP_VERIFY_EMAIL_FIRST}</p>
+          <ResendVerificationButton label="Send verification email" variant="default" />
+        </div>
       ) : s?.connected && !s.chargesEnabled ? (
         <p className="text-sm">
           Stripe has your account and is still checking it. The Payments page shows what it needs.
@@ -1517,7 +1519,11 @@ function PayoutsPanel() {
           five minutes, and it all happens inside {APP_NAME}.
         </p>
       )}
-      <Button asChild data-setup-action="payouts">
+      <Button
+        asChild
+        variant={s && !s.emailVerified ? "outline" : "default"}
+        data-setup-action="payouts"
+      >
         <Link to="/payments">Set up payouts</Link>
       </Button>
     </div>

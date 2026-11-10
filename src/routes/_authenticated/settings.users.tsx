@@ -349,6 +349,7 @@ function UsersPage() {
 function InvitePanel() {
   const roleLabel = useRoleLabel();
   const qc = useQueryClient();
+  const signedOut = useSignedOutToast();
   const createFn = useServerFn(createOrgInvite);
   const listFn = useServerFn(listOrgInvites);
   const revokeFn = useServerFn(revokeOrgInvite);
@@ -409,12 +410,17 @@ function InvitePanel() {
       void invalidateOnboardingStatus(qc);
       qc.invalidateQueries({ queryKey: ["org-invites"] });
     },
-    onError: (e) => toastServerError(e, { fallback: "Couldn't send the invite. Try again." }),
+    // The typed address survives either way: setEmail("") runs on success only.
+    onError: (e) => {
+      if (!signedOut(e)) toastServerError(e, { fallback: "Couldn't send the invite. Try again." });
+    },
   });
   const revokeMut = useMutation({
     mutationFn: (id: string) => revokeFn({ data: { id } }),
     onSuccess: () => { toast.success("Invite revoked"); qc.invalidateQueries({ queryKey: ["org-invites"] }); },
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e) => {
+      if (!signedOut(e)) toast.error((e as Error).message);
+    },
   });
   const resendMut = useMutation({
     mutationFn: (id: string) => resendFn({ data: { id } }),
@@ -422,7 +428,9 @@ function InvitePanel() {
       reportSend(invites.find((i) => i.id === id)?.email ?? "them", r, "resent");
       qc.invalidateQueries({ queryKey: ["org-invites"] });
     },
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e) => {
+      if (!signedOut(e)) toast.error((e as Error).message);
+    },
   });
 
   return (
