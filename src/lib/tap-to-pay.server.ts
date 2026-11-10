@@ -27,6 +27,8 @@ import type Stripe from "stripe";
 import { platformFeeCents } from "@/lib/platform-fee";
 import { tipMetadata } from "@/lib/tips";
 import { TAP_TO_PAY_FEE_CENTS } from "@/lib/tap-to-pay";
+import { connectedAccountFeePayer } from "@/lib/connect-fee-payer.server";
+import { radarFeeCents, radarFeeMetadata, withPassThroughFees } from "@/lib/radar-fee";
 
 // ── WHICH READER: SIMULATED, THE REAL PHONE, OR NONE ─────────────────────
 //
@@ -205,34 +207,8 @@ export { TAP_TO_PAY_FEE_CENTS };
 /** Stripe's smallest card charge in USD. Below it Stripe refuses the intent. */
 export const STRIPE_MIN_CHARGE_CENTS = 50;
 
-/** The connected account's `controller.fees.payer`, or null if it cannot be read. */
-export async function connectedAccountFeePayer(
-  stripe: Pick<StripeLike, "accounts">,
-  stripeAccount: string,
-): Promise<string | null> {
-  // Two attempts: a transient failure here would otherwise be charged as if
-  // the platform pays, which on an Express account bills the business the
-  // per-tap fee twice. A second failure is logged so it can be reconciled.
-  let lastError: unknown = null;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const acct = (await stripe.accounts.retrieve(stripeAccount)) as {
-        controller?: { fees?: { payer?: string | null } | null } | null;
-      } | null;
-      const payer = acct?.controller?.fees?.payer ?? null;
-      if (!payer) console.warn("Tap to Pay: no controller.fees.payer on", stripeAccount);
-      return payer;
-    } catch (e) {
-      lastError = e;
-    }
-  }
-  console.warn(
-    "Tap to Pay: could not read the fee payer; charged as if the platform pays",
-    stripeAccount,
-    lastError,
-  );
-  return null;
-}
+// The fee-payer read is shared with the Radar pass-through (#825).
+export { connectedAccountFeePayer };
 
 /** The idempotency key for a tap's PaymentIntent. Two phones pressing for the
  *  same invoice at the same moment get the same intent rather than one each.
@@ -382,19 +358,25 @@ export async function createCardPresentIntent(
   // The platform fee is Take payment's, from the same helper on the same
   // inputs; the per-tap fee rides on top only when the platform would be billed.
   const tapFeeCents = platformPaysStripeFees(feePayer) ? TAP_TO_PAY_FEE_CENTS : 0;
+  // Radar (#825) does not screen an in-person tap, so this is zero by
+  // construction; it is computed rather than left out so the tap path goes
+  // through the same pass-through as every other charge, and a change to what
+  // Radar screens cannot quietly skip it.
+  const tapMethodTypes = ["card_present"];
+  const radarCents = radarFeeCents(feePayer, tapMethodTypes);
   return await stripe.paymentIntents.create(
     {
       ...createParams,
-      application_fee_amount: tapToPayApplicationFeeCents(
-        createParams.application_fee_amount,
-        feePayer,
+      application_fee_amount: withPassThroughFees(
+        tapToPayApplicationFeeCents(createParams.application_fee_amount, feePayer),
+        radarCents,
       ),
       metadata: {
         ...createParams.metadata,
         tap_to_pay_fee_cents: String(tapFeeCents),
-        connect_fee_payer: feePayer ?? "unknown",
+        ...radarFeeMetadata(radarCents, feePayer),
       },
-      payment_method_types: ["card_present"],
+      payment_method_types: tapMethodTypes,
       // Captured on confirm, so payment_intent.succeeded fires and the
       // existing webhook path marks the invoice paid with no second step.
       capture_method: "automatic",

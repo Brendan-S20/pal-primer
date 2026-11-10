@@ -3,8 +3,8 @@ import i18n from "@/lib/i18n";
 import { reportLovableError } from "@/lib/lovable-error-reporting";
 import { reportBoundaryError } from "@/lib/monitoring/client";
 
-// Keep this outside the router's boundaries: their truthiness check misses
-// thrown undefined, null and false. Track failure separately from its value.
+// A backstop for errors thrown outside the router's boundaries. Track failure
+// separately from its value.
 export class RootRecovery extends Component<{ children: ReactNode }> {
   state = { failed: false };
 

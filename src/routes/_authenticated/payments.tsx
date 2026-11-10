@@ -29,6 +29,7 @@ import {
   attestCardSurcharge,
 } from "@/lib/processing-fee.functions";
 import { describeStripeRates } from "@/lib/processing-fee";
+import { radarFeeSentence } from "@/lib/radar-fee";
 import { getTipSettings, setTipsEnabled } from "@/lib/tips.functions";
 import { Switch } from "@/components/ui/switch";
 import { getPlatformFeeSentence } from "@/lib/platform-fee.functions";
@@ -260,7 +261,7 @@ function PaymentsSettings() {
               the platform fee comes back, this line grows a clause on its own
               rather than waiting for somebody to remember this screen. */}
           <p className="text-sm text-muted-foreground">
-            Stripe charges {describeStripeRates()}, billed to your own account.
+            Stripe charges {describeStripeRates()}, billed to your own account. {radarFeeSentence()}
             {platformFee ? ` HoundStack adds ${platformFee}.` : ""} Payouts settle to you directly.
           </p>
           <Button onClick={() => ensure.mutate()} disabled={ensure.isPending}>
@@ -483,6 +484,7 @@ function ProcessingFeeCard() {
           Stripe charges you {describeStripeRates()}. You can absorb that or pass it to the client
           as a separate line at checkout.
         </p>
+        <p className="mt-1 text-sm text-muted-foreground">{radarFeeSentence()}</p>
       </div>
 
       <label className="flex items-start gap-3">

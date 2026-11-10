@@ -75,6 +75,12 @@ handed back: the `charge.refunded` and dispute branches of
 `tap_to_pay_fee_cents`) proportionally, as they always have for the platform
 fee. Under `application_express` that part is zero, so nothing changes there.
 
+**Radar (#825).** Radar does not screen an in-person tap, so a tap carries no
+Radar fee; the tap intent still records `radar_fee_cents: "0"`. Every online
+card charge does pass Radar through, and under `application_express` too,
+because that is where Stripe billed Radar to the platform. See
+`docs/stripe-connect-fees.md`.
+
 **What the business sees.** The Tap to Pay card says, before the first tap,
 "Each tap costs your business $0.10 on top of the card rate, taken out of the
 payout and shown in Stripe." In the business's Stripe payments view, the tap fee appears

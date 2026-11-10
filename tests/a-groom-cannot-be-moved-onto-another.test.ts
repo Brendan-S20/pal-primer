@@ -1,12 +1,22 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // One van is one groomer. Booking refused a groom on top of another for the
 // same groomer; moving one to another day or dragging it to another groomer
 // did not. groom-clash.server.ts is now the one check, and every office path
 // that moves or reassigns a visit runs it. Against a fake database that
 // applies the filters it is given; nothing here reaches Supabase.
+
+// The whole file runs on Chicago's clock, the org's default timezone
+// (DEFAULT_ORG_TIMEZONE), so "today" means the same day to the test, to
+// orgToday() and to anything that formats a local date. Set in vi.hoisted so
+// it is in place before any module under test is imported, and put back after.
+const PREVIOUS_TZ = vi.hoisted(() => {
+  const previous = process.env.TZ;
+  process.env.TZ = "America/Chicago";
+  return previous;
+});
 
 type Row = Record<string, unknown>;
 type Filter = [string, string, unknown, unknown?];
@@ -123,14 +133,24 @@ const groom = (over: Row): Row => ({
 // DAY and NEXT are fixed calendar days, and moving a visit onto a day that
 // is already over is refused (booking-dates.ts) before the clash check runs.
 // Without a pinned clock this file passed until 2026-11-09 and then failed
-// on the past-day refusal instead of the clash it is about. Only Date is
+// on the past-day refusal instead of the clash it is about (#843). The pin
+// is file-level — these hooks sit outside every describe, so they wrap every
+// test in the file — and the instant is spelled in Chicago's own offset (CST,
+// DST ended at 02:00 that morning) so it is noon on 2026-11-01 for the org
+// whatever the machine's zone. Do not make the fixture days relative to the
+// real date: a fixed day is what makes a failure reproducible. Only Date is
 // faked, so promises and timers run as normal.
+const PINNED_NOW = new Date("2026-11-01T12:00:00-06:00");
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
-  vi.setSystemTime(new Date("2026-11-01T12:00:00Z"));
+  vi.setSystemTime(PINNED_NOW);
 });
 afterEach(() => {
   vi.useRealTimers();
+});
+afterAll(() => {
+  if (PREVIOUS_TZ === undefined) delete process.env.TZ;
+  else process.env.TZ = PREVIOUS_TZ;
 });
 
 beforeEach(() => {
