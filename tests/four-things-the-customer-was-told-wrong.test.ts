@@ -127,7 +127,7 @@ describe("the portal's dead ends are branded and say something useful", () => {
     expect(codeOnly(layout)).not.toMatch(
       /<p className="mt-2 text-sm text-muted-foreground">\{error\.message\}<\/p>/,
     );
-    expect(layout).toMatch(/detail=\{error\.message\}/);
+    expect(layout).toMatch(/detail=\{error instanceof Error \? error\.message : String\(error\)\}/);
   });
 
   it("all four dead ends use it", () => {

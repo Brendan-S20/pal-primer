@@ -7,6 +7,7 @@
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { loadEnv } from "vite";
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 import { VitePWA } from "vite-plugin-pwa";
@@ -283,6 +284,35 @@ function sentryRelease(): string {
 }
 const SENTRY_RELEASE = sentryRelease();
 
+// ── WHICH `entities` THE ALIASES BELOW POINT AT ──
+//
+// htmlparser2 and dom-serializer need entities 4.x: they import
+// `entities/lib/decode.js` and `entities/lib/encode.js`, which only 4.x has
+// (and 4.x does not list encode.js in its exports, hence the aliases).
+// happy-dom (#810) brought in entities 7, which has neither file. Which copy
+// sits at the top of node_modules depends on the installer: npm keeps 4.5.0
+// there and nests 7.0.1 under happy-dom, while bun hoists 7.0.1 and nests
+// 4.5.0 under htmlparser2 and dom-serializer. So the aliases cannot point at
+// the top-level `node_modules/entities`. Under bun (the Lovable publish path)
+// that failed with "Could not load node_modules/entities/lib/decode.js".
+// Resolve `entities` from htmlparser2's own location instead, which gives the
+// copy it actually uses under either layout. Neither package exports
+// ./package.json, so resolve the entry file and walk up to the package root.
+function packageRootOf(resolvedFile: string, name: string): string {
+  let dir = path.dirname(resolvedFile);
+  while (!(path.basename(dir) === name && existsSync(path.join(dir, "package.json")))) {
+    const parent = path.dirname(dir);
+    if (parent === dir) throw new Error(`no ${name} package above ${resolvedFile}`);
+    dir = parent;
+  }
+  return dir;
+}
+const requireFromHere = createRequire(import.meta.url);
+const ENTITIES_4_DIR = packageRootOf(
+  createRequire(requireFromHere.resolve("htmlparser2")).resolve("entities"),
+  "entities",
+);
+
 export default defineConfig({
   tanstackStart: {
     server: { entry: "server" },
@@ -549,15 +579,9 @@ export default defineConfig({
               ),
             }
           : {}),
-        "entities/lib/decode.js": path.resolve(
-          import.meta.dirname,
-          "node_modules/entities/lib/decode.js",
-        ),
-        "entities/lib/encode.js": path.resolve(
-          import.meta.dirname,
-          "node_modules/entities/lib/encode.js",
-        ),
-        entities: path.resolve(import.meta.dirname, "node_modules/entities"),
+        "entities/lib/decode.js": path.join(ENTITIES_4_DIR, "lib/decode.js"),
+        "entities/lib/encode.js": path.join(ENTITIES_4_DIR, "lib/encode.js"),
+        entities: ENTITIES_4_DIR,
       },
     },
     plugins: [

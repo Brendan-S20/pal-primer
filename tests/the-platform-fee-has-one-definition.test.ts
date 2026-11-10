@@ -171,6 +171,8 @@ const CHARGING_FILES = [
   "src/lib/invoices.functions.ts",
   "src/lib/signup.functions.ts",
   "src/routes/api/public/hooks/nightly.ts",
+  // Tap to Pay on the phone (#579): the card_present intent.
+  "src/lib/tap-to-pay.server.ts",
 ];
 
 /** `paymentIntents.create(` occurrences, and whether the fee is within reach. */
@@ -192,11 +194,11 @@ function chargeSites(src: string): Array<{ at: number; hasFee: boolean }> {
 describe("no charge escapes the fee", () => {
   const found = CHARGING_FILES.map((f) => ({ file: f, src: readFileSync(f, "utf8") }));
 
-  it("still finds all ten charge sites", () => {
+  it("still finds all eleven charge sites", () => {
     // If this number drops, either a payment path was deleted or a filename in
     // CHARGING_FILES went stale and the assertions below stopped measuring it.
     const total = found.reduce((n, f) => n + chargeSites(f.src).length, 0);
-    expect(total).toBe(10);
+    expect(total).toBe(11);
   });
 
   for (const f of found) {

@@ -379,7 +379,16 @@ describe("Reset password", () => {
   });
 
   it("an auth-server refusal stays on the form, beside the password, with both fields intact", async () => {
-    h.updateUser.mockResolvedValueOnce({ error: { code: "weak_password", message: LEAKED } });
+    // GoTrue's raw answer, as supabase-js hands it back from updateUser.
+    h.updateUser.mockResolvedValueOnce({
+      error: {
+        name: "AuthWeakPasswordError",
+        status: 422,
+        code: "weak_password",
+        message: LEAKED,
+        reasons: ["pwned"],
+      },
+    });
     mount(ResetPasswordPage);
     await settle();
     type(input("pw"), "password1");
