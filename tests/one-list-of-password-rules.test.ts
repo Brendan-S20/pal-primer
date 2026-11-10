@@ -114,6 +114,14 @@ describe("telling a refused password from any other refusal", () => {
     [new Error("Failed to fetch")],
     [{ message: "Invalid login credentials" }],
     [{ message: "Auth session missing!", status: 400 }],
+    // A validator's issue list mentions the rule but is not the auth server's
+    // answer; shown behind the prefix it would read as a raw blob (review on #810).
+    [
+      new Error(
+        '[{"code":"custom","message":"Password must be at least 8 characters.","path":["password"]}]',
+      ),
+    ],
+    [new Error("We need your password to be at least as long as before")],
     [null],
     ["weak password"],
   ])("is not: %o", (err) => {

@@ -122,16 +122,19 @@ export function isPasswordRejection(err: unknown): boolean {
   const msg = (e.message ?? "").toLowerCase();
   if (code === "weak_password" || name === "authweakpassworderror") return true;
   if (msg.startsWith(PASSWORD_REJECTED_PREFIX.toLowerCase())) return true;
+  // The auth server's own wording, which always opens with "Password" ("Password
+  // is known to be weak…", "Password should be at least 6 characters"). Anchored
+  // there, so a message that merely mentions a password somewhere (a Zod issue
+  // list from a validator, which opens with "[") is not shown as the reason.
   return (
-    /\bpassword\b/.test(msg) &&
+    msg.startsWith("password ") &&
     (msg.includes("weak") ||
       msg.includes("pwned") ||
       msg.includes("leaked") ||
       msg.includes("breach") ||
       msg.includes("should be at least") ||
       msg.includes("should contain") ||
-      msg.includes("longer than") ||
-      msg.includes("at least"))
+      msg.includes("longer than"))
   );
 }
 
