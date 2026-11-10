@@ -17,3 +17,23 @@ export function signupVerifyNotice(email: string, sent: boolean): string {
     ? `We sent a link to ${email} to verify your address. You need it before you can take payments. Payments can send another.`
     : `We could not send a link to verify ${email} yet. You need it before you can take payments, and Payments can send it.`;
 }
+
+/** Wrap the verify send so the signup notice is decided by the send's OWN
+ *  settlement, not by a flag read after finishSignup returns. finishSignup
+ *  may start the send and not wait for it (#824), so anything read right
+ *  after it would still say "not sent". A failure is passed on unchanged, so
+ *  the caller still logs it. */
+export function sendWithVerifyNotice(
+  send: () => Promise<unknown>,
+  email: string,
+  notify: (message: string) => void,
+): () => Promise<void> {
+  return () =>
+    send().then(
+      () => notify(signupVerifyNotice(email, true)),
+      (e: unknown) => {
+        notify(signupVerifyNotice(email, false));
+        throw e;
+      },
+    );
+}

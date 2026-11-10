@@ -18,7 +18,7 @@ import { lookupInviteByToken } from "@/lib/platform-onboarding.functions";
 import { acceptPendingInvite, rememberInviteToken } from "@/lib/ensure-workspace";
 import { humanizeRole } from "@/lib/humanize";
 import { toast } from "sonner";
-import { signupVerifyNotice } from "@/lib/verify-email-copy";
+import { sendWithVerifyNotice } from "@/lib/verify-email-copy";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -384,9 +384,6 @@ function NewBusinessPage() {
   const finish = async () => {
     setError(null);
     setBusy(true);
-    // Whether the verify link was queued on THIS attempt (#776): the notice
-    // after signup says only what happened.
-    let verifySent = false;
     try {
       const outcome = await finishSignup(
         { email, password, orgName, displayName, phone, smsConsent, promoCode },
@@ -397,10 +394,13 @@ function NewBusinessPage() {
           acceptPendingInvite: () => acceptPendingInvite(null),
           bootstrapOrganization: (a) => bootstrapOrganization(a as never),
           recordSmsConsent: (a) => recordSmsConsent(a),
-          sendEmailVerification: async () => {
-            await sendEmailVerification();
-            verifySent = true;
-          },
+          // The notice about the verify link (#776) is drawn when the send
+          // itself settles, which can be after finishSignup returns (#824).
+          sendEmailVerification: sendWithVerifyNotice(
+            () => sendEmailVerification(),
+            email,
+            (message) => toast(message, { duration: 15000 }),
+          ),
           readAttribution: readSignupAttribution,
           clearAttribution: clearSignupAttribution,
           timezone: deviceTimezone,
@@ -422,7 +422,6 @@ function NewBusinessPage() {
         return;
       }
       clearSignupDraft();
-      toast(signupVerifyNotice(email, verifySent), { duration: 15000 });
       navigate({ to: "/onboarding" });
     } catch (err) {
       setBusy(false);

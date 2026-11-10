@@ -90,9 +90,7 @@ describe("Verify your email (#776)", () => {
     for (const s of [signupVerifyNotice("a@b.co", true), signupVerifyNotice("a@b.co", false)]) {
       expect(s).not.toMatch(/—/);
     }
-    const page = read("src/routes/get-started.tsx");
-    expect(page).toMatch(/signupVerifyNotice\(email, verifySent\)/);
-    // "Sent" only once the existing send path returned without throwing.
-    expect(page).toMatch(/await sendEmailVerification\(\);\s*verifySent = true;/);
+    // How get-started wires it is pinned in
+    // the-verify-notice-waits-for-the-send-it-describes.test.ts.
   });
 });
