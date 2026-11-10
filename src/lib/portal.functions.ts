@@ -330,6 +330,10 @@ async function loadPortalUpcomingVisits(token: string, session: PortalSession) {
   // client, two more columns.
   const ids = list.map((r) => r.visit_id).filter(Boolean);
   if (ids.length === 0) return list;
+  // Each visit's line cutoff, late fee and any request waiting for the owner
+  // (#730). Best effort: without them the row shows the business cutoff, and
+  // the server still refuses a late change whose fee was not shown.
+  const withTerms = await loadChangeTerms(sb, token, list);
   // Best effort: a failed read leaves the planner's ETA, never an empty list.
   try {
     const [{ data: booked }, { data: org }] = await Promise.all([
@@ -341,9 +345,23 @@ async function loadPortalUpcomingVisits(token: string, session: PortalSession) {
         .not("start_time", "is", null),
       sb.from("organizations").select("timezone").eq("id", session.organizationId).maybeSingle(),
     ]);
-    return withBookedEta(list, booked ?? [], org?.timezone ?? null);
+    return withBookedEta(withTerms, booked ?? [], org?.timezone ?? null);
   } catch {
-    return list;
+    return withTerms;
+  }
+}
+
+async function loadChangeTerms<
+  R extends { visit_id: string; changes_allowed_until?: string | null },
+>(sb: any, token: string, rows: R[]) {
+  try {
+    const { data, error } = await sb.rpc("portal_visit_change_terms", { _token: token });
+    if (error) throw new Error(error.message);
+    const { withChangeTerms } = await import("@/lib/portal-change");
+    return withChangeTerms(rows, (data ?? []) as any);
+  } catch (e) {
+    console.warn("portal could not read change terms", (e as Error).message);
+    return rows;
   }
 }
 
@@ -520,31 +538,136 @@ export const portalRequestSkip = createServerFn({ method: "POST" })
         token: z.string().uuid(),
         visitId: z.string().uuid(),
         reason: z.string().max(500).optional().default(""),
+        /** The late-change fee the portal SHOWED, in cents. Compared with the
+         *  server's own figure, never charged (#730). */
+        acceptedFeeCents: z.number().int().min(0).max(100_000).nullable().optional(),
+        /** One per press of the confirm button (#730 review, finding 1): a
+         *  retry or a double tap sends the same key and gets the first answer
+         *  back rather than a second request and a second fee. */
+        idempotencyKey: z.string().uuid(),
       })
       .parse(d),
   )
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
     const session = await requirePortalSession(data.token);
-    const sb = await admin();
-    // A skip inside the cutoff takes a stop off a tech's day: that tech hears
-    // it, and their lock screen is rebuilt (see portalRescheduleVisit).
-    const { startRouteWatch } = await import("@/lib/field-notify.server");
-    const watch = await startRouteWatch({
-      actorUserId: null,
-      orgId: session.organizationId,
-      visitIds: [data.visitId],
+    return requestVisitChange(session, data.token, {
+      visitId: data.visitId,
+      kind: "cancel",
+      newDate: null,
+      reason: data.reason,
+      acceptedFeeCents: data.acceptedFeeCents ?? null,
+      idempotencyKey: data.idempotencyKey,
     });
-    const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
-    const pushRoutes = await watchRouteLiveActivities([data.visitId]);
-    const { error } = await sb.rpc("portal_request_skip", {
+  });
+
+/**
+ * A portal reschedule or cancel (#730). One RPC for both, which applies the
+ * change at once when the business's policy is instant (the behaviour before
+ * #730) and files it for the owner when it is approval. A skip or move inside
+ * the cutoff takes a stop off a tech's day: that tech hears it, and their lock
+ * screen is rebuilt. With approval the watch sees nothing change, so nobody is
+ * told about a change that has not happened. The actor is null because the
+ * customer is nobody on the staff.
+ */
+async function requestVisitChange(
+  session: PortalSession,
+  token: string,
+  req: {
+    visitId: string;
+    kind: "reschedule" | "cancel";
+    newDate: string | null;
+    reason: string;
+    acceptedFeeCents: number | null;
+    idempotencyKey: string;
+  },
+): Promise<{ ok: true; status: PortalChangeStatus; requestId: string; feeCents: number }> {
+  const sb = await admin();
+  const { startRouteWatch } = await import("@/lib/field-notify.server");
+  const watch = await startRouteWatch({
+    actorUserId: null,
+    orgId: session.organizationId,
+    visitIds: [req.visitId],
+  });
+  const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
+  const pushRoutes = await watchRouteLiveActivities([req.visitId]);
+  const { data: out, error } = await sb.rpc("portal_request_visit_change" as any, {
+    _token: token,
+    _visit_id: req.visitId,
+    _kind: req.kind,
+    _new_date: req.newDate,
+    _reason: req.reason,
+    _accepted_fee_cents: req.acceptedFeeCents,
+    _idempotency_key: req.idempotencyKey,
+  });
+  if (error) throw new Error(portalChangeError(error.message));
+  // A replayed key returns the first answer, whatever has happened since.
+  const r = out as { request_id: string; status: PortalChangeStatus; fee_cents: number };
+  await watch.finish();
+  await pushRoutes();
+  if (r.status === "applied" && Number(r.fee_cents) > 0) {
+    // Never fails the change, which is already applied; see the module.
+    const { chargePortalChangeFee } = await import("@/lib/portal-change-fees.server");
+    await chargePortalChangeFee(r.request_id).catch((e) =>
+      console.error("portal change fee attempt failed", r.request_id, (e as Error).message),
+    );
+  }
+  return {
+    ok: true,
+    status: r.status,
+    requestId: r.request_id,
+    feeCents: Number(r.fee_cents ?? 0),
+  };
+}
+
+/** The database prefixes a fee mismatch so the portal can say it plainly. */
+export function portalChangeError(message: string): string {
+  return message.startsWith("FEE_NOT_ACCEPTED:")
+    ? "The fee for this change has changed since the page loaded. Refresh to see it, then try again."
+    : message;
+}
+
+type PortalChangeStatus = "pending" | "applied" | "approved" | "denied" | "withdrawn";
+
+/** Every reschedule and skip this client asked for in the last 120 days, with
+ *  the owner's answer and note (#730 review, finding 5). */
+export const portalListMyChangeRequests = createServerFn({ method: "GET" })
+  .inputValidator((d) => tokenSchema.parse(d))
+  .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
+    await requirePortalSession(data.token, { readOnly: true });
+    const sb = await admin();
+    const { data: rows, error } = await sb.rpc("portal_list_change_requests" as any, {
       _token: data.token,
-      _visit_id: data.visitId,
-      _reason: data.reason,
     });
     if (error) throw new Error(error.message);
-    await watch.finish();
-    await pushRoutes();
+    return (rows ?? []) as Array<{
+      request_id: string;
+      visit_id: string;
+      kind: "reschedule" | "cancel";
+      status: PortalChangeStatus;
+      original_date: string;
+      requested_date: string | null;
+      fee_cents: number;
+      decision_note: string | null;
+      decided_at: string | null;
+      created_at: string;
+    }>;
+  });
+
+export const portalWithdrawVisitChange = createServerFn({ method: "POST" })
+  .inputValidator((d) =>
+    z.object({ token: z.string().uuid(), requestId: z.string().uuid() }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const { requirePortalSession } = await portalAuth();
+    await requirePortalSession(data.token);
+    const sb = await admin();
+    const { error } = await sb.rpc("portal_withdraw_change_request" as any, {
+      _token: data.token,
+      _request_id: data.requestId,
+    });
+    if (error) throw new Error(error.message);
     return { ok: true };
   });
 
@@ -581,35 +704,27 @@ export const portalRescheduleVisit = createServerFn({ method: "POST" })
         token: z.string().uuid(),
         visitId: z.string().uuid(),
         newDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        acceptedFeeCents: z.number().int().min(0).max(100_000).nullable().optional(),
+        /** One per press of the confirm button (#730 review, finding 1): a
+         *  retry or a double tap sends the same key and gets the first answer
+         *  back rather than a second request and a second fee. */
+        idempotencyKey: z.string().uuid(),
       })
       .parse(d),
   )
   .handler(async ({ data }) => {
     const { requirePortalSession } = await portalAuth();
     const session = await requirePortalSession(data.token);
-    const sb = await admin();
-    // A customer moving their visit takes it off the tech's day it was on
-    // (portal_reschedule_visit unassigns it for the office to place again).
-    // If that day is the tech's today or tomorrow, the tech hears it, the
-    // same way they hear a dispatcher's move; the actor is null because the
-    // customer is nobody on the staff. The lock screen follows both days.
-    const { startRouteWatch } = await import("@/lib/field-notify.server");
-    const watch = await startRouteWatch({
-      actorUserId: null,
-      orgId: session.organizationId,
-      visitIds: [data.visitId],
+    // A moved visit is unassigned for the office to place again, exactly as
+    // portal_reschedule_visit did; see requestVisitChange.
+    return requestVisitChange(session, data.token, {
+      visitId: data.visitId,
+      kind: "reschedule",
+      newDate: data.newDate,
+      reason: "",
+      acceptedFeeCents: data.acceptedFeeCents ?? null,
+      idempotencyKey: data.idempotencyKey,
     });
-    const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
-    const pushRoutes = await watchRouteLiveActivities([data.visitId]);
-    const { error } = await sb.rpc("portal_reschedule_visit", {
-      _token: data.token,
-      _visit_id: data.visitId,
-      _new_date: data.newDate,
-    });
-    if (error) throw new Error(error.message);
-    await watch.finish();
-    await pushRoutes();
-    return { ok: true };
   });
 
 // Finding #29: a client with 2+ properties saw one undifferentiated portal
@@ -979,11 +1094,23 @@ export const portalRemoveCard = createServerFn({ method: "POST" })
       .eq("id", session.clientId)
       .single();
     if (cRow?.default_payment_method_id) {
-      try {
-        const { stripe, stripeAccount } = await loadStripe(session.organizationId);
-        await stripe.paymentMethods.detach(cRow.default_payment_method_id, {}, { stripeAccount });
-      } catch (e) {
-        console.warn("detach pm failed", e);
+      // Removing a card is not a charge, so it does not go through
+      // requireOrgStripeAccount (which refuses while the business is locked):
+      // the card is detached on the connected account whatever the business's
+      // own plan says. With no connected account there is nowhere it could be
+      // charged, so only our copy is cleared. A detach Stripe refuses is an
+      // error, and our copy is left as it was, rather than telling the client
+      // "removed" while the card stays chargeable (review on #748).
+      const { resolveOrgStripeAccount, connectStripe } = await import(
+        "@/lib/stripe-connect.server"
+      );
+      const acct = await resolveOrgStripeAccount(session.organizationId);
+      if (acct) {
+        const { detachPaymentMethod } = await import("@/lib/stripe-detach.server");
+        await detachPaymentMethod(await connectStripe(), cRow.default_payment_method_id, {
+          stripeAccount: acct.accountId,
+          context: "portal-remove-card",
+        });
       }
     }
     await supabaseAdmin

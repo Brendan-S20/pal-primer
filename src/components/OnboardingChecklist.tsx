@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { CheckCircle2, ChevronDown, ChevronUp, Circle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { canAccess, useMyRole } from "@/hooks/useMyRole";
-import { getOnboardingStatus, dismissOnboarding } from "@/lib/onboarding.functions";
+import { dismissOnboarding } from "@/lib/onboarding.functions";
+import { invalidateOnboardingStatus, useOnboardingStatus } from "@/hooks/useOnboardingStatus";
 import {
   SETUP_PATH,
   openSetupGuide,
@@ -80,17 +81,12 @@ export function OnboardingChecklist({
 } = {}) {
   const qc = useQueryClient();
   const { role } = useMyRole();
-  const statusFn = useServerFn(getOnboardingStatus);
   const dismissFn = useServerFn(dismissOnboarding);
   const [expanded, setExpanded] = useState(false);
   const navigate = useNavigate();
   const guide = useSetupGuide();
 
-  const { data } = useQuery({
-    queryKey: ["onboarding-status"],
-    queryFn: () => statusFn(),
-    staleTime: 30_000,
-  });
+  const { data } = useOnboardingStatus();
 
   if (!data) return null;
   if (data.dismissed) return null;
@@ -121,7 +117,7 @@ export function OnboardingChecklist({
 
   const handleDismiss = async () => {
     await dismissFn();
-    qc.invalidateQueries({ queryKey: ["onboarding-status"] });
+    void invalidateOnboardingStatus(qc);
   };
 
   if (checklistPlacement(steps) !== placement) return null;

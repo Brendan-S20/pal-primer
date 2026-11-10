@@ -17,7 +17,10 @@ vi.mock("@/lib/clients.functions", () => ({
   deleteClientIfNoHistory: vi.fn(),
   listClientHolds: vi.fn(),
   previewClientPortal: vi.fn(),
+  sendClientWelcomeEmail: vi.fn(),
 }));
+vi.mock("@/lib/email-settings.functions", () => ({ getEmailSettings: vi.fn() }));
+vi.mock("@/lib/notifications.functions", () => ({ getEmailSendStatus: vi.fn() }));
 vi.mock("@/lib/subscriptions.functions", () => ({ pauseSubscription: vi.fn() }));
 vi.mock("@/lib/org.functions", () => ({ getMyOrg: vi.fn() }));
 vi.mock("@/components/ConfirmDialog", () => ({

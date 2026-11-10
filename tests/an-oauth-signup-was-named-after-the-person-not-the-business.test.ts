@@ -82,9 +82,16 @@ describe("a signup that names nobody's business", () => {
 
   it("uses the name captured at signup when there is one", async () => {
     // The email path stashes org_name in user metadata. That is a real name a
-    // person typed, so it must still be honoured without a second prompt.
+    // person typed, so it must still be honoured without a second prompt --
+    // for a signup that has not finished, which registerAccount marks in
+    // app_metadata. Without the marker the name is a removed teammate's stale
+    // metadata, and is not used (#765, a-removed-teammate-got-a-business-...).
     const r = await ensureBootstrapped(
-      { ...oauthUser, user_metadata: { ...oauthUser.user_metadata, org_name: "Bark Patrol" } },
+      {
+        ...oauthUser,
+        app_metadata: { signup_org_pending: true },
+        user_metadata: { ...oauthUser.user_metadata, org_name: "Bark Patrol" },
+      },
       { requireOrgName: true },
     );
     expect(r).toBe(true);
@@ -231,7 +238,9 @@ describe("Sign in with Apple is offered wherever the others are", () => {
   it("hands back through a scheme the app actually registers", () => {
     // A redirect the binary does not claim goes nowhere, and the failure looks
     // like a button that opens Safari and never returns.
-    const native = read("src/lib/native-oauth.ts");
+    // The constant lives in its own file so modules can name it without the
+    // Supabase client (lib/password-recovery.ts); native-oauth re-exports it.
+    const native = read("src/lib/native-oauth-redirect.ts");
     const plist = read("ios/App/App/Info.plist");
     const scheme = /NATIVE_OAUTH_REDIRECT = "([a-z0-9.\-]+):\/\//i.exec(native)?.[1];
     expect(scheme, "no scheme in NATIVE_OAUTH_REDIRECT").toBeTruthy();

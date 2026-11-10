@@ -56,6 +56,8 @@ export type SubscriptionRecord = {
   interval_days?: number | null;
   earliest_time?: string | null;
   latest_time?: string | null;
+  skip_closed_days?: boolean | null;
+  session_limit?: number | null;
 };
 
 export type SubscriptionFormValues = {
@@ -81,6 +83,11 @@ export type SubscriptionFormValues = {
   earliestTime: string;
   /** Arrival window end, "HH:MM" or "" for anytime. */
   latestTime: string;
+  /** A lesson series: skip closed and holiday dates. undefined = the
+   *  business default (organizations.training_series_skip_closed). */
+  skipClosedDays?: boolean;
+  /** A lesson series: stop after this many lessons; "" = open-ended. */
+  sessionLimit?: string;
 };
 
 // The scheduling choices the UI offers (spec): calendar-monthly and
@@ -290,6 +297,8 @@ export function subscriptionToFormValues(s: SubscriptionRecord, today: string): 
     // Postgres time comes back as HH:MM:SS; the form (and input[type=time]) use HH:MM.
     earliestTime: s.earliest_time ? s.earliest_time.slice(0, 5) : "",
     latestTime: s.latest_time ? s.latest_time.slice(0, 5) : "",
+    skipClosedDays: s.skip_closed_days ?? undefined,
+    sessionLimit: s.session_limit ? String(s.session_limit) : undefined,
   };
 }
 
@@ -396,4 +405,80 @@ export function serviceScheduleState(
 // single row under `.limit(1)`.
 export function liveServiceOrFilter(todayISO: string): string {
   return `ends_on.is.null,ends_on.gte.${todayISO}`;
+}
+
+// ── a lesson series' rules (R2-49) ─────────────────────────────────────────
+//
+// "Skip holidays and closed days" and "Stop after N lessons" are kept on the
+// plan (subscriptions.skip_closed_days, session_limit) and enforced on every
+// insert by visits_follow_series_rules (migration 20261102172500). These are
+// the form's side and the edit's clean-up.
+
+/** A visit holds one of a series' places the way a package lesson holds a
+ *  session (training-packages.ts holdsSession). Kept in step with the
+ *  trigger's count. */
+export function seriesVisitHolds(v: { status: string; skip_billable?: boolean | null }): boolean {
+  return (
+    ["scheduled", "in_progress", "completed", "missed"].includes(v.status) ||
+    (v.status === "skipped" && v.skip_billable === true)
+  );
+}
+
+/** The upcoming scheduled visits an edited series no longer allows: on a
+ *  closed or holiday date when it skips them, then any past its count,
+ *  latest first. Only scheduled visits from `today` on are ever named. */
+export function seriesVisitsToDrop(
+  visits: ReadonlyArray<{
+    id: string;
+    scheduled_on: string;
+    status: string;
+    skip_billable?: boolean | null;
+  }>,
+  rules: {
+    skipClosed: boolean;
+    sessionLimit: number | null;
+    closedDays: ReadonlySet<string>;
+    today: string;
+  },
+): string[] {
+  const upcoming = (v: { scheduled_on: string; status: string }) =>
+    v.status === "scheduled" && v.scheduled_on >= rules.today;
+  const drop = new Set(
+    rules.skipClosed
+      ? visits.filter((v) => upcoming(v) && rules.closedDays.has(v.scheduled_on)).map((v) => v.id)
+      : [],
+  );
+  if (rules.sessionLimit != null) {
+    const held = visits
+      .filter((v) => !drop.has(v.id) && seriesVisitHolds(v))
+      .sort((a, b) => a.scheduled_on.localeCompare(b.scheduled_on) || a.id.localeCompare(b.id));
+    let over = held.length - rules.sessionLimit;
+    for (let i = held.length - 1; i >= 0 && over > 0; i--) {
+      if (!upcoming(held[i])) continue;
+      drop.add(held[i].id);
+      over--;
+    }
+  }
+  return [...drop];
+}
+
+/** "" or a whole number of lessons from 1 to 520; the message when it is not. */
+export function sessionLimitProblem(value: string): string | null {
+  const text = value.trim();
+  if (!text) return null;
+  const n = Number(text);
+  if (!Number.isInteger(n) || n < 1 || n > 520) return "Between 1 and 520 lessons, or leave it empty";
+  return null;
+}
+
+/** The series-rule columns a create or update writes. Omitted fields are left
+ *  alone. */
+export function seriesRulesPatch(d: {
+  skipClosedDays?: boolean | null;
+  sessionLimit?: number | null;
+}): { skip_closed_days?: boolean | null; session_limit?: number | null } {
+  return {
+    ...(d.skipClosedDays !== undefined ? { skip_closed_days: d.skipClosedDays } : {}),
+    ...(d.sessionLimit !== undefined ? { session_limit: d.sessionLimit } : {}),
+  };
 }

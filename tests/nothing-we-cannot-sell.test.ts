@@ -18,9 +18,14 @@ import zh from "@/lib/i18n/locales/zh";
 
 const read = (file: string) => readFileSync(join(import.meta.dirname, "..", "src", file), "utf8");
 
-/** A paragraph mentioning a held feature must describe its future availability. */
+/** A paragraph mentioning a held feature must describe its future availability.
+ *  Managed texting launched (site-r2-05: on sale, "Under review" after
+ *  purchase), so it counts as held only if its launch flag is turned off. */
 function claimsHeldFeatureIsLive(text: string): boolean {
-  return /AI Receptionist|managed texting|white[ -]label/i.test(text) && !/coming soon/i.test(text);
+  const held = ADDON_LAUNCHED["managed-sms"]
+    ? /AI Receptionist|white[ -]label/i
+    : /AI Receptionist|managed texting|white[ -]label/i;
+  return held.test(text) && !/coming soon/i.test(text);
 }
 
 const falsePromises =

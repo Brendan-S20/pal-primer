@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { bootstrapOrganization } from "@/lib/org.functions";
+import { isUnfinishedSignup } from "@/lib/signup-marker";
 
 /**
  * The browser's own IANA zone, for the one moment it is worth asking.
@@ -164,6 +165,7 @@ export async function acceptPendingInvite(token = pendingInviteToken()): Promise
 export type BootstrapUser = {
   id: string;
   email?: string | null;
+  app_metadata?: Record<string, any> | null;
   user_metadata?: Record<string, any> | null;
 };
 
@@ -228,6 +230,18 @@ export async function ensureBootstrapped(
     .eq("user_id", user.id)
     .maybeSingle();
   if (existing) {
+    // A member who still carries the signup marker (joined through an
+    // invitation the database accepted) has it cleared now, so that being
+    // taken off this business later cannot read as an unfinished signup
+    // (#765). Best effort: it only matters once the membership is gone.
+    if (isUnfinishedSignup(user)) {
+      try {
+        const { settleSignupMarker } = await import("@/lib/auth-entry.functions");
+        await settleSignupMarker();
+      } catch (err) {
+        console.error("settling the signup marker failed", err);
+      }
+    }
     // Already somebody's teammate, arriving through an invitation link. The
     // database either records the invite as used (same business) or says why
     // it cannot be (a different one); either way the person finds out here
@@ -255,13 +269,25 @@ export async function ensureBootstrapped(
     (typeof md.full_name === "string" && md.full_name.trim()) ||
     (typeof md.name === "string" && md.name.trim()) ||
     emailLocal;
+  // The name typed at signup counts ONLY for a signup that has not finished
+  // (#765). `org_name` is never cleared, so an account that was on a business
+  // and was taken off it still carries that business's name; reading it here
+  // built them a second business under it, with them as owner. Whether the
+  // signup is unfinished is a marker only the server writes
+  // (lib/signup-marker.ts).
+  const freshSignup = isUnfinishedSignup(user);
   const typedOrgName =
     (overrides.orgName && overrides.orgName.trim()) ||
-    (typeof md.org_name === "string" && md.org_name.trim()) ||
+    (freshSignup && typeof md.org_name === "string" && md.org_name.trim()) ||
     null;
   // Nothing in the session names the business, and the caller can ask. Stop
   // here rather than minting an organization the owner cannot rename.
   if (!typedOrgName && overrides.requireOrgName) return NEEDS_ORG_NAME;
+  // An account that used to belong to a business is not guessed a new one by
+  // a caller that cannot ask, either: /no-workspace is where that is decided.
+  if (!typedOrgName && typeof md.org_name === "string" && md.org_name.trim()) {
+    return NEEDS_ORG_NAME;
+  }
   const orgName: string = typedOrgName || `${displayName}'s Organization`;
 
   // OAuth signups round-trip through the provider, so referral/UTM attribution
@@ -278,18 +304,30 @@ export async function ensureBootstrapped(
       serviceLine: attribution.service,
       promoCode: attribution.promo,
       timezone: browserTimezone(),
+      // The number typed on Get-started, kept in metadata when bootstrap was
+      // deferred. Until 2026-11-09 it was applied below only when the texting
+      // box was ticked, and then only to staff.phone, so Settings never had it.
+      phone: typeof md.phone === "string" && md.phone.trim() ? md.phone.trim() : undefined,
     },
   });
   clearSignupAttribution();
   // Get-started walkthrough stashes texting consent in user metadata when the
-  // email-confirmation flow defers bootstrap — apply it now (best-effort).
+  // email-confirmation flow defers bootstrap — apply it now.
   if (md.sms_consent === true && typeof md.phone === "string" && md.phone.trim()) {
     try {
       const { recordSmsConsent } = await import("@/lib/org.functions");
       const { SMS_CONSENT_TEXT } = await import("@/routes/get-started");
       await recordSmsConsent({ data: { phone: md.phone.trim(), consentText: SMS_CONSENT_TEXT } });
     } catch (err) {
+      // The workspace exists and this runs on the way in, so it cannot hold
+      // the person at a form; but it is no longer silent. They were told the
+      // consent was being kept.
       console.error("deferred sms consent record failed", err);
+      const { toast } = await import("sonner");
+      toast.warning(
+        `Your texting consent from sign-up was not saved${err instanceof Error ? `: ${err.message}` : "."} Contact us so we can record it.`,
+        { duration: 15000 },
+      );
     }
   }
   return true;

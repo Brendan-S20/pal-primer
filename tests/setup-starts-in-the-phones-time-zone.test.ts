@@ -71,9 +71,12 @@ describe("the list", () => {
 
 describe("the call sites", () => {
   it("signup sends the device's zone", () => {
-    expect(read("src/routes/get-started.tsx")).toMatch(
-      /bootstrapOrganization\(\{[\s\S]{0,600}timezone: deviceTimezone\(\)/,
+    // The sequence lives in src/lib/finish-signup.ts since 2026-11-09; the
+    // screen hands it the device's zone.
+    expect(read("src/lib/finish-signup.ts")).toMatch(
+      /bootstrapOrganization\(\{[\s\S]{0,600}timezone: deps\.timezone\(\)/,
     );
+    expect(read("src/routes/get-started.tsx")).toMatch(/timezone: deviceTimezone,/);
   });
   it("the setup step preselects from the device and the address", () => {
     const src = read("src/routes/_authenticated/setup.tsx");
@@ -88,6 +91,10 @@ describe("the call sites", () => {
     expect(src).toContain("<BusinessPanel onSaved={onSaved} alreadyDone={step.done} />");
     expect(src).toMatch(/alreadyDone\s*\?\s*\(savedTz \?\? DEFAULT_ORG_TIMEZONE\)/);
     expect(src).toContain("const writeTz = tz !== null || !alreadyDone;");
-    expect(src).toContain("if (writeTz) await saveDispatchFn({ data: { timezone: tzVal } });");
+    // #769: the same call now carries the workday, and the zone only when
+    // writeTz says so, as before.
+    expect(src).toMatch(
+      /const dispatchWrite = \{ \.\.\.\(writeTz \? \{ timezone: tzVal \} : \{\}\),/,
+    );
   });
 });

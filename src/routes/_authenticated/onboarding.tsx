@@ -143,6 +143,7 @@ function OnboardingPage() {
           <PlanPicker
             currentSlug={billing?.planSlug}
             currentInterval={currentInterval}
+            paid={!!billing?.isPaidTier}
             onSelect={pickPlan}
           />
           <div className="flex gap-2">

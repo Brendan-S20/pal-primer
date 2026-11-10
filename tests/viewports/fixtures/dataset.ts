@@ -717,6 +717,20 @@ export const ROUTING_HEALTH = {
 export function platformUsers(offset: number, limit: number) {
   const rows = [];
   for (let i = offset; i < Math.min(offset + limit, PLATFORM_USER_TOTAL); i++) {
+    // Since #765 an account with no business is a row, with a badge where the
+    // organizations go. Every eleventh row is one, so the first page draws it.
+    if (i % 11 === 3) {
+      rows.push({
+        user_id: `77777777-0000-4000-8000-${String(300000000000 + i).slice(0, 12)}`,
+        email: `removed.teammate.${i}.longmailboxname@detroit-doo-disposal-example.example.com`,
+        last_sign_in_at: null,
+        created_at: iso(new Date(Date.now() - (i + 30) * 864e5)),
+        organizations: [],
+        no_business: true,
+        platform_admin: false,
+      });
+      continue;
+    }
     rows.push({
       user_id: `77777777-0000-4000-8000-${String(300000000000 + i).slice(0, 12)}`,
       email: `dispatcher.${i}.longmailboxname@whitfield-ramirez-yard-services.example.com`,
@@ -1249,6 +1263,81 @@ export const PORTAL_BOOKING_SETTINGS = {
   priceCents: null,
   currency: "usd",
   canEdit: true,
+};
+
+/** Settings -> Client portal, reschedules and skips (#730). Every line the
+ *  product offers, so the per-line blocks are measured at their tallest; fees
+ *  typed on two of them, a cutoff override on one. */
+export const PORTAL_CHANGE_SETTINGS = {
+  policy: "approval",
+  autocharge: false,
+  defaultCutoffHours: 18,
+  serviceLines: ["pet_waste", "dog_walking", "pet_sitting", "mobile_grooming", "training"],
+  rules: [
+    {
+      service_line: "pet_waste",
+      cutoff_hours: null,
+      late_window_hours: 48,
+      late_reschedule_fee_cents: 1000,
+      late_cancel_fee_cents: 2500,
+    },
+    {
+      service_line: "mobile_grooming",
+      cutoff_hours: 24,
+      late_window_hours: 72,
+      late_reschedule_fee_cents: 0,
+      late_cancel_fee_cents: 4500,
+    },
+  ],
+  canEdit: true,
+};
+
+/** The Requests page's approval queue (#730): a late reschedule with a fee
+ *  the client accepted and a long reason, and a skip with none. The long
+ *  client name is the dataset's own. */
+export const PORTAL_CHANGE_REQUESTS = {
+  canDecide: true,
+  rows: [
+    {
+      id: "9c000000-0000-4000-8000-000000000001",
+      kind: "reschedule",
+      status: "pending",
+      policy: "approval",
+      original_date: "2026-08-21",
+      requested_date: "2026-08-25",
+      reason:
+        "Contractors are pouring the new patio on Thursday and the side gate will be blocked until the weekend.",
+      late: true,
+      fee_cents: 2500,
+      fee_disclosed_cents: 2500,
+      decision_note: null,
+      decided_at: null,
+      created_at: "2026-08-19T14:00:00Z",
+      client_id: "c1000000-0000-4000-8000-000000000001",
+      visit_id: "71000000-0000-4000-8000-0000000000c1",
+      service_line: "pet_waste",
+      clients: { display_name: "Kimberly-Anne Rutherford-Sinclair" },
+    },
+    {
+      id: "9c000000-0000-4000-8000-000000000002",
+      kind: "cancel",
+      status: "pending",
+      policy: "approval",
+      original_date: "2026-08-22",
+      requested_date: null,
+      reason: null,
+      late: false,
+      fee_cents: 0,
+      fee_disclosed_cents: null,
+      decision_note: null,
+      decided_at: null,
+      created_at: "2026-08-19T15:00:00Z",
+      client_id: "c1000000-0000-4000-8000-000000000002",
+      visit_id: "71000000-0000-4000-8000-0000000000c2",
+      service_line: "mobile_grooming",
+      clients: { display_name: "Bartholomew Featherstonehaugh-Wolstenholme" },
+    },
+  ],
 };
 
 /**

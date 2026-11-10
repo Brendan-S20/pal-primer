@@ -9,7 +9,8 @@ import { createFileRoute } from "@tanstack/react-router";
 // fifteen. Same credential as the other cron endpoints, Bearer service-role
 // read from Vault.
 //
-// An approval turns that business's texting on (activate_org_texting); a
+// An approval turns that business's texting on (activate_org_texting) once a
+// HoundStack admin has also activated it (site-r2-05); a
 // rejection emails HoundStack and tells the owner, once.
 
 export const Route = createFileRoute("/api/public/hooks/texting-status")({

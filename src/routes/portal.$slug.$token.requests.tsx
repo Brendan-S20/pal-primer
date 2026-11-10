@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { CalendarPlus, MessageCircleWarning } from "lucide-react";
 import { OneOffBookingCard } from "@/components/portal/OneOffBookingCard";
 import {
-  usePortalCtx, RequestsList, ReportGeneralConcern,
+  usePortalCtx, RequestsList, ReportGeneralConcern, PortalChangeRequestsList,
 } from "@/lib/portal-ui";
 
 export const Route = createFileRoute("/portal/$slug/$token/requests")({
@@ -11,7 +11,7 @@ export const Route = createFileRoute("/portal/$slug/$token/requests")({
 });
 
 function PortalRequests() {
-  const { requestsQ, concernMut, clientQ } = usePortalCtx();
+  const { requestsQ, concernMut, clientQ, token } = usePortalCtx();
   // The yard list only for a business that runs pet waste (#560). Unknown
   // reads as pet waste, as everywhere else.
   const petWaste = (clientQ.data as { pet_waste?: boolean } | undefined)?.pet_waste !== false;
@@ -25,6 +25,9 @@ function PortalRequests() {
         </h2>
         <RequestsList rows={requestsQ.data ?? []} />
       </section>
+
+      {/* Reschedules and skips, with the business's answer (#730). */}
+      <PortalChangeRequestsList token={token} />
 
       {/* Above "Report a concern" on purpose: asking for an extra visit is a
           request, not a complaint, and it should not read as one. */}

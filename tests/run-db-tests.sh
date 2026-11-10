@@ -5,11 +5,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-eval "$(supabase status -o env 2>/dev/null | grep -E '^(API_URL|ANON_KEY|SERVICE_ROLE_KEY)=')"
+eval "$(supabase status -o env 2>/dev/null | grep -E '^(API_URL|ANON_KEY|SERVICE_ROLE_KEY|DB_URL)=')"
 
 export TEST_SUPABASE_URL="${API_URL:?supabase stack not running — run 'supabase start'}"
 export TEST_SUPABASE_ANON_KEY="${ANON_KEY:?}"
 export TEST_SUPABASE_SERVICE_KEY="${SERVICE_ROLE_KEY:?}"
+# The Postgres URL of the same stack, for a test that needs two raw sessions
+# interleaved (tests/integration/walker-assignment-is-narrow-and-atomic.db.test.ts):
+# the API cannot hold a transaction open between two requests.
+export TEST_SUPABASE_DB_URL="${DB_URL:?supabase status did not report a DB_URL}"
 
 # bun when it is there, npx otherwise. CI installs node and npm and nothing
 # else, so hardcoding bun meant this script could only ever run on a laptop

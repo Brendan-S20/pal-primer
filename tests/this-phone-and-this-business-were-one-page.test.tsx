@@ -198,7 +198,9 @@ describe("the banners a technician cannot act on", () => {
         asRole(role)(qc);
         trial(qc);
       });
-      expect(html, role).toContain("Your free trial has ended");
+      // The owner's headline, or the non-owner's "This account's trial has
+      // ended. Ask the owner to subscribe." (the fixture can't manage billing).
+      expect(html, role).toMatch(/trial has ended/i);
     }
     const tech = render(<TrialBanner />, (qc) => {
       asRole("tech")(qc);

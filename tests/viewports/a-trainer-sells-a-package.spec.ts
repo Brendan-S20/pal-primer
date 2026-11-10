@@ -157,7 +157,12 @@ const ANSWERS: Record<string, unknown> = {
     packages: [{ ...catalogPackage, services: { name: "Private lesson (60 min)" } }],
     lessonMinutes: { [LESSON_ID]: 60 },
   },
-  getTrainingSessionRules: { lateCancelHours: 24, missedUsesSession: true },
+  getTrainingSessionRules: {
+    lateCancelHours: 24,
+    missedUsesSession: true,
+    shareProgress: true,
+    seriesSkipClosed: true,
+  },
   getTrainingSession: { n: 2, total: 6 },
   getSessionProgress: {
     skills,
@@ -166,6 +171,23 @@ const ANSWERS: Record<string, unknown> = {
     homework: "Five sits before dinner.",
     homeworkDue: "2026-10-20",
     dog: { id: DOG_ID, name: "Biscuit" },
+    // Two dogs, one with a long name: the dog picker wraps rather than
+    // widens the stop card (R2-26).
+    dogs: [
+      { id: DOG_ID, name: "Biscuit" },
+      { id: "dddddddd-0000-4000-8000-000000000002", name: "Sir Reginald Tillingham-Barkworth III" },
+    ],
+    dogGuessed: false,
+    trends: [
+      { skill: "Sit", scores: [1, 2, 3, 3, 4, 4], first: 1, latest: 4, lessons: 8 },
+      {
+        skill: "Loose-leash walking past the neighbour's reactive terrier",
+        scores: [1, 1, 2],
+        first: 1,
+        latest: 2,
+        lessons: 3,
+      },
+    ],
     // Long on purpose: an earlier lesson's note and homework wrap rather
     // than widen the stop card.
     history: [

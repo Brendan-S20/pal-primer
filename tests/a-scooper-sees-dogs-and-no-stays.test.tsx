@@ -39,6 +39,10 @@ vi.mock("@/lib/stays.functions", () => ({
   setStaySitter: vi.fn(),
 }));
 vi.mock("@/lib/stay-booking.functions", () => ({ confirmStay: vi.fn() }));
+// Booking a stay is the 'booking' permission (#411 on #616's terms): an owner.
+vi.mock("@/hooks/useMyRole", () => ({
+  usePermissions: () => ({ can: () => true, role: "owner", loading: false }),
+}));
 vi.mock("@/lib/clients.functions", () => ({ listDogsForClient: vi.fn() }));
 vi.mock("@/lib/properties.functions", () => ({
   listPropertiesForClient: vi.fn(),

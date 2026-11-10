@@ -17,6 +17,7 @@ import { reseedDemoData } from "@/lib/demo.functions";
 import { isDemoOrganization } from "@/lib/demo-org";
 import { getMyOrg } from "@/lib/org.functions";
 import { CountryCard } from "@/components/settings/CountryCard";
+import { BusinessDetailsCard, DumpSitesCard } from "@/components/settings/BusinessDetailsCards";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { getDispatchSettings, updateDispatchSettings } from "@/lib/visits.functions";
 import { DEFAULT_TIMEZONE } from "@/lib/route-window";
@@ -28,7 +29,7 @@ import {
   setRequireCompletionPhoto,
   setServiceLines,
 } from "@/lib/org-features.functions";
-import type { ServiceLine } from "@/lib/service-lines";
+import { serviceLineToolsBlurb, type ServiceLine } from "@/lib/service-lines";
 import { RECLEAN_WINDOW_DEFAULT_HOURS, RECLEAN_WINDOW_MAX_HOURS } from "@/lib/reclean";
 import { VisitChecklistEditor } from "@/components/VisitChecklistEditor";
 import type { ChecklistItem } from "@/lib/visit-checklist";
@@ -78,10 +79,14 @@ function BusinessDefaultsPage() {
       {/* The org's clock, and every "today" judgement in the product reads
           it. The server gates the write on manage_settings, so render it only
           for the people the server will listen to, like PricingBaselineCard. */}
+      {/* What Get started and Setup asked for, here where an owner looks for
+          it (#766). Read-only for a role that cannot write it. */}
+      <BusinessDetailsCard canEdit={canManageSettings} />
       {canManageSettings && <TimeZoneCard />}
       {canManageSettings && <CountryCard />}
       <ServiceLinesCard />
       <PricingBaselineCard />
+      <DumpSitesForPetWaste />
       <CommercialAccountsCard />
       <CompletionPhotoCard />
       {/* Written by manage_settings only, so drawn for those roles only, like
@@ -148,6 +153,12 @@ function TimeZoneCard() {
       </CardContent>
     </Card>
   );
+}
+
+/** A pet-waste module, so signposted only to a business that runs the line. */
+function DumpSitesForPetWaste() {
+  const { petWaste, known } = useServiceLines();
+  return known && petWaste ? <DumpSitesCard /> : null;
 }
 
 function PricingBaselineCard() {
@@ -491,9 +502,8 @@ function ServiceLinesCard() {
       <CardHeader>
         <CardTitle className="text-base">Which services do you offer?</CardTitle>
         <CardDescription>
-          HoundStack shows the tools for the services you run. Pet waste removal turns on the waste
-          log, dump sites, yard outlines, first cleanups and deep cleans. Nothing is deleted if you
-          change this; screens are only shown or hidden.
+          HoundStack shows the tools for the services you run. {serviceLineToolsBlurb(lines)}{" "}
+          Nothing is deleted if you change this; screens are only shown or hidden.
         </CardDescription>
       </CardHeader>
       <CardContent>

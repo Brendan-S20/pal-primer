@@ -33,7 +33,8 @@ import {
   cancelPlatformAddon,
 } from "@/lib/platform-addons.functions";
 import { isSetupAddon, setupIsFreeFor, SETUP_FREE_BECAUSE } from "@/lib/done-for-you-setup";
-import { addonCardState, HELD_ADDON_ON_PLAN } from "@/lib/addon-launch";
+import { addonCardState, HELD_ADDON_ON_PLAN, managedTextingCard } from "@/lib/addon-launch";
+import { ComingSoonBadge } from "@/components/ComingSoonBadge";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusChip, MetaChip, SectionLabel } from "@/components/client-detail/primitives";
@@ -365,6 +366,7 @@ function BillingPage() {
           <PlanPicker
             currentSlug={data.planSlug}
             currentInterval={currentInterval}
+            paid={!!data.isPaidTier}
             onSelect={onPickPlan}
             switchingPlanId={switchPlan.isPending ? switchPlan.variables?.planId : null}
             chooseLabel={data.isPaidTier ? "Switch to this plan" : "Choose plan"}
@@ -727,6 +729,8 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
                 ? (a.waivedReason ?? null)
                 : setupFree;
             const state = addonCardState(a);
+            // Managed texting on the plan but not sending yet (site-r2-05).
+            const texting = managedTextingCard(a);
             return (
             <div
               key={a.id}
@@ -741,6 +745,8 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
                       when it is on the plan (addonCardState, #428). */}
                     {state === "coming_soon" ? (
                       <Badge variant="outline">{copy("Coming soon")}</Badge>
+                    ) : texting ? (
+                      <ComingSoonBadge>{texting.label}</ComingSoonBadge>
                     ) : state === "for_sale" ? null : (
                     <StatusChip
                         status={state === "purchased" ? "paid" : "active"}
@@ -786,6 +792,11 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
               {description && (
                 <p className="mt-1 flex-1 text-sm text-muted-foreground">{description}</p>
               )}
+                {texting && (
+                  <p className="mt-1 text-xs font-medium text-muted-foreground" data-testid="managed-texting-state">
+                    {texting.line}
+                  </p>
+                )}
                 {state === "coming_soon" && a.subscribed && (
                   <p className="mt-1 text-xs font-medium text-muted-foreground">
                     {copy(HELD_ADDON_ON_PLAN)}

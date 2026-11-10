@@ -25,6 +25,7 @@ import { useOrgServices } from "@/components/client-detail/ServicePicker";
 import { useServiceLines } from "@/components/CommercialOnly";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { useOrgToday } from "@/hooks/useOrgToday";
+import { usePermissions } from "@/hooks/useMyRole";
 import { listStaff } from "@/lib/visits.functions";
 import {
   cancelStay,
@@ -97,11 +98,15 @@ export function StaysSection({
     enabled: sitting,
   });
   const [booking, setBooking] = useState(false);
+  // Booking a stay is the front desk's job (#616's 'booking'): a dispatcher
+  // books and confirms at the service's price. Typing a price or a deposit
+  // stays with whoever sets prices (canManagePricing).
+  const { can } = usePermissions();
   if (!sitting) return null;
 
   const stays = data?.stays ?? [];
   const commercial = client?.account_type === "commercial";
-  const canBook = canManagePricing && !commercial && properties.length > 0;
+  const canBook = can("booking") && !commercial && properties.length > 0;
 
   return (
     <section className="space-y-3" aria-labelledby="stays-heading">
@@ -137,7 +142,8 @@ export function StaysSection({
               stay={s}
               clientId={clientId}
               pets={pets}
-              canConfirm={canManagePricing}
+              canConfirm={can("booking")}
+              canSetPrices={canManagePricing}
               depositRefundDays={data?.depositRefundDays ?? DEFAULT_DEPOSIT_REFUND_DAYS}
             />
           ))}
@@ -149,6 +155,7 @@ export function StaysSection({
           client={client}
           properties={properties}
           pets={pets}
+          canSetPrices={canManagePricing}
           onClose={() => setBooking(false)}
         />
       )}
@@ -161,12 +168,14 @@ function StayRowView({
   clientId,
   pets,
   canConfirm,
+  canSetPrices,
   depositRefundDays,
 }: {
   stay: StayRow;
   clientId: string;
   pets: any[];
   canConfirm: boolean;
+  canSetPrices: boolean;
   depositRefundDays: number;
 }) {
   const qc = useQueryClient();
@@ -333,7 +342,7 @@ function StayRowView({
         )}
       </div>
       {stay.status === "requested" && canConfirm && (
-        <ConfirmStayButton stayId={stay.id} clientId={clientId} />
+        <ConfirmStayButton stayId={stay.id} clientId={clientId} canSetDeposit={canSetPrices} />
       )}
 
       {changingSitter && (
@@ -574,12 +583,16 @@ function BookStayDrawer({
   client,
   properties,
   pets,
+  canSetPrices,
   onClose,
 }: {
   clientId: string;
   client: any;
   properties: any[];
   pets: any[];
+  /** False for a dispatcher: the stay is booked at the service's price and
+   *  with no deposit, and the server refuses either (stayPriceRefusal). */
+  canSetPrices: boolean;
   onClose: () => void;
 }) {
   const qc = useQueryClient();
@@ -612,9 +625,13 @@ function BookStayDrawer({
   const [submitted, setSubmitted] = useState(false);
 
   const servicePrice = service ? stayVisitPriceCents(service, petIds.length) : null;
-  const priceText = price ?? (servicePrice != null ? centsToDollarInput(servicePrice) : "");
+  const priceText = canSetPrices
+    ? (price ?? (servicePrice != null ? centsToDollarInput(servicePrice) : ""))
+    : servicePrice != null
+      ? centsToDollarInput(servicePrice)
+      : "";
   const priceCents = priceText.trim() ? parseDollarsToCents(priceText) : null;
-  const depositCents = deposit.trim() ? parseDollarsToCents(deposit) : null;
+  const depositCents = canSetPrices && deposit.trim() ? parseDollarsToCents(deposit) : null;
 
   const datesProblem = stayDatesProblem(kind, startsOn, endsOn);
   const windowsProblem =
@@ -626,7 +643,11 @@ function BookStayDrawer({
       : datesProblem ||
         windowsProblem ||
         (petIds.length === 0 ? "Choose at least one pet." : null) ||
-        (priceCents == null || Number.isNaN(priceCents) ? "Set a price per visit." : null) ||
+        (priceCents == null || Number.isNaN(priceCents)
+          ? canSetPrices
+            ? "Set a price per visit."
+            : "This service has no price yet. Ask an owner or office manager to set one in Settings > Services."
+          : null) ||
         (depositCents != null && Number.isNaN(depositCents)
           ? "The deposit is not an amount."
           : null);
@@ -652,8 +673,10 @@ function BookStayDrawer({
           petIds,
           sitterId: sitterId || null,
           notes: notes.trim() || null,
-          depositCents,
-          priceCents,
+          // Without manage_pricing nothing price-shaped is sent: the server
+          // prices the stay from the service, the same number shown here.
+          depositCents: canSetPrices ? depositCents : null,
+          priceCents: canSetPrices ? priceCents : null,
         },
       }),
     onSuccess: (r) => {
@@ -885,18 +908,27 @@ function BookStayDrawer({
               value={priceText}
               onChange={(e) => setPrice(e.target.value)}
               placeholder="0.00"
+              readOnly={!canSetPrices}
+              aria-describedby={canSetPrices ? undefined : "stay-price-set"}
             />
+            {!canSetPrices && (
+              <p id="stay-price-set" className="mt-1 text-xs text-muted-foreground">
+                The service's price for these pets.
+              </p>
+            )}
           </div>
-          <div className="min-w-0">
-            <Label htmlFor="stay-deposit">Deposit (optional)</Label>
-            <Input
-              id="stay-deposit"
-              inputMode="decimal"
-              value={deposit}
-              onChange={(e) => setDeposit(e.target.value)}
-              placeholder="0.00"
-            />
-          </div>
+          {canSetPrices && (
+            <div className="min-w-0">
+              <Label htmlFor="stay-deposit">Deposit (optional)</Label>
+              <Input
+                id="stay-deposit"
+                inputMode="decimal"
+                value={deposit}
+                onChange={(e) => setDeposit(e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+          )}
         </div>
 
         <div>

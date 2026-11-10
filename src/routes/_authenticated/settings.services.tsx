@@ -11,14 +11,19 @@
 // line, and per night as well for pet sitting. The rules live in
 // src/lib/services.ts so this form and the server say the same sentences.
 //
+// Pet waste is the exception (#788): its plans are priced by zone and its
+// one-time cleanup by the owner's extra-visit price. The list shows both
+// amounts, and the form edits the one-time price in place through the same
+// setting the Client portal card writes, so there is still one number.
+//
 // Nothing is deleted here. A service is deactivated, because from phase 2
 // plans and visits point at it.
 
 import { ServiceSizeRulesEditor } from "@/components/settings/ServiceSizeRulesEditor";
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -27,17 +32,25 @@ import {
   setServiceActive,
   updateService,
 } from "@/lib/services.functions";
+import { PetWastePriceFields } from "@/components/settings/PetWastePriceFields";
+import { getPortalBookingSettings, setPortalBookingSettings } from "@/lib/portal-booking.functions";
+import { listZones } from "@/lib/zones.functions";
 import {
-  ONE_OFF_PRICE_SETTING,
-  ONE_OFF_PRICE_SETTING_HASH,
-  ONE_OFF_PRICE_SETTING_PATH,
+  ONE_TIME_PRICE_LOAD_ERROR,
+  formAfterSave,
+  saveServiceThenOneTimePrice,
+} from "@/lib/service-save";
+import {
   PRICE_UNIT_LABEL,
   centsToDollarInput,
   defaultServiceLine,
   durationRequired,
   formatServiceMoney,
   isBookableServiceLine,
+  lowestZoneVisitCents,
+  petWasteOneTimeSave,
   parseDollarsToCents,
+  petWastePriceLabel,
   priceUnitsFor,
   serviceDurationLabel,
   serviceLineChoices,
@@ -46,6 +59,7 @@ import {
   servicePriceLabel,
   serviceProblem,
   withArticle,
+  type OneTimeCleanupSetting,
   type PriceUnit,
   type Service,
   type ServiceDraft,
@@ -117,9 +131,22 @@ type FormState = {
   /** How the booking link starts it (#574). */
   bookingMode: PublicBookingMode;
   packageId: string;
+  /** Pet waste only (#788): the one-time cleanup price as typed, which is
+   *  organizations.one_off_price_cents. Null when it cannot be edited from
+   *  here (the setting has not loaded, or the caller may not change it). */
+  oneTimePrice: string | null;
 };
 
-function formFor(s: Service | null, line: ServiceLine): FormState {
+/** What the form knows about the one-time cleanup setting when it opens. */
+type OneTimeSetting = OneTimeCleanupSetting | null;
+
+function oneTimeInput(setting: OneTimeSetting): string | null {
+  if (!setting?.canEdit) return null;
+  return centsToDollarInput(setting.priceCents);
+}
+
+function formFor(s: Service | null, line: ServiceLine, oneTime: OneTimeSetting = null): FormState {
+  const oneTimePrice = oneTimeInput(oneTime);
   if (!s) {
     return {
       id: null,
@@ -134,6 +161,7 @@ function formFor(s: Service | null, line: ServiceLine): FormState {
       holidayPct: "0",
       bookingMode: defaultPublicBookingMode(line, "visit"),
       packageId: "",
+      oneTimePrice,
     };
   }
   return {
@@ -148,8 +176,11 @@ function formFor(s: Service | null, line: ServiceLine): FormState {
     groupWalk: s.max_dogs != null,
     holidayPct: String(s.holiday_surcharge_pct ?? 0),
     // Unset is request only, and the form says so rather than guessing.
-    bookingMode: isPublicBookingMode(s.public_booking_mode) ? s.public_booking_mode : "request_only",
+    bookingMode: isPublicBookingMode(s.public_booking_mode)
+      ? s.public_booking_mode
+      : "request_only",
     packageId: s.public_package_id ?? "",
+    oneTimePrice,
   };
 }
 
@@ -181,12 +212,27 @@ function draftOf(f: FormState): { draft: ServiceDraft } | { problem: string } {
   return problem ? { problem } : { draft };
 }
 
+/** Everything one press of Save writes (#788): the service row, and for a
+ *  pet-waste service the one-time cleanup price when it changed. Both are
+ *  checked before either is written, so a bad price leaves nothing half
+ *  saved. */
+function savePlanOf(f: FormState, oneTime: OneTimeSetting) {
+  const out = draftOf(f);
+  if ("problem" in out) return out;
+  const price = petWasteOneTimeSave(f.service_line, f.oneTimePrice, oneTime);
+  if (price && "problem" in price) return price;
+  return { draft: out.draft, oneTime: price ? price.data : null };
+}
+
 function ServicesPage() {
   const qc = useQueryClient();
   const list = useServerFn(listServices);
   const create = useServerFn(createService);
   const update = useServerFn(updateService);
   const setActive = useServerFn(setServiceActive);
+  const getPortalBooking = useServerFn(getPortalBookingSettings);
+  const setPortalBooking = useServerFn(setPortalBookingSettings);
+  const listZonesFn = useServerFn(listZones);
   const { can } = usePermissions();
   const canEdit = can("manage_pricing");
   const { lines, known } = useServiceLines();
@@ -216,6 +262,43 @@ function ServicesPage() {
   const [form, setForm] = useState<FormState | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
+  // Pet waste's two real prices (#788), read from where they live: the
+  // zones, and the one-time cleanup price the Client portal card also edits.
+  // Same query keys as those screens, so a save on either shows on both.
+  const petWasteShown =
+    services.some((s) => s.service_line === "pet_waste") || form?.service_line === "pet_waste";
+  const portalQ = useQuery({
+    queryKey: ["portal-booking-settings"],
+    queryFn: () => getPortalBooking(),
+    enabled: petWasteShown,
+    retry: false,
+  });
+  const zonesQ = useQuery({
+    queryKey: ["zones"],
+    queryFn: () => listZonesFn(),
+    enabled: petWasteShown,
+    retry: false,
+  });
+  const portal = portalQ.data;
+  const oneTime: OneTimeSetting = useMemo(
+    () =>
+      portal
+        ? { priceCents: portal.priceCents, autoAccept: portal.autoAccept, canEdit: portal.canEdit }
+        : null,
+    [portal],
+  );
+  const zoneFromCents = lowestZoneVisitCents(zonesQ.data?.zones);
+  // A form opened before the setting arrived (a business with no pet-waste
+  // service yet, choosing Pet waste removal) gets the field once it does.
+  useEffect(() => {
+    if (form && form.oneTimePrice === null && oneTime?.canEdit)
+      setForm({ ...form, oneTimePrice: oneTimeInput(oneTime) });
+  }, [form, oneTime]);
+  const priceLabelOf = (s: Service) =>
+    s.service_line === "pet_waste" && portalQ.data && zonesQ.data
+      ? petWastePriceLabel({ zoneFromCents, oneTimeCents: portalQ.data.priceCents })
+      : servicePriceLabel(s);
+
   // The setup checklist's price step is done from this page (R2-47): a walk
   // priced here left "Next: Price your walks" up until its cache ran out.
   const refresh = () => {
@@ -225,14 +308,31 @@ function ServicesPage() {
 
   const save = useMutation({
     mutationFn: async (f: FormState) => {
-      const out = draftOf(f);
-      if ("problem" in out) throw new Error(out.problem);
-      return f.id ? update({ data: { id: f.id, ...out.draft } }) : create({ data: out.draft });
+      const plan = savePlanOf(f, oneTime);
+      if ("problem" in plan) throw new Error(plan.problem);
+      return saveServiceThenOneTimePrice({
+        id: f.id,
+        draft: plan.draft,
+        oneTime: plan.oneTime,
+        create: (draft) => create({ data: draft }),
+        update: (id, draft) => update({ data: { id, ...draft } }),
+        setOneTimePrice: (data) => setPortalBooking({ data }),
+      });
     },
-    onSuccess: (_r, f) => {
+    onSuccess: (r, f) => {
+      refresh();
+      qc.invalidateQueries({ queryKey: ["portal-booking-settings"] });
+      // The service is saved even if the price is not (#812 review): stay
+      // open on the saved row, so Save retries the price and updates that
+      // row rather than adding a second service.
+      const next = formAfterSave(f, r);
+      if (!next.close) {
+        setForm(next.form);
+        setFormError(next.error);
+        return;
+      }
       toast.success(f.id ? "Service saved" : "Service added");
       setForm(null);
-      refresh();
     },
     onError: (e: Error) => setFormError(e.message),
   });
@@ -248,7 +348,7 @@ function ServicesPage() {
 
   const open = (s: Service | null) => {
     setFormError(null);
-    setForm(formFor(s, defaultServiceLine(lines)));
+    setForm(formFor(s, defaultServiceLine(lines), oneTime));
   };
 
   return (
@@ -304,7 +404,7 @@ function ServicesPage() {
                       )}
                     </div>
                     <div className="mt-0.5 text-xs text-muted-foreground">
-                      {servicePriceLabel(s)}
+                      {priceLabelOf(s)}
                       {duration ? ` · usually ${duration}` : ""}
                       {s.public_booking_mode !== undefined &&
                         ` · Booking link: ${
@@ -352,7 +452,13 @@ function ServicesPage() {
       </section>
 
       {lines.includes("mobile_grooming") && <VaccineSettings />}
-      {lines.includes("pet_sitting") && <HolidayDatesCard canEdit={canEdit} />}
+      {(lines.includes("pet_sitting") || lines.includes("training")) && (
+        <HolidayDatesCard
+          canEdit={canEdit}
+          sitting={lines.includes("pet_sitting")}
+          training={lines.includes("training")}
+        />
+      )}
       {lines.includes("pet_sitting") && <StayDepositCard canEdit={canEdit} />}
 
       <Dialog open={sizeService !== null} onOpenChange={(open) => !open && setSizeService(null)}>
@@ -386,6 +492,9 @@ function ServicesPage() {
                 setForm(f);
               }}
               lines={lines}
+              oneTime={oneTime}
+              zoneFromCents={zoneFromCents}
+              oneTimeLoadError={portalQ.isError ? ONE_TIME_PRICE_LOAD_ERROR : null}
               error={formError}
               saving={save.isPending}
               onSubmit={() => save.mutate(form)}
@@ -401,6 +510,9 @@ function ServiceForm({
   form,
   setForm,
   lines,
+  oneTime,
+  zoneFromCents,
+  oneTimeLoadError,
   error,
   saving,
   onSubmit,
@@ -408,6 +520,9 @@ function ServiceForm({
   form: FormState;
   setForm: (f: FormState) => void;
   lines: readonly ServiceLine[];
+  oneTime: OneTimeSetting;
+  zoneFromCents: number | null;
+  oneTimeLoadError: string | null;
   error: string | null;
   saving: boolean;
   onSubmit: () => void;
@@ -500,7 +615,9 @@ function ServiceForm({
                   setForm({
                     ...form,
                     price_unit: u,
-                    ...(form.id ? {} : { bookingMode: defaultPublicBookingMode(form.service_line, u) }),
+                    ...(form.id
+                      ? {}
+                      : { bookingMode: defaultPublicBookingMode(form.service_line, u) }),
                   })
                 }
                 className={`inline-flex min-h-9 items-center rounded-md border px-3 text-sm touch:min-h-11 ${
@@ -518,28 +635,18 @@ function ServiceForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         {petWaste ? (
-          // Nothing reads a pet-waste service's own price (#641): a plan is
-          // priced by its zone, and a one-off by the Client portal's extra
-          // visit price (booking-price.server.ts, isZonePriced). So the form
-          // does not ask for one. Whatever an older form saved is left as it
-          // was and sent back unchanged.
-          <div className="space-y-1.5 sm:col-span-2" id="service-price-note">
-            <p className="text-sm font-medium">Price per {per}</p>
-            <p className="text-sm text-muted-foreground">
-              Pet waste is not priced here. A plan is priced by its zone in{" "}
-              <Link to="/zones" className="font-medium text-primary underline">
-                Zones &amp; pricing
-              </Link>
-              . A one-off visit uses {ONE_OFF_PRICE_SETTING}.
-            </p>
-            <Link
-              to={ONE_OFF_PRICE_SETTING_PATH}
-              hash={ONE_OFF_PRICE_SETTING_HASH}
-              className="inline-flex min-h-9 items-center text-sm font-medium text-primary underline touch:min-h-11"
-            >
-              Set the extra-visit price
-            </Link>
-          </div>
+          // A pet-waste service's own price is not read (#641): a plan is
+          // priced by its zone, a one-time cleanup by the owner's extra-visit
+          // price. Both amounts are shown, and the one-time one is edited
+          // here (#788). Whatever base price an older form saved is left as
+          // it was and sent back unchanged.
+          <PetWastePriceFields
+            oneTimePrice={form.oneTimePrice}
+            savedOneTimeCents={oneTime?.priceCents ?? null}
+            loadError={oneTimeLoadError}
+            zoneFromCents={zoneFromCents}
+            onOneTimePriceChange={(v) => setForm({ ...form, oneTimePrice: v })}
+          />
         ) : (
           <>
             <div className="space-y-1.5">
@@ -655,13 +762,7 @@ function ServiceForm({
  *  plan, a package, or request only. Shown for every line. A package is
  *  offered once the service has one to sell (they are made under Training
  *  packages), and for a service that is already set to one. */
-function BookingModeField({
-  form,
-  setForm,
-}: {
-  form: FormState;
-  setForm: (f: FormState) => void;
-}) {
+function BookingModeField({ form, setForm }: { form: FormState; setForm: (f: FormState) => void }) {
   const list = useServerFn(listServicePackages);
   const packagesQ = useQuery({
     queryKey: ["service-packages"],
@@ -719,10 +820,7 @@ function BookingModeField({
       {form.bookingMode === "package" && (
         <div className="space-y-1.5 pt-1">
           <Label htmlFor="service-public-package">Package sold online</Label>
-          <Select
-            value={form.packageId}
-            onValueChange={(v) => setForm({ ...form, packageId: v })}
-          >
+          <Select value={form.packageId} onValueChange={(v) => setForm({ ...form, packageId: v })}>
             <SelectTrigger id="service-public-package" className="min-w-0">
               <SelectValue placeholder="Pick a package" />
             </SelectTrigger>

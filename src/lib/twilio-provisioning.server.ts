@@ -55,6 +55,7 @@
 //   CREDENTIAL_ENCRYPTION_KEY               required to activate
 
 import { appUrl } from "@/lib/app-origin";
+import { shouldActivate } from "@/lib/managed-texting";
 import {
   BUSINESS_TYPES,
   STALE_SUBMIT_MS,
@@ -674,8 +675,10 @@ function evaluationProblems(evaluation: any): string {
 
 /**
  * Ask Twilio where one business's verification stands and record it. On
- * approval, turn texting on (activateTexting). On a new rejection, alert
- * HoundStack and the business's owners once.
+ * approval, turn texting on (activateTexting) only if a HoundStack admin has
+ * also activated it (site-r2-05: `shouldActivate`); until then the business
+ * reads "Under review". On a new rejection, alert HoundStack and the
+ * business's owners once.
  */
 export async function refreshTextingStatus(orgId: string): Promise<RegistrationStatus | null> {
   const reg = await loadRow(orgId);
@@ -685,8 +688,9 @@ export async function refreshTextingStatus(orgId: string): Promise<RegistrationS
   if (reg.status === "approved") {
     // Approved and already sending: nothing to ask Twilio and nothing to
     // write. Only an approval whose activation has not landed (a missing
-    // key, a failed write) is finished here.
-    if (!(await hasCredentials(orgId))) await activateTexting(orgId, reg);
+    // key, a failed write) is finished here, and only once an admin has
+    // activated it: an approval alone waits for the admin.
+    if (shouldActivate(reg) && !(await hasCredentials(orgId))) await activateTexting(orgId, reg);
     return "approved";
   }
   if (!["submitted", "in_review", "rejected"].includes(reg.status)) return reg.status;
@@ -723,8 +727,43 @@ export async function refreshTextingStatus(orgId: string): Promise<RegistrationS
     });
     await save(orgId, { rejection_alerted_at: now });
   }
-  if (status === "approved") await activateTexting(orgId, { ...reg, ...patch });
+  if (shouldActivate({ ...reg, ...patch })) await activateTexting(orgId, { ...reg, ...patch });
   return status;
+}
+
+/**
+ * site-r2-05: the admin/ops action that takes a business out of "Under
+ * review". Records the admin's activation (once; a second press changes
+ * nothing), then switches texting on if Twilio has approved the
+ * verification, asking Twilio first if it has not said so yet. If the carrier
+ * is still reviewing, the activation stands and the poll switches texting on
+ * the moment it approves.
+ *
+ * Refuses a business that does not hold the add-on, and a registration that
+ * is not under review (a draft, a rejection, a stopped setup).
+ */
+export async function opsActivateTexting(
+  orgId: string,
+  adminUserId: string,
+): Promise<{ status: RegistrationStatus; live: boolean }> {
+  const reg = await loadRow(orgId);
+  if (!reg || !["submitted", "in_review", "approved"].includes(reg.status)) {
+    throw new Error("This business has no texting registration under review.");
+  }
+  const { orgHoldsManagedTexting } = await import("@/lib/managed-texting.server");
+  if (!(await orgHoldsManagedTexting(orgId))) {
+    throw new Error("This business does not have the Managed texting add-on on its plan.");
+  }
+  const now = new Date().toISOString();
+  // From NULL once, conditionally, so two admins pressing at once record one.
+  await (await admin())
+    .from("org_texting_registrations")
+    .update({ ops_approved_at: now, ops_approved_by: adminUserId })
+    .eq("organization_id", orgId)
+    .is("ops_approved_at", null)
+    .select("organization_id");
+  const status = await refreshTextingStatus(orgId);
+  return { status: status ?? reg.status, live: await hasCredentials(orgId) };
 }
 
 /**
@@ -795,17 +834,20 @@ async function hasCredentials(orgId: string): Promise<boolean> {
 
 /**
  * Every open registration, for the ten-minute poll. Counts only. The same
- * set public.texting_status_due() answers for: with Twilio, or approved with
- * no credential row yet. A business that is already live is not touched, so
+ * set public.texting_status_due() answers for: with Twilio, or approved AND
+ * activated by an admin with no credential row yet. A business that is already live is not touched, so
  * one filing in review does not re-activate (or re-notify) every live one.
  */
 export async function refreshAllTextingStatuses(): Promise<Record<string, number>> {
   const db = await admin();
-  const { data } = await db
+  const { data: open } = await db
     .from("org_texting_registrations")
-    .select("organization_id, status")
+    .select("organization_id, status, ops_approved_at")
     .in("status", ["submitted", "in_review", "approved"]);
-  const approved = (data ?? [])
+  // An approval no admin has activated has nothing to ask Twilio and nothing
+  // to switch on: it waits on /platform/addons, not on the poll.
+  const data = (open ?? []).filter((r: any) => r.status !== "approved" || shouldActivate(r));
+  const approved = data
     .filter((r: any) => r.status === "approved")
     .map((r: any) => r.organization_id);
   const { data: live } = approved.length
@@ -816,7 +858,7 @@ export async function refreshAllTextingStatuses(): Promise<Record<string, number
     : { data: [] as any[] };
   const sending = new Set((live ?? []).map((r: any) => r.organization_id));
   const counts: Record<string, number> = { checked: 0, errors: 0 };
-  for (const r of (data ?? []).filter((r: any) => !sending.has(r.organization_id))) {
+  for (const r of data.filter((r: any) => !sending.has(r.organization_id))) {
     try {
       const s = await refreshTextingStatus(r.organization_id);
       counts.checked++;

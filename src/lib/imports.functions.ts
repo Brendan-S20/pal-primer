@@ -20,7 +20,6 @@ import {
   clientDuplicateIndex,
   commitRefusal,
   dogKey,
-  findExistingClient,
   importContentHash,
   importDisplayStatus,
   IMPORT_NOT_FOUND,
@@ -602,6 +601,12 @@ export function normalizePostal(v: string | null): { value: string | null; error
   };
 }
 
+/** The last ten digits of a phone, or null when it has fewer. */
+function lastTenDigits(v: string | null | undefined): string | null {
+  const d = (v ?? "").replace(/\D/g, "");
+  return d.length >= 10 ? d.slice(-10) : null;
+}
+
 function normalizePhone(v: string | null): string | null {
   if (!v) return null;
   // Multi-value cells (Jobber "Main Phone #s": "+13136525507;7343416191")
@@ -1154,7 +1159,19 @@ export const previewImport = createServerFn({ method: "POST" })
 
     // A dog's client: the old system's id, then the client's email, phone,
     // and exact name (#656). Dogs used to need the id, so an export without
-    // one could not bring its dogs at all.
+    // one could not bring its dogs at all. An email or phone two clients
+    // share resolves to nobody, as a shared name does: the dog is refused
+    // with a reason rather than given to whichever client was read last.
+    const clientByEmail = new Map<string, string | null>();
+    const clientByPhone = new Map<string, string | null>();
+    if (entity === "dogs") {
+      for (const c of existingClients) {
+        const email = (c.primary_email ?? "").trim().toLowerCase();
+        if (email) clientByEmail.set(email, clientByEmail.has(email) ? null : c.id);
+        const phone = lastTenDigits(c.primary_phone);
+        if (phone) clientByPhone.set(phone, clientByPhone.has(phone) ? null : c.id);
+      }
+    }
     const resolveDogClient = (m: {
       client_external_id: string | null;
       client_email: string | null;
@@ -1164,11 +1181,23 @@ export const previewImport = createServerFn({ method: "POST" })
       if (m.client_external_id && clientByExternal.has(m.client_external_id)) {
         return { id: clientByExternal.get(m.client_external_id)!, error: null };
       }
-      const byContact = findExistingClient(
-        { primary_email: m.client_email, primary_phone: m.client_phone },
-        existing.clients,
-      );
-      if (byContact) return { id: byContact.id, error: null };
+      const email = (m.client_email ?? "").trim().toLowerCase();
+      if (email && clientByEmail.has(email)) {
+        const id = clientByEmail.get(email);
+        return id
+          ? { id, error: null }
+          : { id: null, error: `More than one client has the email ${email}; add an ID column` };
+      }
+      const phone = lastTenDigits(m.client_phone);
+      if (phone && clientByPhone.has(phone)) {
+        const id = clientByPhone.get(phone);
+        return id
+          ? { id, error: null }
+          : {
+              id: null,
+              error: `More than one client has the phone ${m.client_phone}; add an ID column`,
+            };
+      }
       if (m.client_name) {
         return resolveClient({ client_external_id: null, client_name: m.client_name });
       }
@@ -1785,6 +1814,43 @@ export const commitImport = createServerFn({ method: "POST" })
         await inParallel(jobs);
       };
 
+      /**
+       * The rows the preview skipped as a repeat of a row above them in this
+       * file (#656). They are not committed, but they depend on that row: each
+       * is pointed at the client it made, or failed when that row failed, as
+       * the commit did for such a row before the preview could see it.
+       */
+      const settleInFileTwins = async () => {
+        const twins = (
+          await selectAll<{ id: string; mapped: unknown; action: string; target_id: string | null }>(
+            (from, to) =>
+              supabase
+                .from("import_rows")
+                .select("id, mapped, action, target_id")
+                .eq("batch_id", data.batchId)
+                .eq("action", "skip")
+                .is("target_id", null)
+                .order("row_num")
+                .range(from, to),
+          )
+        ).filter((r) => r.action === "skip" && r.target_id == null && r.mapped);
+        await inParallel(
+          twins.map((t) => async () => {
+            const first = alreadyInDatabase("clients", t.mapped as any, null, existing);
+            if (first && !failedClientIds.has(first)) {
+              await supabase.from("import_rows").update({ target_id: first }).eq("id", t.id);
+              return;
+            }
+            skipped -= 1;
+            await failRow(
+              t.id,
+              "skip",
+              "The same client appears earlier in this file, and that row could not be imported.",
+            );
+          }),
+        );
+      };
+
       for (const row of rows ?? []) {
         const m = row.mapped as any;
         try {
@@ -2026,6 +2092,7 @@ export const commitImport = createServerFn({ method: "POST" })
       await flushNewClients();
       await flushNewProperties();
       await writeRowResults();
+      if (entity === "clients") await settleInFileTwins();
 
       // New plans need their visits now, not at tonight's run. One pass for the
       // whole batch, as onboardClient does for one client.
