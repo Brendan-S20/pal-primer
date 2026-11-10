@@ -45,5 +45,14 @@ export interface AddressProvider {
       sessionToken?: string;
     },
   ): Promise<AddressSuggestion[]>;
-  details(placeId: string, opts?: { sessionToken?: string }): Promise<AddressDetails | null>;
+  details(
+    placeId: string,
+    opts?: {
+      sessionToken?: string;
+      /** The suggestion row the person picked. A fallback source for the
+       *  street line when the place's own components carry no house number
+       *  (#805); never a source for any other part. */
+      suggestion?: { mainText?: string | null; secondaryText?: string | null } | null;
+    },
+  ): Promise<AddressDetails | null>;
 }

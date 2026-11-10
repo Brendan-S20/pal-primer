@@ -12,6 +12,7 @@ import type {
   AddressDetails,
 } from "@/lib/address/provider.server";
 import { isCompletePick } from "@/lib/address/pick";
+import { addressFromPlace, type PlaceComponent } from "@/lib/address/from-place";
 
 const AUTOCOMPLETE_URL = "https://places.googleapis.com/v1/places:autocomplete";
 const DETAILS_URL = "https://places.googleapis.com/v1/places";
@@ -85,18 +86,6 @@ function apiKey(): string | undefined {
   return process.env.GOOGLE_PLACES_API_KEY || undefined;
 }
 
-interface GoogleComponent {
-  longText?: string;
-  shortText?: string;
-  types?: string[];
-}
-
-function component(components: GoogleComponent[], type: string, short = false): string | null {
-  const c = components.find((x) => x.types?.includes(type));
-  if (!c) return null;
-  return (short ? (c.shortText ?? c.longText) : (c.longText ?? c.shortText)) ?? null;
-}
-
 export const googlePlacesProvider: AddressProvider = {
   name: "google-places",
 
@@ -159,29 +148,21 @@ export const googlePlacesProvider: AddressProvider = {
       return null;
     }
     const json = (await res.json()) as {
-      addressComponents?: GoogleComponent[];
+      addressComponents?: PlaceComponent[];
       location?: { latitude?: number; longitude?: number };
       formattedAddress?: string;
     };
-    const comps = json.addressComponents ?? [];
-    const streetNumber = component(comps, "street_number");
-    const route = component(comps, "route");
-    const street = [streetNumber, route].filter(Boolean).join(" ");
-    const city =
-      component(comps, "locality") ??
-      component(comps, "sublocality") ??
-      component(comps, "administrative_area_level_3") ??
-      "";
-    const details: AddressDetails = {
-      street,
-      unit: component(comps, "subpremise"),
-      city,
-      region: component(comps, "administrative_area_level_1", true),
-      postalCode: component(comps, "postal_code") ?? "",
-      latitude: json.location?.latitude ?? null,
-      longitude: json.location?.longitude ?? null,
-      formatted: json.formattedAddress ?? "",
-    };
+    // Components first, then the place's formatted address, then (for the
+    // street line only) the row the person picked — all three describe this
+    // one place (lib/address/from-place.ts, #805). A place with no
+    // street_number or no postal_code component used to be refused outright
+    // below, which left City, State and ZIP blank on the form.
+    const details: AddressDetails = addressFromPlace({
+      addressComponents: json.addressComponents,
+      formattedAddress: json.formattedAddress,
+      location: json.location,
+      suggestion: opts?.suggestion,
+    });
     // All or nothing (#783): a match that cannot supply every part of the
     // address is not a match. Returning it would leave the form to take the
     // missing part from what was typed — a suggestion's street over a typed
