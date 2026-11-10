@@ -49,6 +49,12 @@ export type SignupDeps = {
   timezone: () => string | undefined;
   consentText: string;
   onPromoLost: (code: string) => void;
+  /** Told how the verification email went, once it has gone (#786). The send
+   *  is not awaited, so `finishSignup` returns before this is called: a caller
+   *  that wants to say "we sent a link" or "we could not" says it from here,
+   *  not from a flag read after `await finishSignup(...)`, which would always
+   *  still be unset. Never called for "joined-team", where nothing is sent. */
+  onVerificationSettled?: (sent: boolean) => void;
 };
 
 export type SignupOutcome = "joined-team" | "workspace";
@@ -124,9 +130,17 @@ export async function finishSignup(
   // answer, after the business already existed: part of the 4.3 s measured
   // on live. The send is started here and left to finish on its own; a
   // failure is still logged, and nothing about it can stop the signup.
+  // The result is handed to onVerificationSettled when it arrives.
   void Promise.resolve()
     .then(() => deps.sendEmailVerification())
-    .catch((e) => console.error("verification email send failed", e));
+    .then(
+      () => deps.onVerificationSettled?.(true),
+      (e) => {
+        console.error("verification email send failed", e);
+        deps.onVerificationSettled?.(false);
+      },
+    )
+    .catch((e) => console.error("reporting the verification email failed", e));
   return "workspace";
 }
 

@@ -188,6 +188,51 @@ describe("Create my workspace does not wait for the verification email", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(logged).toHaveBeenCalledWith("verification email send failed", expect.any(Error));
   });
+
+  // Review on #824: a caller that set a flag inside its send wrapper and read
+  // it right after `await finishSignup(...)` (#831's verify notice) would read
+  // it before the send had settled and tell every owner the email failed. The
+  // outcome is reported through onVerificationSettled instead, when it is known.
+  it("reports a send that went out, after finishSignup has already returned", async () => {
+    let release!: () => void;
+    const settled: boolean[] = [];
+    const d = {
+      ...deps(() => new Promise<void>((r) => (release = r))),
+      onVerificationSettled: (sent: boolean) => settled.push(sent),
+    };
+    await expect(finishSignup(form, newSignupProgress(), d)).resolves.toBe("workspace");
+    expect(settled).toEqual([]);
+    release();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(settled).toEqual([true]);
+  });
+
+  it("reports a send that failed as not sent", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const settled: boolean[] = [];
+    const d = {
+      ...deps(async () => {
+        throw new Error("mail provider down");
+      }),
+      onVerificationSettled: (sent: boolean) => settled.push(sent),
+    };
+    await finishSignup(form, newSignupProgress(), d);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(settled).toEqual([false]);
+  });
+
+  it("says nothing about a verification email when the person joined a team", async () => {
+    const settled: boolean[] = [];
+    const d = {
+      ...deps(async () => {}),
+      acceptPendingInvite: vi.fn(async () => "org-1"),
+      onVerificationSettled: (sent: boolean) => settled.push(sent),
+    };
+    await expect(finishSignup(form, newSignupProgress(), d)).resolves.toBe("joined-team");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(settled).toEqual([]);
+    expect(d.sendEmailVerification).not.toHaveBeenCalled();
+  });
 });
 
 // ── 2. sign-in landing ──────────────────────────────────────────────────────
