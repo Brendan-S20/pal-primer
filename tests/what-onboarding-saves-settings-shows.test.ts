@@ -490,11 +490,36 @@ describe("One phone from sign-up to setup, Profile and the portal (#787)", () =>
     expect(h.db.staff.find((s) => s.user_id === OFFICE_MANAGER)!.phone).toBeNull();
   });
 
-  it("a failed Profile fill after a saved office phone says which half failed", async () => {
+  it("a failed Profile copy is a warning; the office phone still saved", async () => {
     await signUp({ phone: undefined });
     h.failingWrites.set("staff", "permission denied for table staff");
-    await expect(call(updateOrgBranding, { contactPhone: QA_PHONE })).rejects.toThrow(
-      /office phone was saved.*Profile/i,
+    const res = await call(updateOrgBranding, { contactPhone: QA_PHONE });
+    expect(res.ok).toBe(true);
+    expect(res.profilePhoneWarning).toMatch(/office phone was saved.*Profile/i);
+    expect((await call(getOrgBranding)).contact_phone).toBe(QA_PHONE);
+  });
+
+  it("a Profile phone the owner cleared is not refilled by a later office phone change", async () => {
+    await signUp({ phone: QA_PHONE });
+    h.db.staff[0].phone = null; // cleared on Profile, on purpose
+    const res = await call(updateOrgBranding, { contactPhone: "313-555-0142" });
+    expect(res.profilePhoneWarning).toBeNull();
+    expect((await call(getOrgBranding)).contact_phone).toBe("313-555-0142");
+    expect((await call(getMyProfile)).staff.phone).toBeNull();
+  });
+
+  it("a fragment such as `555-` is refused by the office phone save, not stored over the number", async () => {
+    await signUp({ phone: QA_PHONE });
+    await expect(call(updateOrgBranding, { contactPhone: "555-" })).rejects.toThrow(
+      /whole phone number/,
     );
+    expect((await call(getOrgBranding)).contact_phone).toBe(QA_PHONE);
+  });
+
+  it("an emptied office phone clears it and touches nothing else", async () => {
+    await signUp({ phone: QA_PHONE });
+    await call(updateOrgBranding, { contactPhone: "" });
+    expect((await call(getOrgBranding)).contact_phone).toBeNull();
+    expect((await call(getMyProfile)).staff.phone).toBe(QA_PHONE);
   });
 });

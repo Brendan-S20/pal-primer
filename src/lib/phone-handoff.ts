@@ -18,8 +18,9 @@
 //   - a value with fewer than MIN_PHONE_DIGITS digits is not handed anywhere.
 //     `555-` is what an interrupted keystroke leaves, not a phone, and storing
 //     it would prefill setup with exactly the truncated value the report saw.
-//   - a column holding "" or only spaces is blank, the same as NULL. A fill
-//     that only looks for NULL leaves an emptied field empty forever.
+//   - a column holding "" is blank, the same as NULL. A fill that only looks
+//     for NULL leaves an emptied field empty forever. (Every writer trims, so
+//     a spaces-only value is not one any screen stores.)
 //   - a handoff only FILLS. A number somebody has typed in a place is theirs,
 //     and copying a different one over it is the "data was lost" this fixes
 //     from the other side.
@@ -32,10 +33,8 @@ export function phoneDigits(value: string | null | undefined): string {
   return (value ?? "").replace(/\D/g, "");
 }
 
-/** True when a stored phone column counts as empty: NULL, "", or only spaces. */
-export function isBlankPhone(value: string | null | undefined): boolean {
-  return !value || value.trim() === "";
-}
+/** What a screen says when it is given a fragment instead of a number. */
+export const PHONE_FRAGMENT_MESSAGE = `Enter the whole phone number (at least ${MIN_PHONE_DIGITS} digits), or leave it blank.`;
 
 /**
  * The number to hand on, trimmed and as typed, or null when there is not a
@@ -45,15 +44,6 @@ export function handoffPhone(value: string | null | undefined): string | null {
   const trimmed = (value ?? "").trim();
   if (phoneDigits(trimmed).length < MIN_PHONE_DIGITS) return null;
   return trimmed;
-}
-
-/**
- * Two phone numbers are the same number when their digits agree, however
- * they were punctuated: `555-010-0199` and `(555) 010 0199` are one phone.
- */
-export function samePhone(a: string | null | undefined, b: string | null | undefined): boolean {
-  const da = phoneDigits(a);
-  return da.length > 0 && da === phoneDigits(b);
 }
 
 /**

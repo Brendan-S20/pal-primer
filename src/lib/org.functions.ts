@@ -417,7 +417,26 @@ export const updateOrgBranding = createServerFn({ method: "POST" })
     if (data.name !== undefined) patch.name = assertValidOrgName(data.name);
     if (data.brandColor !== undefined) patch.brand_color = data.brandColor;
     if (data.logoUrl !== undefined) patch.logo_url = data.logoUrl;
-    if (data.contactPhone !== undefined) patch.contact_phone = data.contactPhone;
+    // Through handoffPhone, as the sign-up number is (#787): a fragment such as
+    // `555-` is refused here rather than stored from any screen, and in
+    // particular cannot replace a whole number kept from sign-up.
+    let officePhone: string | null = null;
+    let officePhoneWasBlank = false;
+    if (data.contactPhone !== undefined) {
+      const { handoffPhone, PHONE_FRAGMENT_MESSAGE } = await import("@/lib/phone-handoff");
+      const typed = (data.contactPhone ?? "").trim();
+      officePhone = typed ? handoffPhone(typed) : null;
+      if (typed && !officePhone) throw new Error(PHONE_FRAGMENT_MESSAGE);
+      patch.contact_phone = officePhone;
+      if (officePhone) {
+        const { data: before } = await supabase
+          .from("organizations")
+          .select("contact_phone")
+          .eq("id", orgId)
+          .maybeSingle();
+        officePhoneWasBlank = !(before?.contact_phone ?? "").trim();
+      }
+    }
     if (data.contactEmail !== undefined) patch.contact_email = data.contactEmail;
     if (data.contactAddress !== undefined) {
       patch.contact_address = data.contactAddress;
@@ -464,13 +483,16 @@ export const updateOrgBranding = createServerFn({ method: "POST" })
     // The office phone and the owner's Profile phone are one number until the
     // owner says otherwise (#787). Setup step 1 saves its Business phone
     // through here, so a number typed (or re-typed) there reaches Profile too.
-    if (data.contactPhone) {
+    // Only on the FIRST office phone: once there was one, a blank Profile is
+    // the owner's choice, and changing the office line must not refill it.
+    let profilePhoneWarning: string | null = null;
+    if (officePhone && officePhoneWasBlank) {
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
       const { fillOwnerProfilePhoneFromOffice } = await import("@/lib/signup-contact.server");
-      await fillOwnerProfilePhoneFromOffice(
+      profilePhoneWarning = await fillOwnerProfilePhoneFromOffice(
         supabaseAdmin as unknown as import("@/lib/signup-contact.server").AdminClient,
-        { orgId, userId, phone: data.contactPhone },
+        { orgId, userId, phone: officePhone },
       );
     }
-    return { ok: true, countryColumnMissing };
+    return { ok: true, countryColumnMissing, profilePhoneWarning };
   });

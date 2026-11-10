@@ -170,8 +170,12 @@ export function BrandingCard() {
           portalAutoApplyChanges: autoApply,
         },
       }),
-    onSuccess: () => {
+    onSuccess: (res) => {
       toast.success("Business details saved");
+      // The office phone saved; only its copy to the owner's Profile did not (#787).
+      if (res?.profilePhoneWarning) toast.warning(res.profilePhoneWarning);
+      // A first office phone may also have filled the owner's Profile phone.
+      qc.invalidateQueries({ queryKey: ["my-profile"] });
       qc.invalidateQueries({ queryKey: ["org-branding"] });
     },
     onError: (e: Error) => toast.error(e.message),

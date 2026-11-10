@@ -95,21 +95,33 @@ export async function applySignupPhone(
  * (#787: portal `555-010-0199`, Profile blank). Only the owner's own row and
  * only a blank one: an office manager typing the office line has not given
  * their own number, and a number already on Profile is the owner's choice.
+ * The caller decides WHEN (updateOrgBranding: only the first time an office
+ * phone is set, so a Profile phone the owner cleared on purpose stays clear).
+ *
+ * Never throws. By the time this runs the office phone is saved, and the copy
+ * is the secondary write: failing the save over it would stop setup step 1 on
+ * a number that did land. The returned sentence is the warning to show.
  */
 export async function fillOwnerProfilePhoneFromOffice(
   admin: AdminClient,
   args: { orgId: string; userId: string; phone: string | null | undefined },
-): Promise<void> {
+): Promise<string | null> {
   const phone = handoffPhone(args.phone);
-  if (!phone) return;
-  const error = await fillBlankPhone(admin, "staff", "phone", phone, {
-    organization_id: args.orgId,
-    user_id: args.userId,
-    role: "owner",
-  });
-  if (error) {
-    throw new Error(
-      `The office phone was saved, but it could not be copied to your Profile phone: ${error.message}`,
-    );
+  if (!phone) return null;
+  try {
+    const error = await fillBlankPhone(admin, "staff", "phone", phone, {
+      organization_id: args.orgId,
+      user_id: args.userId,
+      role: "owner",
+    });
+    if (!error) return null;
+    console.error("office phone not copied to the owner's Profile phone", error.message);
+  } catch (e) {
+    console.error("office phone not copied to the owner's Profile phone", e);
   }
+  return PROFILE_PHONE_NOT_COPIED;
 }
+
+/** What the screen shows when the office phone saved and the Profile copy did not. */
+export const PROFILE_PHONE_NOT_COPIED =
+  "The office phone was saved, but it was not copied to your Profile phone. Add it on your Profile page.";

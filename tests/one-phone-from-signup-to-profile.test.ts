@@ -6,9 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   MIN_PHONE_DIGITS,
   handoffPhone,
-  isBlankPhone,
   phoneDigits,
-  samePhone,
   setupBusinessPhonePrefill,
 } from "@/lib/phone-handoff";
 
@@ -29,22 +27,10 @@ describe("handoffPhone", () => {
   });
 });
 
-describe("isBlankPhone", () => {
-  it("treats NULL, empty and spaces alike", () => {
-    expect(isBlankPhone(null)).toBe(true);
-    expect(isBlankPhone(undefined)).toBe(true);
-    expect(isBlankPhone("")).toBe(true);
-    expect(isBlankPhone("  ")).toBe(true);
-    expect(isBlankPhone("555-010-0199")).toBe(false);
-  });
-});
-
-describe("samePhone", () => {
-  it("compares digits, not punctuation", () => {
+describe("phoneDigits", () => {
+  it("keeps digits and drops punctuation", () => {
     expect(phoneDigits("(555) 010-0199")).toBe("5550100199");
-    expect(samePhone("555-010-0199", "(555) 010 0199")).toBe(true);
-    expect(samePhone("555-010-0199", "555-010-0198")).toBe(false);
-    expect(samePhone("", "")).toBe(false);
+    expect(phoneDigits(null)).toBe("");
   });
 });
 

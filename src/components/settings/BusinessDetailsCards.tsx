@@ -54,8 +54,12 @@ export function BusinessDetailsCard({ canEdit }: { canEdit: boolean }) {
           contactAddress: address.trim() || null,
         },
       }),
-    onSuccess: () => {
+    onSuccess: (res) => {
       toast.success("Business details saved");
+      // The office phone saved; only its copy to the owner's Profile did not (#787).
+      if (res?.profilePhoneWarning) toast.warning(res.profilePhoneWarning);
+      // A first office phone may also have filled the owner's Profile phone.
+      qc.invalidateQueries({ queryKey: ["my-profile"] });
       // What was just saved, until the refetch below replaces it, so the
       // fields do not flash the old values in between.
       qc.setQueryData(["org-branding"], (old: typeof q.data) =>
