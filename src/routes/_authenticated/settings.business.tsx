@@ -29,7 +29,7 @@ import {
   setRequireCompletionPhoto,
   setServiceLines,
 } from "@/lib/org-features.functions";
-import type { ServiceLine } from "@/lib/service-lines";
+import { serviceLineToolsBlurb, type ServiceLine } from "@/lib/service-lines";
 import { RECLEAN_WINDOW_DEFAULT_HOURS, RECLEAN_WINDOW_MAX_HOURS } from "@/lib/reclean";
 import { VisitChecklistEditor } from "@/components/VisitChecklistEditor";
 import type { ChecklistItem } from "@/lib/visit-checklist";
@@ -501,9 +501,8 @@ function ServiceLinesCard() {
       <CardHeader>
         <CardTitle className="text-base">Which services do you offer?</CardTitle>
         <CardDescription>
-          HoundStack shows the tools for the services you run. Pet waste removal turns on the waste
-          log, dump sites, yard outlines, first cleanups and deep cleans. Nothing is deleted if you
-          change this; screens are only shown or hidden.
+          HoundStack shows the tools for the services you run. {serviceLineToolsBlurb(lines)}{" "}
+          Nothing is deleted if you change this; screens are only shown or hidden.
         </CardDescription>
       </CardHeader>
       <CardContent>

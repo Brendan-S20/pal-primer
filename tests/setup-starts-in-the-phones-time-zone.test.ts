@@ -91,6 +91,10 @@ describe("the call sites", () => {
     expect(src).toContain("<BusinessPanel onSaved={onSaved} alreadyDone={step.done} />");
     expect(src).toMatch(/alreadyDone\s*\?\s*\(savedTz \?\? DEFAULT_ORG_TIMEZONE\)/);
     expect(src).toContain("const writeTz = tz !== null || !alreadyDone;");
-    expect(src).toContain("if (writeTz) await saveDispatchFn({ data: { timezone: tzVal } });");
+    // #769: the same call now carries the workday, and the zone only when
+    // writeTz says so, as before.
+    expect(src).toMatch(
+      /const dispatchWrite = \{ \.\.\.\(writeTz \? \{ timezone: tzVal \} : \{\}\),/,
+    );
   });
 });

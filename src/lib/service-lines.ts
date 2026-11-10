@@ -351,9 +351,57 @@ export type NewClientStep = (typeof NEW_CLIENT_STEPS)[number];
 
 /** "Outline" sketches the outline that area pricing and the waste-time estimate
  *  read, so only a pet-waste business is asked for it. The outline can still
- *  be drawn later from the client's property, by anybody who wants one. */
-export function newClientWizardSteps(petWaste: boolean): readonly NewClientStep[] {
-  return petWaste ? NEW_CLIENT_STEPS : NEW_CLIENT_STEPS.filter((s) => s !== "Outline");
+ *  be drawn later from the client's property, by anybody who wants one.
+ *
+ *  #768: and only on a pet-waste PATH. A business that scoops and walks used
+ *  to sketch the yard of a client who was only ever going to be walked.
+ *  `planLine` is the line of the service the client is being set up for,
+ *  once it is known; unknown (null, or a skipped plan) keeps the step, so a
+ *  pet-waste business never loses it by accident. */
+export function newClientWizardSteps(
+  petWaste: boolean,
+  planLine?: ServiceLine | null,
+): readonly NewClientStep[] {
+  const yard = petWaste && (planLine == null || planLine === "pet_waste");
+  return yard ? NEW_CLIENT_STEPS : NEW_CLIENT_STEPS.filter((s) => s !== "Outline");
+}
+
+/** What /setup's end-of-day step asks (#768).
+ *
+ *    dump_site  a business that only scoops: the crew unloads somewhere, and
+ *               the planner ends a route there.
+ *    day_end    a business that does not scoop: where each person's day ends
+ *               (home, the shop), saved as their own end point.
+ *    both       a business that scoops AND does something else: the step is
+ *               worded for everybody, asks where the day ends, and offers
+ *               the dump site as the pet-waste half rather than the whole.
+ *
+ *  The server words the step from this and the setup page draws it from
+ *  this, so the title and the form cannot disagree. */
+export type DayEndQuestion = "dump_site" | "day_end" | "both";
+
+export function dayEndQuestion(lines: readonly ServiceLine[]): DayEndQuestion {
+  if (!runsPetWaste(lines)) return "day_end";
+  return lines.some((l) => l !== "pet_waste") ? "both" : "dump_site";
+}
+
+/** What turning each line on shows, for Settings → Business defaults (#768).
+ *  The blurb used to name the pet-waste tools alone, to a walker. */
+const LINE_TOOLS: Record<ServiceLine, string> = {
+  pet_waste:
+    "Pet waste removal turns on the waste log, dump sites, yard outlines, first cleanups and deep cleans.",
+  dog_walking: "Dog walking turns on walk prices, walk windows and walk reports.",
+  pet_sitting: "Pet sitting turns on stays, drop-ins and sit reports.",
+  mobile_grooming: "Mobile grooming turns on the size grid, vaccines and groom buffers.",
+  training: "Dog training turns on lesson packages and the skills a trainer scores.",
+  other: "",
+};
+
+export function serviceLineToolsBlurb(lines: readonly ServiceLine[]): string {
+  return OFFERED_SERVICE_LINES.filter((l) => lines.includes(l))
+    .map((l) => LINE_TOOLS[l])
+    .filter(Boolean)
+    .join(" ");
 }
 
 // ── SEEDS: WHAT EACH LINE SUGGESTS ──────────────────────────────────────────

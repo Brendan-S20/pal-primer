@@ -108,10 +108,80 @@ const ok = { ok: true };
 const DAY_END_WORDING = {
   label: "Where does your day end?",
   description:
-    "Set where each tech finishes the day: home, the shop, wherever the van parks. Routes end there instead of at the last stop, which usually cuts a lot of driving.",
+    "Set where each person finishes the day: home, the shop, wherever they park. Routes end there instead of at the last stop, which usually cuts a lot of driving.",
   done: false,
   cta: "Set day's end",
 };
+
+/** The same step for a business that scoops AND does something else (#768,
+ *  dayEndQuestion "both"): worded for everybody, the dump site offered on the
+ *  form as the pet-waste half. */
+const DAY_END_WORDING_BOTH = {
+  ...DAY_END_WORDING,
+  description: `${DAY_END_WORDING.description} Pet waste routes can end at a dump site instead.`,
+};
+
+/** The price step a walking business is asked on /setup (#769), as the
+ *  server words it: the walks priced in place, open. A walker alone gets the
+ *  one-line step; a business that also scoops gets a part per line. */
+const WALK_PRICE_STEP = {
+  label: "Price your walks",
+  description:
+    "Set what a 30-minute walk and a 60-minute walk cost, and a drop-in if you offer one. New clients are quoted these prices. Your service area is on Zones.",
+  done: false,
+  to: "/setup",
+  cta: "Price walks",
+  gate: "/settings/services",
+};
+const MIXED_PRICE_STEP = {
+  label: "Price your services",
+  description:
+    "You run 2 services. Set a price for each: pet waste visits and walks. New clients are quoted these prices.",
+  done: false,
+  to: "/setup",
+  cta: "Set your prices",
+  gate: "/zones",
+  parts: [
+    {
+      id: "area",
+      label: "Pet waste service area",
+      description:
+        "Where you work and what you charge per visit. New pet waste clients in the area are quoted this price.",
+      done: false,
+      to: "/zones",
+      cta: "Set area price",
+    },
+    {
+      id: "walks",
+      label: "Walks",
+      description: "What a 30-minute walk and a 60-minute walk cost.",
+      done: false,
+      to: "/settings/services",
+      cta: "Price walks",
+    },
+  ],
+};
+
+/** Signup's three walks (DEFAULT_SERVICE_SEEDS.dog_walking), unpriced, as a
+ *  new walking business has them. */
+const SEEDED_WALKS = [
+  ["c511", "30-minute walk", 30],
+  ["c512", "60-minute walk", 60],
+  ["c513", "Drop-in visit (20 min)", 20],
+].map(([id, name, min]) => ({
+  id: `aaaaaaaa-0000-4000-8000-00000000${id}`,
+  organization_id: fx.ORG_ID,
+  name,
+  service_line: "dog_walking",
+  price_unit: "visit",
+  base_price_cents: null,
+  extra_pet_cents: 0,
+  default_duration_min: min,
+  holiday_surcharge_pct: 0,
+  active: true,
+  created_at: "2026-11-09T12:00:00Z",
+  updated_at: "2026-11-09T12:00:00Z",
+}));
 
 /**
  * Name → reply. Named for the export, so one entry serves every route that
@@ -1819,12 +1889,26 @@ export async function installStubBackend(
       serviceLines: lines,
     };
     const onboarding = BASE_STUBS.getOnboardingStatus as { steps: Array<{ id: string }> };
+    const scoops = lines.includes("pet_waste");
+    const walks = lines.includes("dog_walking");
+    const mixed = scoops && lines.some((l) => l !== "pet_waste");
     STUBS.getOnboardingStatus = {
       ...onboarding,
-      steps: onboarding.steps.map((st) =>
-        st.id === "dump_site" && !lines.includes("pet_waste") ? { ...st, ...DAY_END_WORDING } : st,
-      ),
+      steps: onboarding.steps.map((st) => {
+        if (st.id === "dump_site" && !scoops) return { ...st, ...DAY_END_WORDING };
+        if (st.id === "dump_site" && mixed) return { ...st, ...DAY_END_WORDING_BOTH };
+        if (st.id === "zones" && walks && lines.length === 1) return { ...st, ...WALK_PRICE_STEP };
+        if (st.id === "zones" && walks && scoops && lines.length === 2)
+          return { ...st, ...MIXED_PRICE_STEP };
+        return st;
+      }),
     };
+    // A walking business has signup's walks, unpriced (#769), beside the
+    // dataset's own long-named walk.
+    if (walks) {
+      const listed = (BASE_STUBS.listServices as { services: any[] }).services ?? [];
+      STUBS.listServices = { services: [...listed, ...SEEDED_WALKS] };
+    }
     // Pet sitting screenshots and a sitting sweep. The default fixture stays a
     // pet-waste business; these answers exist only when the run asks for the line.
     if (lines.includes("pet_sitting")) {
@@ -1858,7 +1942,7 @@ export async function installStubBackend(
         created_at: "2026-10-09T12:00:00Z",
         updated_at: "2026-10-09T12:00:00Z",
       };
-      const listed = ((BASE_STUBS.listServices as { services: any[] }).services ?? []).map((s) =>
+      const listed = ((STUBS.listServices as { services: any[] }).services ?? []).map((s) =>
         s.service_line === "pet_sitting"
           ? { ...s, holiday_surcharge_pct: 0, default_duration_min: null }
           : s,

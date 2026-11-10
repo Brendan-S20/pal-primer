@@ -467,10 +467,58 @@ function NewClientWizardForm({
     leadBooksAGroom(leadServiceLine, lines);
   const [groomInstead, setGroomInstead] = useState(true);
   const booksGroom = groomLead && groomInstead;
-  const steps = newClientWizardSteps(petWaste).filter((s) => !(booksGroom && s === "Plan"));
+  // ── Which service (the catalog) ─────────────────────────────────────────
+  // A business that sells more than one thing picks it here; one that sells
+  // only pet waste removal has nothing to pick, sees no picker, and its plan
+  // takes the business's default on insert, exactly as before the catalog.
+  // Started from a lead, the service the lead asked for, when it is one of
+  // the business's; the plan form's picker (ServicesTab) is the same control.
+  const [serviceId, setServiceId] = useState<string>(prefill.serviceId ?? "");
+  // A business without pet waste is not offered (or started on) the seeded
+  // "Pet waste removal" it still has (RC3), and its one service is the plan's
+  // service even with no picker to show: a walker with one walk was quoted
+  // from a zone, as a cleanup.
+  const offersServicePicker = servicePickerOptions(orgServices, null, pickerLines).length > 1;
+  const chosenService =
+    offersServicePicker || (linesKnown && !petWaste)
+      ? (orgServices.find(
+          (x) => x.id === effectiveServiceId(serviceId, orgServices, pickerLines),
+        ) ?? null)
+      : null;
+  // #768: the line this client is being set up for, once a service is
+  // chosen (the picker on Property, or a lead's). A business that scoops and
+  // walks is asked for a yard outline, and the yard's hazards, only for a
+  // pet-waste client. Nothing chosen reads as the picker's default, which
+  // for a business that scoops is pet waste removal, so the yard stays.
+  const planLine = chosenService?.service_line ?? null;
+  // The early picker: a business that scoops AND sells something else says
+  // what the client is for before the Outline step, so the Outline step is
+  // only there when it is a pet-waste client. One state with the Plan step's
+  // picker, so a choice made here is the choice shown there.
+  const asksServiceEarly =
+    linesKnown && petWaste && offersServicePicker && lines.some((l) => l !== "pet_waste");
+  const steps = newClientWizardSteps(petWaste, planLine).filter(
+    (s) => !(booksGroom && s === "Plan"),
+  );
   // Clamped: if the answer arrives while somebody is on the last step, the
   // list can be one shorter than the index they were on.
   const current: NewClientStep = steps[Math.min(step, steps.length - 1)];
+  // When the list changes under somebody (the Outline step coming or going
+  // as the service changes), they stay on the step they were on, by name.
+  const stepsKey = steps.join("|");
+  const shownSteps = useRef<{ key: string; steps: readonly NewClientStep[] }>({
+    key: stepsKey,
+    steps,
+  });
+  useEffect(() => {
+    const before = shownSteps.current;
+    shownSteps.current = { key: stepsKey, steps };
+    if (before.key === stepsKey) return;
+    const was = before.steps[Math.min(step, before.steps.length - 1)];
+    const now = steps.indexOf(was);
+    if (now >= 0 && now !== step) setStep(now);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepsKey]);
   // Every step opened at the BOTTOM. Next and Back sit at the foot of the
   // card, the step is swapped in place, and the window keeps the scroll
   // offset the press was made at — so the new step started at its buttons
@@ -655,24 +703,6 @@ function NewClientWizardForm({
   // on (R2-44), even after switching from Twice weekly to Weekly.
   const effectiveServiceDays = serviceDaysFor(serviceDays ?? [weekdayOf(startedOn)], frequency);
 
-  // ── Which service (the catalog) ─────────────────────────────────────────
-  // A business that sells more than one thing picks it here; one that sells
-  // only pet waste removal has nothing to pick, sees no picker, and its plan
-  // takes the business's default on insert, exactly as before the catalog.
-  // Started from a lead, the service the lead asked for, when it is one of
-  // the business's; the plan form's picker (ServicesTab) is the same control.
-  const [serviceId, setServiceId] = useState<string>(prefill.serviceId ?? "");
-  // A business without pet waste is not offered (or started on) the seeded
-  // "Pet waste removal" it still has (RC3), and its one service is the plan's
-  // service even with no picker to show: a walker with one walk was quoted
-  // from a zone, as a cleanup.
-  const offersServicePicker = servicePickerOptions(orgServices, null, pickerLines).length > 1;
-  const chosenService =
-    offersServicePicker || (linesKnown && !petWaste)
-      ? (orgServices.find(
-          (x) => x.id === effectiveServiceId(serviceId, orgServices, pickerLines),
-        ) ?? null)
-      : null;
   // A walk, a sit or a groom: priced from its service through the one rule
   // (servicePriceCents), never from a zone, and sold by the day of the week.
   const walkLike = !!chosenService && !isZonePriced(chosenService);
@@ -1294,6 +1324,22 @@ function NewClientWizardForm({
         {/* STEP 1 — Property */}
         {current === "Property" && (
           <div className="space-y-5">
+            {asksServiceEarly && (
+              <div className="space-y-1" data-new-client-service-early>
+                <ServicePicker
+                  id="nc-service-early"
+                  value={serviceId}
+                  currentId={null}
+                  services={orgServices}
+                  isLoading={servicesLoading}
+                  onChange={setServiceId}
+                  lines={pickerLines}
+                />
+                <p className="text-xs text-muted-foreground">
+                  What this client is for. A yard outline is only asked for pet waste removal.
+                </p>
+              </div>
+            )}
             {attempted && !(street && city && region && postalCode) && (
               <div
                 role="alert"
@@ -1472,7 +1518,7 @@ function NewClientWizardForm({
               <div className="mt-2 grid gap-1 text-sm sm:grid-cols-2">
                 {/* The yard's hazards are asked of a business that scoops
                     (F-06); propertyHazardsFor keeps one that is ticked. */}
-                {propertyHazardsFor(lines, hz).map(({ key: k, label }) => (
+                {propertyHazardsFor(lines, hz, planLine).map(({ key: k, label }) => (
                   <label key={k} className="flex items-center gap-2">
                     <input
                       type="checkbox"

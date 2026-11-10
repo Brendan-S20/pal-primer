@@ -236,11 +236,14 @@ describe("finishSignup", () => {
 
 const SETUP = read("src/routes/_authenticated/setup.tsx");
 const DAY_END = read("src/components/SetupDayEndPanel.tsx");
+const WALK_PRICES = read("src/components/SetupWalkPrices.tsx");
 
 describe("every setup save goes through stepSave", () => {
   for (const [file, src] of [
     ["setup.tsx", SETUP],
     ["SetupDayEndPanel.tsx", DAY_END],
+    // #769: the walk prices asked on the price step.
+    ["SetupWalkPrices.tsx", WALK_PRICES],
   ] as const) {
     it(`${file}: no useMutation of its own`, () => {
       const all = src.match(/useMutation\(/g) ?? [];
