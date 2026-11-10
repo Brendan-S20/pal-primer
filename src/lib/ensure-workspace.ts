@@ -278,18 +278,30 @@ export async function ensureBootstrapped(
       serviceLine: attribution.service,
       promoCode: attribution.promo,
       timezone: browserTimezone(),
+      // The number typed on Get-started, kept in metadata when bootstrap was
+      // deferred. Until 2026-11-09 it was applied below only when the texting
+      // box was ticked, and then only to staff.phone, so Settings never had it.
+      phone: typeof md.phone === "string" && md.phone.trim() ? md.phone.trim() : undefined,
     },
   });
   clearSignupAttribution();
   // Get-started walkthrough stashes texting consent in user metadata when the
-  // email-confirmation flow defers bootstrap — apply it now (best-effort).
+  // email-confirmation flow defers bootstrap — apply it now.
   if (md.sms_consent === true && typeof md.phone === "string" && md.phone.trim()) {
     try {
       const { recordSmsConsent } = await import("@/lib/org.functions");
       const { SMS_CONSENT_TEXT } = await import("@/routes/get-started");
       await recordSmsConsent({ data: { phone: md.phone.trim(), consentText: SMS_CONSENT_TEXT } });
     } catch (err) {
+      // The workspace exists and this runs on the way in, so it cannot hold
+      // the person at a form; but it is no longer silent. They were told the
+      // consent was being kept.
       console.error("deferred sms consent record failed", err);
+      const { toast } = await import("sonner");
+      toast.warning(
+        `Your texting consent from sign-up was not saved${err instanceof Error ? `: ${err.message}` : "."} Contact us so we can record it.`,
+        { duration: 15000 },
+      );
     }
   }
   return true;

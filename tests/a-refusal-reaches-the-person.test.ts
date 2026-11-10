@@ -195,7 +195,11 @@ describe("the four call sites go through the helper", () => {
 
   it("the new-client wizard: an RLS refusal at the plan step says what to do", () => {
     const src = code("src/routes/_authenticated/clients.new.tsx");
-    expect(src).toMatch(/onError: \(e\) =>\s*toastServerError\(e, \{/);
+    // Since #784 the same sentence is also kept under the button, so the
+    // wizard builds it with serverErrorMessage and shows it twice, rather
+    // than handing the error straight to toastServerError.
+    expect(src).toMatch(/onError: \(e\) => \{\s*const opts = \{/);
+    expect(src).toMatch(/createFailedMessage\(e, serverErrorMessage\(e, opts\)\)/);
     expect(src).toMatch(/refused: planSkipped/);
   });
 

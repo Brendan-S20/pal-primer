@@ -13,6 +13,10 @@ export interface AddressSuggestion {
   mainText: string;
   /** Secondary line, e.g. "Washington, DC, USA". */
   secondaryText: string;
+  /** Straight-line metres from the bias centre, when the provider measured
+   *  it. Server-side only: used to rank and fence suggestions to the
+   *  business's area (#783), then dropped before the list goes to the browser. */
+  distanceMeters?: number | null;
 }
 
 export interface AddressDetails {
