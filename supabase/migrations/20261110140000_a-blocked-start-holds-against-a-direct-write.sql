@@ -8,8 +8,9 @@
 -- token started a visit the owner had set to stop, with no RPC involved.
 --
 -- This adds the same check as a BEFORE UPDATE OF status trigger, for a
--- signed-in caller who is not office, moving a visit from scheduled to
--- in_progress. start_visit marks the one visit it is starting, the way
+-- signed-in caller who is not office, moving a visit into in_progress from
+-- any other status (scheduled, or a detour through missed, skipped or
+-- canceled first). start_visit marks the one visit it is starting, the way
 -- skip_visit marks the one it is charging (houndstack.trusted_skip_visit), so
 -- the RPC's own decision stands unchanged, including its deliberate pass for
 -- a replayed start stamped before the rule was set.
@@ -34,8 +35,11 @@ BEGIN
   IF auth.uid() IS NULL THEN
     RETURN NEW;
   END IF;
-  IF OLD.status::text IS DISTINCT FROM 'scheduled'
-     OR NEW.status::text IS DISTINCT FROM 'in_progress' THEN
+  -- Every move INTO in_progress, not only the one from scheduled: otherwise
+  -- a tech parks the visit on missed, skipped or canceled first (a status
+  -- this guard has no reason to refuse) and starts it from there.
+  IF NEW.status::text IS DISTINCT FROM 'in_progress'
+     OR OLD.status::text = 'in_progress' THEN
     RETURN NEW;
   END IF;
   -- start_visit already decided, for this visit, in this transaction.

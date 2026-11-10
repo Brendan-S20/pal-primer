@@ -286,6 +286,28 @@ describe.skipIf(!enabled)("#729 pet safety log and the owner's vaccine Start rul
     expect(await statusOf(warned)).toBe("in_progress");
   });
 
+  it("BLOCK holds against a two-step write: away from scheduled first, then into in_progress", async () => {
+    // Review of #851 at 9149527: the guard first fired only on scheduled ->
+    // in_progress, so a tech could PATCH scheduled -> missed (or skipped, or
+    // canceled), which the guard ignores, and then missed -> in_progress,
+    // which it also ignored because OLD was no longer scheduled.
+    await setRuleAsService(orgId, "block");
+    for (const detour of ["missed", "skipped", "canceled"]) {
+      const visitId = await groomVisit(tech.staffId);
+      const away = await tech.client.from("visits").update({ status: detour }).eq("id", visitId);
+      // Whether the detour itself is allowed is not this rule's business;
+      // what matters is that the next step cannot reach in_progress.
+      const from = away.error ? "scheduled" : detour;
+      const into = await tech.client
+        .from("visits")
+        .update({ status: "in_progress" })
+        .eq("id", visitId)
+        .select("id");
+      expect(into.error?.message, `${detour} -> in_progress`).toMatch(/^VACCINE_START_BLOCKED/);
+      expect(await statusOf(visitId), detour).toBe(from);
+    }
+  });
+
   it("BLOCK leaves other lines alone, and a business whose grooming vaccine rule is off", async () => {
     await setRuleAsService(orgId, "block");
     const walkService = await insert("services", {
