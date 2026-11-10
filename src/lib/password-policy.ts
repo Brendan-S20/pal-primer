@@ -16,12 +16,23 @@
 //
 // ── WHAT THE POLICY IS ──────────────────────────────────────────────────────
 //
-// The project's effective Supabase Auth policy, and nothing stricter than
-// production: nothing in this repo (supabase/config.toml, docs/) configures
-// character classes, so there are none here. What is enforced:
+// What production's Supabase Auth enforces (confirmed by ops on 2026-11-10;
+// it lives in the dashboard, not in this repo, so supabase/config.toml says
+// nothing about it):
 //
-//   - at least 8 characters (what every form and registerAccount already
-//     required, and at least the auth server's own minimum of 6);
+//   - password_min_length = 6;
+//   - no required character classes;
+//   - the leaked-password (HIBP) check is ON.
+//
+// The list below is built on that and asks for no character classes, because
+// production does not. What this file enforces:
+//
+//   - at least 8 characters. Deliberately STRICTER than the server's 6: it is
+//     what every form and registerAccount already required before this file,
+//     and a client that asks for more than the server is safe. One that asks
+//     for less is not (a password the form passed would come back refused);
+//     so if production's minimum is ever raised above 8, raise
+//     PASSWORD_MIN_LENGTH with it;
 //   - no more than 72 characters (GoTrue hashes with bcrypt and refuses
 //     anything longer, "Password cannot be longer than 72 characters");
 //   - not only spaces (the reset form's existing rule).
@@ -29,9 +40,13 @@
 // If the project ever turns on character classes in Supabase Auth, add a rule
 // to PASSWORD_RULES. Every form shows it before typing, checks it live, and
 // blocks Continue on it, and the server's Zod refuses it, with no form edited.
-// A rule the auth server enforces but this list cannot know (the leaked-
-// password check) still comes back from the server; isPasswordRejection()
-// recognises that answer so the form keeps the person on the password field.
+// The leaked-password check is the one rule this list cannot hold: whether a
+// password is in a breach corpus is known only to the auth server, so a HIBP
+// refusal can only ever arrive as the server's answer (code `weak_password`,
+// "Password is known to be weak and easy to guess, please choose a different
+// one."). isPasswordRejection() recognises that raw shape, and the prefixed
+// one registerAccount re-throws it as, so every form keeps the person on the
+// password field with the server's reason beside it.
 
 import { z } from "zod";
 
