@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PublicShell } from "@/components/PublicShell";
+import { PasswordField } from "@/components/PasswordField";
+import { isPasswordAcceptable, isPasswordRejection } from "@/lib/password-policy";
 import { pageTitle } from "@/lib/page-title";
 import {
   RESET_PASSWORD_PATH,
@@ -45,6 +47,9 @@ function ResetPasswordPage() {
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The auth server refused the password itself (#807): said beside the
+  // field, and both fields keep what was typed.
+  const [passwordRejected, setPasswordRejected] = useState<string | null>(null);
   const exchange = useRef<Promise<EstablishResult> | null>(null);
 
   useEffect(() => {
@@ -90,6 +95,7 @@ function ResetPasswordPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setPasswordRejected(null);
     const invalid = validateNewPassword(password, confirm);
     if (invalid) return setError(invalid);
     setLoading(true);
@@ -98,6 +104,7 @@ function ResetPasswordPage() {
     if (updateError) {
       const { message, linkDead } = describeUpdatePasswordError(updateError);
       if (linkDead) return setPhase({ kind: "invalid", message });
+      if (isPasswordRejection(updateError)) return setPasswordRejected(message);
       return setError(message);
     }
     clearRecoveryPending();
@@ -124,20 +131,17 @@ function ResetPasswordPage() {
           className="space-y-4 rounded-lg border bg-card p-(--card-pad)"
           noValidate
         >
-          <div className="space-y-2">
-            <Label htmlFor="pw">New password</Label>
-            <Input
-              id="pw"
-              type="password"
-              autoComplete="new-password"
-              required
-              minLength={8}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoFocus
-            />
-            <p className="text-xs text-muted-foreground">At least 8 characters.</p>
-          </div>
+          <PasswordField
+            id="pw"
+            label="New password"
+            value={password}
+            onChange={(v) => {
+              setPassword(v);
+              setPasswordRejected(null);
+            }}
+            serverError={passwordRejected}
+            autoFocus
+          />
           <div className="space-y-2">
             <Label htmlFor="pw2">Confirm password</Label>
             <Input
@@ -145,12 +149,19 @@ function ResetPasswordPage() {
               type="password"
               autoComplete="new-password"
               required
-              minLength={8}
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
+              aria-invalid={(confirm.length > 0 && confirm !== password) || undefined}
             />
+            {confirm.length > 0 && confirm !== password && (
+              <p className="text-xs text-destructive">Passwords don't match.</p>
+            )}
           </div>
-          <Button type="submit" disabled={loading} className="w-full">
+          <Button
+            type="submit"
+            disabled={loading || !isPasswordAcceptable(password) || !!passwordRejected}
+            className="w-full"
+          >
             {loading ? "Updating…" : "Update password"}
           </Button>
         </form>
