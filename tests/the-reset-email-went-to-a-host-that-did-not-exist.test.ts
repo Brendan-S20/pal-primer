@@ -440,20 +440,45 @@ describe("--live reads the hook Auth is actually configured with", () => {
   });
 });
 
-describe("a daily scheduled workflow runs the live check and fails loudly", () => {
+describe("the workflow needs no stored token: the schedule runs only the no-secret reachability check", () => {
   const wf = readFileSync(
     fileURLToPath(new URL("../.github/workflows/auth-hook-health.yml", import.meta.url)),
     "utf8",
   );
+  const job = (name: string) => {
+    const start = wf.indexOf(`\n  ${name}:\n`);
+    expect(start).toBeGreaterThan(-1);
+    const rest = wf.slice(start + 1);
+    const next = rest.slice(1).search(/\n  [a-z][\w-]*:\n/);
+    return next === -1 ? rest : rest.slice(0, next + 1);
+  };
 
   it("runs on a daily cron and by hand", () => {
-    expect(wf).toMatch(/schedule:\s*\n\s*#[^\n]*\n\s*- cron: "\d+ \d+ \* \* \*"/);
+    expect(wf).toMatch(/schedule:\s*\n\s*#[^\n]*\n(\s*#[^\n]*\n)*\s*- cron: "\d+ \d+ \* \* \*"/);
     expect(wf).toMatch(/workflow_dispatch:/);
   });
 
-  it("runs the LIVE check with the Management API token from secrets, and never softens a failure", () => {
-    expect(wf).toContain("node scripts/check-auth-hook-hosts.mjs --live");
-    expect(wf).toContain("SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}");
+  it("never references a repository secret (Brendan declined storing SUPABASE_ACCESS_TOKEN in GitHub)", () => {
+    expect(wf).not.toMatch(/secrets\./);
+  });
+
+  it("the scheduled reachability job runs the default, non-live path with the token blanked", () => {
+    const r = job("reachability");
+    expect(r).not.toMatch(/\bif:/);
+    expect(r).toContain("node scripts/check-auth-hook-hosts.mjs\n");
+    expect(r).not.toContain("--live");
+    expect(r).toMatch(/SUPABASE_ACCESS_TOKEN: ""/);
+  });
+
+  it("the live job runs only by hand, skips cleanly without a token, and runs --live with one", () => {
+    const l = job("live-hooks");
+    expect(l).toMatch(/if: github\.event_name == 'workflow_dispatch'/);
+    expect(l).toMatch(/if \[ -z "\$\{SUPABASE_ACCESS_TOKEN:-\}" \]; then/);
+    expect(l).toContain("SUPABASE_ACCESS_TOKEN not set; skipping live Management API check");
+    expect(l).toMatch(/exit 0\n\s*fi\n\s*node scripts\/check-auth-hook-hosts\.mjs --live/);
+  });
+
+  it("never softens a real failure", () => {
     expect(wf).not.toMatch(/continue-on-error/);
     expect(wf).not.toMatch(/--dns-only/);
     expect(wf).not.toMatch(/AUTH_HOOK_URIS|AUTH_SEND_EMAIL_HOOK_URI/);
