@@ -117,15 +117,21 @@ describe("the entitlement the sheet cannot work without", () => {
     // The reason for parsing rather than grepping still holds and is kept:
     // scoping to the XCBuildConfiguration section and balancing braces means a
     // comment or another object's settings cannot be read as a build setting.
-    const appConfigs = buildConfigurations(
-      read("ios/App/App.xcodeproj/project.pbxproj"),
-    ).filter((c) => c.PRODUCT_BUNDLE_IDENTIFIER === "consulting.thenorth.houndstack");
+    const appConfigs = buildConfigurations(read("ios/App/App.xcodeproj/project.pbxproj")).filter(
+      (c) => c.PRODUCT_BUNDLE_IDENTIFIER === "consulting.thenorth.houndstack",
+    );
     expect(appConfigs.length, "no app build configurations found").toBeGreaterThan(0);
+    // Debug and Release name different files since Tap to Pay was kept out of
+    // Release (App.Release.entitlements), so each named file is read and must
+    // ask for Sign in with Apple itself.
     for (const c of appConfigs) {
       expect(
         c.CODE_SIGN_ENTITLEMENTS,
         `a build configuration has no CODE_SIGN_ENTITLEMENTS`,
-      ).toMatch(/App\.entitlements/);
+      ).toMatch(/^App\/App(\.[A-Za-z]+)?\.entitlements$/);
+      expect(read(`ios/App/${c.CODE_SIGN_ENTITLEMENTS}`)).toMatch(
+        /com\.apple\.developer\.applesignin/,
+      );
     }
   });
 });
