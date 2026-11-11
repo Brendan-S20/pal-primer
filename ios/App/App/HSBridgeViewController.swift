@@ -110,6 +110,8 @@ class HSBridgeViewController: CAPBridgeViewController {
         // CapApp-SPM lists), so they are registered here, which is the
         // approach Capacitor documents for a local iOS plugin.
         bridge?.registerPluginInstance(RouteActivityPlugin())
+        // Apple's Tap to Pay on iPhone merchant education (ProximityReaderDiscovery).
+        bridge?.registerPluginInstance(TapToPayEducationPlugin())
 
         // The iOS edge swipe back. WKWebView turns it off by default; on, a
         // swipe from the leading edge walks the web view's back list, and in

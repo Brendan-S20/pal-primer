@@ -596,6 +596,7 @@ describe("the server functions", () => {
       locationId: "tml_new",
       stripeAccount: "acct_tenant",
       merchantDisplayName: ORG.name,
+      readerMode: "simulated",
       isTest: true,
     });
   });
@@ -707,10 +708,11 @@ const ok: TapToPayGateInput = {
 
 describe("who sees the button", () => {
   it("an owner or office manager on an eligible iPhone or Android 13+ phone", () => {
-    expect(tapToPayGate(ok)).toEqual({ show: true });
-    expect(tapToPayGate({ ...ok, role: "office_manager" })).toEqual({ show: true });
+    expect(tapToPayGate(ok)).toEqual({ show: true, mode: "ready" });
+    expect(tapToPayGate({ ...ok, role: "office_manager" })).toEqual({ show: true, mode: "ready" });
     expect(tapToPayGate({ ...ok, platform: "android", userAgent: ANDROID_14 })).toEqual({
       show: true,
+      mode: "ready",
     });
   });
 
@@ -724,11 +726,13 @@ describe("who sees the button", () => {
     expect(tapToPayGate({ ...ok, platform: "web" })).toEqual({ show: false, reason: "platform" });
   });
 
-  it("never on an ineligible device", () => {
+  it("never on an ineligible device; an old iPhone is told to update, not shown nothing (Apple 1.4)", () => {
     expect(tapToPayGate({ ...ok, userAgent: IPAD })).toEqual({ show: false, reason: "device" });
+    // Updated for Apple's review guide 1.4: an iPhone below iOS 16.4 cannot
+    // tap, and gets the update prompt instead of a missing button.
     expect(tapToPayGate({ ...ok, userAgent: IPHONE_16_3 })).toEqual({
-      show: false,
-      reason: "device",
+      show: true,
+      mode: "update_ios",
     });
     expect(tapToPayGate({ ...ok, platform: "android", userAgent: ANDROID_12 })).toEqual({
       show: false,
@@ -738,9 +742,9 @@ describe("who sees the button", () => {
     expect(deviceCanTapToPay("ios", "")).toBe(false);
   });
 
-  it("never for a role that cannot already Take payment", () => {
+  it("a role that cannot already Take payment never gets the button, and is told who to ask (Apple 3.8.1)", () => {
     for (const role of ["tech", "dispatcher", null, undefined] as const) {
-      expect(tapToPayGate({ ...ok, role })).toEqual({ show: false, reason: "role" });
+      expect(tapToPayGate({ ...ok, role })).toEqual({ show: true, mode: "ask_admin" });
     }
   });
 
