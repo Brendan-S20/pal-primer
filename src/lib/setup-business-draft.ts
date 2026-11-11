@@ -27,7 +27,16 @@
 // Before step 1 is first saved there is nothing stored to read against for
 // the lines or the zone (the lines start empty, the zone is a suggestion),
 // so those are kept as typed: that is the reload gaps-r2-12 was for.
+//
+// The phone has one more rule (#787): sign-up stores the owner's mobile as
+// the business phone before step 1 is ever opened, and a kept FRAGMENT, the
+// "555-" an interrupted keystroke leaves, must not cover it. The server
+// already refuses to save the fragment (#811); this is the display half. A
+// fragment over a stored whole number is dropped, whether step 1 is done or
+// not; a whole number typed here, a field the owner cleared, and a fragment
+// with nothing stored behind it are kept (setupBusinessPhonePrefill).
 
+import { setupBusinessPhonePrefill } from "@/lib/phone-handoff";
 import { SETUP_WORKDAY_DEFAULTS, workdayField } from "@/lib/setup-workday";
 import { SERVICE_LINES, type ServiceLine } from "@/lib/service-lines";
 
@@ -120,7 +129,7 @@ export function reconcileSetupBusinessDraft(
   const out: SetupBusinessDraft = {
     lines,
     name: unlessStored(draft.name, stored.name),
-    phone: unlessStored(draft.phone, stored.phone),
+    phone: unlessStored(setupBusinessPhonePrefill(draft.phone, stored.phone), stored.phone),
     address: unlessStored(draft.address, stored.address),
     tz: alreadyDone ? unlessStored(draft.tz, stored.timezone) : (draft.tz ?? null),
     dayStart: unlessStored(draft.dayStart, stored.dayStart),

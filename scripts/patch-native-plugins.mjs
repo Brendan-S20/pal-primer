@@ -9,7 +9,7 @@
 //   .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", from: "7.0.0")
 //
 // which SPM reads as 7.0.0..<8.0.0. ios/App/CapApp-SPM/Package.swift pins the
-// same package `exact: "8.4.1"`, and every other plugin asks for 8.x, so the
+// same package `exact: "8.4.3"`, and every other plugin asks for 8.x, so the
 // graph has no solution and nothing builds:
 //
 //   xcodebuild: error: Could not resolve package dependencies:
@@ -22,7 +22,7 @@
 //
 // The plugin's Swift needs nothing else: it uses CAPPlugin + CAPBridgedPlugin,
 // `pluginMethods`, `bridge.saveCall` / `savedCall(withID:)` / `releaseCall(_:)`
-// and `call.resolve(_:)` / `call.reject(_:)`, all of which Capacitor 8.4.1
+// and `call.resolve(_:)` / `call.reject(_:)`, all of which Capacitor 8.4.3
 // still declares un-deprecated (node_modules/@capacitor/ios/Capacitor/
 // Capacitor/CAPBridgeProtocol.swift, CAPPluginCall.swift). The only change is
 // the version range.
