@@ -26,6 +26,7 @@ import {
   parsePetNames,
   parseYesNo,
   rowExtras,
+  UNDO_NEEDS_BILLING,
   undoRefusal,
   type PetName,
   type UndoUsage,
@@ -97,10 +98,10 @@ export const isVerifiedSource = (source: string): boolean =>
 
 /** The database's import_source enum, as this file knows it. The generated
  *  types (src/integrations/supabase/types.ts, owned by #870) do not yet
- *  carry gingr and moego, which 20261111020000 adds. */
+ *  carry gingr and moego, which 20261111050000 adds. */
 type DbImportSource = Database["public"]["Enums"]["import_source"];
 const asDbSource = (source: ImportSource): DbImportSource => source as DbImportSource;
-/** import_batches as 20261111020000 leaves it: the generated Row plus
+/** import_batches as 20261111050000 leaves it: the generated Row plus
  *  undone_at, which the types (owned by #870) do not carry yet. */
 type ImportBatchRow = Database["public"]["Tables"]["import_batches"]["Row"] & {
   undone_at?: string | null;
@@ -1417,7 +1418,17 @@ export const getImportBatch = createServerFn({ method: "GET" })
     // undoImport makes, so the page never shows a button the server refuses.
     let undoBlock: string | null = null;
     if (batch.committed_at && !batch.undone_at) {
-      undoBlock = undoRefusal(batch, await importUsage(supabase, orgId, batch));
+      const usage = await importUsage(supabase, orgId, batch);
+      undoBlock = undoRefusal(batch, usage);
+      // Deleting invoices is a billing act: a caller without the permission
+      // is told here rather than offered a button the function refuses.
+      if (!undoBlock && usage.invoices) {
+        try {
+          await requirePermission(supabase, context.userId, "manage_client_billing");
+        } catch {
+          undoBlock = UNDO_NEEDS_BILLING;
+        }
+      }
     }
     return {
       batch: { ...batch, status: importDisplayStatus(batch) },
@@ -2067,7 +2078,7 @@ export const commitImport = createServerFn({ method: "POST" })
         action: string;
         id: string;
         m: any;
-        // import_extras is 20261111020000's column; the generated types
+        // import_extras is 20261111050000's column; the generated types
         // (owned by #870) do not carry it yet.
         record: Database["public"]["Tables"]["clients"]["Insert"] & { import_extras?: Json | null };
       };
@@ -2543,6 +2554,17 @@ export const commitImport = createServerFn({ method: "POST" })
               if (sErr) throw sErr;
               await supabase.from("import_rows").update({ target_id: ins.id }).eq("id", row.id);
               created += 1;
+              // "Per visit" in the file is both the plan's cadence (postpaid)
+              // and how often the client is billed (after each visit): the
+              // run that invoices (run_billing_cycles) reads the client's
+              // billing_frequency, so a plan alone would still bill monthly.
+              if (m.billing_frequency) {
+                const { error: bfErr } = await supabase
+                  .from("clients")
+                  .update({ billing_frequency: m.billing_frequency })
+                  .eq("id", row.target_id);
+                if (bfErr) console.error("import: billing frequency not set", bfErr.message);
+              }
               // What the plan's row said that the plan cannot hold: a file
               // with no frequency column, and the columns no field consumed.
               // A plan has no notes of its own, so it is an office note on
@@ -2702,21 +2724,6 @@ async function selectWhereIn<T>(
   return out;
 }
 
-async function deleteWhereIn(
-  supabase: SupabaseClient<Database>,
-  table: string,
-  column: string,
-  ids: readonly string[],
-): Promise<void> {
-  for (let i = 0; i < ids.length; i += IN_CHUNK) {
-    const { error } = await (supabase as any)
-      .from(table)
-      .delete()
-      .in(column, ids.slice(i, i + IN_CHUNK));
-    if (error) throw new Error(error.message);
-  }
-}
-
 /** What a committed batch created, by id: the rows' targets, and for a
  *  clients file every client that carries the batch's id (a row whose
  *  target could not be recorded still made its client, #617). */
@@ -2779,6 +2786,7 @@ async function importUsage(
     usage.laterInvoices = invoices.filter(
       (i) => !(i.notes ?? "").startsWith(OPENING_BALANCE_NOTE),
     ).length;
+    usage.invoices = invoices.length;
     const invoiceIds = invoices.map((i) => i.id);
     if (invoiceIds.length) {
       usage.payments = await countWhereIn(supabase, "payments", "invoice_id", invoiceIds);
@@ -2791,15 +2799,23 @@ async function importUsage(
     usage.payments =
       (await countWhereIn(supabase, "payments", "invoice_id", ids)) +
       (await countWhereIn(supabase, "invoices", "id", ids, (q) => q.neq("status", "open")));
+    usage.invoices = ids.length;
   }
   return usage;
 }
 
 /**
  * Undo a committed import: delete everything it created, while nothing of
- * it has been used (undoRefusal). The batch is claimed first, so two taps
- * delete once; its commit claim is released, so the same file can be
- * imported again; its rows stay, so the page can still say what it did.
+ * it has been used (undoRefusal). The deleting is ONE call to
+ * undo_import_batch (20261111050000), which runs every guard again, checks
+ * each delete's row count and rolls the whole thing back on any mismatch or
+ * error. The first version ran eight deletes from here as the caller, and a
+ * caller who could import but not bill was left with half a client: the
+ * invoices survived RLS unseen and the client delete failed on them.
+ *
+ * The guards run here first too, so the sentence a person reads is the
+ * page's, and a caller who cannot bill is refused before the function is
+ * asked. The batch's rows stay, so the page can still say what it did.
  */
 export const undoImport = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -2814,65 +2830,25 @@ export const undoImport = createServerFn({ method: "POST" })
       .maybeSingle();
     if (bErr) throw new Error(bErr.message);
     if (!batch || batch.organization_id !== orgId) throw new Error(IMPORT_NOT_FOUND);
-    const refusal = undoRefusal(batch, await importUsage(supabase, orgId, batch));
+    const usage = await importUsage(supabase, orgId, batch);
+    const refusal = undoRefusal(batch, usage);
     if (refusal) throw new Error(refusal);
-    const entity = (batch.entity ?? "clients") as ImportEntity;
-    const { ids } = await batchCreations(supabase, orgId, batch);
-
-    // Claim: one UPDATE that requires undone_at to be NULL. The second of
-    // two taps matches nothing and is told so.
-    const undoneAt = new Date().toISOString();
-    const { data: claimed, error: claimErr } = await (supabase as any)
-      .from("import_batches")
-      .update({ undone_at: undoneAt, commit_started_at: null })
-      .eq("id", batch.id)
-      .eq("organization_id", orgId)
-      .is("undone_at", null)
-      .select("id")
-      .maybeSingle();
-    if (claimErr) throw new Error(claimErr.message);
-    if (!claimed) throw new Error("This import has already been undone.");
-
-    try {
-      if (entity === "clients") {
-        const props = await selectWhereIn<{ id: string }>(supabase, "properties", "id", "client_id", ids);
-        const propIds = props.map((p) => p.id);
-        await deleteWhereIn(supabase, "dogs", "property_id", propIds);
-        await deleteWhereIn(supabase, "waste_stations", "property_id", propIds);
-        await deleteWhereIn(supabase, "subscriptions", "client_id", ids);
-        await deleteWhereIn(supabase, "properties", "id", propIds);
-        await deleteWhereIn(supabase, "client_notes", "client_id", ids);
-        const invoices = await selectWhereIn<{ id: string }>(supabase, "invoices", "id", "client_id", ids);
-        const invoiceIds = invoices.map((i) => i.id);
-        await deleteWhereIn(supabase, "invoice_line_items", "invoice_id", invoiceIds);
-        await deleteWhereIn(supabase, "invoices", "id", invoiceIds);
-        await deleteWhereIn(supabase, "clients", "id", ids);
-      } else if (entity === "properties") {
-        await deleteWhereIn(supabase, "dogs", "property_id", ids);
-        await deleteWhereIn(supabase, "waste_stations", "property_id", ids);
-        await deleteWhereIn(supabase, "properties", "id", ids);
-      } else if (entity === "dogs") {
-        await deleteWhereIn(supabase, "dogs", "id", ids);
-      } else if (entity === "services") {
-        await deleteWhereIn(supabase, "subscriptions", "id", ids);
-      } else if (entity === "balances") {
-        await deleteWhereIn(supabase, "invoice_line_items", "invoice_id", ids);
-        await deleteWhereIn(supabase, "invoices", "id", ids);
+    // Deleting an invoice is a billing act, the permission the commit asked
+    // for to write it. Asked before anything is deleted.
+    if (usage.invoices) {
+      try {
+        await requirePermission(supabase, userId, "manage_client_billing");
+      } catch {
+        throw new Error(UNDO_NEEDS_BILLING);
       }
-    } catch (e) {
-      // A delete that stopped partway: the batch is not undone, and says so.
-      await (supabase as any)
-        .from("import_batches")
-        .update({ undone_at: null, error: `Undo did not finish: ${(e as Error)?.message ?? String(e)}` })
-        .eq("id", batch.id);
-      throw e;
     }
-    const { error: statErr } = await supabase
-      .from("import_batches")
-      .update({ stats: { ...((batch.stats as object) ?? {}), undone: ids.length } as Json })
-      .eq("id", batch.id);
-    if (statErr) console.error("import: undo count not recorded", statErr.message);
-    return { ok: true, undone: ids.length };
+    // The generated types (#870) do not know the function yet.
+    const { data: result, error } = await (supabase as any).rpc("undo_import_batch", {
+      _batch_id: batch.id,
+    });
+    if (error) throw new Error(error.message);
+    const undone = Number((result as { undone?: number } | null)?.undone ?? 0);
+    return { ok: true, undone };
   });
 /* eslint-enable @typescript-eslint/no-explicit-any */
 

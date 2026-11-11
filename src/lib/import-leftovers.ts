@@ -242,7 +242,15 @@ export type UndoUsage = {
   laterInvoices: number;
   /** Rows the commit updated rather than created. */
   updated: number;
+  /** Invoices on what this batch created (its own opening balances and any
+   *  written since). Deleting them is a billing act. */
+  invoices?: number;
 };
+
+/** Why an undo is refused to someone who can import but not bill: the
+ *  function asks the same before it deletes anything. */
+export const UNDO_NEEDS_BILLING =
+  "Undoing this import deletes the opening balances it wrote, which needs the billing permission. Ask an owner to undo it.";
 
 /** Why a committed batch cannot be undone, or null when it can. The product
  *  rule (Nov 10 2026): undo per batch only while no record in the batch has

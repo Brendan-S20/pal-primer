@@ -250,6 +250,30 @@ function cell(raw: Record<string, unknown>, mapping: Mapping, field: string): st
   return s === "" ? null : s;
 }
 
+export type ImportBillingFrequency =
+  "after_each_visit" | "weekly" | "monthly" | "quarterly" | "yearly";
+
+/** The clients.billing_frequency a billing cell names, or null. "Per
+ *  visit" (Jobber's Billing type), "after each visit", "each cleanup" are
+ *  all billed after each visit; the plan itself is postpaid either way. */
+export function parseBillingFrequency(
+  text: string | null | undefined,
+): ImportBillingFrequency | null {
+  const s = (text ?? "").toLowerCase().trim();
+  if (!s) return null;
+  if (
+    /\b(after|per|each|every)\b.*\b(visit|cleanup|clean-up|job|service|walk|session)s?\b/.test(s)
+  ) {
+    return "after_each_visit";
+  }
+  if (/\b(per|each|every)\s+(visit|cleanup|job|service)\b/.test(s)) return "after_each_visit";
+  if (/quarter/.test(s)) return "quarterly";
+  if (/year|annual/.test(s)) return "yearly";
+  if (/month/.test(s)) return "monthly";
+  if (/week/.test(s)) return "weekly";
+  return null;
+}
+
 export type MappedService = {
   client_external_id: string | null;
   client_name: string | null;
@@ -268,6 +292,12 @@ export type MappedService = {
   started_on: string | null;
   dog_count: number | null;
   billing_cadence: "prepaid" | "postpaid" | null;
+  /** How often the client is billed, when the file's billing column says
+   *  (clients.billing_frequency): "after each visit", "per visit" and
+   *  "per cleanup" are after_each_visit; a weekly, monthly, quarterly or
+   *  yearly word is that. Null when the column is absent or says something
+   *  else, and the client keeps what they have.' */
+  billing_frequency: ImportBillingFrequency | null;
   /** The service the row names ("30-minute walk"), trimmed, or null when
    *  the file has no Service column or the cell is blank: the plan then
    *  takes the business's default, as every import before the catalog. */
@@ -471,6 +501,7 @@ export function mapServiceRow(
       started_on,
       dog_count: Number.isFinite(dogs) && dogs > 0 && dogs <= 50 ? dogs : null,
       billing_cadence: billText.startsWith("pre") ? "prepaid" : billText ? "postpaid" : null,
+      billing_frequency: parseBillingFrequency(billText),
       service_name: cell(raw, mapping, "service"),
     },
     error: null,

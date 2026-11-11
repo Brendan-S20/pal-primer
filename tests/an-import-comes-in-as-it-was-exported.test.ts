@@ -85,6 +85,7 @@ import {
   undoRefusal,
 } from "@/lib/import-leftovers";
 import { importDisplayStatus } from "@/lib/import-commit-guard";
+import { emptyTables, fakeSupabase, type Tables } from "./support/fake-supabase-for-imports";
 
 const ROOT = join(import.meta.dirname, "..");
 const FIXTURES = join(ROOT, "tests", "fixtures", "imports");
@@ -586,104 +587,21 @@ describe("undo per batch", () => {
 });
 
 // ── Through the real preview, commit and undo, on a database in memory ─────
+//
+// The backend is tests/support/fake-supabase-for-imports.ts: filters, head
+// counts, inserts, updates, and the one call the undo makes, emulated the
+// way undo_import_batch (20261111050000) behaves: all or nothing.
 
-let tables: Record<string, Row[] | Record<string, any>[]>;
-let seq: number;
+let tables: Tables;
 
-/** Just enough of supabase-js for the import: filters, ranges, head counts,
- *  inserts, updates and deletes that change what a later read sees. */
-function fakeSupabase() {
-  return {
-    rpc: async () => ({ data: true, error: null }),
-    from(table: string) {
-      let op: "select" | "insert" | "update" | "delete" = "select";
-      let payload: any = null;
-      let head = false;
-      let from = 0;
-      let to = Infinity;
-      const filters: ((r: any) => boolean)[] = [];
-      const run = async (mode: "many" | "one") => {
-        const list = (tables[table] ??= []) as any[];
-        if (op === "insert") {
-          const items = (Array.isArray(payload) ? payload : [payload]).map((r: any) => ({
-            id: r.id ?? `${table}-${++seq}`,
-            created_at: new Date().toISOString(),
-            ...r,
-          }));
-          list.push(...items);
-          return { data: mode === "many" ? items : items[0], error: null };
-        }
-        const matched = list.filter((r) => filters.every((f) => f(r)));
-        if (op === "update") {
-          for (const r of matched) Object.assign(r, payload);
-          return { data: mode === "many" ? matched : (matched[0] ?? null), error: null };
-        }
-        if (op === "delete") {
-          tables[table] = list.filter((r) => !matched.includes(r));
-          return { data: matched, error: null };
-        }
-        if (head) return { data: null, count: matched.length, error: null };
-        const page = matched.slice(from, to + 1).map((r) => ({ ...r }));
-        return { data: mode === "many" ? page : (page[0] ?? null), error: null };
-      };
-      const q: any = {
-        select: (_cols?: string, opts?: { head?: boolean }) => {
-          if (opts?.head) head = true;
-          return q;
-        },
-        insert: (v: unknown) => ((op = "insert"), (payload = v), q),
-        update: (v: unknown) => ((op = "update"), (payload = v), q),
-        delete: () => ((op = "delete"), q),
-        eq: (k: string, v: unknown) => (filters.push((r) => r[k] === v), q),
-        neq: (k: string, v: unknown) => (filters.push((r) => r[k] !== v), q),
-        in: (k: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[k])), q),
-        is: (k: string, v: unknown) => (filters.push((r) => (r[k] ?? null) === v), q),
-        not: (k: string, _o: string, v: unknown) => (filters.push((r) => (r[k] ?? null) !== v), q),
-        gte: (k: string, v: string) => (filters.push((r) => String(r[k]) >= v), q),
-        like: () => q,
-        order: () => q,
-        range: (a: number, b: number) => ((from = a), (to = b), q),
-        limit: (n: number) => ((to = from + n - 1), q),
-        single: () => run("one"),
-        maybeSingle: () => run("one"),
-        then: (res: any, rej: any) => run("many").then(res, rej),
-      };
-      return q;
-    },
-  };
-}
-
-const context = () => ({ userId: "owner", supabase: fakeSupabase() });
+const context = () => ({ userId: "owner", supabase: fakeSupabase(tables) });
 const call = (fn: unknown, data: unknown) =>
   (fn as (i: unknown) => Promise<any>)({ data, context: context() });
 
 beforeEach(() => {
-  seq = 0;
   permissionCalls.length = 0;
   visitGeneration.calls = 0;
-  tables = {
-    import_batches: [],
-    import_rows: [],
-    clients: [],
-    properties: [],
-    dogs: [],
-    zones: [],
-    invoices: [],
-    invoice_line_items: [],
-    subscriptions: [],
-    visits: [],
-    payments: [],
-    client_notes: [],
-    services: [],
-    organizations: [
-      {
-        id: "org",
-        timezone: "America/Detroit",
-        invoice_net_days: 15,
-        service_lines: ["pet_waste"],
-      },
-    ],
-  };
+  tables = emptyTables();
 });
 
 describe("the Jobber sample file, previewed and committed", () => {
@@ -768,6 +686,7 @@ describe("the Jobber sample file, previewed and committed", () => {
     const batch = (tables.import_batches as any[]).find((b) => b.id === batchId);
     expect(batch.undone_at).toBeTruthy();
     expect(batch.commit_started_at).toBeNull();
+    expect(batch.stats).toMatchObject({ undone: 3 });
     expect(importDisplayStatus(batch)).toBe("undone");
     // A second tap, and a second undo, are refused.
     await expect(call(undoImport, { batchId })).rejects.toThrow(/already been undone/);

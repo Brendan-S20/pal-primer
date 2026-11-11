@@ -298,6 +298,7 @@ describe("a pet-waste business's import writes the rows it always did", () => {
       started_on: "2026-10-06",
       dog_count: null,
       billing_cadence: null,
+      billing_frequency: null,
       service_name: null,
     });
   });
