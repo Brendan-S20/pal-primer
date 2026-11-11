@@ -89,6 +89,26 @@ describe("My Day's sticky header", () => {
   });
 });
 
+// main 7d6274f, Sandboxes run 42940607923: axe found the "In progress"
+// label on the bottom Next up bar at 2.67:1 (#155dfc on #b7b9bf). The bar was
+// 70% background with a blur, so what scrolled under it set the contrast: a
+// dark primary button under the label failed, anything light passed. My Day
+// scrolls itself to the open visit on load, so the sweep caught it on some
+// runs and not others. Opaque, its text is measured against the page colour
+// at every scroll position.
+describe("My Day's bottom Next up bar", () => {
+  it("is opaque", () => {
+    const at = src.indexOf('data-bottom-chrome=""');
+    expect(at, "no data-bottom-chrome element in my-day.tsx").toBeGreaterThan(0);
+    const cls = src.slice(at).match(/className=\{`([^`]+)`\}/);
+    expect(cls, "the Next up bar's className").not.toBeNull();
+    expect(cls![1]).toMatch(/\bfixed\b/);
+    expect(cls![1]).toMatch(/(^|\s)bg-background(\s|$)/);
+    expect(cls![1]).not.toMatch(/bg-background\/\d+/);
+    expect(cls![1]).not.toMatch(/backdrop-blur/);
+  });
+});
+
 describe("My Day on a wide screen", () => {
   it("holds the list and the header's contents to one reading column from lg", () => {
     expect(src).toMatch(/<div className="space-y-2 py-3 lg:mx-auto lg:max-w-3xl">/);

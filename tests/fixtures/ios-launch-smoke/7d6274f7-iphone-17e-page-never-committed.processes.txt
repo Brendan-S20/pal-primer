@@ -1,0 +1,13 @@
+Timestamp               Ty Process[PID:TID]
+2026-11-10 21:15:50.171 Df HoundStack[91931:98255b] [com.apple.xpc:connection] [0x1061ed260] activating connection: mach=true listener=false peer=false name=com.apple.cfprefsd.daemon
+2026-11-10 21:15:51.060 Df HoundStack[91931:98252f] [com.apple.WebKit:Process] 0x1150f40c0 - [PID=91951] WebProcessProxy::didFinishLaunching:
+2026-11-10 21:15:51.392 Df HoundStack[91931:9825db] [com.apple.WebKit:Network] WebContent[91951]: [pageID=10, frameID=8589934593, isMainFrame=1] DocumentLoader::startLoadingMainResource: Starting load
+2026-11-10 21:15:51.397 Df HoundStack[91931:9825db] [com.apple.WebKit:Network] WebContent[91951] [schemeHandler=3, webPageID=10, frameID=8589934593, taskID=11] WebURLSchemeTaskProxy::didComplete
+2026-11-10 21:15:52.934 Df HoundStack[91931:9825db] [com.apple.WebKit:ResourceLoading] WebContent[91951]: [pageID=10 frameID=8589934593 isMainFrame=1] FrameLoader::transitionToCommitted: Clearing provisional document loader (m_provisionalDocumentLoader=4547596288)
+2026-11-10 21:15:52.974 Df HoundStack[91931:9825db] [com.apple.WebKit:Network] WebContent[91951] [schemeHandler=3, webPageID=10, frameID=8589934593, taskID=11] WebURLSchemeTaskProxy::didComplete
+2026-11-10 21:16:26.884 Df HoundStack[91976:9829fb] [com.apple.xpc:connection] [0x1038ebaf0] activating connection: mach=true listener=false peer=false name=com.apple.cfprefsd.daemon
+2026-11-10 21:16:51.331 Df HoundStack[91976:98297e] [com.apple.WebKit:Process] 0x1140ec0c0 - [PID=92252] WebProcessProxy::didFinishLaunching:
+2026-11-10 21:16:51.729 Df HoundStack[91976:982e0d] [com.apple.WebKit:Network] WebContent[92252]: [pageID=10, frameID=8589934593, isMainFrame=1] DocumentLoader::startLoadingMainResource: Starting load
+2026-11-10 21:16:51.730 Df HoundStack[91976:982e0d] [com.apple.WebKit:Network] WebContent[92252] [schemeHandler=3, webPageID=10, frameID=8589934593, taskID=11] WebURLSchemeTaskProxy::didComplete
+2026-11-10 21:17:28.872 Df HoundStack[91976:982e0d] [com.apple.WebKit:ResourceLoading] WebContent[92252]: [pageID=10 frameID=8589934593 isMainFrame=1] FrameLoader::transitionToCommitted: Clearing provisional document loader (m_provisionalDocumentLoader=4530835456)
+2026-11-10 21:17:28.889 Df HoundStack[91976:982e0d] [com.apple.WebKit:Network] WebContent[92252] [schemeHandler=3, webPageID=10, frameID=8589934593, taskID=11] WebURLSchemeTaskProxy::didComplete
