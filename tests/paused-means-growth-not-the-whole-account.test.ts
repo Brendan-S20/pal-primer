@@ -111,6 +111,14 @@ describe("paused means growth, not the whole account (superseded by the lock, 20
         "thing that pauses — revisit it deliberately rather than widening here.",
       // lib/account-lock.ts joined on 2026-10-09: the lock (NP-12) is the
       // gate this test was written to make deliberate, and it was.
-    ).toEqual(["lib/account-lock.ts", "lib/ai-access.server.ts", "lib/trial.functions.ts"]);
+      // lib/billing-state.server.ts joined on 2026-11-11 (#848): it gates
+      // nothing, it only lets Plan & billing say "Trial ended" instead of
+      // "Free trial" once the trial is over, without a second clock.
+    ).toEqual([
+      "lib/account-lock.ts",
+      "lib/ai-access.server.ts",
+      "lib/billing-state.server.ts",
+      "lib/trial.functions.ts",
+    ]);
   });
 });
