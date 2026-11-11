@@ -27,6 +27,7 @@ import {
   money,
 } from "@/lib/portal-ui";
 import { invoiceKindLabel } from "@/lib/invoice-labels";
+import { invoiceRefundState } from "@/lib/refund-outcome";
 import { taxLineLabel } from "@/lib/sales-tax";
 import { DownloadPdfButton } from "@/components/DownloadPdfButton";
 import { portalDownloadInvoicePdf } from "@/lib/document-pdf.functions";
@@ -292,7 +293,8 @@ function PortalBilling() {
                           includes {money(i.tax_cents)} {taxLineLabel(i.tax_label, i.tax_rate_bps)}
                         </span>
                       )}
-                      <InvoiceStatusBadge status={i.status} />
+                      {/* Refunded money reads as refunded, not Paid (#674). */}
+                      <InvoiceStatusBadge status={i.status} refund={invoiceRefundState(i)} />
                       {i.overdue && (
                         <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-medium text-destructive">
                           Overdue

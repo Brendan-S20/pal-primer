@@ -24,6 +24,9 @@ export type RevenueInvoice = {
   issued_at: string | null;
   /** A linked stay deposit bills nothing of its own (billedDay). */
   deposit_for_invoice_id?: string | null;
+  /** A void that kept its paid date was voided after a full refund and is
+   *  still billed on its day (billedDay, #674). */
+  paid_at?: string | null;
 };
 
 export type RevenueRow = { serviceId: string | null; name: string; cents: number; lines: number };

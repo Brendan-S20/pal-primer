@@ -448,7 +448,7 @@ async function loadPortalInvoices(token: string, session: PortalSession) {
     // the PDF, the email and the pay link (C-03). It used to number rows by
     // their position in the list.
     .select(
-      "id, number, due_on, credit_applied_cents, amount_paid_cents, tax_cents, tax_rate_bps, tax_label, deposit_for_invoice_id",
+      "id, number, due_on, credit_applied_cents, amount_paid_cents, amount_refunded_cents, tax_cents, tax_rate_bps, tax_label, deposit_for_invoice_id",
     )
     .eq("client_id", session.clientId);
   if (dueErr) throw new Error(dueErr.message);
@@ -460,6 +460,7 @@ async function loadPortalInvoices(token: string, session: PortalSession) {
         due_on: string | null;
         credit_applied_cents: number | null;
         amount_paid_cents?: number | null;
+        amount_refunded_cents?: number | null;
         tax_cents?: number | null;
         tax_rate_bps?: number | null;
         tax_label?: string | null;
@@ -488,6 +489,9 @@ async function loadPortalInvoices(token: string, session: PortalSession) {
       due_on,
       credit_applied_cents,
       amount_paid_cents,
+      // What went back on a paid invoice (#674), so the list says Refunded
+      // rather than Paid once the money is back with the client.
+      amount_refunded_cents: Number(extra?.amount_refunded_cents ?? 0),
       tax_cents: Number(extra?.tax_cents ?? 0),
       tax_rate_bps: Number(extra?.tax_rate_bps ?? 0),
       tax_label: (extra?.tax_label ?? null) as string | null,
