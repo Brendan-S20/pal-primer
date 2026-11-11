@@ -24,6 +24,16 @@ import type { PluralCategory, TranslationsWithPlurals } from "./en";
  * الإضافية". Unicode does not mirror arrows, so → would point backwards.
  */
 const ar: TranslationsWithPlurals<PluralCategory> = {
+  completionBlock: {
+    title: "هذا العميل محظور",
+    reasonLabel: "سبب الحظر:",
+    noReason: "هذا العميل محظور (لم يُذكر سبب)",
+    setByOn: "وضعه {{who}} في {{when}}.",
+    setBy: "وضعه {{who}}.",
+    theOwner: "المالك",
+    body: "لا يزال بإمكانك إكمال هذه الزيارة. يُسجَّل الإكمال باسمك ووقته.",
+    continue: "أكمل على أي حال",
+  },
   petSafety: {
     open: "سجل السلامة",
     title: "سجل السلامة",

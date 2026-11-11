@@ -19,6 +19,16 @@ import type { TranslationsWithPlurals } from "./en";
  * half-width where the string is a number or a code.
  */
 const zh: TranslationsWithPlurals<"other"> = {
+  completionBlock: {
+    title: "该客户已被阻止",
+    reasonLabel: "阻止原因：",
+    noReason: "该客户已被阻止（未填写原因）",
+    setByOn: "由{{who}}于{{when}}设置。",
+    setBy: "由{{who}}设置。",
+    theOwner: "老板",
+    body: "你仍然可以完成这次上门。完成记录会附上你的姓名和时间。",
+    continue: "仍然完成",
+  },
   petSafety: {
     open: "安全记录",
     title: "安全记录",

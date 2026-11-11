@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { completeFromOffice, useOfficeCompleteOverride } from "@/components/OfficeCompleteOverride";
+import { useCompletionBlockWarning } from "@/components/CompletionBlockWarning";
 import { warnLessonClashes } from "@/components/training/lessonClashWarning";
 import { useRoleLabel } from "@/components/CommercialOnly";
 import { orgLocalTime } from "@/lib/org-day";
@@ -418,11 +419,15 @@ function RoutesPage() {
 
   // No photo or checklist: the office says why, or the visit stays open (#658).
   const { askWhy, dialog: overrideDialog } = useOfficeCompleteOverride();
+  // A client the owner's BLOCK rule holds: say why first, never refuse (#851).
+  const completionBlock = useCompletionBlockWarning();
   const completeMut = useMutation({
     mutationFn: ({ visitId, confirmedEarly }: { visitId: string; confirmedEarly: boolean }) =>
       completeFromOffice(
-        (overrideReason) => doComplete({ data: { visitId, confirmedEarly, overrideReason } }),
+        (overrideReason, blockAcknowledged) =>
+          doComplete({ data: { visitId, confirmedEarly, overrideReason, blockAcknowledged } }),
         askWhy,
+        () => completionBlock.check(visitId),
       ),
     onSuccess: (done) => {
       if (!done) return;
@@ -1023,6 +1028,7 @@ function RoutesPage() {
     <>
       {moveDialog}
       {overrideDialog}
+      {completionBlock.dialog}
       {visitsData?.clash && (
         <p
           role="alert"

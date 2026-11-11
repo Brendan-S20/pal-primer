@@ -17,6 +17,16 @@
  * Arabic writes six forms for each, Chinese one — see TranslationsWithPlurals.
  */
 const en = {
+  completionBlock: {
+    title: "This client is blocked",
+    reasonLabel: "Blocked:",
+    noReason: "This client is blocked (no reason given)",
+    setByOn: "Set by {{who}} on {{when}}.",
+    setBy: "Set by {{who}}.",
+    theOwner: "the owner",
+    body: "You can still complete this visit. Completing it is recorded with your name and the time.",
+    continue: "Complete anyway",
+  },
   petSafety: {
     open: "Safety log",
     title: "Safety log",

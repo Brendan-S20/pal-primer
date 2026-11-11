@@ -10,6 +10,16 @@ import type { Translations } from "./en";
  * English or shorter; the long ones are sentences in blocks that wrap.
  */
 const es: Translations = {
+  completionBlock: {
+    title: "Este cliente está bloqueado",
+    reasonLabel: "Bloqueado:",
+    noReason: "Este cliente está bloqueado (sin motivo indicado)",
+    setByOn: "Lo puso {{who}} el {{when}}.",
+    setBy: "Lo puso {{who}}.",
+    theOwner: "el dueño",
+    body: "Igual puedes completar esta visita. Se guarda con tu nombre y la hora.",
+    continue: "Completar igual",
+  },
   petSafety: {
     open: "Registro de seguridad",
     title: "Registro de seguridad",
