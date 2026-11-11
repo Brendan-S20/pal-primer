@@ -3,7 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useState, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import {
   ConnectComponentsProvider,
   ConnectAccountOnboarding,
@@ -50,6 +50,18 @@ import {
   withTimeout,
   type BalanceSummaryData,
 } from "@/lib/payments-load";
+
+// Tap to Pay (#579) is native only, loaded lazily behind the build-time flag,
+// read inline so Vite folds it to `null` in the web build and Rollup emits no
+// Tap to Pay chunk (the same shape StaffInvoicePayForm uses).
+const TapToPaySettingsCard =
+  import.meta.env.VITE_NATIVE_BUNDLE === "1"
+    ? lazy(() =>
+        import("@/components/tap-to-pay/TapToPaySettingsCard").then((m) => ({
+          default: m.TapToPaySettingsCard,
+        })),
+      )
+    : null;
 
 // Promoted from Settings -> Payments to the main sidebar (punch list #9): this
 // is the tenant-facing money view (balances, payments, payouts), not app
@@ -263,6 +275,14 @@ function PaymentsSettings() {
             }
             accountExtras={
               <>
+                {/* Tap to Pay on iPhone (Apple's review guide 3.6): enabled
+                    outside checkout, in the Account tab. Native app only; the
+                    web build drops it. */}
+                {TapToPaySettingsCard && cfg.chargesEnabled && (
+                  <Suspense fallback={null}>
+                    <TapToPaySettingsCard />
+                  </Suspense>
+                )}
                 {/* Was a permanently-visible amber box at the foot of the page,
                     warning about a hypothetical ("if you connect a different
                     account") whether or not anybody was switching. A warning

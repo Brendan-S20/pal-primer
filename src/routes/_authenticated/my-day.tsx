@@ -1197,8 +1197,13 @@ function MyDay() {
              the bar spans the content column and mx-auto centres within it.
              The variable is the docked width, so on the icon rail the bar
              starts at the rail's edge rather than 16rem in. */
+          /* Opaque, like the sticky header above. At 70% with a blur, the
+             "In progress" label's blue measured 2.67:1 whenever a dark
+             primary button scrolled under it (axe, /my-day at 1280px,
+             main 7d6274f), and 4.5:1 or better everywhere else, so its
+             contrast depended on the scroll position. */
           data-bottom-chrome=""
-          className={`fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/70 ${nextUpClearOfSidebar} ${nextUpAboveTabBar}`}
+          className={`fixed inset-x-0 bottom-0 z-40 border-t bg-background pb-[env(safe-area-inset-bottom)] ${nextUpClearOfSidebar} ${nextUpAboveTabBar}`}
         >
           <a
             href={`#visit-${nextUp.id}`}
