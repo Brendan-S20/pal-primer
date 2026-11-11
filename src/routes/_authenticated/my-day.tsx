@@ -67,6 +67,10 @@ import { resolveOfflineUserId } from "@/lib/offline/action-owner";
 import { confirmEndWithEmptyReport } from "@/lib/offline/walk-drafts";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import {
+  useCompletionBlockWarning,
+  usePrefetchCompletionBlock,
+} from "@/components/CompletionBlockWarning";
+import {
   describeReadFreshness,
   READ_REFRESH_GRACE_MS,
   cacheAgeParts,
@@ -1794,6 +1798,10 @@ function VisitCard({
   // Preview mode (office role viewing another tech's day) also disables actions.
   const canPerformVisit = !preview && role !== "dispatcher";
   const isGroom = visit.services?.service_line === "mobile_grooming";
+  // The owner's BLOCK rule never stops a Complete; it is explained first
+  // (#851 follow-up). Only a groom can be held, so only a groom asks.
+  const completionBlock = useCompletionBlockWarning();
+  usePrefetchCompletionBlock(visit.id, isGroom && canPerformVisit && visit.status !== "completed");
 
   const actions = useOfflineVisitActions(visit.id, visit.organization_id as string | undefined);
   // Billing an add-on is the one action on this card that is NOT queued when
@@ -2067,6 +2075,9 @@ function VisitCard({
   };
   const complete = useMutation({
     mutationFn: async () => {
+      // Before anything is saved: Cancel here leaves the visit as it was.
+      const block = isGroom ? await completionBlock.check(visit.id) : "clear";
+      if (block === "cancelled") return null;
       // A walk's report goes first, so the completion email is written from
       // it (#410). Queued, the completion queues behind it, never ahead.
       const reportQueued = (walk || sit) && (await walkReport.send()).queued;
@@ -2082,9 +2093,11 @@ function VisitCard({
             ? checkedItems.filter((id) => checklist.some((i) => i.id === id))
             : undefined,
         queueOnly: reportQueued || careQueued,
+        ...(block === "acknowledged" ? { blockAcknowledged: true } : {}),
       });
     },
     onSuccess: (r) => {
+      if (!r) return;
       haptic("success");
       showCompletionCheck();
       toast.success(completeToast(r));
@@ -3020,6 +3033,7 @@ function VisitCard({
             <WalkReportFields visitId={visit.id} report={walkReport} />
           )}
           {walk && endWalkDialog}
+          {isGroom && completionBlock.dialog}
 
           {sit && underWay && canPerformVisit && (
             <>

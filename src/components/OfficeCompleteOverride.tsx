@@ -33,16 +33,25 @@ type OfficeCompleteResult = { ok: true } | { ok: false; needsOverride: string };
 
 /** Runs an office Complete, asking why when the database says the photo or
  *  the checklist is missing. Resolves true when the visit was completed and
- *  false when the person cancelled. */
+ *  false when the person cancelled.
+ *
+ *  `checkBlock` runs first, before anything is saved: the owner's BLOCK
+ *  warning (useCompletionBlockWarning, #851 follow-up). Cancel there ends it
+ *  here with nothing written; Continue goes on, and `call` is told so the
+ *  timeline records that the warning was seen. */
 export async function completeFromOffice(
-  call: (overrideReason?: string) => Promise<OfficeCompleteResult>,
+  call: (overrideReason?: string, blockAcknowledged?: boolean) => Promise<OfficeCompleteResult>,
   askWhy: (missing: string) => Promise<string | null>,
+  checkBlock?: () => Promise<"clear" | "acknowledged" | "cancelled">,
 ): Promise<boolean> {
-  const first = await call();
+  const block = checkBlock ? await checkBlock() : "clear";
+  if (block === "cancelled") return false;
+  const acknowledged = block === "acknowledged" ? true : undefined;
+  const first = await call(undefined, acknowledged);
   if (first.ok) return true;
   const why = await askWhy(first.needsOverride);
   if (!why) return false;
-  const second = await call(why);
+  const second = await call(why, acknowledged);
   if (!second.ok) throw new Error(second.needsOverride);
   return true;
 }

@@ -1967,7 +1967,7 @@ function NewClientWizardForm({
                   <div className="rounded-md border bg-primary/5 p-4">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground-strong">
                           Suggested price / visit
                         </div>
                         {quoteQ.isFetching && (
@@ -1982,14 +1982,14 @@ function NewClientWizardForm({
                           !quoteQ.isFetching &&
                           quoteQ.data &&
                           !("quote" in (quoteQ.data as any)) && (
-                            <div className="text-sm text-amber-600">
+                            <div className="text-sm text-amber-800 dark:text-amber-300">
                               {setsPrices
                                 ? `No zone matches ZIP ${postalCode} and there is no standard price yet. Set one in Settings → Services, or type a price below.`
                                 : `No zone matches ZIP ${postalCode} and there is no standard price yet, so there is no set price.`}
                             </div>
                           )}
                         {walkLike && serviceCents == null && (
-                          <div className="text-sm text-amber-600">
+                          <div className="text-sm text-amber-800 dark:text-amber-300">
                             {chosenService!.name} has no price yet. Set one below, or in Settings →
                             Services.
                           </div>
@@ -1998,7 +1998,7 @@ function NewClientWizardForm({
                           !quoteQ.isFetching &&
                           zoneQuote &&
                           suggestedCents == null && (
-                            <div className="text-sm text-amber-600">
+                            <div className="text-sm text-amber-800 dark:text-amber-300">
                               {zoneQuote.zoneName} has no commercial rates. Set the price below, or
                               add them in Settings → Zones & pricing.
                             </div>
@@ -2022,7 +2022,7 @@ function NewClientWizardForm({
                         <Badge variant="secondary">From the {chosenService!.name} price</Badge>
                       )}
                     </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
+                    <p className="mt-1 text-xs text-muted-foreground-strong">
                       {commercial
                         ? commercialBasis(zoneQuote?.commercial ?? null, unitsN, stationsN)
                         : `Based on ${dogCount} dog${dogCount === 1 ? "" : "s"}`}{" "}
@@ -2048,7 +2048,7 @@ function NewClientWizardForm({
                       </p>
                     ) : (
                       !quoteQ.isFetching && (
-                        <p role="alert" className="text-amber-600">
+                        <p role="alert" className="text-amber-800 dark:text-amber-300">
                           There is no set price for this plan. Tick "Skip subscription for now" to
                           save the client, and ask an owner or office manager to add the plan.
                         </p>
