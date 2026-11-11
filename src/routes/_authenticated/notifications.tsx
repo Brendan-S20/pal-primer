@@ -99,8 +99,7 @@ function NotificationsPage() {
               aria-pressed={filter === "unread"}
               className={`rounded-md px-3 py-1.5 font-medium touch:min-h-11 ${filter === "unread" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
             >
-              {t("alerts.unread")}{" "}
-              {unread > 0 && <span className="ms-1 text-xs opacity-80">({unread})</span>}
+              {t("alerts.unread")} {unread > 0 && <span className="ms-1 text-xs">({unread})</span>}
             </button>
           </div>
           {unread > 0 && (

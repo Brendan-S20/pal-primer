@@ -5,10 +5,12 @@
 // the owner (3.8.1). "Not now" closes it for good on this phone; Payments
 // settings keeps the same action (3.6).
 //
-// The hero: Apple's Marketing Toolkit "Hero in-app banner" goes at
-// public/tap-to-pay/hero-in-app-banner.png (TAP_TO_PAY_HERO_SRC). Until that
-// file is dropped in, the image fails to load and the drawn symbol shows in
-// its place, so the screen is complete either way.
+// The hero: public/tap-to-pay/hero-in-app-banner.png (TAP_TO_PAY_HERO_SRC),
+// 800x600. HoundStack's own art in the app's colours: an iPhone showing the
+// wave.3.right.circle mark and an amount, with a contactless card. No Apple
+// logo and no Apple artwork. To use Apple's Marketing Toolkit "Hero in-app
+// banner" instead, replace the file at the same path (4:3). If it ever fails
+// to load, the drawn symbol shows in its place.
 //
 // Native only: the _authenticated layout loads this lazily behind an inline
 // VITE_NATIVE_BUNDLE check.
@@ -46,12 +48,15 @@ function markSeen() {
 /** Whether the announcement should open. Exported for tests. */
 export function shouldAnnounce(input: {
   platform: string;
+  /** False on a Release binary signed without Tap to Pay (#854). */
+  entitled: boolean;
   deviceCanTap: boolean;
   status: { available: boolean; canTap: boolean } | undefined;
   alreadySeen: boolean;
 }): boolean {
   return (
     input.platform === "ios" &&
+    input.entitled &&
     input.deviceCanTap &&
     !input.alreadySeen &&
     !!input.status?.available &&
@@ -73,6 +78,7 @@ export function TapToPayAnnouncement() {
     if (
       shouldAnnounce({
         platform: device.platform,
+        entitled: device.entitled,
         deviceCanTap: device.canTap,
         status: s,
         alreadySeen: seen(),
@@ -80,7 +86,7 @@ export function TapToPayAnnouncement() {
     ) {
       setOpen(true);
     }
-  }, [device.platform, device.canTap, s]);
+  }, [device.platform, device.entitled, device.canTap, s]);
 
   // Already on for this business: nothing to announce.
   useEffect(() => {

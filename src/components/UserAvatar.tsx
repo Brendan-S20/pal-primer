@@ -26,15 +26,19 @@ export function initialsOf(name: string | null | undefined): string {
 
 // Fixed palette rather than a random hue: these are picked to stay legible
 // against white text in both themes, which a generated HSL will not reliably do.
+// The 700 step, not 600: at 600 five of the eight were under 4.5:1 with white
+// initials (emerald 3.65, amber 3.19, teal, orange and sky under 4.2), and axe
+// found the emerald one on every signed-in page, in the header's account menu
+// (gaps-r2-11 part 2). Every 700 here clears 4.5:1 with white.
 const TONES = [
-  "bg-sky-600",
-  "bg-emerald-600",
-  "bg-violet-600",
-  "bg-amber-600",
-  "bg-rose-600",
-  "bg-teal-600",
-  "bg-indigo-600",
-  "bg-orange-600",
+  "bg-sky-700",
+  "bg-emerald-700",
+  "bg-violet-700",
+  "bg-amber-700",
+  "bg-rose-700",
+  "bg-teal-700",
+  "bg-indigo-700",
+  "bg-orange-700",
 ];
 
 /** Stable per person — the same id always lands on the same tone. */

@@ -511,6 +511,18 @@ describe("the wiring", () => {
     );
   });
 
+  it("the announcement's hero image is in the repo, a real 4:3 PNG", () => {
+    const png = readFileSync("public/tap-to-pay/hero-in-app-banner.png");
+    expect(png.subarray(1, 4).toString("latin1")).toBe("PNG");
+    const width = png.readUInt32BE(16);
+    const height = png.readUInt32BE(20);
+    expect(width * 3).toBe(height * 4);
+    expect(png.length).toBeLessThan(150_000);
+    expect(readFileSync("src/components/tap-to-pay/TapToPayAnnouncement.tsx", "utf8")).toContain(
+      'TAP_TO_PAY_HERO_SRC = "/tap-to-pay/hero-in-app-banner.png"',
+    );
+  });
+
   it("setup.tsx is not touched by Tap to Pay (the end-of-onboarding offer, 3.4, waits)", () => {
     for (const f of ["src/routes/_authenticated/setup.tsx", "src/routes/setup.tsx"]) {
       let src = "";

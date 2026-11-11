@@ -158,10 +158,13 @@ Not in this change: 3.4 (offer Tap to Pay at the end of new-merchant
 onboarding) waits for a free slot on `setup.tsx`; 3.9 "Try it out", 6.1 and
 6.3 launch marketing, and 1.7 Face ID sign-in are out of scope.
 
-**Hero image (Marketing Toolkit).** The announcement loads
-`public/tap-to-pay/hero-in-app-banner.png`, Apple's Hero in-app banner from the
-Tap to Pay on iPhone Marketing Toolkit. The file is not in the repo yet; until
-it is dropped in, the drawn symbol shows in its place.
+**Hero image.** The announcement loads
+`public/tap-to-pay/hero-in-app-banner.png` (800x600, about 90 KB): HoundStack's
+own art in the app's colours, an iPhone showing the `wave.3.right.circle` mark
+and an amount, with a contactless card. No Apple logo and no Apple artwork.
+To use Apple's Marketing Toolkit "Hero in-app banner" instead, replace the
+file at the same path, keeping 4:3. If it fails to load, the drawn symbol
+shows in its place.
 
 ## Which reader: simulated, the real phone, or none
 

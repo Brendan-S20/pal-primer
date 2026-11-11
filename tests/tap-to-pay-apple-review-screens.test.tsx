@@ -44,7 +44,10 @@ const h = vi.hoisted(() => {
 
 vi.mock("@capacitor/core", () => ({
   Capacitor: { getPlatform: () => h.platform, isNativePlatform: () => true },
-  registerPlugin: () => ({}),
+  registerPlugin: () => ({
+    isAvailable: async () => ({ available: true }),
+    show: async () => ({ shown: true }),
+  }),
 }));
 vi.mock("@capacitor/share", () => ({ Share: { share: h.share } }));
 vi.mock("@capacitor-community/stripe-terminal", () => ({
@@ -98,7 +101,10 @@ vi.mock("sonner", () => ({
 
 import { TapToPayButton } from "@/components/TapToPayButton";
 import { educationPages } from "@/components/tap-to-pay/TapToPayEducation";
-import { shouldAnnounce } from "@/components/tap-to-pay/TapToPayAnnouncement";
+import { shouldAnnounce, TapToPayAnnouncement } from "@/components/tap-to-pay/TapToPayAnnouncement";
+import { TapToPaySettingsCard } from "@/components/tap-to-pay/TapToPaySettingsCard";
+import { appleEducationAvailable, showAppleEducation } from "@/lib/tap-to-pay-education-native";
+import { tapToPayUsableHere } from "@/lib/tap-to-pay-entitlement";
 import {
   connectTapToPayReader,
   ensureTerminal,
@@ -153,6 +159,8 @@ const buttons = () => [...host.querySelectorAll("button")];
 const byText = (t: string) => buttons().find((b) => b.textContent?.trim() === t);
 
 beforeEach(() => {
+  // A Debug build signed with Tap to Pay (#854); the Release case is below.
+  (window as any).__HS_TAP_TO_PAY_ENTITLED__ = true;
   h.role = "owner";
   h.platform = "ios";
   h.linked = true;
@@ -362,13 +370,26 @@ describe("education and the announcement (Apple 3.1, 4.x)", () => {
   it("the announcement opens once, for an eligible iPhone merchant whose business has it", () => {
     const status = { available: true, canTap: true };
     expect(
-      shouldAnnounce({ platform: "ios", deviceCanTap: true, status, alreadySeen: false }),
+      shouldAnnounce({
+        entitled: true,
+        platform: "ios",
+        deviceCanTap: true,
+        status,
+        alreadySeen: false,
+      }),
     ).toBe(true);
-    expect(shouldAnnounce({ platform: "ios", deviceCanTap: true, status, alreadySeen: true })).toBe(
-      false,
-    );
     expect(
       shouldAnnounce({
+        entitled: true,
+        platform: "ios",
+        deviceCanTap: true,
+        status,
+        alreadySeen: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldAnnounce({
+        entitled: true,
         platform: "ios",
         deviceCanTap: true,
         status: { ...status, available: false },
@@ -377,6 +398,7 @@ describe("education and the announcement (Apple 3.1, 4.x)", () => {
     ).toBe(false);
     expect(
       shouldAnnounce({
+        entitled: true,
         platform: "ios",
         deviceCanTap: true,
         status: { ...status, canTap: false },
@@ -384,7 +406,98 @@ describe("education and the announcement (Apple 3.1, 4.x)", () => {
       }),
     ).toBe(false);
     expect(
-      shouldAnnounce({ platform: "android", deviceCanTap: true, status, alreadySeen: false }),
+      shouldAnnounce({
+        entitled: true,
+        platform: "android",
+        deviceCanTap: true,
+        status,
+        alreadySeen: false,
+      }),
     ).toBe(false);
+  });
+});
+
+describe("a Release binary signed without Tap to Pay (#854): no surface draws or runs", () => {
+  function mountAny(el: ReturnType<typeof createElement>) {
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    act(() => {
+      root.render(createElement(QueryClientProvider, { client: qc }, el));
+    });
+  }
+
+  beforeEach(() => {
+    delete (window as any).__HS_TAP_TO_PAY_ENTITLED__;
+    localStorage.clear();
+    h.prepare.mockClear();
+    h.initialize.mockClear();
+  });
+
+  it("the invoice button draws nothing, for any role", () => {
+    for (const role of ["owner", "tech"]) {
+      h.role = role;
+      mount();
+      expect(host.innerHTML).toBe("");
+      act(() => root.unmount());
+      host.remove();
+    }
+  });
+
+  it("the announcement never opens and never prepares a reader", async () => {
+    expect(
+      shouldAnnounce({
+        entitled: false,
+        platform: "ios",
+        deviceCanTap: true,
+        status: { available: true, canTap: true },
+        alreadySeen: false,
+      }),
+    ).toBe(false);
+    mountAny(createElement(TapToPayAnnouncement));
+    await settle();
+    expect(host.querySelector('[data-testid="tap-to-pay-announcement"]')).toBeNull();
+    expect(h.prepare).not.toHaveBeenCalled();
+  });
+
+  it("the Settings card draws nothing and never prepares a reader", async () => {
+    mountAny(createElement(TapToPaySettingsCard));
+    await settle();
+    expect(host.querySelector('[data-testid="tap-to-pay-settings"]')).toBeNull();
+    expect(h.prepare).not.toHaveBeenCalled();
+  });
+
+  it("the launch warm-up skips without touching the reader SDK", async () => {
+    expect(tapToPayUsableHere("ios", IPHONE("18_1"))).toBe(false);
+    const prepare = vi.fn();
+    const connect = vi.fn();
+    const r = await warmUpTapToPay({
+      platform: "ios",
+      userAgent: IPHONE("18_1"),
+      getStatus: async () => ({ available: true, canTap: true, canAcceptTerms: true }),
+      prepare,
+      connect: connect as any,
+      deviceCanTapToPay: (p, ua) => tapToPayUsableHere(p, ua),
+    });
+    expect(r).toBe("skipped");
+    expect(prepare).not.toHaveBeenCalled();
+    expect(connect).not.toHaveBeenCalled();
+    // And the launch path really uses that check, not the phone check alone.
+    const { readFileSync } = await import("node:fs");
+    expect(readFileSync("src/lib/tap-to-pay-terminal.ts", "utf8")).toMatch(
+      /deviceCanTapToPay: \(p, ua\) => ent\.tapToPayUsableHere\(p, ua\)/,
+    );
+  });
+
+  it("Apple's education sheet (ProximityReader) is never offered or shown", async () => {
+    expect(await appleEducationAvailable()).toBe(false);
+    expect(await showAppleEducation()).toBe(false);
+    (window as any).__HS_TAP_TO_PAY_ENTITLED__ = true;
+    expect(await appleEducationAvailable()).toBe(true);
+  });
+
+  it("Android has no such entitlement and is unaffected", () => {
+    expect(tapToPayUsableHere("android", "Mozilla/5.0 (Linux; Android 14; Pixel 8)")).toBe(true);
   });
 });

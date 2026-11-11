@@ -11,16 +11,21 @@ import {
   ensureTerminal,
   tapToPayTermsAccepted,
 } from "@/lib/tap-to-pay-terminal";
-import { describeTapToPayError, deviceCanTapToPay, iosUpdateAdvice } from "@/lib/tap-to-pay";
+import { describeTapToPayError, iosUpdateAdvice } from "@/lib/tap-to-pay";
+import { tapToPayEntitled, tapToPayUsableHere } from "@/lib/tap-to-pay-entitlement";
 
 export function useTapToPayDevice() {
   const platform = Capacitor.getPlatform();
   const userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent;
+  // A Release binary signed without Tap to Pay (#854) is not entitled: every
+  // surface built on this hook draws nothing there.
+  const entitled = tapToPayEntitled(platform);
   return {
     platform,
     userAgent,
-    canTap: deviceCanTapToPay(platform, userAgent),
-    iosUpdate: iosUpdateAdvice(platform, userAgent),
+    entitled,
+    canTap: tapToPayUsableHere(platform, userAgent),
+    iosUpdate: entitled ? iosUpdateAdvice(platform, userAgent) : null,
   };
 }
 

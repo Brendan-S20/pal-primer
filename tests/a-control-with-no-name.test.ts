@@ -104,7 +104,6 @@ function unnamedControls(text: string, file: string): string[] {
 const STILL_UNNAMED: Record<string, number> = {
   "src/components/DeleteAccountCard.tsx": 1,
   "src/components/ProvisionLocation.tsx": 1,
-  "src/components/settings/ClientPortalCards.tsx": 4,
   "src/lib/portal-ui.tsx": 5,
   "src/routes/_authenticated/inventory.tsx": 4,
   "src/routes/_authenticated/settings.deep-clean.tsx": 1,

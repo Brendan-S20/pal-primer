@@ -25,6 +25,8 @@ export function TapToPaySettingsCard() {
   const [educating, setEducating] = useState(false);
 
   if (device.platform !== "ios" && device.platform !== "android") return null;
+  // A Release build is signed without Tap to Pay until Apple approves distribution.
+  if (!device.entitled) return null;
   if (device.platform === "ios" && !device.canTap && device.iosUpdate !== "required") return null;
   const label = tapToPayLabel(device.platform);
   const enableLabel = `Enable ${label}`;

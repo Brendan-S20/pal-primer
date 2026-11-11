@@ -277,11 +277,12 @@ export function readTapInFlight(): InFlightTap | null {
 
 /** Everything the launch path needs, wired to the real plugin and server. */
 export async function startTapToPayOnLaunch(): Promise<() => void> {
-  const [{ App }, { Capacitor }, fns, lib, { toast }] = await Promise.all([
+  const [{ App }, { Capacitor }, fns, lib, ent, { toast }] = await Promise.all([
     import("@capacitor/app"),
     import("@capacitor/core"),
     import("@/lib/tap-to-pay.functions"),
     import("@/lib/tap-to-pay"),
+    import("@/lib/tap-to-pay-entitlement"),
     import("sonner"),
   ]);
   const platform = Capacitor.getPlatform();
@@ -308,7 +309,9 @@ export async function startTapToPayOnLaunch(): Promise<() => void> {
         getStatus: () => fns.getTapToPayStatus(),
         prepare: () => fns.prepareTapToPay({ data: {} }),
         connect: connectTapToPayReader,
-        deviceCanTapToPay: lib.deviceCanTapToPay,
+        // Not deviceCanTapToPay alone: a Release binary signed without Tap
+        // to Pay (#854) must never touch the reader SDK.
+        deviceCanTapToPay: (p, ua) => ent.tapToPayUsableHere(p, ua),
       }),
     async () => {
       const t = readTapInFlight();

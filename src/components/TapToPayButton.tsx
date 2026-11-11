@@ -36,6 +36,7 @@ import { TapToPayProgress, useReaderSetupProgress } from "@/components/tap-to-pa
 import { TapToPayEducation } from "@/components/tap-to-pay/TapToPayEducation";
 import { usePermissions } from "@/hooks/useMyRole";
 import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
+import { tapToPayEntitled } from "@/lib/tap-to-pay-entitlement";
 import {
   canAcceptTapToPayTerms,
   classifyTapToPayError,
@@ -119,6 +120,8 @@ export function TapToPayButton({
     dueCents,
   });
   if (!gate.show) return null;
+  // A Release build is signed without Tap to Pay until Apple approves distribution.
+  if (!tapToPayEntitled(Capacitor.getPlatform())) return null;
   const label = tapToPayLabel(platform);
 
   if (gate.mode !== "ready") {

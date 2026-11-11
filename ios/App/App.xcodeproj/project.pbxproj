@@ -496,6 +496,7 @@
 				MARKETING_VERSION = 1.0;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				HS_TAP_TO_PAY_ENTITLED = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = consulting.thenorth.houndstack;
 				PRODUCT_NAME = HoundStack;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
@@ -518,7 +519,8 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_ENTITLEMENTS = App/App.Release.entitlements;
+				HS_TAP_TO_PAY_ENTITLED = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = consulting.thenorth.houndstack;
 				PRODUCT_NAME = HoundStack;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";

@@ -23,11 +23,17 @@ import {
  * successful save: the draft is dropped and nothing more is written.
  * `discard()` is the "Discard draft" button: the draft is dropped and the
  * form goes back to how it opened, through `reset`.
+ *
+ * `ready` holds the read back until the form knows what is stored (#770), so
+ * `restore` can weigh the draft against it. `restore` returning `false` says
+ * nothing in the draft was worth keeping: it is dropped and no banner shows.
  */
 export function useFormDraft<T>(opts: {
   form: string;
   value: T;
-  restore: (draft: T) => void;
+  /** False while what the form is drawn from is still loading. Default true. */
+  ready?: boolean;
+  restore: (draft: T) => void | boolean;
   reset: () => void;
 }): { restored: boolean; clear: () => void; discard: () => void } {
   const { orgId } = useMyRole();
@@ -51,18 +57,19 @@ export function useFormDraft<T>(opts: {
   }, []);
 
   const key = formDraftKey(userId, orgId, opts.form);
+  const ready = opts.ready ?? true;
 
   useEffect(() => {
-    if (!key || hydrated) return;
+    if (!key || hydrated || !ready) return;
     const draft = loadFormDraft<T>(key);
     // Typed into before the draft arrived: what is on screen wins.
     const untouched = JSON.stringify(latest.current.value) === initial.current;
     if (draft && untouched) {
-      latest.current.restore(draft);
-      setRestored(true);
+      if (latest.current.restore(draft) === false) clearFormDraft(key);
+      else setRestored(true);
     }
     setHydrated(true);
-  }, [key, hydrated]);
+  }, [key, hydrated, ready]);
 
   useEffect(() => {
     if (!hydrated || done.current || !key) return;

@@ -5,6 +5,7 @@
 // HSBridgeViewController). On older iOS, on Android, and anywhere the plugin
 // is missing, TapToPayEducation's own screens are shown instead.
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { tapToPayEntitled } from "@/lib/tap-to-pay-entitlement";
 
 interface TapToPayEducationPlugin {
   isAvailable(): Promise<{ available: boolean }>;
@@ -21,6 +22,8 @@ function native(): TapToPayEducationPlugin {
 export async function appleEducationAvailable(): Promise<boolean> {
   try {
     if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "ios") return false;
+    // A Release build is signed without Tap to Pay (#854): no ProximityReader.
+    if (!tapToPayEntitled("ios")) return false;
     return (await native().isAvailable()).available;
   } catch {
     return false;
@@ -30,6 +33,7 @@ export async function appleEducationAvailable(): Promise<boolean> {
 /** Show Apple's guide. False when it could not be shown. */
 export async function showAppleEducation(): Promise<boolean> {
   try {
+    if (!tapToPayEntitled(Capacitor.getPlatform())) return false;
     return (await native().show()).shown;
   } catch {
     return false;
