@@ -553,7 +553,7 @@ describe("lines hide; they never refuse a write and never delete", () => {
     const fns = codeOnly(read("src/lib/org-features.functions.ts"));
     expect(fns).toMatch(/defaultServiceSeedsFor\(lines\)/);
     expect(fns).toMatch(
-      /from\("services"\)\s*\.select\("name"\)\s*\.eq\("organization_id", orgId\)/,
+      /from\("services"\)\s*\.select\("name, service_line"\)\s*\.eq\("organization_id", orgId\)/,
     );
     expect(fns).toMatch(/if \(have\.has\(key\)\) continue/);
     expect(fns).toMatch(/if \(error\.code === "23505"\)/);
