@@ -7,6 +7,7 @@
 //      (credits auto-apply first server-side), behind a styled confirm.
 //   2. Credit:      "Apply credit ($Y available)" → applyCreditToInvoice,
 //      showing the remaining due it would leave.
+//   0. Tap to Pay:  native app only, always first (Apple 5.2).
 //   3. New card:    the Payment Element form (createInvoicePaymentIntent +
 //      Elements on the org's connected account), explicit card entry.
 import { Suspense, lazy, useEffect, useState } from "react";
@@ -265,6 +266,24 @@ export function StaffInvoicePayForm({
           <p className="text-xs text-muted-foreground">Billed to {client.display_name}</p>
         )}
       </div>
+
+      {/* Tap to Pay (#579): NATIVE ONLY, and FIRST in the payment options
+          (Apple's Tap to Pay on iPhone review guide 5.2: at the top, reachable
+          with no scrolling). The button decides for itself what this phone
+          and this role see (src/lib/tap-to-pay.ts). The web build drops this
+          branch. */}
+      {IS_NATIVE_BUNDLE && TapToPayButton && (
+        <Suspense fallback={null}>
+          <TapToPayButton
+            invoiceId={invoiceId}
+            invoiceStatus={inv.status}
+            dueCents={dueCents}
+            currencyLabel={fmtCents(dueCents, currency)}
+            cardPaymentsReady={cardReady}
+            onPaid={refresh}
+          />
+        </Suspense>
+      )}
 
       {/* 1. Saved default card — exact instrument + exact amount on the button. */}
       {hasSavedCard && (
