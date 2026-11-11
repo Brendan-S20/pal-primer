@@ -1,0 +1,10 @@
+Test Case '-[HoundStackUITests.ColdLaunch testALinkWhileRunningKeepsTheAppUp]' started.
+    t =     0.00s Start Test at 2026-11-09 11:59:59.206
+    t =     0.17s Set Up
+    t =     0.18s Terminate consulting.thenorth.houndstack:31966
+    t =     1.26s Wait for consulting.thenorth.houndstack to become Not Running
+    t =     3.27s Open consulting.thenorth.houndstack
+    t =     3.27s     Launch consulting.thenorth.houndstack
+/Users/runner/actions-runner/_work/pal-primer/pal-primer/ios/UITests/HoundStackUITests/ColdLaunch.swift:134: error: -[HoundStackUITests.ColdLaunch testALinkWhileRunningKeepsTheAppUp] : Failed to launch consulting.thenorth.houndstack: Timed out attempting to launch app.
+    t =    71.60s Tear Down
+Test Case '-[HoundStackUITests.ColdLaunch testALinkWhileRunningKeepsTheAppUp]' failed (71.742 seconds).

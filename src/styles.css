@@ -138,7 +138,14 @@
   --secondary: oklch(0.968 0.007 247.896);
   --secondary-foreground: oklch(0.208 0.042 265.755);
   --muted: oklch(0.968 0.007 247.896);
-  --muted-foreground: oklch(0.554 0.046 257.417);
+  /* 0.5, not 0.554 (gaps-r2-11 part 2). At 0.554 secondary text cleared
+   * 4.5:1 on white (4.77) and on nothing else this app puts it on: 4.35 on
+   * bg-muted, 4.30 on the setup banner's primary/5, 4.42 on the amber
+   * banner, 4.01 on a destructive/10 alert. axe in a real browser
+   * (tests/viewports/axe-finds-nothing-serious-on-the-main-pages.spec.ts)
+   * found it on every signed-in page. 0.5 is 5.0+ on every one of those and
+   * 6.0 on white; same hue and chroma, so it reads as the same grey. */
+  --muted-foreground: oklch(0.5 0.046 257.417);
   /* Secondary text that sits on a TINT rather than on white: the setup banner
    * (bg-primary/5), the ⌘K hint (bg-muted), the tab bar's labels (a
    * translucent bar over whatever scrolls under it). muted-foreground clears
@@ -149,7 +156,13 @@
   --muted-foreground-strong: oklch(0.5 0.046 257.417);
   --accent: oklch(0.968 0.007 247.896);
   --accent-foreground: oklch(0.208 0.042 265.755);
-  --destructive: oklch(0.577 0.245 27.325);
+  /* 0.53, not 0.577 (gaps-r2-11 part 2): red TEXT on a red TINT is how
+   * this app says something is wrong (a hazard banner, an overdue chip, a
+   * failed sync), and at 0.577 it was 4.36:1 on destructive/5 and 3.99 on
+   * destructive/10. 0.53 is 4.99 and 4.55, and 5.46 on white; white text on
+   * a destructive button goes from 4.76 to 5.46. A tint stronger than /10
+   * under red text still fails, so badges use /10. */
+  --destructive: oklch(0.53 0.245 27.325);
   --destructive-foreground: oklch(0.984 0.003 247.858);
   --border: oklch(0.929 0.013 255.508);
   --input: oklch(0.929 0.013 255.508);

@@ -248,7 +248,15 @@ function SignupAndQuoteFormSettings() {
           {publicUrl ? (
             <div className="rounded-lg border bg-card p-4">
               <h2 className="mb-2 text-sm font-medium">Embed on your website</h2>
-              <pre className="overflow-x-auto rounded bg-muted p-3 text-xs">
+              {/* Focusable and named: a region that scrolls sideways has to
+                  be reachable by keyboard, or the end of the snippet is not
+                  (axe scrollable-region-focusable). */}
+              <pre
+                tabIndex={0}
+                role="region"
+                aria-label="Embed code"
+                className="overflow-x-auto rounded bg-muted p-3 text-xs"
+              >
                 <code>{embed}</code>
               </pre>
               <button

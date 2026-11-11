@@ -37,7 +37,10 @@ here="$(cd "$(dirname "$0")" && pwd)"
 prefix="${DRILL_PORT_PREFIX:-543}"
 work="${DRILL_WORKDIR:-$(mktemp -d)}"
 opened="$work/opened"
-stackdir="$work/houndstack-restore-drill"
+# The CLI names every container and volume after this directory. Its own name
+# for the self-test (scripts/restore-drill-selftest.sh), so a self-test on a
+# machine where a person is mid-drill cannot stop their stack.
+stackdir="$work/${DRILL_PROJECT_ID:-houndstack-restore-drill}"
 
 for tool in supabase psql gpg node docker; do
   command -v "$tool" >/dev/null || { echo "::error::$tool is not on PATH"; exit 1; }
@@ -105,17 +108,34 @@ EOF
 # because the storage service is reached and health-checked through it.
 # Started twice at most: a first start on a cold machine can time out on a
 # health check while the images are still being unpacked.
+# Its banner prints the throwaway stack's keys. They are the CLI's local
+# defaults, but a log that prints anything shaped like a key teaches people
+# to skim past one, so those lines are dropped.
 exclude=realtime,imgproxy,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
-if ! supabase start -x "$exclude"; then
+# grep, not sed's I flag, which macOS sed does not have; `|| true` because
+# grep -v exits 1 when it drops every line, and pipefail would read that as a
+# stack that did not start.
+start_stack() { supabase start -x "$exclude" 2>&1 | { grep -viE 'key|secret|jwt|token|password' || true; }; }
+if ! start_stack; then
   echo "::warning::the drill stack did not come up first time; stopping it and trying once more"
   supabase stop --no-backup >/dev/null 2>&1 || true
   sleep 10
-  supabase start -x "$exclude"
+  start_stack
 fi
 
 db_url="$(supabase status -o env 2>/dev/null | sed -n 's/^DB_URL="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p')"
 [ -n "$db_url" ] || { echo "::error::supabase status reported no DB_URL"; exit 1; }
 cd - >/dev/null
+
+# The stack was started on this machine a moment ago, so this cannot fail
+# today. It is here so that no later edit -- a DB_URL read from somewhere
+# else -- can send decrypted customer data to a
+# database off this machine without the drill stopping first.
+# The output, not just the exit code: a guard that never ran exits 0 too.
+if [ "$(RESTORE_TARGET_URL="$db_url" node "$here/local-only.mjs")" != "local" ]; then
+  echo "::error::the drill stack's database is not on this machine; refusing to restore into it"
+  exit 1
+fi
 
 "$here/restore.sh" "$opened" "$db_url"
 node "$here/verify-restore.mjs" "$opened" "$db_url" ${summary:+"$summary"}

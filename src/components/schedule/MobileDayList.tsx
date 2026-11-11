@@ -64,10 +64,12 @@ function timeLabel(v: Visit, tz: string): string | null {
 
 const STATUS_CHIP: Record<string, string> = {
   scheduled: "bg-muted text-muted-foreground",
-  in_progress: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
-  completed: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-  skipped: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
-  canceled: "bg-destructive/15 text-destructive",
+  // 700/800 on a /15 tint: the 600s were 3.16 (emerald) and 4.39 (blue)
+  // on their own tints, and amber-700 4.48 (axe, gaps-r2-11 part 2).
+  in_progress: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
+  completed: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+  skipped: "bg-amber-500/15 text-amber-800 dark:text-amber-400",
+  canceled: "bg-destructive/10 text-destructive",
 };
 
 function StatusChip({ status }: { status: string }) {
