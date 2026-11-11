@@ -69,12 +69,14 @@ export function SetupGuideBanner() {
             <span className="font-medium">
               Setup: {done} of {total} done.
             </span>{" "}
-            {nextLabel && <span className="text-muted-foreground">Next: {nextLabel}</span>}
+            {nextLabel && <span className="text-muted-foreground-strong">Next: {nextLabel}</span>}
           </>
         ) : (
           <>
             <span className="font-medium">Set up your business in {total} short steps.</span>{" "}
-            <span className="text-muted-foreground">About five minutes, all of it skippable.</span>
+            <span className="text-muted-foreground-strong">
+              About five minutes, all of it skippable.
+            </span>
           </>
         )}
       </span>

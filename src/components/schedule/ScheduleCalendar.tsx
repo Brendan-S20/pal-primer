@@ -192,9 +192,12 @@ const WEEKDAY_LABELS = Array.from({ length: 7 }, (_, i) =>
   new Date(2024, 0, 1 + i).toLocaleDateString(undefined, { weekday: "short" }),
 );
 
+// Done and skipped read as done by the strike-through and the muted grey,
+// not by opacity: at 60% and 50% the chip text was 3.8:1 and lower, under
+// 4.5:1 on a control a dispatcher still taps (axe, gaps-r2-11 part 2).
 function statusTone(status: string) {
-  if (status === "completed") return "line-through opacity-60";
-  if (status === "skipped") return "line-through opacity-50 italic";
+  if (status === "completed") return "line-through text-muted-foreground";
+  if (status === "skipped") return "line-through italic text-muted-foreground";
   return "";
 }
 

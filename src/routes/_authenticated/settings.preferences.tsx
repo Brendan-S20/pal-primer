@@ -126,12 +126,15 @@ function PreferencesPage() {
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-sm font-medium">{t("preferences.haptics")}</div>
+              <div id="pref-haptics-label" className="text-sm font-medium">
+                {t("preferences.haptics")}
+              </div>
               <div className="text-xs text-muted-foreground">
                 {t("preferences.hapticsDescription")}
               </div>
             </div>
             <Switch
+              aria-labelledby="pref-haptics-label"
               checked={haptics}
               onCheckedChange={(v) => {
                 setHaptics(v);
@@ -141,12 +144,15 @@ function PreferencesPage() {
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-sm font-medium">{t("preferences.keepAwake")}</div>
+              <div id="pref-keep-awake-label" className="text-sm font-medium">
+                {t("preferences.keepAwake")}
+              </div>
               <div className="text-xs text-muted-foreground">
                 {t("preferences.keepAwakeDescription")}
               </div>
             </div>
             <Switch
+              aria-labelledby="pref-keep-awake-label"
               checked={awake}
               onCheckedChange={(v) => {
                 setAwake(v);
@@ -220,7 +226,9 @@ function AppearanceCard() {
       </CardHeader>
       <CardContent className="space-y-5">
         <div>
-          <Label className="text-xs">{t("preferences.phoneMenu")}</Label>
+          <Label htmlFor="pref-phone-menu" className="text-xs">
+            {t("preferences.phoneMenu")}
+          </Label>
           {/* ── ONE MENU, NOT TWO ────────────────────────────────────────
               The tab bar's More button and the top bar's hamburger opened two
               sheets listing the same destinations, in two corners of the same
@@ -232,7 +240,7 @@ function AppearanceCard() {
             value={prefs.phoneNav}
             onValueChange={(v) => setPref("phoneNav", v as "bottom" | "side")}
           >
-            <SelectTrigger className="mt-1 w-full sm:w-72">
+            <SelectTrigger id="pref-phone-menu" className="mt-1 w-full sm:w-72">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

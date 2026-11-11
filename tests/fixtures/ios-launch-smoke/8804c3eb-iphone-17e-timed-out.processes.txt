@@ -1,0 +1,8 @@
+2026-11-09 11:58:47.321 Df HoundStack[31799:0] [com.apple.libsystem.libdispatch:] BUG in libdispatch: 26B123 24B8117 - 653 - 0x4
+2026-11-09 11:59:13.940 Df HoundStack[31883:0] [com.apple.libsystem.libdispatch:] BUG in libdispatch: 26B123 24B8117 - 653 - 0x4
+2026-11-09 11:59:40.960 Df HoundStack[31966:0] [com.apple.libsystem.libdispatch:] BUG in libdispatch: 26B123 24B8117 - 653 - 0x4
+2026-11-09 12:01:13.832 Df HoundStack[32044:0] [com.apple.libsystem.libdispatch:] BUG in libdispatch: 26B123 24B8117 - 653 - 0x4
+2026-11-09 12:01:33.339 Df HoundStack[32359:0] [com.apple.libsystem.libdispatch:] BUG in libdispatch: 26B123 24B8117 - 653 - 0x4
+2026-11-09 12:01:43.656 Df HoundStack[32383:0] [com.apple.libsystem.libdispatch:] BUG in libdispatch: 26B123 24B8117 - 653 - 0x4
+2026-11-09 12:01:54.317 Df HoundStack[32411:0] [com.apple.libsystem.libdispatch:] BUG in libdispatch: 26B123 24B8117 - 653 - 0x4
+2026-11-09 12:02:06.149 Df HoundStack[32432:0] [com.apple.libsystem.libdispatch:] BUG in libdispatch: 26B123 24B8117 - 653 - 0x4
