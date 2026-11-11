@@ -136,7 +136,7 @@ describe("the pay page", () => {
   it("passes it to both places the badge is drawn", () => {
     expect(page).toMatch(/<InvoiceStatusBadge status=\{invoice\.status\} refund=\{refund\} \/>/);
     expect(page).toMatch(
-      /invoice\.status === "paid" && <InvoiceStatusBadge status="paid" refund=\{refund\} \/>/,
+      /invoice\.status === "paid" && \(?\s*<InvoiceStatusBadge status="paid" refund=\{refund\} \/>/,
     );
     expect(page).not.toMatch(/<InvoiceStatusBadge status=\{invoice\.status\} \/>/);
     expect(page).not.toMatch(/<InvoiceStatusBadge status="paid" \/>/);
