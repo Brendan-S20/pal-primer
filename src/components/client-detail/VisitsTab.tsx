@@ -1097,6 +1097,8 @@ function VisitDetailDrawer({
     setNewStaffId("");
     qc.invalidateQueries({ queryKey: ["client-visit-history", clientId] });
     qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
+    // Completing a visit billed after each visit invoices it (#859).
+    qc.invalidateQueries({ queryKey: ["invoices"] });
     onClose();
   };
 
