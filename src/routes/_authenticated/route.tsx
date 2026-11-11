@@ -7,7 +7,7 @@ import {
   useRouter,
   useRouterState,
 } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { clearPersistedReadCaches, ensureReadCachePersistence } from "@/lib/offline/read-cache";
 import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
@@ -56,6 +56,17 @@ import { HelpCircle, Search } from "lucide-react";
 import { useBrandAccent } from "@/hooks/useBrandAccent";
 import { PageShell } from "@/components/PageShell";
 import { ShellPending } from "@/components/PageSkeletons";
+
+// Tap to Pay on iPhone's announcement (Apple's review guide 3.1). Native
+// only, behind the inline build-time flag so the web build has no chunk for it.
+const TapToPayAnnouncement =
+  import.meta.env.VITE_NATIVE_BUNDLE === "1"
+    ? lazy(() =>
+        import("@/components/tap-to-pay/TapToPayAnnouncement").then((m) => ({
+          default: m.TapToPayAnnouncement,
+        })),
+      )
+    : null;
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -368,6 +379,7 @@ function WorkspaceShell() {
     let removeDeepLinks: (() => void) | undefined;
     let removeConnectivity: (() => void) | undefined;
     let removePushRegistration: (() => void) | undefined;
+    let removeTapToPay: (() => void) | undefined;
     const step = async <T,>(name: string, run: () => Promise<T>): Promise<T | undefined> => {
       try {
         return await run();
@@ -404,12 +416,24 @@ function WorkspaceShell() {
       removePushRegistration = registered?.cleanup;
       // Unmounted while registering: the cleanup below already ran.
       if (cancelled) removePushRegistration?.();
+      // Tap to Pay: warm the phone's reader at launch and on every return to
+      // the foreground (Apple's review guide 1.5, 5.6), and report a tap the
+      // app was closed in the middle of (5.12). Last, and in the background:
+      // nothing waits on it. The inline flag drops it from the web build.
+      if (import.meta.env.VITE_NATIVE_BUNDLE === "1") {
+        removeTapToPay = await step("tap_to_pay_warm_up", async () => {
+          const t = await import("@/lib/tap-to-pay-terminal");
+          return t.startTapToPayOnLaunch();
+        });
+        if (cancelled) removeTapToPay?.();
+      }
     })();
     return () => {
       cancelled = true;
       removeConnectivity?.();
       removeDeepLinks?.();
       removePushRegistration?.();
+      removeTapToPay?.();
     };
   }, [router]);
 
@@ -694,6 +718,11 @@ function WorkspaceShell() {
           {/* Native only: what notifications are for, before iOS or Android
               asks (R2-35). The shell's own registration never asks. */}
           <NativePushExplainer />
+          {TapToPayAnnouncement && (
+            <Suspense fallback={null}>
+              <TapToPayAnnouncement />
+            </Suspense>
+          )}
           {/* The bottom padding clears the fixed tab bar for exactly as long
               as the bar is on screen — which now depends on the role, not only
               the width (Q-2). Both read useTabletTier so they cannot disagree:
