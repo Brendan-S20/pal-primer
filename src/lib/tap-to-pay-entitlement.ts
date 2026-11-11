@@ -19,7 +19,7 @@
 // Deliberately its own file, so tap-to-pay.ts (and #841's rework of it) stay
 // untouched. docs/tap-to-pay-release-entitlements.md says how to turn it back
 // on for Release.
-import type { TapToPayPlatform } from "@/lib/tap-to-pay";
+import { deviceCanTapToPay, type TapToPayPlatform } from "@/lib/tap-to-pay";
 
 declare global {
   interface Window {
@@ -33,4 +33,22 @@ export function tapToPayEntitled(
 ): boolean {
   if (platform !== "ios") return true;
   return flag === true;
+}
+
+/**
+ * Can THIS phone, in THIS binary, use Tap to Pay at all? The one check every
+ * Tap to Pay surface that reaches the reader SDK or ProximityReader goes
+ * through (#841): the announcement, the Settings card, the launch warm-up and
+ * Apple's education sheet. The invoice button checks tapToPayEntitled itself,
+ * after its own gate. A Release build without the entitlement says no on iOS,
+ * whatever the phone, so none of them draws or runs.
+ */
+export function tapToPayUsableHere(
+  platform: TapToPayPlatform,
+  userAgent: string,
+  flag?: unknown,
+): boolean {
+  const entitled =
+    flag === undefined ? tapToPayEntitled(platform) : tapToPayEntitled(platform, flag);
+  return entitled && deviceCanTapToPay(platform, userAgent);
 }
