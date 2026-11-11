@@ -6,7 +6,9 @@
 //
 // extension-state.sql (see dump.sh) recreates the pg_cron schedule and the
 // pgmq queues with one statement each; those are counted as `cron.job` and
-// `pgmq.meta`, so the drill checks they came back too.
+// `pgmq.meta`, so the drill checks they came back too. It also carries the
+// migration ledger, one INSERT per migration, counted as
+// `supabase_migrations.schema_migrations` when there is one.
 //
 // ── WHY FROM THE FILE AND NOT FROM THE DATABASE ───────────────────────────
 //
@@ -66,11 +68,17 @@ export async function countCopyRows(path) {
 
 export async function countExtensionState(path) {
   const counts = { "cron.job": 0, "pgmq.meta": 0 };
+  // Counted only when the file carries a ledger at all: an archive made
+  // before dump.sh wrote one has no such table to compare, and reporting it
+  // as 0 rows would make every older backup fail its own restore count.
+  let ledger = 0;
   const rl = createInterface({ input: createReadStream(path), crlfDelay: Infinity });
   for await (const line of rl) {
     if (line.startsWith("SELECT cron.schedule(")) counts["cron.job"] += 1;
     else if (line.startsWith("SELECT pgmq.create(")) counts["pgmq.meta"] += 1;
+    else if (line.startsWith("INSERT INTO supabase_migrations.schema_migrations ")) ledger += 1;
   }
+  if (ledger > 0) counts["supabase_migrations.schema_migrations"] = ledger;
   return counts;
 }
 
@@ -87,7 +95,9 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   }
   if (process.argv[3]) {
     const ext = await countExtensionState(process.argv[3]);
-    counts = Object.fromEntries(Object.entries({ ...counts, ...ext }).sort(([a], [b]) => a.localeCompare(b)));
+    counts = Object.fromEntries(
+      Object.entries({ ...counts, ...ext }).sort(([a], [b]) => a.localeCompare(b)),
+    );
   }
   process.stdout.write(JSON.stringify(counts, null, 2) + "\n");
 }

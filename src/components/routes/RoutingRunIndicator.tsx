@@ -124,7 +124,7 @@ export function RoutingRunIndicator() {
         state.kind === "ready"
           ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15"
           : state.kind === "failed"
-            ? "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/15"
+            ? "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/10"
             : "bg-background/60 text-foreground hover:bg-muted"
       }`}
     >

@@ -131,7 +131,7 @@ export function DogsLine({
             <span className="min-w-0 [overflow-wrap:anywhere]">
               <bdi>{d?.name || t("dog.fallbackName")}</bdi>
               {facts.length > 0 && (
-                <span className="block text-xs font-normal opacity-80">
+                <span className={`block text-xs font-normal ${aggressive ? "" : "opacity-80"}`}>
                   {facts.map((fact, factIndex) => (
                     <span key={factIndex}>
                       {factIndex > 0 ? " · " : ""}
@@ -147,7 +147,7 @@ export function DogsLine({
               )}
             </span>
             {d?.temperament && (
-              <span className="shrink-0 font-normal opacity-80">
+              <span className={`shrink-0 font-normal ${aggressive ? "" : "opacity-80"}`}>
                 · {DOG_TEMPERAMENTS.has(d.temperament) ? t(`dog.${d.temperament}`) : d.temperament}
               </span>
             )}
@@ -220,7 +220,6 @@ export function YardOutline({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label={t("outline.open")}
         className="mt-2.5 flex min-h-14 w-full min-w-0 items-center gap-3 rounded-lg border bg-background p-1.5 text-start transition-colors hover:bg-accent active:bg-accent"
       >
         <svg

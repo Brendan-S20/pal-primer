@@ -59,6 +59,7 @@ export const getBillingStatus = createServerFn({ method: "GET" })
       planName: s.planName,
       planSlug: s.planSlug,
       billingStatus: s.billingStatus,
+      trialPhase: s.trialPhase,
       isPaidTier: s.isPaidTier,
       // Kept for back-compat with the old UI shape.
       planStatus: s.billingStatus,

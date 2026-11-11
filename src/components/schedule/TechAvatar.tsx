@@ -22,6 +22,8 @@
 // leaving a chip and its own pin in different colours, which is worse than
 // having no colour at all.
 
+import { textClassOn } from "@/lib/text-on-a-fill";
+
 /** "Brendan North" → "BN"; "Sam" → "SA"; nothing → "". Built from code points
  *  rather than UTF-16 units so a name starting with an astral character does
  *  not come back as half of one. */
@@ -56,7 +58,7 @@ export function TechAvatar({
       title={name ?? "Nobody assigned yet"}
       aria-label={name ? `Assigned to ${name}` : "Unassigned"}
       className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-3xs font-semibold leading-none ${
-        color ? "text-white" : "border border-dashed border-current text-muted-foreground"
+        color ? textClassOn(color) : "border border-dashed border-current text-muted-foreground"
       } ${className}`}
       style={color ? { background: color } : undefined}
     >

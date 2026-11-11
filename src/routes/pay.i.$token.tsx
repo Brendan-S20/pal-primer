@@ -19,6 +19,8 @@ import { Button } from "@/components/ui/button";
 import { DownloadPdfLink } from "@/components/DownloadPdfButton";
 import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
 import { getPublicInvoice, createPublicInvoicePaymentIntent } from "@/lib/invoices.functions";
+import { getPublicInvoiceRefund } from "@/lib/public-invoice-refund.functions";
+import { invoiceRefundState } from "@/lib/refund-outcome";
 import { stripeAppearance } from "@/lib/stripe-appearance";
 import { formatDay } from "@/lib/format";
 import { formatLineItemDescription } from "@/lib/invoice-labels";
@@ -67,6 +69,7 @@ function PublicPayPage() {
   const { token } = Route.useParams();
   const qc = useQueryClient();
   const getFn = useServerFn(getPublicInvoice);
+  const refundFn = useServerFn(getPublicInvoiceRefund);
   const intentFn = useServerFn(createPublicInvoicePaymentIntent);
   const [justPaid, setJustPaid] = useState(false);
 
@@ -82,11 +85,31 @@ function PublicPayPage() {
 
   const invoiceQ = useQuery({
     queryKey: ["public-invoice", token],
-    queryFn: () => getFn({ data: { token } }),
+    // The refund figure comes from its own read (#674), fetched alongside so
+    // the page never first says Paid and then corrects itself to Refunded.
+    queryFn: async () => {
+      const [inv, refund] = await Promise.all([
+        getFn({ data: { token } }),
+        refundFn({ data: { token } }).catch(() => null),
+      ]);
+      return {
+        ...inv,
+        amountRefundedCents: refund?.found ? refund.amountRefundedCents : 0,
+      };
+    },
   });
 
   const data = invoiceQ.data;
   const invoice = data?.found ? data.invoice : null;
+  // Refunded money reads as refunded, not Paid (#674): the same rule the
+  // staff invoice page reads.
+  const refund = invoice
+    ? invoiceRefundState({
+        status: invoice.status,
+        amount_paid_cents: invoice.amountPaidCents,
+        amount_refunded_cents: data?.amountRefundedCents ?? 0,
+      })
+    : null;
   const payable =
     !!invoice &&
     invoice.status === "open" &&
@@ -196,7 +219,7 @@ function PublicPayPage() {
           </div>
           <div className="flex flex-col items-start gap-2 text-sm sm:items-end">
             <span className="flex items-center gap-2">
-              <InvoiceStatusBadge status={invoice.status} />
+              <InvoiceStatusBadge status={invoice.status} refund={refund} />
               {overdue && !settled && (
                 <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-medium text-destructive">
                   Overdue
@@ -295,7 +318,9 @@ function PublicPayPage() {
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-2 text-sm font-medium">
                   Total
-                  {invoice.status === "paid" && <InvoiceStatusBadge status="paid" />}
+                  {invoice.status === "paid" && (
+                    <InvoiceStatusBadge status="paid" refund={refund} />
+                  )}
                 </span>
                 <span className="text-xl font-semibold tabular-nums">
                   {fmtCents(invoice.totalCents, invoice.currency)}

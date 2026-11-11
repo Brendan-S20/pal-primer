@@ -176,8 +176,8 @@ const CHARGING_FILES = [
 ];
 
 /** `paymentIntents.create(` occurrences, and whether the fee is within reach. */
-function chargeSites(src: string): Array<{ at: number; hasFee: boolean }> {
-  const out: Array<{ at: number; hasFee: boolean }> = [];
+function chargeSites(src: string): Array<{ at: number; hasFee: boolean; hasRadar: boolean }> {
+  const out: Array<{ at: number; hasFee: boolean; hasRadar: boolean }> = [];
   const re = /paymentIntents\.create\(/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(src))) {
@@ -185,8 +185,19 @@ function chargeSites(src: string): Array<{ at: number; hasFee: boolean }> {
     // just above — three call sites use the spread form so that a card-only
     // retry after a bank-debit failure cannot drift from the first attempt.
     // Looking back as well as forward covers both without parsing TypeScript.
-    const window = src.slice(Math.max(0, m.index - 900), m.index + 900);
-    out.push({ at: m.index, hasFee: /application_fee_amount:\s*platformFeeCents\(/.test(window) });
+    //
+    // The fee may be wrapped in withPassThroughFees (#825), which adds the
+    // Radar fee Stripe bills the platform for the business's charge. The
+    // window reaches further back than it once did because the tap site
+    // explains, above its create call, why its Radar fee is zero.
+    const window = src.slice(Math.max(0, m.index - 1400), m.index + 900);
+    out.push({
+      at: m.index,
+      hasFee: /application_fee_amount:\s*(?:withPassThroughFees\(\s*)?platformFeeCents\(/.test(
+        window,
+      ),
+      hasRadar: /application_fee_amount:\s*withPassThroughFees\(/.test(window),
+    });
   }
   return out;
 }
@@ -216,6 +227,22 @@ describe("no charge escapes the fee", () => {
     });
   }
 
+  for (const f of found) {
+    it(`${f.file} passes Stripe's Radar fee through at every charge (#825)`, () => {
+      // Brendan, 2026-11-10: "Pass Radar fees to each business, like the tap
+      // fee". A charge site that sets the platform fee but not the Radar
+      // pass-through leaves the platform paying the business's screening,
+      // and while the platform fee is zero nothing else would show it.
+      const missing = chargeSites(f.src).filter((s) => !s.hasRadar).length;
+      expect(
+        missing,
+        `${f.file} builds ${missing} PaymentIntent(s) whose application fee does not go ` +
+          `through withPassThroughFees(...) from @/lib/radar-fee. Stripe bills Radar for ` +
+          `that charge to the platform under application_express.`,
+      ).toBe(0);
+    });
+  }
+
   it("computes the fee from the amount owed, whatever it ends up charging", () => {
     // A fee derived from the WRONG variable is the subtle version of this bug:
     // it collects, so nothing looks broken, but it collects on the wrong number
@@ -240,7 +267,8 @@ describe("no charge escapes the fee", () => {
         ...f.src.matchAll(
           // An optional second argument, the invoice: the fee is not taken on
           // its sales tax (20260929110000).
-          /amount:\s*([\w.]+),\s*\n\s*application_fee_amount:\s*platformFeeCents\((\w+)(?:, \w+)?\)/g,
+          // The fee may be wrapped in withPassThroughFees (#825).
+          /amount:\s*([\w.]+),\s*\n\s*application_fee_amount:\s*(?:withPassThroughFees\(\s*)?platformFeeCents\((\w+)(?:, \w+)?\)/g,
         ),
       ];
       expect(pairs.length, `${f.file} has no amount/fee pair to check`).toBeGreaterThan(0);

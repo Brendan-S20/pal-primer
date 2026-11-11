@@ -600,6 +600,10 @@ async function provisionSignup(
             // reverse the application fee as part of the same call. Keeping a
             // fee on a sale that was unwound and refunded in full would be
             // charging the tenant for our own failure.
+            //
+            // That includes any Stripe cost passed through on the fee, such
+            // as Radar (#825): this sale failed on HoundStack's side, so the
+            // platform absorbs it and the business is handed back all of it.
             refund_application_fee: true,
           },
           {
@@ -1640,7 +1644,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                   const base = reversibleFeeBaseCents(Number(fee?.amount ?? 0), read);
                   if (base === null) {
                     console.error(
-                      "application fee reversal SKIPPED: the charge's intent metadata could not be read, so a Tap to Pay fee cannot be ruled out. Reverse by hand if this is not a tap.",
+                      "application fee reversal SKIPPED: the charge's intent metadata could not be read, so a Tap to Pay or Radar fee cannot be ruled out. Reverse the platform-fee part by hand.",
                       {
                         feeId,
                         chargeId: obj?.id ?? null,
@@ -1769,7 +1773,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                       const base = reversibleFeeBaseCents(Number(fee.amount ?? 0), read);
                       if (base === null) {
                         console.error(
-                          "application fee reversal on dispute SKIPPED: the charge's intent metadata could not be read, so a Tap to Pay fee cannot be ruled out. Reverse by hand if this is not a tap.",
+                          "application fee reversal on dispute SKIPPED: the charge's intent metadata could not be read, so a Tap to Pay or Radar fee cannot be ruled out. Reverse the platform-fee part by hand.",
                           {
                             feeId: fee.id,
                             chargeId,

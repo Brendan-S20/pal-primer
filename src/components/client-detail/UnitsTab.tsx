@@ -45,7 +45,7 @@ const DNA_LABELS: Record<DnaStatus, string> = {
 
 const DNA_TONE: Record<DnaStatus, string> = {
   registered: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
-  pending: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  pending: "bg-amber-500/15 text-amber-800 dark:text-amber-400",
   not_registered: "bg-muted text-muted-foreground",
 };
 
@@ -61,9 +61,9 @@ function DnaChip({ status, count }: { status: DnaStatus; count?: number }) {
 }
 
 const KIND_TONE: Record<UnitIncidentKind, string> = {
-  waste_violation: "bg-destructive/15 text-destructive",
-  dna_match: "bg-destructive/15 text-destructive",
-  complaint: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  waste_violation: "bg-destructive/10 text-destructive",
+  dna_match: "bg-destructive/10 text-destructive",
+  complaint: "bg-amber-500/15 text-amber-800 dark:text-amber-400",
   other: "bg-muted text-muted-foreground",
 };
 

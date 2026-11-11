@@ -104,6 +104,10 @@ const STATUS_CHIP: Record<string, { status: string; label: string }> = {
   suspended: { status: "failed", label: "Suspended" },
 };
 
+// A trialing org past trial_ends_at (#848). Not "Free trial": the lock banner
+// above this page already says the trial has ended.
+const TRIAL_ENDED_CHIP = { status: "overdue", label: "Trial ended" };
+
 function BillingPage() {
   // Read once per render rather than memoised: Capacitor.getPlatform() is a
   // synchronous string lookup, and a stale memo here would be a store-policy
@@ -240,7 +244,13 @@ function BillingPage() {
 
   if (isLoading || !data) return <p className="text-muted-foreground">Loading…</p>;
 
-  const chip = STATUS_CHIP[data.billingStatus] ?? { status: "inactive", label: data.billingStatus };
+  // plan_status stays 'trialing' after trial_ends_at passes, by design. Whether
+  // the trial is still running is the phase trialStateFor derives on the
+  // server, the same answer the account lock reads (#848). No second clock.
+  const trialEnded = data.billingStatus === "trialing" && data.trialPhase === "expired";
+  const chip = trialEnded
+    ? TRIAL_ENDED_CHIP
+    : (STATUS_CHIP[data.billingStatus] ?? { status: "inactive", label: data.billingStatus });
   const cancelPending = !!(subInfo as any)?.cancelAtPeriodEnd;
   // A saved org date can outlive its subscription. Only show a future date
   // returned by Stripe for an actual subscription, including during refresh.
@@ -302,11 +312,16 @@ function BillingPage() {
             )}
             {data.billingStatus === "trialing" && (
               <p className="mt-2 text-sm text-amber-700">
-                {canBuySaas
-                  ? "You're on a free trial. Pick a plan below before it ends to keep full access."
-                  : // Native: the STATUS stays, the steer goes. No domain, and
-                    // no verb that reads as a purchase instruction.
-                    "Your trial status is shown here. Plan changes are handled outside the mobile app."}
+                {trialEnded
+                  ? canBuySaas
+                    ? "Your free trial has ended and your account is locked. Choose a plan below to open it again."
+                    : // Native: the STATUS stays, the steer goes.
+                      "Your free trial has ended and your account is locked. Plan changes are handled outside the mobile app."
+                  : canBuySaas
+                    ? "You're on a free trial. Pick a plan below before it ends to keep full access."
+                    : // Native: the STATUS stays, the steer goes. No domain, and
+                      // no verb that reads as a purchase instruction.
+                      "Your trial status is shown here. Plan changes are handled outside the mobile app."}
               </p>
             )}
             {data.billingStatus === "past_due" && (

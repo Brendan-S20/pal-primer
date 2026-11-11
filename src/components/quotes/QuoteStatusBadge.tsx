@@ -11,7 +11,7 @@ const STYLES: Record<string, string> = {
   sent: "border-transparent bg-blue-500/15 text-blue-700 dark:text-blue-400 hover:bg-blue-500/15",
   accepted:
     "border-transparent bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/15",
-  declined: "border-transparent bg-destructive/15 text-destructive hover:bg-destructive/15",
+  declined: "border-transparent bg-destructive/10 text-destructive hover:bg-destructive/10",
   expired:
     "border-transparent bg-amber-500/15 text-amber-800 dark:text-amber-400 hover:bg-amber-500/15",
 };

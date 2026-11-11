@@ -7,6 +7,7 @@ import { DEFAULT_ORG_TIMEZONE, orgToday } from "@/lib/org-day";
 import { visitEta } from "@/lib/visit-eta";
 import { appUrl } from "@/lib/app-origin";
 import { platformFeeCents } from "@/lib/platform-fee";
+import { methodTypesForRail, withPassThroughFees } from "@/lib/radar-fee";
 import { taxShareCents } from "@/lib/sales-tax";
 import { tipChoiceSchema, tippedCharge } from "@/lib/tips";
 import { formatDay } from "@/lib/format";
@@ -447,7 +448,7 @@ async function loadPortalInvoices(token: string, session: PortalSession) {
     // the PDF, the email and the pay link (C-03). It used to number rows by
     // their position in the list.
     .select(
-      "id, number, due_on, credit_applied_cents, amount_paid_cents, tax_cents, tax_rate_bps, tax_label, deposit_for_invoice_id",
+      "id, number, due_on, credit_applied_cents, amount_paid_cents, amount_refunded_cents, tax_cents, tax_rate_bps, tax_label, deposit_for_invoice_id",
     )
     .eq("client_id", session.clientId);
   if (dueErr) throw new Error(dueErr.message);
@@ -459,6 +460,7 @@ async function loadPortalInvoices(token: string, session: PortalSession) {
         due_on: string | null;
         credit_applied_cents: number | null;
         amount_paid_cents?: number | null;
+        amount_refunded_cents?: number | null;
         tax_cents?: number | null;
         tax_rate_bps?: number | null;
         tax_label?: string | null;
@@ -487,6 +489,9 @@ async function loadPortalInvoices(token: string, session: PortalSession) {
       due_on,
       credit_applied_cents,
       amount_paid_cents,
+      // What went back on a paid invoice (#674), so the list says Refunded
+      // rather than Paid once the money is back with the client.
+      amount_refunded_cents: Number(extra?.amount_refunded_cents ?? 0),
       tax_cents: Number(extra?.tax_cents ?? 0),
       tax_rate_bps: Number(extra?.tax_rate_bps ?? 0),
       tax_label: (extra?.tax_label ?? null) as string | null,
@@ -1258,11 +1263,18 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
     });
     const { stayInvoicePaymentTypes } = await import("@/lib/stay-payment.server");
     const stayRails = await stayInvoicePaymentTypes(invoice.id, invoice.organization_id, []);
+    // The saved method's rail is known, so a bank debit carries no Radar fee
+    // and a card does (#825).
+    const { radarPassThrough } = await import("@/lib/connect-fee-payer.server");
+    const radar = await radarPassThrough(stripe, stripeAccount, methodTypesForRail(quote.rail));
     try {
       const pi = await stripe.paymentIntents.create(
         {
           amount: quote.totalCents,
-          application_fee_amount: platformFeeCents(dueCents, invoice),
+          application_fee_amount: withPassThroughFees(
+            platformFeeCents(dueCents, invoice),
+            radar.cents,
+          ),
           currency: invoice.currency ?? "usd",
           customer: c.stripe_customer_id,
           payment_method: c.default_payment_method_id,
@@ -1274,6 +1286,7 @@ export const portalPayInvoiceWithSavedCard = createServerFn({ method: "POST" })
             organization_id: invoice.organization_id,
             source: "portal_saved_card",
             ...surchargeMetadata(quote),
+            ...radar.metadata,
           },
         },
         {
@@ -2346,11 +2359,16 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
         .eq("id", cRow.id);
     }
 
+    // Stripe bills Radar's screening of this charge to the platform under
+    // application_express, so it rides on the application fee (#825).
+    const { radarPassThrough } = await import("@/lib/connect-fee-payer.server");
+    const radar = await radarPassThrough(stripe, acct.accountId, paymentMethodTypes);
     const currency = (invoice.currency ?? "usd").toLowerCase();
     const metadata = {
       invoice_id: invoice.id,
       organization_id: invoice.organization_id,
       source: "portal_inline",
+      ...radar.metadata,
       // Always written, "0" included: Stripe merges metadata on update.
       ...charge.metadata,
     };
@@ -2391,7 +2409,10 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
             // a $1.00 fee — 2%, not 0.5% — out of the tenant's settlement. At
             // $1.00 due the fee equalled the whole charge.
             // On the invoice, never on the tip.
-            application_fee_amount: platformFeeCents(charge.platformFeeBaseCents),
+            application_fee_amount: withPassThroughFees(
+              platformFeeCents(charge.platformFeeBaseCents),
+              radar.cents,
+            ),
             currency,
             metadata,
             setup_future_usage: "off_session" as const,
@@ -2429,7 +2450,10 @@ export const portalCreateInvoicePaymentIntent = createServerFn({ method: "POST" 
     if (!pi) {
       const createParams = {
         amount: charge.amountCents,
-        application_fee_amount: platformFeeCents(charge.platformFeeBaseCents),
+        application_fee_amount: withPassThroughFees(
+          platformFeeCents(charge.platformFeeBaseCents),
+          radar.cents,
+        ),
         currency,
         customer: customerId,
         setup_future_usage: "off_session" as const,

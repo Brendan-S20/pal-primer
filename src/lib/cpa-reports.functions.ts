@@ -38,6 +38,7 @@ import { totalReversals, type Reversal } from "@/lib/reversals.server";
 // $2,550.00 open for July and the page reported $2,655.00. One implementation,
 // two callers.
 import { billedDay, invoiceDueCents, outstandingAsOf } from "@/lib/ar";
+import { voidedAfterRefund } from "@/lib/refund-outcome";
 import { fetchAllPages as fetchAll } from "@/lib/supabase-paging.server";
 import type { AppRole } from "@/hooks/useMyRole";
 import { formatLineItemDescription, invoiceNumberLabel } from "@/lib/invoice-labels";
@@ -715,7 +716,9 @@ async function buildBridge(supabase: any, ctx: OrgContext, from: string, to: str
 
     const issued = inv.issued_at ? orgLocalDay(inv.issued_at, tz) : null;
     const issuedThisPeriod = !!issued && inRange(issued, from, to);
-    const billed = issuedThisPeriod && inv.status !== "void";
+    // The same answer billedDay gives: a void after a full refund (#674)
+    // stays billed, so the bridge and the accrual sheet agree on it.
+    const billed = issuedThisPeriod && (inv.status !== "void" || voidedAfterRefund(inv));
     if (billed) {
       invoiced += inv.total_cents ?? 0;
       creditsApplied += inv.credit_applied_cents ?? 0;
@@ -986,7 +989,14 @@ async function buildWriteOffs(supabase: any, ctx: OrgContext, from: string, to: 
   for (const inv of invoices) {
     const voided = inv.voided_at ? orgLocalDay(inv.voided_at, tz) : null;
     if (voided && inRange(voided, from, to)) {
-      hits.push({ inv, day: voided, label: "Voided", amount: inv.total_cents ?? 0 });
+      // A void after a full refund (#674) is listed on its day, as the event
+      // it is, with nothing written off: the sale stays on the accrual sheet
+      // and the refund is already the deduction, on the reversals sheet.
+      hits.push(
+        voidedAfterRefund(inv)
+          ? { inv, day: voided, label: "Voided after a full refund", amount: 0 }
+          : { inv, day: voided, label: "Voided", amount: inv.total_cents ?? 0 },
+      );
       continue;
     }
     if (inv.status === "uncollectible") {

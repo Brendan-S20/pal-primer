@@ -34,6 +34,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 
 const root = join(import.meta.dirname, "..");
@@ -62,6 +63,27 @@ function pullRequestPaths(): string[] {
   const block = yml.match(/\n {2}pull_request:\n {4}paths:\n((?: {6}- .*\n)+)/);
   if (!block) throw new Error("sandboxes.yml has no pull_request paths block");
   return [...block[1].matchAll(/ {6}- "(.+)"/g)].map((m) => m[1]);
+}
+
+/**
+ * Run the gate's routing loop -- the `case` over changed files -- in bash on
+ * a given list of paths, and return what it decided. The loop is cut out of
+ * the workflow, not retyped, so this answers for the file that ships.
+ */
+function route(files: string[]): { database: string; viewports: string } {
+  const gate = gateScript();
+  const start = gate.indexOf("database=false");
+  const endMarker = 'done <<< "$changed"';
+  const end = gate.indexOf(endMarker);
+  if (start < 0 || end < start) throw new Error("gate has no routing loop to run");
+  const loop = gate.slice(start, end + endMarker.length);
+  const script = `set -euo pipefail\nchanged=$(cat)\n${loop}\necho "database=$database viewports=$viewports"\n`;
+  const r = spawnSync("bash", ["-c", script], { input: files.join("\n"), encoding: "utf8" });
+  if (r.error) throw r.error;
+  if (r.status !== 0) throw new Error(`routing loop failed: ${r.stderr}`);
+  const m = r.stdout.match(/database=(\w+) viewports=(\w+)/);
+  if (!m) throw new Error(`routing loop printed no answer: ${r.stdout}`);
+  return { database: m[1], viewports: m[2] };
 }
 
 /** The body of the gate step, read out of the workflow rather than retyped. */
@@ -143,6 +165,31 @@ describe("the workflow runs on the files it tests", () => {
     expect(gate).not.toMatch(
       /vite\.config\.ts[\s\S]{0,80}database=true/,
     );
+  });
+
+  it("admits public/** and routes a public-only change to the browser jobs only", () => {
+    // vite.config.ts injects public/push-handlers.js into the service worker
+    // with importScripts, so a PR that only touches it changes what every
+    // page runs. Before this, such a PR never started Sandboxes at all.
+    expect(pullRequestPaths()).toContain("public/**");
+    const arm = gateScript().match(/^\s*public\/\*\)\s*(.*);;\s*$/m);
+    expect(arm?.[1].trim()).toBe("viewports=true");
+
+    // And run the shipped loop: a public-only diff starts the viewports jobs
+    // (Four widths and the one-off cases) and never the database replay.
+    expect(route(["public/push-handlers.js"])).toEqual({ database: "false", viewports: "true" });
+    expect(route(["public/push-handlers.js", "public/icons/icon-192.png"])).toEqual({
+      database: "false",
+      viewports: "true",
+    });
+    // The control: the runner can say yes to the database job, so the
+    // "false" above is the arm's answer and not a loop that never says true.
+    expect(route(["public/push-handlers.js", "supabase/migrations/x.sql"])).toEqual({
+      database: "true",
+      viewports: "true",
+    });
+    // And a file outside every arm still answers no to both.
+    expect(route(["publicity/notes.md"])).toEqual({ database: "false", viewports: "false" });
   });
 
   it("still admits the migration paths the trigger was added for", () => {
