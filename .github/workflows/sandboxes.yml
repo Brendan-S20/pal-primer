@@ -120,6 +120,7 @@ on:
       - "playwright.e2e.config.ts"
       - "tests/viewports/**"
       - "playwright.config.ts"
+      - "scripts/install-playwright-browser.sh"
       - ".github/workflows/sandboxes.yml"
       - "scripts/backup/**"
       - "scripts/restore-drill.sh"
@@ -262,6 +263,8 @@ jobs:
               # the stack it builds, so the backup scripts route there.
               scripts/backup/*|scripts/restore-drill.sh|scripts/restore-drill-selftest.sh) database=true ;;
               tests/viewports/*|playwright.config.ts)      viewports=true ;;
+              # How both browser jobs get their Chromium; see that step.
+              scripts/install-playwright-browser.sh)       viewports=true ;;
               # App source: the browser jobs only, never the database replay.
               src/*)                                       viewports=true ;;
               # Static files the browser loads, including the push handler
@@ -997,6 +1000,23 @@ jobs:
     # the full sweep was cancelled at 45 with 280 checks passed and the Apple
     # sizes still running. Delete the variable with VIEWPORTS_RUNNER when the
     # PC is back; the 45, and everything said above it, applies to the PC.
+    # ── NO APT ON GITHUB'S LINUX MACHINE (2026-11-11) ────────────────────
+    #
+    # When VIEWPORTS_RUNNER_JSON points this job at a GitHub-hosted Ubuntu
+    # image, it runs INSIDE Playwright's own image, which ships Chromium and
+    # every system library it needs. Until this, `playwright install
+    # --with-deps` ran apt-get against archive.ubuntu.com on every run, and on
+    # 2026-11-11 a resolver outage there ("Temporary failure resolving
+    # archive.ubuntu.com") failed this job on nine PRs and on main 3a028504
+    # with no test having run (e.g. run 43038568319). The image is one pull
+    # from mcr.microsoft.com and no apt at all.
+    #
+    # The tag MUST equal the Playwright version in package-lock.json --
+    # `tests/the-browser-image-is-the-lockfile-playwright.test.ts` fails by
+    # name if a bump moves one and not the other. On any other runner (the
+    # Mac, the PC, a self-hosted Linux box) the expression is '' and the job
+    # runs on the host exactly as before.
+    container: ${{ contains(vars.VIEWPORTS_RUNNER_JSON || '', 'ubuntu') && fromJSON('{"image":"mcr.microsoft.com/playwright:v1.62.1-noble","options":"--ipc=host"}') || '' }}
     timeout-minutes: ${{ fromJSON(vars.VIEWPORTS_TIMEOUT_MINUTES || '45') }}
     steps:
       # Git Bash is installed but not on the runner's PATH. Add it so the
@@ -1064,8 +1084,14 @@ jobs:
       # usually a no-op after the first run. On Windows `--with-deps` runs
       # Playwright's media-pack script, which installs something only on
       # Windows SERVER; on a desktop edition it checks and exits.
+      #
+      # Inside the Playwright image (see `container:` above) the browser and
+      # its libraries are already there, so the script skips `--with-deps`
+      # and apt never runs. Anywhere else that still needs apt, it retries a
+      # bounded number of times with backoff, so one resolver blip is not a
+      # red PR. Nothing about the tests changes either way.
       - name: Install the browser
-        run: npx playwright install --with-deps chromium
+        run: bash scripts/install-playwright-browser.sh
 
       # The dev server is what gets measured, not `.output`: the web build
       # targets the cloudflare-module preset, so the server bundle is a Worker
@@ -1212,6 +1238,8 @@ jobs:
     # the full sweep was cancelled at 45 with 280 checks passed and the Apple
     # sizes still running. Delete the variable with VIEWPORTS_RUNNER when the
     # PC is back; the 45, and everything said above it, applies to the PC.
+    # Same image, same reason, as the `viewports` job above.
+    container: ${{ contains(vars.VIEWPORTS_RUNNER_JSON || '', 'ubuntu') && fromJSON('{"image":"mcr.microsoft.com/playwright:v1.62.1-noble","options":"--ipc=host"}') || '' }}
     timeout-minutes: ${{ fromJSON(vars.VIEWPORTS_TIMEOUT_MINUTES || '45') }}
     steps:
       # Git Bash is installed but not on the runner's PATH. Add it so the
@@ -1245,7 +1273,7 @@ jobs:
         run: node scripts/runner-headroom.mjs --need-disk-gib 5
 
       - name: Install the browser
-        run: npx playwright install --with-deps chromium
+        run: bash scripts/install-playwright-browser.sh
 
       # ── THE SWEEPS ARE NOT ALL OF IT ─────────────────────────────────────
       #
