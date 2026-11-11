@@ -143,15 +143,49 @@ BEGIN
 END $$;
 
 -- ── The new owner cannot see the old business ──────────────────────────────
+-- Not its clients, its name, its people, its memberships, its timeline (the
+-- staff.left row included) or its invitations. Leaving gives nothing back.
 SELECT pg_temp.as_user('f0000000-0000-4000-8000-000000765b02');
 SET LOCAL ROLE authenticated;
 DO $$
+DECLARE _old uuid := '0a000000-0000-4000-8000-000000765b00'; _seen text := '';
 BEGIN
-  IF EXISTS (SELECT 1 FROM public.clients WHERE organization_id = '0a000000-0000-4000-8000-000000765b00')
-     OR EXISTS (SELECT 1 FROM public.access_turned_off()) THEN
-    RAISE EXCEPTION 'PROOF FAILED [isolation]: the person who left can still see the old business';
+  IF EXISTS (SELECT 1 FROM public.clients WHERE organization_id = _old) THEN _seen := _seen || ' clients'; END IF;
+  IF EXISTS (SELECT 1 FROM public.organizations WHERE id = _old) THEN _seen := _seen || ' organizations'; END IF;
+  IF EXISTS (SELECT 1 FROM public.staff WHERE organization_id = _old) THEN _seen := _seen || ' staff'; END IF;
+  IF EXISTS (SELECT 1 FROM public.user_roles WHERE organization_id = _old) THEN _seen := _seen || ' user_roles'; END IF;
+  IF EXISTS (SELECT 1 FROM public.activity_log WHERE organization_id = _old) THEN _seen := _seen || ' activity_log'; END IF;
+  IF EXISTS (SELECT 1 FROM public.org_invites WHERE organization_id = _old) THEN _seen := _seen || ' org_invites'; END IF;
+  IF EXISTS (SELECT 1 FROM public.access_turned_off()) THEN _seen := _seen || ' access_turned_off'; END IF;
+  IF _seen <> '' THEN
+    RAISE EXCEPTION 'PROOF FAILED [isolation]: the person who left can still read the old business:%', _seen;
   END IF;
-  RAISE NOTICE 'ok: the old business is not visible from the new workspace';
+  RAISE NOTICE 'ok: nothing of the old business is readable from the new workspace';
+END $$;
+
+-- Owner of the new business and ON there, so the way out is closed to them:
+-- it cannot be used to walk away from (or orphan) a business they run.
+DO $$
+BEGIN
+  PERFORM public.leave_business_i_was_turned_off_in();
+  RAISE EXCEPTION 'PROOF FAILED [twice]: the new owner left the business they run';
+EXCEPTION WHEN insufficient_privilege THEN
+  RAISE NOTICE 'ok: the new owner cannot use it to leave the business they run';
+END $$;
+RESET ROLE;
+
+-- ── And the other way: the old business cannot see the new one ─────────────
+SELECT pg_temp.as_user('f0000000-0000-4000-8000-000000765b01');
+SET LOCAL ROLE authenticated;
+DO $$
+DECLARE _new uuid := current_setting('proof.new_org')::uuid;
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.organizations WHERE id = _new)
+     OR EXISTS (SELECT 1 FROM public.staff WHERE organization_id = _new)
+     OR EXISTS (SELECT 1 FROM public.user_roles WHERE organization_id = _new) THEN
+    RAISE EXCEPTION 'PROOF FAILED [isolation]: the old owner can read the new business';
+  END IF;
+  RAISE NOTICE 'ok: the old business cannot read the new one';
 END $$;
 RESET ROLE;
 

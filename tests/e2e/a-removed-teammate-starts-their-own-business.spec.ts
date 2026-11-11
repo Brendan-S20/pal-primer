@@ -130,6 +130,26 @@ test("a removed teammate signs up again with the same email and lands in a new w
       active: false,
       user_id: userId,
     });
+
+    // ── No data crosses between the two businesses. ───────────────────────
+    // As the person who left, through real RLS: nothing of the old business.
+    const leaver = createClient(URL_, ANON, { auth: { persistSession: false } });
+    const { error: lErr } = await leaver.auth.signInWithPassword({ email, password });
+    if (lErr) throw new Error(`leaver sign-in: ${lErr.message}`);
+    for (const table of ["clients", "visits", "invoices", "staff", "user_roles"] as const) {
+      const { data: seen, error: readErr } = await leaver
+        .from(table)
+        .select("id")
+        .eq("organization_id", orgId)
+        .limit(1);
+      expect(readErr?.message ?? null, `reading ${table}`).toBeNull();
+      expect(seen, `the person who left reads the old business's ${table}`).toEqual([]);
+    }
+    const { data: oldOrg } = await leaver.from("organizations").select("id").eq("id", orgId);
+    expect(oldOrg, "the old business's own row").toEqual([]);
+    // And the old business's owner sees nothing of the new one.
+    const { data: newOrgSeen } = await owner.from("organizations").select("id").eq("id", newOrgId!);
+    expect(newOrgSeen, "the old owner reads the new business").toEqual([]);
   } finally {
     // Only what this spec made: its own throwaway business and login.
     if (newOrgId && newOrgId !== orgId) {

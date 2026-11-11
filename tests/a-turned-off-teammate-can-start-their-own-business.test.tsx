@@ -174,7 +174,7 @@ describe.skipIf(!reachable)("a removed member signs up fresh, in a real database
     expect(existsSync(PROOF)).toBe(true);
   });
 
-  it("remove a member, then the same email signs up fresh and lands in a new workspace", () => {
+  it("remove a member, then the same email signs up fresh and lands in a new workspace, and neither business can read the other", () => {
     const r = spawnSync(psql!, [DB_URL, "-X", "-v", `migration=${MIGRATION}`, "-f", PROOF], {
       encoding: "utf8",
       timeout: 300_000,
@@ -182,7 +182,7 @@ describe.skipIf(!reachable)("a removed member signs up fresh, in a real database
     const out = `${r.stdout}\n${r.stderr}`;
     expect(r.status, out).toBe(0);
     expect(out).not.toMatch(/PROOF FAILED/);
-    expect(out.match(/NOTICE:\s+ok: /g)?.length, out).toBe(6);
+    expect(out.match(/NOTICE:\s+ok: /g)?.length, out).toBe(8);
     expect(out).toMatch(/ALL TURNED-OFF-TEAMMATE PROOFS PASSED/);
   });
 });
