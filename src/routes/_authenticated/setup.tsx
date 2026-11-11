@@ -20,7 +20,7 @@ import { useMyProfile } from "@/hooks/useMyProfile";
 import { useFormDraft } from "@/hooks/useFormDraft";
 import { reconcileSetupBusinessDraft, setupBusinessStored } from "@/lib/setup-business-draft";
 import { DraftRestoredNotice } from "@/components/DraftRestoredNotice";
-import { SetupFooterSlot, SetupStepFooter } from "@/components/SetupStepFooter";
+import { SetupFooterSlot, SetupStepFooter, SetupStepPrimary } from "@/components/SetupStepFooter";
 import {
   invalidateOnboardingStatus,
   ONBOARDING_STATUS_KEY,
@@ -833,6 +833,7 @@ function PricesPanel({
             step={{ ...step, done: area.done }}
             onSaved={partSaved}
             saveLabel={openBesides("area") ? "Save area" : undefined}
+            inBar={false}
           />
         </div>
       )}
@@ -840,14 +841,32 @@ function PricesPanel({
   );
 }
 
+/** Step 2's form id, which its Save submits from inside the sticky bar. */
+const SETUP_AREA_FORM_ID = "setup-area";
+
+/** What step 2 keeps on the device while it is typed (#881). */
+type SetupAreaDraft = {
+  name: string;
+  miles: number;
+  zip: string;
+  price: string;
+  extraDog: string;
+  firstCleanup: SetupFirstCleanup | null;
+  firstCleanupPrice: string;
+  multDraft: Partial<Record<MultiplierFrequency, string>>;
+};
+
 function ServiceAreaPanel({
   step,
   onSaved,
   saveLabel = "Save and continue",
+  inBar = true,
 }: {
   step: OnboardingStep;
   onSaved: () => void;
   saveLabel?: string;
+  /** Draw Save in the sticky bar (#771). Off where the step holds two forms. */
+  inBar?: boolean;
 }) {
   // Only a pet-waste business is asked for an area here (R2-47); a trainer
   // prices lessons on Settings, Services.
@@ -897,6 +916,43 @@ function ServiceAreaPanel({
   const multValue = (f: MultiplierFrequency) =>
     multDraft[f] ?? formatMultiplier(storedMultiplier(storedMults, f));
   const pricesLoaded = !!fcQ.data && !!stdQ.data;
+  // A price read that FAILED used to leave Save disabled with nothing on
+  // screen to say why (#881). It now says so, with a way to ask again.
+  const pricesFailed = !pricesLoaded && (fcQ.isError || stdQ.isError);
+
+  // The last failed save's sentence, kept beside Save until the next try.
+  // A toast alone is four seconds at the top of the screen (#881).
+  const [failure, setFailure] = useState<string | null>(null);
+
+  // Kept on the device as it is typed (#881): the price an owner typed was
+  // gone after a reload, which read as "the price field clears". Same
+  // mechanism as step 1's draft; cleared once the area is saved.
+  const draft = useFormDraft<SetupAreaDraft>({
+    form: "setup-area",
+    value: { name, miles, zip, price, extraDog, firstCleanup, firstCleanupPrice, multDraft },
+    restore: (d) => {
+      if (!d || typeof d !== "object") return false;
+      if (typeof d.name === "string") setName(d.name);
+      if (typeof d.miles === "number" && (MILES as readonly number[]).includes(d.miles))
+        setMiles(d.miles);
+      if (typeof d.zip === "string") setZip(d.zip);
+      if (typeof d.price === "string") setPrice(d.price);
+      if (typeof d.extraDog === "string") setExtraDog(d.extraDog);
+      if (d.firstCleanup === "off" || d.firstCleanup === "flat") setFirstCleanup(d.firstCleanup);
+      if (typeof d.firstCleanupPrice === "string") setFirstCleanupPrice(d.firstCleanupPrice);
+      if (d.multDraft && typeof d.multDraft === "object") setMultDraft(d.multDraft);
+    },
+    reset: () => {
+      setName("Main service area");
+      setMiles(15);
+      setZip("");
+      setPrice("");
+      setExtraDog("");
+      setFirstCleanup(null);
+      setFirstCleanupPrice("");
+      setMultDraft({});
+    },
+  });
 
   const b = brandingQ.data;
   const pinned = b?.latitude != null && b?.longitude != null;
@@ -960,10 +1016,13 @@ function ServiceAreaPanel({
       // Settings > Services, and Zones' First cleanup card.
       refresh: [["zones"], ["zone-coverage"], ["std-pricing"], ["services"], FIRST_CLEANUP_KEY],
       saved: () => {
+        draft.clear();
         createdZone.current = null;
         setMultDraft({});
+        setFailure(null);
         toast.success("Service area saved");
       },
+      onFailed: setFailure,
       onSaved,
     }),
   );
@@ -999,38 +1058,54 @@ function ServiceAreaPanel({
     );
   }
 
+  // Every refusal is said twice: a toast, and beside Save where the owner is
+  // looking (#881).
+  const refuse = (message: string) => {
+    setFailure(message);
+    toast.error(message);
+  };
+
+  const saveButton = (
+    <Button
+      type="submit"
+      form={SETUP_AREA_FORM_ID}
+      disabled={m.isPending || !pricesLoaded}
+      data-setup-action="save"
+    >
+      {m.isPending ? "Saving…" : pricesLoaded ? saveLabel : "Loading your prices…"}
+    </Button>
+  );
+
   return (
     <form
+      id={SETUP_AREA_FORM_ID}
       className="space-y-4"
+      data-setup-area-form
       onSubmit={(e) => {
         e.preventDefault();
-        if (!priceOk) {
-          toast.error("Enter what you charge per visit.");
-          return;
-        }
+        if (m.isPending) return;
+        if (!priceOk) return refuse("Enter what you charge per visit.");
         if (!pinned && zip.trim().length < 5) {
-          toast.error("Enter the ZIP code at the middle of the area you serve.");
-          return;
+          return refuse("Enter the ZIP code at the middle of the area you serve.");
         }
         if (!tiered && !firstCleanupVal) {
-          toast.error("Choose whether new clients pay for a first cleanup.");
-          return;
+          return refuse("Choose whether new clients pay for a first cleanup.");
         }
         if (
           !tiered &&
           firstCleanupVal &&
           setupFirstCleanupCents(firstCleanupVal, firstCleanupPrice) == null
         ) {
-          toast.error("Enter what a first cleanup costs, or choose Off.");
-          return;
+          return refuse("Enter what a first cleanup costs, or choose Off.");
         }
         if (!setupMultipliers(storedMults, multDraft)) {
-          toast.error("Each schedule needs a number between 0.1 and 10.");
-          return;
+          return refuse("Each schedule needs a number between 0.1 and 10.");
         }
+        setFailure(null);
         m.mutate();
       }}
     >
+      {draft.restored && <DraftRestoredNotice onDiscard={draft.discard} />}
       <div className={fieldClass}>
         <Label htmlFor="setup-zone-name">Area name</Label>
         <Input
@@ -1207,9 +1282,38 @@ function ServiceAreaPanel({
         </Link>{" "}
         later.
       </p>
-      <Button type="submit" disabled={m.isPending || !pricesLoaded} data-setup-action="save">
-        {m.isPending ? "Saving…" : saveLabel}
-      </Button>
+      {pricesFailed && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm"
+          data-setup-prices-failed
+        >
+          <p className="min-w-0 flex-1 basis-60">
+            Your current prices didn't load, so this can't be saved yet.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              void fcQ.refetch();
+              void stdQ.refetch();
+            }}
+          >
+            Try again
+          </Button>
+        </div>
+      )}
+      {failure && (
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"
+          data-setup-error
+        >
+          {failure}
+        </p>
+      )}
+      {inBar ? <SetupStepPrimary>{saveButton}</SetupStepPrimary> : saveButton}
     </form>
   );
 }
