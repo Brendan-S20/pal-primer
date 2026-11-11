@@ -45,7 +45,6 @@ import {
   getStandardPricing,
 } from "@/lib/subscriptions.functions";
 import {
-  computeZoneVisitPrice,
   computeCommercialZonePrice,
   zoneHasCommercialPricing,
 } from "@/lib/pricing";
@@ -100,7 +99,7 @@ import { walkWindowsProblem, type WalkWindow } from "@/lib/subscription-form";
 import { isDog } from "@/lib/pets";
 import { formatMultiplier, perVisitMultiplier } from "@/lib/frequency-multipliers";
 import { StaysSection } from "@/components/client-detail/StaysSection";
-import { zoneOverridesPrice } from "@/lib/standard-price";
+import { petWasteZoneVisitPrice, zoneOverridesPrice } from "@/lib/standard-price";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -1439,38 +1438,39 @@ function ServiceDrawer({
   const standardCents = stdParts
     ? Math.round((stdParts.base + stdParts.dogAdj) * freqMultiplier)
     : null;
-  // A zone's price is an override (#860): only a zone that HAS one prices
-  // the plan; one without charges the standard price above.
+  // The zone prices the plan when it overrides the standard price or charges
+  // by yard size (#860 review). Either way the number comes from the one
+  // residential zone price the wizard and quotes also use: the override or
+  // the standard price as the base, plus the area charge. A flat zone with
+  // no override charges the standard price shown above.
+  const zonePrices =
+    !!pricingZone &&
+    (zoneOverridesPrice(pricingZone) || (pricingZone.pricing_mode ?? "flat") !== "flat");
   const zonePrice =
-    accountType === "residential" && pricingZone && zoneOverridesPrice(pricingZone)
-      ? computeZoneVisitPrice(
-          {
-            base_price_cents: pricingZone.base_price_cents,
-            per_dog_addl_cents: pricingZone.per_dog_addl_cents,
-            pricing_mode: (pricingZone.pricing_mode ?? "flat") as "flat" | "per_sqft" | "per_acre",
-            price_per_sqft_cents: Number(pricingZone.price_per_sqft_cents ?? 0),
-            price_per_acre_cents: pricingZone.price_per_acre_cents,
-            area_min_charge_cents: pricingZone.area_min_charge_cents,
-            area_max_charge_cents: pricingZone.area_max_charge_cents,
-          },
+    accountType === "residential" && zonePrices
+      ? petWasteZoneVisitPrice(
+          stdSource
+            ? {
+                base_price_cents: stdSource.basePriceCents ?? null,
+                extra_pet_cents: stdSource.perDogAddlCents ?? 0,
+              }
+            : null,
+          pricingZone,
           {
             dogCount: dogsForPricing,
             boundaryAreaSqm: selectedProperty?.boundary_area_sqm
               ? Number(selectedProperty.boundary_area_sqm)
               : null,
-          multiplier: freqMultiplier,
-        },
-      )
-    : null;
+            multiplier: freqMultiplier,
+          },
+        )
+      : null;
   const zoneParts = zonePrice
     ? {
-        base: pricingZone.base_price_cents ?? 0,
-        perDog: pricingZone.per_dog_addl_cents ?? 0,
-        dogAdj: extraDogs * (pricingZone.per_dog_addl_cents ?? 0),
-        areaCharge:
-          zonePrice.perVisitCents -
-          (pricingZone.base_price_cents ?? 0) -
-          extraDogs * (pricingZone.per_dog_addl_cents ?? 0),
+        base: zonePrice.baseCents,
+        perDog: zonePrice.perDogCents,
+        dogAdj: extraDogs * zonePrice.perDogCents,
+        areaCharge: zonePrice.areaCents,
         perVisit: zonePrice.perVisitCents,
       }
     : null;

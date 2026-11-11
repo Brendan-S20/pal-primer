@@ -65,6 +65,7 @@ import {
 import { useServiceLineAvailability } from "@/hooks/useServiceLineAvailability";
 import { getDispatchSettings, updateDispatchSettings } from "@/lib/visits.functions";
 import { createZone, geocodePostal } from "@/lib/zones.functions";
+import { setupZoneOverride } from "@/lib/standard-price";
 import { getFirstCleanupPricing, setFirstCleanupPricing } from "@/lib/first-cleanup.functions";
 import { getStandardPricing, updateFrequencyMultipliers } from "@/lib/subscriptions.functions";
 import { FIRST_CLEANUP_MODE_LABEL } from "@/lib/first-cleanup";
@@ -922,6 +923,16 @@ function ServiceAreaPanel({
           const next = firstCleanupPricingFromSetup(fcPricing, firstCleanupVal);
           if (next) await fcSetFn({ data: next });
         }
+        // The same price is the default service's price, where that is still
+        // blank (#766). Asked BEFORE the zone exists (#860 review): the zone
+        // gets a price of its own only when the price typed here differs from
+        // the standard price that results, so a first area normally follows
+        // Settings → Services rather than overriding it with a copy.
+        const adopted = await adoptFn({ data: { basePriceCents, perDogAddlCents } });
+        const zoneOverride = setupZoneOverride(
+          { basePriceCents, perDogAddlCents },
+          { baseCents: adopted.standardBaseCents, perDogCents: adopted.standardPerDogCents },
+        );
         if (!createdZone.current) {
           let center = pinned ? { lat: Number(b!.latitude), lng: Number(b!.longitude) } : null;
           if (!center) {
@@ -942,8 +953,7 @@ function ServiceAreaPanel({
               centerLatitude: center.lat,
               centerLongitude: center.lng,
               radiusMeters: Math.round(miles * 1609.344),
-              basePriceCents,
-              perDogAddlCents,
+              ...zoneOverride,
               // The zone's own first-cleanup price, which Zones' "flat" mode
               // reads (D7). Off is an explicit $0.
               initialCleanupCents,
@@ -951,10 +961,6 @@ function ServiceAreaPanel({
           });
           createdZone.current = zone.id;
         }
-        // The same price is the business's Standard price and the default
-        // service's price, where those are still blank (#766). One answer to
-        // "what do I charge per visit", not a zone at $25 and Standard at $30.
-        await adoptFn({ data: { basePriceCents, perDogAddlCents } });
       },
       // Zones, Settings > Business > Standard pricing and Price by schedule,
       // Settings > Services, and Zones' First cleanup card.

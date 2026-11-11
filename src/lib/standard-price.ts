@@ -7,7 +7,7 @@
 //     per extra dog), the same two columns every other line already priced
 //     from. It is the only place the base price is set.
 //   * A zone MAY override it. zones.base_price_cents is nullable since
-//     migration 20261110150000: NULL means "no override, charge the
+//     migration 20261111040000: NULL means "no override, charge the
 //     standard". A zone that has one wins, and only for an address inside
 //     that zone. Outside every zone there is no override to apply, so the
 //     office's quote is the standard price.
@@ -26,6 +26,12 @@
 // Pure, so the screens, the server and the tests share one copy.
 
 import { PET_WASTE_SERVICE_NAME } from "@/lib/services";
+import {
+  computeZoneVisitPrice,
+  type VisitPriceInput,
+  type VisitPriceResult,
+  type ZonePricingFields,
+} from "@/lib/pricing";
 
 /** The two columns a service's standard price lives in. */
 export type StandardPriceService = {
@@ -35,8 +41,8 @@ export type StandardPriceService = {
 
 /** The two columns a zone's override lives in. A NULL base is no override. */
 export type ZonePriceOverride = {
-  base_price_cents: number | null;
-  per_dog_addl_cents: number | null;
+  base_price_cents?: number | null;
+  per_dog_addl_cents?: number | null;
 };
 
 export type PetWasteRate = {
@@ -96,6 +102,75 @@ export function rateVisitCents(
   return rate.baseCents + (n - 1) * rate.perDogCents;
 }
 
+/** A zone's pricing columns as any reader has them: the override pair plus
+ *  the area rate. Every field optional, because the readers select
+ *  different subsets. */
+export type ZoneVisitPricing = Omit<Partial<ZonePricingFields>, keyof ZonePriceOverride> &
+  ZonePriceOverride;
+
+export type PetWasteZoneVisitPrice = VisitPriceResult & {
+  /** The first dog's per-visit base the price was built from. */
+  baseCents: number;
+  /** Each extra dog, per visit. */
+  perDogCents: number;
+  /** The area charge in perVisitCents (0 when the zone is flat). */
+  areaCents: number;
+  /** Where the base came from: the zone's override, the standard price, or
+   *  nothing (an area-priced zone with neither, which charges its area). */
+  source: "zone" | "standard" | null;
+};
+
+/**
+ * THE per-visit price of a residential pet-waste visit in a zone (#860
+ * review): every screen that prices one calls this, so the new-client wizard,
+ * the dispatcher's set price, a quote and the client's plan form cannot
+ * disagree.
+ *
+ *   base   = the zone's override when it has one, else the standard price
+ *            (petWasteVisitRate);
+ *   + area = the zone's area charge, when the zone prices by yard size,
+ *            whether or not it overrides the base;
+ *   + dogs = extra dogs at the same rate the base came from.
+ *
+ * Before the review, an area-priced zone with no override was priced three
+ * ways: standard + area (wizard), $0 + area (quotes) and standard with no
+ * area (plan form).
+ *
+ * Null when there is no price: no override and no standard price, and no
+ * area charge to fall back on (no zone, or a flat zone).
+ */
+export function petWasteZoneVisitPrice(
+  service: StandardPriceService | null | undefined,
+  zone: ZoneVisitPricing | null | undefined,
+  input: VisitPriceInput,
+): PetWasteZoneVisitPrice | null {
+  const rate = petWasteVisitRate(service, zone ?? null);
+  const mode = zone?.pricing_mode ?? "flat";
+  if (!rate && (!zone || mode === "flat")) return null;
+  const baseCents = rate?.baseCents ?? 0;
+  const perDogCents = rate?.perDogCents ?? 0;
+  const r = computeZoneVisitPrice(
+    {
+      base_price_cents: baseCents,
+      per_dog_addl_cents: perDogCents,
+      pricing_mode: zone ? mode : "flat",
+      price_per_sqft_cents: Number(zone?.price_per_sqft_cents ?? 0),
+      price_per_acre_cents: zone?.price_per_acre_cents ?? 0,
+      area_min_charge_cents: zone?.area_min_charge_cents ?? 0,
+      area_max_charge_cents: zone?.area_max_charge_cents ?? null,
+    },
+    input,
+  );
+  const dogs = Math.max(0, input.dogCount - 1) * perDogCents;
+  return {
+    ...r,
+    baseCents,
+    perDogCents,
+    areaCents: r.perVisitCents - baseCents - dogs,
+    source: rate?.source ?? null,
+  };
+}
+
 type CatalogRow = StandardPriceService & {
   id: string;
   name: string;
@@ -150,4 +225,23 @@ export function standardPriceLine(standardCents: number | null): string {
   return standardCents == null
     ? "Standard: not set yet (Settings → Services)"
     : `Standard: $${(standardCents / 100).toFixed(2)}`;
+}
+
+/**
+ * What setup's first area gets as its own price (#860 review): nothing when
+ * the price setup was given IS the standard price, so the area follows
+ * Settings → Services; an override only when the two differ (an owner who
+ * had already set a different standard, then typed another number here).
+ * Spread into createZone's input.
+ */
+export function setupZoneOverride(
+  typed: { basePriceCents: number; perDogAddlCents: number },
+  standard: { baseCents: number | null; perDogCents: number | null },
+): { basePriceCents?: number; perDogAddlCents?: number } {
+  if (
+    standard.baseCents === typed.basePriceCents &&
+    (standard.perDogCents ?? 0) === typed.perDogAddlCents
+  )
+    return {};
+  return { basePriceCents: typed.basePriceCents, perDogAddlCents: typed.perDogAddlCents };
 }

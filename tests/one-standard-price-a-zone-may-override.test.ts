@@ -23,6 +23,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   defaultPetWasteService,
+  petWasteZoneVisitPrice,
+  setupZoneOverride,
   petWasteVisitRate,
   rateVisitCents,
   zoneOverridesPrice,
@@ -30,6 +32,7 @@ import {
 import { internalQuote } from "@/lib/internal-quote.server";
 import { oneOffGridPriceCents } from "@/lib/booking-price.server";
 import { canAccess } from "@/hooks/useMyRole";
+import { zoneChoice } from "@/lib/quote-pricing";
 import { APP_LINK_PATH_PREFIXES } from "@/lib/android-app-links";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -230,7 +233,7 @@ describe("one price source, used everywhere (#860)", () => {
       "src/lib/booking-price.server.ts",
       "src/lib/pricing-drift.functions.ts",
     ])
-      expect(read(f), f).toMatch(/petWasteVisitRate/);
+      expect(read(f), f).toMatch(/petWasteVisitRate|petWasteZoneVisitPrice/);
     for (const f of [
       "src/lib/subscriptions.functions.ts",
       "src/lib/quote-pricing.functions.ts",
@@ -306,9 +309,9 @@ describe("the zone override applies only inside its zone (#860)", () => {
   });
 });
 
-describe("the signup's public_quote applies the same rule (migration 20261110150000)", () => {
+describe("the signup's public_quote applies the same rule (migration 20261111040000)", () => {
   const MIG =
-    "supabase/migrations/20261110150000_a-service-has-one-standard-price-and-a-zone-may-override-it.sql";
+    "supabase/migrations/20261111040000_a-service-has-one-standard-price-and-a-zone-may-override-it.sql";
   const sql = read(MIG);
   const unquote = (s: string) => s.replace(/''/g, "'");
 
@@ -321,7 +324,7 @@ describe("the signup's public_quote applies the same rule (migration 20261110150
       src.indexOf("COMMENT ON FUNCTION public.public_quote("),
     );
     const later = readdirSync(join(ROOT, "supabase/migrations"))
-      .filter((f) => f > "20261024100900" && f < "20261110150000")
+      .filter((f) => f > "20261024100900" && f < "20261111040000")
       .filter((f) =>
         read(`supabase/migrations/${f}`).includes(
           "'public.public_quote(text, text, integer, text, text, uuid)'::regprocedure",
@@ -401,7 +404,7 @@ describe("the signup's public_quote applies the same rule (migration 20261110150
 describe("existing plans keep their saved price (#860)", () => {
   it("the migration does not touch a plan, and neither does anything that sets the standard", () => {
     const code = read(
-      "supabase/migrations/20261110150000_a-service-has-one-standard-price-and-a-zone-may-override-it.sql",
+      "supabase/migrations/20261111040000_a-service-has-one-standard-price-and-a-zone-may-override-it.sql",
     )
       .split("\n")
       .filter((l) => !l.trim().startsWith("--"))
@@ -474,5 +477,130 @@ describe("Zones & pricing opens inside Settings (#864)", () => {
     expect(read("android/app/src/main/AndroidManifest.xml")).toContain(
       'android:pathPrefix="/settings/zones"',
     );
+  });
+});
+
+describe("an area-priced zone with no override has ONE price (#860 review, must-fix 1)", () => {
+  // Priced by the acre, no base of its own: before the review the wizard
+  // charged standard + area, Quotes charged $0 + area, and the client's plan
+  // form charged the standard price with no area at all.
+  const ACRES = zone({
+    id: "z-acres",
+    name: "Acreage",
+    zip_codes: ["48301"],
+    pricing_mode: "per_acre",
+    price_per_acre_cents: 1000,
+    area_min_charge_cents: 0,
+    area_max_charge_cents: null,
+  });
+  const ONE_ACRE_SQM = 4046.8564;
+  const STANDARD = { base_price_cents: 2000, extra_pet_cents: 500 };
+  // $20 standard + $5 for the second dog + $10 for one acre.
+  const EXPECTED = 3500;
+
+  it("the shared function: standard base + extra dog + area", () => {
+    const r = petWasteZoneVisitPrice(STANDARD, ACRES, {
+      dogCount: 2,
+      boundaryAreaSqm: ONE_ACRE_SQM,
+      multiplier: 1,
+    });
+    expect(r).toMatchObject({ perVisitCents: EXPECTED, baseCents: 2000, areaCents: 1000 });
+    expect(r?.source).toBe("standard");
+  });
+
+  it("the wizard and the dispatcher's set price (internalQuote) agree", async () => {
+    const q = await internalQuote(db({ zones: [ACRES] }), ORG, {
+      postalCode: "48301",
+      dogCount: 2,
+      frequency: "weekly",
+      boundaryAreaSqm: ONE_ACRE_SQM,
+    });
+    if (!q.available) throw new Error("expected a quote");
+    expect(q.quote.recurringPriceCents).toBe(EXPECTED);
+  });
+
+  it("the Quotes page (zoneChoice) agrees", () => {
+    const c = zoneChoice(
+      ACRES as never,
+      {
+        accountType: "residential",
+        dogCount: 2,
+        boundaryAreaSqm: ONE_ACRE_SQM,
+        frequency: "weekly",
+      },
+      { basePriceCents: 2000, perDogAddlCents: 500, frequencyMultipliers: {} },
+    );
+    expect(c?.priceCents).toBe(EXPECTED);
+    expect(c?.breakdown).toMatch(
+      /^\$20\.00 standard price \+ \$10\.00 yard size \+ \$5\.00 for 1 dog more/,
+    );
+  });
+
+  it("the client's plan form (ServicesTab) prices it through the same function", () => {
+    const tab = read("src/components/client-detail/ServicesTab.tsx");
+    // The zone counts when it overrides OR charges by area, not only on an override.
+    expect(tab).toMatch(
+      /zoneOverridesPrice\(pricingZone\) \|\| \(pricingZone\.pricing_mode \?\? "flat"\) !== "flat"/,
+    );
+    expect(tab).toMatch(/petWasteZoneVisitPrice\(\s*stdSource/);
+    expect(tab).not.toMatch(/computeZoneVisitPrice\(/);
+  });
+
+  it("no reader computes a residential zone price any other way", () => {
+    for (const f of [
+      "src/lib/internal-quote.server.ts",
+      "src/lib/quote-pricing.ts",
+      "src/components/client-detail/ServicesTab.tsx",
+    ]) {
+      expect(read(f), f).toMatch(/petWasteZoneVisitPrice\(/);
+      expect(read(f), f).not.toMatch(/computeZoneVisitPrice\(/);
+    }
+  });
+
+  it("a flat zone with no override and no standard price still has no price", () => {
+    expect(
+      petWasteZoneVisitPrice({ base_price_cents: null, extra_pet_cents: 0 }, MIDTOWN, {
+        dogCount: 1,
+      }),
+    ).toBeNull();
+    expect(petWasteZoneVisitPrice(null, null, { dogCount: 1 })).toBeNull();
+  });
+});
+
+describe("setup's first area follows the standard price (#860 review, follow-up)", () => {
+  it("no override when the price setup was given is the standard price", () => {
+    expect(
+      setupZoneOverride(
+        { basePriceCents: 2500, perDogAddlCents: 500 },
+        { baseCents: 2500, perDogCents: 500 },
+      ),
+    ).toEqual({});
+  });
+
+  it("an override only when the owner's standard differs from what setup was given", () => {
+    expect(
+      setupZoneOverride(
+        { basePriceCents: 2500, perDogAddlCents: 500 },
+        { baseCents: 3000, perDogCents: 500 },
+      ),
+    ).toEqual({ basePriceCents: 2500, perDogAddlCents: 500 });
+    expect(
+      setupZoneOverride(
+        { basePriceCents: 2500, perDogAddlCents: 500 },
+        { baseCents: null, perDogCents: null },
+      ),
+    ).toEqual({ basePriceCents: 2500, perDogAddlCents: 500 });
+  });
+
+  it("setup adopts the price first, then creates the zone with only the override", () => {
+    const setup = read("src/routes/_authenticated/setup.tsx");
+    const adopt = setup.indexOf("const adopted = await adoptFn(");
+    const create = setup.indexOf("const zone = await createFn(");
+    expect(adopt).toBeGreaterThan(-1);
+    expect(create).toBeGreaterThan(adopt);
+    const call = setup.slice(create, setup.indexOf("createdZone.current = zone.id", create));
+    expect(call).toContain("...zoneOverride,");
+    expect(call).not.toMatch(/^\s*basePriceCents,\s*$/m);
+    expect(read("src/lib/setup-price.functions.ts")).toMatch(/standardBaseCents:/);
   });
 });
