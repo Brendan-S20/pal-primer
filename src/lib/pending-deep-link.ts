@@ -75,6 +75,31 @@ export function inAppPath(link: string): string | null {
   return path;
 }
 
+/** A sign-out on purpose is under way or done, and nobody has signed in
+ *  since: the page being left belongs to the session that ended (#785). */
+let signingOut = false;
+
+/** The guard's, and a save's, "come back here after sign-in" (#659): an
+ *  in-app path, never /auth, and nothing while a sign-out is under way. A
+ *  tapped app link goes through holdDeepLink and is still held. */
+export function holdReturnPath(path: string, now = Date.now()): void {
+  if (signingOut) return;
+  holdDeepLink(path, now);
+}
+
+/** An intentional sign-out starts: drop any held link, and hold no return
+ *  path until somebody signs in. */
+export function beginSignOut(): void {
+  forgetDeepLink();
+  signingOut = true;
+}
+
+/** A password was accepted, or /auth found a session: the guard may hold a
+ *  page again. */
+export function signedInAgain(): void {
+  signingOut = false;
+}
+
 /** The held link, left in place, or null when there is none or it is stale. */
 export function peekDeepLink(now = Date.now()): string | null {
   if (held && now - held.at > DEEP_LINK_TTL_MS) held = null;
@@ -159,4 +184,5 @@ export async function routeDeepLink(path: string, env: DeepLinkEnv): Promise<voi
 /** Tests only. */
 export function __resetDeepLinkForTests(): void {
   forgetDeepLink();
+  signingOut = false;
 }

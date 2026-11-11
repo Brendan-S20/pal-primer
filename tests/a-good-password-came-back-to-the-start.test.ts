@@ -293,6 +293,23 @@ describe("a held return path is a path, and never /auth", () => {
     vi.unstubAllGlobals();
   });
 
+  it("a sign-out refuses the guard's re-hold until a password is accepted; app links still hold", async () => {
+    const pending = await import("@/lib/pending-deep-link");
+    const { returnHereAfterSignIn } = await import("@/lib/signed-out");
+    pending.__resetDeepLinkForTests();
+    returnHereAfterSignIn("/settings/users");
+    pending.beginSignOut();
+    expect(pending.takeDeepLink()).toBeNull();
+    returnHereAfterSignIn("/settings/users"); // the guard, mid sign-out
+    expect(pending.takeDeepLink()).toBeNull();
+    pending.holdDeepLink("/my-day?visit=1"); // a tapped link is the person's
+    expect(pending.takeDeepLink()).toBe("/my-day?visit=1");
+    pending.signedInAgain();
+    returnHereAfterSignIn("/clients/abc"); // #659 after the next sign-in
+    expect(pending.takeLinkForLanding()).toBe("/clients/abc");
+    pending.__resetDeepLinkForTests();
+  });
+
   it.each([
     ["/settings/users?tab=a#b", "/settings/users?tab=a#b"],
     ["https://app.houndstack.com/clients/1?x=1", "/clients/1?x=1"],
@@ -350,6 +367,12 @@ describe("/auth wiring", () => {
     expect(src).toMatch(/onClick=\{\(\) => \{\s+forgetSignInStep\(\);\s+setStage\("email"\)/);
   });
 
+  it("lets the guard hold a page again only once a password was accepted", () => {
+    const again = handleSignIn.indexOf("signedInAgain();");
+    expect(again).toBeGreaterThan(handleSignIn.indexOf("if (error)"));
+    expect(again).toBeLessThan(handleSignIn.indexOf("handOffSignIn(email, password)"));
+  });
+
   it("never shows a raw failure: every message on the sign-in path goes through the words", () => {
     expect(handleSignIn).toMatch(/setError\(signInFailureMessage\(error\)\)/);
     expect(handleSignIn).toMatch(
@@ -364,9 +387,13 @@ describe("/auth wiring", () => {
       "utf8",
     );
     const fn = cache.slice(cache.indexOf("export async function signOutAndClearDevice"));
+    // Before the FIRST await, so a guard that runs while the queue is being
+    // cleared cannot hold the page being left (Product review on #890).
+    const firstAwait = fn.indexOf("await ");
+    expect(fn.indexOf("beginSignOut();")).toBeGreaterThan(0);
     expect(fn.indexOf("signInLanded();")).toBeGreaterThan(0);
-    expect(fn.indexOf("forgetDeepLink();")).toBeGreaterThan(0);
-    expect(fn.indexOf("signInLanded();")).toBeLessThan(fn.indexOf("await supabase.auth.signOut()"));
+    expect(fn.indexOf("beginSignOut();")).toBeLessThan(firstAwait);
+    expect(fn.indexOf("signInLanded();")).toBeLessThan(firstAwait);
     const twoStep = readFileSync(
       join(import.meta.dirname, "..", "src/routes/two-step.tsx"),
       "utf8",
