@@ -45,7 +45,7 @@ export const listOrgUsers = createServerFn({ method: "GET" })
  * Asked here first, before anything is read or written, so the refusal is a
  * sentence. The database refuses the same things (set_staff_active,
  * change_user_role and the restrictive UPDATE policy on staff in
- * 20261110160000); this is the readable sentence, not the only lock. Whether
+ * 20261111120000); this is the readable sentence, not the only lock. Whether
  * the TARGET is an owner is the database's to answer, from the stored row.
  */
 export const ONLY_AN_OWNER_OR_OFFICE_MANAGER_TURNS_PEOPLE_ON_OR_OFF =
@@ -55,7 +55,7 @@ export const ONLY_AN_OWNER_OR_OFFICE_MANAGER_CHANGES_ROLES =
 export const NOT_ABOVE_YOUR_OWN_ROLE = "An office manager cannot give anyone a role above their own.";
 
 /** The roles each caller may hand out. An owner any; an office manager
- *  nothing above office manager. Mirrors change_user_role in 20261110160000. */
+ *  nothing above office manager. Mirrors change_user_role in 20261111120000. */
 export const ROLES_A_CALLER_MAY_GRANT: Record<string, readonly string[]> = {
   owner: ["owner", "office_manager", "dispatcher", "tech"],
   office_manager: ["office_manager", "dispatcher", "tech"],

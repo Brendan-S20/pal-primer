@@ -59,7 +59,7 @@ REVOKE ALL ON FUNCTION public.staff_row_is_an_owner(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.staff_row_is_an_owner(uuid) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.staff_row_is_an_owner(uuid) IS
-  'True when the stored staff row is an owner (by staff.role or user_roles), or is not in the caller''s business. Behind the office-manager limits in 20261110160000 (#659).';
+  'True when the stored staff row is an owner (by staff.role or user_roles), or is not in the caller''s business. Behind the office-manager limits in 20261111120000 (#659).';
 
 -- ── 2. set_staff_active: owner, or an office manager on anyone but an owner ─
 CREATE OR REPLACE FUNCTION public.set_staff_active(_staff_id uuid, _active boolean)

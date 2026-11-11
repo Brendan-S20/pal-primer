@@ -27,7 +27,7 @@ vi.setConfig({ testTimeout: 300_000 });
 const ROOT = join(import.meta.dirname, "..");
 const MIGRATION = join(
   ROOT,
-  "supabase/migrations/20261110160000_an-office-manager-runs-the-team-but-not-the-owner.sql",
+  "supabase/migrations/20261111120000_an-office-manager-runs-the-team-but-not-the-owner.sql",
 );
 const PROOF = join(ROOT, "tests/sql/an-office-manager-runs-the-team-but-not-the-owner.proof.sql");
 const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
