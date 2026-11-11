@@ -1322,6 +1322,12 @@ const es: Translations = {
     checkAgain: "Comprobar de nuevo",
     couldNotCheck: "No se pudo comprobar ahora. Inténtalo de nuevo en un momento.",
     stillOff: "Sigue desactivado. Pide al dueño que te reactive.",
+    startOwn: "Crear mi propio negocio",
+    startOwnExplain: "Esto te saca de <business/> definitivamente, para que puedas crear tu propio negocio o unirte a otro con este correo. Sus registros se quedan con ellos. Para volver más adelante, tendrán que invitarte de nuevo.",
+    startOwnConfirm: "Salir y crear el mío",
+    startOwnCancel: "Seguir esperando",
+    startOwnBusy: "Saliendo…",
+    startOwnFailed: "No se pudo hacer ahora. Inténtalo de nuevo en un momento.",
   },
   staySummary: {
     title: "Resúmenes de estancias",

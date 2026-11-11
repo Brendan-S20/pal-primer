@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { PublicShell } from "@/components/PublicShell";
 import { AccessOffCard, type AccessOffState } from "@/components/AccessOffCard";
 import { getMyOrg } from "@/lib/org.functions";
+import { leaveBusinessIWasTurnedOffIn } from "@/lib/auth-entry.functions";
 import { clearPersistedReadCaches, signOutAndClearDevice } from "@/lib/offline/read-cache";
 import { pageTitle } from "@/lib/page-title";
 
@@ -16,6 +17,14 @@ import { pageTitle } from "@/lib/page-title";
 // got a workspace in which every list was empty and every save failed. Here
 // they get one sentence that says what happened and who can undo it, a way to
 // check again once the owner has, and Sign out.
+//
+// 2026-11-11 (#765): and a way out. Deactivate is the only "remove" the owner
+// has, and it keeps the membership (that is how the database knows "off" from
+// "stranger"), so until now this address could never start a business of its
+// own: Get started sent it to sign in, and sign in sent it here. "Start my own
+// business" gives up the caller's own membership of this business
+// (leave_business_i_was_turned_off_in, 20261111060000) and sends them to
+// /no-workspace, where they start one or open an invitation.
 //
 // A technician reads this on their phone, so it speaks the phone's language
 // (tests/support/tech-screens.ts). The business name is the office's own text:
@@ -70,6 +79,15 @@ function AccessOffPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const startOwn = async () => {
+    await leaveBusinessIWasTurnedOffIn();
+    // The cached answer says "off"; the shell must ask again and find nothing.
+    clearPersistedReadCaches();
+    queryClient.removeQueries({ queryKey: ["my-org"] });
+    queryClient.removeQueries({ queryKey: ["platform-context"] });
+    navigate({ to: "/no-workspace", replace: true });
+  };
+
   const signOut = async () => {
     await signOutAndClearDevice();
     window.location.href = "/auth";
@@ -81,6 +99,7 @@ function AccessOffPage() {
         state={state}
         onCheckAgain={() => void check(true)}
         onSignOut={() => void signOut()}
+        onStartOwn={startOwn}
       />
     </PublicShell>
   );

@@ -1266,6 +1266,12 @@ const zh: TranslationsWithPlurals<"other"> = {
     checkAgain: "重新检查",
     couldNotCheck: "暂时无法检查，请稍后再试。",
     stillOff: "仍处于关闭状态。请让负责人重新启用你。",
+    startOwn: "创建我自己的商家",
+    startOwnExplain: "这会让你永久离开<business/>，之后你可以用这个邮箱创建自己的商家或加入其他商家。他们的记录仍归他们所有。以后想回来，需要他们重新邀请你。",
+    startOwnConfirm: "离开并创建我自己的",
+    startOwnCancel: "继续等待",
+    startOwnBusy: "正在离开…",
+    startOwnFailed: "暂时无法完成，请稍后再试。",
   },
   staySummary: {
     title: "寄养总结",
