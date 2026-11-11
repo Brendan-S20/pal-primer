@@ -199,7 +199,8 @@ describe("undo is one call, and the server writes nothing of its own", () => {
       src.indexOf("export const undoImport"),
       src.indexOf("export const cancelImport"),
     );
-    expect(undo).toMatch(/rpc\("undo_import_batch"/);
+    expect(undo).toMatch(/"undo_import_batch"/);
+    expect(undo).toMatch(/supabase\.rpc as unknown as RpcCall/);
     expect(undo).not.toMatch(/\.delete\(\)/);
     expect(undo).not.toMatch(/undone_at:/);
     expect(src).not.toMatch(/deleteWhereIn/);

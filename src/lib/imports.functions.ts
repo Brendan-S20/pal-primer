@@ -2671,11 +2671,6 @@ export const commitImport = createServerFn({ method: "POST" })
   });
 
 // ── Undo (#857) ───────────────────────────────────────────────────────────
-//
-// The helpers below take the table as a value and filter on undone_at, which
-// the generated types (owned by #870) do not carry yet, so the builder is
-// untyped in them, as it is for client_holds in clients.functions.ts.
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 /** PostgREST puts an `in` list in the URL; 200 ids at a time keeps it short. */
 const IN_CHUNK = 200;
@@ -2685,16 +2680,15 @@ async function countWhereIn(
   table: "visits" | "payments" | "invoices",
   column: string,
   ids: readonly string[],
-  extra?: (q: any) => any,
+  only?: { notOpen: true },
 ): Promise<number> {
   let n = 0;
   for (let i = 0; i < ids.length; i += IN_CHUNK) {
-    let q: any = supabase
+    const base = supabase
       .from(table)
       .select("id", { count: "exact", head: true })
       .in(column, ids.slice(i, i + IN_CHUNK));
-    if (extra) q = extra(q);
-    const { count, error } = await q;
+    const { count, error } = await (only?.notOpen ? base.neq("status", "open") : base);
     // A guard that cannot count must not read as "nothing to protect".
     if (error) throw new Error(error.message);
     n += count ?? 0;
@@ -2702,9 +2696,11 @@ async function countWhereIn(
   return n;
 }
 
+/** Rows of `table` whose `column` is one of `ids`, read as T. The select
+ *  string is built at runtime, so the row type is the caller's word. */
 async function selectWhereIn<T>(
   supabase: SupabaseClient<Database>,
-  table: string,
+  table: "properties" | "invoices",
   columns: string,
   column: string,
   ids: readonly string[],
@@ -2712,12 +2708,13 @@ async function selectWhereIn<T>(
   const out: T[] = [];
   for (let i = 0; i < ids.length; i += IN_CHUNK) {
     const got = await selectAll<T>((a, b) =>
-      (supabase as any)
+      supabase
         .from(table)
         .select(columns)
         .in(column, ids.slice(i, i + IN_CHUNK))
         .order("id")
-        .range(a, b),
+        .range(a, b)
+        .then((r) => ({ data: r.data as unknown as T[] | null, error: r.error })),
     );
     out.push(...got);
   }
@@ -2798,7 +2795,7 @@ async function importUsage(
   } else if (entity === "balances") {
     usage.payments =
       (await countWhereIn(supabase, "payments", "invoice_id", ids)) +
-      (await countWhereIn(supabase, "invoices", "id", ids, (q) => q.neq("status", "open")));
+      (await countWhereIn(supabase, "invoices", "id", ids, { notOpen: true }));
     usage.invoices = ids.length;
   }
   return usage;
@@ -2842,15 +2839,22 @@ export const undoImport = createServerFn({ method: "POST" })
         throw new Error(UNDO_NEEDS_BILLING);
       }
     }
-    // The generated types (#870) do not know the function yet.
-    const { data: result, error } = await (supabase as any).rpc("undo_import_batch", {
-      _batch_id: batch.id,
-    });
+    // The generated types (#870) do not know the function yet, so the call
+    // is made through rpc's untyped shape.
+    type RpcCall = (
+      this: SupabaseClient<Database>,
+      fn: string,
+      args: Record<string, unknown>,
+    ) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
+    const { data: result, error } = await (supabase.rpc as unknown as RpcCall).call(
+      supabase,
+      "undo_import_batch",
+      { _batch_id: batch.id },
+    );
     if (error) throw new Error(error.message);
     const undone = Number((result as { undone?: number } | null)?.undone ?? 0);
     return { ok: true, undone };
   });
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 export const cancelImport = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
