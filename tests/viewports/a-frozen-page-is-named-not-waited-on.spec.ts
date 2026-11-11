@@ -26,13 +26,19 @@ const FROZEN_PAGE = `
   <script>function spinForever() { for (;;) {} }</script>`;
 
 /**
- * The spin starts on a timer so that the click itself can return, which means
- * Playwright's next evaluation can reach the page BEFORE the timer fires and
- * get an answer from a page that has not frozen yet. Run back to back, the two
- * frozen cases below lost that race often enough to fail one or the other on
- * most runs (an assertion rejecting at its own 1s, a ping that "answered").
- * Waiting here in Node, which asks the page nothing, lets the timer fire
- * first, so what gets measured is the frozen page and not the moment before.
+ * Pressing "open" without racing the page it freezes. The loop starts on a
+ * timer, so whoever presses the button has to be finished with the page
+ * before that timer fires, and `locator.click()` is not: it still talks to
+ * the page after the click lands. Run back to back here it lost that race
+ * about once in thirty and waited out the 90s test timeout inside `click()`.
+ * The button's own `click()`, called inside one evaluation, runs the handler
+ * synchronously and sends the evaluation's answer in the same task, so the
+ * loop can only start after Playwright has its reply.
+ *
+ * Then wait in Node, which asks the page nothing, for the timer to fire.
+ * Measured any sooner, the next evaluation could reach the page first and get
+ * an answer from a page that had not frozen yet (an assertion rejecting at
+ * its own 1s, a ping that "answered"), which failed most runs.
  */
 const untilTheSpinHasStarted = () => new Promise((r) => setTimeout(r, 300));
 
@@ -58,7 +64,7 @@ test("a page that answers passes at once, and a missing dialog is an ordinary mi
 
 test("a frozen page outlives an assertion's timeout", async ({ page }) => {
   await page.setContent(FROZEN_PAGE);
-  await page.getByRole("button", { name: "open" }).click();
+  await page.evaluate(() => document.querySelector("button")!.click());
   await untilTheSpinHasStarted();
 
   const started = Date.now();
@@ -81,7 +87,7 @@ test("the sweep's check fails a frozen page in its deadline, with the stuck func
 }) => {
   await page.setContent(FROZEN_PAGE);
   const freeze = await watchForFreeze(page);
-  await page.getByRole("button", { name: "open" }).click();
+  await page.evaluate(() => document.querySelector("button")!.click());
   await untilTheSpinHasStarted();
 
   const started = Date.now();
