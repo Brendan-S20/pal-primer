@@ -19,6 +19,7 @@ import { acceptPendingInvite, rememberInviteToken } from "@/lib/ensure-workspace
 import { humanizeRole } from "@/lib/humanize";
 import { toast } from "sonner";
 import { sendWithVerifyNotice } from "@/lib/verify-email-copy";
+import { showSignupVerifyNotice } from "@/lib/verify-email-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -399,10 +400,7 @@ function NewBusinessPage() {
           sendEmailVerification: sendWithVerifyNotice(
             () => sendEmailVerification(),
             email,
-            // This can arrive after navigation into setup. Keep the header
-            // usable and let the owner dismiss the reminder immediately (#885).
-            (message) =>
-              toast(message, { position: "bottom-center", duration: 5000, closeButton: true }),
+            showSignupVerifyNotice,
           ),
           readAttribution: readSignupAttribution,
           clearAttribution: clearSignupAttribution,

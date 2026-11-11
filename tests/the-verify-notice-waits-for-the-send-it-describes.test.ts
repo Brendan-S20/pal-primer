@@ -8,6 +8,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { sendWithVerifyNotice, signupVerifyNotice } from "@/lib/verify-email-copy";
+import { toast } from "sonner";
+import { showSignupVerifyNotice } from "@/lib/verify-email-toast";
+
+vi.mock("sonner", () => ({ toast: vi.fn() }));
 
 function deferred() {
   let resolve!: () => void;
@@ -62,12 +66,22 @@ describe("the signup verify notice", () => {
 
   it("keeps the verify reminder away from the header and dismissible (#885)", () => {
     const page = readFileSync(new URL("../src/routes/get-started.tsx", import.meta.url), "utf8");
-    // Scope this to the verify-send callback: promo notices have their own
-    // duration, and the global toaster still serves other top-centre notices.
-    const notify = page.match(/\(message\) =>\s*toast\(message, (\{[^}]+\})\)/)?.[1];
-    expect(notify).toBeDefined();
-    expect(notify).toMatch(/position: "bottom-center"/);
-    expect(notify).toMatch(/duration: 5000/);
-    expect(notify).toMatch(/closeButton: true/);
+    expect(page).toMatch(
+      /sendWithVerifyNotice\(\s*\(\) => sendEmailVerification\(\),\s*email,\s*showSignupVerifyNotice,/,
+    );
+    showSignupVerifyNotice("Verify your email");
+    expect(toast).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        props: { message: "Verify your email" },
+      }),
+      {
+        position: "bottom-center",
+        duration: 5000,
+        closeButton: true,
+        style: {
+          bottom: "env(safe-area-inset-bottom, 0px)",
+        },
+      },
+    );
   });
 });
