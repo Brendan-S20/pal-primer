@@ -161,12 +161,20 @@ function walkerStubs(world: World): Record<string, Stub> {
       record("setWalkGroupWalker", args);
       const g = world.groups.find((x) => x.id === args.groupId)!;
       const cap = args.walkerId ? (world.caps[args.walkerId] ?? null) : null;
-      if (cap != null && dogs(g) > cap) {
+      if (cap != null && dogs(g) > cap && !args.overCapAcknowledged) {
         const name = fx.STAFF.find((s) => s.id === args.walkerId)!.display_name;
-        // walk_groups_walker_cap's own words (20261108170000).
-        throw new StubRefusal(
-          `${name} walks up to ${cap} dogs at a time. This group has ${dogs(g)}.`,
-        );
+        // What setWalkGroupWalker answers when walk_dog_cap_guard refused an
+        // unconfirmed over-cap write (20261111130000): the warning, nothing
+        // saved. Confirmed, it falls through and saves.
+        return {
+          overCap: {
+            dogs: dogs(g),
+            cap,
+            walker: name,
+            walkGroupId: g.id,
+            staffId: args.walkerId,
+          },
+        };
       }
       world.groups = world.groups.map((x) =>
         x.id === g.id
@@ -301,7 +309,10 @@ for (const width of WIDTHS) {
       }
       expect(
         world.writes.filter((w) => w.name === "setWalkGroupMember").map((w) => w.args),
-      ).toEqual([0, 1, 2].map((n) => ({ visitId: walk(n).id, groupId: id })));
+        // Each is sent once, unconfirmed: under the cap, nothing is asked (#731).
+      ).toEqual(
+        [0, 1, 2].map((n) => ({ visitId: walk(n).id, groupId: id, overCapAcknowledged: false })),
+      );
       await expect(made).toContainText("5 of 6 dogs");
       await expect(made).toContainText("Each client is billed separately");
       for (const [who, price] of [
@@ -319,7 +330,7 @@ for (const width of WIDTHS) {
       await expectLaidOut(page, `${width} three clients`);
     });
 
-    test("a walker's dog cap refuses a group it does not fit, and flags one over it", async ({
+    test("a walker's dog cap warns before a group it does not fit, and flags one over it", async ({
       page,
     }) => {
       const open3 = "aaaaaaaa-0000-4000-8000-000000097311";
@@ -338,12 +349,29 @@ for (const width of WIDTHS) {
       });
       const panel = await openRoutes(page, world);
 
+      // Warn, then allow (#731): one dog over shows the owner's sentence
+      // before anything is saved.
       await page.locator(`#walker-${open3}`).selectOption(SAMANTHA.id);
-      const refusal = `${SAMANTHA.display_name} walks up to 2 dogs at a time. This group has 3.`;
-      await expect(page.getByText(refusal)).toBeVisible();
-      // Refused: the group still has nobody, and the select says so.
+      const dialog = page.getByRole("alertdialog");
+      await expect(dialog).toContainText("This walk will have 3 dogs; the cap is 2.");
+      await expect(dialog).toContainText(`${SAMANTHA.display_name} walks up to 2 dogs at a time.`);
+      await expectLaidOut(page, `${width} cap warning`);
+      // Cancel changes nothing: the group still has nobody, and says so.
+      await dialog.getByRole("button", { name: "Cancel" }).click();
+      await expect(dialog).toBeHidden();
       await expect.poll(() => selectedText(page, `#walker-${open3}`)).toBe("Unassigned");
       expect(world.groups.find((g) => g.id === open3)!.walkerId).toBeNull();
+      // Assign anyway saves it, sent again with the confirmation.
+      await page.locator(`#walker-${open3}`).selectOption(SAMANTHA.id);
+      await dialog.getByRole("button", { name: "Assign anyway" }).click();
+      await expect.poll(() => world.groups.find((g) => g.id === open3)!.walkerId).toBe(SAMANTHA.id);
+      expect(
+        world.writes
+          .filter((c) => c.name === "setWalkGroupWalker")
+          .map((c) => Boolean(c.args.overCapAcknowledged)),
+      ).toEqual([false, false, true]);
+      const confirmed = card(panel, open3);
+      await expect(confirmed).toContainText("over the cap");
 
       const flagged = card(panel, over);
       await expect(flagged).toContainText("3 of 2 dogs");

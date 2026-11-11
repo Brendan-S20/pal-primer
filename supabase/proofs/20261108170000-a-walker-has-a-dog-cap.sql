@@ -15,8 +15,10 @@
 --
 --   1. staff.max_dogs_per_walk is NULL for a person nobody set it on;
 --   2. a walk joining Ann's group is refused once it would take her past
---      three dogs, even though the service allows six, and the refusal names
---      her and the numbers;
+--      three dogs, even though the service allows six, and the refusal gives
+--      the numbers (since 20261111130000 in the owner's sentence, "This walk
+--      will have 5 dogs; the cap is 3.", and only when not confirmed: the
+--      confirmed path is supabase/proofs/20261111130000-...);
 --   3. giving a group with four dogs to Ann is refused; to Bo it is not;
 --   4. lowering Ann's cap below a group she already has neither fails nor
 --      changes that group;
@@ -143,7 +145,7 @@ BEGIN
     RAISE EXCEPTION 'PROOF FAILED [cap]: a fifth dog joined Ann''s group past her cap of three';
   EXCEPTION WHEN check_violation THEN _msg := SQLERRM;
   END;
-  IF _msg NOT LIKE 'Ann Cap walks up to 3 dogs at a time. This group would have 5.' THEN
+  IF _msg NOT LIKE 'This walk will have 5 dogs; the cap is 3.' THEN
     RAISE EXCEPTION 'PROOF FAILED [cap]: the refusal said "%"', _msg;
   END IF;
   RAISE NOTICE 'ok: a group stops at its walker''s cap below the service''s size';
@@ -162,7 +164,7 @@ BEGIN
     RAISE EXCEPTION 'PROOF FAILED [assign]: a four-dog group was given to a walker capped at three';
   EXCEPTION WHEN check_violation THEN _msg := SQLERRM;
   END;
-  IF _msg NOT LIKE 'Ann Cap walks up to 3 dogs at a time. This group has 4.' THEN
+  IF _msg NOT LIKE 'This walk will have 4 dogs; the cap is 3.' THEN
     RAISE EXCEPTION 'PROOF FAILED [assign]: the refusal said "%"', _msg;
   END IF;
   UPDATE public.walk_groups SET assigned_staff_id = '5e731000-0000-4000-8000-0000000000a3'

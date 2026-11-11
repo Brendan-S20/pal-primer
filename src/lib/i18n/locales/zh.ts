@@ -503,6 +503,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     length: "遛狗 {{minutes}} 分钟",
     minutesOut: "已出门 {{minutes}} 分钟",
     groupWalk: "集体遛狗",
+    overDogCap: "超过遛狗上限：{{dogs}} 只狗，上限是 {{cap}} 只",
     pickupOrder: "接狗顺序",
     thisStop: "本站",
     wayIn: "如何进门",

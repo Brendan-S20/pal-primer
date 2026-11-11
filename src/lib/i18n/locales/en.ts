@@ -529,6 +529,7 @@ const en = {
     length: "{{minutes}} min walk",
     minutesOut: "Out {{minutes}} min",
     groupWalk: "Group walk",
+    overDogCap: "Over the dog cap: {{dogs}} dogs, the cap is {{cap}}",
     pickupOrder: "Pickup order",
     thisStop: "This stop",
     wayIn: "How you get in",
