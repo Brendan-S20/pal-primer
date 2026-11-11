@@ -399,7 +399,10 @@ function NewBusinessPage() {
           sendEmailVerification: sendWithVerifyNotice(
             () => sendEmailVerification(),
             email,
-            (message) => toast(message, { duration: 15000 }),
+            // This can arrive after navigation into setup. Keep the header
+            // usable and let the owner dismiss the reminder immediately (#885).
+            (message) =>
+              toast(message, { position: "bottom-center", duration: 5000, closeButton: true }),
           ),
           readAttribution: readSignupAttribution,
           clearAttribution: clearSignupAttribution,

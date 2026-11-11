@@ -59,4 +59,15 @@ describe("the signup verify notice", () => {
     expect(page).toMatch(/sendEmailVerification: sendWithVerifyNotice\(/);
     expect(page).not.toMatch(/verifySent/);
   });
+
+  it("keeps the verify reminder away from the header and dismissible (#885)", () => {
+    const page = readFileSync(new URL("../src/routes/get-started.tsx", import.meta.url), "utf8");
+    // Scope this to the verify-send callback: promo notices have their own
+    // duration, and the global toaster still serves other top-centre notices.
+    const notify = page.match(/\(message\) =>\s*toast\(message, (\{[^}]+\})\)/)?.[1];
+    expect(notify).toBeDefined();
+    expect(notify).toMatch(/position: "bottom-center"/);
+    expect(notify).toMatch(/duration: 5000/);
+    expect(notify).toMatch(/closeButton: true/);
+  });
 });
