@@ -3,7 +3,7 @@
 //
 // @capacitor-community/apple-sign-in 7.1.0 — the newest on npm; there is no
 // Capacitor 8 release — declares capacitor-swift-pm `from: "7.0.0"`, i.e.
-// 7.0.0..<8.0.0. ios/App/CapApp-SPM/Package.swift pins it `exact: "8.4.1"`.
+// 7.0.0..<8.0.0. ios/App/CapApp-SPM/Package.swift pins it `exact: "8.4.3"`.
 // Swift Package Manager cannot satisfy both, so `xcodebuild` fails at
 // "Resolve Package Graph", and Xcode Cloud could not archive a TestFlight
 // build. Found on 2026-10-04 while checking the push-notification branch.
