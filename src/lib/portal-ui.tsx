@@ -2,6 +2,7 @@
  * All sibling routes under /portal/$token/* pull data from usePortal(token).
  * React Query caches by key so switching tabs is instant. */
 
+import type { InvoiceRefundState } from "@/lib/refund-outcome";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { DEFAULT_ORG_TIMEZONE, orgLocalTime, orgToday } from "@/lib/org-day";
 import { cadenceLabel, frequencyLabel } from "@/lib/frequency-request";
@@ -1056,7 +1057,26 @@ export function EmptyBox({
   );
 }
 
-export function InvoiceStatusBadge({ status }: { status: string }) {
+export function InvoiceStatusBadge({
+  status,
+  refund = null,
+}: {
+  status: string;
+  /** From `invoiceRefundState` (#674): a paid invoice whose money went back
+   *  reads Refunded or Partly refunded here, never a plain Paid. */
+  refund?: InvoiceRefundState;
+}) {
+  if (status === "paid" && refund === "refunded") return <Badge variant="outline">Refunded</Badge>;
+  if (status === "paid" && refund === "partly_refunded") {
+    return (
+      <Badge
+        className="border-transparent bg-amber-500/15 text-amber-800 hover:bg-amber-500/15 dark:text-amber-400"
+        variant="secondary"
+      >
+        Partly refunded
+      </Badge>
+    );
+  }
   if (status === "paid") return <Badge className="bg-emerald-600 hover:bg-emerald-600">Paid</Badge>;
   if (status === "void") return <Badge variant="outline">Void</Badge>;
   if (status === "draft") return <Badge variant="secondary">Draft quote</Badge>;
