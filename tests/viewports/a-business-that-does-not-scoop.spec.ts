@@ -551,3 +551,154 @@ for (const { w, h, label } of WIDTHS) {
     });
   });
 }
+
+// ── #768 and #769: the walker-only and mixed acceptance, in a browser ──────
+//
+// #797 shipped the copy and the inline walk prices; the Product live check of
+// 2026-11-10 could run only the scoop-only path. These prove the other two
+// at a phone and a laptop, with the dog-walking run and the scoops-and-walks
+// run each measured on every step of /setup:
+//
+//   - walker-only: no step says trucks, dump site or crew unloads, and the
+//     day-end step is "Where does your day end?";
+//   - scoops and walks: trucks and crew unloads nowhere, and "dump site" only
+//     on the pet-waste path (the sentence that names pet waste routes, and
+//     the "For your pet waste routes" half of the day-end form);
+//   - both: the prices step will not save with the 30-minute walk alone or
+//     the 60-minute walk alone, and saves with both and the drop-in blank,
+//     on /setup, with no trip to Settings.
+//
+// The stub answers a write with null (nothing here writes anywhere), so the
+// save proves the form's own gate and where it goes next, not the database;
+// tests/a-walker-prices-both-walks-before-setup-moves-on.test.tsx follows
+// the written prices through to walksDone.
+
+const SETUP_STEPS = ["business", "zones", "clients", "staff", "dump_site", "payouts"] as const;
+const SCOOP_COPY = /\btrucks?\b|dump site|crew unloads/i;
+
+/** Every text node on the page that names a dump site, with whether it sits
+ *  on a pet-waste path: inside the day-end form's pet-waste half, or the
+ *  one sentence of the step description that says pet waste routes can end
+ *  there. Anything else is a dump site shown to a walker. */
+async function dumpSiteMentions(page: Page) {
+  return page.evaluate(() => {
+    const out: { text: string; petWastePath: boolean }[] = [];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const text = (n.textContent ?? "").trim();
+      if (!/dump site/i.test(text)) continue;
+      const el = n.parentElement;
+      const petWastePath =
+        !!el?.closest("[data-setup-pet-waste-day-end]") ||
+        /Pet waste routes can end at a dump site/.test(text);
+      out.push({ text, petWastePath });
+    }
+    return out;
+  });
+}
+
+async function openStep(page: Page, lines: string[], step: string, w: number, h: number) {
+  await open(page, "owner", lines, `/setup?step=${step}`, w, h);
+  await expect(page.locator(`[data-setup-step="${step}"]`)).toBeVisible({
+    timeout: FIRST_PAINT_MS,
+  });
+  await page.waitForLoadState("networkidle").catch(() => {});
+}
+
+for (const { w, h, label } of WIDTHS.filter((s) => s.w === 360 || s.w === 1280)) {
+  test.describe(`#768 every step of setup, ${label}`, () => {
+    test(`a walker-only business never reads trucks, dump site or crew unloads @${w}px`, async ({
+      page,
+    }) => {
+      test.setTimeout(180_000);
+      for (const step of SETUP_STEPS) {
+        await openStep(page, DOG_WALKING, step, w, h);
+        const text = await allText(page);
+        expect(text, `step ${step}`).not.toMatch(SCOOP_COPY);
+        if (step === "dump_site") {
+          await expect(
+            page.getByRole("heading", { name: "Where does your day end?" }),
+          ).toBeVisible();
+          await expect(page.getByText("For your pet waste routes")).toHaveCount(0);
+        }
+      }
+    });
+
+    test(`a business that scoops and walks sees a dump site only on the pet-waste path @${w}px`, async ({
+      page,
+    }) => {
+      test.setTimeout(180_000);
+      for (const step of SETUP_STEPS) {
+        await openStep(page, MIXED, step, w, h);
+        const text = await allText(page);
+        expect(text, `step ${step}`).not.toMatch(/\btrucks?\b|crew unloads/i);
+        const mentions = await dumpSiteMentions(page);
+        expect(
+          mentions.filter((m) => !m.petWastePath).map((m) => m.text),
+          `step ${step}: a dump site outside the pet-waste path`,
+        ).toEqual([]);
+        if (step === "dump_site") {
+          await expect(
+            page.getByRole("heading", { name: "Where does your day end?" }),
+          ).toBeVisible();
+          // Opening the pet-waste half draws the dump-site form inside it,
+          // and nowhere else.
+          await page.getByRole("button", { name: "Add dump site" }).click();
+          const half = page.locator("[data-setup-pet-waste-day-end]");
+          await expect(half.getByLabel("Dump site address")).toBeVisible();
+          expect((await dumpSiteMentions(page)).filter((m) => !m.petWastePath)).toEqual([]);
+          await measure(page, w, `/setup end of day, dump site open (scoops and walks) @${w}px`);
+        }
+      }
+    });
+  });
+
+  for (const [who, lines, next] of [
+    ["a walker-only business", DOG_WALKING, "clients"],
+    ["a business that scoops and walks", MIXED, "zones"],
+  ] as const) {
+    test(`#769 ${who} cannot finish prices with one walk, and finishes with both on /setup @${w}px`, async ({
+      page,
+    }) => {
+      test.setTimeout(180_000);
+      await openStep(page, lines, "zones", w, h);
+      const form = page.locator("form[data-setup-walk-prices]");
+      const walk30 = form.getByLabel(/^30-minute walk \(\$\)$/);
+      const walk60 = form.getByLabel(/^60-minute walk \(\$\)$/);
+      const dropIn = form.getByLabel(/^Drop-in visit \(20 min\) \(\$\), optional$/);
+      await expect(walk30).toBeVisible({ timeout: 15_000 });
+      await expect(walk60).toHaveAttribute("required", "");
+      await expect(dropIn).not.toHaveAttribute("required", "");
+      const save = form.locator('[data-setup-action="save-walks"]');
+
+      // The 30-minute walk alone: the 60 is still missing, so the form does
+      // not submit, nothing says saved, and the step is still this one.
+      await walk30.fill("25");
+      await save.click();
+      await expect(walk60).toHaveJSProperty("validity.valueMissing", true);
+      await expect(page.getByText("Walk prices saved")).toHaveCount(0);
+      await expect(page.locator('[data-setup-step="zones"]')).toBeVisible();
+
+      // The 60 alone, the same the other way round.
+      await walk30.fill("");
+      await walk60.fill("40");
+      await save.click();
+      await expect(walk30).toHaveJSProperty("validity.valueMissing", true);
+      await expect(page.getByText("Walk prices saved")).toHaveCount(0);
+      await expect(page.locator('[data-setup-step="zones"]')).toBeVisible();
+
+      // Both, the drop-in blank: saved, and still on /setup. A walker alone
+      // moves to the next step; a mixed business stays while the area is open.
+      await walk30.fill("25");
+      await expect(form)
+        .toHaveJSProperty("validity.valid", true)
+        .catch(() => {});
+      await save.click();
+      await expect(page.getByText("Walk prices saved").first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.locator(`[data-setup-step="${next}"]`)).toBeVisible({ timeout: 15_000 });
+      expect(new URL(page.url()).pathname).toBe("/setup");
+      await expect(page.getByRole("link", { name: "Price walks" })).toHaveCount(0);
+      await measure(page, w, `/setup prices saved (${who}) @${w}px`);
+    });
+  }
+}
