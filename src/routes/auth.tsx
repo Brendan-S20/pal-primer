@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -14,7 +14,11 @@ import { checkEmailAccount } from "@/lib/auth-entry.functions";
 import { lookupInviteByToken } from "@/lib/platform-onboarding.functions";
 import { handOffSignupEmail, takeExistingAccount } from "@/lib/signup-email";
 import {
+  forgetSignInStep,
   handOffSignIn,
+  readSignInStep,
+  rememberSignInStep,
+  signInFailureMessage,
   signInLanded,
   SIGN_IN_BOUNCED,
   SIGN_IN_BOUNCED_MESSAGE,
@@ -168,16 +172,39 @@ function AuthPage() {
   // account (#765): the reset is offered as a button in the message, not only
   // as the small link beside the password label.
   const [offerReset, setOfferReset] = useState(false);
+  const emailInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const taken = takeExistingAccount();
-    if (!taken) return;
-    setEmail(taken);
-    setStage("password");
-    setOfferReset(true);
-    setAlert({
-      kind: "info",
-      text: "That email already has an account. Sign in with its password, or reset it if you don't know it.",
-    });
+    if (taken) {
+      setEmail(taken);
+      setStage("password");
+      setOfferReset(true);
+      setAlert({
+        kind: "info",
+        text: "That email already has an account. Sign in with its password, or reset it if you don't know it.",
+      });
+      return;
+    }
+    // A STALE FILL (#785, 2026-11-11). This page is server-rendered, and a
+    // sign-out is a full load of it: in a cold window the form is on screen,
+    // and takes typing and autofill, for seconds before React attaches. That
+    // text is in the box and not in state, so Continue stayed disabled, and
+    // the next render wrote the empty state back over it: the blank email
+    // step, with no error, that QA kept reporting. Whatever is in the box when
+    // React arrives is what the person typed, so it becomes the state.
+    const early = emailInput.current?.value ?? "";
+    if (early.trim()) {
+      setEmail(early);
+      return;
+    }
+    // Drawn afresh partway through: the router's pending skeleton for a slow
+    // navigation, an error boundary reset, a reload. Put the person back on
+    // the password step they were on, not an empty first step.
+    const onStep = readSignInStep();
+    if (onStep) {
+      setEmail(onStep);
+      setStage("password");
+    }
   }, []);
 
   /** A sign-in this page handed on came back here signed out (#785). Put the
@@ -189,6 +216,7 @@ function AuthPage() {
     setEmail(bounced.email);
     if (bounced.password) setPassword(bounced.password);
     setStage("password");
+    rememberSignInStep(bounced.email);
     setLoading(false);
     setError(SIGN_IN_BOUNCED_MESSAGE);
     return true;
@@ -343,38 +371,48 @@ function AuthPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      setLoading(false);
-      return setError(error.message);
-    }
-    // Signed in with a password: whatever reset this tab started is over.
-    clearRecoveryPending();
-    let isNewOrg: boolean | typeof NEEDS_ORG_NAME = false;
-    if (data.user) {
-      // The auth server verified this user just now. Without this the guard
-      // asks it again on the next navigation, and a refusal there bounced a
-      // good password back to /auth with no word of why (#785).
-      trustFreshSignIn(data.user);
-      try {
-        isNewOrg = await ensureBootstrapped(data.user as any, { requireOrgName: true });
-        if (isNewOrg === true) forgetWorkspaceCache();
-      } catch (err) {
+    // Every way out of this function either navigates or says why it did not
+    // (#785). A rejection nobody caught used to leave "Signing in…" on a dead
+    // button; a failure whose message was "{}" or "Failed to fetch" was shown
+    // as exactly that. The step and what was typed stay put either way.
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
         setLoading(false);
-        if (err instanceof InviteRefusedError) return refuseInvite(err);
-        return setError(err instanceof Error ? err.message : "Failed to create organization");
+        return setError(signInFailureMessage(error));
       }
+      // Signed in with a password: whatever reset this tab started is over.
+      clearRecoveryPending();
+      let isNewOrg: boolean | typeof NEEDS_ORG_NAME = false;
+      if (data.user) {
+        // The auth server verified this user just now. Without this the guard
+        // asks it again on the next navigation, and a refusal there bounced a
+        // good password back to /auth with no word of why (#785).
+        trustFreshSignIn(data.user);
+        try {
+          isNewOrg = await ensureBootstrapped(data.user as any, { requireOrgName: true });
+          if (isNewOrg === true) forgetWorkspaceCache();
+        } catch (err) {
+          setLoading(false);
+          if (err instanceof InviteRefusedError) return refuseInvite(err);
+          return setError(err instanceof Error ? err.message : "Failed to create organization");
+        }
+      }
+      setLoading(false);
+      // From here it is the router's, and the guard's, call. If a navigation
+      // in the next minute resolves back on /auth, the page is told and puts
+      // the form back with a reason instead of looking like a first visit
+      // (#785, lib/sign-in-handoff.ts).
+      handOffSignIn(email, password);
+      watchSignInLanding((event, fn) => router.subscribe(event, fn));
+      if (isNewOrg === NEEDS_ORG_NAME) return navigate({ to: "/no-workspace" });
+      if (isNewOrg) return navigate({ to: "/onboarding" });
+      land(data.user ? await landingPathForUser(data.user.id) : "/dashboard");
+    } catch (err) {
+      setLoading(false);
+      setStage("password");
+      setError(signInFailureMessage(err));
     }
-    setLoading(false);
-    // From here it is the router's, and the guard's, call. If the navigation
-    // below resolves back on /auth, the page is told and puts the form back
-    // with a reason instead of looking like a first visit (#785,
-    // lib/sign-in-handoff.ts).
-    handOffSignIn(email, password);
-    watchSignInLanding((event, fn) => router.subscribe(event, fn));
-    if (isNewOrg === NEEDS_ORG_NAME) return navigate({ to: "/no-workspace" });
-    if (isNewOrg) return navigate({ to: "/onboarding" });
-    land(data.user ? await landingPathForUser(data.user.id) : "/dashboard");
   };
 
   // The other half of the native flow: the system browser hands back to
@@ -526,6 +564,7 @@ function AuthPage() {
       const r = await checkFn({ data: { email: email.trim() } });
       setLoading(false);
       if (r.exists) {
+        rememberSignInStep(email);
         setStage("password");
       } else {
         // The invitation goes with them. Without it /get-started asks for a
@@ -540,7 +579,7 @@ function AuthPage() {
       }
     } catch (err) {
       setLoading(false);
-      setError(err instanceof Error ? err.message : "Couldn't check that email. Try again.");
+      setError(signInFailureMessage(err, "email-check"));
     }
   };
 
@@ -589,6 +628,7 @@ function AuthPage() {
             <div className="space-y-2">
               <Label htmlFor="si-email">Work email</Label>
               <Input
+                ref={emailInput}
                 id="si-email"
                 type="email"
                 required
@@ -657,6 +697,7 @@ function AuthPage() {
             <button
               type="button"
               onClick={() => {
+                forgetSignInStep();
                 setStage("email");
                 setPassword("");
                 setAlert(null);

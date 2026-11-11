@@ -41,8 +41,38 @@ let landed = false;
  *  app", not a target, so it is not held. A later link replaces an earlier
  *  one: the last tap is the one the person meant. */
 export function holdDeepLink(path: string, now = Date.now()): void {
-  if (!path || path === "/") return;
-  held = { path, at: now };
+  const inApp = inAppPath(path);
+  if (!inApp) return;
+  held = { path: inApp, at: now };
+}
+
+/**
+ * The in-app path a link names, or null when it names nothing worth holding.
+ *
+ * Delivered with `router.history.push`, which takes a PATH: a full URL there
+ * is pushed as a path segment and draws a not-found page. And /auth is never
+ * a destination: holding it sends a person who has just signed in straight
+ * back to the sign-in form, which is the #785 screen with no error on it.
+ * Bare `/` is "open the app", not a target.
+ */
+export function inAppPath(link: string): string | null {
+  if (!link) return null;
+  let path = link;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(link) || link.startsWith("//")) {
+    try {
+      const base = typeof window === "undefined" ? undefined : window.location?.origin;
+      const url = new URL(link, base);
+      if (base && url.origin !== base) return null;
+      path = url.pathname + url.search + url.hash;
+    } catch {
+      return null;
+    }
+  }
+  if (!path.startsWith("/") || path.startsWith("//")) return null;
+  const pathname = path.split(/[?#]/)[0];
+  if (pathname === "/" || pathname === "" || pathname === "/auth" || pathname.startsWith("/auth/"))
+    return null;
+  return path;
 }
 
 /** The held link, left in place, or null when there is none or it is stale. */
@@ -73,7 +103,8 @@ export function markLanded(): void {
  */
 export function takeLinkForLanding(now = Date.now()): string | null {
   markLanded();
-  return takeDeepLink(now) ?? takeWaitingAppUrl("path");
+  const link = takeDeepLink(now) ?? takeWaitingAppUrl("path");
+  return link ? inAppPath(link) : null;
 }
 
 /** Sign-out: a held link belongs to the person who tapped it, not to the

@@ -482,6 +482,19 @@ export async function signOutAndClearDevice(): Promise<void> {
   }
   clearPersistedReadCaches();
   clearFormDraftsOnSignOut();
+  // A sign-out on purpose ends the last sign-in, and whatever page was held
+  // to return to (#785). Without this a sign-out within a minute of signing
+  // in was reported on the next /auth as "your password was accepted, but we
+  // couldn't finish signing you in", and a page held for the person who just
+  // left was where the next person landed.
+  try {
+    const { signInLanded } = await import("@/lib/sign-in-handoff");
+    const { forgetDeepLink } = await import("@/lib/pending-deep-link");
+    signInLanded();
+    forgetDeepLink();
+  } catch {
+    /* never let this hold up a sign-out */
+  }
   // Before signOut, while the session can still authenticate the delete: this
   // device stops receiving the signed-out user's push notifications. Bounded
   // inside releasePushRegistration, and a no-op on the web.
