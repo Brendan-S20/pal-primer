@@ -87,7 +87,8 @@ const SWEPT = new Set([
   "clients",
   "invoices",
   "my-day",
-  "zones",
+  // The signed-in sweep measures Zones & pricing at its own path (#864).
+  "settings/zones",
   "notifications",
   "profile",
   "routes",

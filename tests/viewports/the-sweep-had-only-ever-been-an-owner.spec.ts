@@ -55,7 +55,8 @@ const ROUTES = [
   "dashboard",
   "leads",
   "clients",
-  "zones",
+  // Zones & pricing is inside Settings since #864; /zones only forwards here.
+  "settings/zones",
   "routes",
   "my-day",
   "waste-log",
