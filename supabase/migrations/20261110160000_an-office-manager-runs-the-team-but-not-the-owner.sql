@@ -202,8 +202,10 @@ BEGIN
   END IF;
 
   _src := (SELECT prosrc FROM pg_proc WHERE oid = 'public.change_user_role(uuid, uuid, app_role)'::regprocedure);
+  -- prosrc is the body as written, so the apostrophe in "owner's" is still
+  -- doubled there; match the text before it rather than the whole sentence.
   IF strpos(_src, 'An office manager cannot give anyone a role above their own.') = 0
-     OR strpos(_src, 'An office manager cannot change the owner''s role.') = 0 THEN
+     OR strpos(_src, 'An office manager cannot change the owner') = 0 THEN
     RAISE EXCEPTION 'change_user_role does not hold an office manager to their own rank and off the owner';
   END IF;
 
