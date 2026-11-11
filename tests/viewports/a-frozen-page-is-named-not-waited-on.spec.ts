@@ -25,6 +25,17 @@ const FROZEN_PAGE = `
   <button onclick="setTimeout(spinForever, 0)">open</button>
   <script>function spinForever() { for (;;) {} }</script>`;
 
+/**
+ * The spin starts on a timer so that the click itself can return, which means
+ * Playwright's next evaluation can reach the page BEFORE the timer fires and
+ * get an answer from a page that has not frozen yet. Run back to back, the two
+ * frozen cases below lost that race often enough to fail one or the other on
+ * most runs (an assertion rejecting at its own 1s, a ping that "answered").
+ * Waiting here in Node, which asks the page nothing, lets the timer fire
+ * first, so what gets measured is the frozen page and not the moment before.
+ */
+const untilTheSpinHasStarted = () => new Promise((r) => setTimeout(r, 300));
+
 test.describe.configure({ mode: "parallel" });
 
 test("a page that answers passes at once, and a missing dialog is an ordinary miss", async ({
@@ -48,6 +59,7 @@ test("a page that answers passes at once, and a missing dialog is an ordinary mi
 test("a frozen page outlives an assertion's timeout", async ({ page }) => {
   await page.setContent(FROZEN_PAGE);
   await page.getByRole("button", { name: "open" }).click();
+  await untilTheSpinHasStarted();
 
   const started = Date.now();
   const outcome = await Promise.race([
@@ -70,6 +82,7 @@ test("the sweep's check fails a frozen page in its deadline, with the stuck func
   await page.setContent(FROZEN_PAGE);
   const freeze = await watchForFreeze(page);
   await page.getByRole("button", { name: "open" }).click();
+  await untilTheSpinHasStarted();
 
   const started = Date.now();
   const message = await freeze.expectAnswers("frozen", "after opening it", 2_000).then(
