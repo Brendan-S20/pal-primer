@@ -42,7 +42,7 @@ import {
   Sparkles,
   ChevronDown,
 } from "lucide-react";
-import { Megaphone } from "lucide-react";
+import { Megaphone, Tags } from "lucide-react";
 import { openTimeClock, useMyClock } from "@/components/TimeClock";
 import { REPORT_PATHS } from "@/components/ReportsNav";
 import { useTranslation } from "react-i18next";
@@ -254,6 +254,11 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
       // Moved down from Operations (QA row 36): service areas are drawn once
       // and revisited rarely.
       { title: "Zones", url: "/zones", icon: MapPin },
+      // #861: what the business sells and charges lived only under Settings,
+      // so an owner coming back to change a price had to know to open
+      // Settings first. Same page and same audience (ROUTE_ROLES:
+      // owner + office manager) as the Settings tab.
+      { title: "Services", url: "/settings/services", icon: Tags },
       { title: "Import", url: "/imports", icon: Upload },
       // The team page already exists as Settings → Users & roles, and an
       // owner looking for "who works for me" does not think to open
@@ -283,9 +288,17 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
 /** The guided setup's own entry, first while it is the job in hand. */
 export const SETUP_NAV_ITEM: NavItem = { title: "Guided setup", url: SETUP_PATH, icon: Sparkles };
 
-/** The entries the walkthrough uses, after Setup: Schedule and Clients are
- *  where its steps send the owner, Settings is where everything else lives. */
-export const FIRST_RUN_NAV_URLS = ["/routes", "/clients", "/settings"] as const;
+/** The entries the walkthrough uses, after Setup: Schedule, Clients and
+ *  Services are where its steps send the owner, Settings is where everything
+ *  else lives. */
+export const FIRST_RUN_NAV_URLS = [
+  "/routes",
+  "/clients",
+  // #861: the price step sends the owner here, and a first-run sidebar that
+  // offered only Settings left them hunting for it.
+  "/settings/services",
+  "/settings",
+] as const;
 
 export const FIRST_RUN_GROUP_LABEL = "Get started";
 

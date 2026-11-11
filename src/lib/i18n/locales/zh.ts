@@ -923,6 +923,7 @@ const zh: TranslationsWithPlurals<"other"> = {
       franchise: "特许权使用费",
       imports: "导入",
       "settings/users": "团队",
+      "settings/services": "服务",
       settings: "设置",
       platform: "平台管理",
     },

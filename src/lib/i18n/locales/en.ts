@@ -970,6 +970,7 @@ const en = {
       franchise: "Royalties",
       imports: "Import",
       "settings/users": "Team",
+      "settings/services": "Services",
       settings: "Settings",
       platform: "Platform admin",
     },
