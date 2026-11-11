@@ -134,9 +134,29 @@ final class ColdLaunch: XCTestCase {
         app.launch()
     }
 
+    /// Hands the link to the system, and leaves the verdict to the app.
+    ///
+    /// Measured on the CI Mac (054a4a28, iPad (A16), iOS 27.2, #726):
+    /// `system.open` was called at 21:46:42 and failed at 21:48:37 with
+    /// "Timed out while opening the default app for a URL". The simulator
+    /// spawned HoundStack at 21:47:46; it took the link in scene-create
+    /// (UIOpenURLAction), finished loading the page, and was still running
+    /// when the next test ended it. The same iPad then passed five cold
+    /// launches. So that one message from XCTest's own call is expected, not
+    /// fatal, and only inside this call. Whether the app came up from the
+    /// link is decided by the foreground and sign-in checks after it, and a
+    /// crash still fails the run through its crash report.
     private func openLink() {
         if #available(iOS 16.4, *) {
-            XCUIDevice.shared.system.open(link)
+            let options = XCTExpectedFailure.Options()
+            options.isStrict = false
+            options.issueMatcher = { $0.compactDescription.contains("Timed out while opening the default app for a URL") }
+            let carryOn = continueAfterFailure
+            continueAfterFailure = true
+            XCTExpectFailure("the simulator was slow to hand the link to the app (#726)", options: options) {
+                XCUIDevice.shared.system.open(link)
+            }
+            continueAfterFailure = carryOn
         } else {
             XCTFail("XCUIDevice.system.open needs iOS 16.4; run on a newer simulator")
         }

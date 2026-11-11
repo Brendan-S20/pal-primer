@@ -22,11 +22,13 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AccessOffRouteImport } from './routes/access-off'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ProsIndexRouteImport } from './routes/pros.index'
 import { Route as PlatformIndexRouteImport } from './routes/platform.index'
 import { Route as TrackTokenRouteImport } from './routes/track.$token'
 import { Route as SignupSuccessRouteImport } from './routes/signup.success'
 import { Route as SignupSlugRouteImport } from './routes/signup.$slug'
 import { Route as QTokenRouteImport } from './routes/q.$token'
+import { Route as ProsCompareRouteImport } from './routes/pros.compare'
 import { Route as PortalSlugRouteImport } from './routes/portal.$slug'
 import { Route as PlatformWebsiteSubmissionsRouteImport } from './routes/platform.website-submissions'
 import { Route as PlatformUsersRouteImport } from './routes/platform.users'
@@ -38,6 +40,7 @@ import { Route as PlatformOverviewRouteImport } from './routes/platform.overview
 import { Route as PlatformInvoicesRouteImport } from './routes/platform.invoices'
 import { Route as PlatformInvitesRouteImport } from './routes/platform.invites'
 import { Route as PlatformHealthRouteImport } from './routes/platform.health'
+import { Route as PlatformDirectoryReviewsRouteImport } from './routes/platform.directory-reviews'
 import { Route as PlatformCouponsRouteImport } from './routes/platform.coupons'
 import { Route as PlatformAuditRouteImport } from './routes/platform.audit'
 import { Route as PlatformAnnouncementsRouteImport } from './routes/platform.announcements'
@@ -88,6 +91,7 @@ import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authentica
 import { Route as AuthenticatedAiToolsRouteImport } from './routes/_authenticated/ai-tools'
 import { Route as DotwellKnownAssetlinksDotjsonRouteImport } from './routes/[.]well-known.assetlinks[.]json'
 import { Route as DotwellKnownAppleAppSiteAssociationRouteImport } from './routes/[.]well-known.apple-app-site-association'
+import { Route as ProsSlugIndexRouteImport } from './routes/pros.$slug.index'
 import { Route as PortalSlugIndexRouteImport } from './routes/portal.$slug.index'
 import { Route as PlatformTenantsIndexRouteImport } from './routes/platform.tenants.index'
 import { Route as AuthenticatedSettingsIndexRouteImport } from './routes/_authenticated/settings.index'
@@ -97,6 +101,7 @@ import { Route as AuthenticatedInvoicesIndexRouteImport } from './routes/_authen
 import { Route as AuthenticatedImportsIndexRouteImport } from './routes/_authenticated/imports.index'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated/clients.index'
 import { Route as AuthenticatedCampaignsIndexRouteImport } from './routes/_authenticated/campaigns.index'
+import { Route as ProsSlugQuoteRouteImport } from './routes/pros.$slug.quote'
 import { Route as PortalSlugTokenRouteImport } from './routes/portal.$slug.$token'
 import { Route as PlatformTenantsIdRouteImport } from './routes/platform.tenants.$id'
 import { Route as PayITokenRouteImport } from './routes/pay.i.$token'
@@ -126,6 +131,7 @@ import { Route as AuthenticatedSettingsLeadFormRouteImport } from './routes/_aut
 import { Route as AuthenticatedSettingsInvoicingRouteImport } from './routes/_authenticated/settings.invoicing'
 import { Route as AuthenticatedSettingsFranchiseRouteImport } from './routes/_authenticated/settings.franchise'
 import { Route as AuthenticatedSettingsEmailsRouteImport } from './routes/_authenticated/settings.emails'
+import { Route as AuthenticatedSettingsDirectoryRouteImport } from './routes/_authenticated/settings.directory'
 import { Route as AuthenticatedSettingsDeepCleanRouteImport } from './routes/_authenticated/settings.deep-clean'
 import { Route as AuthenticatedSettingsClientPortalRouteImport } from './routes/_authenticated/settings.client-portal'
 import { Route as AuthenticatedSettingsBusinessRouteImport } from './routes/_authenticated/settings.business'
@@ -233,6 +239,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProsIndexRoute = ProsIndexRouteImport.update({
+  id: '/pros/',
+  path: '/pros/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PlatformIndexRoute = PlatformIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -256,6 +267,11 @@ const SignupSlugRoute = SignupSlugRouteImport.update({
 const QTokenRoute = QTokenRouteImport.update({
   id: '/q/$token',
   path: '/q/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProsCompareRoute = ProsCompareRouteImport.update({
+  id: '/pros/compare',
+  path: '/pros/compare',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PortalSlugRoute = PortalSlugRouteImport.update({
@@ -314,6 +330,12 @@ const PlatformHealthRoute = PlatformHealthRouteImport.update({
   path: '/health',
   getParentRoute: () => PlatformRoute,
 } as any)
+const PlatformDirectoryReviewsRoute =
+  PlatformDirectoryReviewsRouteImport.update({
+    id: '/directory-reviews',
+    path: '/directory-reviews',
+    getParentRoute: () => PlatformRoute,
+  } as any)
 const PlatformCouponsRoute = PlatformCouponsRouteImport.update({
   id: '/coupons',
   path: '/coupons',
@@ -569,6 +591,11 @@ const DotwellKnownAppleAppSiteAssociationRoute =
     path: '/.well-known/apple-app-site-association',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ProsSlugIndexRoute = ProsSlugIndexRouteImport.update({
+  id: '/pros/$slug/',
+  path: '/pros/$slug/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PortalSlugIndexRoute = PortalSlugIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -621,6 +648,11 @@ const AuthenticatedCampaignsIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedCampaignsRoute,
   } as any)
+const ProsSlugQuoteRoute = ProsSlugQuoteRouteImport.update({
+  id: '/pros/$slug/quote',
+  path: '/pros/$slug/quote',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PortalSlugTokenRoute = PortalSlugTokenRouteImport.update({
   id: '/$token',
   path: '/$token',
@@ -782,6 +814,12 @@ const AuthenticatedSettingsEmailsRoute =
   AuthenticatedSettingsEmailsRouteImport.update({
     id: '/emails',
     path: '/emails',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
+const AuthenticatedSettingsDirectoryRoute =
+  AuthenticatedSettingsDirectoryRouteImport.update({
+    id: '/directory',
+    path: '/directory',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
 const AuthenticatedSettingsDeepCleanRoute =
@@ -1084,6 +1122,7 @@ export interface FileRoutesByFullPath {
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
+  '/platform/directory-reviews': typeof PlatformDirectoryReviewsRoute
   '/platform/health': typeof PlatformHealthRoute
   '/platform/invites': typeof PlatformInvitesRoute
   '/platform/invoices': typeof PlatformInvoicesRoute
@@ -1095,11 +1134,13 @@ export interface FileRoutesByFullPath {
   '/platform/users': typeof PlatformUsersRoute
   '/platform/website-submissions': typeof PlatformWebsiteSubmissionsRoute
   '/portal/$slug': typeof PortalSlugRouteWithChildren
+  '/pros/compare': typeof ProsCompareRoute
   '/q/$token': typeof QTokenRoute
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
   '/track/$token': typeof TrackTokenRoute
   '/platform/': typeof PlatformIndexRoute
+  '/pros/': typeof ProsIndexRoute
   '/campaigns/$campaignId': typeof AuthenticatedCampaignsCampaignIdRoute
   '/campaigns/new': typeof AuthenticatedCampaignsNewRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
@@ -1119,6 +1160,7 @@ export interface FileRoutesByFullPath {
   '/settings/business': typeof AuthenticatedSettingsBusinessRoute
   '/settings/client-portal': typeof AuthenticatedSettingsClientPortalRoute
   '/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
+  '/settings/directory': typeof AuthenticatedSettingsDirectoryRoute
   '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
   '/settings/franchise': typeof AuthenticatedSettingsFranchiseRoute
   '/settings/invoicing': typeof AuthenticatedSettingsInvoicingRoute
@@ -1148,6 +1190,7 @@ export interface FileRoutesByFullPath {
   '/pay/i/$token': typeof PayITokenRoute
   '/platform/tenants/$id': typeof PlatformTenantsIdRoute
   '/portal/$slug/$token': typeof PortalSlugTokenRouteWithChildren
+  '/pros/$slug/quote': typeof ProsSlugQuoteRoute
   '/campaigns/': typeof AuthenticatedCampaignsIndexRoute
   '/clients/': typeof AuthenticatedClientsIndexRoute
   '/imports/': typeof AuthenticatedImportsIndexRoute
@@ -1157,6 +1200,7 @@ export interface FileRoutesByFullPath {
   '/settings/': typeof AuthenticatedSettingsIndexRoute
   '/platform/tenants/': typeof PlatformTenantsIndexRoute
   '/portal/$slug/': typeof PortalSlugIndexRoute
+  '/pros/$slug/': typeof ProsSlugIndexRoute
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/calendar/$token': typeof ApiPublicCalendarTokenRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
@@ -1237,6 +1281,7 @@ export interface FileRoutesByTo {
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
+  '/platform/directory-reviews': typeof PlatformDirectoryReviewsRoute
   '/platform/health': typeof PlatformHealthRoute
   '/platform/invites': typeof PlatformInvitesRoute
   '/platform/invoices': typeof PlatformInvoicesRoute
@@ -1247,11 +1292,13 @@ export interface FileRoutesByTo {
   '/platform/signals': typeof PlatformSignalsRoute
   '/platform/users': typeof PlatformUsersRoute
   '/platform/website-submissions': typeof PlatformWebsiteSubmissionsRoute
+  '/pros/compare': typeof ProsCompareRoute
   '/q/$token': typeof QTokenRoute
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
   '/track/$token': typeof TrackTokenRoute
   '/platform': typeof PlatformIndexRoute
+  '/pros': typeof ProsIndexRoute
   '/campaigns/$campaignId': typeof AuthenticatedCampaignsCampaignIdRoute
   '/campaigns/new': typeof AuthenticatedCampaignsNewRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
@@ -1271,6 +1318,7 @@ export interface FileRoutesByTo {
   '/settings/business': typeof AuthenticatedSettingsBusinessRoute
   '/settings/client-portal': typeof AuthenticatedSettingsClientPortalRoute
   '/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
+  '/settings/directory': typeof AuthenticatedSettingsDirectoryRoute
   '/settings/emails': typeof AuthenticatedSettingsEmailsRoute
   '/settings/franchise': typeof AuthenticatedSettingsFranchiseRoute
   '/settings/invoicing': typeof AuthenticatedSettingsInvoicingRoute
@@ -1299,6 +1347,7 @@ export interface FileRoutesByTo {
   '/email/transactional/send': typeof EmailTransactionalSendRoute
   '/pay/i/$token': typeof PayITokenRoute
   '/platform/tenants/$id': typeof PlatformTenantsIdRoute
+  '/pros/$slug/quote': typeof ProsSlugQuoteRoute
   '/campaigns': typeof AuthenticatedCampaignsIndexRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
   '/imports': typeof AuthenticatedImportsIndexRoute
@@ -1308,6 +1357,7 @@ export interface FileRoutesByTo {
   '/settings': typeof AuthenticatedSettingsIndexRoute
   '/platform/tenants': typeof PlatformTenantsIndexRoute
   '/portal/$slug': typeof PortalSlugIndexRoute
+  '/pros/$slug': typeof ProsSlugIndexRoute
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/calendar/$token': typeof ApiPublicCalendarTokenRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
@@ -1397,6 +1447,7 @@ export interface FileRoutesById {
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
+  '/platform/directory-reviews': typeof PlatformDirectoryReviewsRoute
   '/platform/health': typeof PlatformHealthRoute
   '/platform/invites': typeof PlatformInvitesRoute
   '/platform/invoices': typeof PlatformInvoicesRoute
@@ -1408,11 +1459,13 @@ export interface FileRoutesById {
   '/platform/users': typeof PlatformUsersRoute
   '/platform/website-submissions': typeof PlatformWebsiteSubmissionsRoute
   '/portal/$slug': typeof PortalSlugRouteWithChildren
+  '/pros/compare': typeof ProsCompareRoute
   '/q/$token': typeof QTokenRoute
   '/signup/$slug': typeof SignupSlugRoute
   '/signup/success': typeof SignupSuccessRoute
   '/track/$token': typeof TrackTokenRoute
   '/platform/': typeof PlatformIndexRoute
+  '/pros/': typeof ProsIndexRoute
   '/_authenticated/campaigns/$campaignId': typeof AuthenticatedCampaignsCampaignIdRoute
   '/_authenticated/campaigns/new': typeof AuthenticatedCampaignsNewRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
@@ -1432,6 +1485,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/business': typeof AuthenticatedSettingsBusinessRoute
   '/_authenticated/settings/client-portal': typeof AuthenticatedSettingsClientPortalRoute
   '/_authenticated/settings/deep-clean': typeof AuthenticatedSettingsDeepCleanRoute
+  '/_authenticated/settings/directory': typeof AuthenticatedSettingsDirectoryRoute
   '/_authenticated/settings/emails': typeof AuthenticatedSettingsEmailsRoute
   '/_authenticated/settings/franchise': typeof AuthenticatedSettingsFranchiseRoute
   '/_authenticated/settings/invoicing': typeof AuthenticatedSettingsInvoicingRoute
@@ -1461,6 +1515,7 @@ export interface FileRoutesById {
   '/pay/i/$token': typeof PayITokenRoute
   '/platform/tenants/$id': typeof PlatformTenantsIdRoute
   '/portal/$slug/$token': typeof PortalSlugTokenRouteWithChildren
+  '/pros/$slug/quote': typeof ProsSlugQuoteRoute
   '/_authenticated/campaigns/': typeof AuthenticatedCampaignsIndexRoute
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
   '/_authenticated/imports/': typeof AuthenticatedImportsIndexRoute
@@ -1470,6 +1525,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/': typeof AuthenticatedSettingsIndexRoute
   '/platform/tenants/': typeof PlatformTenantsIndexRoute
   '/portal/$slug/': typeof PortalSlugIndexRoute
+  '/pros/$slug/': typeof ProsSlugIndexRoute
   '/_authenticated/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/calendar/$token': typeof ApiPublicCalendarTokenRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
@@ -1559,6 +1615,7 @@ export interface FileRouteTypes {
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
+    | '/platform/directory-reviews'
     | '/platform/health'
     | '/platform/invites'
     | '/platform/invoices'
@@ -1570,11 +1627,13 @@ export interface FileRouteTypes {
     | '/platform/users'
     | '/platform/website-submissions'
     | '/portal/$slug'
+    | '/pros/compare'
     | '/q/$token'
     | '/signup/$slug'
     | '/signup/success'
     | '/track/$token'
     | '/platform/'
+    | '/pros/'
     | '/campaigns/$campaignId'
     | '/campaigns/new'
     | '/clients/$clientId'
@@ -1594,6 +1653,7 @@ export interface FileRouteTypes {
     | '/settings/business'
     | '/settings/client-portal'
     | '/settings/deep-clean'
+    | '/settings/directory'
     | '/settings/emails'
     | '/settings/franchise'
     | '/settings/invoicing'
@@ -1623,6 +1683,7 @@ export interface FileRouteTypes {
     | '/pay/i/$token'
     | '/platform/tenants/$id'
     | '/portal/$slug/$token'
+    | '/pros/$slug/quote'
     | '/campaigns/'
     | '/clients/'
     | '/imports/'
@@ -1632,6 +1693,7 @@ export interface FileRouteTypes {
     | '/settings/'
     | '/platform/tenants/'
     | '/portal/$slug/'
+    | '/pros/$slug/'
     | '/properties/$propertyId/boundary'
     | '/api/public/calendar/$token'
     | '/api/public/hooks/announcement-emails'
@@ -1712,6 +1774,7 @@ export interface FileRouteTypes {
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
+    | '/platform/directory-reviews'
     | '/platform/health'
     | '/platform/invites'
     | '/platform/invoices'
@@ -1722,11 +1785,13 @@ export interface FileRouteTypes {
     | '/platform/signals'
     | '/platform/users'
     | '/platform/website-submissions'
+    | '/pros/compare'
     | '/q/$token'
     | '/signup/$slug'
     | '/signup/success'
     | '/track/$token'
     | '/platform'
+    | '/pros'
     | '/campaigns/$campaignId'
     | '/campaigns/new'
     | '/clients/$clientId'
@@ -1746,6 +1811,7 @@ export interface FileRouteTypes {
     | '/settings/business'
     | '/settings/client-portal'
     | '/settings/deep-clean'
+    | '/settings/directory'
     | '/settings/emails'
     | '/settings/franchise'
     | '/settings/invoicing'
@@ -1774,6 +1840,7 @@ export interface FileRouteTypes {
     | '/email/transactional/send'
     | '/pay/i/$token'
     | '/platform/tenants/$id'
+    | '/pros/$slug/quote'
     | '/campaigns'
     | '/clients'
     | '/imports'
@@ -1783,6 +1850,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/platform/tenants'
     | '/portal/$slug'
+    | '/pros/$slug'
     | '/properties/$propertyId/boundary'
     | '/api/public/calendar/$token'
     | '/api/public/hooks/announcement-emails'
@@ -1871,6 +1939,7 @@ export interface FileRouteTypes {
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
+    | '/platform/directory-reviews'
     | '/platform/health'
     | '/platform/invites'
     | '/platform/invoices'
@@ -1882,11 +1951,13 @@ export interface FileRouteTypes {
     | '/platform/users'
     | '/platform/website-submissions'
     | '/portal/$slug'
+    | '/pros/compare'
     | '/q/$token'
     | '/signup/$slug'
     | '/signup/success'
     | '/track/$token'
     | '/platform/'
+    | '/pros/'
     | '/_authenticated/campaigns/$campaignId'
     | '/_authenticated/campaigns/new'
     | '/_authenticated/clients/$clientId'
@@ -1906,6 +1977,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/business'
     | '/_authenticated/settings/client-portal'
     | '/_authenticated/settings/deep-clean'
+    | '/_authenticated/settings/directory'
     | '/_authenticated/settings/emails'
     | '/_authenticated/settings/franchise'
     | '/_authenticated/settings/invoicing'
@@ -1935,6 +2007,7 @@ export interface FileRouteTypes {
     | '/pay/i/$token'
     | '/platform/tenants/$id'
     | '/portal/$slug/$token'
+    | '/pros/$slug/quote'
     | '/_authenticated/campaigns/'
     | '/_authenticated/clients/'
     | '/_authenticated/imports/'
@@ -1944,6 +2017,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/'
     | '/platform/tenants/'
     | '/portal/$slug/'
+    | '/pros/$slug/'
     | '/_authenticated/properties/$propertyId/boundary'
     | '/api/public/calendar/$token'
     | '/api/public/hooks/announcement-emails'
@@ -1994,10 +2068,12 @@ export interface RootRouteChildren {
   LegalSmsOptInRoute: typeof LegalSmsOptInRoute
   LegalTermsRoute: typeof LegalTermsRoute
   PortalSlugRoute: typeof PortalSlugRouteWithChildren
+  ProsCompareRoute: typeof ProsCompareRoute
   QTokenRoute: typeof QTokenRoute
   SignupSlugRoute: typeof SignupSlugRoute
   SignupSuccessRoute: typeof SignupSuccessRoute
   TrackTokenRoute: typeof TrackTokenRoute
+  ProsIndexRoute: typeof ProsIndexRoute
   ApiPublicInvoicePdfRoute: typeof ApiPublicInvoicePdfRoute
   ApiPublicLeadsRoute: typeof ApiPublicLeadsRoute
   ApiPublicQuotePdfRoute: typeof ApiPublicQuotePdfRoute
@@ -2009,6 +2085,8 @@ export interface RootRouteChildren {
   EmailTransactionalPreviewRoute: typeof EmailTransactionalPreviewRoute
   EmailTransactionalSendRoute: typeof EmailTransactionalSendRoute
   PayITokenRoute: typeof PayITokenRoute
+  ProsSlugQuoteRoute: typeof ProsSlugQuoteRoute
+  ProsSlugIndexRoute: typeof ProsSlugIndexRoute
   ApiPublicCalendarTokenRoute: typeof ApiPublicCalendarTokenRoute
   ApiPublicHooksAnnouncementEmailsRoute: typeof ApiPublicHooksAnnouncementEmailsRoute
   ApiPublicHooksLateCheckRoute: typeof ApiPublicHooksLateCheckRoute
@@ -2117,6 +2195,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/pros/': {
+      id: '/pros/'
+      path: '/pros'
+      fullPath: '/pros/'
+      preLoaderRoute: typeof ProsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/platform/': {
       id: '/platform/'
       path: '/'
@@ -2150,6 +2235,13 @@ declare module '@tanstack/react-router' {
       path: '/q/$token'
       fullPath: '/q/$token'
       preLoaderRoute: typeof QTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pros/compare': {
+      id: '/pros/compare'
+      path: '/pros/compare'
+      fullPath: '/pros/compare'
+      preLoaderRoute: typeof ProsCompareRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/portal/$slug': {
@@ -2227,6 +2319,13 @@ declare module '@tanstack/react-router' {
       path: '/health'
       fullPath: '/platform/health'
       preLoaderRoute: typeof PlatformHealthRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/directory-reviews': {
+      id: '/platform/directory-reviews'
+      path: '/directory-reviews'
+      fullPath: '/platform/directory-reviews'
+      preLoaderRoute: typeof PlatformDirectoryReviewsRouteImport
       parentRoute: typeof PlatformRoute
     }
     '/platform/coupons': {
@@ -2579,6 +2678,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DotwellKnownAppleAppSiteAssociationRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/pros/$slug/': {
+      id: '/pros/$slug/'
+      path: '/pros/$slug'
+      fullPath: '/pros/$slug/'
+      preLoaderRoute: typeof ProsSlugIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/portal/$slug/': {
       id: '/portal/$slug/'
       path: '/'
@@ -2641,6 +2747,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/campaigns/'
       preLoaderRoute: typeof AuthenticatedCampaignsIndexRouteImport
       parentRoute: typeof AuthenticatedCampaignsRoute
+    }
+    '/pros/$slug/quote': {
+      id: '/pros/$slug/quote'
+      path: '/pros/$slug/quote'
+      fullPath: '/pros/$slug/quote'
+      preLoaderRoute: typeof ProsSlugQuoteRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/portal/$slug/$token': {
       id: '/portal/$slug/$token'
@@ -2843,6 +2956,13 @@ declare module '@tanstack/react-router' {
       path: '/emails'
       fullPath: '/settings/emails'
       preLoaderRoute: typeof AuthenticatedSettingsEmailsRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
+    '/_authenticated/settings/directory': {
+      id: '/_authenticated/settings/directory'
+      path: '/directory'
+      fullPath: '/settings/directory'
+      preLoaderRoute: typeof AuthenticatedSettingsDirectoryRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
     '/_authenticated/settings/deep-clean': {
@@ -3232,6 +3352,7 @@ interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsBusinessRoute: typeof AuthenticatedSettingsBusinessRoute
   AuthenticatedSettingsClientPortalRoute: typeof AuthenticatedSettingsClientPortalRoute
   AuthenticatedSettingsDeepCleanRoute: typeof AuthenticatedSettingsDeepCleanRoute
+  AuthenticatedSettingsDirectoryRoute: typeof AuthenticatedSettingsDirectoryRoute
   AuthenticatedSettingsEmailsRoute: typeof AuthenticatedSettingsEmailsRoute
   AuthenticatedSettingsFranchiseRoute: typeof AuthenticatedSettingsFranchiseRoute
   AuthenticatedSettingsInvoicingRoute: typeof AuthenticatedSettingsInvoicingRoute
@@ -3264,6 +3385,7 @@ const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
   AuthenticatedSettingsClientPortalRoute:
     AuthenticatedSettingsClientPortalRoute,
   AuthenticatedSettingsDeepCleanRoute: AuthenticatedSettingsDeepCleanRoute,
+  AuthenticatedSettingsDirectoryRoute: AuthenticatedSettingsDirectoryRoute,
   AuthenticatedSettingsEmailsRoute: AuthenticatedSettingsEmailsRoute,
   AuthenticatedSettingsFranchiseRoute: AuthenticatedSettingsFranchiseRoute,
   AuthenticatedSettingsInvoicingRoute: AuthenticatedSettingsInvoicingRoute,
@@ -3382,6 +3504,7 @@ interface PlatformRouteChildren {
   PlatformAnnouncementsRoute: typeof PlatformAnnouncementsRoute
   PlatformAuditRoute: typeof PlatformAuditRoute
   PlatformCouponsRoute: typeof PlatformCouponsRoute
+  PlatformDirectoryReviewsRoute: typeof PlatformDirectoryReviewsRoute
   PlatformHealthRoute: typeof PlatformHealthRoute
   PlatformInvitesRoute: typeof PlatformInvitesRoute
   PlatformInvoicesRoute: typeof PlatformInvoicesRoute
@@ -3402,6 +3525,7 @@ const PlatformRouteChildren: PlatformRouteChildren = {
   PlatformAnnouncementsRoute: PlatformAnnouncementsRoute,
   PlatformAuditRoute: PlatformAuditRoute,
   PlatformCouponsRoute: PlatformCouponsRoute,
+  PlatformDirectoryReviewsRoute: PlatformDirectoryReviewsRoute,
   PlatformHealthRoute: PlatformHealthRoute,
   PlatformInvitesRoute: PlatformInvitesRoute,
   PlatformInvoicesRoute: PlatformInvoicesRoute,
@@ -3489,10 +3613,12 @@ const rootRouteChildren: RootRouteChildren = {
   LegalSmsOptInRoute: LegalSmsOptInRoute,
   LegalTermsRoute: LegalTermsRoute,
   PortalSlugRoute: PortalSlugRouteWithChildren,
+  ProsCompareRoute: ProsCompareRoute,
   QTokenRoute: QTokenRoute,
   SignupSlugRoute: SignupSlugRoute,
   SignupSuccessRoute: SignupSuccessRoute,
   TrackTokenRoute: TrackTokenRoute,
+  ProsIndexRoute: ProsIndexRoute,
   ApiPublicInvoicePdfRoute: ApiPublicInvoicePdfRoute,
   ApiPublicLeadsRoute: ApiPublicLeadsRoute,
   ApiPublicQuotePdfRoute: ApiPublicQuotePdfRoute,
@@ -3504,6 +3630,8 @@ const rootRouteChildren: RootRouteChildren = {
   EmailTransactionalPreviewRoute: EmailTransactionalPreviewRoute,
   EmailTransactionalSendRoute: EmailTransactionalSendRoute,
   PayITokenRoute: PayITokenRoute,
+  ProsSlugQuoteRoute: ProsSlugQuoteRoute,
+  ProsSlugIndexRoute: ProsSlugIndexRoute,
   ApiPublicCalendarTokenRoute: ApiPublicCalendarTokenRoute,
   ApiPublicHooksAnnouncementEmailsRoute: ApiPublicHooksAnnouncementEmailsRoute,
   ApiPublicHooksLateCheckRoute: ApiPublicHooksLateCheckRoute,

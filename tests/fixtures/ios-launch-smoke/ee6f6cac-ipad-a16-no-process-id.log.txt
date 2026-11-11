@@ -1,0 +1,25 @@
+Test Case '-[HoundStackUITests.ColdLaunch testColdLaunchReachesSignInFiveTimes]' started.
+    t =     0.00s Start Test at 2026-11-09 02:31:39.946
+    t =     0.04s Set Up
+    t =     0.04s Terminate consulting.thenorth.houndstack:29113
+    t =     1.14s Wait for consulting.thenorth.houndstack to become Not Running
+    t =     3.15s Open consulting.thenorth.houndstack
+    t =     3.15s     Launch consulting.thenorth.houndstack
+    t =     7.65s Wait for consulting.thenorth.houndstack to become Running Foreground
+    t =    12.85s Terminate consulting.thenorth.houndstack:29148
+    t =    15.86s Wait for consulting.thenorth.houndstack to become Not Running
+    t =    17.87s Open consulting.thenorth.houndstack
+    t =    17.87s     Launch consulting.thenorth.houndstack
+    t =    22.25s Wait for consulting.thenorth.houndstack to become Running Foreground
+    t =    27.51s Terminate consulting.thenorth.houndstack:29199
+    t =    28.59s Wait for consulting.thenorth.houndstack to become Not Running
+    t =    30.60s Open consulting.thenorth.houndstack
+    t =    30.60s     Launch consulting.thenorth.houndstack
+    t =    34.95s Wait for consulting.thenorth.houndstack to become Running Foreground
+    t =    40.22s Terminate consulting.thenorth.houndstack:29241
+    t =    41.29s Wait for consulting.thenorth.houndstack to become Not Running
+    t =    43.30s Open consulting.thenorth.houndstack
+    t =    43.30s     Launch consulting.thenorth.houndstack
+/Users/runner/actions-runner/_work/pal-primer/pal-primer/ios/UITests/HoundStackUITests/ColdLaunch.swift:134: error: -[HoundStackUITests.ColdLaunch testColdLaunchReachesSignInFiveTimes] : Application 'consulting.thenorth.houndstack' does not have a process ID
+    t =   155.96s Tear Down
+Test Case '-[HoundStackUITests.ColdLaunch testColdLaunchReachesSignInFiveTimes]' failed (156.112 seconds).

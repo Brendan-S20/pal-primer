@@ -48,6 +48,7 @@ import {
   nowAsCalledAt,
 } from "@/components/training/ClientCalledAtField";
 import { orgToday } from "@/lib/org-day";
+import { markVisitCompletedInClientHistory } from "@/lib/client-visit-history-cache";
 import { toastSaveError } from "@/lib/stale-write-toast";
 import { visitBookedCents } from "@/lib/booked-value";
 import { visitServiceLabel } from "@/lib/subscription-form";
@@ -829,12 +830,12 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 // so the span-based StatusChip does not fit).
 const CHIP_TONES: Record<string, string> = {
   scheduled: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
-  in_progress: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  in_progress: "bg-amber-500/15 text-amber-800 dark:text-amber-400",
   completed: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
   missed: "bg-orange-500/15 text-orange-700 dark:text-orange-400",
   [NEVER_ON_A_ROUTE]: "bg-muted text-muted-foreground",
   skipped: "bg-muted text-muted-foreground",
-  canceled: "bg-destructive/15 text-destructive",
+  canceled: "bg-destructive/10 text-destructive",
 };
 
 /** Local YYYY-MM-DD key for a Date (no UTC parsing pitfalls). */
@@ -1107,7 +1108,10 @@ function VisitDetailDrawer({
         askWhy,
       ),
     onSuccess: (done) => {
-      if (done) afterAction("Visit marked completed");
+      if (!done) return;
+      // The row says what the toast says, now, not after the refetch (#789).
+      markVisitCompletedInClientHistory(qc, clientId, v.id);
+      afterAction("Visit marked completed");
     },
     onError: (e) => toast.error((e as Error).message),
   });

@@ -217,7 +217,7 @@ export function InvoiceRow({
           <span className={overdue ? "font-medium text-destructive" : "text-muted-foreground"}>
             {formatDay(invoice.due_on)}
             {overdue && (
-              <span className="ml-1.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-xs">
+              <span className="ml-1.5 rounded-full bg-destructive/10 px-1.5 py-0.5 text-xs">
                 Overdue
               </span>
             )}
@@ -319,23 +319,18 @@ export function InvoiceCard({
   const showKind = invoice.kind === "prepaid_topup";
   const menuActions = useInvoiceMenuActions(invoice, actions);
 
+  // The card is tappable anywhere, but it is not itself a button: it holds a
+  // checkbox and the ••• menu, and a button containing buttons is axe's
+  // nested-interactive (a screen reader announces one control and swallows
+  // the rest). So the client's name is the button, and its ::after is
+  // stretched over the whole card: the tap target is still the card, and
+  // the checkbox and the menu sit above it (`relative z-10`).
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => onOpen(invoice.id)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onOpen(invoice.id);
-        }
-      }}
-      className="cursor-pointer rounded-lg border bg-card p-3 shadow-sm transition-colors hover:bg-muted/30 active:bg-muted/40"
-    >
+    <div className="relative rounded-lg border bg-card p-3 shadow-sm transition-colors hover:bg-muted/30 active:bg-muted/40">
       <div className="flex items-start gap-3">
         {selectable && (
           <span
-            className="grid min-h-10 min-w-8 place-items-center"
+            className="relative z-10 grid min-h-10 min-w-8 place-items-center"
             onClick={(e) => e.stopPropagation()}
           >
             <Checkbox
@@ -348,7 +343,13 @@ export function InvoiceCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className="truncate font-medium">{client?.display_name ?? "-"}</div>
+              <button
+                type="button"
+                onClick={() => onOpen(invoice.id)}
+                className="block max-w-full truncate rounded-sm text-start font-medium after:absolute after:inset-0 after:rounded-lg after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring"
+              >
+                {client?.display_name ?? "-"}
+              </button>
               <div className="font-mono text-xs text-muted-foreground">
                 {invoiceNumberLabel(invoice)}
               </div>
@@ -379,7 +380,7 @@ export function InvoiceCard({
             >
               Due {formatDay(invoice.due_on)}
               {overdue && (
-                <span className="ml-1.5 rounded-full bg-destructive/15 px-1.5 py-0.5">Overdue</span>
+                <span className="ml-1.5 rounded-full bg-destructive/10 px-1.5 py-0.5">Overdue</span>
               )}
             </div>
           )}
@@ -397,13 +398,15 @@ export function InvoiceCard({
             )}
           </div>
         </div>
-        <RowActions
-          view={{
-            label: `View invoice for ${client?.display_name ?? "client"}`,
-            onSelect: () => onOpen(invoice.id),
-          }}
-          actions={menuActions}
-        />
+        <div className="relative z-10 shrink-0">
+          <RowActions
+            view={{
+              label: `View invoice for ${client?.display_name ?? "client"}`,
+              onSelect: () => onOpen(invoice.id),
+            }}
+            actions={menuActions}
+          />
+        </div>
       </div>
     </div>
   );

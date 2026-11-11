@@ -550,12 +550,13 @@ function DayCellButton({
   const empty = day.segments.length === 0;
   const flagged = day.possibleMissedClockOut;
   return (
+    // Named by its own text plus sr-only context, not by an aria-label that
+    // replaced the text: "9h" and "3 visits" are what a voice-control user
+    // reads off the cell and says, and the old label left the visits out
+    // (axe label-content-name-mismatch, gaps-r2-11 part 2).
     <button
       type="button"
       onClick={onClick}
-      aria-label={`${label}: ${empty ? "no time" : formatDuration(day.minutes)}${
-        flagged ? ", possible missed clock-out" : ""
-      }`}
       className={`flex min-h-11 w-full min-w-[4.5rem] flex-col items-center justify-center rounded-md px-1 py-1 text-sm tabular-nums transition-colors hover:bg-muted ${
         flagged
           ? "bg-amber-500/15 ring-1 ring-inset ring-amber-500/60"
@@ -564,6 +565,7 @@ function DayCellButton({
             : ""
       }`}
     >
+      <span className="sr-only">{label}: </span>
       <span
         className={`inline-flex items-center gap-1 ${empty ? "text-muted-foreground" : "font-medium"}`}
       >
@@ -573,13 +575,21 @@ function DayCellButton({
             aria-hidden="true"
           />
         )}
-        {empty ? "–" : formatDuration(day.minutes)}
+        {empty ? (
+          <>
+            <span aria-hidden="true">–</span>
+            <span className="sr-only">no time</span>
+          </>
+        ) : (
+          formatDuration(day.minutes)
+        )}
       </span>
       {day.visitsCompleted > 0 && (
         <span className="text-xs text-muted-foreground">
           {day.visitsCompleted} visit{day.visitsCompleted === 1 ? "" : "s"}
         </span>
       )}
+      {flagged && <span className="sr-only">, possible missed clock-out</span>}
     </button>
   );
 }
@@ -623,14 +633,13 @@ function PersonCard({
                 type="button"
                 onClick={() => onDay(d.day)}
                 // The same name the grid's cell carries, so "open this
-                // person's Monday" is one question in both shapes.
-                aria-label={`${row.staff.display_name}, ${formatDay(d.day)}: ${
-                  d.segments.length ? formatDuration(d.minutes) : "no time"
-                }${d.possibleMissedClockOut ? ", possible missed clock-out" : ""}`}
+                // person's Monday" is one question in both shapes: the
+                // person in sr-only text, then what the row shows.
                 className={`flex min-h-11 w-full items-center gap-3 py-1 text-left text-sm ${
                   d.possibleMissedClockOut ? "bg-amber-500/10" : ""
                 }`}
               >
+                <span className="sr-only">{row.staff.display_name}, </span>
                 <span className="w-24 shrink-0">{formatDay(d.day)}</span>
                 <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground tabular-nums">
                   {first
@@ -654,8 +663,18 @@ function PersonCard({
                       aria-hidden="true"
                     />
                   )}
-                  {d.segments.length ? formatDuration(d.minutes) : "–"}
+                  {d.segments.length ? (
+                    formatDuration(d.minutes)
+                  ) : (
+                    <>
+                      <span aria-hidden="true">–</span>
+                      <span className="sr-only">no time</span>
+                    </>
+                  )}
                 </span>
+                {d.possibleMissedClockOut && (
+                  <span className="sr-only">, possible missed clock-out</span>
+                )}
               </button>
             </li>
           );

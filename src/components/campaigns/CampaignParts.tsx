@@ -110,7 +110,10 @@ export function CampaignStatsGrid({ stats }: { stats: CampaignStats }) {
         <div key={t.label} className="min-w-0 rounded-lg border bg-card p-3">
           <dt className="text-xs font-medium text-muted-foreground">{t.label}</dt>
           <dd className="text-2xl font-semibold tabular-nums">{t.value.toLocaleString()}</dd>
-          <p className="text-xs text-muted-foreground">{t.hint}</p>
+          {/* A <dd>, not a <p>: a <dl> group may hold only dt and dd, and a
+              <p> in it made screen readers drop the hint (axe
+              definition-list). Two dd's for one dt is valid. */}
+          <dd className="text-xs text-muted-foreground">{t.hint}</dd>
         </div>
       ))}
     </dl>

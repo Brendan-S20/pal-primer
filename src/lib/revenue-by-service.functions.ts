@@ -60,11 +60,12 @@ export const getRevenueByService = createServerFn({ method: "POST" })
       status: string | null;
       issued_at: string | null;
       deposit_for_invoice_id: string | null;
+      paid_at: string | null;
     }>(
       (a, b) =>
         supabase
           .from("invoices")
-          .select("id, status, issued_at, deposit_for_invoice_id")
+          .select("id, status, issued_at, deposit_for_invoice_id, paid_at")
           .eq("organization_id", orgId)
           .gte("issued_at", widen(data.from, -1))
           .lt("issued_at", widen(data.to, 2))

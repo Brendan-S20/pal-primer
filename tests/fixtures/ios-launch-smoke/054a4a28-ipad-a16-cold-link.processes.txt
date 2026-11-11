@@ -1,0 +1,11 @@
+2026-11-09 21:45:46.829 Df HoundStack[35078:0] [com.apple.libsystem.libdispatch:] BUG in libdispatch: 26B123 24B8117 - 653 - 0x4
+2026-11-09 21:46:05.344 Df HoundStack[35163:0] [com.apple.libsystem.libdispatch:] BUG in libdispatch: 26B123 24B8117 - 653 - 0x4
+2026-11-09 21:47:46.814 Df HoundStack[35685:0] [com.apple.libsystem.libdispatch:] BUG in libdispatch: 26B123 24B8117 - 653 - 0x4
+2026-11-09 21:47:48.619 Df HoundStack[35685:65ffbe] [com.apple.FrontBoard:SceneClient] [(FBSceneManager):sceneID:consulting.thenorth.houndstack-default] Received action(s) in scene-create: UIOpenURLAction
+2026-11-09 21:48:13.976 Df HoundStack[35685:6601a5] [com.apple.WebKit:PerformanceLogging] WebContent[35717]: PerformanceMonitor::measurePostLoadMemoryUsage: Process was using 131959568 bytes of memory after the page load
+2026-11-09 21:48:44.912 Df HoundStack[35941:0] [com.apple.libsystem.libdispatch:] BUG in libdispatch: 26B123 24B8117 - 653 - 0x4
+2026-11-09 21:49:23.406 Df HoundStack[36164:0] [com.apple.libsystem.libdispatch:] BUG in libdispatch: 26B123 24B8117 - 653 - 0x4
+2026-11-09 21:49:39.659 Df HoundStack[36226:0] [com.apple.libsystem.libdispatch:] BUG in libdispatch: 26B123 24B8117 - 653 - 0x4
+2026-11-09 21:49:55.179 Df HoundStack[36308:0] [com.apple.libsystem.libdispatch:] BUG in libdispatch: 26B123 24B8117 - 653 - 0x4
+2026-11-09 21:50:09.726 Df HoundStack[36387:0] [com.apple.libsystem.libdispatch:] BUG in libdispatch: 26B123 24B8117 - 653 - 0x4
+2026-11-09 21:50:24.916 Df HoundStack[36503:0] [com.apple.libsystem.libdispatch:] BUG in libdispatch: 26B123 24B8117 - 653 - 0x4

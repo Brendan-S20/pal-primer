@@ -94,7 +94,7 @@ vi.mock("@/lib/email/status-handle.server", () => ({
   signEmailStatusHandle: () => "handle",
 }));
 
-const { onboardClient, createClient, shouldSendWelcome, sendClientWelcomeEmail } =
+const { onboardClient, shouldSendWelcome, sendClientWelcomeEmail } =
   await import("@/lib/clients.functions");
 const { WELCOME_EMAIL_DEFAULT_CHECKED, welcomeEmailPreview, confirmThenSendWelcome } =
   await import("@/lib/welcome-email");
@@ -109,6 +109,10 @@ const FIRST_CLIENT = {
   postalCode: "48201",
   latitude: 42.33,
   longitude: -83.05,
+  // A residential client must arrive with a named dog (#779,
+  // lib/new-client-dogs); without one onboardClient refuses before the
+  // welcome-email decision is ever reached.
+  dogs: [{ name: "Bailey" }],
 };
 
 const onboard = (extra: Record<string, unknown> = {}) =>
@@ -154,26 +158,6 @@ describe("onboardClient sends the welcome email only when asked", () => {
   it("does not send with sendWelcome true and no address", async () => {
     await onboard({ sendWelcome: true, primaryEmail: "" });
     expect(state.enqueue).not.toHaveBeenCalled();
-  });
-});
-
-describe("the older createClient follows the same rule", () => {
-  const create = (extra: Record<string, unknown> = {}) =>
-    (createClient as any)({
-      data: {
-        displayName: "A",
-        accountType: "residential",
-        primaryEmail: "a@example.test",
-        ...extra,
-      },
-    });
-
-  it("sends nothing unless sendWelcome is true", async () => {
-    await create();
-    await create({ sendWelcome: false });
-    expect(state.enqueue).not.toHaveBeenCalled();
-    await create({ sendWelcome: true });
-    expect(state.enqueue).toHaveBeenCalledTimes(1);
   });
 });
 

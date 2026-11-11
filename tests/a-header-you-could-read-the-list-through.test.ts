@@ -44,8 +44,12 @@ describe("My Day's sticky header", () => {
     expect(popover).toBeGreaterThan(0);
     expect(rule, "the rule is still on the page").toBeGreaterThan(popover);
     expect(src.match(/t\("myDay\.progressRule"\)/g)).toHaveLength(1);
-    // The trigger has a name, and a 44px box with its label inside it.
-    expect(src).toMatch(/aria-label=\{t\("myDay\.howProgressCounts"\)\}/);
+    // The trigger has a name, and a 44px box with its label inside it. The
+    // name INCLUDES the percentage it shows (sr-only text before it, not an
+    // aria-label that replaced the number: axe label-content-name-mismatch).
+    expect(src).toMatch(
+      /<span className="sr-only">\{t\("myDay\.howProgressCounts"\)\} <\/span>\s*\{pct\}%/,
+    );
     expect(src).toMatch(/className="inline-flex min-h-11 min-w-11 shrink-0[^"]*"/);
     // The missed count moved into the progress line rather than vanishing.
     expect(src).toContain('t("myDay.missedCount", { count: missedCount })');
@@ -82,6 +86,26 @@ describe("My Day's sticky header", () => {
       /<PopoverContent[^>]*>[\s\S]*?<p>\s*\{headline\}\s*\{queued\}\s*<\/p>\s*<p>\{updated\}<\/p>/,
     );
     expect(src).toMatch(/freshness\.beyondTrustHorizon && <p>\{t\("myDay\.routeMayHaveChanged"\)\}<\/p>/);
+  });
+});
+
+// main 7d6274f, Sandboxes run 42940607923: axe found the "In progress"
+// label on the bottom Next up bar at 2.67:1 (#155dfc on #b7b9bf). The bar was
+// 70% background with a blur, so what scrolled under it set the contrast: a
+// dark primary button under the label failed, anything light passed. My Day
+// scrolls itself to the open visit on load, so the sweep caught it on some
+// runs and not others. Opaque, its text is measured against the page colour
+// at every scroll position.
+describe("My Day's bottom Next up bar", () => {
+  it("is opaque", () => {
+    const at = src.indexOf('data-bottom-chrome=""');
+    expect(at, "no data-bottom-chrome element in my-day.tsx").toBeGreaterThan(0);
+    const cls = src.slice(at).match(/className=\{`([^`]+)`\}/);
+    expect(cls, "the Next up bar's className").not.toBeNull();
+    expect(cls![1]).toMatch(/\bfixed\b/);
+    expect(cls![1]).toMatch(/(^|\s)bg-background(\s|$)/);
+    expect(cls![1]).not.toMatch(/bg-background\/\d+/);
+    expect(cls![1]).not.toMatch(/backdrop-blur/);
   });
 });
 
