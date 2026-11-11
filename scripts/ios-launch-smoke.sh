@@ -256,8 +256,13 @@ touch "$marker"
 #
 # Exit 0 only when that is provably what happened: the log has one of those
 # messages AND no HoundStack process started from the failed launch request
-# to the test's tear-down. A process that started and then hung is the app, and is
-# never retried. scripts/ios-launch-never-started.mjs holds the messages and
+# to the test's tear-down. Or a fourth shape (7d6274f7, iPhone 17e, iOS
+# 26.5): the app started and served its page in 1 ms, and WebKit took 37 s
+# to commit it, 0.3 s after XCTest stopped waiting for sign-in; no page
+# script had run. That is proven from the same process log: the main
+# document was served, and no main-frame commit before the give-up. A
+# process that started and hung before serving its page, or whose page
+# committed and drew nothing, is the app, and is never retried. scripts/ios-launch-never-started.mjs holds the messages and
 # the proof, and tests/the-launch-check-blames-the-simulator-only-with-proof
 # runs it on logs cut from those runs.
 never_started() {  # $1 xcodebuild log, $2 udid
@@ -325,9 +330,9 @@ attempt_class() {  # $1 class, $2 result name
   tail -60 "$OUT/$slug-$run.log"
   for tries in 1 2; do
     why=$(never_started "$OUT/$slug-$run.log" "$udid") || return 1
-    echo "::warning::$name: the simulator never started the app in $1 ($why). Rebooting it and retrying $1 ($tries of 2)."
+    echo "::warning::$name: the simulator, not the app, failed $1 ($why). Rebooting it and retrying $1 ($tries of 2)."
     retried="$retried $1"
-    say_later "  - $name, $1: the simulator never started the app ($why); rebooted the simulator and retried ($tries of 2)"
+    say_later "  - $name, $1: the simulator, not the app ($why); rebooted the simulator and retried ($tries of 2)"
     xcrun simctl shutdown "$udid" > /dev/null 2>&1 || true
     sleep $((tries * 10))
     xcrun simctl boot "$udid"
@@ -365,7 +370,7 @@ while IFS=$'\t' read -r runtime runtime_version type name <&3; do
   elif ! attempt_class ColdLaunch launches; then
     result="FAILED"
   fi
-  [ -z "$retried" ] || [ "$result" != "passed" ] || result="passed (retried after the simulator did not start the app:$retried)"
+  [ -z "$retried" ] || [ "$result" != "passed" ] || result="passed (retried after the simulator, not the app, failed:$retried)"
   # The cold-link test tolerates XCTest's own open-URL timeout and then
   # still needs the app on sign-in (ColdLaunch.swift, openLink). Say so,
   # so that a pass with it reads differently from a clean one.
@@ -390,7 +395,7 @@ done 3< <(echo "$DEVICE_LINES")
 
 if [ -n "$notes" ]; then
   say ""
-  say "**Launches the simulator never started** (no HoundStack process from the launch request to the timeout, so no app code ran; the simulator was rebooted and the class retried, at most twice; a process that started and then hung is never retried):"
+  say "**Launches the simulator failed, not the app** (either no HoundStack process from the launch request to the timeout, or the app served its page and WebKit had not committed it when XCTest gave up; no page script ran in either; the simulator was rebooted and the class retried, at most twice; a page that committed and then drew nothing, and a process that started and then hung before serving its page, are never retried):"
   printf '%s' "$notes" | while IFS= read -r line; do say "$line"; done
 fi
 

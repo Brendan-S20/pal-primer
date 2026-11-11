@@ -37,7 +37,12 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { neverStarted, SIMULATOR_NEVER_STARTED } from "../scripts/ios-launch-never-started.mjs";
+import {
+  neverStarted,
+  pageNeverCommitted,
+  simulatorFailedTheLaunch,
+  SIMULATOR_NEVER_STARTED,
+} from "../scripts/ios-launch-never-started.mjs";
 
 const root = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
@@ -96,6 +101,77 @@ describe("a launch the simulator never started", () => {
     );
     // One list of messages, in the module, not a second copy in a grep.
     expect(check).not.toMatch(/Timed out attempting to launch app/);
+  });
+});
+
+// main 7d6274f7 (#854), iOS launch run 42940607915: iPhone 17e, iOS 26.5,
+// testALinkWhileRunningKeepsTheAppUp, "before the link: no email field, so
+// the sign-in form never rendered". The same app code had passed all four
+// simulators on #854's own pull request run (42931415913, 4935fda, identical
+// ios/, src/ and scripts/), and five cold launches on the same simulator
+// reached sign-in right after it. The process log shows why: dyld took 23 s,
+// WebKit's processes 24 s more, the app served its page in 1 ms, and the
+// main frame committed 0.3 s after XCTest gave up. The fixture is the CI
+// log, filtered to those lines and otherwise unchanged.
+describe("a page the app served and WebKit had not committed", () => {
+  const { log, processes } = fixture("7d6274f7-iphone-17e-page-never-committed");
+
+  it("is recognised, and says when each thing happened", () => {
+    const r = pageNeverCommitted(log, processes);
+    expect(r.proven).toBe(true);
+    expect(r.why).toBe(
+      "HoundStack[91976] served its page at 21:16:51.730; WebKit had not committed it when XCTest gave up at 21:17:28.569 (committed 21:17:28.872), so no page script ran",
+    );
+    // And it is what the script's single entry point answers.
+    expect(simulatorFailedTheLaunch(log, processes)).toEqual(r);
+    // The older proof does not claim it: a process did start.
+    expect(neverStarted(log, processes).proven).toBe(false);
+  });
+
+  it("is not claimed once the page committed before XCTest gave up", () => {
+    // The page reached the web view and still drew no sign-in form: the app.
+    const early = processes.replace(
+      "2026-11-10 21:17:28.872 Df HoundStack[91976",
+      "2026-11-10 21:17:20.000 Df HoundStack[91976",
+    );
+    expect(early).not.toBe(processes);
+    const r = pageNeverCommitted(log, early);
+    expect(r.proven).toBe(false);
+    expect(r.why).toMatch(/committed at 21:17:20\.000, before the give-up/);
+    expect(simulatorFailedTheLaunch(log, early).proven).toBe(false);
+  });
+
+  it("is not claimed when the app never served its page", () => {
+    const unserved = processes
+      .split("\n")
+      .filter(
+        (l) =>
+          !(l.includes("HoundStack[91976") && l.includes("WebURLSchemeTaskProxy::didComplete")),
+      )
+      .join("\n");
+    expect(unserved).not.toBe(processes);
+    const r = pageNeverCommitted(log, unserved);
+    expect(r.proven).toBe(false);
+    expect(r.why).toMatch(/never served its page/);
+  });
+
+  it("is not claimed for a second process in the window", () => {
+    const two = `${processes}2026-11-10 21:17:00.000 Df HoundStack[99999:0] started\n`;
+    expect(pageNeverCommitted(log, two).proven).toBe(false);
+  });
+
+  it("is not claimed for any other failure", () => {
+    const other = log.replace(
+      "no email field, so the sign-in form never rendered",
+      "a text field but no Continue button, so this is not /auth",
+    );
+    expect(other).not.toBe(log);
+    expect(simulatorFailedTheLaunch(other, processes).proven).toBe(false);
+  });
+
+  it("names the assertion ColdLaunch.swift actually fails with", () => {
+    const swift = read("ios/UITests/HoundStackUITests/ColdLaunch.swift");
+    expect(swift).toContain('"\\(when): no email field, so the sign-in form never rendered"');
   });
 });
 
