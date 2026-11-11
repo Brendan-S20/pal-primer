@@ -1,0 +1,9 @@
+Test Case '-[HoundStackUITests.ColdLaunch testALinkThatLaunchesTheAppLandsOnSignIn]' started.
+    t =     0.00s Start Test at 2026-11-09 21:46:39.116
+    t =     0.10s Set Up
+    t =     0.12s Terminate consulting.thenorth.houndstack:35163
+    t =     1.16s Wait for consulting.thenorth.houndstack to become Not Running
+    t =     3.17s Opening default application for URL consulting.thenorth.houndstack://open/my-day
+/Users/runner/actions-runner/_work/pal-primer/pal-primer/ios/UITests/HoundStackUITests/ColdLaunch.swift:139: error: -[HoundStackUITests.ColdLaunch testALinkThatLaunchesTheAppLandsOnSignIn] : Failed to open the default app for a URL: Timed out while opening the default app for a URL.
+    t =   118.16s Tear Down
+Test Case '-[HoundStackUITests.ColdLaunch testALinkThatLaunchesTheAppLandsOnSignIn]' failed (118.339 seconds).

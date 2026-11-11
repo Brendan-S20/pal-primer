@@ -14,11 +14,13 @@ import { useServiceLines } from "@/components/CommercialOnly";
 import { ServiceLinesChoices } from "@/components/ServiceLinesChoices";
 import { DayEndPanel } from "@/components/SetupDayEndPanel";
 import { WalkPricesForm } from "@/components/SetupWalkPrices";
-import { BusinessSaveButton } from "@/components/SetupBusinessSave";
+import { BusinessSaveButton, SETUP_BUSINESS_FORM_ID } from "@/components/SetupBusinessSave";
 import { useMyRole, usePermissions } from "@/hooks/useMyRole";
 import { useMyProfile } from "@/hooks/useMyProfile";
 import { useFormDraft } from "@/hooks/useFormDraft";
+import { reconcileSetupBusinessDraft, setupBusinessStored } from "@/lib/setup-business-draft";
 import { DraftRestoredNotice } from "@/components/DraftRestoredNotice";
+import { SetupFooterSlot, SetupStepFooter } from "@/components/SetupStepFooter";
 import {
   invalidateOnboardingStatus,
   ONBOARDING_STATUS_KEY,
@@ -292,49 +294,24 @@ function SetupPage() {
             </p>
           )}
 
-          <div className="mt-4">
-            <StepPanel step={current} onSaved={saved} />
-          </div>
-
-          {/* The way forward is ALWAYS here, done or not. "Skip for now" is
-              not a failure path: every step can be finished later from the
-              checklist, and payouts in particular waits on an email.
-
-              And always ON SCREEN: sticky to the bottom of the viewport while
-              the step is, so a step taller than a phone (the business form at
-              360x780 is) still has Back and Next under the thumb without
-              scrolling past the form to find them. Below `md` the office
-              roles this page is for have the tab bar there, so it sits on top
-              of the bar rather than behind it; that is a layout offset keyed
-              on width, which is what width is for. No z-index: it comes after
-              the form in the document, so it paints over it, and an address
-              suggestion list (which does set one) still paints over this. */}
-          <div className="sticky bottom-0 -mx-4 mt-5 flex flex-wrap items-center justify-between gap-2 rounded-b-lg border-t bg-card px-4 py-3 max-md:bottom-[calc(var(--tab-bar-h)+env(safe-area-inset-bottom))] md:-mx-5 md:px-5">
-            {isFirst ? (
-              <span />
-            ) : (
-              <Button
-                variant="outline"
-                onClick={() => goTo(steps[index - 1].id)}
-                data-setup-action="back"
-              >
-                Back
-              </Button>
-            )}
-            {current.done ? (
-              <Button onClick={forward} data-setup-action={isLast ? "done" : "next"}>
-                {isLast ? "Done" : "Next"}
-              </Button>
-            ) : (
-              <Button
-                variant="ghost"
-                onClick={forward}
-                data-setup-action={isLast ? "done" : "skip"}
-              >
-                {isLast ? "Skip and finish" : "Skip for now"}
-              </Button>
-            )}
-          </div>
+          {/* The way forward is ALWAYS here, done or not, and always ON
+              SCREEN: a step taller than a phone still has Back and Next under
+              the thumb. "Skip for now" is not a failure path: every step can
+              be finished later from the checklist. A step's own Save is drawn
+              in the same bar (SetupStepFooter, #771), so the bar never covers
+              it. */}
+          <SetupFooterSlot>
+            <div className="mt-4">
+              <StepPanel step={current} onSaved={saved} />
+            </div>
+            <SetupStepFooter
+              isFirst={isFirst}
+              isLast={isLast}
+              done={current.done}
+              onBack={() => goTo(steps[index - 1].id)}
+              onForward={forward}
+            />
+          </SetupFooterSlot>
         </section>
       </div>
     </>
@@ -431,7 +408,14 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
   const draft = useFormDraft({
     form: "setup-business",
     value: { lines, name, phone, address, tz, dayStart, dayEnd, officeEmail, portalSlug },
-    restore: (d) => {
+    // Read back against what is saved (#770): a draft cannot untick a saved
+    // line, and one that only repeats what is stored is no draft.
+    ready: linesKnown && !brandingQ.isPending && !dispatchQ.isPending && !orgQ.isPending,
+    restore: (saved) => {
+      const stored = setupBusinessStored(brandingQ.data, dispatchQ.data?.settings, savedSlug);
+      const ctx = { alreadyDone, savedLines, linesKnown, stored };
+      const d = reconcileSetupBusinessDraft(saved, ctx);
+      if (!d) return false;
       setLines(d.lines);
       setName(d.name);
       setPhone(d.phone);
@@ -574,6 +558,7 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
 
   return (
     <form
+      id={SETUP_BUSINESS_FORM_ID}
       className="space-y-4"
       onSubmit={(e) => {
         e.preventDefault();

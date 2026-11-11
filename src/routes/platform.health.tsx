@@ -123,7 +123,7 @@ function HealthPage() {
               className={
                 "rounded-full px-2 py-0.5 text-xs font-medium " +
                 (anyBad
-                  ? "bg-destructive/15 text-destructive"
+                  ? "bg-destructive/10 text-destructive"
                   : anyWarn
                   ? "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400"
                   : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400")

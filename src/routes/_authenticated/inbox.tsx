@@ -253,7 +253,7 @@ function Section({
         <span className="flex shrink-0 items-center gap-1 text-sm">
           <span
             className={`rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${
-              count > 0 ? "bg-destructive/15 text-destructive" : "bg-muted text-muted-foreground"
+              count > 0 ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"
             }`}
             data-inbox-count
           >

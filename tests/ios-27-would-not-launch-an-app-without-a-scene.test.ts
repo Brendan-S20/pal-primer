@@ -132,9 +132,14 @@ describe("CI launches the app", () => {
     expect(warm).toBeLessThan(script.indexOf("attempt_class ColdLaunch launches"));
     // A retry is only for a launch the simulator never started: the
     // message AND no HoundStack process from request to tear-down.
+    // The messages and the proof live in scripts/ios-launch-never-started.mjs;
+    // tests/the-launch-check-blames-the-simulator-only-with-proof.test.ts
+    // runs it on logs from the CI Mac (#726).
     const check = script.slice(script.indexOf("never_started() {"));
-    expect(check).toMatch(/grep -qE "Timed out attempting to launch app\|kAXErrorServerNotFound"/);
-    expect(check).toMatch(/sys\.exit\(0 if not started else 1\)/);
+    expect(check).toMatch(/node "\$ROOT\/scripts\/ios-launch-never-started\.mjs"/);
+    const classifier = read("scripts/ios-launch-never-started.mjs");
+    expect(classifier).toMatch(/"Timed out attempting to launch app",\s*"kAXErrorServerNotFound",/);
+    expect(classifier).toMatch(/proven: started === 0/);
     expect(read("ios/UITests/UITests.xcodeproj/project.pbxproj")).toMatch(
       /ColdLaunch\.swift in Sources \*\/,/,
     );
