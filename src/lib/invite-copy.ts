@@ -210,3 +210,41 @@ export function inviteDecision(a: {
   if (!a.replace) return { kind: "ask", invite: latest };
   return { kind: "create", supersede: pending };
 }
+
+// ── Where the link is (#775) ─────────────────────────────────────────────────
+// The help under Send invite used to say "use Copy link below" on a form with
+// nothing below it: Copy link lived only on a pending-invite row, which does
+// not exist before the first invite, and in a warning toast that disappears.
+// Now the link of the invite just sent stays on the form (InviteLinkCard), and
+// the help says where the link actually is.
+
+/** The sentence under the invite form. Names a Copy link only where one is
+ *  on screen: the card for the invite just sent, or a pending-invite row. */
+export function inviteFormHelp(a: { pendingCount: number; justSent: boolean }): string {
+  const role = "Their role is set when they join.";
+  if (a.justSent) {
+    return `We email them a link. If it doesn't arrive, use Copy link above and send it yourself. ${role}`;
+  }
+  if (a.pendingCount > 0) {
+    return `We email them a link. If it doesn't arrive, use Copy link next to their invite under Pending invites and send it yourself. ${role}`;
+  }
+  return `We email them a link. After you send the invite, its link shows up here so you can copy it and send it yourself too. ${role}`;
+}
+
+/** The status line on the card for the invite just sent. */
+export function inviteLinkCardStatus(
+  action: "created" | "resent",
+  to: string,
+  emailSent: boolean | undefined,
+): { tone: "success" | "warning"; message: string } {
+  const did = action === "resent" ? "Resent" : "Emailed";
+  return emailSent
+    ? {
+        tone: "success",
+        message: `${did} to ${to}. You can also copy the link and send it yourself.`,
+      }
+    : {
+        tone: "warning",
+        message: `The email to ${to} did not go out. Copy the link and send it to them yourself.`,
+      };
+}
