@@ -940,7 +940,7 @@ export function ZoneDrawer({
                     onChange={(e) => mark(setPricingMode)(e.target.value as any)}
                     className="h-9 rounded-md border bg-background px-2 text-sm"
                   >
-                    <option value="flat">Flat rate (use base price above)</option>
+                    <option value="flat">Flat rate (zone price, or the standard price when blank)</option>
                     <option value="per_sqft">Per square foot of yard</option>
                     <option value="per_acre">Per acre of yard</option>
                   </select>
