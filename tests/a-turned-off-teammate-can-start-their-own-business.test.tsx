@@ -29,7 +29,7 @@ vi.setConfig({ testTimeout: 300_000 });
 const ROOT = join(import.meta.dirname, "..");
 const MIGRATION = join(
   ROOT,
-  "supabase/migrations/20261111060000_a-turned-off-teammate-can-leave-and-start-their-own-business.sql",
+  "supabase/migrations/20261111150000_a-turned-off-teammate-can-leave-and-start-their-own-business.sql",
 );
 const PROOF = join(ROOT, "tests/sql/a-turned-off-teammate-can-start-their-own-business.proof.sql");
 
@@ -67,6 +67,25 @@ describe("leave_business_i_was_turned_off_in", () => {
     expect(body, file).not.toMatch(/DELETE\s+FROM\s+public\.staff/i);
     expect(body, file).not.toMatch(/auth\.users/i);
     expect(body, file).toMatch(/'staff\.left'/);
+  });
+
+  it("sorts after what production already has, under its reserved version", () => {
+    // 20261111120000 was live before this landed; an older version would be
+    // refused by `supabase db push` without --include-all.
+    const name = MIGRATION.split(/[\\/]/).pop()!;
+    expect(name.startsWith("20261111150000_")).toBe(true);
+    expect(name > "20261111120000").toBe(true);
+    expect(
+      existsSync(
+        join(
+          ROOT,
+          "supabase/migrations/" +
+            ["20261111", "060000"].join("") +
+            "_a-turned-off-teammate-can-leave-and-start-their-own-business.sql",
+        ),
+      ),
+      "the old, out-of-order version is gone",
+    ).toBe(false);
   });
 
   it("is not callable signed out", () => {

@@ -23,7 +23,7 @@ import { pageTitle } from "@/lib/page-title";
 // "stranger"), so until now this address could never start a business of its
 // own: Get started sent it to sign in, and sign in sent it here. "Start my own
 // business" gives up the caller's own membership of this business
-// (leave_business_i_was_turned_off_in, 20261111060000) and sends them to
+// (leave_business_i_was_turned_off_in, 20261111150000) and sends them to
 // /no-workspace, where they start one or open an invitation.
 //
 // A technician reads this on their phone, so it speaks the phone's language
