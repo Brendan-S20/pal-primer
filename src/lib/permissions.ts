@@ -38,6 +38,14 @@ export type Permission =
   // Owner, office manager and dispatcher by default. A prepaid plan stays
   // manage_client_billing (PLAN_CADENCE_IS_BILLING in clients.functions.ts).
   | "close_visits"
+  // Managing a plan on an existing client at the set price (#907, Brendan
+  // 2026-11-10 2:24 PM ET: "Yes, dispatchers can manage plans at the set
+  // price"): add, pause, resume and end. Owner, office manager and
+  // dispatcher by default. A typed price, an edit or a delete, and prepaid,
+  // stay manage_pricing / manage_client_billing. Named here so
+  // permission_default carries it from the start; #907 brings the server
+  // functions and the screen.
+  | "manage_plans"
   // Writing to one client (#728): a text from the client's Messages tab or
   // the inbox. Owner, office manager and dispatcher. A message to many
   // clients at once is send_campaigns, which a dispatcher does not hold.
@@ -71,6 +79,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   "booking",
   "manage_schedule",
   "close_visits",
+  "manage_plans",
   "message_clients",
   "manage_client_billing",
   "view_financials",
@@ -111,6 +120,7 @@ export const ROLE_PERMISSIONS: Record<AppRole, readonly Permission[]> = {
     "booking",
     "manage_schedule",
     "close_visits",
+    "manage_plans",
     "message_clients",
   ],
   tech: ["record_field_addons"],
@@ -295,6 +305,13 @@ export const PERMISSION_CATALOG: ReadonlyArray<{
     label: "Complete or cancel a visit from the office",
     explanation:
       "Mark a visit complete for a technician, or cancel it at the business's skip rules. Both can bill the client.",
+    group: "schedule",
+  },
+  {
+    permission: "manage_plans",
+    label: "Manage plans at the set price",
+    explanation:
+      "Add, pause, resume or end a plan on an existing client at the price the business already set. Typing a price, editing or deleting a plan stays with Set prices.",
     group: "schedule",
   },
   {

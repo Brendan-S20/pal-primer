@@ -181,7 +181,9 @@ function AuthPage() {
       setOfferReset(true);
       setAlert({
         kind: "info",
-        text: "That email already has an account. Sign in with its password, or reset it if you don't know it.",
+        // Said for a teammate who was taken off a business too (#765): once
+        // signed in, /no-workspace or /access-off is where they start their own.
+        text: "That email already has a HoundStack login. Sign in with its password, or reset it if you don't know it. Once you're in, you can start your own business with it.",
       });
       return;
     }

@@ -95,8 +95,10 @@ DECLARE
   _all constant text[] := ARRAY['manage_pricing', 'booking', 'manage_schedule', 'message_clients',
     'manage_client_billing', 'view_financials', 'view_client_directory', 'manage_dna_billing',
     'reveal_signin_code', 'record_field_addons', 'manage_org_billing', 'manage_leads', 'send_campaigns',
-    'manage_imports', 'use_ai_tools', 'manage_inventory', 'manage_franchise', 'manage_users', 'manage_settings'];
-  _dispatcher constant text[] := ARRAY['view_client_directory', 'record_field_addons', 'booking', 'manage_schedule', 'message_clients'];
+    'manage_imports', 'use_ai_tools', 'manage_inventory', 'manage_franchise', 'manage_users', 'manage_settings',
+    'close_visits', 'manage_plans'];
+  _dispatcher constant text[] := ARRAY['view_client_directory', 'record_field_addons', 'booking', 'manage_schedule',
+    'close_visits', 'manage_plans', 'message_clients'];
 BEGIN
   IF (SELECT count(*) FROM public.role_permission_overrides) <> 0 THEN
     RAISE EXCEPTION 'PROOF FAILED [defaults]: the overrides table is not empty on a fresh build';

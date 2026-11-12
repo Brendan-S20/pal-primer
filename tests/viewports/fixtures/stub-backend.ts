@@ -52,11 +52,22 @@ function decodeSeroval(node: unknown): unknown {
     return out;
   }
   if (Array.isArray(n.a)) return n.a.map(decodeSeroval);
-  // A constant: null, undefined, true, false, -0, Infinity, -Infinity, NaN
-  // (seroval's SerovalConstant, in that order). Until 2026-11-12 this fell
-  // through to `s`, so a boolean argument read as 2 or 3.
-  if (n.t === 2 && typeof n.s === "number") {
-    return [null, undefined, true, false, -0, Infinity, -Infinity, NaN][n.s];
+  // A constant (SerovalNodeType.Constant = 2) carries a code, not the value:
+  // null 0, undefined 1, true 2, false 3. Read as a number, `false` came out
+  // as 3, which is truthy, so a stub could not tell a "no" from a "yes" (#731:
+  // overCapAcknowledged: false read as confirmed).
+  if (n.t === 2 && "s" in n) {
+    const constants: Record<number, unknown> = {
+      0: null,
+      1: undefined,
+      2: true,
+      3: false,
+      4: -0,
+      5: Infinity,
+      6: -Infinity,
+      7: NaN,
+    };
+    return constants[n.s as number];
   }
   if ("s" in n) return n.s;
   if ("t" in n && typeof n.t === "object") return decodeSeroval(n.t);
@@ -623,6 +634,8 @@ export const BASE_STUBS: Record<string, Stub> = {
     visits: fx.visitsBetween(a.day ?? fx.TODAY, a.throughDay ?? a.day ?? fx.TODAY),
   }),
   listStaff: { staff: fx.STAFF },
+  // Walks over a walker's dog cap (#731): none in the base fixture.
+  listWalksOverDogCap: { walks: [] },
   listTimeOff: { rows: [] },
   getDispatchSettings: {
     settings: {
@@ -1337,6 +1350,7 @@ export const BASE_STUBS: Record<string, Stub> = {
         "booking",
         "manage_schedule",
         "close_visits",
+        "manage_plans",
         "message_clients",
       ],
       tech: ["record_field_addons"],

@@ -54,6 +54,7 @@ describe("the defaults are the rules main shipped on 2026-11-11", () => {
         "booking",
         "manage_schedule",
         "close_visits",
+        "manage_plans",
         "message_clients",
         "manage_client_billing",
         "view_financials",
@@ -76,6 +77,7 @@ describe("the defaults are the rules main shipped on 2026-11-11", () => {
         "booking",
         "manage_schedule",
         "close_visits",
+        "manage_plans",
         "message_clients",
         "manage_client_billing",
         "view_financials",
@@ -97,10 +99,17 @@ describe("the defaults are the rules main shipped on 2026-11-11", () => {
         "booking",
         "manage_schedule",
         "close_visits",
+        "manage_plans",
         "message_clients",
       ],
       tech: ["record_field_addons"],
     });
+  });
+
+  it("manage_plans (#907): a dispatcher by default, never a technician, and in permission_default from the start", () => {
+    expect(hasPermission("dispatcher", "manage_plans")).toBe(true);
+    expect(hasPermission("office_manager", "manage_plans")).toBe(true);
+    expect(hasPermission("tech", "manage_plans")).toBe(false);
   });
 
   it("Brendan's dispatcher defaults (2026-11-12): cancel yes, complete yes, prepaid no", () => {
@@ -720,11 +729,15 @@ describe("the migration", () => {
       ),
     )?.[0] ?? "";
 
-  it("is the newest file, and after 20261111151000", () => {
+  it("is the version SIC reserved for #905, after 20261111151000, and the only file at it", () => {
+    // Not "the newest": main took 20261112050000 (#883) while this was open,
+    // and SIC kept this file at 20261112010000. #907's 20261112040000 sorts
+    // after it, which is why permission_default carries manage_plans here.
     const files = readdirSync(join(ROOT, "supabase/migrations"))
       .filter((f) => f.endsWith(".sql"))
       .sort();
-    expect(files[files.length - 1]).toBe(MIGRATION_NAME);
+    expect(files).toContain(MIGRATION_NAME);
+    expect(files.filter((f) => f.startsWith("20261112010000"))).toEqual([MIGRATION_NAME]);
     expect(MIGRATION_NAME > "20261111151000").toBe(true);
   });
 
@@ -734,6 +747,7 @@ describe("the migration", () => {
     expect(body).toMatch(/WHEN _role = 'owner' THEN true/);
     expect(body).toMatch(/WHEN _role = 'tech' THEN _permission = 'record_field_addons'/);
     expect(body).toMatch(/WHEN _role = 'dispatcher' THEN _permission IN \([^)]*'close_visits'/);
+    expect(body).toMatch(/WHEN _role = 'dispatcher' THEN _permission IN \([^)]*'manage_plans'/);
   });
 
   it("completing and canceling from the office ask close_visits in SQL too, and prepaid stays billing", () => {

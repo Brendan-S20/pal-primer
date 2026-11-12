@@ -1958,6 +1958,7 @@ export const ALL_PERMISSION_NAMES = [
   "booking",
   "manage_schedule",
   "close_visits",
+  "manage_plans",
   "message_clients",
   "manage_client_billing",
   "view_financials",

@@ -56,6 +56,13 @@
 --      (manage_pricing), generate_prepaid_invoice (manage_client_billing) and
 --      onboardClient's PLAN_CADENCE_IS_BILLING refusal are untouched.
 --
+--   7. manage_plans (#907, Brendan 2026-11-10 2:24 PM ET: "Yes, dispatchers
+--      can manage plans at the set price") is in the dispatcher's defaults
+--      here, so #907's own has_permission rewrite is not needed once this
+--      file is in: a replay runs this file first (20261112010000 sorts before
+--      #907's 20261112040000), and #907's $pre$ guard stops when
+--      role_permission_overrides exists. Its grant lives here instead.
+--
 -- NOTHING CHANGES FOR AN EXISTING BUSINESS. The table starts empty, and an
 -- empty table is the matrix every business already runs on. Replays into an
 -- empty database: definitions, and assertions about what this file creates.
@@ -72,7 +79,7 @@ AS $function$
   SELECT CASE
     WHEN _role = 'owner' THEN true
     WHEN _role = 'office_manager' THEN _permission NOT IN ('manage_org_billing', 'manage_franchise')
-    WHEN _role = 'dispatcher' THEN _permission IN ('view_client_directory', 'record_field_addons', 'booking', 'manage_schedule', 'close_visits', 'message_clients')
+    WHEN _role = 'dispatcher' THEN _permission IN ('view_client_directory', 'record_field_addons', 'booking', 'manage_schedule', 'close_visits', 'manage_plans', 'message_clients')
     WHEN _role = 'tech' THEN _permission = 'record_field_addons'
     ELSE false
   END;
@@ -82,7 +89,7 @@ REVOKE ALL ON FUNCTION public.permission_default(public.app_role, text) FROM PUB
 GRANT EXECUTE ON FUNCTION public.permission_default(public.app_role, text) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.permission_default(public.app_role, text) IS
-  'What a role holds when its business''s owner has changed nothing (#863): the matrix has_permission carried until 20261112010000, plus close_visits for the dispatcher (Brendan, 2026-11-12), mirrored by ROLE_PERMISSIONS in src/lib/permissions.ts (tests/permission-parity.test.ts).';
+  'What a role holds when its business''s owner has changed nothing (#863): the matrix has_permission carried until 20261112010000, plus close_visits (Brendan, 2026-11-12) and manage_plans (#907, Brendan 2026-11-10) for the dispatcher, mirrored by ROLE_PERMISSIONS in src/lib/permissions.ts (tests/permission-parity.test.ts).';
 
 -- ── 2. What the owner changed ───────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.role_permission_overrides (
@@ -728,6 +735,8 @@ BEGIN
      OR NOT public.permission_default('office_manager', 'manage_users')
      OR NOT public.permission_default('dispatcher', 'booking')
      OR NOT public.permission_default('dispatcher', 'close_visits')
+     OR NOT public.permission_default('dispatcher', 'manage_plans')
+     OR public.permission_default('tech', 'manage_plans')
      OR public.permission_default('dispatcher', 'manage_client_billing')
      OR public.permission_default('tech', 'close_visits')
      OR public.permission_default('dispatcher', 'manage_pricing')
