@@ -81,6 +81,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     body: [
       "**Owner:** everything, including billing and payouts. **Office manager:** day-to-day operations (clients, invoices, routes, settings) but not the business's own subscription billing. **Dispatcher:** the schedule, routes, weather, clients, and messages. A dispatcher books one-off visits and grooms at the prices the business has set; only an owner or office manager can change a price. A dispatcher can add a client and start their plan at the set price, move a visit to another day or another technician, and text a client. Completing or canceling a visit from the office, invoices and payments, prices, settings, and who has access stay with the owner and office manager. **Technician:** [My Day](article:my-day), the [waste log](article:waste-log), and field tools.",
       "If someone can't see a page you expect them to, their role is usually why. Roles are set in [Users & roles](/settings/users).",
+      "Those are the defaults. The owner can turn any of them on or off for office managers, dispatchers and technicians in [Roles & permissions](/settings/roles); a few things, like the business's own plan and payouts, always stay with the owner.",
     ],
     appLink: { to: "/settings/users", label: "Open Users & roles" },
     related: ["users-roles", "my-day"],

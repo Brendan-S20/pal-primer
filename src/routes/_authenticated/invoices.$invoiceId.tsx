@@ -15,6 +15,7 @@ import { RefundPaymentAction } from "@/components/RefundPaymentAction";
 import { ManualRefundAction } from "@/components/ManualRefundAction";
 import { getMyOrg } from "@/lib/org.functions";
 import { getQuickBooksStatus, syncInvoice } from "@/lib/accounting.functions";
+import { permissionsOf } from "@/hooks/useMyRole";
 import { hasPermission } from "@/lib/permissions";
 import { sendInvoiceEmail, getEmailSendStatus } from "@/lib/notifications.functions";
 import { reportQueuedSend } from "@/lib/send-report";
@@ -109,7 +110,10 @@ function InvoiceDetail() {
     queryFn: () => qboFn(),
     staleTime: 5 * 60_000,
     retry: false,
-    enabled: hasPermission((orgQ.data?.organization?.role as any) ?? null, "manage_settings"),
+    // The configured set (#863), or the role's defaults before it arrives.
+    enabled:
+      permissionsOf(orgQ.data?.organization)?.includes("manage_settings") ??
+      hasPermission((orgQ.data?.organization?.role as any) ?? null, "manage_settings"),
   });
   const qboConnected = qboQ.data?.connection?.status === "connected";
   // "INV-10420 · Invoices", from the same label the page's heading prints.

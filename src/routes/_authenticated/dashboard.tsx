@@ -9,6 +9,7 @@ import { getPlatformContext } from "@/lib/platform.functions";
 import { getDashboardSummary } from "@/lib/dashboard.functions";
 import { getBillingStatus } from "@/lib/billing.functions";
 import { getQuickBooksStatus } from "@/lib/accounting.functions";
+import { permissionsOf } from "@/hooks/useMyRole";
 import { hasPermission } from "@/lib/permissions";
 import { useRoleLabel } from "@/components/CommercialOnly";
 import type { AppRole } from "@/hooks/useMyRole";
@@ -71,12 +72,18 @@ function Dashboard() {
     refetchInterval: 60_000,
   });
   const role = orgData?.organization?.role as AppRole | undefined;
+  // The configured set (#863): the server's list for this person, with the
+  // owner's changes for their role folded in; the role's defaults before it
+  // arrives.
+  const mine = permissionsOf(orgData?.organization);
+  const can = (p: Parameters<typeof hasPermission>[1]) =>
+    mine ? mine.includes(p) : hasPermission(role ?? null, p);
   const { data: billing } = useQuery({
     queryKey: ["billing-status"],
     queryFn: () => billingFn(),
     staleTime: 60_000,
     retry: false,
-    enabled: hasPermission(role ?? null, "manage_org_billing"),
+    enabled: can("manage_org_billing"),
   });
   // QuickBooks that needs reconnecting has stopped syncing; the people who can
   // reconnect it hear about it here as well as on Settings → Accounting.
@@ -86,7 +93,7 @@ function Dashboard() {
     queryFn: () => qboFn(),
     staleTime: 5 * 60_000,
     retry: false,
-    enabled: hasPermission(role ?? null, "manage_settings"),
+    enabled: can("manage_settings"),
   });
 
   // Platform admins have no tenant org by design. If one lands here (bookmark,

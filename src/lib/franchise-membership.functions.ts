@@ -65,7 +65,7 @@ import type { SettlementRow } from "@/lib/franchise-settlement";
 export const getMyFranchiseMembership = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { orgId, role } = await requirePermission(
+    const { orgId, role, overrides } = await requirePermission(
       context.supabase,
       context.userId,
       "manage_settings",
@@ -143,7 +143,7 @@ export const getMyFranchiseMembership = createServerFn({ method: "GET" })
        *  this rule in JSX. `joinFranchise` re-checks it, and
        *  `redeem_franchise_link_code` re-checks it again in SQL — this flag is
        *  presentation only. */
-      canJoin: hasPermission(role, "manage_franchise"),
+      canJoin: hasPermission(role, "manage_franchise", overrides),
       // The child can SEE what they owe. The parent sets it (BUG-19 protects the
       // column), but a franchisee being unable to see their own royalty rate in
       // a product that bills them for it would be indefensible.

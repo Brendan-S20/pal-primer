@@ -225,7 +225,7 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
       await import("@/lib/booking-price.server");
     let priceCents: number;
     let asSetPrice = false;
-    if (hasPermission(caller.role, "manage_pricing")) {
+    if (hasPermission(caller.role, "manage_pricing", caller.overrides)) {
       if (data.priceCents != null) {
         priceCents = data.priceCents;
       } else {

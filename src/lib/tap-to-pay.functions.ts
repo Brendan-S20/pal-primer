@@ -83,8 +83,8 @@ export const getTapToPayStatus = createServerFn({ method: "POST" })
     const { resolveCaller } = await import("@/lib/authz.server");
     const { hasPermission } = await import("@/lib/permissions");
     const caller = await resolveCaller(context.supabase, context.userId);
-    const canTap = hasPermission(caller.role, "manage_client_billing");
-    const canAcceptTerms = hasPermission(caller.role, "manage_org_billing");
+    const canTap = hasPermission(caller.role, "manage_client_billing", caller.overrides);
+    const canAcceptTerms = hasPermission(caller.role, "manage_org_billing", caller.overrides);
     let available = false;
     let readerMode: "simulated" | "live" | "off" = "off";
     try {

@@ -41,7 +41,7 @@ export const getMyCalendarFeeds = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<MyCalendarFeeds> => {
     const { supabase, userId } = context;
-    const { orgId, role } = await resolveCaller(supabase, userId);
+    const { orgId, role, overrides } = await resolveCaller(supabase, userId);
     const [{ data: rows, error }, { data: staff }, { data: org }] = await Promise.all([
       (supabase as any).rpc("calendar_feed_status"),
       supabase
@@ -69,10 +69,10 @@ export const getMyCalendarFeeds = createServerFn({ method: "GET" })
       mine: pick("mine"),
       org: pick("org"),
       canMine: (staff ?? []).length > 0,
-      canOrg: hasPermission(role, "view_client_directory"),
+      canOrg: hasPermission(role, "view_client_directory", overrides),
       accessCodesInFeed: !!(org as { calendar_feed_access_codes?: boolean } | null)
         ?.calendar_feed_access_codes,
-      canManageSettings: hasPermission(role, "manage_settings"),
+      canManageSettings: hasPermission(role, "manage_settings", overrides),
     };
   });
 

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getMyOrg } from "@/lib/org.functions";
-import { hasPermission, type Permission } from "@/lib/permissions";
+import { ALL_PERMISSIONS, hasPermission, type Permission } from "@/lib/permissions";
 
 export type AppRole = "owner" | "office_manager" | "dispatcher" | "tech";
 
@@ -11,6 +11,13 @@ export function useMyRole(): {
   loading: boolean;
   /** The owner turned this person's access off since the shell loaded. */
   accessTurnedOff: boolean;
+  /**
+   * What this person can do, as the server worked it out from their role
+   * and what the owner changed for it (#863). Null until getMyOrg has
+   * answered, or when an older server did not say: then usePermissions
+   * answers from the role's defaults.
+   */
+  permissions: Permission[] | null;
 } {
   const fn = useServerFn(getMyOrg);
   const { data, isLoading } = useQuery({
@@ -20,21 +27,46 @@ export function useMyRole(): {
   });
   const role = (data?.organization?.role as AppRole | undefined) ?? null;
   const orgId = data?.organization?.id ?? null;
-  return { role, orgId, loading: isLoading, accessTurnedOff: !!data?.accessTurnedOff };
+  return {
+    role,
+    orgId,
+    loading: isLoading,
+    accessTurnedOff: !!data?.accessTurnedOff,
+    permissions: permissionsOf(data?.organization),
+  };
+}
+
+/** The server's list, when it sent one and it is a list of real permissions. */
+export function permissionsOf(org: unknown): Permission[] | null {
+  const raw = (org as { permissions?: unknown } | null | undefined)?.permissions;
+  if (!Array.isArray(raw)) return null;
+  return raw.filter(
+    (p): p is Permission => typeof p === "string" && (ALL_PERMISSIONS as string[]).includes(p),
+  );
 }
 
 /**
  * Action-level permission check for UI gating (hiding controls the caller
  * can't use). This is cosmetic — the same capability is enforced server-side
  * by requirePermission; never rely on this alone.
+ *
+ * Reads the configured set (#863): the server's list of what this person
+ * can do, which already has the owner's changes for their role folded in.
+ * Before that list arrives, or against a server that does not send one,
+ * the role's defaults.
  */
 export function usePermissions(): {
   can: (permission: Permission) => boolean;
   role: AppRole | null;
   loading: boolean;
 } {
-  const { role, loading } = useMyRole();
-  return { can: (permission) => hasPermission(role, permission), role, loading };
+  const { role, loading, permissions } = useMyRole();
+  return {
+    can: (permission) =>
+      permissions ? permissions.includes(permission) : hasPermission(role, permission),
+    role,
+    loading,
+  };
 }
 
 // Route → minimum roles allowed. Undefined = everyone signed in.
@@ -127,6 +159,10 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   // The service catalog. Same audience as its server gate, manage_pricing,
   // which a dispatcher does not hold. Must precede the "/settings" prefix.
   "/settings/services": ["owner", "office_manager"],
+  // Roles & permissions (#863): who can do what, for every other role. The
+  // owner alone, so a business cannot be locked out of its own settings by
+  // somebody it gave manage_settings to. Must precede the "/settings" prefix.
+  "/settings/roles": ["owner"],
   "/settings": ["owner", "office_manager", "tech"],
   "/neighbors": ["owner", "office_manager", "dispatcher", "tech"],
   // H1: the DNA compliance workspace (cross-client registry, fines, violation

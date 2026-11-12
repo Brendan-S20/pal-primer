@@ -1,9 +1,22 @@
 import type { AppRole } from "@/hooks/useMyRole";
-import { hasPermission, type Permission } from "@/lib/permissions";
+import {
+  hasPermission,
+  overridesFromRows,
+  type Permission,
+  type PermissionOverrides,
+} from "@/lib/permissions";
 
 export type CallerContext = {
   orgId: string;
   role: AppRole;
+  /**
+   * What this business's owner turned on or off for this role (#863),
+   * already resolved for THIS caller's business and role, so a call site
+   * passes it straight to hasPermission. Undefined for an owner, who holds
+   * everything, and for a caller resolved by a test double that returns only
+   * the two fields above: then hasPermission answers from the defaults.
+   */
+  overrides?: PermissionOverrides;
 };
 
 /**
@@ -47,11 +60,25 @@ export interface AuthzQueryTable {
   select(columns: string): AuthzQueryFilter;
 }
 
+/** The overrides read: every row for one (business, role), as a list. */
+export interface OverrideRowsLookup extends PromiseLike<{
+  data: Array<{ permission?: unknown; allowed?: unknown }> | null;
+  error: { message: string } | null;
+}> {
+  eq(column: string, value: string): OverrideRowsLookup;
+}
+
+export interface OverridesQueryTable {
+  select(columns: string): OverrideRowsLookup;
+}
+
 export interface AuthzQueryClient {
-  // Pinned to the literal "user_roles" rather than `string`: this boundary
-  // reads exactly one table, and saying so keeps the type honest about its
-  // dependency.
+  // Pinned to the literal table names rather than `string`: this boundary
+  // reads exactly two tables, and saying so keeps the type honest about its
+  // dependency. user_roles answers who the caller is; role_permission_overrides
+  // answers what their business's owner changed for their role (#863).
   from(table: "user_roles"): AuthzQueryTable;
+  from(table: "role_permission_overrides"): OverridesQueryTable;
   // And one function: is this person turned off (20261009180000)?
   rpc(fn: "access_turned_off"): PromiseLike<{
     data: Array<{ organization_id?: unknown; organization_name?: unknown }> | null;
@@ -173,7 +200,44 @@ export async function resolveCaller(
   // server function that resolves a caller -- including the ones that go on
   // to use the service-role client, which RLS cannot stop -- refuses them.
   if (off.some((o) => o.organizationId === orgId)) throw new Error(ACCESS_TURNED_OFF);
-  return { orgId, role: role as AppRole };
+
+  // What the owner changed for this role (#863). An owner is never asked
+  // about: they hold everything, so there is nothing to read.
+  if (role === "owner") return { orgId, role };
+  const overrides = await readPermissionOverrides(db, orgId, role as AppRole);
+  return { orgId, role: role as AppRole, overrides };
+}
+
+/**
+ * The business's overrides for one role, from public.role_permission_overrides.
+ *
+ * Read with whatever client the caller came in with: with the person's own
+ * key the table's SELECT policy admits any member of the business, and with
+ * the service role there is no policy to pass. An error is an error, as it
+ * is for the user_roles read above: answering "the defaults" when the read
+ * failed would quietly undo a permission the owner turned OFF, and the
+ * server functions that go on to use the service-role client would then do
+ * the thing RLS was no longer there to refuse.
+ *
+ * A test double that does not know the table, and gives back something that
+ * is not a `{ data, error }` answer, reads as "no rows": the defaults. That
+ * is the matrix every such test was written against.
+ */
+async function readPermissionOverrides(
+  db: AuthzQueryClient,
+  orgId: string,
+  role: AppRole,
+): Promise<PermissionOverrides> {
+  const answer = await db
+    .from("role_permission_overrides")
+    .select("permission, allowed")
+    .eq("organization_id", orgId)
+    .eq("role", role);
+  if (answer && typeof answer === "object" && "error" in answer && answer.error) {
+    throw new Error(answer.error.message);
+  }
+  const rows = answer && typeof answer === "object" && "data" in answer ? answer.data : null;
+  return overridesFromRows(Array.isArray(rows) ? rows : null);
 }
 
 /**
@@ -190,8 +254,18 @@ export async function requirePermission(
   permission: Permission,
 ): Promise<CallerContext> {
   const caller = await resolveCaller(supabase, userId);
-  if (!hasPermission(caller.role, permission)) {
+  if (!hasPermission(caller.role, permission, caller.overrides)) {
     throw new Error("Not authorized");
   }
   return caller;
+}
+
+/**
+ * hasPermission for a caller resolveCaller already answered: the role AND
+ * the business's overrides for it (#863). For the handful of server
+ * functions that branch on a permission after resolving the caller rather
+ * than requiring one, so they read the configured set too.
+ */
+export function callerHasPermission(caller: CallerContext, permission: Permission): boolean {
+  return hasPermission(caller.role, permission, caller.overrides);
 }
