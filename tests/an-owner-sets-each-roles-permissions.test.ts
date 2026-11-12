@@ -221,6 +221,74 @@ describe("the floors hold whatever is stored", () => {
   });
 });
 
+// ── 3b. The pure UI helpers read the configured set too ───────────────────
+describe("the helpers that take a role read the configured set", () => {
+  const card = {
+    status: "succeeded",
+    stripe_payment_intent_id: "pi_1",
+    amount_cents: 10000,
+    surcharge_cents: 300,
+  };
+
+  it("usePermissions hands the server's list to them", () => {
+    const hook = read("src/hooks/useMyRole.ts");
+    expect(hook).toMatch(
+      /permissions: Permission\[\] \| null;\n\} \{\n {2}const \{ role, loading, permissions \} = useMyRole\(\);/,
+    );
+    for (const file of [
+      "src/components/InvoiceDrawer.tsx",
+      "src/components/RefundPaymentAction.tsx",
+      "src/components/ManualRefundAction.tsx",
+      "src/components/TapToPayButton.tsx",
+    ]) {
+      expect(read(file), file).toMatch(/const \{ role, permissions \} = usePermissions\(\);/);
+    }
+  });
+
+  it("a refund: a dispatcher the owner gave billing to is offered one; an office manager who lost it is not", async () => {
+    const { canOfferRefund, canRecordManualRefund } = await import("@/lib/refunds");
+    expect(canOfferRefund("dispatcher", card)).toBe(false);
+    expect(canOfferRefund("dispatcher", card, ["manage_client_billing"])).toBe(true);
+    expect(canOfferRefund("office_manager", card)).toBe(true);
+    expect(canOfferRefund("office_manager", card, ["booking"])).toBe(false);
+    const cash = { status: "succeeded", stripe_payment_intent_id: null, amount_cents: 5000 };
+    expect(canRecordManualRefund("dispatcher", cash, ["manage_client_billing"])).toBe(true);
+    expect(canRecordManualRefund("office_manager", cash, ["booking"])).toBe(false);
+  });
+
+  it("tap to pay: the configured set decides who taps; the terms stay the owner's", async () => {
+    const { tapToPayGate, canAcceptTapToPayTerms } = await import("@/lib/tap-to-pay");
+    const input = {
+      isNativeBundle: true,
+      platform: "ios" as const,
+      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
+      cardPaymentsReady: true,
+      invoiceStatus: "open",
+      dueCents: 1200,
+    };
+    expect(tapToPayGate({ ...input, role: "dispatcher" })).toMatchObject({ mode: "ask_admin" });
+    expect(
+      tapToPayGate({ ...input, role: "dispatcher", permissions: ["manage_client_billing"] }),
+    ).toMatchObject({ mode: "ready" });
+    expect(
+      tapToPayGate({ ...input, role: "office_manager", permissions: ["booking"] }),
+    ).toMatchObject({ mode: "ask_admin" });
+    expect(canAcceptTapToPayTerms("owner")).toBe(true);
+    expect(canAcceptTapToPayTerms("office_manager", ["manage_client_billing"])).toBe(false);
+  });
+
+  it("the CPA pack's franchise settlements read the overrides, and stay the owner's", async () => {
+    const { mayViewFranchiseSettlements } = await import("@/lib/cpa-reports");
+    expect(mayViewFranchiseSettlements("owner", "enterprise")).toBe(true);
+    expect(
+      mayViewFranchiseSettlements("office_manager", "enterprise", { manage_franchise: true }),
+    ).toBe(false);
+    expect(read("src/lib/cpa-reports.functions.ts")).toMatch(
+      /mayViewFranchiseSettlements\(ctx\.role, await planTierForOrg\(ctx\.orgId\), ctx\.overrides\)/,
+    );
+  });
+});
+
 // ── 4. requirePermission reads the stored rows ──────────────────────────────
 //
 // A client double that records every read with its filters, and answers
@@ -670,10 +738,14 @@ describe("the migration", () => {
 
   it("completing and canceling from the office ask close_visits in SQL too, and prepaid stays billing", () => {
     const complete = fn("office_complete_visit", "\\s*_visit_id uuid,\\s*--");
-    expect(complete).toMatch(/IF NOT public\.has_permission\(auth\.uid\(\), _org, 'close_visits'\) THEN/);
+    expect(complete).toMatch(
+      /IF NOT public\.has_permission\(auth\.uid\(\), _org, 'close_visits'\) THEN/,
+    );
     expect(complete).not.toMatch(/can_write_org/);
     const skip = fn("office_skip_visit", "\\s*_visit_id uuid, _reason text");
-    expect(skip).toMatch(/IF NOT public\.has_permission\(auth\.uid\(\), _org, 'close_visits'\) THEN/);
+    expect(skip).toMatch(
+      /IF NOT public\.has_permission\(auth\.uid\(\), _org, 'close_visits'\) THEN/,
+    );
     expect(skip).not.toMatch(/can_write_org/);
     expect(sql).toMatch(/generate_prepaid_invoice no longer asks for manage_client_billing/);
     expect(sql).toMatch(/a subscriptions write policy no longer requires manage_pricing/);

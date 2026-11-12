@@ -52,6 +52,8 @@ export function usePermissions(): {
   can: (permission: Permission) => boolean;
   role: AppRole | null;
   loading: boolean;
+  /** The server's list, for a helper that takes a role (holdsPermission). */
+  permissions: Permission[] | null;
 } {
   const { role, loading, permissions } = useMyRole();
   return {
@@ -59,6 +61,7 @@ export function usePermissions(): {
       permissions ? permissions.includes(permission) : hasPermission(role, permission),
     role,
     loading,
+    permissions,
   };
 }
 

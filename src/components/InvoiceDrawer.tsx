@@ -75,7 +75,7 @@ export function InvoiceDrawer({
   onChanged?: () => void;
 }) {
   const qc = useQueryClient();
-  const { role } = usePermissions();
+  const { role, permissions } = usePermissions();
   const { confirm, dialog } = useConfirmDialog();
   const { ask: askPayment, dialog: paymentDialog } = useRecordPaymentDialog();
   const detailFn = useServerFn(getInvoiceDetail);
@@ -522,8 +522,8 @@ export function InvoiceDrawer({
                         row: at 320px the row already holds a date, a chip and
                         a two-line amount. */}
                       {(p.refunded_cents > 0 ||
-                        canOfferRefund(role, p) ||
-                        canRecordManualRefund(role, p)) && (
+                        canOfferRefund(role, p, permissions) ||
+                        canRecordManualRefund(role, p, permissions)) && (
                         <div className="mt-1 flex items-center justify-between gap-2">
                           <span className="min-w-0 text-2xs text-muted-foreground">
                             {p.refunded_cents > 0

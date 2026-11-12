@@ -201,6 +201,21 @@ export function permissionsOf(org: unknown): Permission[] | null {
   );
 }
 
+/**
+ * hasPermission for a browser caller that holds the server's list
+ * (usePermissions().permissions): the list when there is one, else the
+ * role's defaults. For the pure helpers that take a role (refunds, tap to
+ * pay, the CPA pack) so they read the configured set too (#863).
+ */
+export function holdsPermission(
+  role: AppRole | null | undefined,
+  permission: Permission,
+  permissions?: readonly Permission[] | null,
+): boolean {
+  if (permissions) return permissions.includes(permission);
+  return hasPermission(role, permission);
+}
+
 /** Everything a role holds, after the business's overrides. */
 export function effectivePermissions(
   role: AppRole | null | undefined,
