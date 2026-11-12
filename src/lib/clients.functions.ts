@@ -761,68 +761,6 @@ export const searchClients = createServerFn({ method: "GET" })
     return { clients: (hits as any[]).map(shape) };
   });
 
-const createClientSchema = z.object({
-  displayName: z.string().min(1).max(200),
-  accountType: z.enum(["residential", "commercial"]),
-  primaryEmail: z.string().email().or(z.literal("")).optional(),
-  primaryPhone: z.string().max(40).optional(),
-  /** Opt-in, as onboardClient's: absent or false sends nothing. */
-  sendWelcome: z.boolean().optional(),
-});
-
-export const createClient = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((data) => createClientSchema.parse(data))
-  .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const orgId = await resolveOrgId(supabase, userId);
-    const { data: row, error } = await supabase
-      .from("clients")
-      .insert({
-        organization_id: orgId,
-        display_name: data.displayName,
-        account_type: data.accountType,
-        primary_email: data.primaryEmail || null,
-        primary_phone: data.primaryPhone || null,
-      })
-      .select("id, portal_token")
-      .single();
-    if (error) throw new Error(error.message);
-
-    {
-      const { logActivity } = await import("@/lib/activity.server");
-      await logActivity(supabase, {
-        orgId,
-        clientId: row.id as string,
-        actorUserId: userId,
-        kind: "client.created",
-        summary: `Created client ${data.displayName}`,
-      });
-    }
-
-    // Welcome email only when the person creating the client asked for it
-    // (see onboardClient). Best-effort; never blocks client creation.
-    if (shouldSendWelcome(data)) {
-      try {
-        const { buildPortalLink } = await import("@/lib/portal-links.server");
-        const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
-        await enqueueAppEmail({
-          organizationId: orgId,
-          clientId: row.id as string,
-          templateName: "welcome",
-          notifyKey: "notify_email_welcome",
-          idempotencyKey: `welcome-${row.id}`,
-          templateData: {
-            portalUrl: await buildPortalLink(orgId, row.portal_token as string | null),
-          },
-        });
-      } catch (e) {
-        console.error("welcome email failed", e);
-      }
-    }
-    return { id: row.id as string };
-  });
-
 const getClientSchema = z.object({ clientId: z.string().uuid() });
 
 export const getClient = createServerFn({ method: "GET" })
@@ -1690,6 +1628,21 @@ export const onboardClient = createServerFn({ method: "POST" })
     }
 
     // 1) client
+    //
+    // "Bill after each visit" is what the form calls a postpaid plan, so the
+    // client is billed that way: billing_frequency 'after_each_visit', which
+    // invoices each visit when it is completed (#859). It defaulted to
+    // 'monthly', so the label's promise waited for the end of the month. The
+    // cadence is the one the plan is written with below: a caller who does
+    // not set prices always writes a postpaid plan.
+    const { billingFrequencyForNewClient } = await import("@/lib/visit-invoicing");
+    const billingFrequency = billingFrequencyForNewClient(
+      data.subscription
+        ? planAtSetPrice
+          ? "postpaid"
+          : (data.subscription.billingCadence ?? "postpaid")
+        : null,
+    );
     const { data: cRow, error: cErr } = await supabase
       .from("clients")
       .insert({
@@ -1698,6 +1651,7 @@ export const onboardClient = createServerFn({ method: "POST" })
         account_type: data.accountType,
         primary_email: data.primaryEmail || null,
         primary_phone: data.primaryPhone || null,
+        ...(billingFrequency ? { billing_frequency: billingFrequency } : {}),
       })
       .select("id, portal_token")
       .single();

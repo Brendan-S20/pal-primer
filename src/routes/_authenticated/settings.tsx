@@ -69,6 +69,9 @@ const TAB_GROUPS: TabGroup[] = [
       // things the customer sees, so they sit beside Promotions. The label
       // now matches the page's own heading.
       { label: "Reviews & referrals", to: "/settings/reviews" },
+      // HoundStack's own directory (#630): the owner's opt-in profile, off
+      // by default. Client-facing because what it shows, a pet owner reads.
+      { label: "Directory listing", to: "/settings/directory" },
     ],
   },
   {

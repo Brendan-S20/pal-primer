@@ -12,8 +12,11 @@ const src = readFileSync(join(ROOT, FILE), "utf8");
 
 const SWEEPGO =
   "In Sweep&Go, go to Clients > Residential Clients, open the three dots menu and choose Client List CSV. For commercial clients, go to Clients > Commercial Clients, open the three dots menu and export the client list or the locations list. Sweep&Go's help does not describe a dogs export or a balance export, so use the HoundStack template for those if you need them.";
+// Since #857 the Jobber hint no longer asks the owner to add a frequency
+// column: the Recurring jobs report has none, and each plan comes in paused
+// for the owner to set. The balance comes from the client export itself.
 const JOBBER =
-  "In Jobber, go to Clients > More Actions > Export Clients and choose CSV. Jobber emails the file (up to 1,500 clients per file, admin users only). For recurring services, export Insights > Reports > Recurring jobs report; it has no visit frequency column, so add one. For opening balances, export Insights > Reports > Client Balance Summary. Import clients first, then recurring services, then opening balances.";
+  "In Jobber, go to Clients > More Actions > Export Clients and choose CSV. Jobber emails the file (up to 1,500 clients per file, admin users only). Upload it as it came: the service address, tags, internal notes and account balance all come through. For recurring services, export Insights > Reports > Recurring jobs report; it has no visit frequency column, so each plan comes in paused for you to set how often and turn on. Import clients first, then recurring services.";
 
 describe("import hints name menus the vendors document", () => {
   it("shows the documented Sweep&Go and Jobber paths word for word", () => {
@@ -26,6 +29,8 @@ describe("import hints name menus the vendors document", () => {
       "Settings → Data Export",
       "Customers, Locations, and Pets",
       "Imports & Exports → Export Data",
+      "Admin → Data → Export Clients",
+      "so add one",
     ]) {
       expect(src, `${FILE} still says "${old}"`).not.toContain(old);
     }

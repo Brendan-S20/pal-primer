@@ -27,6 +27,7 @@ export interface SyncCallers {
       note?: string;
       noPhotoReason?: string;
       checkedItems?: string[];
+      blockAcknowledged?: boolean;
     };
   }) => Promise<unknown>;
   skipVisit: (args: {
@@ -119,6 +120,8 @@ async function runOne(action: PendingAction, callers: SyncCallers): Promise<void
           // refusal on replay: not a network error, so it burns attempts and
           // is dead-lettered, and the work the tech did is undone on screen.
           checkedItems: action.checkedItems,
+          // Carried so the timeline says the warning was seen (#851).
+          blockAcknowledged: action.blockAcknowledged,
         },
       });
       return;

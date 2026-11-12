@@ -7,6 +7,8 @@
 // records the payment.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { platformFeeCents } from "@/lib/platform-fee";
+import { withPassThroughFees } from "@/lib/radar-fee";
+import { passedThroughFeeCents } from "@/lib/tap-to-pay";
 import { tipFromMetadata, tipMetadata } from "@/lib/tips";
 
 type MarkPaidArgs = {
@@ -373,7 +375,13 @@ export async function syncInvoicePaymentIntentAmount(invoiceId: string): Promise
           // sites. This one is the sharpest: it exists precisely to shrink a
           // charge after credit is applied, so leaving the fee behind is
           // guaranteed here rather than incidental.
-          application_fee_amount: platformFeeCents(dueCents, inv),
+          // The Stripe costs passed through at create time (Radar, #825; a
+          // tap's fee, #757) are per charge, not per dollar, so they are
+          // kept as they were rather than recomputed or dropped.
+          application_fee_amount: withPassThroughFees(
+            platformFeeCents(dueCents, inv),
+            passedThroughFeeCents(pi.metadata),
+          ),
           // A tip chosen against the OLD amount is dropped with it: the
           // intent is reset to the invoice alone and the payer picks again.
           // Written explicitly because Stripe merges metadata, and a stale

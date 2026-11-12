@@ -1,5 +1,6 @@
 import i18n from "@/lib/i18n";
 import { completeFromOffice, useOfficeCompleteOverride } from "@/components/OfficeCompleteOverride";
+import { useCompletionBlockWarning } from "@/components/CompletionBlockWarning";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
@@ -344,6 +345,9 @@ export function VisitDetailDrawer({
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["visit-detail", visitId] });
     qc.invalidateQueries({ queryKey: ["visits"] });
+    // Completing a visit billed after each visit invoices it (#859).
+    qc.invalidateQueries({ queryKey: ["visit-invoicing", visitId] });
+    qc.invalidateQueries({ queryKey: ["invoices"] });
   };
 
   // Pinned to its tech: auto-routing never moves it to someone else, even on
@@ -365,12 +369,17 @@ export function VisitDetailDrawer({
 
   // No photo or checklist: the office says why, or the visit stays open (#658).
   const { askWhy, dialog: overrideDialog } = useOfficeCompleteOverride();
+  // A client the owner's BLOCK rule holds: say why first, never refuse (#851).
+  const completionBlock = useCompletionBlockWarning();
   const completeMut = useMutation({
     mutationFn: (confirmedEarly: boolean) =>
       completeFromOffice(
-        (overrideReason) =>
-          doComplete({ data: { visitId: visitId!, confirmedEarly, overrideReason } }),
+        (overrideReason, blockAcknowledged) =>
+          doComplete({
+            data: { visitId: visitId!, confirmedEarly, overrideReason, blockAcknowledged },
+          }),
         askWhy,
+        () => completionBlock.check(visitId!),
       ),
     onSuccess: (done) => {
       if (!done) return;
@@ -435,6 +444,7 @@ export function VisitDetailDrawer({
     <Sheet open={open} onOpenChange={onOpenChange}>
       {earlyDialog}
       {overrideDialog}
+      {completionBlock.dialog}
       {/* Safe area, top and bottom. Measured on an iPhone 17 Pro 2026-08-25:
           Close occupied y 8-52 and the title y 24-52 against a 54pt status
           bar, so the clock printed through the client name and the battery

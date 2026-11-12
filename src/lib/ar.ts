@@ -1,4 +1,5 @@
 import { DEFAULT_ORG_TIMEZONE, daysBetweenOrgDays, orgLocalDay, orgToday } from "@/lib/org-day";
+import { voidedAfterRefund } from "@/lib/refund-outcome";
 // Shared accounts-receivable math — the ONE authoritative computation behind
 // the Dashboard "AR open"/overdue cards, the Reports "Outstanding" + aging
 // figures, the Invoices index "Outstanding" stat, and the Clients list
@@ -277,15 +278,19 @@ export function arPositionAsOf(
 
 /** The day an invoice counts as billed revenue, or null if it never does.
  *
- *  Voids and drafts were never billed to anyone. An invoice with no issue date
- *  has not been issued yet. Everything else is dated by when it WAS issued —
- *  including one settled entirely from account credit, which is billed revenue
- *  that simply never produced a bank deposit. */
+ *  Voids and drafts were never billed to anyone, except a void after a full
+ *  refund (#674), which was billed, paid and refunded and keeps its day. An
+ *  invoice with no issue date has not been issued yet. Everything else is
+ *  dated by when it WAS issued — including one settled entirely from account
+ *  credit, which is billed revenue that simply never produced a bank deposit. */
 export function billedDay(
-  inv: Pick<LedgerInvoice, "status" | "issued_at" | "deposit_for_invoice_id">,
+  inv: Pick<LedgerInvoice, "status" | "issued_at" | "deposit_for_invoice_id" | "paid_at">,
   tz: string = DEFAULT_ORG_TIMEZONE,
 ): string | null {
-  if (inv.status === "void" || inv.status === "draft") return null;
+  // A void after a full refund (#674) was billed, paid and refunded; the
+  // refund is its own dated contra line, so the sale stays where it was.
+  if (inv.status === "void" && !voidedAfterRefund(inv)) return null;
+  if (inv.status === "draft") return null;
   // A linked stay deposit bills nothing: the stay invoice it is part of is the
   // sale, and billing both counted the deposit twice (F-19).
   if (isLinkedDeposit(inv)) return null;

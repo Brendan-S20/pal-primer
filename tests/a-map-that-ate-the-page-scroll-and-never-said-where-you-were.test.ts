@@ -445,6 +445,9 @@ describe("you are here is not a stop on somebody's route", () => {
     expect(inLocate).not.toMatch(/layerRef/);
     // And the auto-fit does not fling the viewport back off your position the
     // moment the same day refetches.
-    expect(src).toMatch(/!suppressFitRef\.current/);
+    // (#773 moved the rule into nextFit, which
+    // tests/todays-map-opens-on-todays-stops.test.ts exercises directly.)
+    expect(inLocate).toMatch(/located: true/);
+    expect(src).toMatch(/nextFit\(fitMemoryRef\.current, pointsKey/);
   });
 });

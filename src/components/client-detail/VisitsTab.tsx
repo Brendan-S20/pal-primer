@@ -1,5 +1,6 @@
 import i18n from "@/lib/i18n";
 import { completeFromOffice, useOfficeCompleteOverride } from "@/components/OfficeCompleteOverride";
+import { useCompletionBlockWarning } from "@/components/CompletionBlockWarning";
 import { warnLessonClashes } from "@/components/training/lessonClashWarning";
 // Visits tab (spec): scheduled window and actual timing are separate,
 // clearly labeled things. Missing timestamps say so instead of blurring
@@ -48,6 +49,7 @@ import {
   nowAsCalledAt,
 } from "@/components/training/ClientCalledAtField";
 import { orgToday } from "@/lib/org-day";
+import { markVisitCompletedInClientHistory } from "@/lib/client-visit-history-cache";
 import { toastSaveError } from "@/lib/stale-write-toast";
 import { visitBookedCents } from "@/lib/booked-value";
 import { visitServiceLabel } from "@/lib/subscription-form";
@@ -829,12 +831,12 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 // so the span-based StatusChip does not fit).
 const CHIP_TONES: Record<string, string> = {
   scheduled: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
-  in_progress: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  in_progress: "bg-amber-500/15 text-amber-800 dark:text-amber-400",
   completed: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
   missed: "bg-orange-500/15 text-orange-700 dark:text-orange-400",
   [NEVER_ON_A_ROUTE]: "bg-muted text-muted-foreground",
   skipped: "bg-muted text-muted-foreground",
-  canceled: "bg-destructive/15 text-destructive",
+  canceled: "bg-destructive/10 text-destructive",
 };
 
 /** Local YYYY-MM-DD key for a Date (no UTC parsing pitfalls). */
@@ -1095,19 +1097,30 @@ function VisitDetailDrawer({
     setNewStaffId("");
     qc.invalidateQueries({ queryKey: ["client-visit-history", clientId] });
     qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
+    // Completing a visit billed after each visit invoices it (#859).
+    qc.invalidateQueries({ queryKey: ["invoices"] });
     onClose();
   };
 
   // No photo or checklist: the office says why, or the visit stays open (#658).
   const { askWhy, dialog: overrideDialog } = useOfficeCompleteOverride();
+  // A client the owner's BLOCK rule holds: say why first, never refuse (#851).
+  const completionBlock = useCompletionBlockWarning();
   const completeMut = useMutation({
     mutationFn: (confirmedEarly: boolean) =>
       completeFromOffice(
-        (overrideReason) => completeFn({ data: { visitId: v.id, confirmedEarly, overrideReason } }),
+        (overrideReason, blockAcknowledged) =>
+          completeFn({
+            data: { visitId: v.id, confirmedEarly, overrideReason, blockAcknowledged },
+          }),
         askWhy,
+        () => completionBlock.check(v.id),
       ),
     onSuccess: (done) => {
-      if (done) afterAction("Visit marked completed");
+      if (!done) return;
+      // The row says what the toast says, now, not after the refetch (#789).
+      markVisitCompletedInClientHistory(qc, clientId, v.id);
+      afterAction("Visit marked completed");
     },
     onError: (e) => toast.error((e as Error).message),
   });
@@ -1261,6 +1274,7 @@ function VisitDetailDrawer({
 
         {confirmDialog}
         {overrideDialog}
+        {completionBlock.dialog}
 
         {((canCorrect && canComplete) || (canSchedule && canReschedule)) && (
           <div className="space-y-3 rounded-md border bg-muted/20 p-3">

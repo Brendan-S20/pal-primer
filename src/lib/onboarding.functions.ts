@@ -142,7 +142,7 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
     (supabase as any)
       .from("organizations")
       .select(
-        "contact_address, stripe_connect_charges_enabled, onboarding_dismissed_at, email_verified_at",
+        "contact_address, stripe_connect_charges_enabled, onboarding_dismissed_at, email_verified_at, std_base_price_cents",
       )
       .eq("id", orgId)
       .single(),
@@ -175,7 +175,14 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
           .eq("active", true),
       ])
     : [{ count: 0 }, { count: 0 }];
-  const areaDone = (zones.count ?? 0) > 0;
+  // #861: the pet-waste price is answered by a zone OR by the standard price
+  // on Settings, Business defaults, which every quote falls back to when no
+  // zone has a price (pricingChoices). An owner who saved $20 there read
+  // "Next: Your service area and price" for the rest of setup, after a client
+  // and a completed visit, because only a zone row counted.
+  const standardPriced =
+    ((org.data as { std_base_price_cents?: number | null } | null)?.std_base_price_cents ?? 0) > 0;
+  const areaDone = (zones.count ?? 0) > 0 || standardPriced;
   const training = runsTraining
     ? { done: (pricedPackages.count ?? 0) > 0 && (skills.count ?? 0) > 0 }
     : undefined;

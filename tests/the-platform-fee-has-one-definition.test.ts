@@ -171,11 +171,13 @@ const CHARGING_FILES = [
   "src/lib/invoices.functions.ts",
   "src/lib/signup.functions.ts",
   "src/routes/api/public/hooks/nightly.ts",
+  // Tap to Pay on the phone (#579): the card_present intent.
+  "src/lib/tap-to-pay.server.ts",
 ];
 
 /** `paymentIntents.create(` occurrences, and whether the fee is within reach. */
-function chargeSites(src: string): Array<{ at: number; hasFee: boolean }> {
-  const out: Array<{ at: number; hasFee: boolean }> = [];
+function chargeSites(src: string): Array<{ at: number; hasFee: boolean; hasRadar: boolean }> {
+  const out: Array<{ at: number; hasFee: boolean; hasRadar: boolean }> = [];
   const re = /paymentIntents\.create\(/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(src))) {
@@ -183,8 +185,19 @@ function chargeSites(src: string): Array<{ at: number; hasFee: boolean }> {
     // just above — three call sites use the spread form so that a card-only
     // retry after a bank-debit failure cannot drift from the first attempt.
     // Looking back as well as forward covers both without parsing TypeScript.
-    const window = src.slice(Math.max(0, m.index - 900), m.index + 900);
-    out.push({ at: m.index, hasFee: /application_fee_amount:\s*platformFeeCents\(/.test(window) });
+    //
+    // The fee may be wrapped in withPassThroughFees (#825), which adds the
+    // Radar fee Stripe bills the platform for the business's charge. The
+    // window reaches further back than it once did because the tap site
+    // explains, above its create call, why its Radar fee is zero.
+    const window = src.slice(Math.max(0, m.index - 1400), m.index + 900);
+    out.push({
+      at: m.index,
+      hasFee: /application_fee_amount:\s*(?:withPassThroughFees\(\s*)?platformFeeCents\(/.test(
+        window,
+      ),
+      hasRadar: /application_fee_amount:\s*withPassThroughFees\(/.test(window),
+    });
   }
   return out;
 }
@@ -192,11 +205,11 @@ function chargeSites(src: string): Array<{ at: number; hasFee: boolean }> {
 describe("no charge escapes the fee", () => {
   const found = CHARGING_FILES.map((f) => ({ file: f, src: readFileSync(f, "utf8") }));
 
-  it("still finds all ten charge sites", () => {
+  it("still finds all eleven charge sites", () => {
     // If this number drops, either a payment path was deleted or a filename in
     // CHARGING_FILES went stale and the assertions below stopped measuring it.
     const total = found.reduce((n, f) => n + chargeSites(f.src).length, 0);
-    expect(total).toBe(10);
+    expect(total).toBe(11);
   });
 
   for (const f of found) {
@@ -210,6 +223,22 @@ describe("no charge escapes the fee", () => {
           `application_fee_amount: platformFeeCents(...). That charge collects nothing ` +
           `for the platform, and nothing anywhere will report it — the money simply ` +
           `does not arrive. Use the helper in @/lib/platform-fee.`,
+      ).toBe(0);
+    });
+  }
+
+  for (const f of found) {
+    it(`${f.file} passes Stripe's Radar fee through at every charge (#825)`, () => {
+      // Brendan, 2026-11-10: "Pass Radar fees to each business, like the tap
+      // fee". A charge site that sets the platform fee but not the Radar
+      // pass-through leaves the platform paying the business's screening,
+      // and while the platform fee is zero nothing else would show it.
+      const missing = chargeSites(f.src).filter((s) => !s.hasRadar).length;
+      expect(
+        missing,
+        `${f.file} builds ${missing} PaymentIntent(s) whose application fee does not go ` +
+          `through withPassThroughFees(...) from @/lib/radar-fee. Stripe bills Radar for ` +
+          `that charge to the platform under application_express.`,
       ).toBe(0);
     });
   }
@@ -238,7 +267,8 @@ describe("no charge escapes the fee", () => {
         ...f.src.matchAll(
           // An optional second argument, the invoice: the fee is not taken on
           // its sales tax (20260929110000).
-          /amount:\s*([\w.]+),\s*\n\s*application_fee_amount:\s*platformFeeCents\((\w+)(?:, \w+)?\)/g,
+          // The fee may be wrapped in withPassThroughFees (#825).
+          /amount:\s*([\w.]+),\s*\n\s*application_fee_amount:\s*(?:withPassThroughFees\(\s*)?platformFeeCents\((\w+)(?:, \w+)?\)/g,
         ),
       ];
       expect(pairs.length, `${f.file} has no amount/fee pair to check`).toBeGreaterThan(0);

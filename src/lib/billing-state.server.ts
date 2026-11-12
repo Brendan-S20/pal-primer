@@ -26,6 +26,7 @@ export function subscriptionPeriodEnd(sub: unknown): number | null {
 }
 
 import { teamSizeRange } from "@/lib/team-size";
+import { trialStateFor, type TrialPhase } from "@/lib/trial";
 
 const withMax = (p: PlanRow) => ({ ...p, max_team_size: p.max_team_size ?? null });
 
@@ -57,6 +58,8 @@ type OrgRow = {
   current_period_end: string | null;
   suspended_at: string | null;
   grace_expires_at: string | null;
+  trial_ends_at?: string | null;
+  created_at?: string | null;
 };
 
 export type BillingState = {
@@ -71,6 +74,13 @@ export type BillingState = {
   planName: string;
   planSlug: string | null;
   billingStatus: "free" | "trialing" | "active" | "past_due" | "grace" | "canceled" | "suspended";
+  /**
+   * The trial phase from trialStateFor, the same derivation the account lock
+   * uses. `billingStatus` stays "trialing" after trial_ends_at passes (that is
+   * plan_status, and it is left alone by design), so a screen that needs to
+   * know whether the trial is still running reads this, not the status (#848).
+   */
+  trialPhase: TrialPhase;
   isPaidTier: boolean;
   priceCents: number | null;
   pricePerClientCents: number | null;
@@ -134,7 +144,7 @@ export async function getOrgBillingState(
     supabase
       .from("organizations")
       .select(
-        "id, name, active_client_count, billing_status, plan_status, plan_id, stripe_customer_id, stripe_subscription_id, current_period_end, suspended_at, grace_expires_at",
+        "id, name, active_client_count, billing_status, plan_status, plan_id, stripe_customer_id, stripe_subscription_id, current_period_end, suspended_at, grace_expires_at, trial_ends_at, created_at",
       )
       .eq("id", orgId)
       .single(),
@@ -161,7 +171,7 @@ export async function getBulkOrgBillingState(
       let q = supabase
         .from("organizations")
         .select(
-          "id, name, active_client_count, billing_status, plan_status, plan_id, stripe_customer_id, stripe_subscription_id, current_period_end, suspended_at, grace_expires_at",
+          "id, name, active_client_count, billing_status, plan_status, plan_id, stripe_customer_id, stripe_subscription_id, current_period_end, suspended_at, grace_expires_at, trial_ends_at, created_at",
         );
       if (orgIds) q = q.in("id", orgIds);
       return q;
@@ -224,6 +234,13 @@ function buildBillingState(o: OrgRow, plans: PlanRow[]): BillingState {
     planName: displayPlan?.name ?? "Free",
     planSlug: displayPlan?.slug ?? null,
     billingStatus: status,
+    trialPhase: trialStateFor({
+      planStatus: o.plan_status,
+      billingStatus: o.billing_status,
+      trialEndsAt: o.trial_ends_at ?? null,
+      hasSubscription: !!o.stripe_subscription_id,
+      createdAt: o.created_at ?? null,
+    }).phase,
     isPaidTier,
     priceCents,
     pricePerClientCents: perClientCents,
