@@ -12,8 +12,11 @@ import {
   TARGET_FIELDS_BY_ENTITY,
   autoMap,
   detectImportSource,
+  IMPORT_SOURCE_LABELS,
+  isVerifiedSource,
   type ImportEntity,
 } from "@/lib/imports.functions";
+import { leftoverColumns } from "@/lib/import-leftovers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/format";
@@ -27,23 +30,19 @@ export const Route = createFileRoute("/_authenticated/imports/")({
   component: ImportsPage,
 });
 
-const SOURCE_LABELS: Record<string, string> = {
-  generic_csv: "Generic CSV",
-  sweepgo: "Sweep&Go",
-  jobber: "Jobber",
-  housecall_pro: "Housecall Pro",
-  time_to_pet: "Time To Pet",
-  gorilla_desk: "GorillaDesk",
-  quoteiq_family: "QuoteIQ / Flowcarve / DoTimely",
-};
+const SOURCE_LABELS: Record<string, string> = IMPORT_SOURCE_LABELS;
 
+// Where each vendor's export lives, in the vendor's own words. Upload the
+// file as it came: nothing needs renaming, splitting or adding (#857).
 const SOURCE_HINTS: Record<string, string> = {
   sweepgo: "In Sweep&Go, go to Clients > Residential Clients, open the three dots menu and choose Client List CSV. For commercial clients, go to Clients > Commercial Clients, open the three dots menu and export the client list or the locations list. Sweep&Go's help does not describe a dogs export or a balance export, so use the HoundStack template for those if you need them.",
-  jobber: "In Jobber, go to Clients > More Actions > Export Clients and choose CSV. Jobber emails the file (up to 1,500 clients per file, admin users only). For recurring services, export Insights > Reports > Recurring jobs report; it has no visit frequency column, so add one. For opening balances, export Insights > Reports > Client Balance Summary. Import clients first, then recurring services, then opening balances.",
-  housecall_pro: "Housecall Pro Customers CSV uses separate First Name / Last Name columns. We'll combine them automatically.",
-  time_to_pet: "Time To Pet → Admin → Data → Export Clients / Pets. Pets link back to a Client ID.",
-  gorilla_desk: "GorillaDesk → Reports → Customers → Export CSV. Import Customers first, then Locations, then Pets.",
+  jobber: "In Jobber, go to Clients > More Actions > Export Clients and choose CSV. Jobber emails the file (up to 1,500 clients per file, admin users only). Upload it as it came: the service address, tags, internal notes and account balance all come through. For recurring services, export Insights > Reports > Recurring jobs report; it has no visit frequency column, so each plan comes in paused for you to set how often and turn on. Import clients first, then recurring services.",
+  housecall_pro: "In Housecall Pro, go to Customers > Actions > Export; the CSV is emailed to an admin. HoundStack has not seen a real Housecall Pro file yet, so check every column below before you preview.",
+  time_to_pet: "In Time To Pet, open the Client List and choose Export Client Data (one Full Name column, with Address, City, State and Zip Code). For pets, choose Export Pet Data and tick the client fields so each pet names its owner. Import clients first, then pets.",
+  gorilla_desk: "In GorillaDesk, open the Customers tab and choose Action > Export. HoundStack has not seen a real GorillaDesk file yet, so check every column below before you preview.",
   quoteiq_family: "QuoteIQ, Flowcarve, and DoTimely share a similar shape, so the generic mapping usually works.",
+  gingr: "In Gingr, go to Owners and Pets > View All Owners and choose Export to CSV. Pets named in the Animals column become that owner's pets. HoundStack has not seen a real Gingr file yet, so check every column below before you preview.",
+  moego: "In MoeGo, go to Client & Pets > Options > Export Clients. Pets named on a client's row become that client's pets. HoundStack has not seen a real MoeGo file yet, so check every column below before you preview.",
   generic_csv: "",
 };
 
@@ -58,7 +57,7 @@ const ENTITY_LABELS: Record<ImportEntity, string> = {
 const ENTITY_HINTS: Partial<Record<ImportEntity, string>> = {
   dogs: "One row per dog. Import clients first; each dog is matched to a client by ID, or by the client's email, phone or exact name if the file has no ID, and goes on that client's first address.",
   services:
-    "One row per plan. Import clients first; each plan is matched to a client by ID, or by exact name if the file has no ID, and goes on that client's first address. Visits are scheduled as soon as you commit.",
+    "One row per plan. Import clients first; each plan is matched to a client by ID, by email, or by exact name if the file has neither, and goes on that client's first address. Every imported plan starts paused: turn each one on from the client's page when you are ready, and its visits are scheduled then.",
   balances:
     "One row per amount owed. Each becomes an open invoice marked as an opening balance. Nothing is emailed; imported clients stay on a communications hold until you contact them.",
 };
@@ -89,6 +88,11 @@ const FIELD_LABELS: Record<string, string> = {
   client_phone: "Client phone",
   notes: "Notes",
   tags: "Tags",
+  archived: "Archived or inactive",
+  do_not_text: "Do not text",
+  pets: "Pets (names in one column)",
+  balance: "Amount owed (opening balance)",
+  company: "Company name",
   street: "Street",
   city: "City",
   region: "State",
@@ -188,6 +192,53 @@ function downloadTemplate(source: string, entity: ImportEntity) {
   URL.revokeObjectURL(url);
 }
 
+/** The columns no field reads, named before the preview (#857). Each row's
+ *  values in them are kept on the record as raw data and summarized in its
+ *  notes, so the owner sees what will not be a field rather than finding
+ *  out later that it was dropped. */
+function KeptColumns({
+  entity,
+  mapping,
+  headers,
+}: {
+  entity: ImportEntity;
+  mapping: Record<string, string | null>;
+  headers: string[];
+}) {
+  const kept = leftoverColumns(entity, mapping, headers);
+  if (!kept.length) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Every column is matched to a field. Nothing is left over.
+      </p>
+    );
+  }
+  const where =
+    entity === "clients"
+      ? "stored on each client as raw data and summarized in its notes"
+      : entity === "services"
+        ? "added as an office note on the client"
+        : "added to the record's notes";
+  return (
+    <div className="rounded-md border bg-muted/30 p-3 text-xs">
+      <p className="font-medium">
+        {kept.length} column{kept.length === 1 ? "" : "s"} kept, not matched to a field
+      </p>
+      <p className="mt-1 text-muted-foreground">
+        Nothing is dropped: each row&apos;s values in these columns are {where}. To use one as a
+        field instead, pick it above.
+      </p>
+      <ul className="mt-2 flex flex-wrap gap-1.5">
+        {kept.map((h) => (
+          <li key={h} className="rounded border bg-background px-2 py-0.5 font-mono">
+            {h}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function ImportStatusBadge({ status }: { status: string }) {
   const cls: Record<string, string> = {
     committed: "border-transparent bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-400",
@@ -215,9 +266,11 @@ function ImportsPage() {
       <div>
         <h1 className="text-2xl font-semibold">Import data</h1>
         <p className="text-sm text-muted-foreground">
-          Migrate clients from Sweep&amp;Go, Jobber, Housecall Pro, or any CSV. Nothing is written
-          until you review a dry-run preview. Imported clients won't receive automated messages
-          until you resume communications or reach out first.
+          Upload the export your old software made, as it came: Jobber, Time To Pet, Sweep&amp;Go,
+          Housecall Pro, Gingr, MoeGo or any CSV. Every column is either matched to a field or kept
+          on the client as a note; nothing is dropped. Nothing is written until you review a
+          dry-run preview, imported plans start paused, and imported clients won't receive
+          automated messages until you resume communications or reach out first.
         </p>
       </div>
 
@@ -446,6 +499,16 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
             <span className="font-medium text-foreground">{headers.length}</span> columns. Match each
             target field to a column (auto-mapped from the {SOURCE_LABELS[source]} preset).
           </div>
+          {!isVerifiedSource(source) && (
+            <div
+              role="status"
+              className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300"
+            >
+              HoundStack has not seen a real {SOURCE_LABELS[source]} export yet, so this mapping is
+              a best guess from its column names. Check every field below before you preview;
+              every column is still shown on the preview before anything is saved.
+            </div>
+          )}
           <div className="grid gap-3 sm:grid-cols-2">
             {targetFields.map((field) => (
               <label key={field} className="space-y-1 text-sm">
@@ -468,6 +531,7 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
               </label>
             ))}
           </div>
+          <KeptColumns entity={entity} mapping={mapping} headers={headers} />
           <div className="flex justify-end">
             <Button onClick={runPreview} disabled={busy}>
               {busy ? "Analyzing…" : "Dry-run preview"}

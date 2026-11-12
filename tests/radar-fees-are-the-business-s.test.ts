@@ -262,12 +262,16 @@ describe("refunds and disputes keep it", () => {
     expect(feeReversalCents(base!, 10_000, 2_500)).toBe(13);
   });
 
-  it("reverses nothing when the metadata cannot be read", async () => {
+  it("never hands a Radar fee back when the metadata cannot be read (#826)", async () => {
     const read = await readChargeMetadata(null, "pi_1", async () => {
       throw new Error("Stripe unavailable");
     });
     expect(read.readable).toBe(false);
-    expect(reversibleFeeBaseCents(5, read)).toBeNull();
+    // The unreadable path holds back TAP_TO_PAY_FEE_CENTS, which covers a
+    // Radar fee because a charge carries one or the other, never both.
+    expect(reversibleFeeBaseCents(5, read)).toBe(0);
+    expect(reversibleFeeBaseCents(55, read)).toBe(55 - TAP_TO_PAY_FEE_CENTS);
+    expect(RADAR_SCREENING_FEE_CENTS).toBeLessThanOrEqual(TAP_TO_PAY_FEE_CENTS);
   });
 
   it("treats a charge from before #825 as carrying no Radar fee", () => {

@@ -87,9 +87,12 @@ card (needs the production URL); and the phone items.
       commit banner mentions the comms hold → clients list shows "Comms
       paused" chips → bulk Resume communications.
       *Machine:* `an-import-brings-plans-and-balances` drives the import screen
-      with a services file and a balances file and checks the plans, visits
-      and opening-balance invoices in Postgres. *Person:* the real Jobber
-      export, the auto-detect, and the comms hold.
+      with a services file and a balances file and checks the plans (paused,
+      with no visits until the owner turns them on, #857) and opening-balance
+      invoices in Postgres; `an-import-comes-in-as-it-was-exported` previews
+      and commits the Jobber, Time To Pet and Gingr fixtures. *Person:* the
+      real Jobber export, the auto-detect, the kept-columns panel, and the
+      comms hold.
 - [ ] Bulk bars everywhere: Clients (export/archive — archive hidden for
       dispatcher), Invoices (send/mark-paid confirm/void/export; switch
       filters and confirm selection clears), Leads, client Visits, Concerns,
