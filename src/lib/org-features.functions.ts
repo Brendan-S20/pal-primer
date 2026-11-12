@@ -211,7 +211,7 @@ async function ensureDefaultServicesForLines(
 
   const { data: existing, error: readError } = await supabase
     .from("services")
-    .select("name")
+    .select("name, service_line")
     .eq("organization_id", orgId);
   if (readError) throw new Error(readError.message);
 
@@ -220,8 +220,15 @@ async function ensureDefaultServicesForLines(
       .map((s) => s.name?.trim().toLowerCase())
       .filter(Boolean) as string[],
   );
+  // Match the database's ensure_default_services: an owner may have renamed
+  // the default to "Weekly scoop". Keep that row, including its saved prices
+  // and active state, rather than adding a second pet-waste service.
+  const hasPetWaste = (existing ?? []).some(
+    (s: { service_line: string }) => s.service_line === "pet_waste",
+  );
 
   for (const seed of seeds) {
+    if (seed.service_line === "pet_waste" && hasPetWaste) continue;
     const key = seed.name.trim().toLowerCase();
     if (have.has(key)) continue;
     const { error } = await supabase.from("services").insert({
