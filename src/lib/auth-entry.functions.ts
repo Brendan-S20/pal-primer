@@ -146,6 +146,22 @@ export const settleSignupMarker = createServerFn({ method: "POST" })
     return { cleared: true };
   });
 
+/**
+ * Give up the caller's own membership of the business that turned them off
+ * (#765), so the address can start a business of its own or join another.
+ * As the caller, never the service role: the database function acts only for
+ * auth.uid(), refuses anybody who is on, and keeps their staff row and its
+ * history. Says nothing about the business beyond what /access-off already
+ * showed them.
+ */
+export const leaveBusinessIWasTurnedOffIn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { error } = await (context.supabase as any).rpc("leave_business_i_was_turned_off_in");
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 // Mint a verification token and queue the email (same Resend queue the auth
 // emails ride). Callable again to re-send.
 export const sendEmailVerification = createServerFn({ method: "POST" })

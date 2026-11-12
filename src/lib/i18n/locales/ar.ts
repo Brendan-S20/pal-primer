@@ -1420,6 +1420,12 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     checkAgain: "تحقق مرة أخرى",
     couldNotCheck: "تعذّر التحقق الآن. حاول مرة أخرى بعد قليل.",
     stillOff: "لا يزال الوصول متوقفًا. اطلب من المالك إعادة تفعيلك.",
+    startOwn: "ابدأ عملي الخاص",
+    startOwnExplain: "سيؤدي هذا إلى خروجك من <business/> نهائيًا، لتتمكن من بدء عملك الخاص أو الانضمام إلى عمل آخر بهذا البريد الإلكتروني. تبقى سجلاتهم لديهم. للعودة لاحقًا، يجب أن يدعوك المالك مرة أخرى.",
+    startOwnConfirm: "اخرج وابدأ عملي الخاص",
+    startOwnCancel: "استمر في الانتظار",
+    startOwnBusy: "جارٍ الخروج…",
+    startOwnFailed: "تعذّر ذلك الآن. حاول مرة أخرى بعد قليل.",
   },
   staySummary: {
     title: "ملخصات الإقامات",
