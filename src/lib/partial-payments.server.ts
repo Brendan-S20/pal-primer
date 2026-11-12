@@ -13,6 +13,7 @@ import type { LedgerInvoice } from "@/lib/ar";
 
 // The same loose client shape invoice-labels.ts takes: callers hold either
 // the RLS-bound client or the admin one.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = { from: (table: string) => any };
 
 export async function attachDatedPartialPayments<T extends LedgerInvoice & { id: string }>(
@@ -24,7 +25,7 @@ export async function attachDatedPartialPayments<T extends LedgerInvoice & { id:
     .from("payments")
     .select("invoice_id")
     .eq("organization_id", orgId)
-    .eq("status", "succeeded")
+    .in("status", ["succeeded", "refunded"])
     .eq("raw_event->>partial", "true");
   if (error) throw new Error(error.message);
   // A stay invoice is paid in parts whenever its deposit is paid (D3, #653):
@@ -53,19 +54,30 @@ export async function attachDatedPartialPayments<T extends LedgerInvoice & { id:
   for (let i = 0; i < ids.length; i += 200) {
     const { data, error: pErr } = await supabase
       .from("payments")
-      .select("invoice_id, amount_cents, paid_at, created_at")
+      .select("invoice_id, status, amount_cents, refunded_cents, paid_at, created_at")
       .eq("organization_id", orgId)
-      .eq("status", "succeeded")
+      .in("status", ["succeeded", "refunded"])
       .in("invoice_id", ids.slice(i, i + 200));
     if (pErr) throw new Error(pErr.message);
     for (const p of (data ?? []) as Array<{
       invoice_id: string;
+      status: string;
       amount_cents: number | null;
+      refunded_cents: number | null;
       paid_at: string | null;
       created_at: string | null;
     }>) {
       const list = byInvoice.get(p.invoice_id) ?? [];
-      list.push({ amount_cents: p.amount_cents, paid_at: p.paid_at ?? p.created_at });
+      // Match invoice_paid_cents: a legacy refund with no amount recorded
+      // reversed the whole payment. Otherwise count only what was kept.
+      const refunded = p.refunded_cents ?? 0;
+      const kept =
+        p.status === "refunded"
+          ? refunded > 0
+            ? Math.max((p.amount_cents ?? 0) - refunded, 0)
+            : 0
+          : (p.amount_cents ?? 0);
+      list.push({ amount_cents: kept, paid_at: p.paid_at ?? p.created_at });
       byInvoice.set(p.invoice_id, list);
     }
   }

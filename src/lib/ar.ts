@@ -172,8 +172,8 @@ export type LedgerInvoice = ArInvoice & {
    *  Optional: absent, the live column is used, which is exactly right when the
    *  day being asked about IS today. */
   creditAppliedAsOf?: number | null;
-  /** This invoice's succeeded payments, dated, so a partial payment counts
-   *  from the day it arrived and not before. Same reason as
+  /** Amounts kept from this invoice's payments, dated, so a partial payment
+   *  counts from the day it arrived and not before. Same reason as
    *  `creditAppliedAsOf`: `amount_paid_cents` is live and undated.
    *
    *  Absent, an OPEN invoice uses the live column (right when the day asked
