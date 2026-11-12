@@ -87,15 +87,28 @@ const NEVER = [
 ];
 
 describe("the migration", () => {
-  it("is file-only, after every migration on main and the ones open PRs hold", () => {
+  it("is file-only, holds its own version, and nothing after it redefines what it owns", () => {
     expect(existsSync(MIGRATION)).toBe(true);
-    const stamps = readdirSync(join(ROOT, "supabase/migrations"))
+    const files = readdirSync(join(ROOT, "supabase/migrations"))
       .filter((f) => f.endsWith(".sql"))
-      .map((f) => f.slice(0, 14))
       .sort();
-    expect(stamps.at(-1)).toBe(STAMP);
-    // #888 holds 20261111150000, #870 20261111151000, #905 20261112010000.
+    // The version was assigned (20261112020000) and stays: no other file
+    // holds it. #891's 20261112050000 merged to main after it was written,
+    // so it is no longer the newest file and is not pinned to be.
+    expect(files.filter((f) => f.startsWith(STAMP))).toEqual([
+      `${STAMP}_a-directory-search-needs-no-service-role.sql`,
+    ]);
+    // After the reserved series: #888 20261111150000, #870 20261111151000,
+    // #905 20261112010000.
     expect(STAMP > "20261112010000").toBe(true);
+    // A later file that replaced the search, the verdict or the view would
+    // undo this one on replay; none may without saying so here.
+    for (const f of files.filter((f) => f.slice(0, 14) > STAMP)) {
+      const later = codeOnly(readFileSync(join(ROOT, "supabase/migrations", f), "utf8"));
+      expect(later, f).not.toMatch(
+        /(FUNCTION|VIEW)\s+public\.(directory_search|directory_zone_verdict|directory_public_listings|directory_public_rows)\b/,
+      );
+    }
     expect(readFileSync(MIGRATION, "utf8")).toMatch(/PROPOSED MIGRATION\. File only/);
     expect(read(`supabase/proofs/${STAMP}-a-directory-search-needs-no-service-role.sql`)).toMatch(
       /\\ir \.\.\/\.\.\/tests\/sql\/a-directory-search-needs-no-service-role\.proof\.sql/,
