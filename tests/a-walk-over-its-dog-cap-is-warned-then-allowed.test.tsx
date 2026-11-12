@@ -8,7 +8,7 @@
 //   * bulk assignment and Cover show the same warning (and so do drag on the
 //     board, the visit drawer and the Group walks panel).
 // The database half (refused unless confirmed, recorded when confirmed) is
-// supabase/proofs/20261111130000-... and
+// supabase/proofs/20261111160000-... and
 // tests/integration/a-walk-over-its-dog-cap-is-warned-then-allowed.db.test.ts.
 
 import { readFileSync } from "node:fs";

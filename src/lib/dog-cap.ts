@@ -3,7 +3,7 @@
 // Brendan, 2026-11-10 2:24 PM ET: "Warn but allow going over the dog cap".
 // The database refuses any write that would put a group walk over its
 // walker's staff.max_dogs_per_walk unless the person confirmed it
-// (20261111130000, walk_dog_cap_guard). Every path that assigns work
+// (20261111160000, walk_dog_cap_guard). Every path that assigns work
 // (the Group walks panel, drag on the board, the visit drawer, bulk assign
 // and Cover) turns that refusal into this warning, shows it, and on "Assign
 // anyway" sends the same write again with the confirmation header, which the

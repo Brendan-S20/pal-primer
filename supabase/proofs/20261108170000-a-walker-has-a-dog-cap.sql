@@ -16,9 +16,9 @@
 --   1. staff.max_dogs_per_walk is NULL for a person nobody set it on;
 --   2. a walk joining Ann's group is refused once it would take her past
 --      three dogs, even though the service allows six, and the refusal gives
---      the numbers (since 20261111130000 in the owner's sentence, "This walk
+--      the numbers (since 20261111160000 in the owner's sentence, "This walk
 --      will have 5 dogs; the cap is 3.", and only when not confirmed: the
---      confirmed path is supabase/proofs/20261111130000-...);
+--      confirmed path is supabase/proofs/20261111160000-...);
 --   3. giving a group with four dogs to Ann is refused; to Bo it is not;
 --   4. lowering Ann's cap below a group she already has neither fails nor
 --      changes that group;

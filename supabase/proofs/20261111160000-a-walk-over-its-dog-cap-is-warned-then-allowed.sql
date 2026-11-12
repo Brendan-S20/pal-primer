@@ -1,11 +1,11 @@
--- Proof for 20261111130000 — a walk over its dog cap is warned, then allowed (#731).
+-- Proof for 20261111160000 — a walk over its dog cap is warned, then allowed (#731).
 --
 -- Brendan, 2026-11-10 2:24 PM ET: "Warn but allow going over the dog cap".
 -- Run by the database job in .github/workflows/sandboxes.yml against the
 -- database it has just replayed from every migration. Locally:
 --   supabase db reset
 --   psql "postgresql://postgres:postgres@127.0.0.1:54422/postgres" -v ON_ERROR_STOP=1 \
---     -f supabase/proofs/20261111130000-a-walk-over-its-dog-cap-is-warned-then-allowed.sql
+--     -f supabase/proofs/20261111160000-a-walk-over-its-dog-cap-is-warned-then-allowed.sql
 --
 -- One business that walks dogs; Ann, capped at three dogs at once; Bo, with no
 -- cap. Proves, through the same functions the app's buttons call:
@@ -112,6 +112,16 @@ SELECT x.id::uuid, '07311000-0000-4000-8000-0000000000aa', '55731100-0000-4000-8
     ('97311000-0000-4000-8000-0000000000b1', '5e731100-0000-4000-8000-0000000000a2'),
     ('97311000-0000-4000-8000-0000000000b2', NULL)
   ) AS x(id, walker);
+-- D (2) and E (2) are G2's walks, with nobody holding them yet. Steps 3
+-- and 6 hand them to a walker.
+UPDATE public.visits SET walk_group_id = '97311000-0000-4000-8000-0000000000b2'
+ WHERE id IN ('f7311000-0000-4000-8000-0000000000a4', 'f7311000-0000-4000-8000-0000000000a5');
+DO $g2$ BEGIN
+  IF (SELECT count(*) FROM public.visits WHERE walk_group_id = '97311000-0000-4000-8000-0000000000b2'
+        AND assigned_staff_id IS NULL) <> 2 THEN
+    RAISE EXCEPTION 'PROOF SETUP: G2 does not hold D and E, unheld';
+  END IF;
+END $g2$;
 
 -- The office (the owner) is who presses the buttons.
 SELECT set_config('request.jwt.claims',

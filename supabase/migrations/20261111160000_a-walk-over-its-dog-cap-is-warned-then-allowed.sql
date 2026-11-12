@@ -58,7 +58,7 @@ CREATE INDEX IF NOT EXISTS walk_dog_cap_overrides_org_idx
 CREATE INDEX IF NOT EXISTS walk_dog_cap_overrides_staff_idx
   ON public.walk_dog_cap_overrides (staff_id);
 COMMENT ON TABLE public.walk_dog_cap_overrides IS
-  'A walk confirmed over its walker''s dog cap: who confirmed it, when, and by how much. Written only by walk_dog_cap_guard. Migration 20261111130000.';
+  'A walk confirmed over its walker''s dog cap: who confirmed it, when, and by how much. Written only by walk_dog_cap_guard. Migration 20261111160000.';
 
 ALTER TABLE public.walk_dog_cap_overrides ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.walk_dog_cap_overrides FROM anon;

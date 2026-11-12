@@ -164,7 +164,7 @@ function walkerStubs(world: World): Record<string, Stub> {
       if (cap != null && dogs(g) > cap && !args.overCapAcknowledged) {
         const name = fx.STAFF.find((s) => s.id === args.walkerId)!.display_name;
         // What setWalkGroupWalker answers when walk_dog_cap_guard refused an
-        // unconfirmed over-cap write (20261111130000): the warning, nothing
+        // unconfirmed over-cap write (20261111160000): the warning, nothing
         // saved. Confirmed, it falls through and saves.
         return {
           overCap: {

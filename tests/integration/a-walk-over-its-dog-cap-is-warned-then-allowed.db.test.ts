@@ -2,7 +2,7 @@
  *  own server functions against the database the job replays.
  *
  *  Brendan, 2026-11-10 2:24 PM ET: "Warn but allow going over the dog cap".
- *  The SQL half is proved in supabase/proofs/20261111130000-... This file
+ *  The SQL half is proved in supabase/proofs/20261111160000-... This file
  *  proves what only a real stack can: that "Assign anyway" reaches the
  *  database. The confirmation is a request header (x-dog-cap-acknowledged)
  *  that supabase-js sends and PostgREST turns into request.headers, which the
