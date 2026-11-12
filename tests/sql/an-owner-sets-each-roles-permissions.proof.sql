@@ -75,7 +75,11 @@ INSERT INTO public.visits (id, organization_id, subscription_id, client_id, prop
    (now() AT TIME ZONE 'America/Chicago')::date),
   ('7a000000-0000-4000-8000-000000086302', '0a000000-0000-4000-8000-000000086300', 'e0000000-0000-4000-8000-000000086302',
    'c0000000-0000-4000-8000-000000086302', 'd0000000-0000-4000-8000-000000086302', '5a000000-0000-4000-8000-000000086304',
-   (now() AT TIME ZONE 'America/Chicago')::date + 1);
+   (now() AT TIME ZONE 'America/Chicago')::date + 1),
+  -- A third stop, for the dispatcher to cancel at the default.
+  ('7a000000-0000-4000-8000-000000086303', '0a000000-0000-4000-8000-000000086300', 'e0000000-0000-4000-8000-000000086302',
+   'c0000000-0000-4000-8000-000000086302', 'd0000000-0000-4000-8000-000000086302', '5a000000-0000-4000-8000-000000086304',
+   (now() AT TIME ZONE 'America/Chicago')::date + 2);
 INSERT INTO public.expenses (id, organization_id, staff_id, spent_on, category, amount_cents) VALUES
   ('ee000000-0000-4000-8000-000000086301', '0a000000-0000-4000-8000-000000086300', '5a000000-0000-4000-8000-000000086301', current_date, 'fuel', 4200);
 
@@ -512,7 +516,14 @@ BEGIN
   IF (SELECT billing_cadence FROM public.subscriptions WHERE id = 'e0000000-0000-4000-8000-000000086301') <> 'postpaid' THEN
     RAISE EXCEPTION 'PROOF FAILED [prepaid]: the plan is no longer postpaid';
   END IF;
-  RAISE NOTICE 'ok: a dispatcher completes and cancels by default, a technician does not, and no door to prepaid opens for a dispatcher';
+  -- And the RPC itself, at the default: a dispatcher cancels a visit (the
+  -- lighter side effect of the two close-outs; completing invoices the
+  -- visit and asks for a photo or an override reason).
+  PERFORM public.office_skip_visit('7a000000-0000-4000-8000-000000086303', 'client away');
+  IF (SELECT status FROM public.visits WHERE id = '7a000000-0000-4000-8000-000000086303') = 'scheduled' THEN
+    RAISE EXCEPTION 'PROOF FAILED [close]: a dispatcher at the default could not cancel a visit by RPC';
+  END IF;
+  RAISE NOTICE 'ok: a dispatcher completes and cancels by default, cancels one by RPC, a technician does not, and no door to prepaid opens for a dispatcher';
 END $$;
 RESET ROLE;
 
