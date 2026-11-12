@@ -14,6 +14,8 @@
 --   ff  a 5 km circle on 48201's centre  -> inside  -> listed
 --   0f  its only zone is turned off      -> unknown -> listed
 --   bb  90210 and a polygon in Chicago   -> outside -> dropped
+--   cc  nine circles in Chicago          -> unknown -> listed (past the
+--       eight-shape cost bound a verdict is unsure, never outside)
 --   00  unpublished                      -> never
 --   de  published, business deleted      -> never
 -- (The two-character keys are the last byte of each fixture uuid, so they
@@ -48,13 +50,13 @@ SELECT ('06311000-0000-4000-8000-0000000000' || k)::uuid, 'Anon Dir ' || k, 'UTC
        'https://example.invalid/' || k || '.png',
        'owner-' || k || '@anon-dir.proof.invalid', '+1313555010' || length(k),
        k || ' Leak Street, Detroit MI', 'cus_anondirproof' || k
-  FROM unnest(ARRAY['aa', 'dd', 'ee', 'ff', '0f', 'bb', '00', 'de']) k;
+  FROM unnest(ARRAY['aa', 'dd', 'ee', 'ff', '0f', 'bb', 'cc', '00', 'de']) k;
 SET LOCAL app.allow_protected_org_write = '';
 
 INSERT INTO public.services (id, organization_id, name, service_line, price_unit, base_price_cents, extra_pet_cents, default_duration_min, active)
 SELECT ('56311000-0000-4000-8000-0000000000' || k)::uuid, ('06311000-0000-4000-8000-0000000000' || k)::uuid,
        'Anon walk ' || k, 'dog_walking', 'visit', 2500, 0, 30, true
-  FROM unnest(ARRAY['aa', 'dd', 'ee', 'ff', '0f', 'bb', '00', 'de']) k;
+  FROM unnest(ARRAY['aa', 'dd', 'ee', 'ff', '0f', 'bb', 'cc', '00', 'de']) k;
 
 INSERT INTO public.clients (id, organization_id, account_type, display_name) VALUES
   ('c6311000-0000-4000-8000-0000000000aa', '06311000-0000-4000-8000-0000000000aa', 'residential', 'Anon Dir Secret Client');
@@ -67,11 +69,11 @@ INSERT INTO public.directory_profiles (organization_id, slug, published, display
 SELECT ('06311000-0000-4000-8000-0000000000' || k)::uuid, 'anon-dir-' || k, k <> '00', 'Anon Dir ' || k,
        true, 'Bio ' || k, '{dog_walking}', '{48201}', '{Detroit}',
        NULL, now(), CASE WHEN k <> '00' THEN now() END
-  FROM unnest(ARRAY['aa', 'dd', 'ee', 'ff', '0f', 'bb', '00', 'de']) k;
+  FROM unnest(ARRAY['aa', 'dd', 'ee', 'ff', '0f', 'bb', 'cc', '00', 'de']) k;
 INSERT INTO public.directory_profile_services (organization_id, service_id, label, service_line, price_from_cents, price_unit, position)
 SELECT ('06311000-0000-4000-8000-0000000000' || k)::uuid, ('56311000-0000-4000-8000-0000000000' || k)::uuid,
        'Anon walk ' || k, 'dog_walking', 2200, 'visit', 0
-  FROM unnest(ARRAY['aa', 'dd', 'ee', 'ff', '0f', 'bb', '00', 'de']) k;
+  FROM unnest(ARRAY['aa', 'dd', 'ee', 'ff', '0f', 'bb', 'cc', '00', 'de']) k;
 
 INSERT INTO public.zones (organization_id, name, zip_codes, geo_match_mode, enabled) VALUES
   ('06311000-0000-4000-8000-0000000000dd', 'Beverly Hills only', ARRAY['90210'], 'zip', true),
@@ -80,6 +82,9 @@ INSERT INTO public.zones (organization_id, name, zip_codes, geo_match_mode, enab
   ('06311000-0000-4000-8000-0000000000bb', 'Beverly Hills too', ARRAY['90210'], 'zip', true);
 INSERT INTO public.zones (organization_id, name, zip_codes, geo_match_mode, center_latitude, center_longitude, radius_meters, enabled) VALUES
   ('06311000-0000-4000-8000-0000000000ff', 'Five km of downtown', '{}', 'radius', 42.3471, -83.0603, 5000, true);
+INSERT INTO public.zones (organization_id, name, zip_codes, geo_match_mode, center_latitude, center_longitude, radius_meters, enabled)
+SELECT '06311000-0000-4000-8000-0000000000cc', 'Chicago circle ' || i, '{}', 'radius', 41.88, -87.63 + i * 0.01, 2000, true
+  FROM generate_series(1, 9) i;
 INSERT INTO public.zones (organization_id, name, zip_codes, geo_match_mode, boundary, enabled) VALUES
   ('06311000-0000-4000-8000-0000000000bb', 'The Loop', '{}', 'polygon',
    '{"type":"Polygon","coordinates":[[[-87.64,41.87],[-87.62,41.87],[-87.62,41.89],[-87.64,41.89],[-87.64,41.87]]]}'::jsonb, true);
@@ -93,15 +98,15 @@ DO $$
 DECLARE _got text;
 BEGIN
   SELECT string_agg(k || '=' || public.directory_zone_verdict(('06311000-0000-4000-8000-0000000000' || k)::uuid, '48201'), ' ' ORDER BY k)
-    INTO _got FROM unnest(ARRAY['aa', 'dd', 'ee', 'ff', '0f', 'bb']) k;
-  IF _got <> '0f=unknown aa=unknown bb=outside dd=outside ee=inside ff=inside' THEN
+    INTO _got FROM unnest(ARRAY['aa', 'dd', 'ee', 'ff', '0f', 'bb', 'cc']) k;
+  IF _got <> '0f=unknown aa=unknown bb=outside cc=unknown dd=outside ee=inside ff=inside' THEN
     RAISE EXCEPTION 'PROOF FAILED [verdict]: %', _got;
   END IF;
   IF public.directory_zone_verdict('06311000-0000-4000-8000-0000000000dd', '"48201"') <> 'unknown'
      OR public.directory_zone_verdict('06311000-0000-4000-8000-0000000000dd', '4820%') <> 'unknown' THEN
     RAISE EXCEPTION 'PROOF FAILED [verdict]: a quoted or patterned ZIP got a verdict';
   END IF;
-  RAISE NOTICE 'ok: the zone verdict reads no zones and a turned-off zone as unknown, a listed ZIP and a circle as inside, and a ZIP no zone serves as outside';
+  RAISE NOTICE 'ok: the zone verdict reads no zones, a turned-off zone and more drawn zones than it will pay for as unknown, a listed ZIP and a circle as inside, and a ZIP no zone serves as outside';
 END $$;
 
 -- ── 2. What anon reads ─────────────────────────────────────────────────────
@@ -120,8 +125,8 @@ BEGIN
   -- The search: "outside" dropped, "unknown" kept, nothing unpublished or deleted.
   SELECT array_agg(slug ORDER BY slug) INTO _slugs
     FROM public.directory_search('dog_walking', '48201') WHERE slug LIKE 'anon-dir-%';
-  IF _slugs IS DISTINCT FROM ARRAY['anon-dir-0f', 'anon-dir-aa', 'anon-dir-ee', 'anon-dir-ff'] THEN
-    RAISE EXCEPTION 'PROOF FAILED [search]: anon found % (want 0f, aa, ee, ff: dd and bb are outside, 00 unpublished, de deleted)', _slugs;
+  IF _slugs IS DISTINCT FROM ARRAY['anon-dir-0f', 'anon-dir-aa', 'anon-dir-cc', 'anon-dir-ee', 'anon-dir-ff'] THEN
+    RAISE EXCEPTION 'PROOF FAILED [search]: anon found % (want 0f, aa, cc, ee, ff: dd and bb are outside, 00 unpublished, de deleted)', _slugs;
   END IF;
   SELECT array_agg(slug) INTO _slugs FROM public.directory_search('dog_walking', '"48201"');
   IF _slugs IS NOT NULL THEN RAISE EXCEPTION 'PROOF FAILED [search]: a quoted ZIP found %', _slugs; END IF;
@@ -129,7 +134,7 @@ BEGIN
   -- The view: every published profile of a live business, no zone filter.
   SELECT array_agg(slug ORDER BY slug) INTO _slugs
     FROM public.directory_public_listings WHERE slug LIKE 'anon-dir-%';
-  IF _slugs IS DISTINCT FROM ARRAY['anon-dir-0f', 'anon-dir-aa', 'anon-dir-bb', 'anon-dir-dd', 'anon-dir-ee', 'anon-dir-ff'] THEN
+  IF _slugs IS DISTINCT FROM ARRAY['anon-dir-0f', 'anon-dir-aa', 'anon-dir-bb', 'anon-dir-cc', 'anon-dir-dd', 'anon-dir-ee', 'anon-dir-ff'] THEN
     RAISE EXCEPTION 'PROOF FAILED [view]: anon lists % (want every published, live one; never 00 or de)', _slugs;
   END IF;
 

@@ -104,11 +104,41 @@ describe("the migration", () => {
 
   it("drops a business whose current zones say outside, inside directory_search", () => {
     const body = sql().split("FUNCTION public.directory_search(")[1].split("$fn$;")[0];
-    expect(body).toMatch(/public\.directory_zone_verdict\(p\.organization_id, _zip\) <> 'outside'/);
+    expect(body).toMatch(
+      /public\.directory_zone_verdict\(_cand\.organization_id, _zip\) <> 'outside'/,
+    );
     expect(body).toMatch(/WHERE p\.published/);
     expect(body).toMatch(/o\.deleted_at IS NULL/);
     // Same public shape as before: it still returns what directory_public_rows returns.
     expect(body).toMatch(/SELECT r\.\*\s+FROM public\.directory_public_rows\(/);
+  });
+
+  it("bounds what one anonymous call can cost, not just what it returns", () => {
+    const body = sql().split("FUNCTION public.directory_search(")[1].split("$fn$;")[0];
+    // A malformed ZIP or line returns before anything is read.
+    expect(body).toMatch(
+      /IF _zip IS NULL OR _zip !~ '\^\[0-9\]\{5\}\$'[\s\S]{0,120}THEN\s+RETURN;/,
+    );
+    // At most 60 verdicts per call, chosen by the cheap filters first...
+    expect(body).toMatch(/c_max_verdicts constant integer := 60;/);
+    const loop = body.split("FOR _cand IN")[1].split("END LOOP;")[0];
+    expect(loop.indexOf("LIMIT c_max_verdicts")).toBeGreaterThan(-1);
+    expect(loop.indexOf("LIMIT c_max_verdicts")).toBeLessThan(
+      loop.indexOf("directory_zone_verdict("),
+    );
+    // ...and none once 50 are kept.
+    expect(body).toMatch(/c_max_results\s+constant integer := 50;/);
+    expect(loop).toMatch(/EXIT WHEN cardinality\(_ids\) >= c_max_results;/);
+
+    const verdict = sql().split("FUNCTION public.directory_zone_verdict(")[1].split("$fn$;")[0];
+    // At most 8 drawn zones per business; past that is unknown, never outside.
+    expect(verdict).toMatch(/c_max_shapes constant integer := 8;/);
+    expect(verdict).toMatch(/IF _shapes > c_max_shapes THEN\s+_unsure := true;\s+EXIT;/);
+    // Every count over the ZIP centres stops at the cap.
+    const counts = verdict.match(/SELECT count\(\*\) INTO _\w+ FROM \([\s\S]*?\) t;/g) ?? [];
+    expect(counts).toHaveLength(2);
+    for (const c of counts) expect(c).toMatch(/LIMIT c_cap\) t;$/);
+    expect(verdict).not.toMatch(/SELECT count\(\*\) INTO _\w+ FROM reference\./);
   });
 
   it("keeps an unknown verdict listed: only 'outside' is a reason to drop", () => {

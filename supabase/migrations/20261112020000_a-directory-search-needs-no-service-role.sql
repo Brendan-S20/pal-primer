@@ -78,6 +78,11 @@ DECLARE
   -- zone-zip-fill.ts: EDGE_MAX_M, MAX_CANDIDATES; zone-match.ts: DRIVE_M_PER_MIN.
   c_edge_max   constant double precision := 8000;
   c_cap        constant integer := 5000;
+  -- Cost bound for a visitor's call (directory_search is anon). A business
+  -- with more drawn zones than this reads "unknown" rather than paying for
+  -- every one: the safe direction, since "unknown" stays listed.
+  c_max_shapes constant integer := 8;
+  _shapes integer := 0;
   c_drive_m    constant double precision := 800;
   c_r          constant double precision := 6371000;
   c_m_per_lat  constant double precision := 6371000 * pi() / 180;
@@ -186,6 +191,11 @@ BEGIN
       ELSE
         CONTINUE;
       END IF;
+      _shapes := _shapes + 1;
+      IF _shapes > c_max_shapes THEN
+        _unsure := true;
+        EXIT;
+      END IF;
       IF _ring IS NULL THEN
         _lat := z.center_latitude;
         _lng := z.center_longitude;
@@ -222,10 +232,17 @@ BEGIN
       _outside_by := NULL;
       IF _c.lat IS NOT NULL
          AND _c.lat BETWEEN _south AND _north AND _c.lng BETWEEN _west AND _east THEN
-        SELECT count(*) INTO _rank FROM reference.zip_centroids c
-         WHERE c.lat BETWEEN _south AND _north AND c.lng BETWEEN _west AND _east
-           AND ((c.lat - _clat) ^ 2 + ((c.lng - _clng) * _k) ^ 2,  c.zip)
-             < ((_c.lat - _clat) ^ 2 + ((_c.lng - _clng) * _k) ^ 2, _zip);
+        -- Only a full box can have left this ZIP unseen, so the rank is
+        -- counted only then, and never past the cap.
+        _rank := 0;
+        IF _total >= c_cap THEN
+          SELECT count(*) INTO _rank FROM (
+            SELECT 1 FROM reference.zip_centroids c
+             WHERE c.lat BETWEEN _south AND _north AND c.lng BETWEEN _west AND _east
+               AND ((c.lat - _clat) ^ 2 + ((c.lng - _clng) * _k) ^ 2,  c.zip)
+                 < ((_c.lat - _clat) ^ 2 + ((_c.lng - _clng) * _k) ^ 2, _zip)
+             LIMIT c_cap) t;
+        END IF;
         IF _rank < c_cap THEN
           IF _ring IS NOT NULL THEN
             -- pointInPolygon: the matcher's ray cast over [lng, lat] pairs.
@@ -298,11 +315,23 @@ REVOKE ALL ON FUNCTION public.directory_zone_verdict(uuid, text) FROM PUBLIC, an
 GRANT EXECUTE ON FUNCTION public.directory_zone_verdict(uuid, text) TO service_role;
 
 -- ── 2. The search drops "outside", in the database ────────────────────────
--- Same signature, same shape, same grants as 20261110120000. The only change
--- is the last condition: a business whose zones now say "outside" for this
--- ZIP is not listed. Profiles of deleted businesses are already dropped by
--- directory_public_rows; checking it here as well means no verdict is spent
--- on one.
+-- Same signature, same shape, same grants as 20261110120000. What changes:
+-- a business whose zones now say "outside" for this ZIP is not listed.
+--
+-- WHAT ONE CALL CAN COST. This is anon-callable, and a verdict is real work
+-- (box counts over reference.zip_centroids for each drawn zone), so the work
+-- per call is bounded, not just the rows returned:
+--   * a malformed ZIP or line returns nothing before anything is read;
+--   * candidates come from the cheap filters only (published, live business,
+--     ZIP confirmed, line listed; the GIN index on coverage_zips), at most
+--     c_max_verdicts of them, in display order;
+--   * verdicts stop as soon as c_max_results businesses are kept;
+--   * each verdict checks at most 8 drawn zones and counts at most 5,000
+--     centres per zone (directory_zone_verdict).
+-- So one call is at most 60 verdicts, never one per published profile. With
+-- more than 60 businesses confirming one ZIP for one line, the ones past the
+-- 60th (alphabetically) are not considered; that is a directory far larger
+-- than this one, and the place to page it is then, not now.
 CREATE OR REPLACE FUNCTION public.directory_search(_service_line text, _zip text)
  RETURNS TABLE (
    slug text,
@@ -315,28 +344,46 @@ CREATE OR REPLACE FUNCTION public.directory_search(_service_line text, _zip text
    services jsonb,
    published_at timestamptz
  )
- LANGUAGE sql
+ LANGUAGE plpgsql
  STABLE
  SECURITY DEFINER
  SET search_path TO 'public', 'pg_temp'
 AS $fn$
-  SELECT r.*
-    FROM public.directory_public_rows(
-           ARRAY(
-             SELECT p.organization_id
-               FROM public.directory_profiles p
-               JOIN public.organizations o ON o.id = p.organization_id
-              WHERE p.published
-                AND o.deleted_at IS NULL
-                AND _zip ~ '^[0-9]{5}$'
-                AND _zip = ANY (p.coverage_zips)
-                AND (_service_line IS NULL OR _service_line = ANY (p.service_lines))
-                AND public.directory_zone_verdict(p.organization_id, _zip) <> 'outside'
-           ),
-           NULL
-         ) r
-   ORDER BY r.display_name, r.slug
-   LIMIT 50;
+#variable_conflict use_column
+DECLARE
+  c_max_results  constant integer := 50;
+  c_max_verdicts constant integer := 60;
+  _ids uuid[] := '{}';
+  _cand record;
+BEGIN
+  IF _zip IS NULL OR _zip !~ '^[0-9]{5}$'
+     OR (_service_line IS NOT NULL AND _service_line !~ '^[a-z_]{1,40}$') THEN
+    RETURN;
+  END IF;
+
+  FOR _cand IN
+    SELECT p.organization_id
+      FROM public.directory_profiles p
+      JOIN public.organizations o ON o.id = p.organization_id
+     WHERE p.published
+       AND o.deleted_at IS NULL
+       AND _zip = ANY (p.coverage_zips)
+       AND (_service_line IS NULL OR _service_line = ANY (p.service_lines))
+     ORDER BY p.display_name, p.slug
+     LIMIT c_max_verdicts
+  LOOP
+    IF public.directory_zone_verdict(_cand.organization_id, _zip) <> 'outside' THEN
+      _ids := _ids || _cand.organization_id;
+      EXIT WHEN cardinality(_ids) >= c_max_results;
+    END IF;
+  END LOOP;
+
+  RETURN QUERY
+    SELECT r.*
+      FROM public.directory_public_rows(_ids, NULL) r
+     ORDER BY r.display_name, r.slug
+     LIMIT c_max_results;
+END
 $fn$;
 
 REVOKE ALL ON FUNCTION public.directory_search(text, text) FROM PUBLIC;
@@ -433,8 +480,12 @@ BEGIN
     RAISE EXCEPTION 'a function that takes or returns an org id is callable by a client role';
   END IF;
   IF strpos((SELECT prosrc FROM pg_proc WHERE oid = 'public.directory_search(text, text)'::regprocedure),
-            'public.directory_zone_verdict(p.organization_id, _zip) <> ''outside''') = 0 THEN
+            'public.directory_zone_verdict(_cand.organization_id, _zip) <> ''outside''') = 0 THEN
     RAISE EXCEPTION 'directory_search does not drop a business whose zones say outside';
+  END IF;
+  IF strpos((SELECT prosrc FROM pg_proc WHERE oid = 'public.directory_search(text, text)'::regprocedure),
+            'LIMIT c_max_verdicts') = 0 THEN
+    RAISE EXCEPTION 'directory_search runs a verdict for every candidate rather than a bounded number';
   END IF;
 
   -- An empty database has no zones: the verdict is "unknown", never "outside".
