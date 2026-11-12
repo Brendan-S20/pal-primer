@@ -710,7 +710,11 @@ function ZoneCard({
             under it instead of squeezing the ZIP warning into a word per line
             beside it (#493). From sm up the zero basis gives today's layout.
             The checkbox lives inside it so it stays beside the zone name. */}
-        <div className="flex min-w-0 grow basis-full items-start gap-3 sm:basis-0">
+        {/* sm:min-w-48: inside Settings (#864) the list column is narrow from
+            lg up, and with a zero basis the price block took the row and left
+            the name one letter per line (measured at 1280). The name keeps
+            12rem; when both do not fit, the price block wraps under it. */}
+        <div className="flex min-w-0 grow basis-full items-start gap-3 sm:min-w-48 sm:basis-0">
           {onToggleSelect && (
             <Checkbox
               className="mt-1"
