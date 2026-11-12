@@ -80,6 +80,7 @@ import { useFormDraft } from "@/hooks/useFormDraft";
 import { afterClientBookChanged } from "@/lib/client-book-queries";
 import { DraftRestoredNotice } from "@/components/DraftRestoredNotice";
 import { newClientDraftForm } from "@/lib/form-drafts";
+import { normalizeNewClientDraft, type NewClientDraft } from "@/lib/new-client-draft";
 import { needsANamedDog } from "@/lib/new-client-dogs";
 import { NeedsANamedDogAlert } from "@/components/NeedsANamedDogAlert";
 
@@ -679,7 +680,7 @@ function NewClientWizardForm({
   const [dogs, setDogs] = useState<Dog[]>(() => prefill.dogs.map((d) => ({ ...d })));
   // Only a named dog is saved as a dog record: the database refuses a blank or
   // placeholder name, and a tech cannot use one.
-  const validDogs = dogs.filter((d) => d.name.trim().length > 0);
+  const validDogs = dogs.filter((d) => (d.name ?? "").trim().length > 0);
   // The plan is priced from the ROWS on the Dogs step, named or not. It used to
   // count named dogs only, which was harmless while the step always opened on
   // one blank row, and wrong once a lead that said "3 dogs" opens it on three:
@@ -767,7 +768,7 @@ function NewClientWizardForm({
   const commercial = accountType === "commercial";
   const quoteKey = useMemo(
     () => ({
-      postalCode: postalCode.trim(),
+      postalCode: (postalCode ?? "").trim(),
       accountType,
       dogCount,
       frequency: frequency === "one_time" ? "weekly" : frequency,
@@ -883,46 +884,56 @@ function NewClientWizardForm({
   // this business. Not the gate code: an access code does not sit in browser
   // storage (lib/form-drafts.ts strips one by name as well). Not the geocode
   // status either; it follows from the pin.
+  // A stored draft is read through normalizeNewClientDraft (#784): a draft
+  // from an older build, or a half-written one, has no key for a field added
+  // since, and restoring that straight into a setter left the field
+  // `undefined` for Create client to call `.trim()` on.
+  const draftValue: NewClientDraft = {
+    step,
+    groomInstead,
+    displayName,
+    accountType,
+    primaryEmail,
+    primaryPhone,
+    officeNote,
+    street,
+    city,
+    region,
+    postalCode,
+    accessNotes,
+    parkingNotes,
+    hazardNotes,
+    vcName,
+    vcPhone,
+    vcEmail,
+    hz,
+    boundary,
+    geo,
+    dogs,
+    frequency,
+    billingCadence,
+    unitCount,
+    stationCount,
+    priceOverride,
+    // The owner's own choices (null until touched), not the values the line
+    // derives (F-04), so a restored draft starts from the line again.
+    skipPlan: skipPlanChoice,
+    startedOn,
+    serviceDays,
+    serviceId,
+    weekdays: weekdayChoice,
+    fcChoice,
+    fcOverride,
+  };
   const draft = useFormDraft({
     form: newClientDraftForm(fromLead, fromQuote),
-    value: {
-      step,
-      groomInstead,
-      displayName,
-      accountType,
-      primaryEmail,
-      primaryPhone,
-      officeNote,
-      street,
-      city,
-      region,
-      postalCode,
-      accessNotes,
-      parkingNotes,
-      hazardNotes,
-      vcName,
-      vcPhone,
-      vcEmail,
-      hz,
-      boundary,
-      geo,
-      dogs,
-      frequency,
-      billingCadence,
-      unitCount,
-      stationCount,
-      priceOverride,
-      // The owner's own choices (null until touched), not the values the line
-      // derives (F-04), so a restored draft starts from the line again.
-      skipPlan: skipPlanChoice,
-      startedOn,
-      serviceDays,
-      serviceId,
-      weekdays: weekdayChoice,
-      fcChoice,
-      fcOverride,
-    },
-    restore: (d) => {
+    value: draftValue,
+    restore: (raw) => {
+      // How the form opened is the fallback for anything the draft lacks:
+      // restore only runs while nothing has been typed, so this render's
+      // values are still the opening ones.
+      const d = normalizeNewClientDraft(raw, draftValue, steps.length - 1);
+      if (!d) return false;
       setStep(d.step);
       setGroomInstead(d.groomInstead);
       setDisplayName(d.displayName);
@@ -940,7 +951,7 @@ function NewClientWizardForm({
       setVcName(d.vcName);
       setVcPhone(d.vcPhone);
       setVcEmail(d.vcEmail);
-      setHz(d.hz);
+      setHz((h) => ({ ...h, ...d.hz }));
       setBoundary(d.boundary);
       setGeo(d.geo);
       setGeoStatus(d.geo ? "ok" : "idle");
@@ -976,7 +987,7 @@ function NewClientWizardForm({
           accountType,
           primaryEmail: primaryEmail || undefined,
           primaryPhone: primaryPhone || undefined,
-          sendWelcome: sendWelcome && !welcomeTurnedOffInSettings && !!primaryEmail.trim(),
+          sendWelcome: sendWelcome && !welcomeTurnedOffInSettings && !!(primaryEmail ?? "").trim(),
           street,
           city,
           region: region || undefined,
@@ -988,7 +999,7 @@ function NewClientWizardForm({
           longitude: geo?.lng,
           gateCode: gateCode || undefined,
           parkingNotes: parkingNotes || undefined,
-          accessNotes: accessNotes.trim() || undefined,
+          accessNotes: (accessNotes ?? "").trim() || undefined,
           hazardNotes: hazardNotes || undefined,
           visitContactName: vcName || undefined,
           visitContactPhone: vcPhone || undefined,
@@ -999,7 +1010,7 @@ function NewClientWizardForm({
           stationCount: accountType === "commercial" && stationsN > 0 ? stationsN : undefined,
           dogs: validDogs.length
             ? validDogs.map((d) => ({
-                name: d.name.trim(),
+                name: (d.name ?? "").trim(),
                 breed: d.breed || undefined,
                 weightClass: d.weightClass || undefined,
                 ...(grooming
@@ -1030,7 +1041,7 @@ function NewClientWizardForm({
                 zoneId: zoneQuote ? (zoneQuote.zoneId as string) : undefined,
                 billingCadence: billsClients ? billingCadence : "postpaid",
               },
-          officeNote: officeNote.trim() || undefined,
+          officeNote: (officeNote ?? "").trim() || undefined,
           fromLeadId: fromLead?.id,
           firstCleanup:
             !planSkipped && fcCents != null && fcCents > 0
@@ -1162,7 +1173,7 @@ function NewClientWizardForm({
   });
 
   const canNext = (() => {
-    if (current === "Contact") return displayName.trim().length > 0;
+    if (current === "Contact") return (displayName ?? "").trim().length > 0;
     // Region/State is required — the property is unusable downstream without it
     // (routing, zone pricing, geocoding all need it). Finding #13.
     if (current === "Property") return !!(street && city && region && postalCode);
@@ -1963,7 +1974,7 @@ function NewClientWizardForm({
                   <div className="rounded-md border bg-primary/5 p-4">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground-strong">
                           Suggested price / visit
                         </div>
                         {quoteQ.isFetching && (
@@ -1978,14 +1989,14 @@ function NewClientWizardForm({
                           !quoteQ.isFetching &&
                           quoteQ.data &&
                           !("quote" in (quoteQ.data as any)) && (
-                            <div className="text-sm text-amber-600">
+                            <div className="text-sm text-amber-800 dark:text-amber-300">
                               {setsPrices
                                 ? `No zone matches ZIP ${postalCode}. Set price manually below.`
                                 : `No zone matches ZIP ${postalCode}, so there is no set price.`}
                             </div>
                           )}
                         {walkLike && serviceCents == null && (
-                          <div className="text-sm text-amber-600">
+                          <div className="text-sm text-amber-800 dark:text-amber-300">
                             {chosenService!.name} has no price yet. Set one below, or in Settings →
                             Services.
                           </div>
@@ -1994,7 +2005,7 @@ function NewClientWizardForm({
                           !quoteQ.isFetching &&
                           zoneQuote &&
                           suggestedCents == null && (
-                            <div className="text-sm text-amber-600">
+                            <div className="text-sm text-amber-800 dark:text-amber-300">
                               {zoneQuote.zoneName} has no commercial rates. Set the price below, or
                               add them in Settings → Zones & pricing.
                             </div>
@@ -2005,7 +2016,7 @@ function NewClientWizardForm({
                         <Badge variant="secondary">From the {chosenService!.name} price</Badge>
                       )}
                     </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
+                    <p className="mt-1 text-xs text-muted-foreground-strong">
                       {commercial
                         ? commercialBasis(zoneQuote?.commercial ?? null, unitsN, stationsN)
                         : `Based on ${dogCount} dog${dogCount === 1 ? "" : "s"}`}{" "}
@@ -2031,7 +2042,7 @@ function NewClientWizardForm({
                       </p>
                     ) : (
                       !quoteQ.isFetching && (
-                        <p role="alert" className="text-amber-600">
+                        <p role="alert" className="text-amber-800 dark:text-amber-300">
                           There is no set price for this plan. Tick "Skip subscription for now" to
                           save the client, and ask an owner or office manager to add the plan.
                         </p>
@@ -2135,9 +2146,9 @@ function NewClientWizardForm({
           </div>
         )}
 
-        {step === steps.length - 1 && primaryEmail.trim() && (
+        {step === steps.length - 1 && (primaryEmail ?? "").trim() && (
           <WelcomeEmailOptIn
-            email={primaryEmail.trim()}
+            email={(primaryEmail ?? "").trim()}
             orgName={(orgData?.organization as { name?: string } | null | undefined)?.name}
             checked={sendWelcome}
             onCheckedChange={setSendWelcome}

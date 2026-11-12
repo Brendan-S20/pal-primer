@@ -8,6 +8,7 @@ import { humanizeEnum } from "@/lib/humanize";
 
 const IMPORT_STATUS_LABEL: Record<string, string> = {
   cancelled: "Canceled",
+  undone: "Undone",
 };
 
 export function importStatusLabel(status: string): string {
