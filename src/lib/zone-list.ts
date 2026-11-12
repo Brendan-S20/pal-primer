@@ -98,16 +98,17 @@ export interface ZipOverlap {
   otherId: string;
   otherName: string;
   zips: string[];
-  /** The zone that gets an address in these ZIPs, when priority settles it. */
+  /** The zone that gets an address in these ZIPs, when the ranking settles it. */
   winner: "this" | "other" | null;
 }
 
 /**
  * ZIPs this zone lists that another zone that is on also lists. Both match at
- * the exact-ZIP level, so `priority` decides (zone-match.ts, step 2); with
- * equal priority the account type and then a fixed order decide, which the
- * owner did not choose, so `winner` is null. Zones that are off are skipped:
- * they match nothing.
+ * the exact-ZIP level, so the ranking -- `priority`, zone-match.ts step 2 --
+ * decides. Two zones with the same priority (a business the #858 migration
+ * has not reached) are settled by account type and then a fixed order, which
+ * the owner did not choose, so `winner` is null. Zones that are off are
+ * skipped: they match nothing.
  */
 export function zipOverlaps(zone: ZoneListRow, all: readonly ZoneListRow[]): ZipOverlap[] {
   if (zone.enabled === false) return [];
@@ -137,8 +138,8 @@ export function zipOverlapSentence(o: ZipOverlap): string {
   const list = `${shown}${more}`;
   const verb = o.zips.length === 1 ? "is" : "are";
   if (o.winner === "this")
-    return `${list} ${verb} also in ${o.otherName}. This zone wins on priority.`;
+    return `${list} ${verb} also in ${o.otherName}. This zone ranks higher, so it wins.`;
   if (o.winner === "other")
-    return `${list} ${verb} also in ${o.otherName}, which wins on priority.`;
-  return `${list} ${verb} also in ${o.otherName}, with the same priority. Set a priority to choose which zone wins.`;
+    return `${list} ${verb} also in ${o.otherName}, which ranks higher and wins.`;
+  return `${list} ${verb} also in ${o.otherName}, at the same rank. Move one in the ranking to choose which wins.`;
 }

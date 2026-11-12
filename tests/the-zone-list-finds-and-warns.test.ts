@@ -94,11 +94,11 @@ describe("a ZIP two zones both list", () => {
     const three = Z("3", { name: "Three", zip_codes: ["48218"], priority: 2 });
     const all = [one, two, three];
     expect(zipOverlaps(two, all).map(zipOverlapSentence)).toEqual([
-      "48229 is also in One, which wins on priority.",
+      "48229 is also in One, which ranks higher and wins.",
     ]);
     expect(zipOverlaps(one, all).map(zipOverlapSentence)).toEqual([
-      "48229 is also in Two. This zone wins on priority.",
-      "48218 is also in Three, with the same priority. Set a priority to choose which zone wins.",
+      "48229 is also in Two. This zone ranks higher, so it wins.",
+      "48218 is also in Three, at the same rank. Move one in the ranking to choose which wins.",
     ]);
   });
 

@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
+import { fullOrder, MIN_PRIORITY, placeAtBottom, prioritiesForOrder } from "@/lib/zone-ranking";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   return (await resolveCaller(supabase, userId)).orgId;
@@ -154,14 +155,15 @@ export const listZones = createServerFn({ method: "GET" })
     const { data, error } = await (supabase as any)
       .from("zones")
       .select(
-        "id, name, priority, postal_prefix, zip_codes, account_type, price_note, latitude, longitude, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, area_max_charge_cents, commercial_base_cents, commercial_per_unit_cents, commercial_per_acre_cents, commercial_per_station_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, enabled",
+        "id, name, priority, created_at, postal_prefix, zip_codes, zip_fill_pending_since, account_type, price_note, latitude, longitude, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, area_max_charge_cents, commercial_base_cents, commercial_per_unit_cents, commercial_per_acre_cents, commercial_per_station_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, enabled",
       )
       .eq("organization_id", orgId)
       .order("name");
     if (error) throw new Error(error.message);
+    const rows = await retryPendingZipFills(supabase, orgId, data ?? []);
     const activeClients = await activeClientCounts(supabase, orgId);
     return {
-      zones: (data ?? []).map((z: any) => ({
+      zones: rows.map((z: any) => ({
         ...z,
         active_clients: activeClients?.[z.id] ?? 0,
       })),
@@ -208,6 +210,52 @@ async function activeClientCounts(
     console.error("[zones] active client count failed", e);
     return null;
   }
+}
+
+/**
+ * A save whose ZIP lookup failed is marked pending (#858: "the area still
+ * saves ... and the fill retries automatically"). This is the retry: every
+ * read of the list runs the fill again for each pending area, in the reader's
+ * own session (zip_centroids_in_box needs org membership), writes what it
+ * finds and clears the mark. Best effort, like the save: a lookup that fails
+ * again leaves the mark for the next read, and never fails the list.
+ */
+async function retryPendingZipFills(supabase: any, orgId: string, rows: any[]): Promise<any[]> {
+  const pending = rows.filter((z) => z.zip_fill_pending_since);
+  if (pending.length === 0) return rows;
+  const byId = new Map<string, any>();
+  for (const z of pending) {
+    const fill = await fillZipsBestEffort(supabase, orgId, shapeOfRow(z), [
+      ...((z.zip_codes as string[]) ?? []),
+    ]);
+    if (fill.pending) continue;
+    const { error } = await (supabase as any)
+      .from("zones")
+      .update({ zip_codes: fill.zipCodes, zip_fill_pending_since: null })
+      .eq("id", z.id)
+      .eq("organization_id", orgId);
+    if (error) {
+      console.error(`[zones] pending ZIP fill could not be written for ${z.id}:`, error.message);
+      continue;
+    }
+    byId.set(z.id, { ...z, zip_codes: fill.zipCodes, zip_fill_pending_since: null });
+  }
+  if (byId.size === 0) return rows;
+  // The ZIPs just written can claim addresses saved while the fill waited.
+  await redetectBestEffort(supabase, orgId);
+  return rows.map((z) => byId.get(z.id) ?? z);
+}
+
+/** A saved row's drawn shape, in the fill's words. */
+function shapeOfRow(z: any): FillShape {
+  return {
+    geoMatchMode: z.geo_match_mode ?? "zip",
+    boundary: z.boundary ?? null,
+    centerLatitude: z.center_latitude != null ? Number(z.center_latitude) : null,
+    centerLongitude: z.center_longitude != null ? Number(z.center_longitude) : null,
+    radiusMeters: z.radius_meters ?? null,
+    driveTimeMinutes: z.drive_time_minutes ?? null,
+  };
 }
 
 // Turn a zone on or off without touching its shape, ZIPs or pricing (#449).
@@ -307,8 +355,14 @@ const zoneWriteSchema = z.object({
   commercialPerAcreCents: z.number().int().min(0).optional().nullable(),
   commercialPerStationCents: z.number().int().min(0).optional().nullable(),
   // Overlap tie-breaker: higher priority wins among zones matching at the
-  // same specificity level (see src/lib/zone-match.ts).
-  priority: z.number().int().min(-999).max(999).optional(),
+  // same specificity level (see src/lib/zone-match.ts). Since #858 it is the
+  // business's RANKING, written by reorderZones; a create that does not say
+  // goes to the bottom, and the drawer no longer sends one.
+  priority: z.number().int().min(MIN_PRIORITY).max(999).optional(),
+  // Chips the owner removed while editing (#858): the save-time fill does
+  // not put them back. "Any ZIPs the owner added or removed by hand stay as
+  // they are."
+  zipCodesRemoved: zipCodesSchema,
   geoMatchMode: z.enum(["zip", "radius", "polygon", "drive_time"]).optional(),
   boundary: polygonSchema.optional(),
   centerLatitude: z.number().min(-90).max(90).nullable().optional(),
@@ -338,12 +392,9 @@ function hasGeometry(d: {
 
 const zoneCreateSchema = zoneWriteSchema
   .extend({
-    // Fill the ZIPs the drawn shape holds, on the server, before the row is
-    // written: the same fill as the Zones drawer's "Fill ZIPs from the area".
-    // Setup step 2 asks for it (onboarding audit 2026-11-09, D1: setup made a
-    // 10-mile circle that listed no ZIPs, so the signup page, the lead form
-    // and the first client's Plan step could not quote it). The drawer does
-    // not: it shows the owner each chip and sends the list they kept.
+    // Accepted and no longer needed: since #858 every drawn area is filled on
+    // save. Setup step 2 still sends it (onboarding audit 2026-11-09, D1), and
+    // nothing reads it.
     fillZipsFromShape: z.boolean().optional(),
   })
   .superRefine((d, ctx) => {
@@ -364,17 +415,28 @@ export const createZone = createServerFn({ method: "POST" })
     const { orgId } = await requirePermission(supabase, userId, "manage_pricing");
 
     requireAreaCeiling(data.pricingMode ?? "flat", data.areaMaxChargeCents);
-    const zipCodes = normalizeZips(data.zipCodes);
-    const zipsFilled = data.fillZipsFromShape
-      ? await fillZipsBestEffort(supabase, orgId, data, zipCodes)
-      : 0;
+    // Every drawn area lists its ZIPs from the moment it is saved (#858). The
+    // drawer's own fill runs as the shape moves; this is the one that runs
+    // whatever the client was, and on the shape as it is being written.
+    const fill = await fillZipsBestEffort(
+      supabase,
+      orgId,
+      data,
+      normalizeZips(data.zipCodes),
+      normalizeZips(data.zipCodesRemoved),
+    );
+    // A new area goes to the bottom of the ranking (#858) unless the caller
+    // placed it. The business's areas are read for their priorities only.
+    const priority =
+      data.priority !== undefined ? data.priority : await bottomPriority(supabase, orgId);
     const { data: row, error } = await (supabase as any)
       .from("zones")
       .insert({
         organization_id: orgId,
-        priority: data.priority ?? 0,
+        priority,
         name: data.name,
-        zip_codes: zipCodes,
+        zip_codes: fill.zipCodes,
+        zip_fill_pending_since: fill.pending ? new Date().toISOString() : null,
         postal_prefix: data.postalPrefix || null,
         account_type: data.accountType ?? null,
         price_note: data.priceNote || null,
@@ -405,33 +467,59 @@ export const createZone = createServerFn({ method: "POST" })
 
     // A new zone can capture existing properties immediately.
     const propertiesUpdated = await redetectBestEffort(supabase, orgId, userId);
-    return { id: row.id as string, propertiesUpdated, zipsFilled };
+    return {
+      id: row.id as string,
+      propertiesUpdated,
+      zipsFilled: fill.added,
+      zipFillPending: fill.pending,
+      zipAtCenterOnly: fill.centerOnly,
+    };
   });
 
+type FillShape = {
+  geoMatchMode?: string;
+  boundary?: { coordinates?: number[][][] } | null;
+  centerLatitude?: number | null;
+  centerLongitude?: number | null;
+  radiusMeters?: number | null;
+  driveTimeMinutes?: number | null;
+};
+
+type FillOutcome = {
+  /** The list to write: what the caller sent plus what the shape holds. */
+  zipCodes: string[];
+  added: number;
+  /** The lookup failed: the area is saved as sent and marked for a retry. */
+  pending: boolean;
+  /** Nothing was inside, so the ZIP the middle sits in was listed. */
+  centerOnly: boolean;
+};
+
 /**
- * Add the ZIPs a new zone's drawn shape holds to `zipCodes`, in place, and
- * say how many were added. Best effort: a lookup that fails leaves the list
- * as the caller sent it and the zone is still saved, because an area with no
- * ZIPs still quotes an address in it (internalQuote places a ZIP at its
- * Census center) and Zones offers "Fill ZIPs from the area" afterwards.
+ * The ZIPs a drawn shape holds, added to what the caller sent (#858). The
+ * same inside-the-shape rule as the drawer's "Fill ZIPs from the area"
+ * (zone-zip-fill.ts); when nothing is inside, the ZIP the shape's middle sits
+ * in, so a one-mile circle in a city is never saved listing nothing. ZIPs the
+ * caller sent are kept whatever the shape says, and chips the owner removed
+ * (`removed`) are not put back.
+ *
+ * Best effort: a lookup that fails leaves the list as sent, the zone is still
+ * saved, and `pending` asks for a retry (retryPendingZipFills). An area with
+ * no ZIPs still quotes an address in it meanwhile: internalQuote places a ZIP
+ * at its Census center.
  */
 async function fillZipsBestEffort(
   supabase: any,
   orgId: string,
-  d: {
-    geoMatchMode?: string;
-    boundary?: { coordinates?: number[][][] } | null;
-    centerLatitude?: number | null;
-    centerLongitude?: number | null;
-    radiusMeters?: number | null;
-    driveTimeMinutes?: number | null;
-  },
+  d: FillShape,
   zipCodes: string[],
-): Promise<number> {
-  if (!d.geoMatchMode || d.geoMatchMode === "zip") return 0;
+  removed: string[] = [],
+): Promise<FillOutcome> {
+  const none = { zipCodes, added: 0, pending: false, centerOnly: false };
+  if (!d.geoMatchMode || d.geoMatchMode === "zip") return none;
   try {
-    const { zipsInsideShape } = await import("@/lib/zone-zip-fill.server");
-    const fill = await zipsInsideShape(supabase, orgId, {
+    const { zipsForZoneSave } = await import("@/lib/zone-zip-fill.server");
+    const fill = await zipsForZoneSave(supabase, orgId, {
       mode: d.geoMatchMode,
       polygon: d.boundary ?? null,
       centerLat: d.centerLatitude ?? null,
@@ -439,18 +527,84 @@ async function fillZipsBestEffort(
       radiusMeters: d.radiusMeters ?? null,
       driveTimeMinutes: d.driveTimeMinutes ?? null,
     });
+    if (fill.status !== "ok") return none;
+    const out = [...zipCodes];
     let added = 0;
-    for (const zip of fill.inside) {
-      if (zipCodes.includes(zip)) continue;
-      zipCodes.push(zip);
+    for (const zip of fill.zips) {
+      if (out.includes(zip) || removed.includes(zip)) continue;
+      out.push(zip);
       added++;
     }
-    return added;
+    return { zipCodes: out, added, pending: false, centerOnly: fill.centerOnly && added > 0 };
   } catch (e) {
-    console.error(`[zones] ZIP fill for a new zone failed for org ${orgId}:`, e);
-    return 0;
+    console.error(`[zones] ZIP fill failed for org ${orgId}; marked pending:`, e);
+    return { ...none, pending: true };
   }
 }
+
+/** The priority a new area is written with: under every area the business
+ *  has (zone-ranking.ts). A read that fails puts it at 0, the old default,
+ *  rather than failing the save. */
+async function bottomPriority(supabase: any, orgId: string): Promise<number> {
+  const { data, error } = await (supabase as any)
+    .from("zones")
+    .select("id, priority")
+    .eq("organization_id", orgId);
+  if (error) {
+    console.error(`[zones] could not read priorities for org ${orgId}:`, error.message);
+    return 0;
+  }
+  const placed = placeAtBottom((data ?? []) as Array<{ id: string; name: string; priority: number }>);
+  if (placed.renumber) {
+    for (const [id, priority] of placed.renumber) {
+      const { error: e } = await (supabase as any)
+        .from("zones")
+        .update({ priority })
+        .eq("id", id)
+        .eq("organization_id", orgId);
+      if (e) throw new Error(e.message);
+    }
+  }
+  return placed.priority;
+}
+
+/**
+ * Reorder the business's areas (#858): `ids` top to bottom. The top gets the
+ * highest priority, so it wins any ZIP it shares with one below it, on this
+ * screen, in the signup quote and in every assignment from now on. History
+ * is not rewritten: visits already booked keep their zone and price.
+ */
+export const reorderZones = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ ids: z.array(z.string().uuid()).min(1).max(500) }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { orgId } = await requirePermission(supabase, userId, "manage_pricing");
+    const { data: rows, error } = await (supabase as any)
+      .from("zones")
+      .select("id, name, priority")
+      .eq("organization_id", orgId);
+    if (error) throw new Error(error.message);
+    const zones = (rows ?? []) as Array<{ id: string; name: string; priority: number }>;
+    const known = new Set(zones.map((z) => z.id));
+    const unknown = data.ids.filter((id) => !known.has(id));
+    if (unknown.length) throw new Error("Zone not found.");
+    const order = fullOrder(data.ids, zones);
+    const priorities = prioritiesForOrder(order);
+    for (const z of zones) {
+      const priority = priorities.get(z.id)!;
+      if (priority === z.priority) continue;
+      const { error: e } = await (supabase as any)
+        .from("zones")
+        .update({ priority })
+        .eq("id", z.id)
+        .eq("organization_id", orgId);
+      if (e) throw new Error(e.message);
+    }
+    // A ZIP that changed hands changes which zone its addresses are in.
+    const propertiesUpdated = await redetectBestEffort(supabase, orgId, userId);
+    return { ok: true, order, propertiesUpdated };
+  });
 
 /**
  * An area-priced zone must declare a ceiling.
@@ -492,7 +646,7 @@ export const updateZone = createServerFn({ method: "POST" })
     const { data: existing, error: exErr } = await (supabase as any)
       .from("zones")
       .select(
-        "geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, pricing_mode, area_max_charge_cents",
+        "geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, pricing_mode, area_max_charge_cents, zip_codes, zip_fill_pending_since",
       )
       .eq("id", data.id)
       .eq("organization_id", orgId)
@@ -516,36 +670,59 @@ export const updateZone = createServerFn({ method: "POST" })
       data.centerLongitude !== undefined ||
       data.radiusMeters !== undefined ||
       data.driveTimeMinutes !== undefined;
-    if (touchesGeometry) {
-      const merged = {
-        geoMatchMode: data.geoMatchMode ?? existing.geo_match_mode ?? "zip",
-        boundary: data.boundary !== undefined ? data.boundary : existing.boundary,
-        centerLatitude:
-          data.centerLatitude !== undefined
-            ? data.centerLatitude
-            : existing.center_latitude != null
-              ? Number(existing.center_latitude)
-              : null,
-        centerLongitude:
-          data.centerLongitude !== undefined
-            ? data.centerLongitude
-            : existing.center_longitude != null
-              ? Number(existing.center_longitude)
-              : null,
-        radiusMeters: data.radiusMeters !== undefined ? data.radiusMeters : existing.radius_meters,
-        driveTimeMinutes:
-          data.driveTimeMinutes !== undefined ? data.driveTimeMinutes : existing.drive_time_minutes,
-      };
-      if (!hasGeometry(merged)) {
-        throw new Error(
-          "Map coverage is required. Draw a polygon or set a center point with a radius or drive time.",
-        );
-      }
+    const merged: FillShape = {
+      geoMatchMode: data.geoMatchMode ?? existing.geo_match_mode ?? "zip",
+      boundary: data.boundary !== undefined ? data.boundary : existing.boundary,
+      centerLatitude:
+        data.centerLatitude !== undefined
+          ? data.centerLatitude
+          : existing.center_latitude != null
+            ? Number(existing.center_latitude)
+            : null,
+      centerLongitude:
+        data.centerLongitude !== undefined
+          ? data.centerLongitude
+          : existing.center_longitude != null
+            ? Number(existing.center_longitude)
+            : null,
+      radiusMeters: data.radiusMeters !== undefined ? data.radiusMeters : existing.radius_meters,
+      driveTimeMinutes:
+        data.driveTimeMinutes !== undefined ? data.driveTimeMinutes : existing.drive_time_minutes,
+    };
+    if (touchesGeometry && !hasGeometry(merged)) {
+      throw new Error(
+        "Map coverage is required. Draw a polygon or set a center point with a radius or drive time.",
+      );
     }
 
     const patch: Record<string, any> = {};
     if (data.name !== undefined) patch.name = data.name;
     if (data.zipCodes !== undefined) patch.zip_codes = normalizeZips(data.zipCodes);
+    // Editing the shape refills the ZIPs (#858): what the new shape holds is
+    // added to the list the caller kept. Dropping what only the old shape held
+    // is the drawer's job (applyShapeFill), because only it knows which chips
+    // the owner typed. A list still empty, or a fill still pending from an
+    // earlier save, is filled too, shape change or not.
+    const listSent = data.zipCodes !== undefined ? patch.zip_codes : (existing.zip_codes ?? []);
+    const refill =
+      touchesGeometry || listSent.length === 0 || existing.zip_fill_pending_since != null;
+    let zipFillPending = false;
+    let zipAtCenterOnly = false;
+    if (refill && hasGeometry(merged)) {
+      const fill = await fillZipsBestEffort(
+        supabase,
+        orgId,
+        merged,
+        [...listSent],
+        normalizeZips(data.zipCodesRemoved),
+      );
+      patch.zip_codes = fill.zipCodes;
+      patch.zip_fill_pending_since = fill.pending
+        ? (existing.zip_fill_pending_since ?? new Date().toISOString())
+        : null;
+      zipFillPending = fill.pending;
+      zipAtCenterOnly = fill.centerOnly;
+    }
     if (data.postalPrefix !== undefined) patch.postal_prefix = data.postalPrefix || null;
     if (data.accountType !== undefined) patch.account_type = data.accountType ?? null;
     if (data.priceNote !== undefined) patch.price_note = data.priceNote || null;
@@ -587,7 +764,7 @@ export const updateZone = createServerFn({ method: "POST" })
 
     // Changed coverage/priority can re-assign existing properties.
     const propertiesUpdated = await redetectBestEffort(supabase, orgId, userId);
-    return { ok: true, propertiesUpdated };
+    return { ok: true, propertiesUpdated, zipFillPending, zipAtCenterOnly };
   });
 
 // Center the coverage map on a typed ZIP (G5: "map centering on ZIP entry")

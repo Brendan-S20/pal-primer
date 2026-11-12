@@ -210,10 +210,13 @@ describe("setup's area is written with the ZIPs it holds", () => {
     expect(zips).toContain("48226");
   });
 
-  it("without the ask, a drawn zone is written as drawn (the drawer decides its own chips)", async () => {
+  it("without the ask, a drawn zone is filled all the same (#858: every save fills)", async () => {
+    // Until #858 this asserted the opposite: the drawer decided its own chips
+    // and the server wrote them as sent. Now the server fills on every save,
+    // so a client that never ran the drawer's fill saves a quotable area too.
     await createZone({ data: setupZone() } as any);
-    expect(state.db.inserted[0].zip_codes).toEqual([]);
-    expect(state.db.rpcCalls).toHaveLength(0);
+    expect(state.db.inserted[0].zip_codes).toContain("48226");
+    expect(state.db.rpcCalls).toHaveLength(1);
   });
 
   it("a lookup that fails still saves the area; the quote's fallback covers it", async () => {
@@ -221,6 +224,8 @@ describe("setup's area is written with the ZIPs it holds", () => {
     const out = await createZone({ data: setupZone({ fillZipsFromShape: true }) } as any);
     expect(out.id).toBe("zone-new");
     expect(state.db.inserted[0].zip_codes).toEqual([]);
+    // And since #858 the save says so, for the retry on the next list read.
+    expect(state.db.inserted[0].zip_fill_pending_since).toEqual(expect.any(String));
   });
 
   it("Setup step 2 asks for the fill", () => {

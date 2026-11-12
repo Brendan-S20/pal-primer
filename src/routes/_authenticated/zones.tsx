@@ -72,6 +72,7 @@ import {
 } from "@/components/ZonesOverviewMap";
 import { HelpTip } from "@/components/HelpTip";
 import { ZoneEnabledSwitch } from "@/components/ZoneEnabledSwitch";
+import { ZoneRankingPanel, ZipFillPendingNote } from "@/components/ZoneRanking";
 import { offZoneNotice } from "@/lib/zone-enabled";
 import { FirstCleanupPricingCard } from "@/components/FirstCleanupPricingCard";
 import { useServiceLines } from "@/components/CommercialOnly";
@@ -393,6 +394,8 @@ function ZonesPage() {
         )}
 
         <div className="min-w-0 space-y-3 lg:order-1">
+          {/* Which zone wins a ZIP two of them list (#858). */}
+          <ZoneRankingPanel zones={zones as any} canEdit={canEdit} />
           {zones.length > 1 && (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" data-testid="zones-toolbar">
               <div className="relative col-span-2 min-w-0 sm:col-span-3">
@@ -718,11 +721,6 @@ function ZoneCard({
               )}
               <span>{accountTypeLabel(zone.account_type)}</span>
               {zone.postal_prefix && <span>ZIP prefix {zone.postal_prefix}</span>}
-              {(zone.priority ?? 0) !== 0 && (
-                <span title="When zones overlap at the same match level, the higher priority wins.">
-                  Priority {zone.priority}
-                </span>
-              )}
             </p>
             {zipList.length > 0 && (
               <Button
@@ -773,6 +771,7 @@ function ZoneCard({
                 )}
               </div>
             )}
+            <ZipFillPendingNote zone={zone} />
             {deadZips.length > 0 && (
               // Named, not counted: "1 invalid ZIP" sends you hunting through
               // twelve chips for it, and the whole point of the colour above is

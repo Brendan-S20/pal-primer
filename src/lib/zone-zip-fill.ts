@@ -205,6 +205,19 @@ export interface ZipClassification {
   edge: string[];
 }
 
+/** The middle of a shape: a circle's center, or the mean of a polygon's
+ *  corners. Where "nearest the middle first" is measured from. */
+export function shapeMiddle(zone: ZoneMatchFields): { lat: number; lng: number } {
+  if (zone.geo_match_mode === "polygon") {
+    const ring = zone.boundary!.coordinates![0].slice(0, -1);
+    return {
+      lat: ring.reduce((s, p) => s + p[1], 0) / ring.length,
+      lng: ring.reduce((s, p) => s + p[0], 0) / ring.length,
+    };
+  }
+  return { lat: Number(zone.center_latitude), lng: Number(zone.center_longitude) };
+}
+
 export function classifyZipCentroids(
   shape: ZoneShapeInput | null | undefined,
   centroids: ZipCentroid[],
@@ -213,16 +226,7 @@ export function classifyZipCentroids(
   const zone = zoneFromShape(shape);
   if (!zone) return { inside: [], insideTotal: 0, edge: [] };
 
-  const middle =
-    zone.geo_match_mode === "polygon"
-      ? (() => {
-          const ring = zone.boundary!.coordinates![0].slice(0, -1);
-          return {
-            lat: ring.reduce((s, p) => s + p[1], 0) / ring.length,
-            lng: ring.reduce((s, p) => s + p[0], 0) / ring.length,
-          };
-        })()
-      : { lat: Number(zone.center_latitude), lng: Number(zone.center_longitude) };
+  const middle = shapeMiddle(zone);
   const reach =
     zone.geo_match_mode === "radius"
       ? Number(zone.radius_meters)
@@ -259,6 +263,52 @@ export function classifyZipCentroids(
     insideTotal: inside.length,
     edge: edge.map((x) => x.zip),
   };
+}
+
+// ── A circle too small to hold any ZIP's center ──────────────────────────
+//
+// #858's fourth empty area: a 1609 m circle with no ZIP centroid inside it,
+// still listing nothing after every fill, because "inside" means the ZIP's
+// Census center is in the shape and a one-mile circle in a city usually holds
+// none. The circle IS inside a ZIP, though: the one whose center is nearest
+// its middle. So a save whose fill finds nothing inside lists that one ZIP,
+// and says so. Only on an empty fill: once any ZIP is inside, the nearest
+// centroid is one of them.
+
+/** The ZIP whose center is nearest the shape's middle, or null with no
+ *  candidates. The ZIP a small circle sits in, as near as centers can say. */
+export function nearestZipToMiddle(
+  shape: ZoneShapeInput | null | undefined,
+  centroids: ZipCentroid[],
+): string | null {
+  const zone = zoneFromShape(shape);
+  if (!zone || centroids.length === 0) return null;
+  const middle = shapeMiddle(zone);
+  let best: { zip: string; d: number } | null = null;
+  for (const c of centroids) {
+    const d = haversineMeters(middle, { lat: c.lat, lng: c.lng });
+    if (!best || d < best.d || (d === best.d && c.zip < best.zip)) best = { zip: c.zip, d };
+  }
+  return best?.zip ?? null;
+}
+
+export interface SaveFill {
+  /** What the save lists: the ZIPs inside, or the one the shape sits in. */
+  zips: string[];
+  /** True when nothing was inside and the ZIP at the middle was taken. */
+  centerOnly: boolean;
+}
+
+/** What a save fills a drawn area with (#858): every ZIP whose center is
+ *  inside, and failing that the ZIP the middle is in. */
+export function fillForSave(
+  shape: ZoneShapeInput | null | undefined,
+  centroids: ZipCentroid[],
+): SaveFill {
+  const inside = classifyZipCentroids(shape, centroids).inside;
+  if (inside.length > 0) return { zips: inside, centerOnly: false };
+  const nearest = nearestZipToMiddle(shape, centroids);
+  return nearest ? { zips: [nearest], centerOnly: true } : { zips: [], centerOnly: false };
 }
 
 // ── Where each chip came from ────────────────────────────────────────────

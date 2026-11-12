@@ -1,7 +1,7 @@
 // Zone create/edit drawer (QA round 3, C5/G5): the Zones page used inline
 // cards with a ZIP-only creation form. This drawer follows the app-wide
 // EditDrawer pattern and carries everything a zone needs up front: name,
-// residential/commercial type, priority, ZIPs, REQUIRED map coverage
+// residential/commercial type, ZIPs, REQUIRED map coverage
 // (centered on the first typed ZIP), residential pricing, and commercial
 // rates. Server-side validation in zones.functions.ts mirrors every rule.
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -314,7 +314,6 @@ export function ZoneDrawer({
   const [zoneType, setZoneType] = useState<ZoneType>(
     (zone?.account_type as ZoneType) ?? (commercialEnabled ? "all" : "residential"),
   );
-  const [priority, setPriority] = useState<string>(String(zone?.priority ?? 0));
   const [zipState, setZipState] = useState<ZipListState>(() => initialZipState(zone?.zip_codes));
   const zips = zipState.zips;
 
@@ -351,16 +350,16 @@ export function ZoneDrawer({
   }, [stdQ.data]);
   const showsStandard = pricedFromStandard === `${basePrice}|${perDog}`;
 
-  // An existing zone that uses a note, a non-default type or a priority shows
-  // them; anything else starts with them folded away.
+  // An existing zone that uses a note or a non-default type shows them;
+  // anything else starts with them folded away. (The zone's rank in the
+  // business's list is set on the Zones page since #858, not typed here.)
   const [moreOpen, setMoreOpen] = useState<boolean>(
     !!zone &&
       (!!zone.price_note ||
-        (zone.priority ?? 0) !== 0 ||
         // Typed other than a new zone here would be: worth seeing.
         (zone.account_type ?? "all") !== (commercialEnabled ? "all" : "residential")),
   );
-  const showMore = moreOpen || !!priceNote || priority !== "0";
+  const showMore = moreOpen || !!priceNote;
   const [initialCleanup, setInitialCleanup] = useState<string>(
     zone ? ((zone.initial_cleanup_cents ?? 0) / 100).toFixed(2) : "0",
   );
@@ -633,7 +632,9 @@ export function ZoneDrawer({
         postalPrefix: zone?.postal_prefix ?? undefined,
         accountType: zoneType === "all" ? null : zoneType,
         priceNote: priceNote || null,
-        priority: parseInt(priority, 10) || 0,
+        // Chips the owner removed during this edit: the server's save-time
+        // fill (#858) leaves them out rather than putting them back.
+        zipCodesRemoved: zipState.dismissed,
         basePriceCents: Math.round((parseFloat(basePrice) || 0) * 100),
         perDogAddlCents: Math.round((parseFloat(perDog) || 0) * 100),
         initialCleanupCents: Math.round((parseFloat(initialCleanup) || 0) * 100),
@@ -676,7 +677,7 @@ export function ZoneDrawer({
       open={open}
       onClose={onClose}
       title={isNew ? "New zone" : `Edit ${zone.name}`}
-      description="Coverage, priority, and pricing for this service area."
+      description="Coverage, ZIPs and pricing for this service area."
       size="lg"
       dirty={dirty}
     >
@@ -729,9 +730,9 @@ export function ZoneDrawer({
           )}
         </div>
 
-        {/* Note, type and priority: each has a sensible default and most zones
-            never change one, so on a NEW zone they wait behind one button. A
-            zone that already uses any of them opens with them showing. */}
+        {/* Note and type: each has a sensible default and most zones never
+            change one, so on a NEW zone they wait behind one button. A zone
+            that already uses either opens with them showing. */}
         {showMore ? (
           <>
             <div className="space-y-2">
@@ -761,20 +762,11 @@ export function ZoneDrawer({
                   When zones overlap, a property prefers a zone typed for its account.
                 </p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="zone-priority">Priority</Label>
-                <Input
-                  id="zone-priority"
-                  type="number"
-                  inputMode="numeric"
-                  className="w-32"
-                  value={priority}
-                  onChange={(e) => mark(setPriority)(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  When zones overlap at the same match level, the higher priority wins.
-                </p>
-              </div>
+              <p className="text-xs text-muted-foreground sm:self-end" data-testid="zone-rank-note">
+                {isNew
+                  ? "A new zone starts at the bottom of the ranking. Move it up on the Zones page."
+                  : "Which zone wins a ZIP both list is set by the ranking on the Zones page."}
+              </p>
             </div>
           </>
         ) : (
@@ -785,7 +777,7 @@ export function ZoneDrawer({
             aria-expanded={false}
             onClick={() => setMoreOpen(true)}
           >
-            <Plus className="mr-1 h-3.5 w-3.5 shrink-0" /> Note, zone type and priority
+            <Plus className="mr-1 h-3.5 w-3.5 shrink-0" /> Note and zone type
           </Button>
         )}
 
@@ -848,8 +840,8 @@ export function ZoneDrawer({
                 </p>
               ))}
               <p>
-                An address in a ZIP two zones list goes to the one with the higher priority. Remove
-                the chip here to leave it to the other zone.
+                An address in a ZIP two zones list goes to the one ranked higher in the Zones
+                page&apos;s ranking. Remove the chip here to leave it to the other zone.
               </p>
             </div>
           )}
