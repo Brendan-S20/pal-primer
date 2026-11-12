@@ -193,7 +193,10 @@ for (const scheme of ["light", "dark"] as const) {
             timeout: 30_000,
           });
           if (step.name === "Plan")
-            await expect(page.getByText("No zone matches ZIP 60640.")).toBeVisible({
+            // #860: with no zone and no standard price the step says both.
+            await expect(
+              page.getByText("No zone matches ZIP 60640 and there is no standard price yet"),
+            ).toBeVisible({
               timeout: 30_000,
             });
           expect(await axeSerious(page), `${step.name} @${w}px ${scheme}`).toEqual([]);

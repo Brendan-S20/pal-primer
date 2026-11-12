@@ -24,6 +24,7 @@
 // old shape.
 
 import type { ServiceLine } from "@/lib/service-lines";
+import { orgLocalDay } from "@/lib/org-day";
 
 export type ImportFrequency = {
   frequency: "weekly" | "biweekly" | "twice_weekly" | "monthly" | "one_time" | "every_n_days";
@@ -160,18 +161,64 @@ export function parseMoneyCents(text: string | null | undefined): number | null 
   return Math.round(n * 100) * (negative ? -1 : 1);
 }
 
-/** "2026-10-01", "10/01/2026", "10/1/26" → YYYY-MM-DD, US month-first. Null
- *  when it is not a real date. */
-export function parseImportDate(text: string | null | undefined): string | null {
+const MONTHS: Record<string, number> = {
+  jan: 1,
+  feb: 2,
+  mar: 3,
+  apr: 4,
+  may: 5,
+  jun: 6,
+  jul: 7,
+  aug: 8,
+  sep: 9,
+  sept: 9,
+  oct: 10,
+  nov: 11,
+  dec: 12,
+};
+
+/**
+ * "2026-10-01", "10/01/2026", "10/1/26", "Oct 1, 2026", "1 Oct 2026" →
+ * YYYY-MM-DD. A slash date is US month-first unless it cannot be ("25/10/2026"
+ * has no 25th month), in which case it is read day-first; "01/02/2026" is
+ * January 2 either way, as every export from a US product writes it. A
+ * timestamp that carries a time and a zone ("2026-10-01T03:30:00Z") is the
+ * date it was on the business's own clock when `tz` is given, so a plan
+ * created at 11 pm in Detroit is not dated tomorrow. Null when it is not a
+ * real date.
+ */
+export function parseImportDate(
+  text: string | null | undefined,
+  tz?: string | null,
+): string | null {
   const s = (text ?? "").trim();
   if (!s) return null;
   let y: number, m: number, d: number;
-  const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  const us = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})\b/);
-  if (iso) [y, m, d] = [Number(iso[1]), Number(iso[2]), Number(iso[3])];
-  else if (us) {
-    [m, d, y] = [Number(us[1]), Number(us[2]), Number(us[3])];
+  const iso = s.match(
+    /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ](\d{1,2}):(\d{2})(?::\d{2}(?:\.\d+)?)?\s*(Z|[+-]\d{2}:?\d{2})?)?$/i,
+  );
+  const slash = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2}|\d{4})\b/);
+  const monthFirst = s.match(/^([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})\b/);
+  const dayFirst = s.match(/^(\d{1,2})\s+([A-Za-z]{3,9})\.?,?\s+(\d{4})\b/);
+  if (iso) {
+    [y, m, d] = [Number(iso[1]), Number(iso[2]), Number(iso[3])];
+    if (iso[4] && iso[6] && tz) {
+      const local = orgLocalDay(s.replace(" ", "T"), tz);
+      if (local) return local;
+    }
+  } else if (slash) {
+    const [a, b] = [Number(slash[1]), Number(slash[2])];
+    y = Number(slash[3]);
     if (y < 100) y += 2000;
+    // Month-first unless the first number cannot be a month.
+    [m, d] = a > 12 && b <= 12 ? [b, a] : [a, b];
+  } else if (monthFirst || dayFirst) {
+    const name = (monthFirst ? monthFirst[1] : dayFirst![2]).toLowerCase().slice(0, 4);
+    const mon = MONTHS[name] ?? MONTHS[name.slice(0, 3)];
+    if (!mon) return null;
+    m = mon;
+    d = Number(monthFirst ? monthFirst[2] : dayFirst![1]);
+    y = Number(monthFirst ? monthFirst[3] : dayFirst![3]);
   } else return null;
   const dt = new Date(Date.UTC(y, m - 1, d));
   if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
@@ -203,10 +250,41 @@ function cell(raw: Record<string, unknown>, mapping: Mapping, field: string): st
   return s === "" ? null : s;
 }
 
+export type ImportBillingFrequency =
+  "after_each_visit" | "weekly" | "monthly" | "quarterly" | "yearly";
+
+/** The clients.billing_frequency a billing cell names, or null. "Per
+ *  visit" (Jobber's Billing type), "after each visit", "each cleanup" are
+ *  all billed after each visit; the plan itself is postpaid either way. */
+export function parseBillingFrequency(
+  text: string | null | undefined,
+): ImportBillingFrequency | null {
+  const s = (text ?? "").toLowerCase().trim();
+  if (!s) return null;
+  if (
+    /\b(after|per|each|every)\b.*\b(visit|cleanup|clean-up|job|service|walk|session)s?\b/.test(s)
+  ) {
+    return "after_each_visit";
+  }
+  if (/\b(per|each|every)\s+(visit|cleanup|job|service)\b/.test(s)) return "after_each_visit";
+  if (/quarter/.test(s)) return "quarterly";
+  if (/year|annual/.test(s)) return "yearly";
+  if (/month/.test(s)) return "monthly";
+  if (/week/.test(s)) return "weekly";
+  return null;
+}
+
 export type MappedService = {
   client_external_id: string | null;
   client_name: string | null;
+  /** The client's email, when the file names it (Jobber's Recurring jobs
+   *  report does), to tell two clients of one name apart. */
+  client_email?: string | null;
   frequency: ImportFrequency["frequency"];
+  /** False when the file has no frequency column at all (Jobber's Recurring
+   *  jobs report, #857): the plan is weekly on paper, comes in paused, and
+   *  the owner sets how often before turning it on. */
+  frequency_in_file: boolean;
   interval_weeks: number | null;
   interval_days: number | null;
   price_cents: number;
@@ -214,6 +292,12 @@ export type MappedService = {
   started_on: string | null;
   dog_count: number | null;
   billing_cadence: "prepaid" | "postpaid" | null;
+  /** How often the client is billed, when the file's billing column says
+   *  (clients.billing_frequency): "after each visit", "per visit" and
+   *  "per cleanup" are after_each_visit; a weekly, monthly, quarterly or
+   *  yearly word is that. Null when the column is absent or says something
+   *  else, and the client keeps what they have.' */
+  billing_frequency: ImportBillingFrequency | null;
   /** The service the row names ("30-minute walk"), trimmed, or null when
    *  the file has no Service column or the cell is blank: the plan then
    *  takes the business's default, as every import before the catalog. */
@@ -308,7 +392,10 @@ export function matchImportService(
 
 /**
  * The subscriptions row an imported plan becomes. This is the ONE place it is
- * built, so the pet-waste shape can be held to what it was:
+ * built, so the pet-waste shape can be held to what it was. Since #857 every
+ * imported plan is PAUSED (the owner's rule, Nov 10 2026: "Imported schedules
+ * start paused until the owner turns them on"), so no visit is generated by
+ * the import; resumeSubscription puts it on the schedule. Otherwise:
  *
  *   * no service on the row, or the business's pet-waste service: exactly the
  *     row every import before the catalog wrote (the database fills the
@@ -358,22 +445,30 @@ export function importPlanRow(
     ...(m.started_on ? { started_on: m.started_on } : {}),
     ...(ctx.service ? { service_id: ctx.service.id } : {}),
     ...(setDays ? { weekdays: m.preferred_weekdays } : {}),
+    status: "paused",
+    paused_at: ctx.now,
   };
 }
 
 export function mapServiceRow(
   raw: Record<string, unknown>,
   mapping: Mapping,
+  tz?: string | null,
 ): { mapped: MappedService | null; error: string | null } {
   const client_external_id = cell(raw, mapping, "client_external_id");
   const client_name = cell(raw, mapping, "client_name");
-  if (!client_external_id && !client_name) {
-    return { mapped: null, error: "Missing the client (map an ID or a name column)" };
+  const client_email =
+    cell(raw, mapping, "client_email")
+      ?.split(/[;,\s]+/)[0]
+      ?.toLowerCase() ?? null;
+  if (!client_external_id && !client_name && !client_email) {
+    return { mapped: null, error: "Missing the client (map an ID, a name or an email column)" };
   }
   const freqText = cell(raw, mapping, "frequency");
   const dayText = cell(raw, mapping, "service_day");
-  // No frequency column at all means weekly, the norm for this trade. A cell
-  // that says something we cannot read is refused, quoted, instead.
+  // No frequency column at all: the plan is weekly on paper and comes in
+  // paused for the owner to set (frequency_in_file: false). A cell that says
+  // something we cannot read is refused, quoted, instead.
   const freq = freqText ? parseFrequency(freqText) : { frequency: "weekly" as const };
   if (!freq) return { mapped: null, error: `Frequency not understood: "${freqText}"` };
   const priceText = cell(raw, mapping, "price_per_visit");
@@ -386,7 +481,7 @@ export function mapServiceRow(
   }
   const days = parseWeekdays(dayText ?? freqText);
   const startText = cell(raw, mapping, "start_date");
-  const started_on = startText ? parseImportDate(startText) : null;
+  const started_on = startText ? parseImportDate(startText, tz) : null;
   if (startText && !started_on)
     return { mapped: null, error: `Start date not understood: "${startText}"` };
   const dogText = cell(raw, mapping, "dog_count");
@@ -396,7 +491,9 @@ export function mapServiceRow(
     mapped: {
       client_external_id,
       client_name,
+      client_email,
       frequency: freq.frequency,
+      frequency_in_file: !!mapping.frequency,
       interval_weeks: freq.intervalWeeks ?? null,
       interval_days: freq.intervalDays ?? null,
       price_cents: price,
@@ -404,6 +501,7 @@ export function mapServiceRow(
       started_on,
       dog_count: Number.isFinite(dogs) && dogs > 0 && dogs <= 50 ? dogs : null,
       billing_cadence: billText.startsWith("pre") ? "prepaid" : billText ? "postpaid" : null,
+      billing_frequency: parseBillingFrequency(billText),
       service_name: cell(raw, mapping, "service"),
     },
     error: null,
@@ -421,6 +519,7 @@ export type MappedBalance = {
 export function mapBalanceRow(
   raw: Record<string, unknown>,
   mapping: Mapping,
+  tz?: string | null,
 ): { mapped: MappedBalance | null; error: string | null } {
   const client_external_id = cell(raw, mapping, "client_external_id");
   const client_name = cell(raw, mapping, "client_name");
@@ -441,7 +540,7 @@ export function mapBalanceRow(
   if (amount < 0)
     return { mapped: null, error: "Balance is a credit; add it as account credit instead" };
   const dueText = cell(raw, mapping, "due_date");
-  const due_on = dueText ? parseImportDate(dueText) : null;
+  const due_on = dueText ? parseImportDate(dueText, tz) : null;
   if (dueText && !due_on) return { mapped: null, error: `Due date not understood: "${dueText}"` };
   return {
     mapped: {

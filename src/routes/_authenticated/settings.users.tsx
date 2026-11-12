@@ -14,6 +14,7 @@ import {
   listOrgInvites,
   revokeOrgInvite,
   resendOrgInvite,
+  ROLES_A_CALLER_MAY_GRANT,
 } from "@/lib/users.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -107,6 +108,13 @@ function UsersPage() {
   const qc = useQueryClient();
   const { role: myRole } = useMyRole();
   const canEdit = myRole === "owner";
+  // D7 as changed 2026-11-10 (#659): an office manager changes roles and turns
+  // people on or off too, but never the owner's row, and offers only the roles
+  // at or below their own. The server and the database refuse the same.
+  const canManageStaff = myRole === "owner" || myRole === "office_manager";
+  const grantableRoles = ROLES.filter((r) =>
+    (ROLES_A_CALLER_MAY_GRANT[myRole ?? ""] ?? []).includes(r),
+  );
 
   const listFn = useServerFn(listOrgUsers);
   const changeFn = useServerFn(changeUserRole);
@@ -196,7 +204,9 @@ function UsersPage() {
         <p className="text-sm text-muted-foreground">
           {canEdit
             ? "Change roles, deactivate people, and choose who runs routes. "
-            : "Who is on the team and what each person can do. Only the owner can change roles. "}
+            : canManageStaff
+              ? "Change roles and deactivate people. Only the owner can change the owner's role or access. "
+              : "Who is on the team and what each person can do. Only the owner or an office manager can change roles. "}
           Only people who run routes appear on the dispatch board, can be assigned visits, or show
           up in tech reports.
         </p>
@@ -244,6 +254,8 @@ function UsersPage() {
                     // at all"; both were blank.
                     const runsRoutes = Boolean(staff?.is_field_tech);
                     const offToday = runsRoutes && !staff?.routing_available;
+                    // Nobody but an owner changes or turns off an owner.
+                    const canManageRow = canManageStaff && (myRole === "owner" || u.role !== "owner");
                     return (
                       <Fragment key={u.user_id}>
                         <tr key={u.user_id} className="max-md:flex max-md:flex-wrap max-md:items-center max-md:gap-x-2 max-md:gap-y-2 max-md:py-3">
@@ -262,14 +274,14 @@ function UsersPage() {
                           <td className="py-3 font-medium max-md:min-w-0 max-md:flex-1 max-md:py-0">{u.display_name ?? "-"}</td>
                           <td className="py-3 text-muted-foreground max-md:basis-full max-md:break-all max-md:py-0">{u.email}</td>
                           <td className="py-3 max-md:py-0">
-                            {canEdit ? (
+                            {canManageRow ? (
                               <Select
                                 value={u.role}
                                 onValueChange={(v) => changeRole.mutate({ userId: u.user_id, role: v })}
                               >
                                 <SelectTrigger className="w-44" aria-label={`Role for ${u.display_name ?? u.email}`}><SelectValue /></SelectTrigger>
                                 <SelectContent>
-                                  {ROLES.map((r) => (
+                                  {grantableRoles.map((r) => (
                                     <SelectItem key={r} value={r}>
                                       {roleLabel(r)}
                                     </SelectItem>
@@ -312,7 +324,7 @@ function UsersPage() {
                                 Routing &amp; addresses
                               </Button>
                             )}
-                            {canEdit && u.staff_id && (
+                            {canManageRow && u.staff_id && (
                               <Button
                                 size="sm"
                                 variant="outline"
