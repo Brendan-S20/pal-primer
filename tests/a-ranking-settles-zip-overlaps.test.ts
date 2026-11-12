@@ -407,10 +407,17 @@ describe("the migration that ranks existing areas newest first", () => {
     .filter((l) => !/^\s*--/.test(l))
     .join("\n");
 
-  it("sorts after every migration on main", () => {
+  it("carries the version SIC reserved for #906, above #909's and every open PR's at the time", () => {
+    // 20261112030000 was reserved by SIC (review 5875669745): #909 keeps
+    // 20261112020000 and #907 takes 20261112040000. main has since gained
+    // 20261112050000 (#891), so "last in the directory" is no longer the
+    // check; the reserved number is, and it sorts above #909's.
     const names = readdirSync(join(ROOT, "supabase/migrations")).sort();
-    expect(names[names.length - 1]).toBe(MIGRATION.split("/").pop());
-    expect(names[names.length - 1] > "20261112020000").toBe(true);
+    const mine = MIGRATION.split("/").pop()!;
+    expect(names).toContain(mine);
+    expect(mine.startsWith("20261112030000_")).toBe(true);
+    expect(names.filter((n) => n.startsWith("20261112030000_"))).toEqual([mine]);
+    expect(mine > "20261112020000").toBe(true);
   });
 
   it("adds the pending columns and ranks per business by creation time, newest on top", () => {
