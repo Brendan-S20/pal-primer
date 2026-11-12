@@ -19,6 +19,14 @@ export type FakeOptions = {
   undoFails?: string | null;
   /** Every rpc call, in order. */
   rpcCalls?: { name: string; args: unknown }[];
+  /** Return an error before a query runs, without changing its rows. */
+  beforeQuery?: (query: {
+    table: string;
+    operation: "select" | "insert" | "update" | "delete";
+    payload: any;
+  }) => string | null | void;
+  /** Add concurrent work after an insert, before the import's next query. */
+  afterInsert?: (table: string, rows: Row[]) => void;
 };
 
 /** What undo_import_batch deletes for a clients batch, in memory: the same
@@ -91,6 +99,8 @@ export function fakeSupabase(tables: Tables, opts: FakeOptions = {}) {
       let to = Infinity;
       const filters: ((r: Row) => boolean)[] = [];
       const run = async (mode: "many" | "one") => {
+        const failure = opts.beforeQuery?.({ table, operation: op, payload });
+        if (failure) return { data: null, error: { message: failure } };
         const list = (tables[table] ??= []);
         if (op === "insert") {
           const items = (Array.isArray(payload) ? payload : [payload]).map((r: Row) => ({
@@ -99,6 +109,7 @@ export function fakeSupabase(tables: Tables, opts: FakeOptions = {}) {
             ...r,
           }));
           list.push(...items);
+          opts.afterInsert?.(table, items);
           return { data: mode === "many" ? items : items[0], error: null };
         }
         const matched = list.filter((r) => filters.every((f) => f(r)));

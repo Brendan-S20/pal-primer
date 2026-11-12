@@ -86,6 +86,10 @@ function BatchDetail() {
   const { batch, rows } = data;
   const blocked = data.commitBlock?.reason ?? commitRefusal(batch);
   const stats = (batch.stats ?? {}) as Record<string, number>;
+  const savedWarnings = (batch.stats as { warnings?: unknown } | null)?.warnings;
+  const warnings = Array.isArray(savedWarnings)
+    ? savedWarnings.filter((warning): warning is string => typeof warning === "string")
+    : [];
   const planOrBalance = batch.entity === "services" || batch.entity === "balances";
   const shown = filter === "all" ? rows : rows.filter((r: any) => r.action === filter);
 
@@ -193,6 +197,21 @@ function BatchDetail() {
         <StatCard label="Skip" value={stats.skip ?? 0} />
         <StatCard label="Errors" value={stats.errors ?? 0} tone="red" />
       </div>
+
+      {warnings.length > 0 && (
+        <div
+          role="alert"
+          aria-label="Import warnings"
+          className="space-y-2 rounded border border-amber-500/30 bg-amber-500/5 p-4 text-sm"
+        >
+          <p className="font-medium">Check these import warnings</p>
+          <ul className="list-disc space-y-1 break-words ps-5">
+            {warnings.map((warning, index) => (
+              <li key={index}>{warning}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {blocked === "failed" && (
         <div

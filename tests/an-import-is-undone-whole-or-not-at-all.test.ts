@@ -269,6 +269,7 @@ describe("billed after each visit", () => {
   it.each([
     ["After each visit", "after_each_visit"],
     ["Per visit", "after_each_visit"],
+    ["Invoiced monthly, per visit", "after_each_visit"],
     ["Per cleanup", "after_each_visit"],
     ["Each job", "after_each_visit"],
     ["Monthly", "monthly"],
@@ -301,7 +302,7 @@ describe("billed after each visit", () => {
     ).toMatchObject({ billing_cadence: "prepaid", billing_frequency: "monthly" });
   });
 
-  it("the commit sets the client's billing_frequency from the plan row", async () => {
+  async function billingPlanPreview() {
     tables.clients.push({
       id: "c-priya",
       organization_id: "org",
@@ -320,7 +321,7 @@ describe("billed after each visit", () => {
       ["Client name", "Billing type", "Total ($)", "Visit frequency"],
       "services",
     );
-    const { batchId } = await call(previewImport, {
+    return call(previewImport, {
       source: "jobber",
       entity: "services",
       mapping,
@@ -333,6 +334,10 @@ describe("billed after each visit", () => {
         },
       ],
     });
+  }
+
+  it("the commit sets the client's billing_frequency from the plan row", async () => {
+    const { batchId } = await billingPlanPreview();
     const result = await call(commitImport, { batchId });
     expect(result).toMatchObject({ created: 1 });
     expect(tables.subscriptions[0]).toMatchObject({
@@ -340,6 +345,100 @@ describe("billed after each visit", () => {
       status: "paused",
     });
     expect(tables.clients[0].billing_frequency).toBe("after_each_visit");
+  });
+
+  it("keeps the existing billing frequency through import and undo when another plan becomes active", async () => {
+    const { batchId } = await billingPlanPreview();
+    const existingPlan = {
+      id: "existing-plan",
+      organization_id: "org",
+      client_id: "c-priya",
+      property_id: "p-priya",
+      status: "active",
+      billing_cadence: "prepaid",
+    };
+    // The first duplicate check cannot see a plan added while the import runs.
+    fake.afterInsert = (table) => {
+      if (table === "subscriptions") tables.subscriptions.push({ ...existingPlan });
+    };
+    const result = await call(commitImport, { batchId });
+    expect(result).toMatchObject({ created: 1, failed: 0 });
+    expect(result.warnings).toEqual([expect.stringContaining("another active plan")]);
+    expect(tables.clients[0].billing_frequency).toBe("monthly");
+    expect(tables.subscriptions).toHaveLength(2);
+
+    await expect(call(undoImport, { batchId })).resolves.toMatchObject({ undone: 1 });
+    expect(tables.clients[0].billing_frequency).toBe("monthly");
+    expect(tables.subscriptions).toEqual([existingPlan]);
+  });
+
+  it.each([
+    { organization_id: "other-org", client_id: "c-priya", status: "active" },
+    { organization_id: "org", client_id: "other-client", status: "active" },
+    { organization_id: "org", client_id: "c-priya", status: "canceled" },
+  ])("does not use an unrelated or inactive plan to block billing: %j", async (otherPlan) => {
+    const { batchId } = await billingPlanPreview();
+    fake.afterInsert = (table) => {
+      if (table === "subscriptions") tables.subscriptions.push({ id: "other-plan", ...otherPlan });
+    };
+    const result = await call(commitImport, { batchId });
+    expect(result).toMatchObject({ created: 1, failed: 0 });
+    expect(tables.clients[0].billing_frequency).toBe("after_each_visit");
+  });
+
+  it("saves a failed billing write as an owner-visible warning without failing the plan", async () => {
+    const { batchId } = await billingPlanPreview();
+    fake.beforeQuery = ({ table, operation, payload }) => {
+      if (table === "clients" && operation === "update" && payload.billing_frequency) {
+        return "Billing settings could not be saved";
+      }
+    };
+    const result = await call(commitImport, { batchId });
+    expect(result).toMatchObject({ created: 1, failed: 0, paused_plans: 1 });
+    expect(result.warnings).toEqual([
+      expect.stringMatching(/Priya Sample.*Billing settings could not be saved/),
+    ]);
+    expect(tables.clients[0].billing_frequency).toBe("monthly");
+    expect(tables.import_rows[0]).toMatchObject({ action: "create", error: null });
+    expect(tables.import_rows[0].target_id).toBe(tables.subscriptions[0].id);
+    const page = await call(getImportBatch, { batchId });
+    expect(page.batch.status).toBe("committed");
+    expect(page.batch.stats.warnings).toEqual(result.warnings);
+  });
+
+  it("preserves billing and warns when the active plan check fails", async () => {
+    const { batchId } = await billingPlanPreview();
+    fake.beforeQuery = ({ table, operation }) => {
+      if (table === "subscriptions" && operation === "select" && tables.subscriptions.length) {
+        return "Plans could not be read";
+      }
+    };
+    const result = await call(commitImport, { batchId });
+    expect(result).toMatchObject({ created: 1, failed: 0 });
+    expect(tables.clients[0].billing_frequency).toBe("monthly");
+    expect(result.warnings).toEqual([
+      expect.stringMatching(/Priya Sample.*Plans could not be read/),
+    ]);
+    expect(tables.import_batches[0].stats.warnings).toEqual(result.warnings);
+  });
+
+  it("keeps a billing warning if recording the final result fails", async () => {
+    const { batchId } = await billingPlanPreview();
+    fake.beforeQuery = ({ table, operation, payload }) => {
+      if (operation !== "update") return;
+      if (table === "clients" && payload.billing_frequency) return "Billing write refused";
+      if (table === "import_batches" && payload.status === "committed") {
+        return "Result could not be saved";
+      }
+    };
+    await expect(call(commitImport, { batchId })).rejects.toThrow("Result could not be saved");
+    const page = await call(getImportBatch, { batchId });
+    expect(page.batch.status).toBe("failed");
+    expect(page.batch.stats).toMatchObject({ created: 1, failed: 0 });
+    expect(page.batch.stats.warnings).toEqual([
+      expect.stringMatching(/Priya Sample.*Billing write refused/),
+    ]);
+    expect(tables.subscriptions).toHaveLength(1);
   });
 });
 
