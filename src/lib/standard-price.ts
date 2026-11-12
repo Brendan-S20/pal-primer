@@ -7,7 +7,7 @@
 //     per extra dog), the same two columns every other line already priced
 //     from. It is the only place the base price is set.
 //   * A zone MAY override it. zones.base_price_cents is nullable since
-//     migration 20261111040000: NULL means "no override, charge the
+//     migration 20261111151000: NULL means "no override, charge the
 //     standard". A zone that has one wins, and only for an address inside
 //     that zone. Outside every zone there is no override to apply, so the
 //     office's quote is the standard price.

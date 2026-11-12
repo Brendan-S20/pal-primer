@@ -309,9 +309,9 @@ describe("the zone override applies only inside its zone (#860)", () => {
   });
 });
 
-describe("the signup's public_quote applies the same rule (migration 20261111040000)", () => {
+describe("the signup's public_quote applies the same rule (migration 20261111151000)", () => {
   const MIG =
-    "supabase/migrations/20261111040000_a-service-has-one-standard-price-and-a-zone-may-override-it.sql";
+    "supabase/migrations/20261111151000_a-service-has-one-standard-price-and-a-zone-may-override-it.sql";
   const sql = read(MIG);
   const unquote = (s: string) => s.replace(/''/g, "'");
 
@@ -324,7 +324,7 @@ describe("the signup's public_quote applies the same rule (migration 20261111040
       src.indexOf("COMMENT ON FUNCTION public.public_quote("),
     );
     const later = readdirSync(join(ROOT, "supabase/migrations"))
-      .filter((f) => f > "20261024100900" && f < "20261111040000")
+      .filter((f) => f > "20261024100900" && f < "20261111151000")
       .filter((f) =>
         read(`supabase/migrations/${f}`).includes(
           "'public.public_quote(text, text, integer, text, text, uuid)'::regprocedure",
@@ -390,6 +390,20 @@ describe("the signup's public_quote applies the same rule (migration 20261111040
     );
   });
 
+  it("sorts after the migrations already applied live, and its old numbers are gone", () => {
+    const files = readdirSync(join(ROOT, "supabase/migrations")).filter((f) => f.endsWith(".sql"));
+    const mine = MIG.split("/").pop()!;
+    // After #867's 20261111120000 (applied in production) and after
+    // 20261111150000, reserved for #888.
+    expect(mine > "20261111150000").toBe(true);
+    // The numbers it had before are gone, not left beside it.
+    for (const old of ["20261110150000", "20261111040000"])
+      expect(
+        files.some((f) => f.startsWith(old)),
+        old,
+      ).toBe(false);
+  });
+
   it("makes the zone columns nullable, copies a saved Business-defaults price onto unpriced services, and is checked", () => {
     expect(sql).toMatch(/ALTER COLUMN base_price_cents DROP NOT NULL/);
     expect(sql).toMatch(/ALTER COLUMN base_price_cents DROP DEFAULT/);
@@ -404,7 +418,7 @@ describe("the signup's public_quote applies the same rule (migration 20261111040
 describe("existing plans keep their saved price (#860)", () => {
   it("the migration does not touch a plan, and neither does anything that sets the standard", () => {
     const code = read(
-      "supabase/migrations/20261111040000_a-service-has-one-standard-price-and-a-zone-may-override-it.sql",
+      "supabase/migrations/20261111151000_a-service-has-one-standard-price-and-a-zone-may-override-it.sql",
     )
       .split("\n")
       .filter((l) => !l.trim().startsWith("--"))

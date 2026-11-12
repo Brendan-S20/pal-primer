@@ -876,7 +876,7 @@ export const deleteDraftSubscription = createServerFn({ method: "POST" })
 // wherever no zone overrides it. Since #860 it is the default pet-waste
 // SERVICE's price (Settings → Services, "Standard price"), not the
 // organizations.std_* pair Business defaults used to edit: one setting, read
-// everywhere (standard-price.ts). Migration 20261111040000 copied a saved
+// everywhere (standard-price.ts). Migration 20261111151000 copied a saved
 // Business-defaults price onto the service where the service had none.
 // Null means no standard price yet. It is written only by Settings →
 // Services (updateService), so there is no second writer here.
