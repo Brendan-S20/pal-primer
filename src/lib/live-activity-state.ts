@@ -10,9 +10,12 @@
 // (ios/App/App/LiveActivity/RouteActivityAttributes.swift is the other half
 // of this shape, field for field).
 //
-// Nothing here is more personal than My Day: the next stop is named by the
-// property's label or its street, never by the customer's name, because a
-// lock screen is read by whoever picks the phone up.
+// Nothing here is more personal than My Day: on the lock screen and in the
+// Dynamic Island the next stop is named by the property's label or its
+// street, never by the customer's name, because a lock screen is read by
+// whoever picks the phone up. The one exception is `shortStop`, for the small
+// view on an Apple Watch and a CarPlay Dashboard, which names the client
+// (Brendan's call on #454, 2026-11-09); see clientShortName.
 
 import type { TFunction } from "i18next";
 import { formatClock } from "@/lib/format";
@@ -33,6 +36,14 @@ export type RouteActivityState = {
   position: number;
   allDone: boolean;
   rtl: boolean;
+  /** Who the stop is for, short: the client's name, cut to fit a watch
+   *  ("Margaret Okonkwo…"), else the street with no house number ("Elm
+   *  St"). What the small presentation on an Apple Watch Smart Stack and a
+   *  CarPlay Dashboard shows after "Stop 4 of 7 ·" (#454). The client name
+   *  is a product decision (Brendan, 2026-11-09): it appears ONLY here, never
+   *  in `nextStop`, which the lock screen and Dynamic Island draw. Null when
+   *  the route is finished or the stop has neither. */
+  shortStop: string | null;
   // ── The buttons (2026-10-07). Every one of these is null when the route is
   // finished, and every one is a plain value, never an object: the "skip
   // unchanged state" check in routeChangePriority compares field by field
@@ -75,6 +86,9 @@ export type RouteActivityVisit = {
     earliest_service_time?: string | null;
     latest_service_time?: string | null;
   } | null;
+  /** The client the visit is for. Read only for `shortStop` (#454). An
+   *  embedded many-to-one row; tolerated as a one-element array too. */
+  clients?: { display_name?: string | null } | { display_name?: string | null }[] | null;
 };
 
 export type RouteActivityContext = {
@@ -103,6 +117,52 @@ export function stopName(v: RouteActivityVisit | undefined): string | null {
   if (label) return label;
   const street = p?.street?.trim();
   return street || null;
+}
+
+/** "Elm St" from "412 Elm St, Apt 3": the street a stop is on, for the watch
+ *  and car surfaces (#454). Only `properties.street` is read -- never the
+ *  property's label, never a client -- the house or unit number in front of
+ *  it is dropped, and so is anything after the first comma (a unit, a
+ *  suite). Null when nothing is left. */
+export function stopStreet(v: RouteActivityVisit | undefined): string | null {
+  const raw = v?.properties?.street;
+  if (typeof raw !== "string") return null;
+  const street = raw
+    .split(",")[0]
+    // "412 ", "12B ", "1200-1204 ", "#7 ", "No. 5 "
+    .replace(/^\s*(?:no\.?\s*|#\s*)?\d+[a-z]?(?:\s*[-\u2013\/]\s*\d+[a-z]?)?\s+/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  // A street that was only a number ("412") has nothing left to say.
+  return street && !/^\d+$/.test(street) ? street : null;
+}
+
+/** The longest client name the watch and car line carries, in characters
+ *  (code points). Beside "Stop 4 of 7 ·" on a Smart Stack tile this is about
+ *  what one more line holds. */
+export const SHORT_NAME_MAX = 18;
+
+/** The client's name for the watch and car line (#454): whitespace
+ *  collapsed, and when longer than SHORT_NAME_MAX, cut after the last whole
+ *  word (a space or a hyphen ends one) that fits with "…" after it:
+ *  "Margaret Okonkwo-Hargreaves" → "Margaret Okonkwo…". A first word that
+ *  does not fit on its own is cut mid-word. Counted in code points, so a Chinese or Arabic
+ *  name, or an emoji, is never split in half. Null when there is no name. */
+export function clientShortName(v: RouteActivityVisit | undefined): string | null {
+  const c = Array.isArray(v?.clients) ? v?.clients[0] : v?.clients;
+  const raw = c?.display_name;
+  if (typeof raw !== "string") return null;
+  const name = raw.replace(/\s+/g, " ").trim();
+  if (!name) return null;
+  const chars = Array.from(name);
+  if (chars.length <= SHORT_NAME_MAX) return name;
+  // Room for the ellipsis.
+  const room = SHORT_NAME_MAX - 1;
+  const head = chars.slice(0, room + 1).join("");
+  const brk = Math.max(head.lastIndexOf(" "), head.lastIndexOf("-"));
+  const cut = brk > 0 ? head.slice(0, brk) : chars.slice(0, room).join("");
+  // No "Smith &…" or "Okonkwo-…": drop a dangling joiner before the ellipsis.
+  return cut.replace(/[\s&,+/\-–—.]+$/u, "") + "…";
 }
 
 /** Where Navigate goes: the property's coordinates when it has them, else
@@ -207,6 +267,7 @@ export function buildRouteActivityState(
     position,
     allDone,
     rtl: ctx.rtl,
+    shortStop: allDone ? null : (clientShortName(next) ?? stopStreet(next)),
     visitId: allDone || !next ? null : next.id,
     destLat: dest?.lat ?? null,
     destLng: dest?.lng ?? null,

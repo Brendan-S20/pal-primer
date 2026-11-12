@@ -10,9 +10,11 @@
  *      does not ask the auth server again, and the trust ends exactly as a
  *      reused answer does (a sign-out, another user).
  *   2. lib/sign-in-handoff.ts: a hand-off that resolves back on /auth is
- *      reported and gives the form back; one that lands anywhere else is
- *      dropped; a stale one is never reported; the password never reaches
- *      storage.
+ *      reported and gives the form back, including after a page drew first
+ *      (the 2026-11-11 reproduction); a stale one is never reported; a
+ *      sign-out on purpose ends it; the password never reaches storage.
+ *   3. The pieces that keep the form on its step: the remembered step, the
+ *      words for a failure, and a held return path that is never /auth.
  *
  * And a source check on /auth for the wiring the browser spec cannot name a
  * line for: the label on each button, and the order of the hand-off.
@@ -43,10 +45,16 @@ vi.mock("@/integrations/supabase/client", () => ({
 
 import { forgetVerifiedIdentity, resolveIdentity, trustFreshSignIn } from "@/lib/offline/identity";
 import {
+  forgetSignInStep,
   handOffSignIn,
+  readSignInStep,
+  rememberSignInStep,
   SIGN_IN_BOUNCED,
   SIGN_IN_HANDOFF_KEY,
   SIGN_IN_HANDOFF_TTL_MS,
+  SIGN_IN_STEP_KEY,
+  SIGN_IN_STEP_TTL_MS,
+  signInFailureMessage,
   signInLanded,
   takeBouncedSignIn,
   watchSignInLanding,
@@ -172,16 +180,152 @@ describe("a sign-in that came back to /auth says so (lib/sign-in-handoff.ts)", (
     expect(takeBouncedSignIn()).toMatchObject({ email: "owner@example.test" });
   });
 
-  it("a navigation that lands anywhere else drops the hand-off, and watches nothing more", () => {
+  it("a page that drew first does not end the watch: a bounce after it is still reported", () => {
+    // #799 dropped the hand-off on the first navigation that resolved
+    // anywhere but /auth, so a session lost one page later came back to a
+    // blank form (QA, live 2183efd2 and 3a028504).
     const fired: string[] = [];
     const target = { dispatchEvent: (e: Event) => (fired.push(e.type), true) };
     let resolved: ((e: { toLocation: { pathname: string } }) => void) | null = null;
     handOffSignIn("owner@example.test", "pw");
-    watchSignInLanding((_e, fn) => ((resolved = fn), () => {}), target);
+    rememberSignInStep("owner@example.test");
+    const stop = watchSignInLanding((_e, fn) => ((resolved = fn), () => {}), target);
     resolved!({ toLocation: { pathname: "/dashboard" } });
-    resolved!({ toLocation: { pathname: "/auth" } }); // a sign-out later
     expect(fired).toEqual([]);
+    // Left the form: the remembered STEP goes, the hand-off does not.
+    expect(readSignInStep()).toBeNull();
+    resolved!({ toLocation: { pathname: "/clients" } });
+    resolved!({ toLocation: { pathname: "/auth" } });
+    expect(fired).toEqual([SIGN_IN_BOUNCED]);
+    expect(takeBouncedSignIn()).toMatchObject({ email: "owner@example.test", password: "pw" });
+    stop();
+  });
+
+  it("the watch ends on its own once a bounce could no longer be one", () => {
+    vi.useFakeTimers();
+    try {
+      const fired: string[] = [];
+      const target = { dispatchEvent: (e: Event) => (fired.push(e.type), true) };
+      let resolved: ((e: { toLocation: { pathname: string } }) => void) | null = null;
+      let unsubscribed = 0;
+      watchSignInLanding((_e, fn) => ((resolved = fn), () => void (unsubscribed += 1)), target);
+      vi.advanceTimersByTime(SIGN_IN_HANDOFF_TTL_MS + 1);
+      expect(unsubscribed).toBe(1);
+      resolved!({ toLocation: { pathname: "/auth" } });
+      expect(fired).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a second Sign in replaces the first one's watch rather than adding to it", () => {
+    let unsubscribed = 0;
+    const subscribe: ResolvedSubscribe = () => () => void (unsubscribed += 1);
+    watchSignInLanding(subscribe, null);
+    watchSignInLanding(subscribe, null)();
+    expect(unsubscribed).toBe(2);
+  });
+
+  it("a sign-out on purpose ends it: signInLanded clears the hand-off and the step", () => {
+    handOffSignIn("owner@example.test", "pw");
+    rememberSignInStep("owner@example.test");
+    signInLanded();
     expect(takeBouncedSignIn()).toBeNull();
+    expect(readSignInStep()).toBeNull();
+  });
+});
+
+describe("the step the form was on survives a redraw (lib/sign-in-handoff.ts)", () => {
+  let stored: Map<string, string>;
+  beforeEach(() => {
+    stored = installSessionStorage();
+    forgetSignInStep();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("reads back the email, and leaves it in place", () => {
+    rememberSignInStep("owner@example.test", 1_000);
+    expect(readSignInStep(2_000)).toBe("owner@example.test");
+    expect(readSignInStep(3_000)).toBe("owner@example.test");
+  });
+
+  it("never holds a password, and forgets a stale step", () => {
+    rememberSignInStep("owner@example.test", 0);
+    expect(stored.get(SIGN_IN_STEP_KEY)).not.toMatch(/password/i);
+    expect(readSignInStep(SIGN_IN_STEP_TTL_MS + 1)).toBeNull();
+    expect(stored.has(SIGN_IN_STEP_KEY)).toBe(false);
+  });
+});
+
+describe("a failure is said in words (signInFailureMessage)", () => {
+  it("keeps a real sentence from the auth server", () => {
+    expect(
+      signInFailureMessage(Object.assign(new Error("Invalid login credentials"), { status: 400 })),
+    ).toBe("Invalid login credentials");
+  });
+
+  it.each([
+    ["an empty JSON body", Object.assign(new Error("{}"), { status: 500 })],
+    ["no message at all", { status: 502, name: "AuthRetryableFetchError" }],
+    ["a gateway error with a body", Object.assign(new Error("Bad gateway"), { status: 503 })],
+    ["nothing", undefined],
+  ])("replaces %s with what to do", (_label, error) => {
+    const text = signInFailureMessage(error);
+    expect(text).toMatch(/couldn't sign you in/i);
+    expect(text).toMatch(/press sign in to try again/i);
+  });
+
+  it("names a connection that did not answer", () => {
+    expect(signInFailureMessage(new TypeError("Failed to fetch"))).toMatch(/connection/i);
+    expect(signInFailureMessage(new TypeError("Load failed"), "email-check")).toMatch(
+      /check that email.*connection.*continue/i,
+    );
+  });
+});
+
+describe("a held return path is a path, and never /auth", () => {
+  beforeEach(() => {
+    vi.stubGlobal("window", { location: { origin: "https://app.houndstack.com" } });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("a sign-out refuses the guard's re-hold until a password is accepted; app links still hold", async () => {
+    const pending = await import("@/lib/pending-deep-link");
+    const { returnHereAfterSignIn } = await import("@/lib/signed-out");
+    pending.__resetDeepLinkForTests();
+    returnHereAfterSignIn("/settings/users");
+    pending.beginSignOut();
+    expect(pending.takeDeepLink()).toBeNull();
+    returnHereAfterSignIn("/settings/users"); // the guard, mid sign-out
+    expect(pending.takeDeepLink()).toBeNull();
+    pending.holdDeepLink("/my-day?visit=1"); // a tapped link is the person's
+    expect(pending.takeDeepLink()).toBe("/my-day?visit=1");
+    pending.signedInAgain();
+    returnHereAfterSignIn("/clients/abc"); // #659 after the next sign-in
+    expect(pending.takeLinkForLanding()).toBe("/clients/abc");
+    pending.__resetDeepLinkForTests();
+  });
+
+  it.each([
+    ["/settings/users?tab=a#b", "/settings/users?tab=a#b"],
+    ["https://app.houndstack.com/clients/1?x=1", "/clients/1?x=1"],
+    ["https://elsewhere.example/clients/1", null],
+    ["//elsewhere.example/clients", null],
+    ["/auth", null],
+    ["/auth?invite=t", null],
+    ["https://app.houndstack.com/auth", null],
+    ["/", null],
+    ["", null],
+    ["clients", null],
+  ])("%s -> %s", async (link, expected) => {
+    const { inAppPath, holdDeepLink, takeDeepLink } = await import("@/lib/pending-deep-link");
+    expect(inAppPath(link)).toBe(expected);
+    holdDeepLink(link);
+    expect(takeDeepLink()).toBe(expected);
   });
 });
 
@@ -208,6 +352,55 @@ describe("/auth wiring", () => {
     ]) {
       expect(handleSignIn.indexOf(leave), leave).toBeGreaterThan(watch);
     }
+  });
+
+  it("adopts what was typed before React attached (a stale fill), and the ref is on the box", () => {
+    expect(src).toMatch(/ref=\{emailInput\}\s+id="si-email"/);
+    expect(src).toMatch(/const early = emailInput\.current\?\.value/);
+    expect(src).toMatch(/if \(early\.trim\(\)\) \{\s+setEmail\(early\)/);
+  });
+
+  it("remembers the password step on Continue, and forgets it on Use a different email", () => {
+    expect(src).toMatch(
+      /if \(r\.exists\) \{\s+rememberSignInStep\(email\);\s+setStage\("password"\)/,
+    );
+    expect(src).toMatch(/onClick=\{\(\) => \{\s+forgetSignInStep\(\);\s+setStage\("email"\)/);
+  });
+
+  it("lets the guard hold a page again only once a password was accepted", () => {
+    const again = handleSignIn.indexOf("signedInAgain();");
+    expect(again).toBeGreaterThan(handleSignIn.indexOf("if (error)"));
+    expect(again).toBeLessThan(handleSignIn.indexOf("handOffSignIn(email, password)"));
+  });
+
+  it("never shows a raw failure: every message on the sign-in path goes through the words", () => {
+    expect(handleSignIn).toMatch(/setError\(signInFailureMessage\(error\)\)/);
+    expect(handleSignIn).toMatch(
+      /catch \(err\) \{\s+setLoading\(false\);\s+setStage\("password"\);\s+setError\(signInFailureMessage\(err\)\)/,
+    );
+    expect(handleSignIn).not.toMatch(/setError\(error\.message\)/);
+  });
+
+  it("every sign-out on purpose ends the hand-off before it signs out", () => {
+    const cache = readFileSync(
+      join(import.meta.dirname, "..", "src/lib/offline/read-cache.ts"),
+      "utf8",
+    );
+    const fn = cache.slice(cache.indexOf("export async function signOutAndClearDevice"));
+    // Before the FIRST await, so a guard that runs while the queue is being
+    // cleared cannot hold the page being left (Product review on #890).
+    const firstAwait = fn.indexOf("await ");
+    expect(fn.indexOf("beginSignOut();")).toBeGreaterThan(0);
+    expect(fn.indexOf("signInLanded();")).toBeGreaterThan(0);
+    expect(fn.indexOf("beginSignOut();")).toBeLessThan(firstAwait);
+    expect(fn.indexOf("signInLanded();")).toBeLessThan(firstAwait);
+    const twoStep = readFileSync(
+      join(import.meta.dirname, "..", "src/routes/two-step.tsx"),
+      "utf8",
+    );
+    const out = twoStep.slice(twoStep.indexOf("const signOut = async"));
+    expect(out.indexOf("signInLanded();")).toBeGreaterThan(0);
+    expect(out.indexOf("signInLanded();")).toBeLessThan(out.indexOf("supabase.auth.signOut()"));
   });
 
   it("Forgot password? has its own words, and Sign in does not borrow them", () => {

@@ -1,0 +1,20 @@
+{
+  "width": 390,
+  "scenario": "before",
+  "viewport": {
+    "width": 390,
+    "height": 1000
+  },
+  "geocoderCalls": 1,
+  "expectedCenter": {
+    "lat": 42.73,
+    "lng": -84.55
+  },
+  "tileUrls": [
+    "https://b.tile.openstreetmap.org/12/1085/1508.png",
+    "https://c.tile.openstreetmap.org/12/1086/1508.png",
+    "https://c.tile.openstreetmap.org/12/1085/1509.png",
+    "https://a.tile.openstreetmap.org/12/1086/1509.png"
+  ],
+  "note": "Signed-in fixture data. Basemap uses explicitly labelled offline coordinate-grid test tiles; external street imagery is blocked."
+}
