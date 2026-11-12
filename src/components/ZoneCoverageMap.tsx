@@ -45,8 +45,11 @@ export function ZoneCoverageMap({
   saving,
   height = 420,
   focusPoint,
+  openingCenter,
 }: {
   initial: CoverageValue;
+  /** Viewport only: never places coverage. */
+  openingCenter?: LatLng | null;
   /** Standalone mode: renders a Save button that emits the drawn coverage. */
   onSave?: (v: CoverageValue) => void;
   /** Controlled mode (zone drawer): emits the coverage on every edit; pass
@@ -82,7 +85,7 @@ export function ZoneCoverageMap({
   const [tick, setTick] = useState(0);
   const fittedRef = useRef(false);
 
-  const startAt = centerRef.current ?? pointsRef.current[0] ?? null;
+  const startAt = centerRef.current ?? pointsRef.current[0] ?? openingCenter ?? null;
   // One map per mount; every edit redraws overlays on it.
   const map = useMapRenderer(containerRef, {
     initialView: startAt ? { center: startAt, zoom: 12 } : US_VIEW,
@@ -91,9 +94,27 @@ export function ZoneCoverageMap({
     maxZoom: 19,
   });
 
+  const openingViewApplied = useRef(false);
+  const interacted = useRef(false);
+  useEffect(() => {
+    if (
+      !map ||
+      !openingCenter ||
+      openingViewApplied.current ||
+      interacted.current ||
+      centerRef.current ||
+      pointsRef.current.length ||
+      focusPoint
+    )
+      return;
+    map.setView(openingCenter, 12);
+    openingViewApplied.current = true;
+  }, [map, openingCenter?.lat, openingCenter?.lng, focusPoint]);
+
   useEffect(() => {
     if (!map) return;
     return map.onMapClick((p) => {
+      interacted.current = true;
       // Read the current mode from the ref — the handler is registered once
       // per map, so closing over the initial `mode` state would misroute
       // clicks after the user switches tabs.
