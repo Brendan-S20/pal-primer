@@ -33,6 +33,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { DateField, TimeField } from "@/components/fields";
 import { formatDay, formatWindow } from "@/lib/format";
 import { useOrgToday } from "@/hooks/useOrgToday";
+import { usePermissions } from "@/hooks/useMyRole";
+import { PlanAtSetPriceDrawer } from "@/components/client-detail/PlanAtSetPriceDrawer";
 import { MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
 import { TrainingPackagesSection } from "@/components/clients/TrainingPackagesSection";
 import {
@@ -100,8 +102,6 @@ import { walkWindowsProblem, type WalkWindow } from "@/lib/subscription-form";
 import { isDog } from "@/lib/pets";
 import { formatMultiplier, perVisitMultiplier } from "@/lib/frequency-multipliers";
 import { StaysSection } from "@/components/client-detail/StaysSection";
-import { PlanAtSetPriceDrawer } from "@/components/client-detail/PlanAtSetPriceDrawer";
-import { usePermissions } from "@/hooks/useMyRole";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
