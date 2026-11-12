@@ -35,13 +35,30 @@
 -- Replays into an empty database: it adds three nullable columns, replaces
 -- one function and checks both. No rows, no tenant, no cron.
 
+-- ── Before anything: is has_permission still the matrix this file edits? ──
+-- #905 (#863, an owner sets each role's permissions) moves the role clauses
+-- into public.permission_default and makes has_permission read
+-- public.role_permission_overrides. Its file sorts before this one. If it is
+-- in the sequence, replacing has_permission below would quietly drop every
+-- business's overrides, so this file refuses to run and says why: the
+-- dispatcher's manage_plans then belongs in permission_default instead. This
+-- asks about a table an earlier migration in the same sequence creates, not
+-- about operations state, so a replay can always answer it.
+DO $pre$
+BEGIN
+  IF to_regclass('public.role_permission_overrides') IS NOT NULL THEN
+    RAISE EXCEPTION 'has_permission now reads role_permission_overrides (#863). Add manage_plans to the dispatcher in permission_default instead of replacing has_permission here.';
+  END IF;
+END
+$pre$;
+
 ALTER TABLE public.subscriptions
   ADD COLUMN IF NOT EXISTS created_by uuid,
   ADD COLUMN IF NOT EXISTS last_changed_by uuid,
   ADD COLUMN IF NOT EXISTS last_changed_at timestamptz;
 
 COMMENT ON COLUMN public.subscriptions.created_by IS
-  'The person who added this plan, written by the server when it is added (#728). NULL on plans added before 20261111160000.';
+  'The person who added this plan, written by the server when it is added (#728). NULL on plans added before 20261112020000.';
 COMMENT ON COLUMN public.subscriptions.last_changed_by IS
   'The person who last added, paused, resumed, ended or edited this plan, written with the change (#728).';
 COMMENT ON COLUMN public.subscriptions.last_changed_at IS
@@ -76,7 +93,7 @@ REVOKE ALL ON FUNCTION public.has_permission(uuid, uuid, text) FROM PUBLIC, anon
 GRANT EXECUTE ON FUNCTION public.has_permission(uuid, uuid, text) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.has_permission(uuid, uuid, text) IS
-  'Mirrors ROLE_PERMISSIONS in src/lib/permissions.ts; the IMP-3 parity test pins them together. Answers only about the CALLER, only after the second step when they have one, and never for a person whose staff row in that organization is turned off (20261009180000). Dispatcher holds booking (20261031140000, #616), manage_schedule and message_clients (20261108152800, #728), and manage_plans (20261111160000, #728).';
+  'Mirrors ROLE_PERMISSIONS in src/lib/permissions.ts; the IMP-3 parity test pins them together. Answers only about the CALLER, only after the second step when they have one, and never for a person whose staff row in that organization is turned off (20261009180000). Dispatcher holds booking (20261031140000, #616), manage_schedule and message_clients (20261108152800, #728), and manage_plans (20261112020000, #728).';
 
 -- ── What this file establishes, checked from any starting state ───────────
 DO $post$

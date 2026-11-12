@@ -551,9 +551,11 @@ describe("the Services tab and the migration", () => {
     const files = readdirSync(join(ROOT, "supabase/migrations"))
       .filter((f) => f.endsWith(".sql"))
       .sort();
-    const file = "20261111160000_a-dispatcher-manages-plans-at-the-set-price.sql";
+    const file = "20261112020000_a-dispatcher-manages-plans-at-the-set-price.sql";
     expect(files).toContain(file);
-    expect(file.slice(0, 14) > "20261111150000").toBe(true);
+    // After #905's 20261112010000, and the newest file in the folder.
+    expect(file.slice(0, 14) > "20261112010000").toBe(true);
+    expect(files.filter((f) => f > file)).toEqual([]);
     const sql = read(`supabase/migrations/${file}`);
     expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS created_by uuid/);
     expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS last_changed_by uuid/);
@@ -562,6 +564,10 @@ describe("the Services tab and the migration", () => {
     // No policy is created, dropped or altered: the plan write policies stay
     // manage_pricing, so a dispatcher's own key still cannot write a price.
     expect(sql).not.toMatch(/\b(CREATE|DROP|ALTER) POLICY\b/i);
+    // If #905 (per-business role permissions, #863) lands first, this file's
+    // has_permission would undo its overrides on every replay. It refuses to
+    // run instead, so whichever PR merges second reconciles the two.
+    expect(sql).toMatch(/to_regclass\('public\.role_permission_overrides'\) IS NOT NULL/);
   });
 });
 
@@ -571,7 +577,7 @@ describe("the Services tab and the migration", () => {
 
 const MIGRATION = join(
   ROOT,
-  "supabase/migrations/20261111160000_a-dispatcher-manages-plans-at-the-set-price.sql",
+  "supabase/migrations/20261112020000_a-dispatcher-manages-plans-at-the-set-price.sql",
 );
 const PROOF = join(ROOT, "tests/sql/a-dispatcher-manages-plans-at-the-set-price.proof.sql");
 const DB_URL =
