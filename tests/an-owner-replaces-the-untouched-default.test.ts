@@ -39,6 +39,9 @@ describe.skipIf(!available)(
         timeout: 300000,
       });
       expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+      expect(result.stdout).toContain(
+        "ok: #883 untouched default retired; saved and referenced services preserved",
+      );
     }, 300000);
   },
 );

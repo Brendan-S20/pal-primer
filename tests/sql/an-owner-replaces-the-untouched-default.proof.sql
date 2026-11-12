@@ -98,3 +98,4 @@ BEGIN
 END;
 $proof$;
 ROLLBACK;
+\echo 'ok: #883 untouched default retired; saved and referenced services preserved'
