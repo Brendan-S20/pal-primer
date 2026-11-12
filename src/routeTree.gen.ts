@@ -114,6 +114,7 @@ import { Route as ApiPublicWebsiteSubmissionsRouteImport } from './routes/api/pu
 import { Route as ApiPublicVerifyEmailRouteImport } from './routes/api/public/verify-email'
 import { Route as ApiPublicQuotePdfRouteImport } from './routes/api/public/quote-pdf'
 import { Route as ApiPublicLeadsRouteImport } from './routes/api/public/leads'
+import { Route as ApiPublicDirectoryQuotesRouteImport } from './routes/api/public/directory/quotes'
 import { Route as ApiPublicInvoicePdfRouteImport } from './routes/api/public/invoice-pdf'
 import { Route as AuthenticatedSettingsWebhooksRouteImport } from './routes/_authenticated/settings.webhooks'
 import { Route as AuthenticatedSettingsUsersRouteImport } from './routes/_authenticated/settings.users'
@@ -715,6 +716,11 @@ const ApiPublicLeadsRoute = ApiPublicLeadsRouteImport.update({
   path: '/api/public/leads',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicDirectoryQuotesRoute = ApiPublicDirectoryQuotesRouteImport.update({
+  id: '/api/public/directory/quotes',
+  path: '/api/public/directory/quotes',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicInvoicePdfRoute = ApiPublicInvoicePdfRouteImport.update({
   id: '/api/public/invoice-pdf',
   path: '/api/public/invoice-pdf',
@@ -1179,6 +1185,7 @@ export interface FileRoutesByFullPath {
   '/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
   '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
+  '/api/public/directory/quotes': typeof ApiPublicDirectoryQuotesRoute
   '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
   '/api/public/website-submissions': typeof ApiPublicWebsiteSubmissionsRoute
@@ -1337,6 +1344,7 @@ export interface FileRoutesByTo {
   '/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
   '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
+  '/api/public/directory/quotes': typeof ApiPublicDirectoryQuotesRoute
   '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
   '/api/public/website-submissions': typeof ApiPublicWebsiteSubmissionsRoute
@@ -1504,6 +1512,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
   '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
+  '/api/public/directory/quotes': typeof ApiPublicDirectoryQuotesRoute
   '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
   '/api/public/website-submissions': typeof ApiPublicWebsiteSubmissionsRoute
@@ -1672,6 +1681,7 @@ export interface FileRouteTypes {
     | '/settings/webhooks'
     | '/api/public/invoice-pdf'
     | '/api/public/leads'
+    | '/api/public/directory/quotes'
     | '/api/public/quote-pdf'
     | '/api/public/verify-email'
     | '/api/public/website-submissions'
@@ -1830,6 +1840,7 @@ export interface FileRouteTypes {
     | '/settings/webhooks'
     | '/api/public/invoice-pdf'
     | '/api/public/leads'
+    | '/api/public/directory/quotes'
     | '/api/public/quote-pdf'
     | '/api/public/verify-email'
     | '/api/public/website-submissions'
@@ -1996,6 +2007,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/webhooks'
     | '/api/public/invoice-pdf'
     | '/api/public/leads'
+    | '/api/public/directory/quotes'
     | '/api/public/quote-pdf'
     | '/api/public/verify-email'
     | '/api/public/website-submissions'
@@ -2076,6 +2088,7 @@ export interface RootRouteChildren {
   ProsIndexRoute: typeof ProsIndexRoute
   ApiPublicInvoicePdfRoute: typeof ApiPublicInvoicePdfRoute
   ApiPublicLeadsRoute: typeof ApiPublicLeadsRoute
+  ApiPublicDirectoryQuotesRoute: typeof ApiPublicDirectoryQuotesRoute
   ApiPublicQuotePdfRoute: typeof ApiPublicQuotePdfRoute
   ApiPublicVerifyEmailRoute: typeof ApiPublicVerifyEmailRoute
   ApiPublicWebsiteSubmissionsRoute: typeof ApiPublicWebsiteSubmissionsRoute
@@ -2837,6 +2850,13 @@ declare module '@tanstack/react-router' {
       path: '/api/public/leads'
       fullPath: '/api/public/leads'
       preLoaderRoute: typeof ApiPublicLeadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/directory/quotes': {
+      id: '/api/public/directory/quotes'
+      path: '/api/public/directory/quotes'
+      fullPath: '/api/public/directory/quotes'
+      preLoaderRoute: typeof ApiPublicDirectoryQuotesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/invoice-pdf': {
@@ -3621,6 +3641,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProsIndexRoute: ProsIndexRoute,
   ApiPublicInvoicePdfRoute: ApiPublicInvoicePdfRoute,
   ApiPublicLeadsRoute: ApiPublicLeadsRoute,
+  ApiPublicDirectoryQuotesRoute: ApiPublicDirectoryQuotesRoute,
   ApiPublicQuotePdfRoute: ApiPublicQuotePdfRoute,
   ApiPublicVerifyEmailRoute: ApiPublicVerifyEmailRoute,
   ApiPublicWebsiteSubmissionsRoute: ApiPublicWebsiteSubmissionsRoute,
