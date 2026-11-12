@@ -163,7 +163,7 @@ describe("the wiring", () => {
 
   it("sign-out clears the held link, inside the app only", () => {
     const src = read("src/routes/__root.tsx");
-    expect(src).toMatch(/if \(event === "SIGNED_OUT"\) forgetDeepLink\(\);/);
+    expect(src).toMatch(/if \(event === "SIGNED_OUT"\) signedOut\(\);/);
     expect(read("src/lib/pending-deep-link.ts")).toMatch(
       // Held or still waiting, then made a path that is not /auth (#785).
       /markLanded\(\);\s*const link = takeDeepLink\(now\) \?\? takeWaitingAppUrl\("path"\);\s*return link \? inAppPath\(link\) : null;/,
