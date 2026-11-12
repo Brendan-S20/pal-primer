@@ -125,6 +125,23 @@ export async function routeDeepLink(path: string, env: DeepLinkEnv): Promise<voi
   env.push(next);
 }
 
+/**
+ * The root's SIGNED_OUT listener. A sign-out AFTER /auth landed somebody is
+ * a person leaving: forget their link and their landing (forgetDeepLink).
+ *
+ * A sign-out BEFORE anybody landed is not. On a cold start whose saved
+ * session has expired, supabase-js tries the refresh token while it starts
+ * up, the auth server refuses it, and the client announces SIGNED_OUT, often
+ * after the launch link is already held. Nobody has used the app on this
+ * launch, so the person about to see the sign-in form is the person who
+ * tapped the link; forgetting it there sent them to My Day after signing in,
+ * the #621 symptom by another road. The TTL still bounds how long it waits.
+ */
+export function signedOut(): void {
+  if (!landed) return;
+  forgetDeepLink();
+}
+
 /** Tests only. */
 export function __resetDeepLinkForTests(): void {
   forgetDeepLink();
