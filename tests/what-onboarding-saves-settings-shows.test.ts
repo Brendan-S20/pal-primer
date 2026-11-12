@@ -343,13 +343,13 @@ describe("Setup → Settings", () => {
     expect((await call(getMyOrgFeatures)).serviceLines).toEqual(["pet_waste"]);
   });
 
-  it("keeps one default service after repeated setup saves, with the Directory's name (#883)", async () => {
+  it("keeps one default service after repeated setup saves (#883)", async () => {
     await call(setServiceLines, { lines: ["pet_waste"] });
     await call(setServiceLines, { lines: ["pet_waste"] });
     const services = (await call(listServices, {})).services;
     expect(services).toHaveLength(1);
     expect(services[0].name).toBe("Pet waste removal");
-    expect(directoryLineLabel("pet_waste")).toBe(services[0].name);
+    expect(directoryLineLabel("pet_waste")).toBe("Poop scooping");
     expect(defaultServiceSeedsFor(["pet_waste"]).map((s) => s.name)).toEqual([services[0].name]);
   });
 
@@ -375,7 +375,7 @@ describe("Setup → Settings", () => {
     await call(setServiceLines, { lines: ["pet_waste"] });
     expect(h.db.services).toHaveLength(1);
     expect(h.db.services[0]).toMatchObject({
-      name: directoryLineLabel("pet_waste"),
+      name: "Pet waste removal",
       service_line: "pet_waste",
       active: true,
     });

@@ -10,7 +10,6 @@
 // request a quote. Reviews, held for moderation, are in lib/directory-reviews.ts.
 
 import { SERVICE_LINE_LABEL, type ServiceLine } from "@/lib/service-lines";
-import { PET_WASTE_SERVICE_NAME } from "@/lib/services";
 
 /** The lines a visitor can search for. `other` is accepted by the database
  *  but means nothing to a visitor, so it is never offered as a search. */
@@ -25,7 +24,7 @@ export type DirectorySearchLine = (typeof DIRECTORY_SEARCH_LINES)[number];
 
 /** What a visitor calls each line. Plainer than Settings' labels. */
 export const DIRECTORY_LINE_LABEL: Record<DirectorySearchLine, string> = {
-  pet_waste: PET_WASTE_SERVICE_NAME,
+  pet_waste: "Poop scooping",
   dog_walking: "Dog walking",
   pet_sitting: "Pet sitting",
   mobile_grooming: "Mobile grooming",

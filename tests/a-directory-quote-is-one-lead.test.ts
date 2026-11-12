@@ -170,7 +170,7 @@ describe("a directory quote, through the shipped endpoint", () => {
       source: "directory",
       status: "new",
     });
-    expect(h.leads[0].message).toContain("Asked about: Pet waste removal.");
+    expect(h.leads[0].message).toContain("Asked about: Poop scooping.");
     expect(h.leads[0].message).toContain("Weekly, starting next month.");
     expect(h.leads[0]).not.toHaveProperty("directory_slug");
     expect(h.leads[0]).not.toHaveProperty("website_url");
@@ -284,7 +284,7 @@ describe("Convert to client, on the lead the directory wrote", () => {
     expect(prefill.primaryPhone).toBe("313-555-0100");
     expect(prefill.postalCode).toBe("48201");
     expect(prefill.dogs).toHaveLength(2);
-    expect(prefill.officeNote).toContain("Asked about: Pet waste removal.");
+    expect(prefill.officeNote).toContain("Asked about: Poop scooping.");
     expect(leadOriginLabel("directory", null)).toBe("Quote request from the HoundStack directory");
   });
 });

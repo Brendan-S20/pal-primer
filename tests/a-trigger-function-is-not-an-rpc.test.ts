@@ -332,7 +332,10 @@ describe("no trigger function is executable by a signed-in user", () => {
     // to a signed-in tech's own UPDATE of visits.status, so a PATCH cannot do
     // what start_visit refuses. Revoked from PUBLIC, anon and authenticated
     // there.
-    expect(triggerFunctions().size).toBe(110);
+    // 110 -> 112 (#883): retirement of an unused starter after Add service,
+    // and a service-specific edit timestamp that records same-transaction edits.
+    // Both functions revoke EXECUTE from PUBLIC, anon and authenticated.
+    expect(triggerFunctions().size).toBe(112);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {
