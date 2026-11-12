@@ -11,7 +11,7 @@ then `One-time cleanup`. The starter row is absent; both owner-created rows rema
 Reproduce with:
 
 ```sh
-SWEEP_CHROMIUM=/usr/bin/chromium npx playwright test an-owner-replaces-the-untouched-default --workers=1
+SWEEP_CHROMIUM=/usr/bin/chromium npx playwright test every-signed-in-page-when-an-owner-replaces-the-default --workers=1
 ```
 
 These are the real Settings UI with the repository's network-isolated browser
