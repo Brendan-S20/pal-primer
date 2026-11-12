@@ -77,7 +77,7 @@ vi.mock("@/lib/zones-redetect.server", () => ({
 const ROOT = join(import.meta.dirname, "..");
 const read = (f: string) => readFileSync(join(ROOT, f), "utf8");
 const MIGRATION =
-  "supabase/migrations/20261111160000_a-service-area-fills-its-zips-and-a-ranking-settles-overlaps.sql";
+  "supabase/migrations/20261112020000_a-service-area-fills-its-zips-and-a-ranking-settles-overlaps.sql";
 
 const state = vi.hoisted(() => ({
   db: null as any,
@@ -372,7 +372,7 @@ describe("the migration that ranks existing areas newest first", () => {
   it("sorts after every migration on main", () => {
     const names = readdirSync(join(ROOT, "supabase/migrations")).sort();
     expect(names[names.length - 1]).toBe(MIGRATION.split("/").pop());
-    expect(names[names.length - 1] > "20261111150000").toBe(true);
+    expect(names[names.length - 1] > "20261112010000").toBe(true);
   });
 
   it("adds the pending column and ranks per business by creation time, newest on top", () => {
@@ -389,8 +389,8 @@ describe("the migration that ranks existing areas newest first", () => {
 
   it("raises on what it establishes and only reports what it found", () => {
     expect(code).toMatch(/HAVING count\(\*\) > 1/);
-    expect(code).toMatch(/RAISE EXCEPTION '\[20261111160000\] % business\/priority pair/);
-    expect(code).toMatch(/RAISE WARNING '\[20261111160000\] ranked the areas of/);
+    expect(code).toMatch(/RAISE EXCEPTION '\[20261112020000\] % business\/priority pair/);
+    expect(code).toMatch(/RAISE WARNING '\[20261112020000\] ranked the areas of/);
   });
 
   it("names no business and touches no row by id", () => {

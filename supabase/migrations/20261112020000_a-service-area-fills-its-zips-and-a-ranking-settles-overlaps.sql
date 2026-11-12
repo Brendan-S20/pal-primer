@@ -70,7 +70,7 @@ BEGIN
   GET DIAGNOSTICS _changed = ROW_COUNT;
   SELECT count(DISTINCT organization_id) INTO _businesses FROM public.zones;
   -- A number measured from the database this ran on: reported, not asserted.
-  RAISE WARNING '[20261111160000] ranked the areas of % business(es) newest first; % row(s) changed',
+  RAISE WARNING '[20261112020000] ranked the areas of % business(es) newest first; % row(s) changed',
     _businesses, _changed;
 END
 $rank$;
@@ -89,7 +89,7 @@ BEGIN
       HAVING count(*) > 1
     ) d;
   IF _dupes > 0 THEN
-    RAISE EXCEPTION '[20261111160000] % business/priority pair(s) are still shared by two or more areas', _dupes;
+    RAISE EXCEPTION '[20261112020000] % business/priority pair(s) are still shared by two or more areas', _dupes;
   END IF;
 
   SELECT EXISTS (
@@ -98,7 +98,7 @@ BEGIN
        AND column_name = 'zip_fill_pending_since' AND data_type = 'timestamp with time zone'
   ) INTO _col;
   IF NOT _col THEN
-    RAISE EXCEPTION '[20261111160000] zones.zip_fill_pending_since is missing or not timestamptz';
+    RAISE EXCEPTION '[20261112020000] zones.zip_fill_pending_since is missing or not timestamptz';
   END IF;
 END
 $check$;
