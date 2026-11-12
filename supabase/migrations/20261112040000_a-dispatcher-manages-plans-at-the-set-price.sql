@@ -47,7 +47,7 @@
 DO $pre$
 BEGIN
   IF to_regclass('public.role_permission_overrides') IS NOT NULL THEN
-    RAISE EXCEPTION 'has_permission now reads role_permission_overrides (#863). Add manage_plans to the dispatcher in permission_default instead of replacing has_permission here.';
+    RAISE EXCEPTION '20261112040000 (#907): has_permission now reads role_permission_overrides (#905, #863). Replacing it here would drop every business''s overrides. Rewrite this file to add ''manage_plans'' to the dispatcher list in permission_default instead.';
   END IF;
 END
 $pre$;
@@ -58,7 +58,7 @@ ALTER TABLE public.subscriptions
   ADD COLUMN IF NOT EXISTS last_changed_at timestamptz;
 
 COMMENT ON COLUMN public.subscriptions.created_by IS
-  'The person who added this plan, written by the server when it is added (#728). NULL on plans added before 20261112020000.';
+  'The person who added this plan, written by the server when it is added (#728). NULL on plans added before 20261112040000.';
 COMMENT ON COLUMN public.subscriptions.last_changed_by IS
   'The person who last added, paused, resumed, ended or edited this plan, written with the change (#728).';
 COMMENT ON COLUMN public.subscriptions.last_changed_at IS
@@ -93,7 +93,7 @@ REVOKE ALL ON FUNCTION public.has_permission(uuid, uuid, text) FROM PUBLIC, anon
 GRANT EXECUTE ON FUNCTION public.has_permission(uuid, uuid, text) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.has_permission(uuid, uuid, text) IS
-  'Mirrors ROLE_PERMISSIONS in src/lib/permissions.ts; the IMP-3 parity test pins them together. Answers only about the CALLER, only after the second step when they have one, and never for a person whose staff row in that organization is turned off (20261009180000). Dispatcher holds booking (20261031140000, #616), manage_schedule and message_clients (20261108152800, #728), and manage_plans (20261112020000, #728).';
+  'Mirrors ROLE_PERMISSIONS in src/lib/permissions.ts; the IMP-3 parity test pins them together. Answers only about the CALLER, only after the second step when they have one, and never for a person whose staff row in that organization is turned off (20261009180000). Dispatcher holds booking (20261031140000, #616), manage_schedule and message_clients (20261108152800, #728), and manage_plans (20261112040000, #728).';
 
 -- ── What this file establishes, checked from any starting state ───────────
 DO $post$
@@ -107,7 +107,7 @@ DECLARE
 BEGIN
   SELECT p.prosrc INTO _src FROM pg_proc p WHERE p.oid = _fn;
   IF _src NOT LIKE '%''dispatcher'' AND _permission IN (''view_client_directory'', ''record_field_addons'', ''booking'', ''manage_schedule'', ''message_clients'', ''manage_plans'')%' THEN
-    RAISE EXCEPTION 'has_permission must grant dispatcher manage_plans';
+    RAISE EXCEPTION '20261112040000 (#907): has_permission must grant dispatcher manage_plans';
   END IF;
   -- No price, no money, no settings, no people, not the business's own plan.
   FOREACH _p IN ARRAY ARRAY[

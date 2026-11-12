@@ -32,10 +32,13 @@ import {
 } from "./rules";
 
 const ZONE_ID = "eeeeeeee-0000-4000-8000-00000000e728";
-/** The set price the server answers: deliberately not the fixture plan's
- *  $24.00, so the text on screen can only have come from getPlanSetPrice. */
-const SET_PRICE = { cents: 4150, zoneId: ZONE_ID, reason: null, accountType: "residential" };
-const SET_PRICE_TEXT = "$41.50";
+/** The set price the server answers: the same $24.00 the client's existing
+ *  weekly, 2-dog plan is at (stub-backend's listSubscriptionsForClient), so the
+ *  card shows one number for one plan, as a real business at its set price
+ *  would. That it came from getPlanSetPrice, not from the card, is proved by
+ *  the recorded call below. */
+const SET_PRICE = { cents: 2400, zoneId: ZONE_ID, reason: null, accountType: "residential" };
+const SET_PRICE_TEXT = "$24.00";
 
 type Calls = Array<{ name: string; args: Record<string, any> }>;
 
@@ -111,6 +114,14 @@ for (const { w, h, label } of WIDTHS) {
       await dialog.locator("#psp-property").selectOption(fx.PROPERTY_ID);
       const price = dialog.getByTestId("plan-set-price");
       await expect(price).toContainText(SET_PRICE_TEXT, { timeout: 30_000 });
+      // Worked out by the server for this property, weekly, at the dogs the
+      // property has on file (2 in the fixture), not read off the card.
+      expect(calls.filter((c) => c.name === "getPlanSetPrice").at(-1)!.args).toMatchObject({
+        clientId: fx.CLIENT_ID,
+        propertyId: fx.PROPERTY_ID,
+        frequency: "weekly",
+        dogCount: 2,
+      });
       // The price is shown, never typed: no price box, no prepaid.
       await expect(dialog.getByLabel(/price/i)).toHaveCount(0);
       await expect(dialog.getByText(/prepaid/i)).toHaveCount(0);

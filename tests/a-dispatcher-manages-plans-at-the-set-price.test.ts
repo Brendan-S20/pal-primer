@@ -400,6 +400,37 @@ describe("a price edit or override sent straight to the server", () => {
 
 // ── Pause, resume, end ─────────────────────────────────────────────────────
 
+// ── Brendan's dispatcher defaults, Nov 12 2026 11:45 AM ET ────────────────
+// "Dispatchers can choose prepaid billing: no". Refused by the server, not
+// only absent from the form; an owner and an office manager still choose it.
+// (Cancel and complete for techs, both "yes", are #905's close_visits.)
+describe("Nov 12 default: a dispatcher cannot choose prepaid billing", () => {
+  it("the server refuses prepaid from a dispatcher, before anything is written", async () => {
+    await expect(newPlan({ billingCadence: "prepaid" })).rejects.toThrow(PLAN_CADENCE_IS_BILLING);
+    expect(subscriptionWrites()).toEqual([]);
+  });
+
+  it("a dispatcher's plan is always written billed after each visit", async () => {
+    await newPlan({ billingCadence: "postpaid" });
+    expect(subscriptionWrites("insert")[0].row.billing_cadence).toBe("postpaid");
+  });
+
+  it("the dispatcher's form offers no prepaid and sends postpaid", () => {
+    const drawer = read("src/components/client-detail/PlanAtSetPriceDrawer.tsx");
+    expect(drawer).not.toContain('"prepaid"');
+    expect(drawer).toMatch(/billingCadence: "postpaid"/);
+  });
+
+  it("an owner and an office manager still choose prepaid", async () => {
+    for (const role of ["owner", "office_manager"]) {
+      state.role = role;
+      state.writes.length = 0;
+      await newPlan({ billingCadence: "prepaid", priceCents: 4000 });
+      expect(subscriptionWrites("insert")[0].row[0].billing_cadence).toBe("prepaid");
+    }
+  });
+});
+
 describe("a dispatcher pauses, resumes and ends a plan", () => {
   it("pauses an active plan, through the server, in their business only, with who and when", async () => {
     await pauseSubscription({ data: { subscriptionId: SUB } });
@@ -551,11 +582,12 @@ describe("the Services tab and the migration", () => {
     const files = readdirSync(join(ROOT, "supabase/migrations"))
       .filter((f) => f.endsWith(".sql"))
       .sort();
-    const file = "20261112020000_a-dispatcher-manages-plans-at-the-set-price.sql";
+    const file = "20261112040000_a-dispatcher-manages-plans-at-the-set-price.sql";
     expect(files).toContain(file);
-    // After #905's 20261112010000, and the newest file in the folder.
+    // The version SIC reserved for #907: after #905's 20261112010000, whose
+    // has_permission this file must never replace (see the guard below).
+    expect(file.slice(0, 14)).toBe("20261112040000");
     expect(file.slice(0, 14) > "20261112010000").toBe(true);
-    expect(files.filter((f) => f > file)).toEqual([]);
     const sql = read(`supabase/migrations/${file}`);
     expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS created_by uuid/);
     expect(sql).toMatch(/ADD COLUMN IF NOT EXISTS last_changed_by uuid/);
@@ -577,7 +609,7 @@ describe("the Services tab and the migration", () => {
 
 const MIGRATION = join(
   ROOT,
-  "supabase/migrations/20261112020000_a-dispatcher-manages-plans-at-the-set-price.sql",
+  "supabase/migrations/20261112040000_a-dispatcher-manages-plans-at-the-set-price.sql",
 );
 const PROOF = join(ROOT, "tests/sql/a-dispatcher-manages-plans-at-the-set-price.proof.sql");
 const DB_URL =
