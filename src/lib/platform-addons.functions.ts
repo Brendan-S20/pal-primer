@@ -16,6 +16,7 @@ import {
   type SetupWaivedReason,
 } from "@/lib/done-for-you-setup";
 import { loadPriceCatalog, resolvePriceId } from "@/lib/stripe-price-catalog.server";
+import { MANAGED_TEXTING_SLUG, type ManagedTextingState } from "@/lib/managed-texting";
 import type { SetupAddedEvent } from "@/lib/setup-notify.server";
 
 // Platform -> tenant software add-ons (e.g. AI Receptionist): the upsell
@@ -49,6 +50,10 @@ export type PlatformAddonRow = {
   includedReason?: string | null;
   /** Set on an owned Done-for-you setup that was free (NP-4): why. */
   waivedReason?: SetupWaivedReason | null;
+  /** Managed texting only (site-r2-05): where this business's texting
+   *  stands, so a subscribed card says Under review or Setup needed until
+   *  texting is actually switched on, rather than Active. */
+  textingState?: ManagedTextingState | null;
 };
 
 /** What the billing page needs to ask `setupIsFreeFor` itself. The interval is
@@ -94,6 +99,13 @@ export const listPlatformAddons = createServerFn({ method: "GET" })
     const mine = mineRes.data;
     const org = orgRes.data;
     const planSlug = await planSlugOf(org?.plan_id);
+    // Only asked when the catalog has the add-on; display only, so a failed
+    // read leaves the card as it was rather than failing the page.
+    const textingState = (catalog ?? []).some((a: any) => a.slug === MANAGED_TEXTING_SLUG)
+      ? await import("@/lib/managed-texting.server")
+          .then((m) => m.managedTextingStateFor(orgId))
+          .catch(() => null)
+      : null;
 
     const subscribed = new Set((mine ?? []).map((m: any) => m.addon_id));
     const waivedBy = new Map<string, SetupWaivedReason | null>(
@@ -119,6 +131,7 @@ export const listPlatformAddons = createServerFn({ method: "GET" })
           subscribed: subscribed.has(a.id),
           includedReason: planSlug ? addonPlanRefusal(a.slug, planSlug) : null,
           waivedReason: waivedBy.get(a.id) ?? null,
+          textingState: a.slug === MANAGED_TEXTING_SLUG ? textingState : null,
         })),
       canSubscribe: !!org?.stripe_subscription_id && org.plan_status === "active",
       setup: { planSlug, founding },

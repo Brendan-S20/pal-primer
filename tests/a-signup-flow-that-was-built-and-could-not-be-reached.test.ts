@@ -238,6 +238,8 @@ describe("a signup that cannot be provisioned gives the money back", () => {
     // the fee comes back in the same call. (It used to be the one refund the
     // app issued at all; Refund on the invoice, refunds.server.ts, is the
     // second, and it deliberately leaves the fee to the webhook.)
+    //
+    // Radar included (#825): the failure was ours, so the platform absorbs it.
     expect(provision).toMatch(/refund_application_fee: true/);
     expect(read("src/lib/platform-fee.ts")).toMatch(
       /ONE refund this app issues that is deliberately not routed\s*\n?\/\/\s*through `feeReversalCents`/,

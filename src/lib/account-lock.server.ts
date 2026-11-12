@@ -16,6 +16,8 @@
 // unlock at once; a lock arriving a minute late, at the end of day 14, is fine.
 import {
   ACCOUNT_LOCKED_MESSAGE,
+  BUSINESS_PAYMENTS_PAUSED_MESSAGE,
+  PAYMENTS_LOCKED_MESSAGE,
   accountLockFor,
   serverFnOpenWhenLocked,
   type AccountLock,
@@ -56,7 +58,9 @@ export function subFromBearer(authorization: string | null | undefined): string 
   const parts = authorization.slice(7).split(".");
   if (parts.length !== 3) return null;
   try {
-    const json = Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+    const json = Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString(
+      "utf8",
+    );
     const sub = (JSON.parse(json) as { sub?: unknown }).sub;
     return typeof sub === "string" && sub ? sub : null;
   } catch {
@@ -112,4 +116,38 @@ export async function refuseIfLocked(input: {
     return;
   }
   throw new AccountLockedError();
+}
+
+/**
+ * A locked business takes no payments, from anyone (Brendan, 2026-11-09).
+ *
+ * The middleware above already refuses every staff call, but a business is
+ * also paid WITHOUT a staff token: the public invoice link (/pay/i/:token),
+ * the booking link's prepay, a portal re-clean fee and nightly autopay. Every
+ * one of them charges through requireOrgStripeAccount, which calls this
+ * first, so the refusal lives in one place rather than at each call site.
+ *
+ * Fails OPEN on a lookup error, for the same reason refuseIfLocked does: a
+ * database blip must not stop every business on HoundStack being paid.
+ */
+export async function refuseChargesIfLocked(
+  orgId: string,
+  opts: {
+    audience?: "staff" | "customer";
+    now?: Date;
+    lookup?: (orgId: string, now: Date) => Promise<AccountLock>;
+  } = {},
+): Promise<void> {
+  const now = opts.now ?? new Date();
+  let lock: AccountLock;
+  try {
+    lock = await (opts.lookup ?? lockForOrg)(orgId, now);
+  } catch (e) {
+    console.error("account lock lookup failed (charge allowed)", (e as Error).message);
+    return;
+  }
+  if (!lock.locked) return;
+  throw new Error(
+    opts.audience === "customer" ? BUSINESS_PAYMENTS_PAUSED_MESSAGE : PAYMENTS_LOCKED_MESSAGE,
+  );
 }

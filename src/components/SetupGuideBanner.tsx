@@ -1,16 +1,14 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { useServerFn } from "@tanstack/react-start";
 import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMyRole } from "@/hooks/useMyRole";
-import { getOnboardingStatus } from "@/lib/onboarding.functions";
+import { useOnboardingStatus } from "@/hooks/useOnboardingStatus";
 import {
   SETUP_PATH,
   closeSetupGuide,
   promptsSetup,
   readRememberedStep,
-  startingStep,
+  setupBanner,
   stepsFor,
   useSetupGuide,
 } from "@/lib/setup-guide";
@@ -39,13 +37,9 @@ export function SetupGuideBanner() {
   const guide = useSetupGuide();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const allowed = promptsSetup(role);
-  const statusFn = useServerFn(getOnboardingStatus);
-  const { data } = useQuery({
-    queryKey: ["onboarding-status"],
-    queryFn: () => statusFn(),
-    enabled: allowed && guide.phase === "open",
-    staleTime: 30_000,
-  });
+  // The same query as the dashboard checklist and /setup (D5, D9): one
+  // answer, refreshed by every mutation that can finish a step.
+  const { data } = useOnboardingStatus({ enabled: allowed && guide.phase === "open" });
 
   if (!allowed || guide.phase !== "open" || !data) return null;
   // On /setup the page is the guide. On /onboarding the owner is choosing a
@@ -54,13 +48,12 @@ export function SetupGuideBanner() {
   if (data.dismissed) return null;
 
   const steps = stepsFor(data.steps, role);
-  const done = steps.filter((s) => s.done).length;
-  if (!steps.length || done === steps.length) return null;
-
-  const remembered = readRememberedStep(guide.userId);
-  const step = startingStep(steps, remembered);
-  const current = steps.find((s) => s.id === step);
-  const started = !!remembered;
+  // Progress is the server's; the device only says where to resume.
+  const { done, total, started, step, nextLabel, cta } = setupBanner(
+    steps,
+    readRememberedStep(guide.userId),
+  );
+  if (!total || done === total) return null;
 
   return (
     <div
@@ -74,21 +67,23 @@ export function SetupGuideBanner() {
         {started ? (
           <>
             <span className="font-medium">
-              Setup: {done} of {steps.length} done.
+              Setup: {done} of {total} done.
             </span>{" "}
-            <span className="text-muted-foreground">Next: {current?.label}</span>
+            {nextLabel && <span className="text-muted-foreground-strong">Next: {nextLabel}</span>}
           </>
         ) : (
           <>
-            <span className="font-medium">Set up your business in {steps.length} short steps.</span>{" "}
-            <span className="text-muted-foreground">About five minutes, all of it skippable.</span>
+            <span className="font-medium">Set up your business in {total} short steps.</span>{" "}
+            <span className="text-muted-foreground-strong">
+              About five minutes, all of it skippable.
+            </span>
           </>
         )}
       </span>
       <span className="flex shrink-0 items-center gap-1">
         <Button asChild size="sm">
           <Link to={SETUP_PATH} search={{ step: step ?? undefined }}>
-            {started ? "Continue setup" : "Start setup"}
+            {cta}
           </Link>
         </Button>
         <Button size="sm" variant="ghost" onClick={closeSetupGuide}>

@@ -172,7 +172,12 @@ for (const { w, h } of WIDTHS) {
         listServices: { services: settingsServices },
         listServicePackages: { packages: [catalogPackage] },
         listTrainingSkills: { skills: [] },
-        getTrainingSessionRules: { lateCancelHours: 24, missedUsesSession: true },
+        getTrainingSessionRules: {
+          lateCancelHours: 24,
+          missedUsesSession: true,
+          shareProgress: true,
+          seriesSkipClosed: true,
+        },
       };
       await page.route("**/_serverFn/**", async (route) => {
         const name = serverFnName(route);

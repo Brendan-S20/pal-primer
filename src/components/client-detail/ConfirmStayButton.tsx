@@ -9,9 +9,19 @@ import { confirmStay, getStayContactGaps } from "@/lib/stay-booking.functions";
 import { parseDollarsToCents } from "@/lib/services";
 import { medLine, stayContactGapsSentence } from "@/lib/stays";
 
-export function ConfirmStayButton({ stayId, clientId }: { stayId: string; clientId: string }) {
+export function ConfirmStayButton({
+  stayId,
+  clientId,
+  canSetDeposit = true,
+}: {
+  stayId: string;
+  clientId: string;
+  /** False for a dispatcher (booking without manage_pricing): they confirm
+   *  at the service's price, and a deposit is a price decision. */
+  canSetDeposit?: boolean;
+}) {
   const [deposit, setDeposit] = useState("");
-  const cents = parseDollarsToCents(deposit);
+  const cents = canSetDeposit ? parseDollarsToCents(deposit) : null;
   const invalid = Number.isNaN(cents) || (cents != null && cents > 10_000_000);
   const fn = useServerFn(confirmStay);
   const gapsFn = useServerFn(getStayContactGaps);
@@ -46,18 +56,20 @@ export function ConfirmStayButton({ stayId, clientId }: { stayId: string; client
   });
   return (
     <div className="flex flex-wrap items-end gap-2">
-      <div className="min-w-0">
-        <Label htmlFor={`stay-deposit-${stayId}`}>Deposit ($), optional</Label>
-        <Input
-          id={`stay-deposit-${stayId}`}
-          className="w-40"
-          inputMode="decimal"
-          placeholder="0.00"
-          value={deposit}
-          onChange={(e) => setDeposit(e.target.value)}
-          disabled={mut.isPending}
-        />
-      </div>
+      {canSetDeposit && (
+        <div className="min-w-0">
+          <Label htmlFor={`stay-deposit-${stayId}`}>Deposit ($), optional</Label>
+          <Input
+            id={`stay-deposit-${stayId}`}
+            className="w-40"
+            inputMode="decimal"
+            placeholder="0.00"
+            value={deposit}
+            onChange={(e) => setDeposit(e.target.value)}
+            disabled={mut.isPending}
+          />
+        </div>
+      )}
       <Button size="sm" disabled={mut.isPending || invalid || unseen} onClick={() => mut.mutate()}>
         {mut.isPending ? "Confirming…" : gapsQ.isPending ? "Checking…" : "Confirm stay"}
       </Button>

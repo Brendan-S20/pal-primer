@@ -311,8 +311,10 @@ describe("the Team page", () => {
   const panel = page.slice(page.indexOf("function InvitePanel"));
 
   it("toasts the server's refusal through toastServerError", () => {
+    // A signed-out session is told so first (#659); anything else is still
+    // the server's own refusal, through toastServerError.
     expect(panel).toMatch(
-      /onError: \(e\) => toastServerError\(e, \{ fallback: "Couldn't send the invite/,
+      /if \(!signedOut\(e\)\) toastServerError\(e, \{ fallback: "Couldn't send the invite/,
     );
   });
 

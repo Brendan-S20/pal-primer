@@ -31,7 +31,6 @@ export function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        aria-label="Your account"
         // The avatar is 32px and stays 32px — it is the thing you recognise,
         // and growing it would change the header's look on every screen. The
         // BUTTON around it takes the touch size instead, which is the pattern
@@ -39,13 +38,21 @@ export function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
         // a target a thumb can hit. It was a 32px control on every iPad.
         className="flex items-center justify-center rounded-full ring-offset-background transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 touch:min-h-11 touch:min-w-11"
       >
-        <UserAvatar
-          name={staff?.display_name}
-          avatarPath={staff?.avatar_url}
-          seed={staff?.id}
-          className="h-8 w-8"
-          textClassName="text-xs"
-        />
+        {/* Named by sr-only text, not aria-label, with the initials hidden:
+            an aria-label of "Your account" over visible initials "BN" is a
+            name that does not contain its own text, which voice control
+            cannot match (axe label-content-name-mismatch, gaps-r2-11
+            part 2). */}
+        <span className="sr-only">Your account</span>
+        <span aria-hidden="true" className="contents">
+          <UserAvatar
+            name={staff?.display_name}
+            avatarPath={staff?.avatar_url}
+            seed={staff?.id}
+            className="h-8 w-8"
+            textClassName="text-xs"
+          />
+        </span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-60">
         <div className="px-2 py-1.5">

@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -21,6 +21,8 @@ import {
   registrationDetailsSchema,
   type BusinessType,
   type RegistrationStatus,
+  UNDER_REVIEW_LABEL,
+  UNDER_REVIEW_LINE,
 } from "@/lib/texting-registration";
 import { getOrgTwilioSettings } from "@/lib/twilio-settings.functions";
 import { useMyRole } from "@/hooks/useMyRole";
@@ -118,14 +120,21 @@ function TextingSettings() {
     // While Twilio has it, keep the screen current without a reload.
     refetchInterval: (query) => {
       const s = (query.state.data as any)?.registration?.status as RegistrationStatus | undefined;
-      return s === "submitting" || s === "submitted" || s === "in_review" ? 60_000 : false;
+      const live = (query.state.data as any)?.live === true;
+      return !live && (s === "submitting" || s === "submitted" || s === "in_review" || s === "approved")
+        ? 60_000
+        : false;
     },
   });
   const { role } = useMyRole();
 
   const reg = q.data?.registration ?? null;
   const status = (reg?.status as RegistrationStatus | undefined) ?? null;
-  const summary = describeStatus(reg as any, (iso) => formatDay(iso));
+  const live = q.data?.live ?? false;
+  const summary = describeStatus(reg as any, (iso) => formatDay(iso), live);
+  // site-r2-05: the registration is what the add-on pays for. A business
+  // that is already live is never sent back to Billing.
+  const needsAddon = !live && q.data?.subscribed === false;
 
   const checkFn = useServerFn(checkTextingStatusNow);
   const check = useMutation({
@@ -160,13 +169,15 @@ function TextingSettings() {
             checking={check.isPending}
             onCheck={() => check.mutate()}
           />
-          {q.data?.live && <LiveSender />}
+          {needsAddon && <AddonNeeded />}
+          {live && <LiveSender />}
           {canSubmit(status, reg?.updated_at ?? null) ? (
             <RegistrationForm
               key={status ?? "new"}
               initial={formFrom(reg, q.data?.suggestions ?? NO_SUGGESTIONS)}
               status={status}
               isOwner={role === "owner"}
+              needsAddon={needsAddon}
             />
           ) : (
             reg && <FiledDetails reg={reg} />
@@ -232,6 +243,28 @@ function StatusCard({
   );
 }
 
+/** site-r2-05: a business without the add-on can fill in and save its
+ *  details, but submitting needs Managed texting on the plan. */
+function AddonNeeded() {
+  return (
+    <div
+      className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4 text-sm"
+      data-testid="texting-addon-needed"
+    >
+      <div className="min-w-0">
+        <div className="font-medium">Add Managed texting to submit</div>
+        <div className="mt-1 text-xs text-muted-foreground">
+          Your own registered number is the Managed texting add-on. Add it on Plan &amp; billing,
+          then submit your details here. You can save them now.
+        </div>
+      </div>
+      <Button asChild size="sm" variant="outline">
+        <Link to="/settings/billing">Open Plan &amp; billing</Link>
+      </Button>
+    </div>
+  );
+}
+
 /** Once texting is live: the number as the credential row has it, which is
  *  what every text to a client is actually sent from. */
 function LiveSender() {
@@ -291,10 +324,12 @@ function RegistrationForm({
   initial,
   status,
   isOwner,
+  needsAddon,
 }: {
   initial: Form;
   status: RegistrationStatus | null;
   isOwner: boolean;
+  needsAddon: boolean;
 }) {
   const qc = useQueryClient();
   const [form, setForm] = useState<Form>(initial);
@@ -330,7 +365,7 @@ function RegistrationForm({
     onSuccess: (r) => {
       setEin("");
       if (r.error) toast.error(r.error);
-      else toast.success("Submitted. We'll show carrier review progress here.");
+      else toast.success(`Submitted. ${UNDER_REVIEW_LINE}.`);
       qc.invalidateQueries({ queryKey: ["texting-registration"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -567,8 +602,8 @@ function RegistrationForm({
         <p>
           When you submit, we create a Twilio account for your business, register your business
           profile, buy a toll-free number in that account, and file its verification with your
-          details. Twilio says review takes up to three business days. Your number cannot send texts
-          until it is approved.
+          details. This page then shows {UNDER_REVIEW_LABEL}: {UNDER_REVIEW_LINE.toLowerCase()}. Your
+          number cannot send texts until it is switched on, and we tell you the moment it is.
         </p>
         {!isOwner && (
           <p className="font-medium text-foreground">
@@ -578,7 +613,7 @@ function RegistrationForm({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <Button type="submit" disabled={busy || !isOwner}>
+        <Button type="submit" disabled={busy || !isOwner || needsAddon}>
           {submit.isPending
             ? "Submitting…"
             : resubmitting

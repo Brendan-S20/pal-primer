@@ -1,10 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
+import { asOneTimeCleanupQuote, isOneTimeCleanup } from "@/lib/one-time-cleanup";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import { platformFeeCents } from "@/lib/platform-fee";
+import { withPassThroughFees } from "@/lib/radar-fee";
 import { resolveSupabaseUrl } from "@/lib/supabase-url";
 import { parseFirstCleanupPricing } from "@/lib/first-cleanup";
 import { parseQuoteOptions, signupChargeFromQuote } from "@/lib/signup-charge";
@@ -422,6 +424,26 @@ function pricedAs<T extends { frequency: (typeof FREQS)[number] }>(
   return mode === "recurring" ? data : ({ ...data, frequency: "weekly" } as T);
 }
 
+/** A pet-waste service sold as one visit is a one-time cleanup (D12): the
+ *  visit at the owner's extra-visit price (one-time-cleanup.ts), read here
+ *  with the service role for the business public_quote resolved. The first
+ *  cleanup stays as public_quote priced it. Both the quote and the charge
+ *  come through this one function, so what is shown is what is charged.
+ *  Anything else comes back untouched. */
+async function asOneTimeCleanupIfOne<
+  Q extends { organization_id: string; recurring_price_cents: number | null },
+>(q: Q, mode: string, named: { service_line: string } | null): Promise<Q> {
+  if (!isOneTimeCleanup(mode, named)) return q;
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data: org, error } = await (supabaseAdmin as any)
+    .from("organizations")
+    .select("one_off_price_cents")
+    .eq("id", q.organization_id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return asOneTimeCleanupQuote(q, (org?.one_off_price_cents as number | null | undefined) ?? null);
+}
+
 /** A package is sold at the package's price: no add-ons, no first cleanup,
  *  no per-visit price. Everything else public_quote said (the business, the
  *  zone, the currency) stands. */
@@ -655,7 +677,11 @@ export const getSignupQuote = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     const q = rows?.[0];
     if (!q) return { available: false as const };
-    const withExtras = await quoteWithExtras(q, data);
+    const withExtras = await asOneTimeCleanupIfOne(
+      await quoteWithExtras(q, data),
+      booking.mode,
+      named,
+    );
     const priced =
       booking.mode === "package" && booking.pack
         ? asPackageQuote(withExtras, booking.pack)
@@ -794,7 +820,7 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
     }
     // The add-ons picked, priced from the database and charged with every
     // visit: the plan's per-visit price includes them (#560).
-    const withExtras = await quoteWithExtras(q0, data);
+    const withExtras = await asOneTimeCleanupIfOne(await quoteWithExtras(q0, data), mode, named);
     const q = pack ? asPackageQuote(withExtras, pack) : withExtras;
     const note = extrasNote(q.add_on_names, q.pet_sizes);
     // Everything charged below comes from `q`, which the database priced, or
@@ -998,13 +1024,18 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
     const stripe = await connectStripe();
 
     const amountCents = charge.amountCents;
+    // A card signup is screened by Radar, billed to the platform under
+    // application_express, so it rides on the application fee (#825).
+    const signupMethodTypes = ["card"];
+    const { radarPassThrough } = await import("@/lib/connect-fee-payer.server");
+    const radar = await radarPassThrough(stripe, acct.accountId, signupMethodTypes);
     const pi = await stripe.paymentIntents.create(
       {
         amount: amountCents,
-        application_fee_amount: platformFeeCents(amountCents),
+        application_fee_amount: withPassThroughFees(platformFeeCents(amountCents), radar.cents),
         currency: q.currency,
         receipt_email: data.email.toLowerCase(),
-        payment_method_types: ["card"],
+        payment_method_types: signupMethodTypes,
         // "first visit", not "first month": the recurring price is PER VISIT
         // (see the note in SignupFlow.tsx), and the credit this funds pays
         // for exactly one.
@@ -1016,6 +1047,7 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
           signup_request_id: sr.id,
           organization_id: q.organization_id,
           source: "signup_inline",
+          ...radar.metadata,
         },
       },
       { stripeAccount: acct.accountId },

@@ -22,10 +22,20 @@ on:
       - "docs/**/*.jpeg"
       - "docs/**/*.gif"
       - "docs/**/*.webp"
+    # ── DRAFT, THEN READY ─────────────────────────────────────────────────
+    #
+    # The three defaults plus ready_for_review. On a DRAFT pull request
+    # `verify` runs its Typecheck step and nothing after it (see DRAFT_PR on
+    # that job); marking the PR "Ready for review" starts a full run, and
+    # every later push to a non-draft PR is a full run too. Merging needs
+    # Ready, so the checks a merge is gated on always come from a full run.
+    # Same in sandboxes.yml and ios-launch.yml.
+    types: [opened, synchronize, reopened, ready_for_review]
   # The migration check reflects the state of the LIVE DATABASE, not of this
   # commit, so it can go stale (or newly pass) without anyone pushing anything.
   # Manual runs let you re-check after applying migrations, without inventing a
-  # commit to trigger CI.
+  # commit to trigger CI. batch.yml also dispatches this, once, on a batch/*
+  # branch that merges several approved PRs together.
   workflow_dispatch:
 
 # ── CANCEL SUPERSEDED PULL-REQUEST RUNS, NEVER main ─────────────────────
@@ -110,6 +120,16 @@ jobs:
     # the floor that keeps the gate meaningful until then, and it should come
     # back down once a warm cache is reliable again.
     timeout-minutes: 45
+    # ── A DRAFT GETS THE TYPECHECK, AND ONLY THE TYPECHECK ───────────────
+    #
+    # 'true' on a draft pull request, 'false' on everything else (a ready PR,
+    # push to main, a dispatch). Every step after Typecheck carries
+    # `if: env.DRAFT_PR != 'true'`, so a draft push costs an install and a
+    # tsc and nothing else. The job keeps its name, so the required check is
+    # the same check; on a draft it is green for the typecheck alone, and the
+    # ready_for_review run replaces it with the whole job before any merge.
+    env:
+      DRAFT_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft }}
     steps:
       # Git Bash is installed but not on the runner's PATH. Add it so the
       # bash default shell resolves for every later step.
@@ -192,6 +212,7 @@ jobs:
       # TEST_SUPABASE_URL / _ANON_KEY / _SERVICE_KEY are set, which this step
       # deliberately does not set.
       - name: Tests
+        if: env.DRAFT_PR != 'true'
         run: npm test
 
       # The app was never BUILT in CI — only type-checked. Two things went
@@ -212,6 +233,7 @@ jobs:
       # ~40s. Runs after the tests so a broken build is not the first thing a
       # reviewer sees when the real failure is a unit test.
       - name: Build (and verify the service worker is real)
+        if: env.DRAFT_PR != 'true'
         run: npm run build
 
       # IMP-11: catches the failure this project keeps producing — something
@@ -225,6 +247,7 @@ jobs:
       # the known gaps on every run, green or not, so recorded debt stays visible
       # instead of disappearing the moment it is written down.
       - name: Dead machinery
+        if: env.DRAFT_PR != 'true'
         run: npm run check:dead-machinery
 
       # Customer-facing copy only, and a HARD gate: the sweep that added it
@@ -232,6 +255,7 @@ jobs:
       # /platform/*, comments, tests, placeholder cells and anything carrying an
       # `em-dash-ok:` reason are excluded by the script, not by this step.
       - name: Em dashes in customer-facing copy
+        if: env.DRAFT_PR != 'true'
         run: npm run check:em-dashes
 
       # WHAT ACTUALLY SHIPS INSIDE THE iOS/ANDROID BINARY.
@@ -248,9 +272,11 @@ jobs:
       # Two steps keep the native build and the bundle assertion separately
       # named in the required checks log.
       - name: Build the native bundle
+        if: env.DRAFT_PR != 'true'
         run: npm run build:native
 
       - name: What ships inside the native binary
+        if: env.DRAFT_PR != 'true'
         run: npm run check:native-bundle
 
       # Does every sign-in button that a person can PRESS actually work?
@@ -265,11 +291,13 @@ jobs:
       # switched on behind a disabled button warns, and an unreachable host is
       # UNKNOWN, so a flaky network cannot fail a build.
       - name: Every OAuth button that can be pressed
+        if: env.DRAFT_PR != 'true'
         run: npm run check:oauth
 
       # Non-blocking: the repo carries pre-existing formatting drift that is not
       # this workflow's job to gate on. Kept visible so it doesn't grow unseen.
       - name: Lint
+        if: env.DRAFT_PR != 'true'
         run: npx eslint .
         continue-on-error: true
 
@@ -282,6 +310,7 @@ jobs:
       # as of today (the sweep that added this fixed eleven latent ones in
       # PlanPicker), so a failure here is a NEW conditional hook, never debt.
       - name: A hook after an early return is a crash
+        if: env.DRAFT_PR != 'true'
         run: npm run check:hooks
 
 
@@ -517,7 +546,12 @@ jobs:
     # To check before merging without spending the run, the three schema
     # scripts take offline captures (--applied-from / --live-from /
     # --catalog-from). scripts/ci-local.sh documents how.
-    if: github.event_name != 'pull_request'
+    #
+    # Skipped on a batch/* branch for the PR reason: a batch legitimately
+    # carries migrations not yet applied, and a red here would send someone
+    # bisecting a batch for a fault that is in the live database, not in any
+    # of its PRs. The merge to main still runs it.
+    if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/heads/batch/')
     # IMP-2: a production incident already came from "migrations never applied
     # to the live DB". The codebase can be entirely correct while prod runs old
     # schema, and nothing surfaces it until a query fails in front of a
@@ -664,6 +698,27 @@ jobs:
         # See the note on `if: always()` below the first check.
         if: always() && steps.psql.conclusion == 'success'
 
+      # RLS scopes SELECT, INSERT, UPDATE and DELETE. It has no TRUNCATE
+      # policy, so a client role holding TRUNCATE can empty a table, every
+      # tenant's rows at once. Supabase's default privileges hand anon and
+      # authenticated TRUNCATE, TRIGGER and REFERENCES on every new public
+      # table; a census found 106 tables holding them (#842), and
+      # 20261110130000 revokes them. This asks production that no public table
+      # has regained them. The proof beside that migration asks the same of
+      # the schema the migrations build (sandboxes.yml).
+      - name: No visitor or signed-in user can empty a public table
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::SUPABASE_DB_URL secret is not set — the public-table grant check cannot run."
+            exit 1
+          fi
+          node scripts/check-public-table-grants.mjs
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        # See the note on `if: always()` below the first check.
+        if: always() && steps.psql.conclusion == 'success'
+
       - name: The published app origin answers the native preflight
         # §3 item 6 of the brief listed this as two curls "only you can confirm".
         # They sat unrun, and when finally run the answer was that the
@@ -755,7 +810,9 @@ jobs:
     # The script itself exits 0 when the origin cannot be reached, so a flaky
     # network or a DNS blip cannot fail this. It fails only when the site
     # ANSWERS and the worker is missing.
-    if: github.event_name != 'pull_request'
+    # It measures what is DEPLOYED, which is main, so a batch/* run would
+    # report main's state against a branch that has not shipped.
+    if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/heads/batch/')
     steps:
       - uses: actions/checkout@v4
 
@@ -787,3 +844,64 @@ jobs:
       # app's terms change is expected until the site's copy is updated.
       - name: Does www.houndstack.com/terms show this repo's terms
         run: npm run check:terms:live
+
+  bun:
+    name: bun frozen install and build (the Lovable path)
+    # ── WHY THIS JOB EXISTS ──────────────────────────────────────────────
+    #
+    # Lovable publishes with bun: `bun install --frozen-lockfile`, then
+    # `bun run build`. Everything else here uses npm and package-lock.json,
+    # so #810 merged green while publishing main was broken twice over. It
+    # added happy-dom to package.json and package-lock.json but not to
+    # bun.lock, so the frozen install refused to run. And bun lays out
+    # node_modules differently from npm (it hoisted happy-dom's entities 7
+    # where npm keeps 4.5.0), which broke an alias in vite.config.ts that only
+    # the bun layout could hit. Production stayed on #812 until both were fixed.
+    #
+    # This runs alongside `verify`'s `npm ci` and does not replace it.
+    # The frozen install fails when bun.lock disagrees with package.json; the
+    # build fails when bun's layout breaks something npm's does not.
+    #
+    # ── THE LOVABLE CACHE URLS IN bun.lock ───────────────────────────────
+    #
+    # Most older bun.lock entries resolve to Lovable's npm cache
+    # (europe-west*-npm.pkg.dev/lovable-core-prod/...) rather than the public
+    # registry. A cold install from outside Lovable fetched every one of them
+    # on 2026-11-10. If that ever stops, this job fails red, and the step after
+    # the install says so. It is never skipped and never continue-on-error:
+    # a check that goes green without installing anything is no check.
+    #
+    # Unix runner like `migrations` and `deployment`: bash, no Git Bash step.
+    runs-on: ${{ vars.UNIX_RUNNER || vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # `bun run build` runs vite and scripts/check-pwa-output.mjs through
+      # their `node` shebangs, so Node is needed as well as bun.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: bun install --frozen-lockfile
+        id: install
+        run: bun install --frozen-lockfile 2>&1 | tee "$RUNNER_TEMP/bun-install.log"; exit "${PIPESTATUS[0]}"
+
+      - name: Say why the install failed
+        if: failure() && steps.install.outcome == 'failure'
+        run: |
+          if grep -q "lockfile is frozen" "$RUNNER_TEMP/bun-install.log"; then
+            echo "::error::bun.lock is out of date with package.json. Run \`bun install\` and commit bun.lock."
+          elif grep -Eq "pkg\.dev|lovable-core-prod" "$RUNNER_TEMP/bun-install.log"; then
+            echo "::error::A Lovable npm cache URL recorded in bun.lock could not be fetched from this runner. This job cannot measure the Lovable path until it can; it stays red rather than pretending."
+          else
+            echo "::error::bun install --frozen-lockfile failed; see the step above."
+          fi
+          exit 1
+
+      - name: bun run build
+        run: bun run build

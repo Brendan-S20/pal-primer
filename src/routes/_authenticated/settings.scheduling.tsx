@@ -145,16 +145,22 @@ function SchedulingSettings() {
         </p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
-            <Label className="text-xs">Workday start</Label>
+            <Label htmlFor="sched-workday-start" className="text-xs">
+              Workday start
+            </Label>
             <Input
+              id="sched-workday-start"
               type="time"
               defaultValue={settings.workday_start?.slice(0, 5) ?? "08:00"}
               onBlur={(e) => mut.mutate({ workday_start: e.target.value })}
             />
           </div>
           <div>
-            <Label className="text-xs">Workday end</Label>
+            <Label htmlFor="sched-workday-end" className="text-xs">
+              Workday end
+            </Label>
             <Input
+              id="sched-workday-end"
               type="time"
               defaultValue={settings.workday_end?.slice(0, 5) ?? "17:00"}
               onBlur={(e) => mut.mutate({ workday_end: e.target.value })}
@@ -183,8 +189,11 @@ function SchedulingSettings() {
         </p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
-            <Label className="text-xs">Days ahead</Label>
+            <Label htmlFor="sched-days-ahead" className="text-xs">
+              Days ahead
+            </Label>
             <Input
+              id="sched-days-ahead"
               type="number"
               min={1}
               max={365}
@@ -317,8 +326,11 @@ function SchedulingSettings() {
             )}
           </div>
           <div>
-            <Label className="text-xs">Traffic profile</Label>
+            <Label htmlFor="sched-traffic" className="text-xs">
+              Traffic profile
+            </Label>
             <select
+              id="sched-traffic"
               defaultValue={settings.traffic_profile ?? "normal"}
               onChange={(e) => mut.mutate({ traffic_profile: e.target.value })}
               // MEASURED 2026-08-19: 40.0px, four short.
@@ -330,8 +342,11 @@ function SchedulingSettings() {
             </select>
           </div>
           <div className="sm:col-span-2">
-            <Label className="text-xs">Longest drive to a single stop (minutes)</Label>
+            <Label htmlFor="sched-max-drive" className="text-xs">
+              Longest drive to a single stop (minutes)
+            </Label>
             <Input
+              id="sched-max-drive"
               type="number"
               min={15}
               max={1440}

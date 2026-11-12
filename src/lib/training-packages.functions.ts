@@ -344,7 +344,9 @@ export const getTrainingSessionRules = createServerFn({ method: "GET" })
     const { orgId } = await resolveCaller(db, context.userId);
     const { data, error } = await db
       .from("organizations")
-      .select("training_late_cancel_hours, training_missed_uses_session, training_share_progress")
+      .select(
+        "training_late_cancel_hours, training_missed_uses_session, training_share_progress, training_series_skip_closed",
+      )
       .eq("id", orgId)
       .single();
     if (error) throw new Error(error.message);
@@ -353,6 +355,8 @@ export const getTrainingSessionRules = createServerFn({ method: "GET" })
       missedUsesSession: data.training_missed_uses_session as boolean,
       /** Whether the client portal shows lesson notes and homework. */
       shareProgress: data.training_share_progress !== false,
+      /** Whether a new lesson series skips holidays and closed days (R2-49). */
+      seriesSkipClosed: data.training_series_skip_closed !== false,
     };
   });
 
@@ -364,6 +368,7 @@ export const saveTrainingSessionRules = createServerFn({ method: "POST" })
         lateCancelHours: z.number().int().min(0).max(168),
         missedUsesSession: z.boolean(),
         shareProgress: z.boolean().optional(),
+        seriesSkipClosed: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -383,6 +388,13 @@ export const saveTrainingSessionRules = createServerFn({ method: "POST" })
         _share: data.shareProgress,
       });
       if (shared.error) throw new Error(shared.error.message);
+    }
+    if (data.seriesSkipClosed !== undefined) {
+      const skipped = await db.rpc("set_training_series_skip_closed", {
+        _org_id: orgId,
+        _skip: data.seriesSkipClosed,
+      });
+      if (skipped.error) throw new Error(skipped.error.message);
     }
     return { ok: true as const };
   });

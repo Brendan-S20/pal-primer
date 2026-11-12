@@ -14,6 +14,7 @@ import {
   listOrgInvites,
   revokeOrgInvite,
   resendOrgInvite,
+  ROLES_A_CALLER_MAY_GRANT,
 } from "@/lib/users.functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -23,12 +24,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { StaffSkills } from "@/components/settings/StaffSkills";
+import { WalkerDogCap } from "@/components/settings/WalkerDogCap";
 import { toast } from "sonner";
 import { useMyRole } from "@/hooks/useMyRole";
-import { humanizeRole } from "@/lib/humanize";
+import { useRoleLabel } from "@/components/CommercialOnly";
 import { MapPin, ChevronDown, ChevronRight } from "lucide-react";
 import { titleHead } from "@/lib/page-title";
-import { inviteSendToast, replaceInviteQuestion } from "@/lib/invite-copy";
+import { inviteFormHelp, inviteSendToast, replaceInviteQuestion } from "@/lib/invite-copy";
+import { InviteLinkCard, type SentInvite } from "@/components/settings/InviteLinkCard";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { toastServerError } from "@/lib/server-outcome";
 import { ConfirmButton } from "@/components/ConfirmButton";
@@ -40,6 +43,8 @@ import {
   readDraft,
   returnHereAfterSignIn,
 } from "@/lib/signed-out";
+import { invalidateOnboardingStatus } from "@/hooks/useOnboardingStatus";
+import { prefetchUsersPage } from "@/lib/settings-prefetch";
 
 const USERS_PAGE = "/settings/users";
 type AddressDraft = { start: string; end: string };
@@ -63,6 +68,12 @@ function useSignedOutToast() {
 
 export const Route = createFileRoute("/_authenticated/settings/users")({
   head: () => titleHead("Users & roles", "Settings"),
+  // #786: the page's reads start with the navigation (or the hover before
+  // it), not after its chunk has loaded and mounted. Nothing is awaited.
+  // See lib/settings-prefetch.ts.
+  loader: ({ context }) => {
+    prefetchUsersPage(context.queryClient, context.organization?.role);
+  },
   component: UsersPage,
 });
 
@@ -93,9 +104,17 @@ async function geocode(q: string): Promise<{ lat: number; lng: number } | null> 
 }
 
 function UsersPage() {
+  const roleLabel = useRoleLabel();
   const qc = useQueryClient();
   const { role: myRole } = useMyRole();
   const canEdit = myRole === "owner";
+  // D7 as changed 2026-11-10 (#659): an office manager changes roles and turns
+  // people on or off too, but never the owner's row, and offers only the roles
+  // at or below their own. The server and the database refuse the same.
+  const canManageStaff = myRole === "owner" || myRole === "office_manager";
+  const grantableRoles = ROLES.filter((r) =>
+    (ROLES_A_CALLER_MAY_GRANT[myRole ?? ""] ?? []).includes(r),
+  );
 
   const listFn = useServerFn(listOrgUsers);
   const changeFn = useServerFn(changeUserRole);
@@ -185,7 +204,9 @@ function UsersPage() {
         <p className="text-sm text-muted-foreground">
           {canEdit
             ? "Change roles, deactivate people, and choose who runs routes. "
-            : "Who is on the team and what each person can do. Only the owner can change roles. "}
+            : canManageStaff
+              ? "Change roles and deactivate people. Only the owner can change the owner's role or access. "
+              : "Who is on the team and what each person can do. Only the owner or an office manager can change roles. "}
           Only people who run routes appear on the dispatch board, can be assigned visits, or show
           up in tech reports.
         </p>
@@ -233,6 +254,8 @@ function UsersPage() {
                     // at all"; both were blank.
                     const runsRoutes = Boolean(staff?.is_field_tech);
                     const offToday = runsRoutes && !staff?.routing_available;
+                    // Nobody but an owner changes or turns off an owner.
+                    const canManageRow = canManageStaff && (myRole === "owner" || u.role !== "owner");
                     return (
                       <Fragment key={u.user_id}>
                         <tr key={u.user_id} className="max-md:flex max-md:flex-wrap max-md:items-center max-md:gap-x-2 max-md:gap-y-2 max-md:py-3">
@@ -251,22 +274,22 @@ function UsersPage() {
                           <td className="py-3 font-medium max-md:min-w-0 max-md:flex-1 max-md:py-0">{u.display_name ?? "-"}</td>
                           <td className="py-3 text-muted-foreground max-md:basis-full max-md:break-all max-md:py-0">{u.email}</td>
                           <td className="py-3 max-md:py-0">
-                            {canEdit ? (
+                            {canManageRow ? (
                               <Select
                                 value={u.role}
                                 onValueChange={(v) => changeRole.mutate({ userId: u.user_id, role: v })}
                               >
-                                <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+                                <SelectTrigger className="w-44" aria-label={`Role for ${u.display_name ?? u.email}`}><SelectValue /></SelectTrigger>
                                 <SelectContent>
-                                  {ROLES.map((r) => (
+                                  {grantableRoles.map((r) => (
                                     <SelectItem key={r} value={r}>
-                                      {humanizeRole(r)}
+                                      {roleLabel(r)}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
                             ) : (
-                              <Badge variant="secondary">{humanizeRole(u.role)}</Badge>
+                              <Badge variant="secondary">{roleLabel(u.role)}</Badge>
                             )}
                           </td>
                           <td className="py-3 max-md:py-0">
@@ -301,7 +324,7 @@ function UsersPage() {
                                 Routing &amp; addresses
                               </Button>
                             )}
-                            {canEdit && u.staff_id && (
+                            {canManageRow && u.staff_id && (
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -344,7 +367,9 @@ function UsersPage() {
 // Finding #40: real invite flow — email + pre-assigned role, pending list with
 // revoke, and auto-assignment on the invitee's first sign-in.
 function InvitePanel() {
+  const roleLabel = useRoleLabel();
   const qc = useQueryClient();
+  const signedOut = useSignedOutToast();
   const createFn = useServerFn(createOrgInvite);
   const listFn = useServerFn(listOrgInvites);
   const revokeFn = useServerFn(revokeOrgInvite);
@@ -352,6 +377,8 @@ function InvitePanel() {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"office_manager" | "dispatcher" | "tech">("tech");
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
+  // The invite just sent, with its link, kept on the form (#775).
+  const [sent, setSent] = useState<SentInvite | null>(null);
 
   const invitesQ = useQuery({ queryKey: ["org-invites"], queryFn: () => listFn() });
   const invites: any[] = (invitesQ.data as any)?.invites ?? [];
@@ -368,16 +395,18 @@ function InvitePanel() {
     to: string,
     r: { emailSent?: boolean; link?: string },
     action: "created" | "resent",
+    id?: string,
   ) => {
     const said = inviteSendToast(action, to, r.emailSent);
+    // Copy link on the toast whether or not the email went out (#775), and
+    // on the form under it, which outlasts the toast.
+    const copy = r.link ? { label: "Copy link", onClick: () => copyLink(r.link) } : undefined;
     if (said.tone === "success") {
-      toast.success(said.message);
+      toast.success(said.message, { action: copy });
     } else {
-      toast.warning(said.message, {
-        duration: 15000,
-        action: r.link ? { label: "Copy link", onClick: () => copyLink(r.link) } : undefined,
-      });
+      toast.warning(said.message, { duration: 15000, action: copy });
     }
+    setSent(r.link ? { id, email: to, link: r.link, emailSent: r.emailSent, action } : null);
   };
   // R2-32: the server refuses your own address and anyone already on the
   // team (a toast, in its words), resends a pending invite under the same
@@ -400,24 +429,37 @@ function InvitePanel() {
     },
     onSuccess: (r) => {
       if (!r || "replaceQuestion" in r) return;
-      reportSend(email.trim(), r, r.resent ? "resent" : "created");
+      reportSend(email.trim(), r, r.resent ? "resent" : "created", r.id);
       setEmail("");
+      void invalidateOnboardingStatus(qc);
       qc.invalidateQueries({ queryKey: ["org-invites"] });
     },
-    onError: (e) => toastServerError(e, { fallback: "Couldn't send the invite. Try again." }),
+    // The typed address survives either way: setEmail("") runs on success only.
+    onError: (e) => {
+      if (!signedOut(e)) toastServerError(e, { fallback: "Couldn't send the invite. Try again." });
+    },
   });
   const revokeMut = useMutation({
     mutationFn: (id: string) => revokeFn({ data: { id } }),
-    onSuccess: () => { toast.success("Invite revoked"); qc.invalidateQueries({ queryKey: ["org-invites"] }); },
-    onError: (e) => toast.error((e as Error).message),
+    onSuccess: (_r, id) => {
+      toast.success("Invite revoked");
+      // A revoked link stops working; do not leave it on the form to copy.
+      setSent((s) => (s?.id === id ? null : s));
+      qc.invalidateQueries({ queryKey: ["org-invites"] });
+    },
+    onError: (e) => {
+      if (!signedOut(e)) toast.error((e as Error).message);
+    },
   });
   const resendMut = useMutation({
     mutationFn: (id: string) => resendFn({ data: { id } }),
     onSuccess: (r, id) => {
-      reportSend(invites.find((i) => i.id === id)?.email ?? "them", r, "resent");
+      reportSend(invites.find((i) => i.id === id)?.email ?? "them", r, "resent", id);
       qc.invalidateQueries({ queryKey: ["org-invites"] });
     },
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e) => {
+      if (!signedOut(e)) toast.error((e as Error).message);
+    },
   });
 
   return (
@@ -445,7 +487,7 @@ function InvitePanel() {
             >
               {INVITE_ROLES.map((r) => (
                 <option key={r} value={r}>
-                  {humanizeRole(r)}
+                  {roleLabel(r)}
                 </option>
               ))}
             </select>
@@ -454,8 +496,14 @@ function InvitePanel() {
             {createMut.isPending ? "Sending…" : "Send invite"}
           </Button>
         </form>
+        {sent && (
+          <InviteLinkCard sent={sent} onCopy={copyLink} onDismiss={() => setSent(null)} />
+        )}
         <p className="text-xs text-muted-foreground">
-          We email them a link. If it doesn't arrive, use Copy link below and send it yourself. Their role is set when they join.
+          {inviteFormHelp({
+            pendingCount: invites.filter((i) => i.status === "pending").length,
+            justSent: !!sent,
+          })}
         </p>
 
         {invites.filter((i) => i.status === "pending").length > 0 && (
@@ -469,7 +517,7 @@ function InvitePanel() {
             <ul className="divide-y">
               {invites.filter((i) => i.status === "pending").map((i) => (
                 <li key={i.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2 text-sm">
-                  <span className="min-w-0 break-words">{i.email} <span className="text-muted-foreground">· {humanizeRole(i.role)}</span></span>
+                  <span className="min-w-0 break-words">{i.email} <span className="text-muted-foreground">· {roleLabel(i.role)}</span></span>
                   <span className="flex shrink-0 items-center gap-3">
                     {i.link && (
                       <button className="text-xs underline touch:min-h-11" onClick={() => copyLink(i.link)}>Copy link</button>
@@ -518,6 +566,7 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
       routingFn({ data: v }),
     onSuccess: () => {
       toast.success("Routing updated");
+      void invalidateOnboardingStatus(qc);
       qc.invalidateQueries({ queryKey: ["staff-addresses"] });
       qc.invalidateQueries({ queryKey: ["staff"] });
     },
@@ -673,6 +722,8 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
       {/* Service skills (2026-10-10). Drawn only when the business sells two
           or more services; see StaffSkills. */}
       <StaffSkills staffId={staff.id} canEdit={canEdit} />
+      {/* Dog cap per walker (#731). Drawn only for a business that walks dogs. */}
+      <WalkerDogCap staffId={staff.id} canEdit={canEdit} />
       {canEdit && (
         <div className="sm:col-span-2 flex justify-end">
           <Button size="sm" onClick={save} disabled={saving}>

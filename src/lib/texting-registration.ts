@@ -195,6 +195,12 @@ export function statusFromVerification(
   }
 }
 
+/** site-r2-05: what every screen calls a submitted registration until it is
+ *  switched on. The marketing site (Brendan-S20/HoundStack) uses the same
+ *  words; re-exported from lib/managed-texting, which owns the state. */
+export const UNDER_REVIEW_LABEL = "Under review";
+export const UNDER_REVIEW_LINE = "Under review, usually ready shortly";
+
 /** What Twilio says about review time, quoted rather than promised. */
 export const TWILIO_REVIEW_TIME = "Twilio says review takes up to three business days.";
 
@@ -216,6 +222,8 @@ export function describeStatus(
     updated_at?: string | null;
   } | null,
   formatDate: (iso: string) => string = (iso) => iso.slice(0, 10),
+  /** The business's credential row exists (orgCanTextClients). */
+  live = false,
 ): StatusSummary {
   if (!r) {
     return {
@@ -250,25 +258,24 @@ export function describeStatus(
         tone: "waiting",
       };
     case "submitted":
-      return {
-        status: "submitted",
-        title: "Submitted to carriers",
-        detail: `Your number${r.phone_number ? ` ${r.phone_number}` : ""} is waiting for carrier review. ${TWILIO_REVIEW_TIME} It cannot send texts until it is approved.`,
-        tone: "waiting",
-      };
     case "in_review":
-      return {
-        status: "in_review",
-        title: "In review",
-        detail: `Carriers are reviewing your registration. ${TWILIO_REVIEW_TIME} Your number cannot send texts until it is approved.`,
-        tone: "waiting",
-      };
     case "approved":
+      // site-r2-05: one state from submit until it is switched on, in the
+      // words every other screen uses. Approved by the carrier but not yet
+      // activated by HoundStack is still under review to the owner.
+      if (r.status === "approved" && live) {
+        return {
+          status: "approved",
+          title: "Approved and live",
+          detail: `Texts to your clients go out from ${r.phone_number ?? "your number"}.`,
+          tone: "good",
+        };
+      }
       return {
-        status: "approved",
-        title: "Approved and live",
-        detail: `Texts to your clients go out from ${r.phone_number ?? "your number"}.`,
-        tone: "good",
+        status: r.status,
+        title: UNDER_REVIEW_LABEL,
+        detail: `${UNDER_REVIEW_LINE}. Your number${r.phone_number ? ` ${r.phone_number}` : ""} cannot send texts until it is switched on, and we will tell you here and in your notifications the moment it is.`,
+        tone: "waiting",
       };
     case "rejected": {
       const by = r.resubmit_deadline

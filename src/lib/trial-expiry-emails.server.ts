@@ -46,7 +46,7 @@
 // the owner because the org never set a contact address" is operationally
 // different from "we mailed the address they chose".
 
-import { systemFooterHtml, systemHeaderHtml } from "@/lib/email-templates/_brand";
+import { systemFooterHtml, systemFooterText, systemHeaderHtml } from "@/lib/email-templates/_brand";
 
 export type TrialNoticeOutcome = {
   organizationId: string;
@@ -126,6 +126,10 @@ export function renderTrialNoticeText(input: {
     `Plans start at $79 a month with your first teammate included. Nothing is charged automatically.`,
     ``,
     `Questions? Email support@houndstack.com before your trial ends and we'll help you choose the right plan.`,
+    ``,
+    systemFooterText(
+      "Sent by HoundStack · You are receiving this because your workspace is in a free trial.",
+    ),
   ].join("\n");
 }
 

@@ -13,11 +13,25 @@
 // on-my-way email says walker and walk for a walk while every other visit's
 // email stays byte for byte what it was.
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as React from "react";
 import { render } from "react-email";
+
+// The fixtures are fixed walk days in October 2026, and the date formatters
+// drop the year only when it is the CURRENT year, so against the real clock
+// these assertions turn red on 2027-01-01 (found by running the suite under
+// faketime for #843). Pin the clock for the whole file instead of making the
+// days relative to today. Only Date is faked, so promises and timers run as
+// normal.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-01T12:00:00-06:00"));
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 // ── A database and an email queue the senders can be watched through ───────
 

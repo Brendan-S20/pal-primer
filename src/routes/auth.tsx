@@ -12,63 +12,59 @@ import {
 } from "@/lib/ensure-workspace";
 import { checkEmailAccount } from "@/lib/auth-entry.functions";
 import { lookupInviteByToken } from "@/lib/platform-onboarding.functions";
-import { handOffSignupEmail } from "@/lib/signup-email";
+import { handOffSignupEmail, takeExistingAccount } from "@/lib/signup-email";
+import {
+  handOffSignIn,
+  signInLanded,
+  SIGN_IN_BOUNCED,
+  SIGN_IN_BOUNCED_MESSAGE,
+  takeBouncedSignIn,
+  watchSignInLanding,
+} from "@/lib/sign-in-handoff";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CheckCircle2 } from "lucide-react";
 import { APP_NAME, APP_DESCRIPTION } from "@/lib/scoop";
 import { PublicShell } from "@/components/PublicShell";
-import { probeIdentity, resolveIdentity } from "@/lib/offline/identity";
+import { probeIdentity, resolveIdentity, trustFreshSignIn } from "@/lib/offline/identity";
 import { startApiRecovery } from "@/lib/offline/api-recovery";
 import { isDefinitelyOffline } from "@/lib/offline/connectivity";
 import { withDeadline } from "@/lib/offline/run-or-queue";
 import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
 import { rememberLandingPath, readLandingPath } from "@/lib/offline/read-cache";
+import { lookupLandingPath as lookupLandingPathFrom } from "@/lib/landing-path";
 import { pageTitle } from "@/lib/page-title";
 import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
 import { takeLinkForLanding } from "@/lib/pending-deep-link";
+import {
+  clearRecoveryPending,
+  passwordResetRedirectHere,
+  recoveryRedirectTarget,
+  requestPasswordReset,
+} from "@/lib/password-recovery";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: pageTitle("Sign in") },
-      { name: "description", content: `Sign in to ${APP_NAME}.` },
+      // Not "Sign in" alone (#791): this is also where a new owner starts.
+      { title: pageTitle("Sign in or create an account") },
+      { name: "description", content: `Sign in to ${APP_NAME}, or create an account.` },
     ],
   }),
   component: AuthPage,
 });
 
-/** Two Supabase round trips. Bounded because this sits between "we know who
+/** Two Supabase reads, made at the same time. Bounded because this sits between "we know who
  *  you are" and `navigate()` — an unbounded await here strands the user on the
  *  sign-in form just as surely as failing to identify them would. Native only;
  *  the web build awaits the lookup exactly as it always has. */
 const LANDING_DEADLINE_MS = 5_000;
 
 /** The two queries themselves, shared by both platforms so there is one
- *  definition of which role lands where. */
-async function lookupLandingPath(userId: string): Promise<string> {
-  // Platform admins always land in the platform console — never inside a
-  // tenant dashboard (impersonation uses a separate magic-link session).
-  const { data: isPlatform } = await supabase.rpc("is_platform_admin", { _user_id: userId });
-  if (isPlatform) return "/platform";
-
-  const { data, error } = await supabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId)
-    .maybeSingle();
-  // A failed lookup is not "no role". Reading it as one sent a tech to
-  // /dashboard and remembered that over their /my-day; the caller falls back
-  // to the remembered answer instead.
-  if (error) throw error;
-  const role = data?.role;
-  if (role === "tech") return "/my-day";
-  if (role === "dispatcher") return "/routes";
-  // owner, office_manager, or no role yet (fresh signup, where /dashboard
-  // triggers onboarding).
-  return "/dashboard";
-}
+ *  definition of which role lands where. They run side by side since #786;
+ *  see lib/landing-path.ts. */
+const lookupLandingPath = (userId: string) => lookupLandingPathFrom(supabase as never, userId);
 
 // Where a given role should land immediately after sign-in.
 //
@@ -140,6 +136,12 @@ function AuthPage() {
   const [password, setPassword] = useState("");
   const [stage, setStage] = useState<"email" | "password">("email");
   const [loading, setLoading] = useState(false);
+  // Forgot password? has its own flag (#764). It shared `loading` with Sign
+  // in, so the primary button read "Signing in…" while a reset link was being
+  // asked for: a reset that looked like a sign-in attempt. `loading` is still
+  // set during the request (every button stays disabled, so two flows cannot
+  // start at once); this decides only which words are on which button.
+  const [resetting, setResetting] = useState(false);
   const [alert, setAlert] = useState<{ kind: "error" | "info"; text: string } | null>(null);
   const setError = (text: string | null) => setAlert(text ? { kind: "error", text } : null);
   // A refused invitation leaves the person signed in on a sign-in screen.
@@ -162,6 +164,43 @@ function AuthPage() {
     setStage("email");
   };
   const setInfo = (text: string) => setAlert({ kind: "info", text });
+  // Set when the person came from a sign-up form whose address already has an
+  // account (#765): the reset is offered as a button in the message, not only
+  // as the small link beside the password label.
+  const [offerReset, setOfferReset] = useState(false);
+  useEffect(() => {
+    const taken = takeExistingAccount();
+    if (!taken) return;
+    setEmail(taken);
+    setStage("password");
+    setOfferReset(true);
+    setAlert({
+      kind: "info",
+      text: "That email already has an account. Sign in with its password, or reset it if you don't know it.",
+    });
+  }, []);
+
+  /** A sign-in this page handed on came back here signed out (#785). Put the
+   *  person back where they were, with what they typed and a reason, rather
+   *  than on an empty first step. False when there was nothing to put back. */
+  const restoreBouncedSignIn = (): boolean => {
+    const bounced = takeBouncedSignIn();
+    if (!bounced) return false;
+    setEmail(bounced.email);
+    if (bounced.password) setPassword(bounced.password);
+    setStage("password");
+    setLoading(false);
+    setError(SIGN_IN_BOUNCED_MESSAGE);
+    return true;
+  };
+
+  // The guard redirected the hand-off back to /auth while this page was still
+  // drawn (lib/sign-in-handoff.ts watches where that navigation resolves).
+  useEffect(() => {
+    const onBounced = () => void restoreBouncedSignIn();
+    window.addEventListener(SIGN_IN_BOUNCED, onBounced);
+    return () => window.removeEventListener(SIGN_IN_BOUNCED, onBounced);
+  }, []);
 
   // An invitation link lands here as /auth?invite=<token>. Kept before
   // anything else runs: the OAuth round-trip returns to the site root with
@@ -218,9 +257,24 @@ function AuthPage() {
     let stopRecovery: (() => void) | null = null;
 
     const run = async () => {
+      // A password-recovery link is not a sign-in. Supabase sends one that
+      // is not on its redirect allow-list to the site root, the root sends
+      // it here, and supabase-js has usually already turned its hash into a
+      // session. Landing that session ran ensureBootstrapped for a person who
+      // had only forgotten their password (a removed member got a brand-new
+      // organization) and never let them set one. Nothing below runs until
+      // /reset-password has the new password.
+      const recovery = recoveryRedirectTarget(window.location.href);
+      if (recovery) {
+        router.history.replace(recovery);
+        return;
+      }
       const identity = await resolveIdentity();
       if (cancelled) return;
       if (!identity.ok) {
+        // Drawn afresh (or reloaded) after a sign-in this page handed on, and
+        // nobody is signed in: say so, with the form as it was (#785).
+        restoreBouncedSignIn();
         // Could not ask, and nothing on this device says who is signed in.
         // Keep asking, and come back through here once the server answers,
         // rather than leaving this form as the only way on.
@@ -271,6 +325,8 @@ function AuthPage() {
         }
       }
       if (cancelled) return;
+      // Signed in after all: a hand-off still held is not a failure to report.
+      signInLanded();
       if (isNewOrg === NEEDS_ORG_NAME) return navigate({ to: "/no-workspace" });
       if (isNewOrg) return navigate({ to: "/onboarding" });
       const to = await landingPathForUser(identity.userId, identity.verified);
@@ -292,8 +348,14 @@ function AuthPage() {
       setLoading(false);
       return setError(error.message);
     }
+    // Signed in with a password: whatever reset this tab started is over.
+    clearRecoveryPending();
     let isNewOrg: boolean | typeof NEEDS_ORG_NAME = false;
     if (data.user) {
+      // The auth server verified this user just now. Without this the guard
+      // asks it again on the next navigation, and a refusal there bounced a
+      // good password back to /auth with no word of why (#785).
+      trustFreshSignIn(data.user);
       try {
         isNewOrg = await ensureBootstrapped(data.user as any, { requireOrgName: true });
         if (isNewOrg === true) forgetWorkspaceCache();
@@ -304,6 +366,12 @@ function AuthPage() {
       }
     }
     setLoading(false);
+    // From here it is the router's, and the guard's, call. If the navigation
+    // below resolves back on /auth, the page is told and puts the form back
+    // with a reason instead of looking like a first visit (#785,
+    // lib/sign-in-handoff.ts).
+    handOffSignIn(email, password);
+    watchSignInLanding((event, fn) => router.subscribe(event, fn));
     if (isNewOrg === NEEDS_ORG_NAME) return navigate({ to: "/no-workspace" });
     if (isNewOrg) return navigate({ to: "/onboarding" });
     land(data.user ? await landingPathForUser(data.user.id) : "/dashboard");
@@ -476,15 +544,30 @@ function AuthPage() {
     }
   };
 
+  /** Straight to the Get-started walkthrough (#791). An address already typed
+   *  goes with it the same way Continue hands it on (#651), and one that turns
+   *  out to have an account comes back here on the password step (#765). */
+  const createAccount = () => {
+    setAlert(null);
+    if (emailValid) handOffSignupEmail(email);
+    navigate({ to: "/get-started", search: {} as never });
+  };
+
+  // Asks nothing about memberships, and must not: an account with no business
+  // is exactly who needs this most (#765).
+  // One helper for every reset request (lib/password-recovery.ts): the
+  // redirect is /reset-password on the canonical origin (the iOS app's own
+  // scheme in the iOS app), and a failed send says so instead of "check your
+  // email" for a message that is never coming.
   const forgotPassword = async () => {
     setAlert(null);
+    setOfferReset(false);
+    if (!emailValid) return setError("Enter your email address first.");
     setLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
+    const r = await requestPasswordReset(supabase, email, await passwordResetRedirectHere());
     setLoading(false);
-    if (error) setError(error.message);
-    else setInfo("Check your email for a reset link.");
+    if (!r.ok) setError(r.message);
+    else setInfo(`Check ${r.sentTo} for a reset link. It works once, for an hour.`);
   };
 
   return (
@@ -522,6 +605,24 @@ function AuthPage() {
             <Button type="submit" disabled={loading || !emailValid} className="w-full">
               {loading ? "Checking…" : "Continue"}
             </Button>
+            {/* A new owner's way in, as a control rather than a line of footer
+                copy (#791). The screen read as sign-in only. Not offered on an
+                invitation: an invited teammate joins a business, and the email
+                step above already carries the invite to /get-started. */}
+            {!inviteToken && (
+              <div className="space-y-2 pt-1">
+                <p className="text-center text-sm text-muted-foreground">New to {APP_NAME}?</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={createAccount}
+                  disabled={loading}
+                >
+                  Create an account
+                </Button>
+              </div>
+            )}
           </form>
         ) : (
           <form onSubmit={handleSignIn} className="mt-4 space-y-3">
@@ -530,11 +631,15 @@ function AuthPage() {
                 <Label htmlFor="si-pw">Password</Label>
                 <button
                   type="button"
-                  onClick={forgotPassword}
+                  onClick={() => {
+                    setResetting(true);
+                    void forgotPassword().finally(() => setResetting(false));
+                  }}
                   disabled={loading}
+                  aria-busy={resetting || undefined}
                   className="text-xs text-muted-foreground underline underline-offset-2 hover:text-primary"
                 >
-                  Forgot password?
+                  {resetting ? "Sending reset link…" : "Forgot password?"}
                 </button>
               </div>
               <Input
@@ -547,7 +652,7 @@ function AuthPage() {
               />
             </div>
             <Button type="submit" disabled={loading} className="w-full">
-              {loading ? "Signing in…" : "Sign in"}
+              {loading && !resetting ? "Signing in…" : "Sign in"}
             </Button>
             <button
               type="button"
@@ -555,6 +660,7 @@ function AuthPage() {
                 setStage("email");
                 setPassword("");
                 setAlert(null);
+                setOfferReset(false);
               }}
               className="w-full text-center text-xs text-muted-foreground underline underline-offset-2 hover:text-primary"
             >
@@ -702,14 +808,25 @@ function AuthPage() {
                 Sign out and switch accounts
               </Button>
             )}
+            {offerReset && stage === "password" && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setResetting(true);
+                  void forgotPassword().finally(() => setResetting(false));
+                }}
+                disabled={loading}
+                aria-busy={resetting || undefined}
+              >
+                {resetting ? "Sending reset link…" : "Email me a reset link"}
+              </Button>
+            )}
           </div>
         </div>
       )}
       {signOutDialog}
-
-      <p className="text-center text-xs text-muted-foreground">
-        New here? Entering your email above walks you straight into account setup.
-      </p>
     </PublicShell>
   );
 }

@@ -1,9 +1,17 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 import { toast } from "sonner";
-import { getImportBatch, commitImport, cancelImport, retryImport } from "@/lib/imports.functions";
+import {
+  getImportBatch,
+  commitImport,
+  cancelImport,
+  retryImport,
+  undoImport,
+  IMPORT_SOURCE_LABELS,
+} from "@/lib/imports.functions";
+import { IMPORT_UNDO_CONFIRM } from "@/lib/import-leftovers";
 import {
   commitRefusal,
   commitResultCounts,
@@ -18,6 +26,7 @@ import { titleHead } from "@/lib/page-title";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { IMPORT_CANCEL_CONFIRM } from "@/lib/import-cancel-confirm";
+import { afterClientBookChanged } from "@/lib/client-book-queries";
 
 export const Route = createFileRoute("/_authenticated/imports/$batchId")({
   head: () => titleHead("Import"),
@@ -28,10 +37,12 @@ function BatchDetail() {
   const tz = useOrgTimezone();
   const { batchId } = Route.useParams();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const getFn = useServerFn(getImportBatch);
   const commitFn = useServerFn(commitImport);
   const cancelFn = useServerFn(cancelImport);
   const retryFn = useServerFn(retryImport);
+  const undoFn = useServerFn(undoImport);
   const [busy, setBusy] = useState(false);
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [filter, setFilter] = useState<"all" | "create" | "update" | "skip" | "error">("all");
@@ -95,6 +106,9 @@ function BatchDetail() {
     try {
       const s = await commitFn({ data: { batchId } });
       toast.success(committedSentence(s));
+      // Imported clients finish the clients setup step, and move every
+      // client count: /clients, the dashboard, the setup banner (#790).
+      void afterClientBookChanged(qc);
       refetch();
     } catch (e: any) {
       toast.error(e?.message ?? "Commit failed");
@@ -112,8 +126,26 @@ function BatchDetail() {
       await retryFn({ data: { batchId } });
       const s = await commitFn({ data: { batchId } });
       toast.success(committedSentence(s));
+      void afterClientBookChanged(qc);
     } catch (e) {
       toast.error((e as Error)?.message ?? "The import did not finish");
+    } finally {
+      refetch();
+      setBusy(false);
+    }
+  };
+
+  // Takes back everything a committed import added, while none of it has
+  // been used (#857). The server refuses otherwise, and the page says why.
+  const doUndo = async () => {
+    if (!(await confirm(IMPORT_UNDO_CONFIRM))) return;
+    setBusy(true);
+    try {
+      const r = await undoFn({ data: { batchId } });
+      toast.success(`Import undone. ${r.undone} record${r.undone === 1 ? "" : "s"} removed.`);
+      void afterClientBookChanged(qc);
+    } catch (e) {
+      toast.error((e as Error)?.message ?? "Undo failed");
     } finally {
       refetch();
       setBusy(false);
@@ -144,7 +176,8 @@ function BatchDetail() {
             ← All imports
           </Link>
           <h1 className="break-words text-2xl font-semibold">
-            {batch.source} · {batch.filename ?? "import"}
+            {IMPORT_SOURCE_LABELS[batch.source as keyof typeof IMPORT_SOURCE_LABELS] ?? batch.source}{" "}
+            · {batch.filename ?? "import"}
           </h1>
           <p className="text-sm text-muted-foreground">
             Created {formatDateTime(batch.created_at, tz)}
@@ -209,11 +242,45 @@ function BatchDetail() {
         </div>
       )}
 
+      {batch.status === "undone" && (
+        <div role="status" className="space-y-2 rounded border bg-muted/40 p-4 text-sm">
+          <p className="font-medium">This import was undone.</p>
+          <p className="text-muted-foreground">
+            Everything it added ({Number(stats.undone ?? 0)} record
+            {Number(stats.undone ?? 0) === 1 ? "" : "s"}) was removed. The rows below show what it
+            did. The file can be imported again.
+          </p>
+          <Button asChild>
+            <Link to="/imports">Start a fresh import</Link>
+          </Button>
+        </div>
+      )}
+
       {batch.status === "committed" && stats.created !== undefined && (
         <div className="rounded border bg-emerald-50 p-4 text-sm text-emerald-900 dark:bg-emerald-500/10 dark:text-emerald-300">
           Import committed: {committedCounts(stats)}. Imported clients won't receive automated messages until
           you resume communications or reach out. Lift the hold from each client's page, or select
           clients on the Clients list and use "Resume communications".
+          {Number(stats.paused_plans ?? 0) > 0 && (
+            <>
+              {" "}
+              {stats.paused_plans === 1 ? "The plan is" : `All ${stats.paused_plans} plans are`} paused
+              with no visits scheduled. Turn each one on from the client's page when you are ready.
+            </>
+          )}
+          {Number(stats.pets ?? 0) > 0 && (
+            <>
+              {" "}
+              {stats.pets} pet{stats.pets === 1 ? " was" : "s were"} added from the file.
+            </>
+          )}
+          {Number(stats.opening_balances ?? 0) > 0 && (
+            <>
+              {" "}
+              {stats.opening_balances} opening balance{stats.opening_balances === 1 ? " was" : "s were"}{" "}
+              written as open invoices. Nothing was sent or charged.
+            </>
+          )}
           {Number(stats.unpinned ?? 0) > 0 && (
             <>
               {" "}
@@ -247,6 +314,20 @@ function BatchDetail() {
           )}
         </div>
       )}
+
+      {batch.status === "committed" && (
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          {data.undoBlock ? (
+            <p className="text-muted-foreground">{data.undoBlock}</p>
+          ) : (
+            <Button variant="outline" onClick={doUndo} disabled={busy}>
+              {busy ? "Undoing…" : "Undo this import"}
+            </Button>
+          )}
+        </div>
+      )}
+
+      <KeptColumnsPanel rows={rows as { mapped: { extras?: Record<string, string> | null } | null }[]} entity={batch.entity} />
 
       {errorSummary.length > 0 && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
@@ -376,10 +457,68 @@ function BatchDetail() {
   );
 }
 
+/** The columns no field consumed, as the preview kept them (#857): which
+ *  they are, how many rows had a value, and one example each, so the owner
+ *  can see what is being kept rather than find out later that it was not. */
+function KeptColumnsPanel({
+  rows,
+  entity,
+}: {
+  rows: { mapped: { extras?: Record<string, string> | null } | null }[];
+  entity: string;
+}) {
+  const columns = new Map<string, { count: number; sample: string }>();
+  for (const r of rows) {
+    for (const [col, value] of Object.entries(r.mapped?.extras ?? {})) {
+      const c = columns.get(col);
+      if (c) c.count += 1;
+      else columns.set(col, { count: 1, sample: value });
+    }
+  }
+  if (!columns.size) return null;
+  const where =
+    entity === "clients"
+      ? "kept on each client as raw data and summarized at the end of its notes"
+      : entity === "services"
+        ? "added as an office note on the client"
+        : "added to the record's notes";
+  return (
+    <section className="rounded-lg border bg-card p-4">
+      <h2 className="text-sm font-medium">
+        {columns.size} column{columns.size === 1 ? "" : "s"} kept, not matched to a field
+      </h2>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Nothing is dropped: each row&apos;s values in these columns are {where}. To use one as a
+        field instead, start a new import and pick it on the mapping step.
+      </p>
+      <div className="relative mt-3 overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead className="text-left uppercase text-muted-foreground">
+            <tr>
+              <th className="py-1 pe-3 font-medium">Column</th>
+              <th className="py-1 pe-3 font-medium">Rows with a value</th>
+              <th className="py-1 font-medium">Example</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[...columns.entries()].map(([col, c]) => (
+              <tr key={col} className="border-t align-top">
+                <td className="py-1 pe-3 font-mono">{col}</td>
+                <td className="py-1 pe-3 tabular-nums">{c.count}</td>
+                <td className="max-w-md truncate py-1 text-muted-foreground">{c.sample}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function ImportStatusBadge({ status }: { status: string }) {
   const cls: Record<string, string> = {
     committed: "border-transparent bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-400",
-    failed: "border-transparent bg-destructive/15 text-destructive hover:bg-destructive/15",
+    failed: "border-transparent bg-destructive/10 text-destructive hover:bg-destructive/10",
     cancelled: "text-muted-foreground",
   };
   return (
@@ -429,13 +568,15 @@ function PlanOrBalanceCells({ entity, m, error }: { entity: string; m: any; erro
   const issue = <td className="px-3 py-2 text-xs text-red-600">{error ?? ""}</td>;
   if (entity === "services") {
     const often =
-      m.frequency === "weekly" && m.interval_weeks
-        ? `Every ${m.interval_weeks} weeks`
-        : m.frequency === "every_n_days"
-          ? `Every ${m.interval_days} days`
-          : m.frequency
-            ? String(m.frequency).replace(/_/g, " ")
-            : "-";
+      m.frequency_in_file === false
+        ? "Not in file (set before turning on)"
+        : m.frequency === "weekly" && m.interval_weeks
+          ? `Every ${m.interval_weeks} weeks`
+          : m.frequency === "every_n_days"
+            ? `Every ${m.interval_days} days`
+            : m.frequency
+              ? String(m.frequency).replace(/_/g, " ")
+              : "-";
     return (
       <>
         <td className="px-3 py-2">{client}</td>
@@ -444,7 +585,7 @@ function PlanOrBalanceCells({ entity, m, error }: { entity: string; m: any; erro
         <td className="px-3 py-2 text-muted-foreground">
           {(m.preferred_weekdays ?? []).map((d: number) => WEEKDAY_SHORT[d]).join(", ") || "-"}
         </td>
-        <td className="px-3 py-2 text-muted-foreground">{m.started_on ?? "Next generation"}</td>
+        <td className="px-3 py-2 text-muted-foreground">{m.started_on ?? "When turned on"}</td>
         {issue}
       </>
     );

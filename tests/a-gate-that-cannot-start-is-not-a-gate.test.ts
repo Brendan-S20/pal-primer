@@ -112,7 +112,11 @@ describe("the schema gate can be scheduled", () => {
   it("is still a hard gate on main and skipped on pull requests", () => {
     // The move must not quietly turn the gate advisory. A PR legitimately
     // contains migrations that have not been applied yet; main must not.
-    expect(migrations.if).toBe("github.event_name != 'pull_request'");
+    // A batch/* branch (batch.yml) is skipped for the same reason a PR is:
+    // it carries those same PRs, migrations not yet applied included.
+    expect(migrations.if).toBe(
+      "github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/heads/batch/')",
+    );
   });
 });
 

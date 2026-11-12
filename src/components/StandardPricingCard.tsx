@@ -38,6 +38,8 @@ export function StandardPricingCard() {
     onSuccess: () => {
       toast.success("Standard pricing saved");
       qc.invalidateQueries({ queryKey: ["std-pricing"] });
+      // A standard price finishes the setup price step (#861).
+      qc.invalidateQueries({ queryKey: ["onboarding-status"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });

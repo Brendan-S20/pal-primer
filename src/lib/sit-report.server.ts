@@ -5,6 +5,13 @@
  *                        in place of the cleanup wording (completeVisit)
  *    afterSitCompleted   the missed medication email, once per visit, and
  *                        the stay summary once the stay's last visit is done
+ *    sendSettledStaySummaries
+ *                        the nightly catch for a stay whose last visit was
+ *                        skipped or went missed rather than completed: no
+ *                        completion ran, so no summary had been sent. It
+ *                        looks back 7 days only when the business turned on
+ *                        stay_summary_catch_up; otherwise no further than
+ *                        the day the catch went live for it
  *
  *  Both return nothing for a visit that is not pet sitting, which is how a
  *  pet-waste or walking client is sent exactly what they were before. Neither
@@ -14,6 +21,8 @@
 
 import { DEFAULT_TIMEZONE } from "@/lib/route-window";
 import { formatDay } from "@/lib/format";
+import { addDays } from "@/lib/stays";
+import { orgLocalDay } from "@/lib/org-day";
 import {
   SIT_PUSH,
   missedMeds,
@@ -176,13 +185,97 @@ async function sendMissedMeds(sb: any, v: Row): Promise<void> {
   }
 }
 
-async function sendStaySummaryIfLast(sb: any, v: Row): Promise<void> {
+/** How far back the nightly catch looks: a stay that ended within the last
+ *  week. A summary is sent once per stay whichever path sends it (the
+ *  idempotency key is the stay's), so looking back more than one night only
+ *  covers a nightly run that failed. */
+export const STAY_SUMMARY_LOOKBACK_DAYS = 7;
+
+/** The first day the nightly catch looks at (#747, Brendan via Product,
+ *  2026-11-09). With organizations.stay_summary_catch_up on, the full
+ *  STAY_SUMMARY_LOOKBACK_DAYS. Off (the default), never before the day the
+ *  catch went live for the business (organizations.stay_summaries_live_at,
+ *  on its own calendar): no backlog of summaries for stays that ended before
+ *  then. A go-live moment that cannot be read is treated as now, which sends
+ *  no backlog rather than a week of it. */
+export function staySummaryWindowStart(input: {
+  today: string;
+  catchUp: boolean;
+  liveAt: string | null | undefined;
+  timezone: string | null | undefined;
+}): string {
+  const lookback = addDays(input.today, -STAY_SUMMARY_LOOKBACK_DAYS);
+  if (input.catchUp) return lookback;
+  const live = input.liveAt ? orgLocalDay(input.liveAt, input.timezone || undefined) : "";
+  const liveDay = live || input.today;
+  return liveDay > lookback ? liveDay : lookback;
+}
+
+/** The nightly catch (#411). A stay's summary went out from
+ *  afterSitCompleted, which only runs when a visit is COMPLETED. A stay
+ *  whose last visit was skipped, or that the nightly job marked missed,
+ *  settled with no completion, and its client never got the summary. This
+ *  runs after admin_transition_missed_visits on the business's own today,
+ *  for stays that ended in the last week, and sends the summary for any
+ *  stay with nothing left to do. Pet sitting only; never throws per stay.
+ *  Returns how many stays it queued a summary for. */
+export async function sendSettledStaySummaries(orgId: string, today: string): Promise<number> {
+  const sb = await admin();
+  // How far back: the business's choice (migration 20261109170000). Read
+  // first, and a failed read sends nothing rather than a backlog.
+  const { data: org, error: orgError } = await sb
+    .from("organizations")
+    .select("timezone, stay_summary_catch_up, stay_summaries_live_at")
+    .eq("id", orgId)
+    .single();
+  if (orgError) throw new Error(orgError.message);
+  const from = staySummaryWindowStart({
+    today,
+    catchUp: org?.stay_summary_catch_up === true,
+    liveAt: org?.stay_summaries_live_at ?? null,
+    timezone: org?.timezone ?? null,
+  });
+  const { data: stays, error } = await sb
+    .from("stays")
+    .select("id")
+    .eq("organization_id", orgId)
+    .in("status", ["confirmed", "completed"])
+    .gte("ends_on", from)
+    .lte("ends_on", today);
+  if (error) throw new Error(error.message);
+  let queued = 0;
+  for (const stay of (stays ?? []) as { id: string }[]) {
+    try {
+      const { data: plans } = await sb.from("subscriptions").select("id").eq("stay_id", stay.id);
+      const planIds = ((plans ?? []) as { id: string }[]).map((p) => p.id);
+      if (planIds.length === 0) continue;
+      const { data: last } = await sb
+        .from("visits")
+        .select("id")
+        .in("subscription_id", planIds)
+        .neq("status", "canceled")
+        .order("scheduled_on", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!last) continue;
+      const v = await readSitVisit(sb, last.id as string);
+      if (v && (await sendStaySummaryIfLast(sb, v))) queued++;
+    } catch (e) {
+      console.warn("settled stay summary failed", stay.id, e);
+    }
+  }
+  return queued;
+}
+
+/** True when this call queued the summary; false when the stay is not
+ *  settled yet, the summary was already sent, or the email is switched off. */
+async function sendStaySummaryIfLast(sb: any, v: Row): Promise<boolean> {
   const stay = stayOf(v);
-  if (!stay) return;
+  if (!stay) return false;
   try {
     const { data: plans } = await sb.from("subscriptions").select("id").eq("stay_id", stay.id);
     const planIds = ((plans ?? []) as { id: string }[]).map((p) => p.id);
-    if (planIds.length === 0) return;
+    if (planIds.length === 0) return false;
     const { data: visits } = await sb
       .from("visits")
       .select("id, status, scheduled_on")
@@ -194,7 +287,7 @@ async function sendStaySummaryIfLast(sb: any, v: Row): Promise<void> {
       list.length === 0 ||
       list.some((x) => x.status === "scheduled" || x.status === "in_progress")
     )
-      return;
+      return false;
     const dayOf = new Map(list.map((x) => [x.id, x.scheduled_on]));
     const { data: rows } = await sb
       .from("care_log")
@@ -228,7 +321,7 @@ async function sendStaySummaryIfLast(sb: any, v: Row): Promise<void> {
       ...(base ? { portalUrl: `${base}/visits` } : {}),
     };
     const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
-    await enqueueAppEmail({
+    const result = await enqueueAppEmail({
       organizationId: v.organization_id,
       clientId: v.client_id,
       templateName: "stay-summary",
@@ -239,7 +332,9 @@ async function sendStaySummaryIfLast(sb: any, v: Row): Promise<void> {
       toOverride: one(v.properties)?.visit_contact_email || undefined,
       templateData: summary,
     });
+    return result?.ok === true;
   } catch (e) {
     console.warn("stay summary email failed", stay.id, e);
+    return false;
   }
 }

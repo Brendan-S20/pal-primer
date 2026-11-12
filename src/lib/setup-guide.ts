@@ -79,16 +79,55 @@ export function stepsFor<T extends { gate?: string }>(
   return steps.filter((s) => !s.gate || canAccess(role, s.gate));
 }
 
-/** Where to (re)start: the remembered step if it is still one of theirs,
- *  otherwise the first one not yet done, otherwise the first. */
+/** Where to (re)start: the remembered step if it is still one of theirs AND
+ *  still open, otherwise the first one not yet done, otherwise the first.
+ *
+ *  A remembered step that is done is not resumed (#772): an owner who
+ *  finished zones and left was sent back to /setup?step=zones by "Continue
+ *  setup", a step with nothing left to do, while the next open one waited. */
 export function startingStep(
   steps: readonly Pick<OnboardingStep, "id" | "done">[],
   remembered: string | null | undefined,
 ): OnboardingStepId | null {
   if (!steps.length) return null;
-  const hit = steps.find((s) => s.id === remembered);
+  const hit = steps.find((s) => s.id === remembered && !s.done);
   if (hit) return hit.id;
   return (steps.find((s) => !s.done) ?? steps[0]).id;
+}
+
+/** What the banner says, decided from the server's progress (D5).
+ *
+ *  "Started" used to be `!!readRememberedStep(...)`: a localStorage key
+ *  written only on the device /setup was opened on. On any other device, or
+ *  after storage was cleared, an owner five steps in was greeted with "Set up
+ *  your business in 6 short steps ... Start setup" directly above a checklist
+ *  reading "5 of 6 steps done". The steps done ARE the progress, and they come
+ *  from getOnboardingStatus; the device record only decides which step the
+ *  button resumes at. */
+export function setupBanner(
+  steps: readonly Pick<OnboardingStep, "id" | "done" | "label">[],
+  remembered: string | null | undefined,
+): {
+  done: number;
+  total: number;
+  started: boolean;
+  step: OnboardingStepId | null;
+  nextLabel: string | null;
+  cta: string;
+} {
+  const total = steps.length;
+  const done = steps.filter((s) => s.done).length;
+  // A remembered step only resumes while it is open (startingStep).
+  const step = startingStep(steps, remembered);
+  const started = done > 0 || !!remembered;
+  return {
+    done,
+    total,
+    started,
+    step,
+    nextLabel: steps.find((s) => s.id === step)?.label ?? null,
+    cta: started ? `Continue setup (${done} of ${total})` : "Start setup",
+  };
 }
 
 /** The first step still open after `from`, wrapping to any open one before it,

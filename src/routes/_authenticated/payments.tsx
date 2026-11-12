@@ -3,7 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useState, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import {
   ConnectComponentsProvider,
   ConnectAccountOnboarding,
@@ -29,10 +29,11 @@ import {
   attestCardSurcharge,
 } from "@/lib/processing-fee.functions";
 import { describeStripeRates } from "@/lib/processing-fee";
+import { radarFeeSentence } from "@/lib/radar-fee";
 import { getTipSettings, setTipsEnabled } from "@/lib/tips.functions";
 import { Switch } from "@/components/ui/switch";
 import { getPlatformFeeSentence } from "@/lib/platform-fee.functions";
-import { sendEmailVerification } from "@/lib/auth-entry.functions";
+import { ResendVerificationButton } from "@/components/ResendVerificationButton";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
@@ -50,19 +51,17 @@ import {
   type BalanceSummaryData,
 } from "@/lib/payments-load";
 
-function ResendVerification() {
-  const sendFn = useServerFn(sendEmailVerification);
-  const m = useMutation({
-    mutationFn: () => sendFn(),
-    onSuccess: () => toast.success("Verification email sent. Check your inbox"),
-    onError: (e: Error) => toast.error(e.message),
-  });
-  return (
-    <Button variant="outline" size="sm" onClick={() => m.mutate()} disabled={m.isPending}>
-      {m.isPending ? "Sending…" : "Resend verification email"}
-    </Button>
-  );
-}
+// Tap to Pay (#579) is native only, loaded lazily behind the build-time flag,
+// read inline so Vite folds it to `null` in the web build and Rollup emits no
+// Tap to Pay chunk (the same shape StaffInvoicePayForm uses).
+const TapToPaySettingsCard =
+  import.meta.env.VITE_NATIVE_BUNDLE === "1"
+    ? lazy(() =>
+        import("@/components/tap-to-pay/TapToPaySettingsCard").then((m) => ({
+          default: m.TapToPaySettingsCard,
+        })),
+      )
+    : null;
 
 // Promoted from Settings -> Payments to the main sidebar (punch list #9): this
 // is the tenant-facing money view (balances, payments, payouts), not app
@@ -227,7 +226,7 @@ function PaymentsSettings() {
             You can use everything else right away, but before connecting Stripe and moving money,
             we need to confirm your email address. Check your inbox for the verification link.
           </p>
-          <ResendVerification />
+          <ResendVerificationButton />
         </div>
       ) : !cfg?.connected ? (
         <div className="space-y-4 rounded-lg border bg-card p-4">
@@ -248,7 +247,7 @@ function PaymentsSettings() {
               the platform fee comes back, this line grows a clause on its own
               rather than waiting for somebody to remember this screen. */}
           <p className="text-sm text-muted-foreground">
-            Stripe charges {describeStripeRates()}, billed to your own account.
+            Stripe charges {describeStripeRates()}, billed to your own account. {radarFeeSentence()}
             {platformFee ? ` HoundStack adds ${platformFee}.` : ""} Payouts settle to you directly.
           </p>
           <Button onClick={() => ensure.mutate()} disabled={ensure.isPending}>
@@ -276,6 +275,14 @@ function PaymentsSettings() {
             }
             accountExtras={
               <>
+                {/* Tap to Pay on iPhone (Apple's review guide 3.6): enabled
+                    outside checkout, in the Account tab. Native app only; the
+                    web build drops it. */}
+                {TapToPaySettingsCard && cfg.chargesEnabled && (
+                  <Suspense fallback={null}>
+                    <TapToPaySettingsCard />
+                  </Suspense>
+                )}
                 {/* Was a permanently-visible amber box at the foot of the page,
                     warning about a hypothetical ("if you connect a different
                     account") whether or not anybody was switching. A warning
@@ -463,6 +470,7 @@ function ProcessingFeeCard() {
           Stripe charges you {describeStripeRates()}. You can absorb that or pass it to the client
           as a separate line at checkout.
         </p>
+        <p className="mt-1 text-sm text-muted-foreground">{radarFeeSentence()}</p>
       </div>
 
       <label className="flex items-start gap-3">

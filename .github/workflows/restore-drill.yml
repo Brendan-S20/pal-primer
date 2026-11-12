@@ -1,0 +1,161 @@
+name: Restore drill
+
+# ── WHAT THIS IS ──────────────────────────────────────────────────────────
+#
+# Once a week, take the NEWEST encrypted backup backup.yml has kept, restore
+# it into a throwaway Supabase stack inside this job (Postgres in Docker on
+# this runner, on a random 5xxxx port range), and run every check
+# scripts/restore-drill.sh knows: every table's row count against the dump,
+# every foreign key, tables against the migrations, the key tables' counts,
+# RLS on every public table, the auth schema and the migration ledger. Any
+# failure fails the job, and a failed scheduled run is emailed by GitHub.
+#
+# The owner's decision, 2026-11-10: "Yes, run the weekly restore drill on a
+# GitHub runner." docs/runbooks/restore-drill.md is the runbook, and the
+# by-hand drill on a private machine stays as the fallback.
+#
+# ── WHY THIS IS SAFE ON A PUBLIC REPOSITORY ───────────────────────────────
+#
+#   * GitHub-hosted, written out. The decrypted dump exists only on this VM's
+#     disk, which GitHub destroys when the job ends, and the drill deletes it
+#     before that whether it passes or fails. Never a self-hosted runner: the
+#     same reasoning as backup.yml's header.
+#   * The restore target is local and nothing else. scripts/backup/
+#     local-only.mjs refuses any database URL that is not 127.0.0.1,
+#     localhost or ::1 before a row is loaded, and the drill refuses a
+#     DOCKER_HOST on another machine. No production or shared database URL
+#     is given to this workflow at all: it reads no SUPABASE_DB_URL.
+#   * The log holds table names, "N of N" totals and PASS/FAIL. restore.sh
+#     masks anything quoted in a failed COPY, and the passphrase is never
+#     echoed.
+#   * One existing secret, by name: BACKUP_PASSPHRASE, the same one
+#     backup.yml seals with. If it is not set, a SCHEDULED run fails with an
+#     error naming it (a green run that drilled nothing would be the quiet
+#     failure this exists to prevent); a run by hand warns and skips.
+#   * The repository is public, so its logs are too. A pass prints "N of N
+#     match" and PASS lines only; per-table and key-table row counts, and the
+#     auth.users count, are printed only when a check FAILED.
+#
+# ── WHEN ──────────────────────────────────────────────────────────────────
+#
+# Wednesday 08:30 UTC, an hour after that morning's 07:30 backup. backup.yml
+# still drills the backup it has just made every Sunday; this one drills
+# mid-week, with the deeper checks, so a backup that stops restoring is
+# found within four days rather than seven.
+
+on:
+  schedule:
+    - cron: "30 8 * * 3"
+  workflow_dispatch:
+
+# actions: read is what lets GITHUB_TOKEN list and download another run's
+# artifacts. Nothing here writes to the repository.
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: restore-drill
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Is there a passphrase and a backup to drill
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+      run_id: ${{ steps.check.outputs.run_id }}
+    steps:
+      - name: Find the newest backup and check the passphrase is set
+        id: check
+        env:
+          # A boolean, not the value: the secret itself never enters this job.
+          HAS_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE != '' }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$HAS_PASSPHRASE" != "true" ]; then
+            # On the schedule nobody is watching, so a skip would be a green
+            # run that drilled nothing. It fails, and GitHub emails it. A
+            # person who ran it by hand reads the warning and the skip.
+            if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
+              echo "::error::BACKUP_PASSPHRASE is not set, so no backup can be opened and the weekly restore drill did NOT run. Add the secret (Settings -> Secrets and variables -> Actions) with the same value backup.yml seals with."
+              exit 1
+            fi
+            echo "::warning::BACKUP_PASSPHRASE is not set, so there is no way to open a backup. The restore drill is SKIPPED. Add the secret (Settings -> Secrets and variables -> Actions) with the same value backup.yml seals with."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The newest unexpired db-backup artifact from a backup.yml run on
+          # main. Branch runs are left out: a backup made from a branch's
+          # scripts is not the backup production depends on.
+          run_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=db-backup&per_page=100" \
+            --jq '[.artifacts[] | select(.expired | not) | select(.workflow_run.head_branch == "main")] | sort_by(.created_at) | last | .workflow_run.id // empty')"
+          if [ -z "$run_id" ]; then
+            echo "::error::no unexpired db-backup artifact from a Backup run on main. Either backup.yml has not succeeded in 30 days, or its artifacts were deleted. Nothing to drill, which is a failure."
+            exit 1
+          fi
+          echo "newest backup: Backup run $run_id ($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$run_id)"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+  drill:
+    name: Restore the newest backup into a throwaway database and check it
+    needs: preflight
+    if: needs.preflight.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Postgres 17 client (production's major version)
+        run: scripts/backup/install-postgres-client.sh 17
+
+      # `latest`, as in backup.yml: the restored auth and storage schemas
+      # come from the CLI's own images and must be at least as new as
+      # production's.
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: db-backup
+          path: drill/archive
+          run-id: ${{ needs.preflight.outputs.run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: db-backup-summary
+          path: drill/summary
+          run-id: ${{ needs.preflight.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Restore and check
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -o pipefail
+          archive="$(ls drill/archive/*.tar.gz.gpg)"
+          BACKUP_ARCHIVE="$archive" BACKUP_SUMMARY=drill/summary/summary.json \
+            scripts/restore-drill.sh 2>&1 | tee drill/drill.log
+
+      # PASS/FAIL lines and "N of N" totals only. Row counts reach the log only
+      # when a check failed, and this filter does not copy them here.
+      - name: Summary
+        if: always()
+        run: |
+          [ -f drill/drill.log ] || exit 0
+          {
+            echo "### Restore drill of Backup run ${{ needs.preflight.outputs.run_id }}"
+            echo
+            echo '```'
+            grep -E '^(PASS|FAIL|RESTORE DRILL:|::error::)|tables restored with exactly' drill/drill.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # restore-drill.sh already removes it on exit; this is for the case
+      # where the job is cancelled between steps.
+      - name: Remove the downloaded archive
+        if: always()
+        run: rm -rf drill

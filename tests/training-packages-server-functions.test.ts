@@ -638,11 +638,14 @@ describe("no-show and late-cancel rules", () => {
       missedUsesSession: true,
       // The portal sharing setting is on unless the business turned it off.
       shareProgress: true,
+      // A lesson series skips holidays and closed days unless turned off (R2-49).
+      seriesSkipClosed: true,
     });
     db = fake();
     await saveTrainingSessionRules({ data: { lateCancelHours: 12, missedUsesSession: false } });
-    // Left out, the sharing setting is not touched.
+    // Left out, the sharing and series settings are not touched.
     expect(db.calls.some((c) => c.table === "set_training_share_progress")).toBe(false);
+    expect(db.calls.some((c) => c.table === "set_training_series_skip_closed")).toBe(false);
     expect(mocks.permission).toHaveBeenCalledWith(db.client, "owner-user", "manage_settings");
     expect(db.calls).toContainEqual({
       table: "set_training_session_rules",
@@ -662,6 +665,15 @@ describe("no-show and late-cancel rules", () => {
       table: "set_training_share_progress",
       op: "rpc",
       args: [{ _org_id: "org-a", _share: false }],
+    });
+    db = fake();
+    await saveTrainingSessionRules({
+      data: { lateCancelHours: 24, missedUsesSession: true, seriesSkipClosed: false },
+    });
+    expect(db.calls).toContainEqual({
+      table: "set_training_series_skip_closed",
+      op: "rpc",
+      args: [{ _org_id: "org-a", _skip: false }],
     });
   });
   it("lets the office override a missed or skipped package lesson, and nothing else", async () => {

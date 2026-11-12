@@ -154,6 +154,19 @@ fi
                    else format('SELECT cron.schedule(%L, %L, %L);', jobname, schedule, command) end
          from cron.job order by jobid"
   fi
+  # The migration ledger. `supabase db dump` leaves the supabase_migrations
+  # schema out of both schema.sql and data.sql, so until restore-drill.sh
+  # asked for it no backup carried it: a project restored from one had every
+  # table and no record of which migration made them, and its first
+  # `supabase db push` would try to replay all of them on top. Version and
+  # name only -- `statements` is the migration's own SQL, which is in the
+  # repo, and would roughly double this file for nothing.
+  if [ "$(q "select to_regclass('supabase_migrations.schema_migrations') is not null")" = "t" ]; then
+    echo "CREATE SCHEMA IF NOT EXISTS supabase_migrations;"
+    echo "CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations (version text NOT NULL PRIMARY KEY, statements text[], name text);"
+    q "select format('INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES (%L, %L) ON CONFLICT (version) DO NOTHING;', version, name)
+         from supabase_migrations.schema_migrations order by version"
+  fi
 } > "$out/extension-state.sql"
 
 node "$here/copy-row-counts.mjs" "$out/data.sql" "$out/extension-state.sql" > "$out/counts.json"

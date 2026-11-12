@@ -20,6 +20,7 @@ import {
 } from "@/lib/properties.functions";
 import { BoundarySketch, type PolygonGeoJSON } from "@/components/BoundarySketch";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
+import { partsFromPick } from "@/lib/address/pick";
 import { AddressAutocomplete, type ResolvedAddress } from "@/components/AddressAutocomplete";
 // (Badge replaced by MetaChip per Stage 3 taxonomy.)
 import { MetaChip, SectionLabel } from "@/components/client-detail/primitives";
@@ -38,17 +39,8 @@ import {
   walkAccessSave,
   type AccessMethod,
 } from "@/lib/walk-access";
+import { propertyHazardsFor } from "@/lib/new-client-plan";
 
-const HAZARD_FIELDS: Array<[string, string]> = [
-  ["doNotEnterIfDogOut", "Do NOT enter if dog is outside"],
-  ["aggressiveDog", "Aggressive dog"],
-  ["escapeRisk", "Escape risk (close gate)"],
-  ["invisibleFence", "Invisible fence"],
-  ["dogInYardDuringService", "Dog in yard during service"],
-  ["beesWasps", "Bees / wasps"],
-  ["sharpObjects", "Sharp objects"],
-  ["slipperySurfaces", "Slippery surfaces"],
-];
 
 export function PropertyDrawer({
   open,
@@ -89,6 +81,8 @@ export function PropertyDrawer({
         | "commercial",
       gateCode: property?.gate_code ?? "",
       parkingNotes: property?.parking_notes ?? "",
+      vanPower: !!property?.van_power_available,
+      vanWater: !!property?.van_water_available,
       accessNotes: (property?.access_notes ?? "") as string,
       hazardNotes: property?.hazard_notes ?? "",
       vcName: property?.visit_contact_name ?? "",
@@ -122,6 +116,9 @@ export function PropertyDrawer({
   // drawer exactly as before, and its saves do not send these fields.
   const { lines: serviceLines, known: linesKnown } = useServiceLines();
   const walkAccess = linesKnown && showsWalkAccess(serviceLines, property);
+  // Van hookups (#412): a grooming business sees them, and its saves send
+  // them. Any other business sees the drawer as before and leaves them alone.
+  const groomHookups = linesKnown && serviceLines.includes("mobile_grooming");
   // listPropertiesForClient says whether property_access_codes returned this
   // row. When it did not, the code fields open blank over stored values.
   const codesNotLoaded = !!property && property.access_codes_loaded === false;
@@ -173,17 +170,13 @@ export function PropertyDrawer({
   }
 
   function applyResolved(r: ResolvedAddress) {
+    // Every part from the match, the unit included: carrying "#4" from a
+    // previous selection onto a different address would save a wrong unit
+    // (lib/address/pick.ts, #783).
+    const parts = partsFromPick(r.address);
     setForm((f) => ({
       ...f,
-      street: r.address.street,
-      // Each match owns the unit: carrying "#4" from a previous selection
-      // onto a different address would save a wrong unit.
-      unit: r.address.unit ?? "",
-      city: r.address.city,
-      region: r.address.region ?? "",
-      postalCode: r.address.postalCode,
-      latitude: r.address.latitude,
-      longitude: r.address.longitude,
+      ...parts,
       addressSource: "matched",
     }));
     setMatchedZoneName(r.zoneName);
@@ -252,6 +245,9 @@ export function PropertyDrawer({
         beesWasps: form.beesWasps,
         sharpObjects: form.sharpObjects,
         slipperySurfaces: form.slipperySurfaces,
+        ...(groomHookups
+          ? { vanPowerAvailable: form.vanPower, vanWaterAvailable: form.vanWater }
+          : {}),
         // Codes go out only when the user changed them (walkAccessSave).
         ...(walkAccess ? walkAccessSave(initial, form) : {}),
       };
@@ -407,6 +403,29 @@ export function PropertyDrawer({
               className="min-h-11 w-full rounded-md border bg-background px-3 py-2 text-sm"
             />
           </div>
+          {groomHookups && (
+            <fieldset className="sm:col-span-3">
+              <legend className="text-sm font-medium">Van hookups</legend>
+              <div className="mt-1 flex flex-wrap gap-x-6">
+                <label className="flex min-h-11 items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={form.vanPower}
+                    onChange={(e) => set("vanPower", e.target.checked)}
+                  />
+                  <span>Power the van can plug into</span>
+                </label>
+                <label className="flex min-h-11 items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={form.vanWater}
+                    onChange={(e) => set("vanWater", e.target.checked)}
+                  />
+                  <span>Water the van can fill from</span>
+                </label>
+              </div>
+            </fieldset>
+          )}
           <div className="sm:col-span-3">
             <Label htmlFor="pd-access-notes">Access notes</Label>
             <textarea
@@ -619,7 +638,9 @@ export function PropertyDrawer({
         <div className="rounded-md border bg-muted/20 p-3">
           <SectionLabel>Safety &amp; access hazards</SectionLabel>
           <div className="mt-2 grid gap-1 text-sm sm:grid-cols-2">
-            {HAZARD_FIELDS.map(([k, label]) => (
+            {/* The wizard's list and rule (#768): a yard's hazards are asked
+                of a business that scoops, and one already ticked stays. */}
+            {propertyHazardsFor(serviceLines, form).map(({ key: k, label }) => (
               <label key={k} className="flex items-center gap-2">
                 <input
                   type="checkbox"

@@ -117,8 +117,14 @@ describe("messaging consent cannot be a condition of service", () => {
   });
 
   it("only records consent when the box was actually ticked", () => {
-    // The opt-in must not ride along with account creation.
-    expect(getStarted).toMatch(/if \(smsConsent && phone\.trim\(\)\)/);
+    // The opt-in must not ride along with account creation. The sequence
+    // moved to src/lib/finish-signup.ts (2026-11-09) so a failed step can be
+    // retried; the screen hands it the box's own state.
+    const finish = readFileSync(join(root, "src/lib/finish-signup.ts"), "utf8");
+    expect(finish).toMatch(/if \(form\.smsConsent && phone && !progress\.consentSaved\)/);
+    expect(getStarted).toMatch(
+      /\{ email, password, orgName, displayName, phone, smsConsent, promoCode \}/,
+    );
   });
 
   // ── Twilio's SECOND rejection: "Consent for Messaging Cannot Be Part of
@@ -188,13 +194,16 @@ describe("messaging consent cannot be a condition of service", () => {
 
   it("says texting is not live, and never claims an account never needs a text", () => {
     expect(legalSms.replace(/\s+/g, " ")).toMatch(
-      /Text messaging is coming soon and is pending carrier registration\./,
+      /Texts from \{APP_NAME\}&apos;s own number start once its carrier registration is complete\.<\/strong> No text messages are sent under this program until then\./,
     );
-    // #486: the privacy policy names two kinds of text; the one still pending
-    // is business-to-client texting.
+    // #486 named two kinds of text. Business-to-client texting launched with
+    // Managed texting on 2026-10-29 (src/lib/addon-launch.ts), and is gated on
+    // each business's own registration (orgCanTextClients), so the privacy
+    // policy says that rather than "coming soon" (#751).
     expect(legalPrivacy.replace(/\s+/g, " ")).toMatch(
-      /Texting between a business and its own clients is coming soon and is pending carrier registration\./,
+      /A business can text its own clients through the Managed texting add-on\. Those texts start once the carriers approve that business&apos;s own registration/,
     );
+    expect(legalPrivacy).not.toMatch(/clients is coming soon/);
     expect(legalSms).not.toMatch(/never need to receive a text/i);
   });
 });

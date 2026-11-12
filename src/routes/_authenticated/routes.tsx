@@ -1,7 +1,8 @@
 import { createFileRoute, Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { completeFromOffice, useOfficeCompleteOverride } from "@/components/OfficeCompleteOverride";
+import { useCompletionBlockWarning } from "@/components/CompletionBlockWarning";
 import { warnLessonClashes } from "@/components/training/lessonClashWarning";
-import { humanizeRole } from "@/lib/humanize";
+import { useRoleLabel } from "@/components/CommercialOnly";
 import { orgLocalTime } from "@/lib/org-day";
 import { visitEta } from "@/lib/visit-eta";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
@@ -145,6 +146,7 @@ function toLocalISO(d: Date) {
   return new Date(d.getTime() - off * 60_000).toISOString().slice(0, 10);
 }
 function RoutesPage() {
+  const roleLabel = useRoleLabel();
   // The ORG's today, not the phone's. This is the dispatch board: drag a
   // card, bulk-reassign a lane, complete from the office, and the day it
   // opens on is the day those actions land on. It asked the device, the
@@ -417,11 +419,15 @@ function RoutesPage() {
 
   // No photo or checklist: the office says why, or the visit stays open (#658).
   const { askWhy, dialog: overrideDialog } = useOfficeCompleteOverride();
+  // A client the owner's BLOCK rule holds: say why first, never refuse (#851).
+  const completionBlock = useCompletionBlockWarning();
   const completeMut = useMutation({
     mutationFn: ({ visitId, confirmedEarly }: { visitId: string; confirmedEarly: boolean }) =>
       completeFromOffice(
-        (overrideReason) => doComplete({ data: { visitId, confirmedEarly, overrideReason } }),
+        (overrideReason, blockAcknowledged) =>
+          doComplete({ data: { visitId, confirmedEarly, overrideReason, blockAcknowledged } }),
         askWhy,
+        () => completionBlock.check(visitId),
       ),
     onSuccess: (done) => {
       if (!done) return;
@@ -1022,6 +1028,7 @@ function RoutesPage() {
     <>
       {moveDialog}
       {overrideDialog}
+      {completionBlock.dialog}
       {visitsData?.clash && (
         <p
           role="alert"
@@ -1205,7 +1212,11 @@ function RoutesPage() {
                     Skip Sat/Sun in Week and Month views.
                   </div>
                 </div>
-                <Switch checked={hideWeekends} onCheckedChange={setHideWeekendsPersist} />
+                <Switch
+                  aria-label="Hide weekends"
+                  checked={hideWeekends}
+                  onCheckedChange={setHideWeekendsPersist}
+                />
               </div>
               <p className="border-b pb-3 text-2xs text-muted-foreground">
                 Workday hours, work days and travel assumptions live in{" "}
@@ -1238,7 +1249,11 @@ function RoutesPage() {
                     Keeps a pin and its lane on screen together. Stacks below 1280px.
                   </div>
                 </div>
-                <Switch checked={sideBySide} onCheckedChange={setSideBySidePersist} />
+                <Switch
+                  aria-label="Map beside the board"
+                  checked={sideBySide}
+                  onCheckedChange={setSideBySidePersist}
+                />
               </div>
               <div className="space-y-1.5">
                 <div className="text-sm font-medium">Board layout</div>
@@ -1290,7 +1305,7 @@ function RoutesPage() {
                           <div className="min-w-0">
                             <div className="truncate text-sm">{s.display_name}</div>
                             <div className="text-2xs text-muted-foreground capitalize">
-                              {s.role ? humanizeRole(s.role) : "—"}
+                              {s.role ? roleLabel(s.role) : "—"}
                               {/* Only ever shown for someone being switched OFF,
                                 where it is the consequence rather than trivia:
                                 their lane is about to disappear with work
@@ -1747,7 +1762,7 @@ function RoutesPage() {
                         key={s.id}
                         id={s.id}
                         title={s.display_name}
-                        subtitle={s.role ? humanizeRole(s.role) : undefined}
+                        subtitle={s.role ? roleLabel(s.role) : undefined}
                         offRoutes={offRoutes}
                         offToday={away}
                         items={columns[s.id] ?? []}
@@ -2434,12 +2449,18 @@ function SortableVisitCard({
     transition,
     opacity: isDragging ? 0.4 : 1,
   };
+  // `attributes` (role="button", tabIndex 0, the sortable roledescription)
+  // go on the grip with the listeners, not on this wrapper. On the wrapper
+  // they made the whole card a button with the grip, the checkbox and the
+  // Complete button inside it, which axe reports as nested-interactive
+  // (gaps-r2-11), and a tab stop that did nothing: the keyboard sensor
+  // listens where `listeners` are, which was always the grip.
   return (
-    <div ref={setNodeRef} style={style} {...attributes}>
+    <div ref={setNodeRef} style={style}>
       <VisitCardView
         visit={visit}
         seq={seq}
-        dragHandle={listeners}
+        dragHandle={{ ...attributes, ...listeners }}
         onComplete={onComplete}
         completing={completing}
         onOpen={onOpen}

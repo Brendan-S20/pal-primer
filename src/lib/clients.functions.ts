@@ -5,6 +5,20 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 import { buildClientNamePatch } from "@/lib/client-name";
+import { needsANamedDog, SERVER_NEEDS_A_NAMED_DOG } from "@/lib/new-client-dogs";
+
+/**
+ * Whether a new client is sent the welcome email: only when the person
+ * creating them ticked the box AND there is an address to send it to. Unset
+ * is no -- a pilot walking through setup must never email a real client by
+ * surprise (onboarding audit 2026-11-09, D4).
+ */
+export function shouldSendWelcome(data: {
+  sendWelcome?: boolean | null;
+  primaryEmail?: string | null;
+}): boolean {
+  return data.sendWelcome === true && !!data.primaryEmail?.trim();
+}
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   // Through the shared gate, so a person whose access is turned off is
@@ -747,65 +761,6 @@ export const searchClients = createServerFn({ method: "GET" })
     return { clients: (hits as any[]).map(shape) };
   });
 
-const createClientSchema = z.object({
-  displayName: z.string().min(1).max(200),
-  accountType: z.enum(["residential", "commercial"]),
-  primaryEmail: z.string().email().or(z.literal("")).optional(),
-  primaryPhone: z.string().max(40).optional(),
-});
-
-export const createClient = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((data) => createClientSchema.parse(data))
-  .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
-    const orgId = await resolveOrgId(supabase, userId);
-    const { data: row, error } = await supabase
-      .from("clients")
-      .insert({
-        organization_id: orgId,
-        display_name: data.displayName,
-        account_type: data.accountType,
-        primary_email: data.primaryEmail || null,
-        primary_phone: data.primaryPhone || null,
-      })
-      .select("id, portal_token")
-      .single();
-    if (error) throw new Error(error.message);
-
-    {
-      const { logActivity } = await import("@/lib/activity.server");
-      await logActivity(supabase, {
-        orgId,
-        clientId: row.id as string,
-        actorUserId: userId,
-        kind: "client.created",
-        summary: `Created client ${data.displayName}`,
-      });
-    }
-
-    // Fire welcome email (best-effort; never block client creation)
-    if (data.primaryEmail) {
-      try {
-        const { buildPortalLink } = await import("@/lib/portal-links.server");
-        const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
-        await enqueueAppEmail({
-          organizationId: orgId,
-          clientId: row.id as string,
-          templateName: "welcome",
-          notifyKey: "notify_email_welcome",
-          idempotencyKey: `welcome-${row.id}`,
-          templateData: {
-            portalUrl: await buildPortalLink(orgId, row.portal_token as string | null),
-          },
-        });
-      } catch (e) {
-        console.error("welcome email failed", e);
-      }
-    }
-    return { id: row.id as string };
-  });
-
 const getClientSchema = z.object({ clientId: z.string().uuid() });
 
 export const getClient = createServerFn({ method: "GET" })
@@ -878,7 +833,7 @@ export const getFieldClientInfo = createServerFn({ method: "GET" })
     const { data: properties, error: propErr } = await supabaseAdmin
       .from("properties")
       .select(
-        "id, label, street, city, region, postal_code, parking_notes, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, archived_at",
+        "id, label, street, city, region, postal_code, parking_notes, van_power_available, van_water_available, access_notes, yard_size, invisible_fence, escape_risk, dog_in_yard_during_service, aggressive_dog, bees_wasps, sharp_objects, slippery_surfaces, do_not_enter_if_dog_out, hazard_notes, archived_at",
       )
       .eq("client_id", data.clientId)
       .eq("organization_id", caller.orgId)
@@ -1239,6 +1194,69 @@ export const regeneratePortalLink = createServerFn({ method: "POST" })
   });
 
 /**
+ * Send the welcome email (and portal link) to an existing client, on a
+ * person's click. Since the wizard stopped sending it unasked (onboarding
+ * audit 2026-11-09, D4), this is how a client created without it gets their
+ * invite later. Same template, same portal link, and the same refusals as
+ * every other send: the owner's Welcome toggle in Settings, the client's
+ * email opt-out and the suppression list all still apply (enqueueAppEmail).
+ * A manual send, so an imported client's comms hold does not stop it.
+ */
+export const sendClientWelcomeEmail = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) => getClientSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { orgId } = await requirePermission(supabase, userId, "message_clients");
+    const { data: c, error } = await supabase
+      .from("clients")
+      .select("id, organization_id, primary_email, portal_token")
+      .eq("id", data.clientId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!c || c.organization_id !== orgId) throw new Error("That client was not found.");
+    const recipient = (c.primary_email as string | null)?.trim() || null;
+    if (!recipient) throw new Error("This client has no email address.");
+
+    const { buildPortalLink } = await import("@/lib/portal-links.server");
+    const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
+    const link = (await buildPortalLink(orgId, c.portal_token as string | null)) ?? null;
+    const sent = await enqueueAppEmail({
+      organizationId: orgId,
+      clientId: data.clientId,
+      templateName: "welcome",
+      notifyKey: "notify_email_welcome",
+      requireProvider: true,
+      manual: true,
+      templateData: { portalUrl: link ?? undefined },
+    });
+    let statusHandle: string | null = null;
+    if (sent.ok && sent.messageId) {
+      const { signEmailStatusHandle } = await import("@/lib/email/status-handle.server");
+      statusHandle = signEmailStatusHandle(
+        orgId,
+        { kind: "client", id: data.clientId },
+        sent.messageId,
+      );
+      const { logActivity } = await import("@/lib/activity.server");
+      await logActivity(supabase, {
+        orgId,
+        clientId: data.clientId,
+        actorUserId: userId,
+        kind: "client.welcome_sent",
+        summary: `Sent the welcome email to ${recipient}`,
+      });
+    }
+    return {
+      ok: sent.ok,
+      reason: sent.reason ?? null,
+      statusHandle,
+      recipient,
+      link,
+    };
+  });
+
+/**
  * Read (mint) a one-time verification code for a client, so the office can
  * read it aloud when a client can't receive SMS/email. This is a sensitive
  * account-takeover-adjacent action (it hands out a valid sign-in code), so it
@@ -1415,6 +1433,13 @@ const onboardSchema = z.object({
   accountType: z.enum(["residential", "commercial"]),
   primaryEmail: z.string().email().or(z.literal("")).optional(),
   primaryPhone: z.string().max(40).optional(),
+  // The welcome email (and portal link) to primaryEmail. OPT-IN: absent or
+  // false sends nothing. It used to go to every new client with an email, so
+  // the first client typed in during setup -- often a real customer, or the
+  // owner trying the form -- was emailed with no warning (onboarding audit
+  // 2026-11-09, D4). The wizard shows the subject and the recipient beside
+  // an unchecked box; only ticking it sends.
+  sendWelcome: z.boolean().optional(),
   // property
   street: z.string().min(1).max(200),
   city: z.string().min(1).max(120),
@@ -1526,6 +1551,13 @@ export const onboardClient = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => onboardSchema.parse(d))
   .handler(async ({ data, context }) => {
+    // A residential client is somebody's dogs. Created with none, its plan
+    // billed for one and the Summary's first words were "no dog is on file"
+    // (onboarding audit 2026-11-09, D2). Refused before anything is read or
+    // written; commercial / HOA may still have none. lib/new-client-dogs.
+    if (needsANamedDog(data.accountType, data.dogs)) {
+      throw new Error(SERVER_NEEDS_A_NAMED_DOG);
+    }
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
 
@@ -1596,6 +1628,21 @@ export const onboardClient = createServerFn({ method: "POST" })
     }
 
     // 1) client
+    //
+    // "Bill after each visit" is what the form calls a postpaid plan, so the
+    // client is billed that way: billing_frequency 'after_each_visit', which
+    // invoices each visit when it is completed (#859). It defaulted to
+    // 'monthly', so the label's promise waited for the end of the month. The
+    // cadence is the one the plan is written with below: a caller who does
+    // not set prices always writes a postpaid plan.
+    const { billingFrequencyForNewClient } = await import("@/lib/visit-invoicing");
+    const billingFrequency = billingFrequencyForNewClient(
+      data.subscription
+        ? planAtSetPrice
+          ? "postpaid"
+          : (data.subscription.billingCadence ?? "postpaid")
+        : null,
+    );
     const { data: cRow, error: cErr } = await supabase
       .from("clients")
       .insert({
@@ -1604,6 +1651,7 @@ export const onboardClient = createServerFn({ method: "POST" })
         account_type: data.accountType,
         primary_email: data.primaryEmail || null,
         primary_phone: data.primaryPhone || null,
+        ...(billingFrequency ? { billing_frequency: billingFrequency } : {}),
       })
       .select("id, portal_token")
       .single();
@@ -1756,6 +1804,7 @@ export const onboardClient = createServerFn({ method: "POST" })
 
     // 4) subscription
     let firstVisitOn: string | null = null;
+    let soloOwner: { assigned: number; putOnRoutes: boolean } | null = null;
     if (data.subscription) {
       // At the set price (#728): the price and zone the server worked out
       // above, never the browser's.
@@ -1832,6 +1881,15 @@ export const onboardClient = createServerFn({ method: "POST" })
         .limit(1)
         .maybeSingle();
       firstVisitOn = first?.scheduled_on ?? null;
+
+      // D13: in a business whose only person is the owner saving this, the
+      // visits are theirs; there is nobody else they could go to.
+      const { giveSoloOwnerThePlan } = await import("@/lib/solo-owner-route.server");
+      soloOwner = await giveSoloOwnerThePlan(supabase, {
+        orgId,
+        userId,
+        subscriptionId: subRow!.id,
+      });
     }
 
     // 5) office note. The client and everything under it already exist, so a
@@ -1911,7 +1969,7 @@ export const onboardClient = createServerFn({ method: "POST" })
     let welcomeStatusHandle: string | null = null;
     let welcomeTurnedOff = false;
     let welcomeLink: string | null = null;
-    if (data.primaryEmail) {
+    if (shouldSendWelcome(data)) {
       try {
         const { buildPortalLink } = await import("@/lib/portal-links.server");
         const { enqueueAppEmail } = await import("@/lib/email/enqueue.server");
@@ -1950,9 +2008,14 @@ export const onboardClient = createServerFn({ method: "POST" })
       welcomeStatusHandle,
       welcomeTurnedOff,
       welcomeLink,
+      welcomeRequested: shouldSendWelcome(data),
       officeNoteSaved,
       leadLinked,
       firstCleanupInvoiced,
+      // How many of the plan's visits went to the owner because nobody else
+      // is in the business, and whether that put them on routes (D13).
+      soloOwnerAssigned: soloOwner?.assigned ?? 0,
+      soloOwnerPutOnRoutes: soloOwner?.putOnRoutes ?? false,
     };
   });
 

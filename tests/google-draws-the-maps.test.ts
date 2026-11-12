@@ -376,6 +376,38 @@ describe("a fit asked for before Google has measured the box is made again once 
     r.destroy();
   });
 
+  // #773: a fresh org with one Detroit visit today has ONE point to fit. That
+  // path went straight to setView, which is the location button's path: it
+  // cleared the pending fit and never recorded one, so on a map adopted from
+  // the pool the single pin was framed for the old box and never again.
+  it("makes a one-pin fit again once measured, like any other fit", () => {
+    const g = fakeGoogle();
+    const r = createGoogleRenderer(g, new FakeEl() as unknown as HTMLElement, surface());
+    const map = (r as any).map;
+    const woodward = { lat: 42.3297, lng: -83.0458 };
+    r.fitBounds([woodward], { padding: 30, maxZoom: 14 });
+    // Google moves the camera when it re-measures an adopted map.
+    map.setCenter({ lat: 42.49, lng: -83.14 });
+    map.setZoom(11);
+    FakeResizeObserver.all.at(-1)!.size(760, 380);
+    expect(map.center).toEqual(woodward);
+    expect(r.getZoom()).toBe(14);
+    r.destroy();
+  });
+
+  it("a deliberate jump still outranks a one-pin fit made before measuring", () => {
+    const g = fakeGoogle();
+    const r = createGoogleRenderer(g, new FakeEl() as unknown as HTMLElement, surface());
+    const map = (r as any).map;
+    r.fitBounds([{ lat: 42.3297, lng: -83.0458 }], { padding: 30, maxZoom: 14 });
+    const me = { lat: 42.49, lng: -83.14 };
+    r.setView(me, 15);
+    FakeResizeObserver.all.at(-1)!.size(760, 380);
+    expect(map.center).toEqual(me);
+    expect(r.getZoom()).toBe(15);
+    r.destroy();
+  });
+
   it("stops watching when the surface goes", () => {
     const g = fakeGoogle();
     const r = createGoogleRenderer(g, new FakeEl() as unknown as HTMLElement, surface());

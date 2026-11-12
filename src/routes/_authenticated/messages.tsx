@@ -1,4 +1,5 @@
 import { createFileRoute, Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+import { TextingNotLiveText, TextingStateBadge } from "@/components/TextingNotLive";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
@@ -9,7 +10,8 @@ import { MessageSquarePlus } from "lucide-react";
 import { formatDateTime } from "@/lib/format";
 import { titleHead } from "@/lib/page-title";
 import { useClientTexting } from "@/hooks/useClientTexting";
-import { ComingSoonBadge } from "@/components/ComingSoonBadge";
+import { useTextingState } from "@/hooks/useTextingState";
+import { textingNotLiveSentence } from "@/lib/managed-texting";
 
 export const Route = createFileRoute("/_authenticated/messages")({
   head: () => titleHead("Messages"),
@@ -48,6 +50,7 @@ function MessagesLayout() {
   // registration. Until then this page is the history it has and a state
   // that says so, not a New message button that ends in an error.
   const texting = useClientTexting();
+  const textingState = useTextingState();
   const { data, isLoading } = useQuery({
     queryKey: ["message-threads"],
     queryFn: () => fn({}),
@@ -71,12 +74,14 @@ function MessagesLayout() {
       <div className={`md:col-span-2 ${onThread ? "max-md:hidden" : ""}`}>
         <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold">
           Messages
-          {!texting && <ComingSoonBadge />}
+          {!texting && <TextingStateBadge />}
         </h1>
         <p className="text-sm text-muted-foreground">
-          {texting
-            ? "Text conversations between your business and your clients."
-            : "Texting your clients is coming soon. Until then, visit reminders, on-my-way notices, review requests and billing reminders go by email."}
+          {texting ? (
+            "Text conversations between your business and your clients."
+          ) : (
+            <TextingNotLiveText tail="Until then, visit reminders, on-my-way notices, review requests and billing reminders go by email." />
+          )}
         </p>
       </div>
       <aside className={`rounded-lg border bg-card ${onThread ? "max-md:hidden" : ""}`}>
@@ -93,7 +98,7 @@ function MessagesLayout() {
               className="touch:min-h-11"
               aria-expanded={composing}
               disabled={!texting}
-              title={texting ? undefined : "Texting your clients is coming soon"}
+              title={texting ? undefined : textingNotLiveSentence(textingState)}
               onClick={() => setComposing((v) => !v)}
             >
               <MessageSquarePlus className="mr-1.5 h-4 w-4 shrink-0" aria-hidden="true" />
@@ -108,7 +113,7 @@ function MessagesLayout() {
             <p className="p-4 text-sm text-muted-foreground">
               {texting
                 ? "No conversations yet. Press New message to text a client; their replies show up here."
-                : "No conversations yet. Once texting your clients arrives, conversations show up here."}
+                : "No conversations yet. Once your texting is live, conversations show up here."}
             </p>
           )}
           <ul className="divide-y">

@@ -86,7 +86,12 @@ export function forgetDeepLink(): void {
 
 /** Pages a link may open without anyone signed in. Each handles a missing
  *  session itself. */
-const NEEDS_NO_SESSION = ["/invite/"];
+const NEEDS_NO_SESSION = [
+  "/invite/",
+  // A recovery link is the way back in for somebody who cannot sign in; it
+  // brings its own session, and /auth must not land it first.
+  "/reset-password",
+];
 
 export function needsSession(path: string): boolean {
   return !NEEDS_NO_SESSION.some((p) => path.startsWith(p));
