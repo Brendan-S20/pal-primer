@@ -116,6 +116,10 @@ describe("setup step 2, from source", () => {
   it("keeps a failure on screen beside Save, from the save and from every refusal", () => {
     expect(panel).toMatch(/onFailed: setFailure/);
     expect(panel).toMatch(/role="alert"[\s\S]{0,200}data-setup-error/);
+    // At the end of the form, which on a phone is under the sticky bar: the
+    // step brings it to the middle of the screen rather than leave it covered.
+    expect(panel).toMatch(/ref=\{failureRef\}/);
+    expect(panel).toMatch(/failureRef\.current\?\.scrollIntoView\(\{ block: "center" \}\)/);
     // Every client-side refusal goes through refuse(), which sets it too.
     const submit = panel.slice(panel.indexOf("onSubmit={"), panel.indexOf("m.mutate();"));
     expect(submit).not.toMatch(/toast\.error\(/);

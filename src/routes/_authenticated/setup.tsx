@@ -923,6 +923,13 @@ function ServiceAreaPanel({
   // The last failed save's sentence, kept beside Save until the next try.
   // A toast alone is four seconds at the top of the screen (#881).
   const [failure, setFailure] = useState<string | null>(null);
+  // Brought to the middle of the screen when it appears: it sits at the end of
+  // the form, which on a phone is under the sticky bar Save is drawn in, so
+  // "in view" alone would leave it covered.
+  const failureRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (failure) failureRef.current?.scrollIntoView({ block: "center" });
+  }, [failure]);
 
   // Kept on the device as it is typed (#881): the price an owner typed was
   // gone after a reload, which read as "the price field clears". Same
@@ -1306,6 +1313,7 @@ function ServiceAreaPanel({
       )}
       {failure && (
         <p
+          ref={failureRef}
           role="alert"
           className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"
           data-setup-error

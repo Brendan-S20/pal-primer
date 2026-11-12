@@ -12,10 +12,10 @@
 // has zones, prices, a first-cleanup mode and twenty clients: the one state
 // this step is never in. So this one makes its own business the way signup
 // does -- an auth user, then `bootstrap_organization` called AS that user --
-// and gives it only what step 1 leaves behind (an address with a pin, and
-// the unpriced "Pet waste removal" service step 1 seeds when it saves the
-// service lines), then drives step 2 in a browser and asks Postgres what it
-// wrote.
+// and gives it only what step 1 leaves behind (an address with a pin). The
+// unpriced "Pet waste removal" service is already there, made by the org
+// insert's own trigger, and is read back rather than seeded. Then it drives
+// step 2 in a browser and asks Postgres what it wrote.
 //
 // What it proves:
 //   * ONE press of Save and continue creates exactly one zone for this
@@ -111,19 +111,19 @@ test("a new business saves its service area and price once, and the zone exists 
       .eq("id", orgId);
     if (pinErr) throw new Error(`pinning the business address: ${pinErr.message}`);
 
-    // And the service step 1 seeds for pet waste (DEFAULT_SERVICE_SEEDS in
-    // src/lib/services.ts, via ensureDefaultServicesForLines): unpriced.
-    const { error: svcErr } = await db.from("services").insert({
-      organization_id: orgId,
-      name: "Pet waste removal",
-      service_line: "pet_waste",
-      price_unit: "visit",
-      base_price_cents: null,
-      extra_pet_cents: 0,
-      default_duration_min: null,
-      active: true,
-    });
-    if (svcErr) throw new Error(`seeding the pet-waste service: ${svcErr.message}`);
+    // The unpriced "Pet waste removal" service is already there: signup made
+    // it (organizations_default_services -> ensure_default_services, on the
+    // org insert bootstrap_organization does). Read it, rather than seed a
+    // second one that the services_org_name unique index would refuse.
+    const { data: starter, error: starterErr } = await db
+      .from("services")
+      .select("base_price_cents")
+      .eq("organization_id", orgId)
+      .eq("service_line", "pet_waste")
+      .eq("name", "Pet waste removal")
+      .single();
+    if (starterErr) throw new Error(`reading the starter service: ${starterErr.message}`);
+    expect(starter?.base_price_cents, "signup's pet-waste service starts unpriced").toBeNull();
 
     const { count: before } = await db
       .from("zones")
