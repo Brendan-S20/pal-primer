@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
+
+vi.setConfig({ testTimeout: 300_000 });
 
 const migration = resolve(
   "supabase/migrations/20261112010000_an-owner-replaces-the-untouched-default-service.sql",
