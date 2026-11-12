@@ -48,6 +48,16 @@ public struct RouteActivityAttributes: ActivityAttributes {
         /// Arabic reads right to left; the views flip their layout for it.
         public var rtl: Bool
 
+        /// Who the stop is for, short: the client's name cut to fit
+        /// ("Margaret Okonkwo…"), else the street with no house number
+        /// ("Elm St"). Drawn ONLY by the small presentation on an Apple Watch
+        /// Smart Stack and a CarPlay Dashboard, after "Stop 4 of 7 ·" (#454;
+        /// src/lib/live-activity-state.ts clientShortName). The client's name
+        /// is Brendan's call (2026-11-09); the lock screen and the Dynamic
+        /// Island never draw it. Absent from a state written before it, and
+        /// then the small view shows the stop number and window alone.
+        public var shortStop: String?
+
         // The buttons (2026-10-07). All optional, and all absent from a state
         // written before them: an update saved by an older server, or a
         // build-261 phone's own. Absent decodes as nil, and the card then
@@ -83,6 +93,7 @@ public struct RouteActivityAttributes: ActivityAttributes {
             position: Int,
             allDone: Bool,
             rtl: Bool,
+            shortStop: String? = nil,
             visitId: String? = nil,
             destLat: Double? = nil,
             destLng: Double? = nil,
@@ -103,6 +114,7 @@ public struct RouteActivityAttributes: ActivityAttributes {
             self.position = position
             self.allDone = allDone
             self.rtl = rtl
+            self.shortStop = shortStop
             self.visitId = visitId
             self.destLat = destLat
             self.destLng = destLng
@@ -115,6 +127,7 @@ public struct RouteActivityAttributes: ActivityAttributes {
         enum CodingKeys: String, CodingKey {
             case stopLabel, nextLabel, nextStop, window, doneLabel, skippedLabel
             case done, skipped, total, position, allDone, rtl
+            case shortStop
             case visitId, destLat, destLng, destAddress, nextAction, navigateLabel, actionLabel
         }
 
@@ -132,6 +145,7 @@ public struct RouteActivityAttributes: ActivityAttributes {
             position = (try? c.decode(Int.self, forKey: .position)) ?? 0
             allDone = (try? c.decode(Bool.self, forKey: .allDone)) ?? false
             rtl = (try? c.decode(Bool.self, forKey: .rtl)) ?? false
+            shortStop = Self.nonEmpty(try? c.decodeIfPresent(String.self, forKey: .shortStop))
             visitId = Self.nonEmpty(try? c.decodeIfPresent(String.self, forKey: .visitId))
             destLat = try? c.decodeIfPresent(Double.self, forKey: .destLat)
             destLng = try? c.decodeIfPresent(Double.self, forKey: .destLng)
