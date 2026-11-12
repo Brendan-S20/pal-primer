@@ -12,6 +12,26 @@ import {
   type ImportService,
 } from "@/lib/import-services";
 import { serviceLinesOrDefault } from "@/lib/service-lines";
+import {
+  ADDRESS_2_COLUMNS,
+  BILLING_ADDRESS_2_COLUMNS,
+  BILLING_FALLBACK_COLUMNS,
+  COMPANY_NAME_COLUMNS,
+  extrasSummary,
+  FIRST_NAME_COLUMNS,
+  joinNotes,
+  LAST_NAME_COLUMNS,
+  leftoverColumns,
+  parseInactive,
+  parsePetNames,
+  parseYesNo,
+  rowExtras,
+  UNDO_NEEDS_BILLING,
+  undoRefusal,
+  type PetName,
+  type UndoUsage,
+} from "@/lib/import-leftovers";
+import { parseMoneyCents } from "@/lib/import-services";
 import { newInvoice } from "@/lib/db-insert";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
@@ -48,7 +68,44 @@ export const IMPORT_SOURCES = [
   "time_to_pet",
   "gorilla_desk",
   "quoteiq_family",
+  // Best-guess formats (#857): no sample export is in hand, so their column
+  // names below are guesses and the page says so. Every column of such a
+  // file is shown before anything is saved.
+  "gingr",
+  "moego",
 ] as const;
+export type ImportSource = (typeof IMPORT_SOURCES)[number];
+
+/** What a person calls each source. */
+export const IMPORT_SOURCE_LABELS: Record<ImportSource, string> = {
+  generic_csv: "Generic CSV",
+  sweepgo: "Sweep&Go",
+  jobber: "Jobber",
+  housecall_pro: "Housecall Pro",
+  time_to_pet: "Time To Pet",
+  gorilla_desk: "GorillaDesk",
+  quoteiq_family: "QuoteIQ / Flowcarve / DoTimely",
+  gingr: "Gingr",
+  moego: "MoeGo",
+};
+
+/** Sources whose column names were VERIFIED against the vendor's own
+ *  documentation or sample file. The rest are recognized by best guess:
+ *  the mapping is a starting point, and the owner checks every column. */
+export const VERIFIED_SOURCES: readonly ImportSource[] = ["jobber", "time_to_pet"];
+export const isVerifiedSource = (source: string): boolean =>
+  source === "generic_csv" || (VERIFIED_SOURCES as readonly string[]).includes(source);
+
+/** The database's import_source enum, as this file knows it. The generated
+ *  types (src/integrations/supabase/types.ts, owned by #870) do not yet
+ *  carry gingr and moego, which 20261111050000 adds. */
+type DbImportSource = Database["public"]["Enums"]["import_source"];
+const asDbSource = (source: ImportSource): DbImportSource => source as DbImportSource;
+/** import_batches as 20261111050000 leaves it: the generated Row plus
+ *  undone_at, which the types (owned by #870) do not carry yet. */
+type ImportBatchRow = Database["public"]["Tables"]["import_batches"]["Row"] & {
+  undone_at?: string | null;
+};
 
 export const IMPORT_ENTITIES = ["clients", "properties", "dogs", "services", "balances"] as const;
 
@@ -80,6 +137,14 @@ export const CLIENT_TARGET_FIELDS = [
   "gate_code",
   // Jobber's Tags ("Weekly; Tuesday; VIP") used to be folded into notes.
   "tags",
+  // One native file brings the whole client (#857): an Archived / Status
+  // column lands the client inactive; a do-not-text flag turns texts off;
+  // pets packed into one cell ("Rex, Bella") become that client's pets; an
+  // Account Balance becomes an opening balance, with no second file.
+  "archived",
+  "do_not_text",
+  "pets",
+  "balance",
 ] as const;
 export type ClientTargetField = (typeof CLIENT_TARGET_FIELDS)[number];
 
@@ -115,6 +180,9 @@ export type DogTargetField = (typeof DOG_TARGET_FIELDS)[number];
 export const SERVICE_TARGET_FIELDS = [
   "client_external_id",
   "client_name",
+  // Jobber's Recurring jobs report names the client and their email, and no
+  // id; an email tells two clients of one name apart.
+  "client_email",
   "frequency",
   "price_per_visit",
   "service_day",
@@ -146,7 +214,11 @@ export const TARGET_FIELDS_BY_ENTITY: Record<ImportEntity, readonly string[]> = 
 
 type PresetMap = Record<string, string[]>;
 
-const CLIENT_PRESETS: Record<string, PresetMap> = {
+// The columns a vendor's own export names, per source. The generic aliases
+// below (CLIENT_ADDRESS_ALIASES) are merged into every preset for the mapping
+// step; detection scores a source on ITS OWN names only, so the aliases every
+// export shares cannot make one vendor look like another.
+const CLIENT_PRESETS_OWN: Record<string, PresetMap> = {
   generic_csv: {
     display_name: ["name", "display_name", "client name", "full name"],
     account_type: ["type", "account_type", "account type"],
@@ -155,7 +227,14 @@ const CLIENT_PRESETS: Record<string, PresetMap> = {
     external_id: ["id", "external_id", "client id"],
     notes: ["notes", "note", "comments"],
     tags: ["tags", "labels"],
+    archived: ["archived", "inactive", "status", "active", "client status"],
+    do_not_text: ["do not text", "do_not_text", "sms opt out", "sms_opt_out", "text opt out", "no texts"],
+    pets: ["pets", "pet names", "pet_names", "animals", "dogs", "dog names"],
+    balance: ["balance", "account balance", "open balance", "amount due", "outstanding balance"],
   },
+  // Sweep&Go documents the export path (Clients > Residential Clients > Client
+  // List CSV) but not its column names. These are GUESSES until a real file
+  // is in hand; the page says so.
   sweepgo: {
     display_name: ["Client Name", "Customer Name", "Name"],
     account_type: ["Account Type", "Type"],
@@ -163,52 +242,97 @@ const CLIENT_PRESETS: Record<string, PresetMap> = {
     primary_phone: ["Phone", "Mobile", "Phone Number"],
     external_id: ["Client ID", "Customer ID", "ID"],
     notes: ["Notes"],
+    pets: ["Dogs", "Dog Names", "Pets"],
   },
-  // Header names verified against a real Jobber "Clients and properties"
-  // export (scratchpad/jobber-real.csv): "J-ID", "Display Name",
-  // "Is Company?", "Main Phone #s"/"Mobile Phone #s" (multi-value, ";"
-  // separated), "E-mails", "Tags", Service/Billing address columns.
+  // Two Jobber client-export dialects, both verified (#857):
+  //   A. the help-center sample file (jobber-clients-sample-file.csv):
+  //      "Client First Name", "Client Full Name (Display Only)", "Client
+  //      Email", "Client Main Phone", "Property Street 1", "Client Internal
+  //      Notes", "Account Balance", "Archived (True/False)", "Lead Source".
+  //   B. a live Clients and properties export (scratchpad/jobber-real.csv):
+  //      "J-ID", "Display Name", "Is Company?", "Main Phone #s"/"Mobile Phone
+  //      #s" (multi-value, ";" separated), "E-mails", "Tags", Service/Billing
+  //      address columns.
+  // The owner renames nothing: either dialect maps as is.
   jobber: {
-    display_name: ["Display Name", "Company/Client name", "Client name", "Company Name", "Name"],
+    display_name: [
+      "Display Name",
+      "Client Full Name (Display Only)",
+      "Company/Client name",
+      "Client name",
+      "Company Name",
+      "Name",
+    ],
     // "Is Company?" carries "true"/"false" — normalizeAccountType maps
     // true/yes/company → commercial.
-    account_type: ["Is Company?", "Client type", "Type"],
-    primary_email: ["E-mails", "Email", "Primary email"],
+    account_type: ["Is Company?", "Client Is Company?", "Client type", "Type"],
+    primary_email: ["E-mails", "Client Email", "Email", "Primary email"],
     primary_phone: [
       "Main Phone #s",
+      "Client Main Phone",
       "Mobile Phone #s",
+      "Client Mobile Phone",
       "Text Message Enabled Phone #",
+      "Client SMS Enabled Phone Number",
+      "Client Home Phone",
       "Mobile phone number",
       "Phone",
       "Primary phone number",
     ],
     external_id: ["J-ID", "Client ID", "ID"],
-    notes: ["Notes"],
+    notes: ["Client Internal Notes", "Notes"],
     // Jobber Tags hold cadence/segment info ("2nd & 4th Week", "Follow-Up").
     // They go to the client's tags, where they can be filtered, not notes.
     tags: ["Tags"],
     // Service address preferred; Billing is a per-row fallback in
     // mapClientRow (BILLING_FALLBACK_COLUMNS) when Service cells are empty.
-    street: ["Service Street 1", "Billing Street 1", "street", "address", "street address"],
-    city: ["Service City", "Billing City", "city", "town"],
-    region: ["Service State", "Billing State", "region", "state", "province"],
-    postal_code: ["Service Zip code", "Billing Zip code", "postal_code", "zip", "zip code", "postcode"],
+    street: ["Service Street 1", "Property Street 1", "Billing Street 1", "street", "address", "street address"],
+    city: ["Service City", "Property City", "Billing City", "city", "town"],
+    region: [
+      "Service State",
+      "Property State/Province",
+      "Billing State",
+      "Billing State/Province",
+      "region",
+      "state",
+      "province",
+    ],
+    postal_code: [
+      "Service Zip code",
+      "Property Zip/Postal Code",
+      "Billing Zip code",
+      "Billing Zip/Postal Code",
+      "postal_code",
+      "zip",
+      "zip code",
+      "postcode",
+    ],
+    archived: ["Archived", "Archived (True/False)"],
+    balance: ["Account Balance"],
   },
+  // Housecall Pro documents the path (Customers > Actions > Export) but not
+  // the columns. Guesses until a real file is in hand.
   housecall_pro: {
-    display_name: ["Customer Name", "Name"],
+    display_name: ["Customer Name", "Display Name", "Name"],
     account_type: ["Type"],
     primary_email: ["Email"],
-    primary_phone: ["Phone", "Mobile"],
+    primary_phone: ["Mobile", "Phone", "Home", "Work"],
     external_id: ["Customer ID", "ID"],
     notes: ["Notes"],
   },
+  // Time To Pet, verified: the client export's name column is ONE column,
+  // "Full Name", with "Address", "City", "State", "Zip Code" (help article
+  // "Exporting client data & mapping locations"). The rest of the columns
+  // are whichever fields the owner ticks in the export dialog.
   time_to_pet: {
-    display_name: ["Client", "Client Name", "Name"],
+    display_name: ["Full Name", "Client", "Client Name", "Name"],
     account_type: ["Type"],
-    primary_email: ["Email"],
-    primary_phone: ["Phone", "Mobile"],
+    primary_email: ["Email", "Email Address"],
+    primary_phone: ["Phone", "Phone Number", "Mobile", "Cell Phone", "Mobile Phone"],
     external_id: ["Client ID", "ID"],
-    notes: ["Notes"],
+    notes: ["Notes", "Client Notes"],
+    pets: ["Pets", "Client's Pets", "Pet Names"],
+    archived: ["Status", "Inactive", "Active"],
   },
   gorilla_desk: {
     display_name: ["Customer", "Name"],
@@ -226,6 +350,30 @@ const CLIENT_PRESETS: Record<string, PresetMap> = {
     external_id: ["ID"],
     notes: ["Notes"],
   },
+  // Gingr: the default View All Owners fields are documented (First Name,
+  // Last Name, Address, City, Zip Code, Email, Home phone, Cell Phone,
+  // Animals, Referral, Card on File, Last/Next Reservation, Created At,
+  // Receives Email/Text). The CSV's exact spelling is not, so this is a best
+  // guess at those labels; First + Last Name are combined by the row mapper.
+  gingr: {
+    display_name: ["Owner Name", "Owner", "Name"],
+    primary_email: ["Email"],
+    primary_phone: ["Cell Phone", "Home phone", "Home Phone", "Phone"],
+    pets: ["Animals", "Pets"],
+    notes: ["Notes"],
+  },
+  // MoeGo: Client & Pets > Options > Export Clients. No column list is
+  // published; the list UI shows Client Name, Phone Number and Pets, and the
+  // record is searched by first/last/full name, phone, email and pet name.
+  // Best guess only.
+  moego: {
+    display_name: ["Client Name", "Full Name", "Name"],
+    primary_email: ["Email"],
+    primary_phone: ["Phone Number", "Phone", "Mobile"],
+    pets: ["Pets", "Pet Name", "Pet Names"],
+    notes: ["Notes", "Client Notes"],
+    tags: ["Tags"],
+  },
 };
 
 // Service-address aliases merged into every Clients preset so the address
@@ -236,31 +384,78 @@ const CLIENT_ADDRESS_ALIASES: PresetMap = {
   city: ["city", "town"],
   region: ["region", "state", "province", "state/province"],
   postal_code: ["postal_code", "postal code", "zip", "zip_code", "zip code", "postcode"],
-  gate_code: ["gate code", "gate_code", "gate"],
+  gate_code: ["gate code", "gate_code", "gate", "access code", "key code"],
+  // Flags every export may carry, read the same way whoever wrote them.
+  archived: ["archived", "inactive", "status", "client status"],
+  do_not_text: ["do not text", "do_not_text", "sms opt out", "text opt out", "no texts", "do not sms"],
+  pets: ["pets", "pet names", "animals"],
+  balance: ["account balance", "balance", "open balance", "amount due"],
 };
-for (const key of Object.keys(CLIENT_PRESETS)) {
-  CLIENT_PRESETS[key] = { ...CLIENT_ADDRESS_ALIASES, ...CLIENT_PRESETS[key] };
+const CLIENT_PRESETS: Record<string, PresetMap> = {};
+for (const key of Object.keys(CLIENT_PRESETS_OWN)) {
+  CLIENT_PRESETS[key] = { ...CLIENT_ADDRESS_ALIASES, ...CLIENT_PRESETS_OWN[key] };
 }
 
-/** Guess which CRM a CSV came from by scoring its headers against every
- * source's preset synonyms. Distinctive, CRM-specific headers ("Company/Client
- * name", "Mobile phone number") weigh more than generic ones every export
- * shares ("Email"). Returns null unless one source clearly wins — a wrong
- * guess is worse than asking, so ties and weak signals fall back to the
- * user's manual selection. */
-export function detectImportSource(headers: string[]): (typeof IMPORT_SOURCES)[number] | null {
+/** Headers only one vendor writes. A file that carries every header of a
+ *  group is that vendor's, whatever else it holds: Jobber's "J-ID", Time To
+ *  Pet's "Full Name" beside "Zip Code", Gingr's "Animals" beside "Cell
+ *  Phone". A group is matched whole and case-insensitively. */
+const SOURCE_SIGNATURES: Partial<Record<ImportSource, string[][]>> = {
+  jobber: [
+    ["J-ID"],
+    ["Client J-ID"],
+    ["Client Full Name (Display Only)"],
+    ["Client Internal Notes"],
+    ["Client Is Company?"],
+    // The Recurring jobs report (verified column options, #857).
+    ["Schedule start date", "Line items"],
+    ["Schedule start date", "Billing type"],
+  ],
+  time_to_pet: [
+    ["Full Name", "Address", "Zip Code"],
+    // The Client Keys export.
+    ["Key Name/Code"],
+    ["Client's Pets"],
+  ],
+  gingr: [
+    ["Animals", "Cell Phone"],
+    ["Animals", "Home phone"],
+    ["Animals", "Card on File"],
+  ],
+};
+
+/** Guess which CRM a CSV came from. A vendor's signature headers decide it
+ * outright; otherwise its headers are scored against every source's own
+ * synonyms (never the aliases every export shares). Distinctive, CRM-specific
+ * headers ("Company/Client name", "Mobile phone number") weigh more than
+ * generic ones ("Email"). Returns null unless one source clearly wins: a
+ * wrong guess is worse than asking, so ties and weak signals fall back to
+ * the user's manual selection. */
+export function detectImportSource(headers: string[]): ImportSource | null {
   const hset = new Set(headers.map((h) => h.trim().toLowerCase()));
-  const scores: Array<{ source: (typeof IMPORT_SOURCES)[number]; score: number }> = [];
+  const signed = (Object.keys(SOURCE_SIGNATURES) as ImportSource[]).filter((source) =>
+    SOURCE_SIGNATURES[source]!.some((group) => group.every((h) => hset.has(h.toLowerCase()))),
+  );
+  if (signed.length === 1) return signed[0];
+  if (signed.length > 1) return null;
+  const scores: Array<{ source: ImportSource; score: number }> = [];
   for (const source of IMPORT_SOURCES) {
     if (source === "generic_csv") continue;
     let score = 0;
-    for (const presets of [CLIENT_PRESETS, PROPERTY_PRESETS, DOG_PRESETS]) {
+    // A header counts once per source, whichever presets name it: "Email"
+    // in the client, dog and plan presets is one piece of evidence.
+    const counted = new Set<string>();
+    for (const presets of [CLIENT_PRESETS_OWN, PROPERTY_PRESETS, DOG_PRESETS, SERVICE_PRESETS, BALANCE_PRESETS]) {
       const preset = presets[source];
       if (!preset) continue;
       for (const synonyms of Object.values(preset)) {
         for (const syn of synonyms) {
-          if (hset.has(syn.toLowerCase())) {
-            score += syn.length > 10 || /[/#]/.test(syn) ? 3 : syn.includes(" ") ? 2 : 1;
+          const key = syn.toLowerCase();
+          if (hset.has(key)) {
+            if (!counted.has(key)) {
+              counted.add(key);
+              score += syn.length > 10 || /[/#]/.test(syn) ? 3 : syn.includes(" ") ? 2 : 1;
+            }
             break;
           }
         }
@@ -299,10 +494,17 @@ const PROPERTY_PRESETS: Record<string, PresetMap> = {
   jobber: {
     client_external_id: ["J-ID", "Client ID"],
     label: ["Service Property Name", "Property name"],
-    street: ["Service Street 1", "Street 1", "Street"],
-    city: ["Service City", "City"],
-    region: ["Service State", "Province/State", "State"],
-    postal_code: ["Service Zip code", "Postal/Zip Code", "Postal code", "Zip"],
+    street: ["Service Street 1", "Property Street 1", "Service street", "Street 1", "Street"],
+    city: ["Service City", "Property City", "Service city", "City"],
+    region: ["Service State", "Property State/Province", "Service state/province", "Province/State", "State"],
+    postal_code: [
+      "Service Zip code",
+      "Property Zip/Postal Code",
+      "Service zip/postal code",
+      "Postal/Zip Code",
+      "Postal code",
+      "Zip",
+    ],
     gate_code: ["Gate Code"],
     notes: ["Property notes", "Notes"],
   },
@@ -316,15 +518,18 @@ const PROPERTY_PRESETS: Record<string, PresetMap> = {
     gate_code: ["Gate Code"],
     notes: ["Notes"],
   },
+  // The Client Keys export (verified): Key Name/Code, With (Location),
+  // Client's Pets, Address, City, State, Zip. The key is the access code;
+  // who holds it is a note on the property.
   time_to_pet: {
     client_external_id: ["Client ID"],
     label: ["Location"],
-    street: ["Street"],
+    street: ["Street", "Address"],
     city: ["City"],
     region: ["State"],
-    postal_code: ["Zip"],
-    gate_code: ["Gate Code"],
-    notes: ["Notes"],
+    postal_code: ["Zip", "Zip Code"],
+    gate_code: ["Gate Code", "Key Name/Code"],
+    notes: ["Notes", "With (Location)"],
   },
   gorilla_desk: {
     client_external_id: ["Customer ID"],
@@ -415,13 +620,15 @@ const DOG_PRESETS: Record<string, PresetMap> = {
     weight_class: ["Weight"],
     notes: ["Notes"],
   },
+  // The Pet Data export carries the owner's name and email beside the pet's
+  // fields the owner ticks (verified as fields, not as header spellings).
   time_to_pet: {
     client_external_id: ["Client ID"],
     ...DOG_CLIENT_LINK,
-    name: ["Pet Name", "Dog Name", "Name"],
+    name: ["Pet Name", "Pet", "Dog Name", "Name"],
     breed: ["Breed"],
-    weight_class: ["Weight"],
-    notes: ["Notes"],
+    weight_class: ["Weight", "Weight (lbs)"],
+    notes: ["Notes", "Pet Notes"],
   },
   gorilla_desk: {
     client_external_id: ["Customer ID"],
@@ -439,19 +646,44 @@ const DOG_PRESETS: Record<string, PresetMap> = {
     weight_class: ["Weight"],
     notes: ["Notes"],
   },
+  // Best guesses (#857): neither vendor publishes its pet export's columns.
+  gingr: {
+    client_external_id: ["Owner ID", "Customer ID"],
+    ...DOG_CLIENT_LINK,
+    name: ["Animal", "Animal Name", "Pet Name", "Name"],
+    breed: ["Breed"],
+    weight_class: ["Weight"],
+    notes: ["Notes"],
+  },
+  moego: {
+    client_external_id: ["Client ID"],
+    ...DOG_CLIENT_LINK,
+    name: ["Pet Name", "Pet", "Name"],
+    breed: ["Breed"],
+    weight_class: ["Weight"],
+    notes: ["Notes", "Pet Notes"],
+  },
 };
 
 // Backward compatibility
 export const SOURCE_PRESETS = CLIENT_PRESETS;
 
-// Header names for recurring plans and balances. No real export of Jobber's
-// jobs or aged receivables was on hand when these were written, so they are
-// synonyms rather than verified headers; the mapping step shows each guess
-// and the owner can point any field at a different column.
+// Header names for recurring plans and balances. Jobber's Recurring jobs
+// report columns are verified (help article "Recurring jobs report", #857):
+// Job #, Job title, Client name, Client email, Client phone number, Service
+// street/city/state/province/zip/postal code, Billing street..., Billing
+// type, Automatic invoicing, Visits assigned to, Line items, Total ($),
+// Completed visits, Number of invoices, Schedule start date, Schedule end
+// date, Custom fields. It has NO visit-frequency column: such a plan comes
+// in paused with its frequency left for the owner (mapServiceRow). The
+// Sweep&Go names and Jobber's balance names are synonyms rather than
+// verified headers; the mapping step shows each guess and the owner can
+// point any field at a different column.
 const SERVICE_PRESETS: Record<string, PresetMap> = {
   generic_csv: {
     client_external_id: ["client_id", "client id", "customer id", "customer_id", "external_id", "id"],
     client_name: ["client_name", "client", "client name", "customer", "customer name", "customer_name", "name"],
+    client_email: ["client_email", "client email", "customer email", "email"],
     frequency: ["frequency", "recurrence", "repeats", "schedule", "visit frequency"],
     price_per_visit: ["price", "price per visit", "price_per_visit", "rate", "amount", "cost"],
     service_day: ["day", "service day", "service_day", "weekday", "preferred day"],
@@ -463,20 +695,30 @@ const SERVICE_PRESETS: Record<string, PresetMap> = {
   jobber: {
     client_external_id: ["Client J-ID", "J-ID", "Client ID"],
     client_name: ["Client name", "Client", "Display Name", "Client Name"],
+    client_email: ["Client email", "Client Email", "E-mails"],
     frequency: ["Visit frequency", "Frequency", "Recurrence", "Schedule", "Repeats", "Title"],
     price_per_visit: ["Visit total", "Total ($)", "Total", "Price", "Rate", "Line item total"],
     service_day: ["Day", "Service day", "Visit day"],
-    start_date: ["Start date", "Scheduled start date", "Created date"],
+    start_date: ["Start date", "Schedule start date", "Scheduled start date", "Created date"],
     dog_count: ["Number of dogs", "Dogs"],
-    billing: ["Billing frequency", "Billing"],
+    billing: ["Billing type", "Billing frequency", "Billing"],
     // Jobber's line item is the service ("30 Minute Walk"); "Title" is the
     // job's, which the frequency preset reads first when nothing better
     // exists, so it is not repeated here.
-    service: ["Service", "Service name", "Line item", "Line item name", "Product / Service", "Product/Service"],
+    service: [
+      "Service",
+      "Service name",
+      "Line items",
+      "Line item",
+      "Line item name",
+      "Product / Service",
+      "Product/Service",
+    ],
   },
   sweepgo: {
     client_external_id: ["Client ID", "Customer ID"],
     client_name: ["Client Name", "client_name", "Customer Name", "Name"],
+    client_email: ["Email", "Client Email"],
     frequency: ["Frequency", "Cleanup Frequency", "Service Frequency"],
     price_per_visit: ["Price", "Price Per Cleanup", "Rate", "Amount"],
     service_day: ["Service Day", "Day", "Cleanup Day"],
@@ -498,7 +740,7 @@ const BALANCE_PRESETS: Record<string, PresetMap> = {
   jobber: {
     client_external_id: ["Client J-ID", "J-ID", "Client ID"],
     client_name: ["Client name", "Client", "Display Name"],
-    amount: ["Balance", "Balance ($)", "Outstanding", "Amount due", "Total balance"],
+    amount: ["Account Balance", "Balance", "Balance ($)", "Outstanding", "Amount due", "Total balance"],
     due_date: ["Due date", "Due"],
     note: ["Notes", "Subject"],
   },
@@ -644,18 +886,10 @@ function rawLookup(raw: Record<string, any>, names: string[]): string | null {
   return null;
 }
 
-const FIRST_NAME_COLUMNS = ["First Name", "First name", "first_name", "Given Name"];
-const LAST_NAME_COLUMNS = ["Last Name", "Last name", "last_name", "Family Name", "Surname"];
-const ADDRESS_2_COLUMNS = ["Service Street 2", "Street 2", "Address Line 2", "address_line_2", "Address 2", "Unit", "Apt", "Suite"];
-// Per-row Billing fallbacks (Jobber): when the Service address cells are
-// empty on a given row, fall back to that row's Billing columns.
-const BILLING_FALLBACK_COLUMNS: Record<string, string[]> = {
-  street: ["Billing Street 1", "Billing Street"],
-  city: ["Billing City"],
-  region: ["Billing State", "Billing Province"],
-  postal_code: ["Billing Zip code", "Billing Zip", "Billing Postal code"],
-};
-const BILLING_ADDRESS_2_COLUMNS = ["Billing Street 2"];
+// The columns the client row mapper reads without a mapping entry (First +
+// Last Name, Street 2, the Billing fallback, Company Name) are listed in
+// src/lib/import-leftovers.ts, beside the rule that every other column is
+// kept rather than dropped.
 
 function getStr(raw: Record<string, any>, mapping: Record<string, string | null>, field: string): string | null {
   const src = mapping[field];
@@ -666,15 +900,57 @@ function getStr(raw: Record<string, any>, mapping: Record<string, string | null>
   return s === "" ? null : s;
 }
 
+/** The client row as the commit writes it. Exported for the tests. */
+export type MappedClient = {
+  display_name: string;
+  account_type: "residential" | "commercial";
+  primary_email: string | null;
+  primary_phone: string | null;
+  external_id: string | null;
+  notes: string | null;
+  street: string | null;
+  city: string | null;
+  region: string | null;
+  postal_code: string | null;
+  gate_code: string | null;
+  tags: string[] | null;
+  /** The company's name, when the file carries one beside the person's. */
+  company: string | null;
+  /** False when the file's Archived / Status column says the client is
+   *  no longer active; they come in inactive, with messaging off. */
+  active: boolean;
+  /** True when the file says not to text them. Stored, never acted on. */
+  do_not_text: boolean;
+  /** Pets named on the client's own row ("Rex, Bella"), each made a pet of
+   *  the client on commit when the row has an address to put them on. */
+  pets: PetName[] | null;
+  /** An amount owed on the client's own row (Jobber's Account Balance), in
+   *  cents; an opening balance is written for it on commit. A credit (a
+   *  negative balance) goes in the notes instead. */
+  balance_cents: number | null;
+  /** The columns no field consumed, as the file spelled them. Filled by the
+   *  preview, which knows the whole file's headers. */
+  extras?: Record<string, string> | null;
+};
+
+const squashAddress = (s: string | null | undefined) =>
+  (s ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+
 // Exported for unit tests (tests/jobber-import.test.ts) — pure row mapper.
-export function mapClientRow(raw: Record<string, any>, mapping: Record<string, string | null>) {
+export function mapClientRow(
+  raw: Record<string, any>,
+  mapping: Record<string, string | null>,
+): { mapped: MappedClient | null; error: string | null } {
   let display_name = getStr(raw, mapping, "display_name");
+  const company = rawLookup(raw, COMPANY_NAME_COLUMNS);
   if (!display_name) {
     const first = rawLookup(raw, FIRST_NAME_COLUMNS);
     const last = rawLookup(raw, LAST_NAME_COLUMNS);
     const combined = [first, last].filter(Boolean).join(" ").trim();
     if (combined) display_name = combined;
   }
+  // A company row with no person's name is the company.
+  if (!display_name && company) display_name = company;
   if (!display_name) return { mapped: null, error: "Missing display_name (or First Name + Last Name)" };
   const email = firstEmail(getStr(raw, mapping, "primary_email"));
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -706,6 +982,47 @@ export function mapClientRow(raw: Record<string, any>, mapping: Record<string, s
   const badPhone = phoneProblem(phoneRaw);
   if (badPhone) return { mapped: null, error: badPhone };
 
+  // A billing address that differs from the service address is one service
+  // property and a note (product default, #857), not a second property.
+  let billingNote: string | null = null;
+  if (street && !usedBilling) {
+    const bStreet = rawLookup(raw, BILLING_FALLBACK_COLUMNS.street);
+    if (bStreet && squashAddress(bStreet) !== squashAddress(getStr(raw, mapping, "street"))) {
+      const b2 = rawLookup(raw, BILLING_ADDRESS_2_COLUMNS);
+      const billing = [
+        b2 ? `${bStreet}, ${b2}` : bStreet,
+        rawLookup(raw, BILLING_FALLBACK_COLUMNS.city),
+        rawLookup(raw, BILLING_FALLBACK_COLUMNS.region),
+        rawLookup(raw, BILLING_FALLBACK_COLUMNS.postal_code),
+      ]
+        .filter(Boolean)
+        .join(", ");
+      billingNote = `Billing address: ${billing}`;
+    }
+  }
+
+  const archivedText = getStr(raw, mapping, "archived");
+  const inactive = parseInactive(mapping.archived ?? null, archivedText) ?? false;
+  const balanceText = getStr(raw, mapping, "balance");
+  let balance_cents: number | null = null;
+  let balanceNote: string | null = null;
+  if (balanceText) {
+    const cents = parseMoneyCents(balanceText);
+    if (cents == null) return { mapped: null, error: `Balance not understood: "${balanceText}"` };
+    if (cents > 0) balance_cents = cents;
+    else if (cents < 0) {
+      // A credit is a different conversation (the credit ledger); it is
+      // kept where the office will see it rather than turned into a bill.
+      balanceNote = `Credit balance of $${(-cents / 100).toFixed(2)} in the old system; add it as account credit.`;
+    }
+  }
+  const pets = parsePetNames(getStr(raw, mapping, "pets"));
+  // Pets need an address to live on. Without one they are still kept.
+  const petsNote =
+    pets.length && !(street && city)
+      ? `Pets: ${pets.map((p) => (p.breed ? `${p.name} (${p.breed})` : p.name)).join(", ")} (no address in the file, so they were not added as pets)`
+      : null;
+
   return {
     mapped: {
       display_name,
@@ -713,7 +1030,7 @@ export function mapClientRow(raw: Record<string, any>, mapping: Record<string, s
       primary_email: email,
       primary_phone: normalizePhone(phoneRaw),
       external_id: getStr(raw, mapping, "external_id"),
-      notes: getStr(raw, mapping, "notes"),
+      notes: joinNotes(getStr(raw, mapping, "notes"), billingNote, balanceNote, petsNote),
       // Optional inline service address → a property is created on commit.
       street,
       city,
@@ -721,6 +1038,11 @@ export function mapClientRow(raw: Record<string, any>, mapping: Record<string, s
       postal_code,
       gate_code: getStr(raw, mapping, "gate_code"),
       tags: parseTags(getStr(raw, mapping, "tags")),
+      company: company && company !== display_name ? company : null,
+      active: !inactive,
+      do_not_text: parseYesNo(getStr(raw, mapping, "do_not_text")) === true,
+      pets: pets.length && street && city ? pets : null,
+      balance_cents,
     },
     error: null as string | null,
   };
@@ -788,11 +1110,16 @@ export function mapDogRow(raw: Record<string, any>, mapping: Record<string, stri
   };
 }
 
-function mapRow(entity: ImportEntity, raw: Record<string, any>, mapping: Record<string, string | null>) {
+function mapRow(
+  entity: ImportEntity,
+  raw: Record<string, any>,
+  mapping: Record<string, string | null>,
+  tz: string | null,
+) {
   if (entity === "properties") return mapPropertyRow(raw, mapping);
   if (entity === "dogs") return mapDogRow(raw, mapping);
-  if (entity === "services") return mapServiceRow(raw, mapping);
-  if (entity === "balances") return mapBalanceRow(raw, mapping);
+  if (entity === "services") return mapServiceRow(raw, mapping, tz);
+  if (entity === "balances") return mapBalanceRow(raw, mapping, tz);
   return mapClientRow(raw, mapping);
 }
 
@@ -949,6 +1276,8 @@ async function findCommittedTwin(
     .eq("content_hash", hash)
     .neq("id", batch.id)
     .not("commit_started_at", "is", null)
+    // An undone batch no longer counts as having imported the file (#857).
+    .is("undone_at", null)
     .limit(1);
   if (error) throw new Error(error.message);
   if (same?.length) return same[0];
@@ -964,6 +1293,7 @@ async function findCommittedTwin(
       .eq("filename", filename)
       .eq("status", "committed")
       .is("content_hash", null)
+      .is("undone_at", null)
       .neq("id", batch.id)
       .order("id")
       .range(from, to),
@@ -998,16 +1328,18 @@ export const listImportBatches = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
-    const { data, error } = await supabase
+    // Read as the generated Row (#870 has not got undone_at yet): every
+    // column, so the one the types lack is still on each batch.
+    const { data: batches, error } = await supabase
       .from("import_batches")
-      .select(
-        "id, source, entity, filename, status, stats, error, committed_at, created_at, commit_started_at, superseded_by",
-      )
+      .select("*")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false })
       .limit(50);
+    const data = batches as ImportBatchRow[] | null;
     if (error) throw new Error(error.message);
-    // "committing" and "superseded" are spelled with columns, not statuses.
+    // "committing", "superseded" and "undone" are spelled with columns, not
+    // statuses.
     return {
       batches: (data ?? []).map((b) => ({ ...b, status: importDisplayStatus(b) })),
     };
@@ -1019,13 +1351,14 @@ export const getImportBatch = createServerFn({ method: "GET" })
   .handler(async ({ data, context }) => {
     const { supabase } = context;
     const orgId = await resolveOrgId(supabase, context.userId);
-    const { data: batch, error: be } = await supabase
+    const { data: batchRow, error: be } = await supabase
       .from("import_batches")
       .select("*")
       .eq("id", data.batchId)
       .eq("organization_id", orgId)
       .maybeSingle();
     if (be) throw new Error(be.message);
+    const batch = batchRow as ImportBatchRow | null;
     // A deleted batch, or one from another business, is an answer rather than
     // an error (#434). `.single()` threw here, the query retried and the page
     // said "Loading…" for good.
@@ -1081,11 +1414,28 @@ export const getImportBatch = createServerFn({ method: "GET" })
       }
       retryBlock = retryRefusal(batch, wroteClients);
     }
+    // Whether "Undo" is offered, and if not, why (#857): the same check
+    // undoImport makes, so the page never shows a button the server refuses.
+    let undoBlock: string | null = null;
+    if (batch.committed_at && !batch.undone_at) {
+      const usage = await importUsage(supabase, orgId, batch);
+      undoBlock = undoRefusal(batch, usage);
+      // Deleting invoices is a billing act: a caller without the permission
+      // is told here rather than offered a button the function refuses.
+      if (!undoBlock && usage.invoices) {
+        try {
+          await requirePermission(supabase, context.userId, "manage_client_billing");
+        } catch {
+          undoBlock = UNDO_NEEDS_BILLING;
+        }
+      }
+    }
     return {
       batch: { ...batch, status: importDisplayStatus(batch) },
       rows: rows ?? [],
       commitBlock,
       retryBlock,
+      undoBlock,
     };
   });
 
@@ -1116,15 +1466,30 @@ export const previewImport = createServerFn({ method: "POST" })
     const clientByExternal = existing.clients.byExternal;
     // By exact name, for exports that carry no id. A name two clients share
     // resolves to nobody: guessing which one owes the balance is worse than
-    // refusing the row and saying why.
+    // refusing the row and saying why. An email, when the file has one
+    // (Jobber's Recurring jobs report), is tried before the name.
     const clientByName = new Map<string, string | null>();
+    const clientByEmail = new Map<string, string | null>();
     for (const c of existingClients) {
       const nm = (c.display_name ?? "").trim().toLowerCase();
       if (nm) clientByName.set(nm, clientByName.has(nm) ? null : c.id);
+      const email = (c.primary_email ?? "").trim().toLowerCase();
+      if (email) clientByEmail.set(email, clientByEmail.has(email) ? null : c.id);
     }
-    const resolveClient = (m: { client_external_id: string | null; client_name: string | null }) => {
+    const resolveClient = (m: {
+      client_external_id: string | null;
+      client_name: string | null;
+      client_email?: string | null;
+    }) => {
       if (m.client_external_id && clientByExternal.has(m.client_external_id)) {
         return { id: clientByExternal.get(m.client_external_id)!, error: null };
+      }
+      const email = (m.client_email ?? "").trim().toLowerCase();
+      if (email && clientByEmail.has(email)) {
+        const id = clientByEmail.get(email);
+        if (id) return { id, error: null };
+        if (!m.client_name)
+          return { id: null, error: `More than one client has the email ${email}; add an ID column` };
       }
       const nm = (m.client_name ?? "").trim().toLowerCase();
       if (nm && clientByName.has(nm)) {
@@ -1135,9 +1500,31 @@ export const previewImport = createServerFn({ method: "POST" })
       }
       return {
         id: null,
-        error: `No client ${m.client_external_id ? `with id ${m.client_external_id}` : `called "${m.client_name}"`} (import clients first)`,
+        error: `No client ${
+          m.client_external_id
+            ? `with id ${m.client_external_id}`
+            : m.client_name
+              ? `called "${m.client_name}"`
+              : `with email ${m.client_email}`
+        } (import clients first)`,
       };
     };
+
+    // The business's clock, for a date column that carries a time (#857).
+    let tz: string | null = null;
+    if (entity === "services" || entity === "balances") {
+      const { data: org } = await supabase
+        .from("organizations")
+        .select("timezone")
+        .eq("id", orgId)
+        .maybeSingle();
+      tz = org?.timezone ?? null;
+    }
+    // Every column the mapping does not consume is kept, not dropped (#857):
+    // its values ride on each row as `extras`, shown on the preview and
+    // written on commit (src/lib/import-leftovers.ts).
+    const headers = [...new Set(data.rows.flatMap((r) => Object.keys(r)))];
+    const leftovers = leftoverColumns(entity, data.mapping, headers);
 
     // Create batch
     const { data: batch, error: bErr } = await supabase
@@ -1145,7 +1532,7 @@ export const previewImport = createServerFn({ method: "POST" })
       .insert({
         organization_id: orgId,
         created_by: userId,
-        source: data.source,
+        source: asDbSource(data.source),
         entity,
         filename: data.filename ?? null,
         status: "previewing",
@@ -1162,12 +1549,9 @@ export const previewImport = createServerFn({ method: "POST" })
     // one could not bring its dogs at all. An email or phone two clients
     // share resolves to nobody, as a shared name does: the dog is refused
     // with a reason rather than given to whichever client was read last.
-    const clientByEmail = new Map<string, string | null>();
     const clientByPhone = new Map<string, string | null>();
     if (entity === "dogs") {
       for (const c of existingClients) {
-        const email = (c.primary_email ?? "").trim().toLowerCase();
-        if (email) clientByEmail.set(email, clientByEmail.has(email) ? null : c.id);
         const phone = lastTenDigits(c.primary_phone);
         if (phone) clientByPhone.set(phone, clientByPhone.has(phone) ? null : c.id);
       }
@@ -1209,7 +1593,11 @@ export const previewImport = createServerFn({ method: "POST" })
       return { id: null, error: `No client ${said} (import clients first)` };
     };
 
-    const mappedRows = data.rows.map((raw) => mapRow(entity, raw, data.mapping as any));
+    const mappedRows = data.rows.map((raw) => {
+      const out = mapRow(entity, raw, data.mapping as any, tz);
+      if (out.mapped) (out.mapped as { extras?: unknown }).extras = rowExtras(raw, leftovers);
+      return out;
+    });
     // Clients are labelled create or skip the way the commit will treat them:
     // against the clients the business has, and against the rows above in the
     // same file (#656). The commit always skipped a second row with the same
@@ -1447,12 +1835,17 @@ export const commitImport = createServerFn({ method: "POST" })
     }
 
     // An opening balance is an invoice: the same permission a manual invoice
-    // needs, checked once rather than per row.
-    if (entity === "balances") {
+    // needs, checked once rather than per row. A clients file carries one
+    // when it has an Account Balance column (Jobber's does, #857).
+    const writesBalances =
+      entity === "balances" ||
+      (entity === "clients" &&
+        rows.some((r) => r.action === "create" && ((r.mapped as MappedClient | null)?.balance_cents ?? 0) > 0));
+    if (writesBalances) {
       await requirePermission(supabase, userId, "manage_client_billing");
     }
     let netDays = 15;
-    if (entity === "balances") {
+    if (writesBalances) {
       const { data: org } = await supabase
         .from("organizations")
         .select("invoice_net_days")
@@ -1504,7 +1897,56 @@ export const commitImport = createServerFn({ method: "POST" })
     try {
       // Never release a claim after partial work: retrying could repeat writes.
       const { records: existing } = await loadExisting(supabase, orgId, entity, batch.source);
-      const sourceLabel = batch.source === "jobber" ? "Jobber" : batch.source === "sweepgo" ? "Sweep&Go" : "your previous system";
+      const sourceLabel =
+        batch.source === "generic_csv"
+          ? "your previous system"
+          : (IMPORT_SOURCE_LABELS[batch.source as ImportSource] ?? "your previous system");
+
+      /** One opening balance, as an open invoice marked as such. Nothing is
+       *  sent and nothing is charged: the invoice is open, and the client is
+       *  on the import's communications hold. */
+      const writeOpeningBalance = async (
+        clientId: string,
+        amountCents: number,
+        dueOn: string | null,
+        note: string | null,
+      ): Promise<string> => {
+        const nowIso = new Date().toISOString();
+        const today = nowIso.slice(0, 10);
+        const due = dueOn ?? new Date(Date.now() + netDays * 86_400_000).toISOString().slice(0, 10);
+        const description = `Opening balance carried over from ${sourceLabel}`;
+        const { data: inv, error: iErr } = await supabase
+          .from("invoices")
+          .insert(
+            newInvoice({
+              organization_id: orgId,
+              client_id: clientId,
+              kind: "postpaid",
+              status: "open",
+              // No sales tax, whatever the org's rate: an opening balance is
+              // historical, already taxed (or not) in the books it came from.
+              // tax_cents and tax_rate_bps default to 0.
+              subtotal_cents: amountCents,
+              total_cents: amountCents,
+              period_start: today,
+              period_end: today,
+              issued_at: nowIso,
+              due_on: due,
+              notes: note ? `${OPENING_BALANCE_NOTE}: ${note}` : OPENING_BALANCE_NOTE,
+            }),
+          )
+          .select("id")
+          .single();
+        if (iErr) throw iErr;
+        const { error: lErr } = await supabase
+          .from("invoice_line_items")
+          .insert({ invoice_id: inv.id, description, amount_cents: amountCents });
+        if (lErr) {
+          await supabase.from("invoices").delete().eq("id", inv.id);
+          throw lErr;
+        }
+        return inv.id as string;
+      };
 
       // The business's services, for a plan row that names one. Read once; a
       // name the business has not got is created on first sight (no price,
@@ -1636,10 +2078,18 @@ export const commitImport = createServerFn({ method: "POST" })
         action: string;
         id: string;
         m: any;
-        record: Database["public"]["Tables"]["clients"]["Insert"];
+        // import_extras is 20261111050000's column; the generated types
+        // (owned by #870) do not carry it yet.
+        record: Database["public"]["Tables"]["clients"]["Insert"] & { import_extras?: Json | null };
       };
       const newClients: NewClient[] = [];
       const newProperties: Database["public"]["Tables"]["properties"]["Insert"][] = [];
+      // Pets named on a client's row, and an amount owed on it, written once
+      // the client and its address are in (#857).
+      const newDogs: Database["public"]["Tables"]["dogs"]["Insert"][] = [];
+      const newBalances: { rowId: string; clientId: string; cents: number }[] = [];
+      let pets = 0;
+      let openingBalances = 0;
       const skips: { rowId: string; action: string; targetId: string }[] = [];
       const failedClientIds = new Set<string>();
       const failRow = async (rowId: string, action: string, reason: string) => {
@@ -1665,7 +2115,9 @@ export const commitImport = createServerFn({ method: "POST" })
           records: NewClient["record"][],
         ): Promise<{ message: string; code?: string } | null> => {
           try {
-            const { error } = await supabase.from("clients").insert(records);
+            const { error } = await supabase
+              .from("clients")
+              .insert(records as Database["public"]["Tables"]["clients"]["Insert"][]);
             return error;
           } catch (e) {
             return { message: (e as Error)?.message ?? String(e) };
@@ -1717,6 +2169,9 @@ export const commitImport = createServerFn({ method: "POST" })
         );
         for (const c of inserted) {
           const m = c.m;
+          if (m.balance_cents > 0) {
+            newBalances.push({ rowId: c.rowId, clientId: c.id, cents: m.balance_cents });
+          }
           // If the Clients row carried a service address, create a property
           // for it (auto-geocoded) so routing/pricing/DNA work downstream —
           // instead of silently dropping the address (finding #12).
@@ -1738,7 +2193,19 @@ export const commitImport = createServerFn({ method: "POST" })
                 : null,
             accountType: importAccountType,
           });
+          // The id is chosen here so the row's pets can name their property
+          // before it exists, as the client's id is for its rows.
+          const propertyId = crypto.randomUUID();
+          for (const pet of (m.pets ?? []) as PetName[]) {
+            newDogs.push({
+              organization_id: orgId,
+              property_id: propertyId,
+              name: pet.name,
+              breed: pet.breed,
+            });
+          }
           newProperties.push({
+            id: propertyId,
             organization_id: orgId,
             client_id: c.id,
             street: m.street,
@@ -1778,6 +2245,43 @@ export const commitImport = createServerFn({ method: "POST" })
             }
             if (p.latitude == null) unpinned += 1;
             if (p.zone_id == null) unzoned += 1;
+          }
+        }
+      };
+
+      /** The pets the client rows named, on the properties just written. A
+       *  pet that cannot go in is logged, not fatal: the client is in. */
+      const flushNewDogs = async () => {
+        while (newDogs.length) {
+          const chunk = newDogs.splice(0, IMPORT_WRITE_CHUNK);
+          const { error } = await supabase.from("dogs").insert(chunk);
+          if (!error) {
+            pets += chunk.length;
+            continue;
+          }
+          for (const d of chunk) {
+            const { error: oneErr } = await supabase.from("dogs").insert(d);
+            if (oneErr) console.error("import: pet create failed", oneErr.message);
+            else pets += 1;
+          }
+        }
+      };
+
+      /** The amounts owed on client rows, as open invoices. A balance that
+       *  cannot be written fails its row's balance only, with the reason in
+       *  the row; the client is in. */
+      const flushNewBalances = async () => {
+        for (const b of newBalances.splice(0)) {
+          try {
+            await writeOpeningBalance(b.clientId, b.cents, null, null);
+            openingBalances += 1;
+          } catch (e) {
+            const reason = (e as Error)?.message ?? String(e);
+            rowErrors.set(reason, (rowErrors.get(reason) ?? 0) + 1);
+            await supabase
+              .from("import_rows")
+              .update({ error: `Client imported, but not the balance: ${reason}` })
+              .eq("id", b.rowId);
           }
         }
       };
@@ -1880,8 +2384,18 @@ export const commitImport = createServerFn({ method: "POST" })
                   account_type: m.account_type,
                   primary_email: m.primary_email,
                   primary_phone: m.primary_phone,
-                  notes: m.notes,
+                  // The file's notes, then what the import adds: a billing
+                  // address, and a summary of the columns no field consumed.
+                  // The raw values are in import_extras (#857).
+                  notes: joinNotes(m.notes, extrasSummary(sourceLabel, m.extras)),
+                  ...(m.extras ? { import_extras: m.extras } : {}),
+                  ...(m.company ? { company: m.company } : {}),
                   ...(m.tags?.length ? { tags: m.tags } : {}),
+                  // An archived or inactive client in the old system comes in
+                  // inactive here, with messaging off (product default, #857).
+                  ...(m.active === false ? { active: false } : {}),
+                  // A do-not-text flag is stored; nothing acts on it at import.
+                  ...(m.do_not_text ? { sms_opt_out: true } : {}),
                   import_source: batch.source,
                   import_external_id: m.external_id,
                   import_batch_id: batch.id,
@@ -1986,7 +2500,7 @@ export const commitImport = createServerFn({ method: "POST" })
                   name: m.name,
                   breed: m.breed,
                   weight_class: m.weight_class,
-                  notes: m.notes,
+                  notes: joinNotes(m.notes, extrasSummary(sourceLabel, m.extras)),
                 })
                 .select("id").single();
               if (cErr) throw cErr;
@@ -2040,44 +2554,48 @@ export const commitImport = createServerFn({ method: "POST" })
               if (sErr) throw sErr;
               await supabase.from("import_rows").update({ target_id: ins.id }).eq("id", row.id);
               created += 1;
+              // "Per visit" in the file is both the plan's cadence (postpaid)
+              // and how often the client is billed (after each visit): the
+              // run that invoices (run_billing_cycles) reads the client's
+              // billing_frequency, so a plan alone would still bill monthly.
+              if (m.billing_frequency) {
+                const { error: bfErr } = await supabase
+                  .from("clients")
+                  .update({ billing_frequency: m.billing_frequency })
+                  .eq("id", row.target_id);
+                if (bfErr) console.error("import: billing frequency not set", bfErr.message);
+              }
+              // What the plan's row said that the plan cannot hold: a file
+              // with no frequency column, and the columns no field consumed.
+              // A plan has no notes of its own, so it is an office note on
+              // the client (#857).
+              const planNote = joinNotes(
+                m.frequency_in_file === false
+                  ? `Imported plan from ${sourceLabel}: the file did not say how often. The plan is paused and weekly on paper; set how often before turning it on.`
+                  : null,
+                extrasSummary(sourceLabel, m.extras),
+              );
+              if (planNote) {
+                const { error: nErr } = await supabase.from("client_notes").insert({
+                  organization_id: orgId,
+                  client_id: row.target_id,
+                  property_id: prop.id,
+                  audience: "office",
+                  body: planNote.slice(0, 4000),
+                  created_by: userId,
+                });
+                if (nErr) console.error("import: plan note failed", nErr.message);
+              }
             }
           } else if (entity === "balances") {
             if (row.action === "create" && row.target_id) {
-              const nowIso = new Date().toISOString();
-              const today = nowIso.slice(0, 10);
-              const dueOn = m.due_on ?? new Date(Date.now() + netDays * 86_400_000).toISOString().slice(0, 10);
-              const description = `Opening balance carried over from ${sourceLabel}`;
-              const { data: inv, error: iErr } = await supabase
-                .from("invoices")
-                .insert(
-                  newInvoice({
-                    organization_id: orgId,
-                    client_id: row.target_id,
-                    kind: "postpaid",
-                    status: "open",
-                    // No sales tax, whatever the org's rate: an opening balance is
-                    // historical, already taxed (or not) in the books it came from.
-                    // tax_cents and tax_rate_bps default to 0.
-                    subtotal_cents: m.amount_cents,
-                    total_cents: m.amount_cents,
-                    period_start: today,
-                    period_end: today,
-                    issued_at: nowIso,
-                    due_on: dueOn,
-                    notes: m.note ? `${OPENING_BALANCE_NOTE}: ${m.note}` : OPENING_BALANCE_NOTE,
-                  }),
-                )
-                .select("id")
-                .single();
-              if (iErr) throw iErr;
-              const { error: lErr } = await supabase
-                .from("invoice_line_items")
-                .insert({ invoice_id: inv.id, description, amount_cents: m.amount_cents });
-              if (lErr) {
-                await supabase.from("invoices").delete().eq("id", inv.id);
-                throw lErr;
-              }
-              await supabase.from("import_rows").update({ target_id: inv.id }).eq("id", row.id);
+              const invoiceId = await writeOpeningBalance(
+                row.target_id,
+                m.amount_cents,
+                m.due_on ?? null,
+                joinNotes(m.note, extrasSummary(sourceLabel, m.extras)),
+              );
+              await supabase.from("import_rows").update({ target_id: invoiceId }).eq("id", row.id);
               created += 1;
             }
           }
@@ -2091,21 +2609,25 @@ export const commitImport = createServerFn({ method: "POST" })
 
       await flushNewClients();
       await flushNewProperties();
+      await flushNewDogs();
+      await flushNewBalances();
       await writeRowResults();
       if (entity === "clients") await settleInFileTwins();
 
-      // New plans need their visits now, not at tonight's run. One pass for the
-      // whole batch, as onboardClient does for one client.
-      if (entity === "services" && created > 0) {
-        const { generateVisitHorizon } = await import("@/lib/visit-generation.server");
-        await generateVisitHorizon(supabase, orgId);
-      }
+      // No visits are generated here. Every imported plan is paused until the
+      // owner turns it on (the owner's rule, Nov 10 2026, #857); resuming it
+      // puts it on the schedule. And nothing is sent: no invite, no reminder,
+      // no text, no charge. The clients are on the communications hold and
+      // an opening balance is an open invoice nobody has been told about.
 
       const stats = {
         created,
         updated,
         failed,
         skipped,
+        ...(pets ? { pets } : {}),
+        ...(openingBalances ? { opening_balances: openingBalances } : {}),
+        ...(entity === "services" && created ? { paused_plans: created } : {}),
         ...(unpinned ? { unpinned } : {}),
         ...(unzoned ? { unzoned } : {}),
         ...(zoneLookupFailed ? { zone_lookup_failed: true } : {}),
@@ -2146,6 +2668,192 @@ export const commitImport = createServerFn({ method: "POST" })
       );
       throw e;
     }
+  });
+
+// ── Undo (#857) ───────────────────────────────────────────────────────────
+
+/** PostgREST puts an `in` list in the URL; 200 ids at a time keeps it short. */
+const IN_CHUNK = 200;
+
+async function countWhereIn(
+  supabase: SupabaseClient<Database>,
+  table: "visits" | "payments" | "invoices",
+  column: string,
+  ids: readonly string[],
+  only?: { notOpen: true },
+): Promise<number> {
+  let n = 0;
+  for (let i = 0; i < ids.length; i += IN_CHUNK) {
+    const base = supabase
+      .from(table)
+      .select("id", { count: "exact", head: true })
+      .in(column, ids.slice(i, i + IN_CHUNK));
+    const { count, error } = await (only?.notOpen ? base.neq("status", "open") : base);
+    // A guard that cannot count must not read as "nothing to protect".
+    if (error) throw new Error(error.message);
+    n += count ?? 0;
+  }
+  return n;
+}
+
+/** Rows of `table` whose `column` is one of `ids`, read as T. The select
+ *  string is built at runtime, so the row type is the caller's word. */
+async function selectWhereIn<T>(
+  supabase: SupabaseClient<Database>,
+  table: "properties" | "invoices",
+  columns: string,
+  column: string,
+  ids: readonly string[],
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let i = 0; i < ids.length; i += IN_CHUNK) {
+    const got = await selectAll<T>((a, b) =>
+      supabase
+        .from(table)
+        .select(columns)
+        .in(column, ids.slice(i, i + IN_CHUNK))
+        .order("id")
+        .range(a, b)
+        .then((r) => ({ data: r.data as unknown as T[] | null, error: r.error })),
+    );
+    out.push(...got);
+  }
+  return out;
+}
+
+/** What a committed batch created, by id: the rows' targets, and for a
+ *  clients file every client that carries the batch's id (a row whose
+ *  target could not be recorded still made its client, #617). */
+async function batchCreations(
+  supabase: SupabaseClient<Database>,
+  orgId: string,
+  batch: { id: string; entity: string | null },
+): Promise<{ ids: string[]; updated: number }> {
+  const rows = await selectAll<{ action: string; target_id: string | null }>((a, b) =>
+    supabase
+      .from("import_rows")
+      .select("action, target_id")
+      .eq("batch_id", batch.id)
+      .in("action", ["create", "update"])
+      .order("row_num")
+      .range(a, b),
+  );
+  const ids = new Set<string>();
+  let updated = 0;
+  for (const r of rows) {
+    if (r.action === "update") updated += 1;
+    else if (r.target_id) ids.add(r.target_id);
+  }
+  if ((batch.entity ?? "clients") === "clients") {
+    const made = await selectAll<{ id: string }>((a, b) =>
+      supabase
+        .from("clients")
+        .select("id")
+        .eq("organization_id", orgId)
+        .eq("import_batch_id", batch.id)
+        .order("id")
+        .range(a, b),
+    );
+    for (const c of made) ids.add(c.id);
+  }
+  return { ids: [...ids], updated };
+}
+
+/** Whether anything this batch created has been used since: visits on its
+ *  clients, properties or plans; payments on its invoices or its clients'
+ *  invoices; invoices written on its clients that it did not write. */
+async function importUsage(
+  supabase: SupabaseClient<Database>,
+  orgId: string,
+  batch: { id: string; entity: string | null },
+): Promise<UndoUsage> {
+  const { ids, updated } = await batchCreations(supabase, orgId, batch);
+  const usage: UndoUsage = { visits: 0, payments: 0, laterInvoices: 0, updated };
+  if (!ids.length) return usage;
+  const entity = batch.entity ?? "clients";
+  if (entity === "clients") {
+    usage.visits = await countWhereIn(supabase, "visits", "client_id", ids);
+    const invoices = await selectWhereIn<{ id: string; notes: string | null }>(
+      supabase,
+      "invoices",
+      "id, notes",
+      "client_id",
+      ids,
+    );
+    usage.laterInvoices = invoices.filter(
+      (i) => !(i.notes ?? "").startsWith(OPENING_BALANCE_NOTE),
+    ).length;
+    usage.invoices = invoices.length;
+    const invoiceIds = invoices.map((i) => i.id);
+    if (invoiceIds.length) {
+      usage.payments = await countWhereIn(supabase, "payments", "invoice_id", invoiceIds);
+    }
+  } else if (entity === "properties") {
+    usage.visits = await countWhereIn(supabase, "visits", "property_id", ids);
+  } else if (entity === "services") {
+    usage.visits = await countWhereIn(supabase, "visits", "subscription_id", ids);
+  } else if (entity === "balances") {
+    usage.payments =
+      (await countWhereIn(supabase, "payments", "invoice_id", ids)) +
+      (await countWhereIn(supabase, "invoices", "id", ids, { notOpen: true }));
+    usage.invoices = ids.length;
+  }
+  return usage;
+}
+
+/**
+ * Undo a committed import: delete everything it created, while nothing of
+ * it has been used (undoRefusal). The deleting is ONE call to
+ * undo_import_batch (20261111050000), which runs every guard again, checks
+ * each delete's row count and rolls the whole thing back on any mismatch or
+ * error. The first version ran eight deletes from here as the caller, and a
+ * caller who could import but not bill was left with half a client: the
+ * invoices survived RLS unseen and the client delete failed on them.
+ *
+ * The guards run here first too, so the sentence a person reads is the
+ * page's, and a caller who cannot bill is refused before the function is
+ * asked. The batch's rows stay, so the page can still say what it did.
+ */
+export const undoImport = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ batchId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+    const { data: batch, error: bErr } = await supabase
+      .from("import_batches")
+      .select("*")
+      .eq("id", data.batchId)
+      .maybeSingle();
+    if (bErr) throw new Error(bErr.message);
+    if (!batch || batch.organization_id !== orgId) throw new Error(IMPORT_NOT_FOUND);
+    const usage = await importUsage(supabase, orgId, batch);
+    const refusal = undoRefusal(batch, usage);
+    if (refusal) throw new Error(refusal);
+    // Deleting an invoice is a billing act, the permission the commit asked
+    // for to write it. Asked before anything is deleted.
+    if (usage.invoices) {
+      try {
+        await requirePermission(supabase, userId, "manage_client_billing");
+      } catch {
+        throw new Error(UNDO_NEEDS_BILLING);
+      }
+    }
+    // The generated types (#870) do not know the function yet, so the call
+    // is made through rpc's untyped shape.
+    type RpcCall = (
+      this: SupabaseClient<Database>,
+      fn: string,
+      args: Record<string, unknown>,
+    ) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
+    const { data: result, error } = await (supabase.rpc as unknown as RpcCall).call(
+      supabase,
+      "undo_import_batch",
+      { _batch_id: batch.id },
+    );
+    if (error) throw new Error(error.message);
+    const undone = Number((result as { undone?: number } | null)?.undone ?? 0);
+    return { ok: true, undone };
   });
 
 export const cancelImport = createServerFn({ method: "POST" })
