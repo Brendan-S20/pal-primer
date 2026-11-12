@@ -35,6 +35,7 @@ vi.mock("@tanstack/react-start", () => ({
     return builder;
   },
   useServerFn: (f: unknown) => f,
+  createServerOnlyFn: (f: unknown) => f,
 }));
 vi.mock("@/integrations/supabase/auth-middleware", () => ({ requireSupabaseAuth: {} }));
 vi.mock("@/lib/authz.server", () => ({
@@ -297,7 +298,12 @@ describe("nothing goes over the cap silently: every assign control shows the sam
 
   it("every server write takes the confirmation and turns the refusal into the warning", () => {
     const visits = read("src/lib/visits.functions.ts");
-    for (const fn of ["reassignVisit", "bulkAssignVisits", "redistributeStaffWork"]) {
+    for (const fn of [
+      "reassignVisit",
+      "bulkAssignVisits",
+      "redistributeStaffWork",
+      "reopenVisitFromOffice",
+    ]) {
       const start = visits.indexOf(`export const ${fn} = createServerFn`);
       const body = visits.slice(start, visits.indexOf("\nexport const ", start + 10));
       expect(body, fn).toContain("overCapAcknowledged: z.boolean().optional()");
@@ -330,5 +336,58 @@ describe("an over-cap walk stays flagged until it is back under", () => {
     expect(read("src/components/my-day/WalkParts.tsx")).toContain(
       't("walk.overDogCap", { dogs: overCap.dogs, cap: overCap.cap })',
     );
+  });
+});
+
+describe("reopening a completed walk (Product review, should-fix 1)", () => {
+  // A completed walk gave its place back, so reopening it can put its walk
+  // over the cap. The same warning, not the database's raw sentence.
+  const warning: DogCapWarning = dogCapWarningFromError(capError(4, 3))!;
+  const confirmReopen = async () => true;
+
+  it("shows the warning; Cancel leaves it completed and sends nothing more", async () => {
+    const { runCompletedVisitAction } = await import("@/components/CompletedVisitActions");
+    const reopen = vi.fn(async () => ({ ok: false, overCap: warning }));
+    const askDogCap = vi.fn(async () => false);
+    const r = await runCompletedVisitAction({
+      action: "reopen",
+      visitId: "v1",
+      code: null,
+      confirm: confirmReopen,
+      reopen,
+      markMissed: vi.fn(),
+      askDogCap,
+    });
+    expect(askDogCap).toHaveBeenCalledWith(warning, undefined);
+    expect(reopen).toHaveBeenCalledTimes(1);
+    expect(reopen).toHaveBeenCalledWith({ data: { visitId: "v1" } });
+    expect(r).toEqual({ status: "canceled" });
+  });
+
+  it("Assign anyway reopens it, sent again with the confirmation", async () => {
+    const { runCompletedVisitAction } = await import("@/components/CompletedVisitActions");
+    const reopen = vi.fn(async (args: { data: { overCapAcknowledged?: boolean } }) =>
+      args.data.overCapAcknowledged ? { ok: true } : { ok: false, overCap: warning },
+    );
+    const r = await runCompletedVisitAction({
+      action: "reopen",
+      visitId: "v1",
+      code: null,
+      confirm: confirmReopen,
+      reopen,
+      markMissed: vi.fn(),
+      askDogCap: async () => true,
+    });
+    expect(reopen.mock.calls.map((c) => c[0])).toEqual([
+      { data: { visitId: "v1" } },
+      { data: { visitId: "v1", overCapAcknowledged: true } },
+    ]);
+    expect(r).toEqual({ status: "done", message: "Visit reopened" });
+  });
+
+  it("the completed-visit actions show the dialog", () => {
+    const actions = read("src/components/CompletedVisitActions.tsx");
+    expect(actions).toContain("{dogCap.dialog}");
+    expect(actions).toContain("askDogCap: dogCap.ask");
   });
 });

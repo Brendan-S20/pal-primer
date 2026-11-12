@@ -326,6 +326,36 @@ describe.skipIf(!dbEnabled)("a walk over its dog cap is warned, then allowed", (
     expect(await records(g)).toHaveLength(1);
   });
 
+  it("reopening a completed walk: the same warning, still completed; confirmed, reopened and recorded", async () => {
+    const { reopenVisitFromOffice } = await import("@/lib/visits.functions");
+    const g = await group(ann());
+    const done = await walk(2, g);
+    // Completed, it gives its place back, and the group fills to the cap.
+    const finished = await org.admin
+      .from("visits")
+      .update({ status: "completed", completed_at: new Date().toISOString() })
+      .eq("id", done);
+    if (finished.error) throw new Error(finished.error.message);
+    await walk(2, g);
+    await walk(1, g);
+
+    const warned = await asCaller(owner(), () =>
+      reopenVisitFromOffice({ data: { visitId: done } }),
+    );
+    expect(warned).toMatchObject({ overCap: { dogs: 5, cap: 3 } });
+    const still = await org.admin.from("visits").select("status").eq("id", done).single();
+    expect(still.data?.status).toBe("completed");
+    expect(await records(g)).toEqual([]);
+
+    const reopened = await asCaller(owner(), () =>
+      reopenVisitFromOffice({ data: { visitId: done, overCapAcknowledged: true } }),
+    );
+    expect(reopened).toEqual({ ok: true });
+    const after = await org.admin.from("visits").select("status").eq("id", done).single();
+    expect(after.data?.status).toBe("scheduled");
+    expect((await records(g))[0]).toMatchObject({ staff_id: ann(), dogs: 5, cap: 3, over_by: 2 });
+  });
+
   it("a signed-in client cannot write a record of its own", async () => {
     const g = await group(ann());
     const { error } = await owner().client.from("walk_dog_cap_overrides").insert({

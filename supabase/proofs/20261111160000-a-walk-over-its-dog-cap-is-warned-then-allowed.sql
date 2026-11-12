@@ -221,6 +221,39 @@ BEGIN
   RAISE NOTICE 'ok: a confirmed bulk assign is saved and recorded';
 END $$;
 
+-- Reopen (Product review, should-fix 1): a completed walk gave its place
+-- back, so reopening it can put its walk over the cap. B (1) on G1 is
+-- completed, then reopened with Ann at 4 of 3 already: 4 - 1 + 1, still
+-- over, so it is refused unconfirmed and stays completed.
+UPDATE public.visits SET status = 'completed', completed_at = now()
+ WHERE id = 'f7311000-0000-4000-8000-0000000000a2';
+DO $$
+DECLARE _m text;
+BEGIN
+  BEGIN
+    PERFORM public.office_reopen_visit('f7311000-0000-4000-8000-0000000000a2');
+    RAISE EXCEPTION 'PROOF FAILED [reopen]: reopening put Ann back over her cap with nothing said';
+  EXCEPTION WHEN check_violation THEN _m := SQLERRM;
+  END;
+  IF _m IS DISTINCT FROM 'This walk will have 4 dogs; the cap is 3.' THEN
+    RAISE EXCEPTION 'PROOF FAILED [reopen]: the refusal said "%"', _m;
+  END IF;
+  IF (SELECT status FROM public.visits WHERE id = 'f7311000-0000-4000-8000-0000000000a2') <> 'completed' THEN
+    RAISE EXCEPTION 'PROOF FAILED [reopen cancel]: a refused reopen changed the visit';
+  END IF;
+  RAISE NOTICE 'ok: reopening a completed walk onto a full walk is refused the same way and stays completed';
+END $$;
+SELECT set_config('request.headers', '{"x-dog-cap-acknowledged":"yes"}', true);
+SELECT public.office_reopen_visit('f7311000-0000-4000-8000-0000000000a2');
+SELECT set_config('request.headers', '{}', true);
+DO $$
+BEGIN
+  IF (SELECT status FROM public.visits WHERE id = 'f7311000-0000-4000-8000-0000000000a2') <> 'scheduled' THEN
+    RAISE EXCEPTION 'PROOF FAILED [reopen confirm]: a confirmed reopen did not reopen';
+  END IF;
+  RAISE NOTICE 'ok: a confirmed reopen goes ahead and is recorded';
+END $$;
+
 -- Cover: G2 back to Bo (no cap), Ann's cap lowered to 1, then Cover Bo. The
 -- only other walker is Ann, so all of G2 would go to her: 4 dogs over 1.
 UPDATE public.visits SET assigned_staff_id = '5e731100-0000-4000-8000-0000000000a3'

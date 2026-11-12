@@ -956,7 +956,16 @@ async function loadVisitForDispatchAction(supabase: any, userId: string, visitId
 
 export const reopenVisitFromOffice = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ visitId: z.string().uuid() }).parse(d))
+  .inputValidator((d) =>
+    z
+      .object({
+        visitId: z.string().uuid(),
+        // "Assign anyway" after the dog cap warning (#731): a completed walk
+        // gave its place back, so reopening it can put its walk over the cap.
+        overCapAcknowledged: z.boolean().optional(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const v = await loadVisitForDispatchAction(supabase, userId, data.visitId);
@@ -969,9 +978,19 @@ export const reopenVisitFromOffice = createServerFn({ method: "POST" })
     });
     const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
     const pushRoutes = await watchRouteLiveActivities([data.visitId]);
-    const { error } = await (supabase as any).rpc("office_reopen_visit", {
-      _visit_id: data.visitId,
-    });
+    const { error } = await withDogCapAck(
+      (supabase as any).rpc("office_reopen_visit", {
+        _visit_id: data.visitId,
+      }),
+      data.overCapAcknowledged,
+    );
+    // Over the walker's dog cap and not confirmed: still completed, nothing
+    // saved; the office is shown the warning and asked (#731).
+    const overCap = dogCapWarningFromError(error);
+    if (overCap) {
+      await watch.finish();
+      return { ok: false, overCap };
+    }
     if (error) throw new Error(error.message);
     await watch.finish();
     await pushRoutes();

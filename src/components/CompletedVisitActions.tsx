@@ -16,6 +16,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useConfirmDialog, type ConfirmOptions } from "@/components/ConfirmDialog";
+import { useDogCapWarning } from "@/components/DogCapWarning";
+import { isDogCapRefused, runWithDogCapWarning, type DogCapWarning } from "@/lib/dog-cap";
 import { usePermissions, type AppRole } from "@/hooks/useMyRole";
 import { markVisitMissedFromOffice, reopenVisitFromOffice } from "@/lib/visits.functions";
 import { BUSINESS_REASONS } from "@/lib/training-packages";
@@ -73,18 +75,29 @@ export async function runCompletedVisitAction({
   confirm,
   reopen,
   markMissed,
+  askDogCap,
 }: {
   action: CompletedVisitAction;
   visitId: string;
   code: MissedCode | null;
   confirm: (opts: ConfirmOptions) => Promise<boolean>;
-  reopen: (args: { data: { visitId: string } }) => Promise<unknown>;
+  reopen: (args: { data: { visitId: string; overCapAcknowledged?: boolean } }) => Promise<unknown>;
   markMissed: (args: { data: { visitId: string; code: MissedCode | null } }) => Promise<unknown>;
+  // The dog cap warning (#731). A completed visit gave its place back, so
+  // reopening it can put its group over the cap: the same warning as every
+  // assign control, and Cancel leaves it completed.
+  askDogCap?: (warning: DogCapWarning, count?: number) => Promise<boolean>;
 }): Promise<CompletedVisitResult> {
   if (!(await confirm(COMPLETED_VISIT_CONFIRM[action]))) return { status: "canceled" };
   try {
-    if (action === "reopen") await reopen({ data: { visitId } });
-    else await markMissed({ data: { visitId, code } });
+    if (action === "reopen") {
+      const r = await runWithDogCapWarning(
+        // The confirmation is sent only on "Assign anyway".
+        (ack) => reopen({ data: ack ? { visitId, overCapAcknowledged: true } : { visitId } }),
+        askDogCap ?? (async () => false),
+      );
+      if (r === null || isDogCapRefused(r)) return { status: "canceled" };
+    } else await markMissed({ data: { visitId, code } });
     return { status: "done", message: COMPLETED_VISIT_DONE[action] };
   } catch (e) {
     return {
@@ -107,6 +120,7 @@ export function CompletedVisitActions({
   const { confirm, dialog } = useConfirmDialog();
   const reopen = useServerFn(reopenVisitFromOffice);
   const markMissed = useServerFn(markVisitMissedFromOffice);
+  const dogCap = useDogCapWarning();
   const [pending, setPending] = useState<CompletedVisitAction | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
   // On a training package lesson, why it was missed. The business's own
@@ -138,6 +152,7 @@ export function CompletedVisitActions({
         confirm,
         reopen,
         markMissed,
+        askDogCap: dogCap.ask,
       });
       if (r.status === "refused") {
         setRefusal(r.message);
@@ -161,6 +176,7 @@ export function CompletedVisitActions({
   return (
     <div className="space-y-2">
       {dialog}
+      {dogCap.dialog}
       {/* Invoice at completion (#605): the office bills a visit from the visit. */}
       <InvoiceThisVisit visitId={visit.id} />
       <div className="flex flex-wrap gap-2">
