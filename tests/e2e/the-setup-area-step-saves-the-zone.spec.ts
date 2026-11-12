@@ -12,19 +12,37 @@
 // has zones, prices, a first-cleanup mode and twenty clients: the one state
 // this step is never in. So this one makes its own business the way signup
 // does -- an auth user, then `bootstrap_organization` called AS that user --
-// and gives it only what step 1 leaves behind (an address with a pin), then
-// drives step 2 in a browser and asks Postgres what it wrote.
+// and gives it only what step 1 leaves behind (an address with a pin, and
+// the unpriced "Pet waste removal" service step 1 seeds when it saves the
+// service lines), then drives step 2 in a browser and asks Postgres what it
+// wrote.
 //
 // What it proves:
-//   * ONE press of Save and continue creates exactly one zone, priced at
-//     what was typed ($20.00 -> 2000), for this business and no other;
-//   * the step advances (the page is no longer on step 2);
-//   * the price is also the business's Standard price and the default
-//     pet-waste service's price where those were blank (#766).
+//   * ONE press of Save and continue creates exactly one zone for this
+//     business and no other, and the step advances;
+//   * the price typed ($20.00 -> 2000) is the pet-waste service's standard
+//     price (services.base_price_cents) and the business's Standard price;
+//   * the zone does NOT copy it. Under the shared price model (#860, PR #870)
+//     a zone's base_price_cents is an OVERRIDE, and setup's first area gets
+//     none when the typed price is the standard that results, so it is NULL.
+//
+// ── WHY THE ZONE ASSERTION READS THE SOURCE ───────────────────────────────
+//
+// The model lands with #870, which makes zones.base_price_cents nullable and
+// teaches setup to send no override (setupZoneOverride in
+// src/lib/standard-price.ts). Before it, the column is NOT NULL and setup
+// sends the typed price, so the same Save stores 2000 on the zone. The
+// assertion keys on whether setupZoneOverride exists in this checkout: with
+// it, NULL and nothing else; without it, 2000 and nothing else. Either way
+// the service holds the price. Once #870 is on main the first branch is the
+// only one that runs, and this block can be reduced to it.
 //
 // And when it fails, it says why: every server-function response and every
 // console error of the run is printed with the failure, because "nothing
 // happened" is exactly the report this spec exists to turn into a cause.
+
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
@@ -35,6 +53,14 @@ import { signIn, waitForHydration } from "./sign-in";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? "http://127.0.0.1:54421";
 const ANON = process.env.SUPABASE_PUBLISHABLE_KEY ?? "";
+
+/** Whether this checkout has the shared price model, in which setup's first
+ *  area carries no price of its own (#870). See the header. */
+// Playwright runs from the repo root (tests/e2e/run.sh cds there first).
+const STANDARD_PRICE = join(process.cwd(), "src", "lib", "standard-price.ts");
+const ZONE_PRICE_IS_AN_OVERRIDE =
+  existsSync(STANDARD_PRICE) &&
+  readFileSync(STANDARD_PRICE, "utf8").includes("export function setupZoneOverride");
 
 test.beforeEach(async ({ context }) => {
   await pointTheBrowserAtTheLocalDatabase(context, { url: SUPABASE_URL, anonKey: ANON });
@@ -84,6 +110,20 @@ test("a new business saves its service area and price once, and the zone exists 
       })
       .eq("id", orgId);
     if (pinErr) throw new Error(`pinning the business address: ${pinErr.message}`);
+
+    // And the service step 1 seeds for pet waste (DEFAULT_SERVICE_SEEDS in
+    // src/lib/services.ts, via ensureDefaultServicesForLines): unpriced.
+    const { error: svcErr } = await db.from("services").insert({
+      organization_id: orgId,
+      name: "Pet waste removal",
+      service_line: "pet_waste",
+      price_unit: "visit",
+      base_price_cents: null,
+      extra_pet_cents: 0,
+      default_duration_min: null,
+      active: true,
+    });
+    if (svcErr) throw new Error(`seeding the pet-waste service: ${svcErr.message}`);
 
     const { count: before } = await db
       .from("zones")
@@ -153,10 +193,28 @@ test("a new business saves its service area and price once, and the zone exists 
     expect(zones, `exactly one zone after one Save${evidence()}`).toHaveLength(1);
     expect(zones![0]).toMatchObject({
       name: "Main service area",
-      base_price_cents: 2000,
       initial_cleanup_cents: 0,
       geo_match_mode: "radius",
     });
+    if (ZONE_PRICE_IS_AN_OVERRIDE) {
+      expect(
+        zones![0].base_price_cents,
+        "the first area follows the standard price: no override of its own (#870)",
+      ).toBeNull();
+    } else {
+      expect(zones![0].base_price_cents, "before #870 the zone carries the price").toBe(2000);
+    }
+
+    // The standard price lives on the pet-waste service.
+    const { data: svc, error: svcReadErr } = await db
+      .from("services")
+      .select("base_price_cents")
+      .eq("organization_id", orgId)
+      .eq("service_line", "pet_waste")
+      .eq("name", "Pet waste removal")
+      .single();
+    if (svcReadErr) throw new Error(`reading the pet-waste service: ${svcReadErr.message}`);
+    expect(svc?.base_price_cents, "the typed price is the service's standard price").toBe(2000);
 
     const { data: org } = await db
       .from("organizations")
