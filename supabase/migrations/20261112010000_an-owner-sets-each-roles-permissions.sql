@@ -43,6 +43,19 @@
 --          from their office branch. Names and addresses may be opened to a
 --          technician; the code to the door is not.
 --
+--   6. Brendan's dispatcher defaults (2026-11-12, 11:45 AM ET): a dispatcher
+--      CAN cancel a visit and CAN complete one for a technician, and CANNOT
+--      choose prepaid billing. Completing and canceling from the office were
+--      manage_client_billing, which would also hand a dispatcher invoices,
+--      refunds, prepaid and credit; they are their own permission now,
+--      close_visits, on by default for owner, office manager and dispatcher.
+--      office_complete_visit and office_skip_visit ask has_permission for it
+--      (they asked can_write_org, which any dispatcher passed, so turning it
+--      off would not have reached a direct RPC). Prepaid stays
+--      manage_client_billing: the subscriptions write policies
+--      (manage_pricing), generate_prepaid_invoice (manage_client_billing) and
+--      onboardClient's PLAN_CADENCE_IS_BILLING refusal are untouched.
+--
 -- NOTHING CHANGES FOR AN EXISTING BUSINESS. The table starts empty, and an
 -- empty table is the matrix every business already runs on. Replays into an
 -- empty database: definitions, and assertions about what this file creates.
@@ -59,7 +72,7 @@ AS $function$
   SELECT CASE
     WHEN _role = 'owner' THEN true
     WHEN _role = 'office_manager' THEN _permission NOT IN ('manage_org_billing', 'manage_franchise')
-    WHEN _role = 'dispatcher' THEN _permission IN ('view_client_directory', 'record_field_addons', 'booking', 'manage_schedule', 'message_clients')
+    WHEN _role = 'dispatcher' THEN _permission IN ('view_client_directory', 'record_field_addons', 'booking', 'manage_schedule', 'close_visits', 'message_clients')
     WHEN _role = 'tech' THEN _permission = 'record_field_addons'
     ELSE false
   END;
@@ -69,7 +82,7 @@ REVOKE ALL ON FUNCTION public.permission_default(public.app_role, text) FROM PUB
 GRANT EXECUTE ON FUNCTION public.permission_default(public.app_role, text) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.permission_default(public.app_role, text) IS
-  'What a role holds when its business''s owner has changed nothing (#863): the matrix has_permission carried until 20261112010000, mirrored by ROLE_PERMISSIONS in src/lib/permissions.ts (tests/permission-parity.test.ts).';
+  'What a role holds when its business''s owner has changed nothing (#863): the matrix has_permission carried until 20261112010000, plus close_visits for the dispatcher (Brendan, 2026-11-12), mirrored by ROLE_PERMISSIONS in src/lib/permissions.ts (tests/permission-parity.test.ts).';
 
 -- ── 2. What the owner changed ───────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.role_permission_overrides (
@@ -243,8 +256,9 @@ AS $function$
   END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.role_rank(text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.role_rank(text) TO authenticated, service_role;
+-- Called only inside caller_may_grant_role, which runs as its owner: not the
+-- app's to call, so no grant at all.
+REVOKE ALL ON FUNCTION public.role_rank(text) FROM PUBLIC, anon, authenticated, service_role;
 
 -- May the caller hand out this role in this business? An owner, any. Anyone
 -- else: only with manage_users as the owner configured it, and only a role
@@ -534,6 +548,172 @@ GRANT EXECUTE ON FUNCTION public.stay_access_codes(uuid[]) TO authenticated, ser
 COMMENT ON FUNCTION public.stay_access_codes(uuid[]) IS
   'Gate code, lock box code, key location, key tag and alarm details for each stay''s home. The office (view_client_directory, never the tech role); the stay''s sitter (stays.assigned_staff_id) from the day before its first visit to its last visit day; anyone else assigned to a scheduled or in-progress visit of the stay on that visit''s day only. Every row returned is logged to activity_log as stay.access_viewed. Migrations 20261024080500, 20261024081000, 20261112010000.';
 
+-- ── 5c. Completing and canceling from the office ask close_visits ───────────
+-- Verbatim 20261102120000 (office_complete_visit) and 20261023130000
+-- (office_skip_visit), with one clause each: can_write_org, which every
+-- dispatcher passes, becomes has_permission(close_visits), which the owner
+-- can take from a role. The server functions ask the same
+-- (visits.functions.ts, loadVisitForOfficeAction).
+CREATE OR REPLACE FUNCTION public.office_complete_visit(
+  _visit_id uuid,
+  -- Why the office is completing a visit with no completion photo, or with
+  -- required checklist items nobody checked. Required exactly when one of
+  -- those is missing.
+  _override_reason text DEFAULT NULL
+)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  _org uuid;
+  _status public.visit_status;
+  _required boolean;
+  _checklist jsonb;
+  _line text;
+  _has_photo boolean;
+  _photo_missing boolean;
+  _missing text;
+  _why text := left(NULLIF(btrim(COALESCE(_override_reason, '')), ''), 250);
+  _answers jsonb;
+BEGIN
+  SELECT organization_id, status INTO _org, _status
+    FROM public.visits WHERE id = _visit_id;
+  IF _org IS NULL THEN RAISE EXCEPTION 'Visit not found'; END IF;
+  -- close_visits as the owner configured it (#863): a dispatcher by default.
+  IF NOT public.has_permission(auth.uid(), _org, 'close_visits') THEN
+    RAISE EXCEPTION 'Not authorized';
+  END IF;
+  IF _status NOT IN ('scheduled','in_progress','missed') THEN
+    RAISE EXCEPTION 'Only scheduled, in-progress, or missed visits can be completed';
+  END IF;
+
+  -- The same two questions complete_visit asks, decided the same way: the
+  -- visit's line is its service's; with no service, the business's only line
+  -- when it runs exactly one, else pet waste.
+  SELECT COALESCE(o.require_completion_photo, true), COALESCE(o.visit_checklist, '[]'::jsonb),
+         COALESCE(s.service_line,
+                  CASE WHEN cardinality(o.service_lines) = 1 THEN o.service_lines[1] END,
+                  'pet_waste')
+    INTO _required, _checklist, _line
+    FROM public.visits v
+    JOIN public.organizations o ON o.id = v.organization_id
+    LEFT JOIN public.services s ON s.id = v.service_id
+   WHERE v.id = _visit_id;
+
+  IF jsonb_typeof(_checklist) = 'array' THEN
+    SELECT COALESCE(jsonb_agg(item ORDER BY ord), '[]'::jsonb)
+      INTO _checklist
+      FROM jsonb_array_elements(_checklist) WITH ORDINALITY AS c(item, ord)
+     WHERE NOT (item ? 'line') OR item ->> 'line' = _line;
+  ELSE
+    _checklist := '[]'::jsonb;
+  END IF;
+
+  SELECT EXISTS (SELECT 1 FROM public.visit_photos WHERE visit_id = _visit_id AND kind = 'completion')
+    INTO _has_photo;
+  _photo_missing := _required AND NOT _has_photo;
+
+  -- Nobody in the office checked an item, so every required one is missing.
+  SELECT string_agg(item ->> 'label', ', ' ORDER BY ord)
+    INTO _missing
+    FROM jsonb_array_elements(_checklist) WITH ORDINALITY AS c(item, ord)
+   WHERE COALESCE((item ->> 'required')::boolean, false);
+
+  IF (_photo_missing OR _missing IS NOT NULL) AND _why IS NULL THEN
+    RAISE EXCEPTION 'This visit has %. Say why you are completing it from the office.',
+      concat_ws(' and ',
+        CASE WHEN _photo_missing THEN 'no completion photo' END,
+        CASE WHEN _missing IS NOT NULL THEN 'required checklist items nobody checked (' || _missing || ')' END);
+  END IF;
+
+  IF jsonb_array_length(_checklist) > 0 THEN
+    SELECT jsonb_agg(
+             jsonb_build_object(
+               'id', item ->> 'id',
+               'label', item ->> 'label',
+               'required', COALESCE((item ->> 'required')::boolean, false),
+               'checked', false
+             ) ORDER BY ord)
+      INTO _answers
+      FROM jsonb_array_elements(_checklist) WITH ORDINALITY AS c(item, ord);
+  END IF;
+
+  -- Note it still does NOT touch started_at (BUG-9).
+  UPDATE public.visits
+     SET status = 'completed', completed_at = now(), updated_at = now(),
+         completion_source = 'office',
+         completion_photo_waived_reason = CASE
+           WHEN _photo_missing THEN 'Completed from the office: ' || _why
+           ELSE completion_photo_waived_reason END,
+         -- Answers already on the visit are kept: only complete_visit writes
+         -- them, and only on completion, so today there are none here; if
+         -- that changes, the tech's answers outrank the office's "unchecked".
+         visit_checklist = COALESCE(visit_checklist, _answers)
+   WHERE id = _visit_id AND status IN ('scheduled','in_progress','missed');
+  IF NOT FOUND THEN RETURN; END IF;
+
+  PERFORM public.finalize_visit_completion(_visit_id);
+END;
+$function$;
+
+
+REVOKE ALL ON FUNCTION public.office_complete_visit(uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.office_complete_visit(uuid, text) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.office_skip_visit(
+  _visit_id uuid, _reason text, _code public.skip_reason_code DEFAULT 'other'::public.skip_reason_code,
+  _client_cancelled_at timestamptz DEFAULT NULL
+)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  _org uuid; _price integer; _pct integer; _charge integer;
+BEGIN
+  SELECT v.organization_id, s.price_cents
+    INTO _org, _price
+    FROM public.visits v
+    JOIN public.subscriptions s ON s.id = v.subscription_id
+   WHERE v.id = _visit_id;
+  IF _org IS NULL THEN RAISE EXCEPTION 'Visit not found'; END IF;
+  -- close_visits as the owner configured it (#863): a dispatcher by default.
+  IF NOT public.has_permission(auth.uid(), _org, 'close_visits') THEN
+    RAISE EXCEPTION 'Not authorized';
+  END IF;
+  IF _reason IS NULL OR length(trim(_reason)) = 0 THEN
+    RAISE EXCEPTION 'A reason is required to cancel a visit';
+  END IF;
+  IF _client_cancelled_at > now() + interval '5 minutes' THEN
+    RAISE EXCEPTION 'The time the client canceled cannot be in the future';
+  END IF;
+
+  SELECT billable_pct INTO _pct
+    FROM public.skip_billing_rules
+   WHERE organization_id = _org AND reason_code = _code;
+  IF _pct IS NULL THEN
+    _pct := public.default_skip_billable_pct(_code);
+  END IF;
+
+  _charge := ROUND(COALESCE(_price, 0) * _pct / 100.0)::int;
+
+  UPDATE public.visits
+     SET status = 'skipped',
+         skip_reason = _reason,
+         skip_reason_code = _code,
+         skip_billable = (_charge > 0),
+         skip_charge_cents = _charge,
+         client_cancelled_at = _client_cancelled_at,
+         updated_at = now()
+   WHERE id = _visit_id AND status IN ('scheduled','in_progress','missed');
+END; $function$;
+
+REVOKE ALL ON FUNCTION public.office_skip_visit(uuid, text, public.skip_reason_code, timestamptz) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.office_skip_visit(uuid, text, public.skip_reason_code, timestamptz) TO authenticated;
+
 -- ── 6. What this file establishes, checked from any starting state ─────────
 DO $post$
 DECLARE
@@ -547,6 +727,9 @@ BEGIN
      OR public.permission_default('office_manager', 'manage_franchise')
      OR NOT public.permission_default('office_manager', 'manage_users')
      OR NOT public.permission_default('dispatcher', 'booking')
+     OR NOT public.permission_default('dispatcher', 'close_visits')
+     OR public.permission_default('dispatcher', 'manage_client_billing')
+     OR public.permission_default('tech', 'close_visits')
      OR public.permission_default('dispatcher', 'manage_pricing')
      OR NOT public.permission_default('tech', 'record_field_addons')
      OR public.permission_default('tech', 'view_client_directory') THEN
@@ -631,6 +814,34 @@ BEGIN
   IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
        WHERE n.nspname = 'public' AND p.proname IN ('set_staff_active', 'change_user_role', 'caller_may_grant_role', 'role_rank', 'permission_default')) <> 5 THEN
     RAISE EXCEPTION 'a staff-authority or permission function has an overload this body does not cover';
+  END IF;
+
+  -- Completing and canceling from the office ask close_visits, and no
+  -- longer let any writer of the business through.
+  _src := (SELECT prosrc FROM pg_proc WHERE oid = 'public.office_complete_visit(uuid, text)'::regprocedure);
+  IF strpos(_src, '''close_visits''') = 0 OR strpos(_src, 'can_write_org') > 0 THEN
+    RAISE EXCEPTION 'office_complete_visit does not ask for close_visits';
+  END IF;
+  _src := (SELECT prosrc FROM pg_proc WHERE oid = 'public.office_skip_visit(uuid, text, public.skip_reason_code, timestamptz)'::regprocedure);
+  IF strpos(_src, '''close_visits''') = 0 OR strpos(_src, 'can_write_org') > 0 THEN
+    RAISE EXCEPTION 'office_skip_visit does not ask for close_visits';
+  END IF;
+  IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'public' AND p.proname IN ('office_complete_visit', 'office_skip_visit')) <> 2 THEN
+    RAISE EXCEPTION 'office_complete_visit or office_skip_visit has an overload this body does not cover';
+  END IF;
+  -- Prepaid is not a dispatcher's: the plan write policies still ask for
+  -- manage_pricing (established by 20260801090000 / 20260810120000, not
+  -- touched here), and the prepaid invoice RPC for manage_client_billing.
+  IF (SELECT count(*) FROM pg_policies
+       WHERE schemaname = 'public' AND tablename = 'subscriptions' AND permissive = 'PERMISSIVE'
+         AND cmd IN ('INSERT', 'UPDATE', 'DELETE', 'ALL')
+         AND strpos(coalesce(qual, '') || coalesce(with_check, ''), 'manage_pricing') = 0) > 0 THEN
+    RAISE EXCEPTION 'a subscriptions write policy no longer requires manage_pricing';
+  END IF;
+  _src := (SELECT prosrc FROM pg_proc WHERE oid = 'public.generate_prepaid_invoice(uuid, integer)'::regprocedure);
+  IF strpos(_src, '''manage_client_billing''') = 0 THEN
+    RAISE EXCEPTION 'generate_prepaid_invoice no longer asks for manage_client_billing';
   END IF;
 
   -- A technician's code is for the assigned day.

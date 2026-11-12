@@ -332,7 +332,12 @@ describe("no trigger function is executable by a signed-in user", () => {
     // to a signed-in tech's own UPDATE of visits.status, so a PATCH cannot do
     // what start_visit refuses. Revoked from PUBLIC, anon and authenticated
     // there.
-    expect(triggerFunctions().size).toBe(110);
+    //
+    // 110 -> 111 (20261112010000, an owner sets each role's permissions,
+    // #863): tg_log_role_permission_change writes activity_log for every
+    // change to role_permission_overrides, with the actor. Revoked from
+    // PUBLIC, anon and authenticated there.
+    expect(triggerFunctions().size).toBe(111);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

@@ -6,7 +6,9 @@
 // reader of its own for the request path (readPermissionOverrides, which
 // tolerates a test double). This one is for callers that hold a real client.
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AppRole } from "@/hooks/useMyRole";
+import type { Database } from "@/integrations/supabase/types";
 import { overridesFromRows, type PermissionOverrides } from "@/lib/permissions";
 
 export async function readRoleOverrides(
@@ -15,7 +17,7 @@ export async function readRoleOverrides(
   role: AppRole,
 ): Promise<PermissionOverrides> {
   if (role === "owner") return {};
-  const { data, error } = await (supabase as any)
+  const { data, error } = await (supabase as SupabaseClient<Database>)
     .from("role_permission_overrides")
     .select("permission, allowed")
     .eq("organization_id", orgId)

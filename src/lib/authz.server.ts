@@ -205,6 +205,9 @@ export async function resolveCaller(
   // about: they hold everything, so there is nothing to read.
   if (role === "owner") return { orgId, role };
   const overrides = await readPermissionOverrides(db, orgId, role as AppRole);
+  // The key is there only when the owner changed something, so a caller with
+  // the defaults is the same two-field answer this function always gave.
+  if (!Object.keys(overrides).length) return { orgId, role: role as AppRole };
   return { orgId, role: role as AppRole, overrides };
 }
 
@@ -228,11 +231,17 @@ async function readPermissionOverrides(
   orgId: string,
   role: AppRole,
 ): Promise<PermissionOverrides> {
-  const answer = await db
-    .from("role_permission_overrides")
-    .select("permission, allowed")
-    .eq("organization_id", orgId)
-    .eq("role", role);
+  // Step by step, so a double whose chain stops short (a `from` that only
+  // answers maybeSingle, an `eq` that is not chainable) is "no rows" rather
+  // than a TypeError inside the authorization gate. A real client has every
+  // step; a real failure comes back as `error`, below, and is thrown.
+  const table = db.from("role_permission_overrides") as Partial<OverridesQueryTable> | undefined;
+  const selected = typeof table?.select === "function" ? table.select("permission, allowed") : null;
+  const byOrg =
+    selected && typeof selected.eq === "function" ? selected.eq("organization_id", orgId) : null;
+  const byRole = byOrg && typeof byOrg.eq === "function" ? byOrg.eq("role", role) : null;
+  if (!byRole || typeof byRole.then !== "function") return {};
+  const answer = await byRole;
   if (answer && typeof answer === "object" && "error" in answer && answer.error) {
     throw new Error(answer.error.message);
   }

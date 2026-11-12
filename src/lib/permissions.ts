@@ -30,6 +30,14 @@ export type Permission =
   // job. It moves no money and sets no price: completing or canceling a
   // visit, which can bill, stays manage_client_billing.
   | "manage_schedule"
+  // Closing a visit out from the office (#863, Brendan 2026-11-12 11:45 ET):
+  // marking a stop complete for a technician, or canceling it at the
+  // business's skip rules. Both can bill the client, which is why they sat
+  // on manage_client_billing until then; they are their own permission so a
+  // dispatcher can run the day without invoices, refunds, prepaid or credit.
+  // Owner, office manager and dispatcher by default. A prepaid plan stays
+  // manage_client_billing (PLAN_CADENCE_IS_BILLING in clients.functions.ts).
+  | "close_visits"
   // Writing to one client (#728): a text from the client's Messages tab or
   // the inbox. Owner, office manager and dispatcher. A message to many
   // clients at once is send_campaigns, which a dispatcher does not hold.
@@ -62,6 +70,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   "manage_pricing",
   "booking",
   "manage_schedule",
+  "close_visits",
   "message_clients",
   "manage_client_billing",
   "view_financials",
@@ -94,11 +103,14 @@ export const ROLE_PERMISSIONS: Record<AppRole, readonly Permission[]> = {
   // routes, clients and messaging". Nothing here touches the business's own
   // billing, security or who has access, and no price: manage_pricing,
   // manage_client_billing, manage_users and manage_settings stay off.
+  // #863 (owner, 2026-11-12): a dispatcher completes a visit for a tech and
+  // cancels one, so close_visits is on by default; a prepaid plan is not.
   dispatcher: [
     "view_client_directory",
     "record_field_addons",
     "booking",
     "manage_schedule",
+    "close_visits",
     "message_clients",
   ],
   tech: ["record_field_addons"],
@@ -177,6 +189,18 @@ export function hasPermission(
   return ROLE_PERMISSIONS[role]?.includes(permission) ?? false;
 }
 
+/** The server's list for the signed-in person (getMyOrg's `permissions`),
+ *  when it sent one and it is a list of real permissions; null otherwise, so
+ *  the browser falls back to the role's defaults. Here rather than in the
+ *  hook module so a page can read it without the hooks a test double mocks. */
+export function permissionsOf(org: unknown): Permission[] | null {
+  const raw = (org as { permissions?: unknown } | null | undefined)?.permissions;
+  if (!Array.isArray(raw)) return null;
+  return raw.filter(
+    (p): p is Permission => typeof p === "string" && (ALL_PERMISSIONS as string[]).includes(p),
+  );
+}
+
 /** Everything a role holds, after the business's overrides. */
 export function effectivePermissions(
   role: AppRole | null | undefined,
@@ -252,6 +276,13 @@ export const PERMISSION_CATALOG: ReadonlyArray<{
     group: "schedule",
   },
   {
+    permission: "close_visits",
+    label: "Complete or cancel a visit from the office",
+    explanation:
+      "Mark a visit complete for a technician, or cancel it at the business's skip rules. Both can bill the client.",
+    group: "schedule",
+  },
+  {
     permission: "message_clients",
     label: "Message clients",
     explanation: "Text one client from their Messages tab or the inbox.",
@@ -272,20 +303,21 @@ export const PERMISSION_CATALOG: ReadonlyArray<{
   {
     permission: "reveal_signin_code",
     label: "Read a portal sign-in code",
-    explanation: "Read a client's working portal sign-in code aloud. Confirmed and logged each time.",
+    explanation:
+      "Read a client's working portal sign-in code aloud. Confirmed and logged each time.",
     group: "clients",
   },
   {
     permission: "manage_pricing",
     label: "Set prices",
-    explanation: "Create and change zones and rates, and type a price by hand on a plan or booking.",
+    explanation:
+      "Create and change zones and rates, and type a price by hand on a plan or booking.",
     group: "money",
   },
   {
     permission: "manage_client_billing",
     label: "Bill clients",
-    explanation:
-      "Invoices, refunds, add-on charges, prepaid plans and credit. Completing or canceling a visit from the office, which can bill.",
+    explanation: "Invoices, refunds, add-on charges, prepaid plans and credit.",
     group: "money",
   },
   {

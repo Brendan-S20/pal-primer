@@ -53,7 +53,8 @@ export const ONLY_AN_OWNER_OR_OFFICE_MANAGER_TURNS_PEOPLE_ON_OR_OFF =
   "Only someone allowed to manage the team can turn people on or off.";
 export const ONLY_AN_OWNER_OR_OFFICE_MANAGER_CHANGES_ROLES =
   "Only someone allowed to manage the team can change roles.";
-export const NOT_ABOVE_YOUR_OWN_ROLE = "Nobody but an owner can give anyone a role above their own.";
+export const NOT_ABOVE_YOUR_OWN_ROLE =
+  "Nobody but an owner can give anyone a role above their own.";
 
 /**
  * The roles each caller may hand out: an owner any; anyone else nothing

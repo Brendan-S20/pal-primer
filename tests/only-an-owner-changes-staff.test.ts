@@ -125,11 +125,9 @@ describe("D7: a dispatcher or a technician never turns people on or off, or chan
     expect(state.rpcs).toEqual(["set_staff_active", "change_user_role"]);
   });
 
-  it("the screen shows the controls to the owner and the office manager only", () => {
+  it("the screen shows the controls to the owner and whoever holds manage_users as configured (#863)", () => {
     const page = read("src/routes/_authenticated/settings.users.tsx");
-    expect(page).toMatch(
-      /const canManageStaff = myRole === "owner" \|\| myRole === "office_manager";/,
-    );
+    expect(page).toMatch(/const canManageStaff = myRole === "owner" \|\| can\("manage_users"\);/);
     expect(page).toMatch(/\{canManageRow \? \(\s*<Select/);
     expect(page).toMatch(/\{canManageRow && u\.staff_id && \(/);
   });

@@ -47,12 +47,18 @@ export const Route = createFileRoute("/_authenticated/settings/roles")({
 
 export const ROLE_PERMISSIONS_QUERY_KEY = ["role-permissions"] as const;
 
-/** One line on what each role is for, over its list of switches. */
-const ROLE_BLURB: Record<ConfigurableRole, string> = {
-  office_manager: "Runs the office: clients, invoices, routes and settings.",
-  dispatcher: "Runs the schedule: books, moves visits and texts clients.",
-  tech: "Runs the route: My Day, the visits assigned to them and field tools.",
-};
+/** One line on what each role is for, over its list of switches. The role's
+ *  NAME comes from humanizeRole (useRoleLabel), like everywhere else. */
+function roleBlurb(role: ConfigurableRole): string {
+  switch (role) {
+    case "office_manager":
+      return "Runs the office: clients, invoices, routes and settings.";
+    case "dispatcher":
+      return "Runs the schedule: books, moves and closes out visits, and texts clients.";
+    case "tech":
+      return "Runs the route: My Day, the visits assigned to them and field tools.";
+  }
+}
 
 const GROUP_ORDER: PermissionGroup[] = ["people", "clients", "schedule", "money", "business"];
 
@@ -166,8 +172,8 @@ function RolePermissionsSettings() {
                 Always the owner's
               </CardTitle>
               <CardDescription>
-                These stay with the owner whatever is set below. So does changing or turning off
-                the owner, handing the business to someone else, and deleting it.
+                These stay with the owner whatever is set below. So does changing or turning off the
+                owner, handing the business to someone else, and deleting it.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -244,7 +250,7 @@ function RoleCard({
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
         <div className="min-w-0">
           <CardTitle>{label}</CardTitle>
-          <CardDescription>{ROLE_BLURB[role]}</CardDescription>
+          <CardDescription>{roleBlurb(role)}</CardDescription>
           <p className="mt-1 text-xs text-muted-foreground">
             {changed === 0
               ? "The defaults."

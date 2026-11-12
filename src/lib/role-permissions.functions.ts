@@ -15,7 +15,9 @@
 // trigger writes activity_log for every change, with the actor.
 
 import { createServerFn } from "@tanstack/react-start";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import type { Database } from "@/integrations/supabase/types";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { resolveCaller, type CallerContext } from "@/lib/authz.server";
 import {
@@ -69,7 +71,7 @@ export const getRolePermissions = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<RolePermissionsAnswer> => {
     const { orgId } = await requireOwner(context.supabase, context.userId);
-    const db = context.supabase as any;
+    const db = context.supabase as SupabaseClient<Database>;
     const [{ data: rows, error }, { data: staff, error: staffErr }] = await Promise.all([
       db
         .from("role_permission_overrides")
@@ -103,7 +105,11 @@ export const getRolePermissions = createServerFn({ method: "GET" })
           const byDefault = ROLE_PERMISSIONS[role].includes(permission);
           const ownerOnly = isOwnerOnly(permission);
           const row = mine.find((r) => r.permission === permission);
-          const allowed = ownerOnly ? false : typeof row?.allowed === "boolean" ? row.allowed : byDefault;
+          const allowed = ownerOnly
+            ? false
+            : typeof row?.allowed === "boolean"
+              ? row.allowed
+              : byDefault;
           return { permission, allowed, byDefault, ownerOnly };
         });
         return {
@@ -137,7 +143,7 @@ export const setRolePermission = createServerFn({ method: "POST" })
     if (OWNER_ONLY_PERMISSIONS.includes(data.permission)) {
       throw new Error(THAT_PERMISSION_IS_THE_OWNERS);
     }
-    const db = context.supabase as any;
+    const db = context.supabase as SupabaseClient<Database>;
     const byDefault = ROLE_PERMISSIONS[data.role].includes(data.permission);
     if (data.allowed === byDefault) {
       const { error } = await db
@@ -171,7 +177,7 @@ export const resetRolePermissions = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ role: roleSchema }).parse(d))
   .handler(async ({ data, context }) => {
     const { orgId } = await requireOwner(context.supabase, context.userId);
-    const { error } = await (context.supabase as any)
+    const { error } = await (context.supabase as SupabaseClient<Database>)
       .from("role_permission_overrides")
       .delete()
       .eq("organization_id", orgId)

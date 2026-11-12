@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getMyOrg } from "@/lib/org.functions";
-import { ALL_PERMISSIONS, hasPermission, type Permission } from "@/lib/permissions";
+import { hasPermission, permissionsOf, type Permission } from "@/lib/permissions";
+
+export { permissionsOf };
 
 export type AppRole = "owner" | "office_manager" | "dispatcher" | "tech";
 
@@ -34,15 +36,6 @@ export function useMyRole(): {
     accessTurnedOff: !!data?.accessTurnedOff,
     permissions: permissionsOf(data?.organization),
   };
-}
-
-/** The server's list, when it sent one and it is a list of real permissions. */
-export function permissionsOf(org: unknown): Permission[] | null {
-  const raw = (org as { permissions?: unknown } | null | undefined)?.permissions;
-  if (!Array.isArray(raw)) return null;
-  return raw.filter(
-    (p): p is Permission => typeof p === "string" && (ALL_PERMISSIONS as string[]).includes(p),
-  );
 }
 
 /**
