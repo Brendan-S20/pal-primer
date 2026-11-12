@@ -110,6 +110,8 @@ on:
       - "tsconfig*.json"
       - "supabase/migrations/**"
       - "supabase/proofs/**"
+      - "tests/sql/**"
+      - "scripts/run-sql-proofs.mjs"
       - "tests/integration/*.db.test.ts"
       - "tests/run-db-tests.sh"
       - "tests/support/walk-db.ts"
@@ -254,6 +256,7 @@ jobs:
               # The E2E suite runs inside the database job (it needs the
               # stack that job builds), so its inputs route there too.
               supabase/migrations/*|supabase/proofs/*)     database=true ;;
+              tests/sql/*|scripts/run-sql-proofs.mjs)       database=true ;;
               tests/integration/*.db.test.ts)              database=true ;;
               tests/run-db-tests.sh)                       database=true ;;
               tests/support/walk-db.ts|tests/support/org-day.ts) database=true ;;
@@ -742,6 +745,12 @@ jobs:
             fi
           done
           exit $failed
+
+      # These proofs need the migration paths and fixture values supplied by
+      # their Vitest wrappers. The runner uses this job's local DB_URL and
+      # rejects skipped tests so an unavailable database cannot pass the job.
+      - name: Every tests/sql proof, through its fixture wrapper
+        run: node scripts/run-sql-proofs.mjs
 
       # ── THE BEHAVIOURAL E2E SUITE, ON THE STACK THIS JOB JUST BUILT ──────
       #
