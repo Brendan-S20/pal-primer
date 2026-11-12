@@ -104,3 +104,77 @@ for (const { w, h, label, phone } of [
     }
   });
 }
+
+// #885: the verify-email reminder must leave navigation and setup controls usable.
+for (const size of [
+  { width: 390, height: 844, safeBottom: 0 },
+  { width: 390, height: 844, safeBottom: 34 },
+  { width: 1280, height: 800, safeBottom: 0 },
+]) {
+  test.describe(`verify reminder at ${size.width}px, bottom inset ${size.safeBottom}px`, () => {
+    test.use({
+      viewport: { width: size.width, height: size.height },
+      isMobile: size.width < 768,
+      hasTouch: size.width < 768,
+    });
+
+    test("clears the header, navigation and setup actions, and can be closed", async ({ page }) => {
+      await installSignedInSession(page.context());
+      await installStubBackend(page.context());
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send("Emulation.setSafeAreaInsetsOverride", {
+        insets: { bottom: size.safeBottom },
+      });
+      await page.goto("/setup?step=business");
+      await expect(page.locator('[data-setup-step="business"]')).toBeVisible({
+        timeout: FIRST_PAINT_MS,
+      });
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      // Use the same presenter signup calls, including the real Sonner root.
+      await page.evaluate(async () => {
+        const path = "/src/lib/verify-email-toast.tsx";
+        const { showSignupVerifyNotice } = await import(/* @vite-ignore */ path);
+        showSignupVerifyNotice("We sent a link to verify your email. Payments can send another.");
+      });
+      const notice = page.locator("[data-sonner-toast]").filter({ hasText: "We sent a link" });
+      await expect(notice).toBeVisible();
+      await expect(notice).toHaveAttribute("data-mounted", "true");
+      // Wait for the entry animation before measuring the final rectangle.
+      await expect
+        .poll(async () =>
+          notice.evaluate((el) => getComputedStyle(el).transform === "matrix(1, 0, 0, 1, 0, 0)"),
+        )
+        .toBe(true);
+      const box = (await notice.boundingBox())!;
+      const header = (await page.locator('header[data-vt="header"]').boundingBox())!;
+      expect(box.y).toBeGreaterThanOrEqual(header.y + header.height);
+      expect(box.y + box.height).toBeLessThan(size.height);
+      if (size.width < 768) {
+        const nav = page.locator("nav[data-bottom-chrome]");
+        await expect(nav).toBeVisible();
+        const navBox = (await nav.boundingBox())!;
+        expect(navBox.height).toBe(56 + size.safeBottom);
+        expect(box.y + box.height).toBeLessThanOrEqual(navBox.y - 8);
+      }
+      const footer = (await page.locator("[data-setup-footer]").boundingBox())!;
+      expect(box.y + box.height).toBeLessThanOrEqual(footer.y);
+      // When setup's controls disappear, follow the remaining navigation
+      // instead of retaining a large gap until the reminder times out.
+      await page.locator("[data-setup-footer]").evaluate((el: HTMLElement) => {
+        el.style.display = "none";
+      });
+      const bottomEdge =
+        size.width < 768
+          ? (await page.locator("nav[data-bottom-chrome]").boundingBox())!.y
+          : size.height;
+      await expect
+        .poll(async () => {
+          const moved = (await notice.boundingBox())!;
+          return Math.round(bottomEdge - moved.y - moved.height);
+        })
+        .toBe(size.width < 768 ? 16 : 24);
+      await notice.getByRole("button", { name: "Close toast" }).click();
+      await expect(notice).toHaveCount(0);
+    });
+  });
+}

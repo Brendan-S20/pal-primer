@@ -124,6 +124,9 @@ describe("the content state", () => {
       position: 5,
       allDone: false,
       rtl: false,
+      // The watch and car line (tests/the-route-on-a-wrist-and-a-dashboard
+      // .test.ts): the street with no house number.
+      shortStop: "Elm St",
       // The buttons (tests/buttons-on-the-lock-screen.test.ts). No
       // coordinates in this fixture, so Navigate goes by the address.
       visitId: "v5",
@@ -152,12 +155,22 @@ describe("the content state", () => {
     expect(stopName({ id: "a", status: "scheduled", properties: prop("9 Oak Ave", "  ") })).toBe(
       "9 Oak Ave",
     );
-    // A visit row carries the client too; the builder must not read it.
+    // A visit row carries the client too. Only the watch and car line
+    // (shortStop, #454) may read it; the lock screen's fields never do.
     const withClient = [
       { id: "a", status: "scheduled", clients: { display_name: "Jane Doe" }, properties: prop("9 Oak Ave") },
     ] as RouteActivityVisit[];
-    expect(JSON.stringify(buildRouteActivityState(withClient, ctx("en")))).not.toMatch(/Jane/);
-    expect(codeOnly(read("src/lib/live-activity-state.ts"))).not.toMatch(/clients|display_name/);
+    const { shortStop, ...lockScreen } = buildRouteActivityState(withClient, ctx("en"));
+    expect(JSON.stringify(lockScreen)).not.toMatch(/Jane/);
+    expect(shortStop).toBe("Jane Doe");
+    // And it is read in exactly one place: clientShortName.
+    const src = codeOnly(read("src/lib/live-activity-state.ts"));
+    const fn = src.slice(
+      src.indexOf("export function clientShortName"),
+      src.indexOf("export function stopDestination"),
+    );
+    expect(fn).toMatch(/display_name/);
+    expect(src.replace(fn, "")).not.toMatch(/\.clients\b|\.display_name\b/);
   });
 
   it("falls back to the property's service window when the route has no ETA", () => {
