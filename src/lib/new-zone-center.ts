@@ -14,11 +14,14 @@ function point(value: Point | null | undefined): LatLng | null {
     : null;
 }
 
-/** Business address first; stored org start point if the lookup is unavailable. */
+/** Reuse the geocoded business location; look up the address only when unlocated. */
 export async function newZoneCenter(
   org: Point & { contact_address: string | null },
   geocode: (address: string) => Promise<Point | null>,
 ): Promise<LatLng | null> {
+  const stored = point(org);
+  if (stored) return stored;
+
   if (org.contact_address?.trim()) {
     try {
       const business = point(await geocode(org.contact_address));
@@ -27,5 +30,5 @@ export async function newZoneCenter(
       // A geocoder outage must not prevent creating a zone.
     }
   }
-  return point(org);
+  return null;
 }

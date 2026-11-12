@@ -1,36 +1,50 @@
 import { describe, expect, it, vi } from "vitest";
 import { newZoneCenter } from "@/lib/new-zone-center";
 
-const org = { contact_address: "Lansing, MI", latitude: 40, longitude: -80 };
+const located = { contact_address: "Lansing, MI", latitude: 42.73, longitude: -84.55 };
+const unlocated = { ...located, latitude: null, longitude: null };
 describe("new zone opening center", () => {
-  it("prefers the business address over the org start point", async () => {
-    const geocode = vi.fn().mockResolvedValue({ latitude: 42.73, longitude: -84.55 });
-    expect(await newZoneCenter(org, geocode)).toEqual({ lat: 42.73, lng: -84.55 });
-    expect(geocode).toHaveBeenCalledWith("Lansing, MI");
-  });
-  it.each([null, { latitude: NaN, longitude: -84 }, { latitude: 91, longitude: 0 }])(
-    "falls back to the org geocoded start point when lookup returns %s",
-    async (result) => {
-      expect(await newZoneCenter(org, async () => result)).toEqual({ lat: 40, lng: -80 });
-    },
-  );
-  it("falls back when geocoding throws", async () => {
-    expect(
-      await newZoneCenter(org, async () => {
-        throw new Error("offline");
-      }),
-    ).toEqual({ lat: 40, lng: -80 });
-  });
-  it("uses the stored point without looking up a blank address, including zero coordinates", async () => {
-    const geocode = vi.fn();
-    expect(
-      await newZoneCenter({ contact_address: " ", latitude: 0, longitude: 0 }, geocode),
-    ).toEqual({ lat: 0, lng: 0 });
+  it("uses stored coordinates without calling the geocoder, even with an address", async () => {
+    const geocode = vi.fn().mockRejectedValue(new Error("must not make a paid call"));
+    expect(await newZoneCenter(located, geocode)).toEqual({ lat: 42.73, lng: -84.55 });
     expect(geocode).not.toHaveBeenCalled();
   });
-  it("leaves the existing US view when neither source is located", async () => {
+  it.each([
+    { latitude: null, longitude: null },
+    { latitude: null, longitude: -84.55 },
+    { latitude: 42.73, longitude: null },
+  ])("geocodes when stored coordinates are incomplete: %s", async (coords) => {
+    const geocode = vi.fn().mockResolvedValue({ latitude: 42.73, longitude: -84.55 });
+    expect(await newZoneCenter({ ...located, ...coords }, geocode)).toEqual({
+      lat: 42.73,
+      lng: -84.55,
+    });
+    expect(geocode).toHaveBeenCalledExactlyOnceWith("Lansing, MI");
+  });
+  it.each([null, { latitude: NaN, longitude: -84 }, { latitude: 91, longitude: 0 }])(
+    "leaves the US view when lookup returns %s",
+    async (result) => {
+      expect(await newZoneCenter(unlocated, async () => result)).toBeNull();
+    },
+  );
+  it("leaves the US view when geocoding throws", async () => {
     expect(
-      await newZoneCenter({ ...org, latitude: null, longitude: null }, async () => null),
+      await newZoneCenter(unlocated, async () => {
+        throw new Error("offline");
+      }),
     ).toBeNull();
+  });
+  it("accepts zero coordinates without looking up the address", async () => {
+    const geocode = vi.fn();
+    expect(await newZoneCenter({ ...located, latitude: 0, longitude: 0 }, geocode)).toEqual({
+      lat: 0,
+      lng: 0,
+    });
+    expect(geocode).not.toHaveBeenCalled();
+  });
+  it("does not geocode a blank address", async () => {
+    const geocode = vi.fn();
+    expect(await newZoneCenter({ ...unlocated, contact_address: " " }, geocode)).toBeNull();
+    expect(geocode).not.toHaveBeenCalled();
   });
 });
