@@ -20,6 +20,9 @@ type Props = {
   label?: string;
   value: string;
   onChange: (value: string) => void;
+  /** Called when the person leaves the field, e.g. to ask the server about a
+   *  rule only it can check (Get started's leaked-password check). */
+  onBlur?: () => void;
   serverError?: string | null;
   autoComplete?: string;
   autoFocus?: boolean;
@@ -32,6 +35,7 @@ export function PasswordField({
   label = "Password",
   value,
   onChange,
+  onBlur,
   serverError,
   autoComplete = "new-password",
   autoFocus,
@@ -61,7 +65,10 @@ export function PasswordField({
         autoFocus={autoFocus}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onBlur={() => setBlurred(true)}
+        onBlur={() => {
+          setBlurred(true);
+          onBlur?.();
+        }}
         aria-invalid={!!problem || !!serverError || undefined}
         aria-describedby={describedBy}
       />
