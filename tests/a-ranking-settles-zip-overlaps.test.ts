@@ -77,7 +77,7 @@ vi.mock("@/lib/zones-redetect.server", () => ({
 const ROOT = join(import.meta.dirname, "..");
 const read = (f: string) => readFileSync(join(ROOT, f), "utf8");
 const MIGRATION =
-  "supabase/migrations/20261112020000_a-service-area-fills-its-zips-and-a-ranking-settles-overlaps.sql";
+  "supabase/migrations/20261112030000_a-service-area-fills-its-zips-and-a-ranking-settles-overlaps.sql";
 
 const state = vi.hoisted(() => ({
   db: null as any,
@@ -256,9 +256,26 @@ describe("the warning: an area that keeps none of its ZIPs", () => {
 function fakeDb(zones: Array<Record<string, any>>) {
   const rows = zones.map((z) => ({ ...z }));
   const updates: Array<{ id: string; org: string; patch: Record<string, any> }> = [];
+  const rpcCalls: Array<{ name: string; args: any }> = [];
   const db = {
     rows,
     updates,
+    rpcCalls,
+    // reorder_zones as the migration defines it: one statement over the
+    // business's whole list, top to bottom.
+    rpc: async (name: string, args: any) => {
+      rpcCalls.push({ name, args });
+      if (name !== "reorder_zones") throw new Error(`unexpected rpc ${name}`);
+      const ids: string[] = args._ids;
+      const mine = rows.filter((r) => r.organization_id === args._org_id);
+      if (ids.length !== mine.length || ids.some((id) => !mine.some((r) => r.id === id))) {
+        return { data: null, error: { message: "reorder_zones: the list is not this business's areas" } };
+      }
+      ids.forEach((id, i) => {
+        rows.find((r) => r.id === id)!.priority = ids.length - i;
+      });
+      return { data: ids.length, error: null };
+    },
     from: (table: string) => {
       if (table !== "zones") throw new Error(`unexpected table ${table}`);
       const filters: Array<[string, unknown]> = [];
@@ -306,19 +323,23 @@ beforeEach(() => {
 });
 
 describe("reorderZones", () => {
-  it("writes the business's areas N down to 1 in the order sent, and re-detects", async () => {
+  it("writes the business's areas N down to 1 in the order sent, in one statement, and re-detects", async () => {
     state.db = fakeDb([dbZone(A, "Downtown", 3), dbZone(B, "Midtown", 2), dbZone(C, "Riverfront", 1)]);
     const { reorderZones } = await import("@/lib/zones.functions");
     const out = await reorderZones({ data: { ids: [C, A, B] } } as any);
     expect(state.permissionsAsked).toContain("manage_pricing");
     expect(out.order).toEqual([C, A, B]);
+    // One call to the migration's reorder_zones, scoped to the business, and
+    // not a row-by-row loop that a failure could leave half done.
+    expect(state.db.rpcCalls).toEqual([
+      { name: "reorder_zones", args: { _org_id: "org-1", _ids: [C, A, B] } },
+    ]);
+    expect(state.db.updates).toEqual([]);
     expect(state.db.rows.map((r: any) => [r.id, r.priority])).toEqual([
       [A, 2],
       [B, 1],
       [C, 3],
     ]);
-    // Every write is scoped to the business.
-    expect(state.db.updates.every((u: any) => u.org === "org-1")).toBe(true);
     expect(state.redetects).toBe(1);
     expect(out.propertiesUpdated).toBe(2);
   });
@@ -329,15 +350,32 @@ describe("reorderZones", () => {
     await expect(reorderZones({ data: { ids: [A, B] } } as any)).rejects.toThrow(
       "Zone not found.",
     );
-    expect(state.db.updates).toHaveLength(0);
+    expect(state.db.rpcCalls).toHaveLength(0);
   });
 
-  it("an area left out of the order is put after the ones sent, and an unchanged row is not rewritten", async () => {
+  it("an area left out of the order is put after the ones sent; an order already in place writes nothing", async () => {
     state.db = fakeDb([dbZone(A, "Downtown", 3), dbZone(B, "Midtown", 2), dbZone(C, "Riverfront", 1)]);
     const { reorderZones } = await import("@/lib/zones.functions");
     const out = await reorderZones({ data: { ids: [B] } } as any);
     expect(out.order).toEqual([B, A, C]);
-    expect(state.db.updates.map((u: any) => u.id)).toEqual([A, B]);
+    expect(state.db.rpcCalls.map((c: any) => c.args._ids)).toEqual([[B, A, C]]);
+    const again = await reorderZones({ data: { ids: [B, A, C] } } as any);
+    expect(again.order).toEqual([B, A, C]);
+    expect(state.db.rpcCalls).toHaveLength(1);
+  });
+
+  it("a refusal from the database is the caller's error, and nothing else is written", async () => {
+    state.db = fakeDb([dbZone(A, "Downtown", 3), dbZone(B, "Midtown", 2)]);
+    state.db.rpc = async () => ({
+      data: null,
+      error: { message: "reorder_zones: not allowed to reorder these areas" },
+    });
+    const { reorderZones } = await import("@/lib/zones.functions");
+    await expect(reorderZones({ data: { ids: [B, A] } } as any)).rejects.toThrow(
+      "not allowed to reorder these areas",
+    );
+    expect(state.db.updates).toEqual([]);
+    expect(state.redetects).toBe(0);
   });
 });
 
@@ -372,12 +410,15 @@ describe("the migration that ranks existing areas newest first", () => {
   it("sorts after every migration on main", () => {
     const names = readdirSync(join(ROOT, "supabase/migrations")).sort();
     expect(names[names.length - 1]).toBe(MIGRATION.split("/").pop());
-    expect(names[names.length - 1] > "20261112010000").toBe(true);
+    expect(names[names.length - 1] > "20261112020000").toBe(true);
   });
 
-  it("adds the pending column and ranks per business by creation time, newest on top", () => {
+  it("adds the pending columns and ranks per business by creation time, newest on top", () => {
     expect(code).toMatch(
       /ALTER TABLE public\.zones ADD COLUMN IF NOT EXISTS zip_fill_pending_since timestamptz;/,
+    );
+    expect(code).toMatch(
+      /ALTER TABLE public\.zones ADD COLUMN IF NOT EXISTS zip_fill_last_tried_at timestamptz;/,
     );
     expect(code).toMatch(/PARTITION BY z\.organization_id\s+ORDER BY z\.created_at ASC, z\.id ASC/);
     expect(code).toMatch(/SET priority = r\.rank_priority/);
@@ -387,10 +428,29 @@ describe("the migration that ranks existing areas newest first", () => {
     expect(code).toMatch(/AND z\.priority IS DISTINCT FROM r\.rank_priority/);
   });
 
+  it("reorders in one statement, under row-level security, and not for anon", () => {
+    expect(code).toMatch(
+      /CREATE OR REPLACE FUNCTION public\.reorder_zones\(_org_id uuid, _ids uuid\[\]\)/,
+    );
+    const fn = code.slice(code.indexOf("FUNCTION public.reorder_zones"), code.indexOf("$fn$;"));
+    expect(fn).toMatch(/SECURITY INVOKER/);
+    expect(fn).not.toMatch(/SECURITY DEFINER/);
+    // One UPDATE over the list, not a loop.
+    expect(code.match(/UPDATE public\.zones z\s+SET priority = cardinality\(_ids\)/g)).toHaveLength(1);
+    expect(code).toMatch(/FROM unnest\(_ids\) WITH ORDINALITY AS o\(id, ord\)/);
+    expect(code).toMatch(/the list is not this business''s areas/);
+    expect(code).toMatch(
+      /REVOKE ALL ON FUNCTION public\.reorder_zones\(uuid, uuid\[\]\) FROM PUBLIC, anon;/,
+    );
+    expect(code).toMatch(
+      /GRANT EXECUTE ON FUNCTION public\.reorder_zones\(uuid, uuid\[\]\) TO authenticated, service_role;/,
+    );
+  });
+
   it("raises on what it establishes and only reports what it found", () => {
     expect(code).toMatch(/HAVING count\(\*\) > 1/);
-    expect(code).toMatch(/RAISE EXCEPTION '\[20261112020000\] % business\/priority pair/);
-    expect(code).toMatch(/RAISE WARNING '\[20261112020000\] ranked the areas of/);
+    expect(code).toMatch(/RAISE EXCEPTION '\[20261112030000\] % business\/priority pair/);
+    expect(code).toMatch(/RAISE WARNING '\[20261112030000\] ranked the areas of/);
   });
 
   it("names no business and touches no row by id", () => {
@@ -441,7 +501,7 @@ describe.skipIf(!reachable)("the ranking migration, in a real database", () => {
     expect(existsSync(PROOF)).toBe(true);
   });
 
-  it("ranks three areas newest first, per business, and a second run changes nothing", () => {
+  it("ranks three areas newest first, per business, a second run changes nothing, and the owner's reorder lands whole", () => {
     const r = spawnSync(
       psql!,
       [DB_URL, "-X", "-v", `migration=${join(ROOT, MIGRATION)}`, "-f", PROOF],
@@ -450,7 +510,7 @@ describe.skipIf(!reachable)("the ranking migration, in a real database", () => {
     const out = `${r.stdout}\n${r.stderr}`;
     expect(r.status, out).toBe(0);
     expect(out).not.toMatch(/PROOF FAILED/);
-    expect(out.match(/NOTICE:\s+ok: /g)?.length, out).toBe(4);
+    expect(out.match(/NOTICE:\s+ok: /g)?.length, out).toBe(6);
     expect(out).toMatch(/ALL RANKING PROOFS PASSED/);
 
     const left = spawnSync(

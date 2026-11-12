@@ -43,8 +43,8 @@ vi.mock("@tanstack/react-start", () => ({
 }));
 vi.mock("@/integrations/supabase/auth-middleware", () => ({ requireSupabaseAuth: {} }));
 vi.mock("@/lib/authz.server", () => ({
-  resolveCaller: async () => ({ orgId: "org-1", role: "owner" }),
-  requirePermission: async () => ({ orgId: "org-1", role: "owner" }),
+  resolveCaller: async () => ({ orgId: "org-1", role: state.role }),
+  requirePermission: async () => ({ orgId: "org-1", role: state.role }),
 }));
 vi.mock("@/lib/zones-redetect.server", () => ({
   redetectZonesForOrg: async () => {
@@ -94,6 +94,15 @@ function fakeDb(opts: { zones?: Record<string, any>[]; rpcFails?: boolean } = {}
     rpcCalls,
     rpc: async (name: string, args: any) => {
       rpcCalls.push({ name, args });
+      if (name === "reorder_zones") {
+        // The migration's one-statement reorder: top of the list gets N.
+        const ids: string[] = args._ids;
+        ids.forEach((id, i) => {
+          const r = rows.find((x) => x.id === id);
+          if (r) r.priority = ids.length - i;
+        });
+        return result(ids.length);
+      }
       if (name !== "zip_centroids_in_box") throw new Error(`unexpected rpc ${name}`);
       if (opts.rpcFails) return { data: null, error: { message: "boom" } };
       const found = CENSUS.filter(
@@ -161,7 +170,7 @@ function fakeDb(opts: { zones?: Record<string, any>[]; rpcFails?: boolean } = {}
   return db;
 }
 
-const state = vi.hoisted(() => ({ db: null as any, redetects: 0 }));
+const state = vi.hoisted(() => ({ db: null as any, redetects: 0, role: "owner" as string }));
 
 const { createZone, updateZone, listZones } = await import("@/lib/zones.functions");
 
@@ -185,6 +194,7 @@ const savedZone = (over: Record<string, unknown> = {}) => ({
   priority: 1,
   zip_codes: [] as string[],
   zip_fill_pending_since: null as string | null,
+  zip_fill_last_tried_at: null as string | null,
   postal_prefix: null,
   pricing_mode: "flat",
   area_max_charge_cents: null,
@@ -215,6 +225,7 @@ const LONELY_MILE: { lat: number; lng: number } = await (async () => {
 beforeEach(() => {
   state.db = fakeDb();
   state.redetects = 0;
+  state.role = "owner";
 });
 
 describe("a drawn area lists its ZIPs the moment it is saved", () => {
@@ -328,25 +339,57 @@ describe("a lookup that fails saves the area and marks the fill pending", () => 
       zones: [savedZone({ zip_fill_pending_since: "2026-11-11T20:00:00Z" })],
     });
     const out = await listZones();
-    const written = state.db.updates.find((u: any) => u.id === ZONE_1);
-    expect(written).toBeTruthy();
-    expect(written.org).toBe("org-1");
-    expect(written.patch.zip_codes).toContain("48226");
-    expect(written.patch.zip_fill_pending_since).toBeNull();
+    const mine = state.db.updates.filter((u: any) => u.id === ZONE_1);
+    // The attempt is stamped first, then the fill is written.
+    expect(mine).toHaveLength(2);
+    expect(typeof mine[0].patch.zip_fill_last_tried_at).toBe("string");
+    expect(mine[1].org).toBe("org-1");
+    expect(mine[1].patch.zip_codes).toContain("48226");
+    expect(mine[1].patch.zip_fill_pending_since).toBeNull();
     expect(out.zones[0].zip_codes).toContain("48226");
     expect(out.zones[0].zip_fill_pending_since).toBeNull();
     expect(state.redetects).toBe(1);
   });
 
-  it("a retry that fails again leaves the mark and the list still comes back", async () => {
+  it("a retry that fails again leaves the mark, stamps the attempt, and the list still comes back", async () => {
     state.db = fakeDb({
       zones: [savedZone({ zip_fill_pending_since: "2026-11-11T20:00:00Z" })],
       rpcFails: true,
     });
     const out = await listZones();
+    expect(state.db.updates).toHaveLength(1);
+    expect(typeof state.db.updates[0].patch.zip_fill_last_tried_at).toBe("string");
+    expect(out.zones[0].zip_fill_pending_since).toBe("2026-11-11T20:00:00Z");
+    expect(typeof out.zones[0].zip_fill_last_tried_at).toBe("string");
+    expect(state.redetects).toBe(0);
+  });
+
+  it("not on every read: an area tried in the last ten minutes is left alone", async () => {
+    const { ZIP_FILL_RETRY_MS, zipFillRetryDue } = await import("@/lib/zones.functions");
+    const justTried = new Date(Date.now() - 60_000).toISOString();
+    state.db = fakeDb({
+      zones: [savedZone({ zip_fill_pending_since: "2026-11-11T20:00:00Z", zip_fill_last_tried_at: justTried })],
+    });
+    await listZones();
+    expect(state.db.rpcCalls).toHaveLength(0);
+    expect(state.db.updates).toHaveLength(0);
+    // And one tried longer ago than the window is due again.
+    const longAgo = new Date(Date.now() - ZIP_FILL_RETRY_MS - 1000).toISOString();
+    expect(zipFillRetryDue({ zip_fill_pending_since: "x", zip_fill_last_tried_at: longAgo })).toBe(true);
+    expect(zipFillRetryDue({ zip_fill_pending_since: "x", zip_fill_last_tried_at: justTried })).toBe(false);
+    expect(zipFillRetryDue({ zip_fill_pending_since: null, zip_fill_last_tried_at: null })).toBe(false);
+    expect(ZIP_FILL_RETRY_MS).toBe(10 * 60 * 1000);
+  });
+
+  it("a reader who may not edit zones never looks anything up", async () => {
+    state.role = "tech";
+    state.db = fakeDb({
+      zones: [savedZone({ zip_fill_pending_since: "2026-11-11T20:00:00Z" })],
+    });
+    const out = await listZones();
+    expect(state.db.rpcCalls).toHaveLength(0);
     expect(state.db.updates).toHaveLength(0);
     expect(out.zones[0].zip_fill_pending_since).toBe("2026-11-11T20:00:00Z");
-    expect(state.redetects).toBe(0);
   });
 
   it("an area that is not pending is not looked up by the list", async () => {
@@ -451,12 +494,15 @@ describe("a new area goes to the bottom of the ranking", () => {
     expect(state.db.inserted[0].priority).toBe(7);
   });
 
-  it("at the floor, the business is renumbered first and the new area goes under it", async () => {
+  it("at the floor, the business is renumbered first, in one statement, and the new area goes under it", async () => {
     state.db = fakeDb({
       zones: [savedZone({ id: "a", priority: -998 }), savedZone({ id: "b", priority: -999 })],
     });
     await createZone({ data: drawnCircle() } as any);
     expect(state.db.inserted[0].priority).toBe(0);
+    expect(state.db.rpcCalls.filter((c: any) => c.name === "reorder_zones")).toEqual([
+      { name: "reorder_zones", args: { _org_id: "org-1", _ids: ["a", "b"] } },
+    ]);
     expect(state.db.rows.find((r: any) => r.id === "a").priority).toBe(2);
     expect(state.db.rows.find((r: any) => r.id === "b").priority).toBe(1);
   });

@@ -101,20 +101,91 @@ BEGIN
   RAISE NOTICE 'ok: running the migration twice changes nothing';
 END $$;
 
--- ── 4. The pending column exists and a new area is written without it ──────
+-- ── 4. The pending columns exist and a new area is written without them ────
 DO $$
-DECLARE _pending timestamptz;
+DECLARE _pending timestamptz; _tried timestamptz;
 BEGIN
   INSERT INTO public.zones (id, organization_id, name, priority, zip_codes,
                             geo_match_mode, center_latitude, center_longitude, radius_meters)
   VALUES ('28580000-0000-4000-8000-00000000000f', '0a858000-0000-4000-8000-000000000001',
           'Area after', 0, '{}', 'radius', 42.36, -83.08, 4000);
-  SELECT zip_fill_pending_since INTO _pending FROM public.zones
+  SELECT zip_fill_pending_since, zip_fill_last_tried_at INTO _pending, _tried FROM public.zones
    WHERE id = '28580000-0000-4000-8000-00000000000f';
-  IF _pending IS NOT NULL THEN
-    RAISE EXCEPTION 'PROOF FAILED [pending]: a new area starts pending';
+  IF _pending IS NOT NULL OR _tried IS NOT NULL THEN
+    RAISE EXCEPTION 'PROOF FAILED [pending]: a new area starts pending or tried';
   END IF;
-  RAISE NOTICE 'ok: zip_fill_pending_since exists and is null for a fresh area';
+  RAISE NOTICE 'ok: zip_fill_pending_since and zip_fill_last_tried_at exist and are null for a fresh area';
+END $$;
+
+-- ── 5. The owner's reorder lands whole, as one statement ───────────────────
+-- Business A now has four areas (the three ranked plus "Area after" at 0).
+-- The owner of A, through RLS, puts them bottom-up: Area after on top.
+SELECT set_config('request.jwt.claims',
+  '{"sub":"a8580000-0000-4000-8000-000000000001","role":"authenticated"}', true);
+SET LOCAL ROLE authenticated;
+DO $$
+DECLARE _n integer; _order text;
+BEGIN
+  _n := public.reorder_zones('0a858000-0000-4000-8000-000000000001', ARRAY[
+    '28580000-0000-4000-8000-00000000000f',
+    '28580000-0000-4000-8000-00000000000a',
+    '28580000-0000-4000-8000-00000000000b',
+    '28580000-0000-4000-8000-00000000000c']::uuid[]);
+  IF _n <> 4 THEN
+    RAISE EXCEPTION 'PROOF FAILED [reorder]: % rows written, expected 4', _n;
+  END IF;
+  SELECT string_agg(name || '=' || priority, ', ' ORDER BY priority DESC) INTO _order
+    FROM public.zones WHERE organization_id = '0a858000-0000-4000-8000-000000000001';
+  IF _order <> 'Area after=4, Oldest area=3, Middle area=2, Newest area=1' THEN
+    RAISE EXCEPTION 'PROOF FAILED [reorder]: business A is ranked %', _order;
+  END IF;
+  -- A list that leaves an area out, or names another business's, is refused
+  -- before anything is written.
+  BEGIN
+    PERFORM public.reorder_zones('0a858000-0000-4000-8000-000000000001', ARRAY[
+      '28580000-0000-4000-8000-00000000000f',
+      '28580000-0000-4000-8000-00000000000a']::uuid[]);
+    RAISE EXCEPTION 'PROOF FAILED [reorder-partial]: a partial list was accepted';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM NOT LIKE 'reorder_zones: the list is not this business%' THEN RAISE; END IF;
+  END;
+  SELECT string_agg(name || '=' || priority, ', ' ORDER BY priority DESC) INTO _order
+    FROM public.zones WHERE organization_id = '0a858000-0000-4000-8000-000000000001';
+  IF _order <> 'Area after=4, Oldest area=3, Middle area=2, Newest area=1' THEN
+    RAISE EXCEPTION 'PROOF FAILED [reorder-partial]: the refused list changed something: %', _order;
+  END IF;
+  RAISE NOTICE 'ok: the owner''s reorder lands whole, and a partial list is refused untouched';
+END $$;
+RESET ROLE;
+
+-- ── 6. A member of another business cannot reorder these areas ─────────────
+SELECT set_config('request.jwt.claims',
+  '{"sub":"a8580000-0000-4000-8000-000000000002","role":"authenticated"}', true);
+SET LOCAL ROLE authenticated;
+DO $$
+DECLARE _order text;
+BEGIN
+  BEGIN
+    PERFORM public.reorder_zones('0a858000-0000-4000-8000-000000000001', ARRAY[
+      '28580000-0000-4000-8000-00000000000c',
+      '28580000-0000-4000-8000-00000000000b',
+      '28580000-0000-4000-8000-00000000000a',
+      '28580000-0000-4000-8000-00000000000f']::uuid[]);
+    RAISE EXCEPTION 'PROOF FAILED [cross-tenant]: another business reordered A''s areas';
+  EXCEPTION WHEN raise_exception OR insufficient_privilege THEN
+    IF SQLERRM LIKE 'PROOF FAILED%' THEN RAISE; END IF;
+  END;
+  RAISE NOTICE 'ok: a member of another business is refused';
+END $$;
+RESET ROLE;
+DO $$
+DECLARE _order text;
+BEGIN
+  SELECT string_agg(name || '=' || priority, ', ' ORDER BY priority DESC) INTO _order
+    FROM public.zones WHERE organization_id = '0a858000-0000-4000-8000-000000000001';
+  IF _order <> 'Area after=4, Oldest area=3, Middle area=2, Newest area=1' THEN
+    RAISE EXCEPTION 'PROOF FAILED [cross-tenant]: the refused reorder changed something: %', _order;
+  END IF;
 END $$;
 
 DO $$ BEGIN RAISE NOTICE 'ALL RANKING PROOFS PASSED'; END $$;

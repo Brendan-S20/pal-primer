@@ -2,7 +2,13 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
-import { fullOrder, MIN_PRIORITY, placeAtBottom, prioritiesForOrder } from "@/lib/zone-ranking";
+import {
+  fullOrder,
+  MIN_PRIORITY,
+  placeAtBottom,
+  prioritiesForOrder,
+  rankedZones,
+} from "@/lib/zone-ranking";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   return (await resolveCaller(supabase, userId)).orgId;
@@ -151,16 +157,19 @@ export const listZones = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    const orgId = await resolveOrgId(supabase, userId);
+    const { orgId, role } = await resolveCaller(supabase, userId);
     const { data, error } = await (supabase as any)
       .from("zones")
       .select(
-        "id, name, priority, created_at, postal_prefix, zip_codes, zip_fill_pending_since, account_type, price_note, latitude, longitude, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, area_max_charge_cents, commercial_base_cents, commercial_per_unit_cents, commercial_per_acre_cents, commercial_per_station_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, enabled",
+        "id, name, priority, created_at, postal_prefix, zip_codes, zip_fill_pending_since, zip_fill_last_tried_at, account_type, price_note, latitude, longitude, base_price_cents, per_dog_addl_cents, initial_cleanup_cents, pricing_mode, price_per_sqft_cents, price_per_acre_cents, area_min_charge_cents, area_max_charge_cents, commercial_base_cents, commercial_per_unit_cents, commercial_per_acre_cents, commercial_per_station_cents, geo_match_mode, boundary, center_latitude, center_longitude, radius_meters, drive_time_minutes, enabled",
       )
       .eq("organization_id", orgId)
       .order("name");
     if (error) throw new Error(error.message);
-    const rows = await retryPendingZipFills(supabase, orgId, data ?? []);
+    const { hasPermission } = await import("@/lib/permissions");
+    const rows = hasPermission(role, "manage_pricing")
+      ? await retryPendingZipFills(supabase, orgId, data ?? [])
+      : (data ?? []);
     const activeClients = await activeClientCounts(supabase, orgId);
     return {
       zones: rows.map((z: any) => ({
@@ -212,19 +221,51 @@ async function activeClientCounts(
   }
 }
 
+/** A pending area is retried at most this often, by a list read. */
+export const ZIP_FILL_RETRY_MS = 10 * 60 * 1000;
+
+/** Whether a list read should retry this pending area now: never tried, or
+ *  tried more than ZIP_FILL_RETRY_MS ago. */
+export function zipFillRetryDue(
+  z: { zip_fill_pending_since?: string | null; zip_fill_last_tried_at?: string | null },
+  now: number = Date.now(),
+): boolean {
+  if (!z.zip_fill_pending_since) return false;
+  if (!z.zip_fill_last_tried_at) return true;
+  const tried = new Date(z.zip_fill_last_tried_at).getTime();
+  return !Number.isFinite(tried) || now - tried >= ZIP_FILL_RETRY_MS;
+}
+
 /**
  * A save whose ZIP lookup failed is marked pending (#858: "the area still
- * saves ... and the fill retries automatically"). This is the retry: every
- * read of the list runs the fill again for each pending area, in the reader's
- * own session (zip_centroids_in_box needs org membership), writes what it
- * finds and clears the mark. Best effort, like the save: a lookup that fails
- * again leaves the mark for the next read, and never fails the list.
+ * saves ... and the fill retries automatically"). This is the retry: a read
+ * of the list by someone who may edit zones (manage_pricing; the caller
+ * checks) runs the fill again for each pending area that has not been tried
+ * in the last ten minutes, in the reader's own session
+ * (zip_centroids_in_box needs org membership), writes what it finds and
+ * clears the mark. The attempt is stamped BEFORE the lookup, so a lookup that
+ * fails again waits its ten minutes rather than running on every page load.
+ * Best effort, like the save: nothing here fails the list.
  */
 async function retryPendingZipFills(supabase: any, orgId: string, rows: any[]): Promise<any[]> {
-  const pending = rows.filter((z) => z.zip_fill_pending_since);
+  const pending = rows.filter((z) => zipFillRetryDue(z));
   if (pending.length === 0) return rows;
   const byId = new Map<string, any>();
+  let filled = 0;
   for (const z of pending) {
+    const triedAt = new Date().toISOString();
+    const { error: stampErr } = await (supabase as any)
+      .from("zones")
+      .update({ zip_fill_last_tried_at: triedAt })
+      .eq("id", z.id)
+      .eq("organization_id", orgId);
+    if (stampErr) {
+      // Cannot write (RLS, or a read-only role that slipped past the check):
+      // do not look anything up for an area that can never be cleared.
+      console.warn(`[zones] pending ZIP fill not retried for ${z.id}:`, stampErr.message);
+      continue;
+    }
+    byId.set(z.id, { ...z, zip_fill_last_tried_at: triedAt });
     const fill = await fillZipsBestEffort(supabase, orgId, shapeOfRow(z), [
       ...((z.zip_codes as string[]) ?? []),
     ]);
@@ -239,10 +280,10 @@ async function retryPendingZipFills(supabase: any, orgId: string, rows: any[]): 
       continue;
     }
     byId.set(z.id, { ...z, zip_codes: fill.zipCodes, zip_fill_pending_since: null });
+    filled++;
   }
-  if (byId.size === 0) return rows;
   // The ZIPs just written can claim addresses saved while the fill waited.
-  await redetectBestEffort(supabase, orgId);
+  if (filled > 0) await redetectBestEffort(supabase, orgId);
   return rows.map((z) => byId.get(z.id) ?? z);
 }
 
@@ -554,25 +595,33 @@ async function bottomPriority(supabase: any, orgId: string): Promise<number> {
     console.error(`[zones] could not read priorities for org ${orgId}:`, error.message);
     return 0;
   }
-  const placed = placeAtBottom((data ?? []) as Array<{ id: string; name: string; priority: number }>);
+  const zones = (data ?? []) as Array<{ id: string; name: string; priority: number }>;
+  const placed = placeAtBottom(zones);
   if (placed.renumber) {
-    for (const [id, priority] of placed.renumber) {
-      const { error: e } = await (supabase as any)
-        .from("zones")
-        .update({ priority })
-        .eq("id", id)
-        .eq("organization_id", orgId);
-      if (e) throw new Error(e.message);
-    }
+    // The whole business, densely, in one statement (reorder_zones).
+    await writeRanking(supabase, orgId, rankedZones(zones).map((z) => z.id));
   }
   return placed.priority;
+}
+
+/** One statement for the whole order: the migration's reorder_zones, which
+ *  lands the list whole or not at all and refuses a list that is not the
+ *  business's complete set. */
+async function writeRanking(supabase: any, orgId: string, idsTopToBottom: string[]) {
+  const { error } = await (supabase as any).rpc("reorder_zones", {
+    _org_id: orgId,
+    _ids: idsTopToBottom,
+  });
+  if (error) throw new Error(error.message);
 }
 
 /**
  * Reorder the business's areas (#858): `ids` top to bottom. The top gets the
  * highest priority, so it wins any ZIP it shares with one below it, on this
  * screen, in the signup quote and in every assignment from now on. History
- * is not rewritten: visits already booked keep their zone and price.
+ * is not rewritten: visits already booked keep their zone and price. Written
+ * as ONE statement (reorder_zones, 20261112030000), so a failure or a second
+ * person reordering at the same moment never leaves half an order.
  */
 export const reorderZones = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -591,15 +640,10 @@ export const reorderZones = createServerFn({ method: "POST" })
     if (unknown.length) throw new Error("Zone not found.");
     const order = fullOrder(data.ids, zones);
     const priorities = prioritiesForOrder(order);
-    for (const z of zones) {
-      const priority = priorities.get(z.id)!;
-      if (priority === z.priority) continue;
-      const { error: e } = await (supabase as any)
-        .from("zones")
-        .update({ priority })
-        .eq("id", z.id)
-        .eq("organization_id", orgId);
-      if (e) throw new Error(e.message);
+    // Nothing to write when every area already has its priority: a repeated
+    // tap, or a reorder another tab already saved.
+    if (zones.some((z) => priorities.get(z.id) !== z.priority)) {
+      await writeRanking(supabase, orgId, order);
     }
     // A ZIP that changed hands changes which zone its addresses are in.
     const propertiesUpdated = await redetectBestEffort(supabase, orgId, userId);
