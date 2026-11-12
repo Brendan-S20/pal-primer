@@ -6,6 +6,7 @@ import { EMAIL_ALREADY_REGISTERED } from "@/lib/signup-email";
 import { SIGNUP_ORG_PENDING } from "@/lib/signup-marker";
 import {
   isPasswordRejection,
+  LEAKED_PASSWORD_REASON,
   passwordRejectionMessage,
   passwordSchema,
 } from "@/lib/password-policy";
@@ -49,6 +50,28 @@ export const checkEmailAccount = createServerFn({ method: "POST" })
 export function likeExactly(value: string): string {
   return value.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
+
+// The password half of Get started's first step (#807). The shared rules are
+// checked in the browser as the person types; this adds the one rule only a
+// server can check, the leaked-password list the auth server also consults,
+// so a breached password is named when the person leaves the field or presses
+// Continue, not after they have filled in the rest of the walkthrough.
+//
+// Anonymous on purpose: nobody is signed in yet. It reads nothing and writes
+// nothing; the password is not stored or logged, and only a five-character
+// hash prefix leaves this server (lib/password-breach.ts). "Couldn't tell" is
+// `ok: true`: registerAccount's auth-server check stays the source of truth.
+export const checkNewPassword = createServerFn({ method: "POST" })
+  // The shared rules, as for registerAccount. The form sends only a password
+  // they already pass, so a refusal here means a caller other than the form.
+  .inputValidator((d) => z.object({ password: passwordSchema }).parse(d))
+  .handler(async ({ data }): Promise<{ ok: boolean; problem: string | null }> => {
+    const { isPasswordBreached } = await import("@/lib/password-breach");
+    if ((await isPasswordBreached(data.password)) === true) {
+      return { ok: false, problem: passwordRejectionMessage(LEAKED_PASSWORD_REASON) };
+    }
+    return { ok: true, problem: null };
+  });
 
 // Frictionless signup: create the user auto-confirmed so they can sign in
 // immediately — email verification is tracked as our own to-do (and gates
@@ -121,6 +144,22 @@ export const settleSignupMarker = createServerFn({ method: "POST" })
     const { clearSignupMarker } = await import("@/lib/signup-marker");
     await clearSignupMarker(supabaseAdmin, context.userId);
     return { cleared: true };
+  });
+
+/**
+ * Give up the caller's own membership of the business that turned them off
+ * (#765), so the address can start a business of its own or join another.
+ * As the caller, never the service role: the database function acts only for
+ * auth.uid(), refuses anybody who is on, and keeps their staff row and its
+ * history. Says nothing about the business beyond what /access-off already
+ * showed them.
+ */
+export const leaveBusinessIWasTurnedOffIn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { error } = await (context.supabase as any).rpc("leave_business_i_was_turned_off_in");
+    if (error) throw new Error(error.message);
+    return { ok: true };
   });
 
 // Mint a verification token and queue the email (same Resend queue the auth

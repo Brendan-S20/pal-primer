@@ -8756,6 +8756,65 @@ export type Database = {
           },
         ]
       }
+      walk_dog_cap_overrides: {
+        Row: {
+          cap: number
+          dogs: number
+          id: string
+          organization_id: string
+          over_by: number | null
+          recorded_at: string
+          recorded_by: string | null
+          recorded_tx: number
+          staff_id: string
+          walk_group_id: string
+        }
+        Insert: {
+          cap: number
+          dogs: number
+          id?: string
+          organization_id: string
+          recorded_at?: string
+          recorded_by?: string | null
+          recorded_tx?: number
+          staff_id: string
+          walk_group_id: string
+        }
+        Update: {
+          cap?: number
+          dogs?: number
+          id?: string
+          organization_id?: string
+          recorded_at?: string
+          recorded_by?: string | null
+          recorded_tx?: number
+          staff_id?: string
+          walk_group_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "walk_dog_cap_overrides_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "walk_dog_cap_overrides_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "walk_dog_cap_overrides_walk_group_id_fkey"
+            columns: ["walk_group_id"]
+            isOneToOne: false
+            referencedRelation: "walk_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       walk_groups: {
         Row: {
           assigned_staff_id: string | null
@@ -11267,6 +11326,16 @@ export type Database = {
       void_addon_charge: { Args: { _charge_id: string }; Returns: undefined }
       void_invoice: { Args: { _invoice_id: string }; Returns: undefined }
       walk_dogs_on_visit: { Args: { _visit_id: string }; Returns: number }
+      walks_over_dog_cap: {
+        Args: { _day: string; _org: string }
+        Returns: {
+          cap: number
+          dogs: number
+          staff_id: string
+          visit_ids: string[]
+          walk_group_id: string
+        }[]
+      }
       webhook_claim_deliveries: {
         Args: { _lease_seconds: number; _limit: number; _only?: string }
         Returns: {
