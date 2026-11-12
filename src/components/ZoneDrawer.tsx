@@ -15,6 +15,7 @@ import {
   listZones,
   zipsInZoneShape,
   geocodePostal,
+  getNewZoneCenter,
   splitZipInput,
   parseUsZips,
   normalizeUsZip,
@@ -268,6 +269,13 @@ export function ZoneDrawer({
   activeClientsKnown?: boolean;
 }) {
   const isNew = !zone;
+  const getCenter = useServerFn(getNewZoneCenter);
+  const { data: openingCenter } = useQuery({
+    queryKey: ["new-zone-center"],
+    queryFn: () => getCenter(),
+    enabled: open && isNew,
+    staleTime: 60_000,
+  });
   // The switch saves on its own (#449); this only keeps the drawer's copy of
   // the status current while it stays open.
   const [enabledNow, setEnabledNow] = useState<boolean>(zone?.enabled !== false);
@@ -789,6 +797,7 @@ export function ZoneDrawer({
           </p>
           <ZoneCoverageMap
             initial={initialCoverage}
+            openingCenter={isNew ? openingCenter : null}
             onChange={handleCoverage}
             focusPoint={focusPoint}
             height={300}

@@ -854,3 +854,20 @@ export const deleteZone = createServerFn({ method: "POST" })
     const propertiesUpdated = await redetectBestEffort(supabase, orgId, userId);
     return { ok: true, propertiesUpdated };
   });
+
+/** Viewport for an unplaced new zone; scoped to the caller's organization. */
+export const getNewZoneCenter = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+    const { data: org, error } = await supabase
+      .from("organizations")
+      .select("contact_address, latitude, longitude")
+      .eq("id", orgId)
+      .single();
+    if (error) throw new Error(error.message);
+    const { newZoneCenter } = await import("@/lib/new-zone-center");
+    const { geocodeAddress } = await import("@/lib/geocode.server");
+    return newZoneCenter(org, (address) => geocodeAddress({ street: address }));
+  });
