@@ -515,6 +515,7 @@ const es: Translations = {
     length: "Paseo de {{minutes}} min",
     minutesOut: "Fuera {{minutes}} min",
     groupWalk: "Paseo en grupo",
+    overDogCap: "Por encima del límite de perros: {{dogs}} perros, el límite es {{cap}}",
     pickupOrder: "Orden de recogida",
     thisStop: "Esta parada",
     wayIn: "Cómo entrar",

@@ -560,6 +560,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     length: "نزهة {{minutes}} دقيقة",
     minutesOut: "في الخارج منذ {{minutes}} دقيقة",
     groupWalk: "نزهة جماعية",
+    overDogCap: "فوق الحد الأقصى للكلاب: {{dogs}} كلاب، والحد الأقصى {{cap}}",
     pickupOrder: "ترتيب الاستلام",
     thisStop: "هذه المحطة",
     wayIn: "طريقة الدخول",
