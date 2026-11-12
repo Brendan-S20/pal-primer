@@ -296,6 +296,23 @@ describe("the quote paths", () => {
     }
   });
 
+  it("answer the preflight with the route's own handler under `vite dev` too", () => {
+    // Vite's cors middleware ends every OPTIONS before any route, so in dev
+    // the alias's preflight came back 204 with no Allow-Origin (#909, job
+    // 131382922076). vite.config.ts hands that path's preflight to the
+    // route's OPTIONS handler, ahead of Vite's middleware.
+    const vite = read("vite.config.ts");
+    expect(vite).toMatch(
+      /"\/api\/public\/directory\/quotes": "\/src\/routes\/api\/public\/directory\/quotes\.ts"/,
+    );
+    expect(vite).toMatch(/Route\.options\.server\.handlers\.OPTIONS\(\{ request \}\)/);
+    expect(vite).toMatch(/server\.middlewares\.stack\.unshift\(\{ route: "", handle \}\)/);
+    expect(vite).toMatch(/apply: "serve"/);
+    expect(vite).toMatch(/plugins: \[\s+preflightToTheRoute,/);
+    // The tenant path is not on the list: it keeps whatever it answered before.
+    expect(vite).not.toMatch(/"\/api\/public\/leads": "/);
+  });
+
   it("delegate to the same handler, so the guards are the same code", () => {
     const alias = read("src/routes/api/public/directory/quotes.ts");
     expect(alias).toMatch(/createFileRoute\("\/api\/public\/directory\/quotes"\)/);
