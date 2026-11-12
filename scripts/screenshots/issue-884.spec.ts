@@ -1,8 +1,8 @@
 import { test, expect } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { installSignedInSession } from "./fixtures/session";
-import { installStubBackend } from "./fixtures/stub-backend";
-import { beforeNewZoneCenter } from "./fixtures/issue-884-before-center";
+import { installSignedInSession } from "../../tests/viewports/fixtures/session";
+import { installStubBackend } from "../../tests/viewports/fixtures/stub-backend";
+import { beforeNewZoneCenter } from "./issue-884-before-center";
 import { newZoneCenter } from "../../src/lib/new-zone-center";
 
 const directory = ".helm/screenshots/issue-884";

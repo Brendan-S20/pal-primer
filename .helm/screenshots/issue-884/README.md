@@ -8,7 +8,7 @@ These Chromium screenshots use the real `/zones` page and zone drawer with the r
 | 768 × 1000 | [Before](before-768.png) | [After](after-768.png) | [Existing](existing-768.png) |
 | 1280 × 1000 | [Before](before-1280.png) | [After](after-1280.png) | [Existing](existing-1280.png) |
 
-“Before” executes the pre-review lookup helper from PR commit `248fe0ed`, preserved in `tests/viewports/fixtures/issue-884-before-center.ts`. “After” executes the current helper. Both use the same Lansing org with a stored point at **42.73, -84.55** and a matching address. Before makes **one mocked geocoder call**; after makes **zero**. Their city-level views intentionally look the same: the fix removes the unnecessary paid call without moving the map. No real paid geocoder is called to generate this evidence.
+“Before” executes the pre-review lookup helper from PR commit `248fe0ed`, preserved in `scripts/screenshots/issue-884-before-center.ts`. “After” executes the current helper. Both use the same Lansing org with a stored point at **42.73, -84.55** and a matching address. Before makes **one mocked geocoder call**; after makes **zero**. Their city-level views intentionally look the same: the fix removes the unnecessary paid call without moving the map. No real paid geocoder is called to generate this evidence.
 
 The existing radius zone is centered at **42.33, -83.05** in Detroit. Opening its editor does not request the new-zone center. The browser checks that each map loads the tile containing its expected point at city zoom, and that opening a new map places no coverage center. Existing geometry remains visible.
 
@@ -19,7 +19,9 @@ The managed environment denies access to `tile.openstreetmap.org` (HTTP 403), an
 ## Reproduce
 
 ```sh
-SWEEP_CHROMIUM=/usr/bin/chromium npx playwright test issue-884-zone-map-evidence --workers=1
+SWEEP_CHROMIUM=/usr/bin/chromium npx playwright test --config scripts/screenshots/issue-884.config.ts --workers=1
 ```
 
 The test uses the existing Playwright dev-server configuration. No environment files, feature flags, CI, migrations or setup routes were changed.
+
+This on-demand evidence generator lives under `scripts/screenshots/`, outside the CI viewport suite. The lookup and viewport behavior are covered by the unit tests; generating evidence does not change CI configuration.
