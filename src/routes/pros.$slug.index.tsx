@@ -15,6 +15,8 @@ import { DirectoryReviews } from "@/components/directory/DirectoryReviews";
 import { directoryHead, directoryLineLabel, type DirectoryProfile } from "@/lib/directory";
 import { DIRECTORY_BRAND, directoryOrigin } from "@/lib/directory-site";
 import { pageTitle } from "@/lib/page-title";
+import { DIRECTORY_BEFORE_YOU_BOOK_PHOTO } from "@/lib/directory-brand";
+import { DirectoryPhotoCredits, DirectoryPicture } from "@/components/directory/DirectoryPhotos";
 
 // One business's directory profile (#630, phase 1). Server-rendered, so the
 // HTML carries the profile text. Only what the owner confirmed at opt-in:
@@ -140,11 +142,34 @@ function DirectoryProfilePage() {
             </section>
             {reviewsQ.data ? <DirectoryReviews reviews={reviewsQ.data} /> : null}
           </div>
-          <aside className="min-w-0 space-y-2">
-            <h2 className="text-lg font-semibold">Where they work</h2>
-            <DirectoryCoverage profile={p} />
+          <aside className="min-w-0 space-y-8">
+            <section className="space-y-2">
+              <h2 className="text-lg font-semibold">Where they work</h2>
+              <DirectoryCoverage profile={p} />
+            </section>
+            <section
+              className="overflow-hidden rounded-2xl border bg-card sm:grid sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)] sm:items-center lg:block"
+              data-directory-before-you-book
+            >
+              <div className="aspect-[3/2] bg-muted sm:aspect-square lg:aspect-[3/2]">
+                <DirectoryPicture photo={DIRECTORY_BEFORE_YOU_BOOK_PHOTO} />
+              </div>
+              <div className="space-y-2 p-4">
+                <h2 className="text-lg font-semibold">Before you book</h2>
+                <p className="text-sm text-muted-foreground">
+                  Ask for a quote and the business answers you directly. Prices here are a starting
+                  point the business confirmed; the price you pay is the one they quote you.
+                </p>
+                <Button asChild className="min-h-11 w-full">
+                  <Link to="/pros/$slug/quote" params={{ slug: p.slug }} search={{}}>
+                    Request a quote
+                  </Link>
+                </Button>
+              </div>
+            </section>
           </aside>
         </div>
+        <DirectoryPhotoCredits photos={[DIRECTORY_BEFORE_YOU_BOOK_PHOTO]} />
       </article>
     </DirectoryShell>
   );

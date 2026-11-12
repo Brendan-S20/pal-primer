@@ -10,6 +10,7 @@
 // request a quote. Reviews, held for moderation, are in lib/directory-reviews.ts.
 
 import { SERVICE_LINE_LABEL, type ServiceLine } from "@/lib/service-lines";
+import { directoryIconLinks } from "@/lib/directory-brand";
 
 /** The lines a visitor can search for. `other` is accepted by the database
  *  but means nothing to a visitor, so it is never offered as a search. */
@@ -172,7 +173,7 @@ export function directoryHead(input: {
   indexable?: false;
 }): {
   meta: Array<Record<string, string | undefined>>;
-  links: Array<{ rel: string; href: string }>;
+  links: Array<{ rel: string; href: string; type?: string; sizes?: string }>;
 } {
   const url = `${input.origin}${input.path}`;
   return {
@@ -185,7 +186,9 @@ export function directoryHead(input: {
       { property: "og:description", content: input.description },
       { property: "og:url", content: url },
     ],
-    links: [{ rel: "canonical", href: url }],
+    // The directory's own tab icon (logo A's paw, #898), on directory pages
+    // only: the root's HoundStack icons stay for every other route.
+    links: [{ rel: "canonical", href: url }, ...directoryIconLinks()],
   };
 }
 

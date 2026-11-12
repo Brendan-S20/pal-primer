@@ -22,6 +22,8 @@ import {
   type DirectorySearchLine,
 } from "@/lib/directory";
 import { DIRECTORY_BRAND, directoryOrigin } from "@/lib/directory-site";
+import { DIRECTORY_HERO_PHOTO, DIRECTORY_LINE_PHOTO } from "@/lib/directory-brand";
+import { DirectoryPhotoCredits, DirectoryPicture } from "@/components/directory/DirectoryPhotos";
 import { pageTitle } from "@/lib/page-title";
 
 // HoundStack's directory, the search (#630, phase 1): pick a service, type a
@@ -89,20 +91,34 @@ function DirectorySearch() {
   return (
     <DirectoryShell>
       <div className="space-y-8">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-semibold tracking-tight break-words sm:text-4xl">
-            Find a pet pro near you
-          </h1>
-          <p className="max-w-2xl text-muted-foreground">
-            Search by service and ZIP code, compare up to three businesses, and ask the ones you
-            like for a quote. Nobody pays to be listed here.
-          </p>
+        <div className="grid items-center gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:gap-10">
+          <div className="min-w-0 space-y-3">
+            <h1 className="text-3xl tracking-tight break-words sm:text-4xl lg:text-5xl">
+              Find a pet pro near you
+            </h1>
+            <p className="max-w-2xl text-lg text-foreground">
+              Walkers, sitters, groomers, trainers and pet waste removal, near you. Listing is free
+              for HoundStack businesses.
+            </p>
+            <p className="max-w-2xl text-muted-foreground">
+              Search by service and ZIP code, compare up to three businesses, and ask the ones you
+              like for a quote. Nobody pays to be listed here.
+            </p>
+          </div>
+          <figure className="min-w-0" data-directory-hero>
+            <div className="aspect-[16/9] overflow-hidden rounded-2xl border bg-muted sm:aspect-[3/2]">
+              <DirectoryPicture photo={DIRECTORY_HERO_PHOTO} eager />
+            </div>
+            <figcaption className="mt-1 text-xs text-muted-foreground">
+              Photo: {DIRECTORY_HERO_PHOTO.credit} on Pexels
+            </figcaption>
+          </figure>
         </div>
 
         <form
           method="get"
           action="/pros"
-          className="grid gap-3 rounded-lg border bg-card p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,12rem)_auto] sm:items-end"
+          className="space-y-4 rounded-2xl border bg-card p-4 sm:p-6"
           onSubmit={(e) => {
             e.preventDefault();
             const f = new FormData(e.currentTarget);
@@ -118,38 +134,36 @@ function DirectorySearch() {
             });
           }}
         >
-          <label className="grid min-w-0 gap-1 text-sm font-medium">
-            Service
-            <select
-              name="line"
-              defaultValue={search.line ?? "pet_waste"}
-              className="h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 text-base sm:text-sm"
-            >
+          <fieldset className="min-w-0 space-y-2">
+            <legend className="text-sm font-medium">Service</legend>
+            {/* All five, the same size, none of them first by default (#898):
+                the directory is for every kind of pet pro, not one trade. */}
+            <div className="grid gap-3 sm:grid-cols-5" data-directory-services>
               {DIRECTORY_SEARCH_LINES.map((l) => (
-                <option key={l} value={l}>
-                  {DIRECTORY_LINE_LABEL[l]}
-                </option>
+                <ServiceTile key={l} line={l} checked={search.line === l} />
               ))}
-            </select>
-          </label>
-          <label className="grid min-w-0 gap-1 text-sm font-medium">
-            ZIP code
-            <Input
-              name="zip"
-              inputMode="numeric"
-              autoComplete="postal-code"
-              pattern="[0-9]{5}"
-              maxLength={5}
-              required
-              defaultValue={search.zip ?? ""}
-              placeholder="48201"
-              className="h-11"
-            />
-          </label>
-          <Button type="submit" className="h-11 gap-2">
-            <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
-            Search
-          </Button>
+            </div>
+          </fieldset>
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,16rem)_max-content] sm:items-end sm:justify-start">
+            <label className="grid min-w-0 gap-1 text-sm font-medium">
+              Their ZIP code
+              <Input
+                name="zip"
+                inputMode="numeric"
+                autoComplete="postal-code"
+                pattern="[0-9]{5}"
+                maxLength={5}
+                required
+                defaultValue={search.zip ?? ""}
+                placeholder="48201"
+                className="h-11 bg-background"
+              />
+            </label>
+            <Button type="submit" className="h-11 gap-2">
+              <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
+              Search
+            </Button>
+          </div>
         </form>
 
         {!asked ? (
@@ -226,8 +240,46 @@ function DirectorySearch() {
             </div>
           </div>
         )}
+
+        <DirectoryPhotoCredits photos={SEARCH_PAGE_PHOTOS} />
       </div>
     </DirectoryShell>
+  );
+}
+
+/** The photos this page shows, in the order they appear: the hero, then the
+ *  five services. Each gets a visible credit. */
+const SEARCH_PAGE_PHOTOS = [
+  DIRECTORY_HERO_PHOTO,
+  ...DIRECTORY_SEARCH_LINES.map((l) => DIRECTORY_LINE_PHOTO[l]),
+];
+
+/**
+ * One service as a choice: a radio the size of the whole tile (so the tap
+ * target is the tile, and a plain GET form submits it without JavaScript),
+ * the service's photo, and its name. A row on a phone, a column of five from
+ * 640 up; every tile the same size either way.
+ */
+function ServiceTile({ line, checked }: { line: DirectorySearchLine; checked: boolean }) {
+  const label = DIRECTORY_LINE_LABEL[line];
+  return (
+    <label
+      className="relative flex min-h-11 min-w-0 items-center gap-3 overflow-hidden rounded-xl border bg-background p-2 has-[:checked]:border-primary has-[:checked]:bg-muted has-[:checked]:ring-2 has-[:checked]:ring-primary has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring sm:flex-col sm:items-stretch sm:gap-2"
+      data-directory-service={line}
+    >
+      <input
+        type="radio"
+        name="line"
+        value={line}
+        defaultChecked={checked}
+        required
+        className="absolute inset-0 z-10 m-0 h-full w-full cursor-pointer appearance-none rounded-xl opacity-0"
+      />
+      <span className="aspect-[4/3] w-20 shrink-0 overflow-hidden rounded-lg bg-muted sm:w-full">
+        <DirectoryPicture photo={DIRECTORY_LINE_PHOTO[line]} />
+      </span>
+      <span className="min-w-0 text-sm font-semibold break-words sm:px-1 sm:pb-1">{label}</span>
+    </label>
   );
 }
 

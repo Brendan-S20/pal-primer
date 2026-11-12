@@ -254,3 +254,46 @@ test("the quote form sends one directory quote, with the honeypot and the clock"
   expect(Number(report.leadPosts[0].elapsed_ms)).toBeGreaterThanOrEqual(3_000);
   if (SHOTS) await page.screenshot({ path: join(SHOTS, "quote-sent-360.png"), fullPage: true });
 });
+
+// The visual gate's set (#898): the widths Product reviews the brand at,
+// which are not the four this sweep measures. 390 is the iPhone the Paw Trail
+// mockups were drawn at. Only when DIRECTORY_SCREENSHOTS is set, so CI runs
+// nothing extra. The search page is shot twice: as a visitor first lands on
+// it (hero and the five services) and with results.
+const GATE_WIDTHS = [
+  { w: 390, h: 844 },
+  { w: 768, h: 1024 },
+  { w: 1280, h: 800 },
+] as const;
+const GATE_PAGES = [
+  { key: "search", path: "/pros", marker: "Find a pet pro near you" },
+  ...PAGES.map((p) => (p.key === "search" ? { ...p, key: "search-results" } : p)),
+];
+
+test.describe("the brand's screenshot set", () => {
+  test.skip(!SHOTS, "set DIRECTORY_SCREENSHOTS=<dir> to write the set");
+  for (const { w, h } of GATE_WIDTHS) {
+    for (const pg of GATE_PAGES) {
+      test(`${pg.key} at ${w}`, async ({ page, context }) => {
+        await stubDirectory(context);
+        await page.setViewportSize({ width: w, height: h });
+        await openAndSettle(page, pg.path, pg.marker);
+        // Lazy photos below the fold: scroll them in so the shot shows them.
+        await page.evaluate(async () => {
+          for (let y = 0; y < document.body.scrollHeight; y += 400) {
+            window.scrollTo(0, y);
+            await new Promise((r) => setTimeout(r, 40));
+          }
+          window.scrollTo(0, 0);
+        });
+        await page
+          .waitForFunction(() =>
+            [...document.querySelectorAll("img")].every((i) => i.complete && i.naturalWidth > 0),
+          )
+          .catch(() => {});
+        mkdirSync(SHOTS!, { recursive: true });
+        await page.screenshot({ path: join(SHOTS!, `${pg.key}-${w}.png`), fullPage: true });
+      });
+    }
+  }
+});

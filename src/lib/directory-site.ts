@@ -35,3 +35,12 @@ export function directoryOrigin(): string {
   }
   return appOrigin();
 }
+
+/**
+ * Where the directory's own brand files live under public/ (#898): logo A
+ * lockups, the paw favicon and app icons, and the licensed photos. A path of
+ * its own, so nothing here replaces HoundStack's app icons (public/favicon.*,
+ * public/pwa-*), which every other route still uses. Named here, beside the
+ * brand, because this is the one file in src/ allowed to spell it.
+ */
+export const DIRECTORY_ASSET_BASE = "/brand/mypets";

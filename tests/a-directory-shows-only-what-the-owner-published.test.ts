@@ -32,6 +32,7 @@ import {
   type DirectoryProfile,
 } from "@/lib/directory";
 import { toDirectoryProfiles } from "@/lib/directory.functions";
+import { directoryIconLinks } from "@/lib/directory-brand";
 import { appLinkClaims, STAYS_IN_BROWSER } from "@/lib/android-app-links";
 
 // A proof waits its turn for the shared lock (the-proofs-take-turns.test.ts).
@@ -169,7 +170,11 @@ describe("the pages", () => {
       origin: "https://x.test",
     });
     expect(h.meta).toContainEqual({ name: "robots", content: "noindex, follow" });
-    expect(h.links).toEqual([{ rel: "canonical", href: "https://x.test/pros/acme" }]);
+    // One canonical, then the directory's own tab icons (#898) and nothing else.
+    expect(h.links.filter((l) => l.rel === "canonical")).toEqual([
+      { rel: "canonical", href: "https://x.test/pros/acme" },
+    ]);
+    expect(h.links.filter((l) => l.rel !== "canonical")).toEqual(directoryIconLinks());
   });
 
   it("does not touch the root's head (#738 owns __root.tsx)", () => {
