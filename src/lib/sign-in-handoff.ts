@@ -59,7 +59,9 @@ export function handOffSignIn(email: string, password: string, now = Date.now())
   }
 }
 
-/** The sign-in got where it was going, or the person is signed in anyway. */
+/** The sign-in is over one way or the other: the person is signed in and
+ *  /auth sent them on, or they signed out on purpose. Clears the hand-off and
+ *  the step the form was on. */
 export function signInLanded(): void {
   heldPassword = null;
   try {
@@ -67,6 +69,7 @@ export function signInLanded(): void {
   } catch {
     /* nothing to clear */
   }
+  forgetSignInStep();
 }
 
 /**
@@ -88,34 +91,151 @@ export function takeBouncedSignIn(now = Date.now()): { email: string; password: 
   return { email: parsed.email, password };
 }
 
+// ── THE STEP THE FORM IS ON ─────────────────────────────────────────────────
+//
+// /auth is two steps, and the second exists only in React state. Anything
+// that draws the page afresh (the router swapping in its pending skeleton
+// for a slow navigation and back, an error boundary resetting, a reload)
+// used to put the person on an empty email step with no word of why, which
+// is the screen #785 keeps being filed about. So the email that got them to
+// the password step is kept in this tab's sessionStorage (never the
+// password) until they leave the form one way or the other.
+
+export const SIGN_IN_STEP_KEY = "hs:sign-in-step";
+
+/** Long enough to cover a person reading their password manager; short
+ *  enough that tomorrow's visit starts on a clean form. */
+export const SIGN_IN_STEP_TTL_MS = 10 * 60_000;
+
+/** /auth calls this when Continue takes the person to the password step. */
+export function rememberSignInStep(email: string, now = Date.now()): void {
+  try {
+    store()?.setItem(SIGN_IN_STEP_KEY, JSON.stringify({ email, at: now } satisfies Stored));
+  } catch {
+    /* storage blocked: a redraw costs the step, as it did before */
+  }
+}
+
+/** The email of a password step the form was on, if recent. Left in place:
+ *  the person is still on that step until they leave it. */
+export function readSignInStep(now = Date.now()): string | null {
+  try {
+    const raw = store()?.getItem(SIGN_IN_STEP_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Stored) : null;
+    if (!parsed || typeof parsed.email !== "string" || typeof parsed.at !== "number") return null;
+    if (now - parsed.at > SIGN_IN_STEP_TTL_MS || now < parsed.at) {
+      forgetSignInStep();
+      return null;
+    }
+    return parsed.email;
+  } catch {
+    return null;
+  }
+}
+
+/** "Use a different email", a sign-in that landed, or a sign-out. */
+export function forgetSignInStep(): void {
+  try {
+    store()?.removeItem(SIGN_IN_STEP_KEY);
+  } catch {
+    /* nothing to clear */
+  }
+}
+
 /** The slice of the router this needs: TanStack's `router.subscribe`. */
 export type ResolvedSubscribe = (
   event: "onResolved",
   fn: (e: { toLocation: { pathname: string } }) => void,
 ) => () => void;
 
+/** The watch the latest Sign in started, if it is still running. */
+let activeWatch: (() => void) | null = null;
+
 /**
- * Watch the ONE navigation a sign-in starts. Where it resolves decides it: on
- * /auth, the guard sent the person back, and the page is told; anywhere else,
- * they arrived, and the handoff is dropped. Not tied to the /auth component,
- * which unmounts on a successful landing and may be drawn afresh on a bounce.
+ * Watch where a sign-in ends up, for as long as a bounce could still be one.
+ *
+ * #799 watched only the FIRST navigation and dropped the hand-off as soon as
+ * it resolved anywhere but /auth. On 2026-11-10 and 11-11 QA's first sign-in
+ * landed, and the session was gone by the next navigation, which the guard
+ * sent to /auth: the hand-off had already been dropped, so that /auth was a
+ * blank first visit. Landing on a page is not the same as staying signed in.
+ *
+ * So this keeps watching for SIGN_IN_HANDOFF_TTL_MS. Any navigation that
+ * resolves on /auth in that window is a bounce and the page is told; one
+ * anywhere else means the person has left the form, so the remembered STEP
+ * is cleared (the hand-off is not). A sign-out on purpose clears the hand-off
+ * first (signOutAndClearDevice), so it is never reported as a failure. Not
+ * tied to the /auth component, which unmounts on a landing and is drawn
+ * afresh on a bounce.
  */
 export function watchSignInLanding(
   subscribe: ResolvedSubscribe,
   target: Pick<Window, "dispatchEvent"> | null = typeof window === "undefined" ? null : window,
+  ttlMs = SIGN_IN_HANDOFF_TTL_MS,
 ): () => void {
   let stop: (() => void) | null = null;
   let done = false;
-  stop = subscribe("onResolved", (e) => {
-    if (done) return;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const finish = () => {
     done = true;
-    stop?.();
-    if (e.toLocation.pathname === "/auth") target?.dispatchEvent(new Event(SIGN_IN_BOUNCED));
-    else signInLanded();
-  });
-  if (done) stop();
-  return () => {
-    done = true;
+    if (activeWatch === finish) activeWatch = null;
+    if (timer) clearTimeout(timer);
+    timer = null;
     stop?.();
   };
+  // A second Sign in replaces the first attempt's watch rather than adding
+  // to it: one sign-in, one listener.
+  activeWatch?.();
+  activeWatch = finish;
+  stop = subscribe("onResolved", (e) => {
+    if (done) return;
+    if (e.toLocation.pathname === "/auth") {
+      finish();
+      target?.dispatchEvent(new Event(SIGN_IN_BOUNCED));
+    } else {
+      forgetSignInStep();
+    }
+  });
+  if (done) stop();
+  else timer = setTimeout(finish, ttlMs);
+  return finish;
+}
+
+// ── WORDS FOR A FAILURE ─────────────────────────────────────────────────────
+//
+// supabase-js hands back whatever the failure carried as `message`. For a
+// wrong password that is a sentence ("Invalid login credentials"). For a
+// gateway error with an empty body it was the two characters "{}", and for no
+// answer at all the browser's "Failed to fetch": both shown as they were, on
+// the form, as the only explanation (#785, measured in
+// tests/viewports/a-sign-in-never-resets-to-the-email-step.spec.ts).
+
+/** What a person reads when a sign-in step fails. Keeps a real sentence from
+ *  the auth server; replaces transport noise with one that says what to do. */
+export function signInFailureMessage(
+  error: unknown,
+  doing: "sign-in" | "email-check" = "sign-in",
+): string {
+  const err = (error ?? {}) as { message?: unknown; status?: unknown; name?: unknown };
+  const message = typeof err.message === "string" ? err.message.trim() : "";
+  const status = typeof err.status === "number" ? err.status : null;
+  const retry =
+    doing === "sign-in"
+      ? "Your email and password are still here. Press Sign in to try again."
+      : "Press Continue to try again.";
+  const what = doing === "sign-in" ? "sign you in" : "check that email";
+
+  const unreachable =
+    /failed to fetch|networkerror|network request failed|load failed|timed? ?out|aborted/i.test(
+      message,
+    ) ||
+    (status === 0 && err.name === "AuthRetryableFetchError");
+  if (unreachable)
+    return `We couldn't reach HoundStack to ${what}. Check your connection. ${retry}`;
+
+  const noise = !message || /^[[{(]/.test(message) || /^(undefined|null|error)$/i.test(message);
+  if (noise || (status !== null && status >= 500) || err.name === "AuthRetryableFetchError") {
+    return `We couldn't ${what} just now. ${retry}`;
+  }
+  return message;
 }
