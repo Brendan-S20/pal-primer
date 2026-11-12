@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { bootstrapOrganization, recordSmsConsent, validateSignupCode } from "@/lib/org.functions";
 import {
   checkEmailAccount,
+  checkNewPassword,
   registerAccount,
   sendEmailVerification,
 } from "@/lib/auth-entry.functions";
@@ -168,9 +169,36 @@ function NewBusinessPage() {
   // check, #807). Said on a password field on the step the person is on, so
   // nothing else they typed has to be walked back through or typed again.
   const [passwordRejected, setPasswordRejected] = useState<string | null>(null);
+  // What is in the field right now, for an answer that arrives after the
+  // person has typed on.
+  const passwordNow = useRef("");
   const changePassword = (value: string) => {
+    passwordNow.current = value;
     setPassword(value);
     setPasswordRejected(null);
+  };
+  // The leaked-password check, asked of the server on the FIRST step (#807):
+  // when the person leaves the field, and again (the same answer, not a
+  // second request) when they press Continue. Only a password the shared
+  // rules already pass is sent; "couldn't tell" lets them carry on, and
+  // registerAccount at the end is still the check that decides.
+  const earlyCheck = useRef<{ value: string; answer: Promise<string | null> } | null>(null);
+  const passwordServerProblem = (value: string): Promise<string | null> => {
+    if (!isPasswordAcceptable(value)) return Promise.resolve(null);
+    if (earlyCheck.current?.value !== value) {
+      const answer = Promise.resolve()
+        .then(() => checkNewPassword({ data: { password: value } }))
+        .then((r) => (r && r.ok === false && r.problem ? r.problem : null))
+        .catch(() => null);
+      earlyCheck.current = { value, answer };
+    }
+    return earlyCheck.current.answer;
+  };
+  const checkPasswordOnLeave = () => {
+    const value = passwordNow.current;
+    void passwordServerProblem(value).then((problem) => {
+      if (problem && passwordNow.current === value) setPasswordRejected(problem);
+    });
   };
   // Nothing is written until what was kept has been read back, so the first,
   // empty render can never overwrite a draft it was about to restore.
@@ -282,12 +310,25 @@ function NewBusinessPage() {
   const continueFromAccount = async () => {
     setError(null);
     setChecking(true);
+    const typed = password;
+    const passwordProblem = passwordServerProblem(typed);
+    // A new address: the password is about to be this account's, so a refusal
+    // the auth server would give at the end is given here, on the field it is
+    // about, and Continue stays put. Never rejects.
+    const passwordRefused = async () => {
+      const problem = await passwordProblem;
+      if (!problem) return false;
+      if (passwordNow.current === typed) setPasswordRejected(problem);
+      document.getElementById("gs-pass")?.focus();
+      return true;
+    };
     try {
       const r = await checkEmailAccount({ data: { email: email.trim() } });
       if (r.exists) {
         sendToSignIn(navigate, email);
         return;
       }
+      if (await passwordRefused()) return;
       if (r.pendingInvite) {
         setInvited(true);
         return;
@@ -295,6 +336,7 @@ function NewBusinessPage() {
     } catch {
       // The check is a courtesy. finish() still joins a pending invitation
       // before it would build anything.
+      if (await passwordRefused()) return;
     } finally {
       setChecking(false);
     }
@@ -508,7 +550,7 @@ function NewBusinessPage() {
             className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault();
-              if (step0Valid && !checking) void continueFromAccount();
+              if (step0Valid && !passwordRejected && !checking) void continueFromAccount();
             }}
           >
             <div>
@@ -530,10 +572,15 @@ function NewBusinessPage() {
               id="gs-pass"
               value={password}
               onChange={changePassword}
+              onBlur={checkPasswordOnLeave}
               serverError={passwordRejected}
             />
             {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button type="submit" className="w-full" disabled={!step0Valid || checking}>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={!step0Valid || !!passwordRejected || checking}
+            >
               {checking ? "Checking…" : "Continue"}
             </Button>
             <p className="text-center text-xs text-muted-foreground">

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useDogCapWarning } from "@/components/DogCapWarning";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Plus, Trash2, Users, X } from "lucide-react";
@@ -55,6 +56,8 @@ function GroupWalksDay({ day, staff, services, onChanged }: Props & { services: 
   const member = useServerFn(setWalkGroupMember);
   const walker = useServerFn(setWalkGroupWalker);
   const byCapacity = useServerFn(assignWalkGroupsByCapacity);
+  // Over a walker's dog cap: warn, then allow (#731). Cancel saves nothing.
+  const dogCap = useDogCapWarning();
   const [creating, setCreating] = useState(false);
   const [serviceId, setServiceId] = useState(services[0].id);
   const [walkerId, setWalkerId] = useState("");
@@ -76,6 +79,7 @@ function GroupWalksDay({ day, staff, services, onChanged }: Props & { services: 
 
   return (
     <section className="min-w-0 space-y-4 rounded-lg border bg-card p-4" aria-label="Group walks">
+      {dogCap.dialog}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="font-semibold">Group walks</h2>
@@ -233,10 +237,20 @@ function GroupWalksDay({ day, staff, services, onChanged }: Props & { services: 
             )}
             pending={write.isPending}
             onWalker={(id) =>
-              write.mutate(() => walker({ data: { groupId: group.id, walkerId: id } }))
+              write.mutate(() =>
+                dogCap.run((overCapAcknowledged) =>
+                  walker({ data: { groupId: group.id, walkerId: id, overCapAcknowledged } }),
+                ),
+              )
             }
             onMember={(visitId, joining) =>
-              write.mutate(() => member({ data: { visitId, groupId: joining ? group.id : null } }))
+              write.mutate(() =>
+                dogCap.run((overCapAcknowledged) =>
+                  member({
+                    data: { visitId, groupId: joining ? group.id : null, overCapAcknowledged },
+                  }),
+                ),
+              )
             }
             onDelete={() => write.mutate(() => remove({ data: { groupId: group.id } }))}
           />
