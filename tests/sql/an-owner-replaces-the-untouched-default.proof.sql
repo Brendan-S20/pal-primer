@@ -1,8 +1,13 @@
--- Execute after the migration. Transactional: leaves no businesses or tables.
+-- Shared by the local Vitest runner (:migration set) and CI via
+-- supabase/proofs/20261112050000-an-owner-replaces-the-untouched-default.sql
+-- (:migration unset; the database already contains every migration).
+-- Transactional: leaves no businesses or tables.
 \set ON_ERROR_STOP on
 DO $turn$ BEGIN PERFORM pg_advisory_lock(hashtext('houndstack.proof')); END $turn$;
 BEGIN;
+\if :{?migration}
 \i :migration
+\endif
 SET LOCAL app.allow_protected_org_write = '1';
 -- A FK reference stands for a client plan, a visit, or another service consumer.
 -- The trigger discovers it from pg_constraint, just like the production FKs.
