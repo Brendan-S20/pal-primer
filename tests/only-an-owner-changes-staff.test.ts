@@ -1,5 +1,12 @@
 // Only an owner changes staff (#659: R2-18, F-31, R2-19; decision D7).
 //
+// D7 CHANGED on 2026-11-10: an office manager may now change roles and turn
+// people on or off too, never the owner's and never above their own role.
+// That half lives in tests/an-office-manager-runs-the-team-but-not-the-owner
+// .test.ts. What stays here: dispatchers and technicians are refused, the
+// owner keeps both abilities, the 20261102140000 file as it shipped, and
+// R2-19.
+//
 // An office manager could turn any teammate off through setStaffActive (no
 // permission check at all) and through PATCH /rest/v1/staff, and could write
 // their own staff.role = 'owner'. The screen said owner-only. This file:
@@ -81,15 +88,15 @@ beforeEach(() => {
   state.reads.length = 0;
 });
 
-describe("D7: only an owner turns people on or off, or changes a role", () => {
-  for (const role of ["office_manager", "dispatcher", "tech"]) {
+describe("D7: a dispatcher or a technician never turns people on or off, or changes a role", () => {
+  for (const role of ["dispatcher", "tech"]) {
     it(`refuses ${role} on setStaffActive, both directions, before any read or RPC`, async () => {
       state.role = role;
-      const { setStaffActive, ONLY_AN_OWNER_TURNS_PEOPLE_ON_OR_OFF } =
+      const { setStaffActive, ONLY_AN_OWNER_OR_OFFICE_MANAGER_TURNS_PEOPLE_ON_OR_OFF } =
         await import("@/lib/users.functions");
       for (const active of [false, true]) {
         await expect(setStaffActive({ data: { staffId: STAFF, active } } as any)).rejects.toThrow(
-          ONLY_AN_OWNER_TURNS_PEOPLE_ON_OR_OFF,
+          ONLY_AN_OWNER_OR_OFFICE_MANAGER_TURNS_PEOPLE_ON_OR_OFF,
         );
       }
       expect(state.rpcs).toEqual([]);
@@ -98,11 +105,13 @@ describe("D7: only an owner turns people on or off, or changes a role", () => {
 
     it(`refuses ${role} on changeUserRole, including making somebody an owner`, async () => {
       state.role = role;
-      const { changeUserRole, ONLY_AN_OWNER_CHANGES_ROLES } = await import("@/lib/users.functions");
+      const { changeUserRole, ONLY_AN_OWNER_OR_OFFICE_MANAGER_CHANGES_ROLES } = await import(
+        "@/lib/users.functions"
+      );
       for (const newRole of ["owner", "office_manager", "tech"]) {
         await expect(
           changeUserRole({ data: { userId: USER, role: newRole } } as any),
-        ).rejects.toThrow(ONLY_AN_OWNER_CHANGES_ROLES);
+        ).rejects.toThrow(ONLY_AN_OWNER_OR_OFFICE_MANAGER_CHANGES_ROLES);
       }
       expect(state.rpcs).toEqual([]);
     });
@@ -116,11 +125,13 @@ describe("D7: only an owner turns people on or off, or changes a role", () => {
     expect(state.rpcs).toEqual(["set_staff_active", "change_user_role"]);
   });
 
-  it("the screen shows the controls to the owner only", () => {
+  it("the screen shows the controls to the owner and the office manager only", () => {
     const page = read("src/routes/_authenticated/settings.users.tsx");
-    expect(page).toMatch(/const canEdit = myRole === "owner";/);
-    expect(page).toMatch(/\{canEdit \? \(\s*<Select/);
-    expect(page).toMatch(/\{canEdit && u\.staff_id && \(/);
+    expect(page).toMatch(
+      /const canManageStaff = myRole === "owner" \|\| myRole === "office_manager";/,
+    );
+    expect(page).toMatch(/\{canManageRow \? \(\s*<Select/);
+    expect(page).toMatch(/\{canManageRow && u\.staff_id && \(/);
   });
 });
 
