@@ -33,6 +33,7 @@ const h = vi.hoisted(() => ({
   search: {} as Record<string, unknown>,
   navigate: vi.fn(),
   checkEmailAccount: vi.fn(),
+  checkNewPassword: vi.fn(),
   registerAccount: vi.fn(),
   sendEmailVerification: vi.fn(),
   bootstrapOrganization: vi.fn(),
@@ -57,6 +58,7 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 vi.mock("@/lib/auth-entry.functions", () => ({
   checkEmailAccount: h.checkEmailAccount,
+  checkNewPassword: h.checkNewPassword,
   registerAccount: h.registerAccount,
   sendEmailVerification: h.sendEmailVerification,
 }));
@@ -161,6 +163,7 @@ beforeEach(() => {
   h.search = {};
   sessionStorage.clear();
   h.checkEmailAccount.mockResolvedValue({ exists: false, pendingInvite: false });
+  h.checkNewPassword.mockResolvedValue({ ok: true, problem: null });
   h.signInWithPassword.mockResolvedValue({ error: null });
   h.acceptPendingInvite.mockResolvedValue(false);
   h.bootstrapOrganization.mockResolvedValue({ promoStored: null });
@@ -224,6 +227,142 @@ describe("Get started, new business: the account step", () => {
     await press(/^Continue$/);
     expect(h.checkEmailAccount).toHaveBeenCalledTimes(1);
     expect($("#gs-org")).not.toBeNull();
+  });
+});
+
+describe("Get started: the server's own password check is asked on the FIRST step", () => {
+  // The one rule the browser cannot check, the leaked-password list, used to
+  // arrive only from registerAccount on the last step. checkNewPassword asks
+  // it when the person leaves the field or presses Continue.
+  const PREFIXED = `That password can't be used: ${LEAKED}`;
+
+  it("leaving the field names a breached password there, and Continue stays put", async () => {
+    h.checkNewPassword.mockResolvedValue({ ok: false, problem: PREFIXED });
+    mount(GetStartedPage);
+    await settle();
+    type(input("gs-email"), "owner@acme.test");
+    type(input("gs-pass"), "password1");
+    blur(input("gs-pass"));
+    await settle();
+    expect(h.checkNewPassword).toHaveBeenCalledWith({ data: { password: "password1" } });
+    expect(serverText()).toBe(PREFIXED);
+    const field = input("gs-pass");
+    expect(field.getAttribute("aria-invalid")).toBe("true");
+    const said = $("[data-password-server-error]")!;
+    expect(field.getAttribute("aria-describedby")?.split(" ")).toContain(said.id);
+    expect(button(/^Continue$/).disabled).toBe(true);
+    // Nothing typed was cleared.
+    expect(field.value).toBe("password1");
+    expect(input("gs-email").value).toBe("owner@acme.test");
+  });
+
+  it("pressing Continue without leaving the field asks too, and stays on the account step", async () => {
+    h.checkNewPassword.mockResolvedValue({ ok: false, problem: PREFIXED });
+    mount(GetStartedPage);
+    await settle();
+    type(input("gs-email"), "owner@acme.test");
+    type(input("gs-pass"), "password1");
+    await press(/^Continue$/);
+    expect(h.checkNewPassword).toHaveBeenCalledTimes(1);
+    expect($("#gs-org")).toBeNull();
+    expect(host.textContent).toContain("Create your account");
+    expect(serverText()).toBe(PREFIXED);
+    expect(input("gs-pass").value).toBe("password1");
+    expect(input("gs-email").value).toBe("owner@acme.test");
+  });
+
+  it("blur then Continue asks the server once, not twice", async () => {
+    mount(GetStartedPage);
+    await settle();
+    type(input("gs-email"), "owner@acme.test");
+    type(input("gs-pass"), "correct horse");
+    blur(input("gs-pass"));
+    await press(/^Continue$/);
+    expect(h.checkNewPassword).toHaveBeenCalledTimes(1);
+    expect($("#gs-org")).not.toBeNull();
+  });
+
+  it("typing a new password clears the refusal and lets Continue go", async () => {
+    h.checkNewPassword.mockImplementation(async ({ data }: { data: { password: string } }) =>
+      data.password === "password1"
+        ? { ok: false, problem: PREFIXED }
+        : { ok: true, problem: null },
+    );
+    mount(GetStartedPage);
+    await settle();
+    type(input("gs-email"), "owner@acme.test");
+    type(input("gs-pass"), "password1");
+    await press(/^Continue$/);
+    expect(serverText()).toBe(PREFIXED);
+    type(input("gs-pass"), "a much better passphrase");
+    expect(serverText()).toBe("");
+    expect(button(/^Continue$/).disabled).toBe(false);
+    await press(/^Continue$/);
+    expect($("#gs-org")).not.toBeNull();
+  });
+
+  it("an answer for a password that has since been changed is not shown", async () => {
+    let answer!: (v: unknown) => void;
+    h.checkNewPassword.mockImplementationOnce(() => new Promise((r) => (answer = r)));
+    mount(GetStartedPage);
+    await settle();
+    type(input("gs-pass"), "password1");
+    blur(input("gs-pass"));
+    await settle();
+    expect(h.checkNewPassword).toHaveBeenCalledTimes(1);
+    type(input("gs-pass"), "a much better passphrase");
+    await act(async () => answer({ ok: false, problem: PREFIXED }));
+    await settle();
+    expect(serverText()).toBe("");
+  });
+
+  it("a password the shared rules already refuse is not sent", async () => {
+    mount(GetStartedPage);
+    await settle();
+    type(input("gs-pass"), "short");
+    blur(input("gs-pass"));
+    await settle();
+    expect(h.checkNewPassword).not.toHaveBeenCalled();
+  });
+
+  for (const [label, fail] of [
+    ["fails", () => h.checkNewPassword.mockRejectedValue(new Error("offline"))],
+    ["answers nothing", () => h.checkNewPassword.mockResolvedValue(null)],
+  ] as const) {
+    it(`when the check ${label}, the person carries on (the end check still decides)`, async () => {
+      fail();
+      mount(GetStartedPage);
+      await settle();
+      type(input("gs-email"), "owner@acme.test");
+      type(input("gs-pass"), "correct horse");
+      await press(/^Continue$/);
+      expect(serverText()).toBe("");
+      expect($("#gs-org")).not.toBeNull();
+    });
+  }
+
+  it("a breached password still stops Continue when the email check itself fails", async () => {
+    h.checkEmailAccount.mockRejectedValue(new Error("offline"));
+    h.checkNewPassword.mockResolvedValue({ ok: false, problem: PREFIXED });
+    mount(GetStartedPage);
+    await settle();
+    type(input("gs-email"), "owner@acme.test");
+    type(input("gs-pass"), "password1");
+    await press(/^Continue$/);
+    expect($("#gs-org")).toBeNull();
+    expect(serverText()).toBe(PREFIXED);
+  });
+
+  it("an address that already has an account goes to sign-in, whatever the password check says", async () => {
+    h.checkEmailAccount.mockResolvedValue({ exists: true, pendingInvite: false });
+    h.checkNewPassword.mockResolvedValue({ ok: false, problem: PREFIXED });
+    mount(GetStartedPage);
+    await settle();
+    type(input("gs-email"), "owner@acme.test");
+    type(input("gs-pass"), "password1");
+    await press(/^Continue$/);
+    expect(h.navigate).toHaveBeenCalled();
+    expect(serverText()).toBe("");
   });
 });
 

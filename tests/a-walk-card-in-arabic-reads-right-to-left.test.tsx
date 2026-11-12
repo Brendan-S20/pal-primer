@@ -7,6 +7,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 vi.mock("@tanstack/react-start", () => ({
   useServerFn: (f: unknown) => f,
@@ -43,6 +44,7 @@ const day = [
     sequence: 1,
     status: "completed",
     walk_group_id: "g1",
+    scheduled_on: "2026-11-12",
     services: walkService,
     properties: { street: "1418 W Wolfram St", dogs: [{ name: "Bartholomew" }] },
   },
@@ -51,6 +53,7 @@ const day = [
     sequence: 2,
     status: "in_progress",
     walk_group_id: "g1",
+    scheduled_on: "2026-11-12",
     services: walkService,
     properties: { street: "2201 N Clybourn Ave", dogs: [{ name: "Tank" }] },
   },
@@ -71,6 +74,16 @@ const report = (over: Partial<WalkReportState> = {}): WalkReportState => ({
 /** The customer's and the office's own words, which stay as written. */
 const NOT_ENGLISH = ["Bartholomew", "Tank", "1418 W Wolfram St", "2201 N Clybourn Ave", "K-12"];
 
+/** My Day's query cache, with this walk confirmed over its walker's dog cap
+ *  (#731), so the flag is drawn and checked like every other part. */
+function withOverDogCap(node: ReactNode, walks = [{ visitIds: ["w1", "w2"], dogs: 7, cap: 6 }]) {
+  const qc = new QueryClient();
+  qc.setQueryData(["my-day", "over-dog-cap", "2026-11-12"], {
+    walks: walks.map((w) => ({ walkGroupId: "g1", staffId: "s1", ...w })),
+  });
+  return createElement(QueryClientProvider, { client: qc }, node);
+}
+
 async function render(lng: string) {
   await i18n.changeLanguage(lng);
   const parts: ReactNode[] = [
@@ -82,7 +95,7 @@ async function render(lng: string) {
     createElement(WalkTimer, { startedAt: new Date(Date.now() - 22 * 60_000).toISOString() }),
     createElement(WalkReportFields, { visitId: "w2", report: report() }),
   ];
-  const html = renderToStaticMarkup(createElement("div", null, ...parts));
+  const html = renderToStaticMarkup(withOverDogCap(createElement("div", null, ...parts)));
   const text = html
     .replace(/<[^>]+>/g, " ")
     .replace(/&amp;/g, "&")
@@ -130,6 +143,7 @@ describe("a walk's card", () => {
       "Pee",
       "Poo",
       "Note for the client",
+      "Over the dog cap: 7 dogs, the cap is 6",
     ]) {
       expect(text, s).toContain(s);
     }
@@ -172,16 +186,37 @@ describe("a walk's card", () => {
   it("draws nothing for a stop with no walk facts", async () => {
     await i18n.changeLanguage("en");
     const empty = renderToStaticMarkup(
-      createElement(
-        "div",
-        null,
-        createElement(WalkAccess, { property: { access_method: null, key_held: false } }),
-        createElement(WalkMeta, {
-          visit: { id: "x", services: { service_line: "dog_walking" } },
-          dayVisits: [],
-        }),
+      withOverDogCap(
+        createElement(
+          "div",
+          null,
+          createElement(WalkAccess, { property: { access_method: null, key_held: false } }),
+          createElement(WalkMeta, {
+            visit: { id: "x", services: { service_line: "dog_walking" } },
+            dayVisits: [],
+          }),
+        ),
       ),
     );
     expect(empty).toBe("<div></div>");
+  });
+});
+
+describe("a walk over its walker's dog cap (#731)", () => {
+  const card = (walks?: Parameters<typeof withOverDogCap>[1]) =>
+    renderToStaticMarkup(
+      withOverDogCap(createElement(WalkMeta, { visit: day[1], dayVisits: day }), walks),
+    );
+
+  it("is flagged on the walker's card while it is over", async () => {
+    await i18n.changeLanguage("en");
+    const html = card();
+    expect(html).toContain('data-testid="over-dog-cap"');
+    expect(html).toContain("Over the dog cap: 7 dogs, the cap is 6");
+  });
+
+  it("is not flagged once it is back under (the walk is no longer listed)", async () => {
+    await i18n.changeLanguage("en");
+    expect(card([])).not.toContain("over-dog-cap");
   });
 });
