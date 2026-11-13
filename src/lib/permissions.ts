@@ -25,6 +25,15 @@ export type Permission =
   // the inbox. Owner, office manager and dispatcher. A message to many
   // clients at once is send_campaigns, which a dispatcher does not hold.
   | "message_clients"
+  // Running an existing client's recurring plans (#728, owner decision
+  // 2026-11-10: "Yes, dispatchers can manage plans at the set price"): add a
+  // plan at the business's set price, pause it, resume it, end it. Owner and
+  // office manager hold it with everything else; a dispatcher holds it as
+  // their default (#863 will let the owner change that). It sets no price: a
+  // plan at any other price, a discount, an edit of a plan's price or terms,
+  // billing in advance and deleting a plan stay manage_pricing, and the
+  // server refuses them to anyone without it.
+  | "manage_plans"
   | "manage_client_billing" // invoices, add-on charges/subscriptions, void, prepaid, credit
   | "view_financials" // dashboard revenue/AR KPIs, reports, analytics
   | "view_client_directory" // client names/addresses beyond the caller's own assigned work
@@ -54,6 +63,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   "booking",
   "manage_schedule",
   "message_clients",
+  "manage_plans",
   "manage_client_billing",
   "view_financials",
   "view_client_directory",
@@ -86,6 +96,7 @@ export const ROLE_PERMISSIONS: Record<AppRole, readonly Permission[]> = {
     "booking",
     "manage_schedule",
     "message_clients",
+    "manage_plans",
   ],
   tech: ["record_field_addons"],
 };
