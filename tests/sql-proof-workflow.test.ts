@@ -33,6 +33,8 @@ function fixture() {
   const directory = mkdtempSync(join(tmpdir(), "sql-proof-runner-test-"));
   temporary.push(directory);
   mkdirSync(join(directory, "tests/sql"), { recursive: true });
+  mkdirSync(join(directory, "supabase"), { recursive: true });
+  writeFileSync(join(directory, "supabase/config.toml"), 'project_id = "fixture-ci"\n');
   return { directory, ...addWrapper(directory, "fixture") };
 }
 
@@ -73,12 +75,22 @@ function runtime(
   const run = vi.fn((command, args, options) => {
     if (command === "supabase") return { status: 0, stdout: `DB_URL="${originalUrl}"\n` };
     if (command === "psql") {
-      if (args.includes("--version")) return { status: 0, stdout: "psql 17" };
+      expect(args).toEqual(["--version"]);
+      return { status: 0, stdout: "psql 17" };
+    }
+    if (command === "docker") {
+      expect(args.slice(0, 7)).toEqual([
+        "exec",
+        "supabase_db_fixture-ci",
+        "psql",
+        "-U",
+        "supabase_admin",
+        "-d",
+        "template1",
+      ]);
+      expect(args).toContain("--no-password");
       const sql = args[args.indexOf("-c") + 1];
       expect(sql).toBeTypeOf("string");
-      expect(new URL(args.find((arg) => arg.startsWith("postgresql:"))).pathname).toBe(
-        "/template1",
-      );
       expect(args).toContain("ON_ERROR_STOP=1");
       statements.push(sql);
       return {
@@ -179,6 +191,17 @@ describe("SQL proof results", () => {
 });
 
 describe("SQL proof database lifecycle", () => {
+  it("refuses a non-CI project before mutating a database", () => {
+    const { directory } = fixture();
+    writeFileSync(join(directory, "supabase/config.toml"), 'project_id = "fixture"\n');
+    const { run, statements, wrappers } = runtime(directory);
+    expect(() => prepareSqlProofs(directory, run)).toThrow();
+    expect(run.mock.calls.some(([command]) => command === "docker")).toBe(false);
+    expect(statements).toEqual([]);
+    expect(wrappers).toEqual([]);
+    expect(existsSync(stateFile(directory))).toBe(false);
+  });
+
   it("captures a replay snapshot while connections are blocked, then restores the source", () => {
     const { directory } = fixture();
     const { run, statements } = runtime(directory);

@@ -152,9 +152,11 @@ function localDatabase(root, run) {
   const database = decodeURIComponent(source.pathname.slice(1));
   if (!database || database === "template1")
     throw new Error("A separate replay database is required");
-  const maintenance = new URL(source);
-  maintenance.pathname = "/template1";
-  return { source, database, maintenance: maintenance.href, run };
+  const config = readFileSync(join(root, "supabase/config.toml"), "utf8");
+  const projectId = config.match(/^project_id\s*=\s*"([A-Za-z0-9_-]+)"\s*$/m)?.[1];
+  if (!projectId?.endsWith("-ci"))
+    throw new Error("SQL proof database lifecycle requires this job's CI project id");
+  return { source, database, container: `supabase_db_${projectId}`, run };
 }
 
 const identifier = (name) => `"${name.replaceAll('"', '""')}"`;
@@ -177,8 +179,22 @@ function readState(root) {
 }
 function sql(context, statement) {
   const result = context.run(
-    "psql",
-    [context.maintenance, "-X", "-v", "ON_ERROR_STOP=1", "-c", statement],
+    "docker",
+    [
+      "exec",
+      context.container,
+      "psql",
+      "-U",
+      "supabase_admin",
+      "-d",
+      "template1",
+      "-X",
+      "--no-password",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-c",
+      statement,
+    ],
     {
       encoding: "utf8",
       timeout: 120_000,
@@ -197,8 +213,8 @@ export function prepareSqlProofs(root = ROOT, run = spawnSync) {
   const state = { prefix: `proof_${randomBytes(6).toString("hex")}`, clones: [] };
   saveState(root, state);
   try {
-    // Supabase services hold connections to postgres. Freeze that local source
-    // only while taking the pristine snapshot, before any integration fixture.
+    // The container-local admin can close protected service backends. Freeze
+    // this job's source only while capturing the pristine replay snapshot.
     sql(context, `ALTER DATABASE ${identifier(context.database)} ALLOW_CONNECTIONS false`);
     sql(
       context,
