@@ -29,7 +29,8 @@
 // resolves only while the profile is published (directory_org_for_quote,
 // service role), the lead is stored as source = 'directory', and a second
 // quote from the same email to the same business within 24 hours is merged
-// into the first rather than written twice.
+// into the first, if it is still open, rather than written twice: appended,
+// bumped and told as a repeat (#920, lib/directory-repeat.ts).
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
@@ -60,6 +61,17 @@ import {
   normalizeBookingDetails,
 } from "@/lib/booking-details";
 import { DIRECTORY_LEAD_SOURCE, DIRECTORY_QUOTE_MERGE_HOURS, cleanZip } from "@/lib/directory";
+import {
+  OPEN_LEAD_STATUS,
+  REPEAT_ACTIVITY_KIND,
+  appendRepeatNote,
+  askFingerprint,
+  askFromLeadRow,
+  isDoubleTap,
+  repeatNoteBlock,
+  type DirectoryAsk,
+  type LeadAskColumns,
+} from "@/lib/directory-repeat";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -341,25 +353,61 @@ export async function handlePublicLeadPost(
 
   // A directory quote sent twice (a double tap, or the same person
   // asking again tomorrow morning) is ONE lead: within 24 hours, the
-  // same email to the same business is merged into the open lead it
-  // already has, and the office is not told twice. The turn above was
-  // still taken, so a script repeating itself is still rate limited.
+  // same email to the same business is merged into the OPEN lead it
+  // already has (#920, lib/directory-repeat.ts). The new ask is appended
+  // to that lead, updated_at moves, and the office is told it is a repeat;
+  // a double tap is recorded and tells nobody. A lead the office has
+  // already acted on takes no merge: the ask becomes a new lead below.
+  // The turn above was still taken, so a script repeating itself is still
+  // rate limited.
   if (fromDirectory) {
     const since = new Date(Date.now() - DIRECTORY_QUOTE_MERGE_HOURS * 3_600_000).toISOString();
     const { data: earlier } = await (supabaseAdmin.from("leads") as any)
-      .select("id")
+      // The first ask's columns (LeadAskColumns), written out so the select
+      // scanners (an-embed-names-its-foreign-key) can read it.
+      .select(
+        "id, created_at, message, service_id, dog_count, frequency, location, pets, access_notes, preferred_start_date",
+      )
       .eq("organization_id", orgId)
       .eq("source", DIRECTORY_LEAD_SOURCE)
       .eq("email", data.email.toLowerCase())
+      .eq("status", OPEN_LEAD_STATUS)
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
     if (earlier?.id) {
-      return new Response(JSON.stringify({ ok: true, merged: true, serviceArea: "unknown" }), {
-        status: 200,
-        headers: jsonHeaders,
+      const outcome = await mergeRepeatDirectoryQuote(supabaseAdmin, {
+        orgId,
+        lead: earlier,
+        name: data.name,
+        source,
+        serviceName: service?.name ?? null,
+        ask: {
+          message: messageWithExtras(data.message, extras) || null,
+          serviceId: service?.id ?? null,
+          dogCount: data.dog_count ?? null,
+          frequency,
+          location,
+          pets: details.pets,
+          accessNotes: details.access_notes,
+          preferredStartDate: details.preferred_start_date,
+        },
       });
+      if (outcome === "failed") {
+        return new Response(JSON.stringify({ error: "Something went wrong. Please try again." }), {
+          status: 500,
+          headers: jsonHeaders,
+        });
+      }
+      if (outcome === "merged") {
+        return new Response(JSON.stringify({ ok: true, merged: true, serviceArea: "unknown" }), {
+          status: 200,
+          headers: jsonHeaders,
+        });
+      }
+      // "closed": the office acted on the lead between the read and the
+      // write. Not open any more, so this ask is a new lead, below.
     }
   }
   const { data: lead, error } = await (supabaseAdmin.from("leads") as any)
@@ -422,6 +470,117 @@ export async function handlePublicLeadPost(
     status: 201,
     headers: jsonHeaders,
   });
+}
+
+/**
+ * Record a repeat directory quote on the open lead it repeats (#920). The
+ * rules are written down in lib/directory-repeat.ts. "merged" when the lead
+ * took it; "closed" when the lead stopped being open before the write landed
+ * (the caller inserts a new lead instead); "failed" when the write errored,
+ * so the person is asked to try again rather than shown a success that
+ * recorded nothing.
+ */
+async function mergeRepeatDirectoryQuote(
+  admin: any,
+  opts: {
+    orgId: string;
+    lead: LeadAskColumns & { id: string; created_at: string };
+    name: string;
+    source: string;
+    serviceName: string | null;
+    ask: DirectoryAsk;
+  },
+): Promise<"merged" | "closed" | "failed"> {
+  const { orgId, lead, ask } = opts;
+  const now = new Date();
+  const previous = askFromLeadRow(lead);
+  const fingerprint = askFingerprint(ask);
+
+  // The last ask on this lead: the latest repeat, or the lead itself.
+  let last: { fingerprint: string; at: string } = {
+    fingerprint: askFingerprint(previous),
+    at: lead.created_at,
+  };
+  try {
+    const { data: latest } = await admin
+      .from("activity_log")
+      .select("meta, created_at")
+      .eq("organization_id", orgId)
+      .eq("kind", REPEAT_ACTIVITY_KIND)
+      .eq("meta->>lead_id", lead.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const fp = latest?.meta?.fingerprint;
+    if (typeof fp === "string" && latest?.created_at) {
+      last = { fingerprint: fp, at: latest.created_at };
+    }
+  } catch (e) {
+    console.error("repeat quote: last ask lookup failed", orgId, lead.id, e);
+  }
+  const doubleTap = isDoubleTap({ ask, last, now });
+
+  const message = doubleTap
+    ? null
+    : appendRepeatNote(
+        lead.message ?? null,
+        repeatNoteBlock({ ask, previous, serviceName: opts.serviceName, at: now }),
+      );
+  const { data: updated, error } = await admin
+    .from("leads")
+    .update({ updated_at: now.toISOString(), ...(message ? { message } : {}) })
+    .eq("id", lead.id)
+    .eq("status", OPEN_LEAD_STATUS)
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    console.error("repeat quote: lead update failed", orgId, lead.id, error.message);
+    return "failed";
+  }
+  if (!updated?.id) return "closed";
+
+  const requestId = crypto.randomUUID();
+  const { logActivity } = await import("@/lib/activity.server");
+  await logActivity(admin, {
+    orgId,
+    actorLabel: "Directory quote",
+    kind: REPEAT_ACTIVITY_KIND,
+    summary: doubleTap
+      ? `${opts.name} sent the same quote request again`
+      : `${opts.name} asked again${opts.serviceName ? ` about ${opts.serviceName}` : ""}`,
+    meta: {
+      lead_id: lead.id,
+      request_id: requestId,
+      fingerprint,
+      double_tap: doubleTap,
+      appended_to_message: !!message,
+      message: ask.message,
+      service_id: ask.serviceId,
+      service_name: opts.serviceName,
+      dog_count: ask.dogCount,
+      frequency: ask.frequency,
+      location: ask.location,
+      pets: ask.pets,
+      access_notes: ask.accessNotes,
+      preferred_start_date: ask.preferredStartDate,
+    },
+  });
+
+  if (!doubleTap) {
+    const { notifyOfficeOfRepeatLead } = await import("@/lib/lead-notify.server");
+    await notifyOfficeOfRepeatLead({
+      orgId,
+      leadId: lead.id,
+      requestId,
+      name: opts.name,
+      source: opts.source,
+      location: ask.location,
+      dogCount: ask.dogCount,
+      frequency: ask.frequency,
+      serviceName: opts.serviceName,
+    });
+  }
+  return "merged";
 }
 
 export const Route = createFileRoute("/api/public/leads")({
