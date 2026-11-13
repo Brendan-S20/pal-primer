@@ -1,6 +1,6 @@
 // A directory shows only what the owner published (#630, phase 1).
 //
-// HoundStack's OWN directory of pet pros, not an Angi listing. This file:
+// HoundStack's OWN directory of pet pros, listing only businesses that opted in. This file:
 //   * pins the migration: anon reads only through the two public RPCs, which
 //     return published rows of live businesses and public columns only; anon
 //     holds no grant on either table and cannot execute the writer or the

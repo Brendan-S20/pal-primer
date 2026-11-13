@@ -1,6 +1,6 @@
-// HoundStack's own directory of pet pros (#630, phase 1). Not a listing on
-// Angi or anywhere else: every profile is a HoundStack customer that opted in,
-// and shows only what its owner confirmed when they did.
+// HoundStack's own directory of pet pros (#630, phase 1). Every profile is a
+// HoundStack customer that opted in, and shows only what its owner confirmed
+// when they did.
 //
 // Kept pure (no server import) so the pages, the settings screen and the tests
 // can all read it. The database half is
