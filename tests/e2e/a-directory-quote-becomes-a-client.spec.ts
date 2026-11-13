@@ -23,7 +23,10 @@ import { OWNER, signIn } from "./sign-in";
 const URL_ = process.env.SUPABASE_URL ?? "http://127.0.0.1:54421";
 const ANON = process.env.SUPABASE_PUBLISHABLE_KEY ?? "";
 const SLUG = "e2e-directory-yard";
-const ZIP = "48201";
+// A ZIP the seeded org's "Downtown Core" zone lists (seed_demo_org, 20261004010000).
+// Since 20261112020000 directory_search drops a business whose zones say
+// "outside", and the seeded zones do not reach downtown Detroit's 48201.
+const ZIP = "48067";
 
 test("a directory quote is one lead, and Convert to client opens on it", async ({
   page,

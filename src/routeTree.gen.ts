@@ -154,6 +154,7 @@ import { Route as ProsSlugIndexRouteImport } from './routes/pros.$slug.index'
 import { Route as ProsSlugQuoteRouteImport } from './routes/pros.$slug.quote'
 import { Route as AuthenticatedPropertiesPropertyIdBoundaryRouteImport } from './routes/_authenticated/properties.$propertyId.boundary'
 import { Route as ApiPublicCalendarTokenRouteImport } from './routes/api/public/calendar.$token'
+import { Route as ApiPublicDirectoryQuotesRouteImport } from './routes/api/public/directory/quotes'
 import { Route as ApiPublicHooksAnnouncementEmailsRouteImport } from './routes/api/public/hooks/announcement-emails'
 import { Route as ApiPublicHooksLateCheckRouteImport } from './routes/api/public/hooks/late-check'
 import { Route as ApiPublicHooksLiveActivityActionRouteImport } from './routes/api/public/hooks/live-activity-action'
@@ -951,6 +952,12 @@ const ApiPublicCalendarTokenRoute = ApiPublicCalendarTokenRouteImport.update({
   path: '/api/public/calendar/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicDirectoryQuotesRoute =
+  ApiPublicDirectoryQuotesRouteImport.update({
+    id: '/api/public/directory/quotes',
+    path: '/api/public/directory/quotes',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksAnnouncementEmailsRoute =
   ApiPublicHooksAnnouncementEmailsRouteImport.update({
     id: '/api/public/hooks/announcement-emails',
@@ -1211,6 +1218,7 @@ export interface FileRoutesByFullPath {
   '/pros/$slug/': typeof ProsSlugIndexRoute
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/calendar/$token': typeof ApiPublicCalendarTokenRoute
+  '/api/public/directory/quotes': typeof ApiPublicDirectoryQuotesRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
   '/api/public/hooks/late-check': typeof ApiPublicHooksLateCheckRoute
   '/api/public/hooks/live-activity-action': typeof ApiPublicHooksLiveActivityActionRoute
@@ -1369,6 +1377,7 @@ export interface FileRoutesByTo {
   '/pros/$slug': typeof ProsSlugIndexRoute
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/calendar/$token': typeof ApiPublicCalendarTokenRoute
+  '/api/public/directory/quotes': typeof ApiPublicDirectoryQuotesRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
   '/api/public/hooks/late-check': typeof ApiPublicHooksLateCheckRoute
   '/api/public/hooks/live-activity-action': typeof ApiPublicHooksLiveActivityActionRoute
@@ -1538,6 +1547,7 @@ export interface FileRoutesById {
   '/pros/$slug/': typeof ProsSlugIndexRoute
   '/_authenticated/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/calendar/$token': typeof ApiPublicCalendarTokenRoute
+  '/api/public/directory/quotes': typeof ApiPublicDirectoryQuotesRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
   '/api/public/hooks/late-check': typeof ApiPublicHooksLateCheckRoute
   '/api/public/hooks/live-activity-action': typeof ApiPublicHooksLiveActivityActionRoute
@@ -1707,6 +1717,7 @@ export interface FileRouteTypes {
     | '/pros/$slug/'
     | '/properties/$propertyId/boundary'
     | '/api/public/calendar/$token'
+    | '/api/public/directory/quotes'
     | '/api/public/hooks/announcement-emails'
     | '/api/public/hooks/late-check'
     | '/api/public/hooks/live-activity-action'
@@ -1865,6 +1876,7 @@ export interface FileRouteTypes {
     | '/pros/$slug'
     | '/properties/$propertyId/boundary'
     | '/api/public/calendar/$token'
+    | '/api/public/directory/quotes'
     | '/api/public/hooks/announcement-emails'
     | '/api/public/hooks/late-check'
     | '/api/public/hooks/live-activity-action'
@@ -2033,6 +2045,7 @@ export interface FileRouteTypes {
     | '/pros/$slug/'
     | '/_authenticated/properties/$propertyId/boundary'
     | '/api/public/calendar/$token'
+    | '/api/public/directory/quotes'
     | '/api/public/hooks/announcement-emails'
     | '/api/public/hooks/late-check'
     | '/api/public/hooks/live-activity-action'
@@ -2101,6 +2114,7 @@ export interface RootRouteChildren {
   ProsSlugQuoteRoute: typeof ProsSlugQuoteRoute
   ProsSlugIndexRoute: typeof ProsSlugIndexRoute
   ApiPublicCalendarTokenRoute: typeof ApiPublicCalendarTokenRoute
+  ApiPublicDirectoryQuotesRoute: typeof ApiPublicDirectoryQuotesRoute
   ApiPublicHooksAnnouncementEmailsRoute: typeof ApiPublicHooksAnnouncementEmailsRoute
   ApiPublicHooksLateCheckRoute: typeof ApiPublicHooksLateCheckRoute
   ApiPublicHooksLiveActivityActionRoute: typeof ApiPublicHooksLiveActivityActionRoute
@@ -3132,6 +3146,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicCalendarTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/directory/quotes': {
+      id: '/api/public/directory/quotes'
+      path: '/api/public/directory/quotes'
+      fullPath: '/api/public/directory/quotes'
+      preLoaderRoute: typeof ApiPublicDirectoryQuotesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/announcement-emails': {
       id: '/api/public/hooks/announcement-emails'
       path: '/api/public/hooks/announcement-emails'
@@ -3655,6 +3676,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProsSlugQuoteRoute: ProsSlugQuoteRoute,
   ProsSlugIndexRoute: ProsSlugIndexRoute,
   ApiPublicCalendarTokenRoute: ApiPublicCalendarTokenRoute,
+  ApiPublicDirectoryQuotesRoute: ApiPublicDirectoryQuotesRoute,
   ApiPublicHooksAnnouncementEmailsRoute: ApiPublicHooksAnnouncementEmailsRoute,
   ApiPublicHooksLateCheckRoute: ApiPublicHooksLateCheckRoute,
   ApiPublicHooksLiveActivityActionRoute: ApiPublicHooksLiveActivityActionRoute,
