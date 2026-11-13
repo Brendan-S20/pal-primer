@@ -110,6 +110,8 @@ on:
       - "tsconfig*.json"
       - "supabase/migrations/**"
       - "supabase/proofs/**"
+      - "tests/sql/**"
+      - "scripts/run-sql-proofs.mjs"
       - "tests/integration/*.db.test.ts"
       - "tests/run-db-tests.sh"
       - "tests/support/walk-db.ts"
@@ -254,6 +256,7 @@ jobs:
               # The E2E suite runs inside the database job (it needs the
               # stack that job builds), so its inputs route there too.
               supabase/migrations/*|supabase/proofs/*)     database=true ;;
+              tests/sql/*|scripts/run-sql-proofs.mjs)       database=true ;;
               tests/integration/*.db.test.ts)              database=true ;;
               tests/run-db-tests.sh)                       database=true ;;
               tests/support/walk-db.ts|tests/support/org-day.ts) database=true ;;
@@ -692,6 +695,7 @@ jobs:
           fi
           for attempt in 1 2 3; do
             if supabase db reset --local 2>&1 | tee "reset-$attempt.log"; then
+              node scripts/run-sql-proofs.mjs --prepare
               echo "migrations replayed from empty on attempt $attempt"
               exit 0
             fi
@@ -742,6 +746,18 @@ jobs:
             fi
           done
           exit $failed
+
+      # These proofs need the migration paths and fixture values supplied by
+      # their Vitest wrappers. Each runs in its own clone of the pristine
+      # replay snapshot. Known failures are named in the runner and summary;
+      # any other failure or skipped test fails the job.
+      - name: Every tests/sql proof, through its fixture wrapper
+        if: ${{ !cancelled() && steps.replay.outcome == 'success' }}
+        run: node scripts/run-sql-proofs.mjs
+
+      - name: Remove the SQL proof databases and restore source connections
+        if: always()
+        run: node scripts/run-sql-proofs.mjs --cleanup
 
       # ── THE BEHAVIOURAL E2E SUITE, ON THE STACK THIS JOB JUST BUILT ──────
       #

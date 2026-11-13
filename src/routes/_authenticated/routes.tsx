@@ -1196,11 +1196,12 @@ function RoutesPage() {
               </Button>
             </div>
           </div>
-          {/* A-P2-10: completing a visit from the office is an owner or office
-              manager action (office_complete_visit refuses a dispatcher), so
-              only they are told this page marks visits complete. */}
+          {/* A-P2-10: completing a visit from the office takes close_visits
+              (#863: owner, office manager and dispatcher by default, and the
+              owner's to change), so only those who hold it are told this page
+              marks visits complete. */}
           <p className="text-sm text-muted-foreground">
-            {role === "owner" || role === "office_manager"
+            {canDo("close_visits")
               ? "Dispatch, route, map, and mark visits complete, all in one view."
               : "Dispatch, route and map visits, all in one view."}
           </p>

@@ -335,7 +335,12 @@ describe("no trigger function is executable by a signed-in user", () => {
     // 110 -> 112 (#883): retirement of an unused starter after Add service,
     // and a service-specific edit timestamp that records same-transaction edits.
     // Both functions revoke EXECUTE from PUBLIC, anon and authenticated.
-    expect(triggerFunctions().size).toBe(112);
+    //
+    // 112 -> 113 (20261112010000, an owner sets each role's permissions,
+    // #863): tg_log_role_permission_change writes activity_log for every
+    // change to role_permission_overrides, with the actor. Revoked from
+    // PUBLIC, anon and authenticated there.
+    expect(triggerFunctions().size).toBe(113);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

@@ -226,7 +226,7 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
       await import("@/lib/booking-price.server");
     let priceCents: number;
     let asSetPrice = false;
-    if (hasPermission(caller.role, "manage_pricing")) {
+    if (hasPermission(caller.role, "manage_pricing", caller.overrides)) {
       if (data.priceCents != null) {
         priceCents = data.priceCents;
       } else {
@@ -626,12 +626,16 @@ async function loadVisitForOfficeAction(
   userId: string,
   visitId: string,
   // Complete and Cancel can bill (office_complete_visit invoices a completed
-  // visit, office_skip_visit applies the business's skip-charge rules), so
-  // they stay manage_client_billing. A move bills nothing and keeps the
-  // visit's price, so it asks for manage_schedule, which a dispatcher holds
-  // (#728). The default is the strict one: a new caller that forgets to say
-  // is refused, not let through.
-  permission: "manage_client_billing" | "manage_schedule" = "manage_client_billing",
+  // visit, office_skip_visit applies the business's skip-charge rules). They
+  // were manage_client_billing until #863; they are close_visits now, which
+  // a dispatcher holds by default (Brendan, 2026-11-12) and the owner can
+  // turn off. A move bills nothing and keeps the visit's price, so it asks
+  // for manage_schedule (#728). The default is the strict one: a new caller
+  // that forgets to say is refused, not let through.
+  permission:
+    | "manage_client_billing"
+    | "manage_schedule"
+    | "close_visits" = "manage_client_billing",
 ) {
   const { requirePermission } = await import("@/lib/authz.server");
   const caller = await requirePermission(supabase, userId, permission);
@@ -677,7 +681,7 @@ export const completeVisitFromOffice = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
+    const v = await loadVisitForOfficeAction(supabase, userId, data.visitId, "close_visits");
     // A missed visit can be completed too: it was marked missed overnight
     // because nobody closed it, not because it was proved undone (#455).
     if (!canOfficeComplete(v.status))
@@ -892,7 +896,7 @@ export const cancelVisitFromOffice = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
+    const v = await loadVisitForOfficeAction(supabase, userId, data.visitId, "close_visits");
     if (v.status !== "scheduled") throw new Error("Only scheduled visits can be canceled");
     const { startRouteWatch } = await import("@/lib/field-notify.server");
     const watch = await startRouteWatch({

@@ -173,18 +173,20 @@ export function VisitDetailDrawer({
   // can_write_org.
   const doComplete = useServerFn(completeVisitFromOffice);
   const doCancel = useServerFn(cancelVisitFromOffice);
-  // Cosmetic gate only — requirePermission("manage_client_billing") inside the
-  // office server functions is the real one. Showing a dispatcher a button
-  // that throws is the failure this whole change is about, so hide it.
+  // Cosmetic gate only — requirePermission("close_visits") inside the office
+  // server functions is the real one. Showing a person a button that throws
+  // is the failure this whole change is about, so hide it.
   const { can, role } = usePermissions();
   // Yard wording only on a pet-waste visit, decided as My Day decides it
   // (#560): the visit's own line, and for a visit with no service, what the
   // business runs.
   const { petWaste: businessRunsPetWaste } = useServiceLines();
-  const canActFromOffice = can("manage_client_billing");
+  // Complete and Cancel can bill; since #863 they are close_visits, which a
+  // dispatcher holds by default and the owner can turn off per role.
+  const canActFromOffice = can("close_visits");
   // Moving a visit to another day is routes work, not billing (#728):
   // rescheduleVisitFromOffice asks for manage_schedule, which a dispatcher
-  // holds. Complete and Cancel can bill and stay on canActFromOffice.
+  // holds.
   const canMoveDay = can("manage_schedule");
 
   // Q-12, narrowest useful answer. Below 768px the dnd board is display:none
@@ -788,13 +790,13 @@ export function VisitDetailDrawer({
             {(canComplete || canCancel) && (
               <section className="space-y-2 border-t pt-3">
                 {!canActFromOffice ? (
-                  // A dispatcher reaches this drawer but holds neither
-                  // manage_client_billing nor the tech guard, so there is no
+                  // A person who reaches this drawer without close_visits (a
+                  // dispatcher whose owner turned it off, or a tech) has no
                   // path by which either action succeeds. Say that, rather
                   // than render buttons that throw.
                   <p className="text-xs text-muted-foreground">
                     {role === "dispatcher"
-                      ? "Completing or canceling a visit is an office action. The assigned tech closes it out, or an owner or office manager does it from the client's Visits tab."
+                      ? "Completing or canceling a visit is an office action. The assigned tech closes it out, or someone the owner allows to close out visits does it from the client's Visits tab."
                       : "You don't have permission to close out a visit."}
                   </p>
                 ) : (

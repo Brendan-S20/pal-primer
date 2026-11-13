@@ -1010,8 +1010,20 @@ export const BASE_STUBS: Record<string, Stub> = {
       business_email: "compliance@greatermetropolitandetroitdoodisposal.com",
       business_phone: "+13135550100",
       contacts: [
-        { first_name: "Devin", last_name: "Abernathy-Kowalczyk", title: "Owner", email: "devin@greatermetropolitandetroitdoodisposal.com", phone: "+13135550101" },
-        { first_name: "Samantha", last_name: "Okonkwo", title: "Office manager", email: "sam@greatermetropolitandetroitdoodisposal.com", phone: "+13135550102" },
+        {
+          first_name: "Devin",
+          last_name: "Abernathy-Kowalczyk",
+          title: "Owner",
+          email: "devin@greatermetropolitandetroitdoodisposal.com",
+          phone: "+13135550101",
+        },
+        {
+          first_name: "Samantha",
+          last_name: "Okonkwo",
+          title: "Office manager",
+          email: "sam@greatermetropolitandetroitdoodisposal.com",
+          phone: "+13135550102",
+        },
       ],
       ein_last4: "4567",
       phone_number: "+18445550123",
@@ -1035,10 +1047,8 @@ export const BASE_STUBS: Record<string, Stub> = {
     displayName: "Detroit Doo",
     termsUrl: "https://www.greatermetropolitandetroitdoodisposal.com/legal/terms-of-service",
     privacyUrl: "https://www.greatermetropolitandetroitdoodisposal.com/legal/privacy-policy",
-    lead:
-      "I agree to receive text messages from Detroit Doo at the number provided about my appointments, visit updates and billing. Consent is optional and is not a condition of purchase. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out, HELP for help.",
-    text:
-      "I agree to receive text messages from Detroit Doo at the number provided about my appointments, visit updates and billing. Consent is optional and is not a condition of purchase. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out, HELP for help. Detroit Doo Terms: https://www.greatermetropolitandetroitdoodisposal.com/legal/terms-of-service Privacy Policy: https://www.greatermetropolitandetroitdoodisposal.com/legal/privacy-policy",
+    lead: "I agree to receive text messages from Detroit Doo at the number provided about my appointments, visit updates and billing. Consent is optional and is not a condition of purchase. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out, HELP for help.",
+    text: "I agree to receive text messages from Detroit Doo at the number provided about my appointments, visit updates and billing. Consent is optional and is not a condition of purchase. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out, HELP for help. Detroit Doo Terms: https://www.greatermetropolitandetroitdoodisposal.com/legal/terms-of-service Privacy Policy: https://www.greatermetropolitandetroitdoodisposal.com/legal/privacy-policy",
   },
 
   // /settings/automation, /settings/invoicing and /settings/emails, which
@@ -1324,6 +1334,56 @@ export const BASE_STUBS: Record<string, Stub> = {
   listOrgInvites: { invites: [] },
   listStaffAddresses: { staff: fx.STAFF },
   listStaffServices: { rows: [] },
+  // Settings -> Roles & permissions (#863). Every configurable role with
+  // every permission; the dispatcher carries two changes (one on, one off)
+  // so the "Changed" badge, the count and the "last changed by" line are
+  // drawn, and the office manager and technician the defaults, so "The
+  // defaults." and a disabled Reset are measured too.
+  getRolePermissions: (() => {
+    const DEFAULTS: Record<string, string[]> = {
+      office_manager: fx.ALL_PERMISSION_NAMES.filter(
+        (p) => p !== "manage_org_billing" && p !== "manage_franchise",
+      ),
+      dispatcher: [
+        "view_client_directory",
+        "record_field_addons",
+        "booking",
+        "manage_schedule",
+        "close_visits",
+        "manage_plans",
+        "message_clients",
+      ],
+      tech: ["record_field_addons"],
+    };
+    const OWNER_ONLY = ["manage_org_billing", "manage_franchise"];
+    const CHANGED: Record<string, Record<string, boolean>> = {
+      dispatcher: { view_financials: true, message_clients: false },
+    };
+    return {
+      roles: (["office_manager", "dispatcher", "tech"] as const).map((role) => {
+        const permissions = fx.ALL_PERMISSION_NAMES.map((permission) => {
+          const byDefault = DEFAULTS[role].includes(permission);
+          const ownerOnly = OWNER_ONLY.includes(permission);
+          const stored = CHANGED[role]?.[permission];
+          return {
+            permission,
+            byDefault,
+            ownerOnly,
+            allowed: ownerOnly ? false : typeof stored === "boolean" ? stored : byDefault,
+          };
+        });
+        const changed = permissions.filter((p) => p.allowed !== p.byDefault).length;
+        return {
+          role,
+          permissions,
+          changed,
+          lastChange: changed ? { by: "Dana Whitfield-Ramirez", at: "2026-11-11T15:04:00Z" } : null,
+        };
+      }),
+    };
+  })(),
+  setRolePermission: (args) => ({ ok: true, allowed: args.allowed, byDefault: false }),
+  resetRolePermissions: ok,
   listOrgUsers: {
     users: fx.STAFF.map((s, i) => ({
       user_id: `77777777-0000-4000-8000-${String(500000000000 + i).slice(0, 12)}`,
