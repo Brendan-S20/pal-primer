@@ -157,7 +157,7 @@ export const listZones = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    const { orgId, role } = await resolveCaller(supabase, userId);
+    const { orgId, role, overrides } = await resolveCaller(supabase, userId);
     const { data, error } = await (supabase as any)
       .from("zones")
       .select(
@@ -167,7 +167,7 @@ export const listZones = createServerFn({ method: "GET" })
       .order("name");
     if (error) throw new Error(error.message);
     const { hasPermission } = await import("@/lib/permissions");
-    const rows = hasPermission(role, "manage_pricing")
+    const rows = hasPermission(role, "manage_pricing", overrides)
       ? await retryPendingZipFills(supabase, orgId, data ?? [])
       : (data ?? []);
     const activeClients = await activeClientCounts(supabase, orgId);
