@@ -6,6 +6,7 @@ import { requirePermission } from "@/lib/authz.server";
 import { formatWeekdaySet, normalizeWeekdays } from "@/lib/weekday-set";
 import { MAX_MULTIPLIER, MIN_MULTIPLIER } from "@/lib/frequency-multipliers";
 import { endServiceDecision, seriesRulesPatch } from "@/lib/subscription-form";
+import { hasPermission } from "@/lib/permissions";
 
 // Scheduling model (client detail refactor): the five UI choices map to
 //   Weekly            -> weekly (interval_weeks null/1)
@@ -228,6 +229,10 @@ export async function createSubscriptionPlans(
         ...(data.serviceId ? { service_id: data.serviceId } : {}),
         ...(stayId ? { stay_id: stayId } : {}),
         ...seriesRulesPatch(data),
+        // Who added it, and when (#728).
+        created_by: userId,
+        last_changed_by: userId,
+        last_changed_at: new Date().toISOString(),
       })),
     )
     .select("id");
@@ -265,9 +270,159 @@ export const createSubscription = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => createSubSchema.parse(d))
   .handler(async ({ data, context }) => {
+    // Adding a plan is manage_plans (#728). Somebody who also sets prices
+    // types any price, as before; anybody else (a dispatcher) adds it at the
+    // set price only, which the server works out and checks itself.
+    const caller = await requirePermission(context.supabase, context.userId, "manage_plans");
+    if (!hasPermission(caller.role, "manage_pricing", caller.overrides))
+      return { id: await createPlanAtSetPrice(context.supabase, context.userId, caller.orgId, data) };
     const result = await createSubscriptionPlans(context.supabase, context.userId, [data]);
     return { id: result.ids[0] };
   });
+
+/**
+ * What a plan on this client would cost at the business's set price (#728):
+ * the number the dispatcher's Add plan form shows, and the only one
+ * createSubscription accepts from somebody who does not set prices. Null with
+ * a reason when there is none (no zone, no rate, a schedule with no set price).
+ */
+export const getPlanSetPrice = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        clientId: z.string().uuid(),
+        propertyId: z.string().uuid(),
+        frequency: frequencySchema,
+        intervalWeeks: z.number().int().min(1).max(26).optional(),
+        serviceId: z.string().uuid().optional(),
+        dogCount: z.number().int().min(1).max(50).optional(),
+        unitCount: z.number().int().min(1).max(10_000).optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const caller = await requirePermission(context.supabase, context.userId, "manage_plans");
+    const { existingClientPlanSetPrice } = await import("@/lib/plan-set-price.server");
+    const set = await existingClientPlanSetPrice(context.supabase, {
+      orgId: caller.orgId,
+      ...data,
+    });
+    return { cents: set.cents, zoneId: set.zoneId, reason: set.reason, accountType: set.accountType };
+  });
+
+/**
+ * A plan on an existing client at the business's set price, for a caller who
+ * manages plans but does not set prices (#728, owner decision 2026-11-10:
+ * "Yes, dispatchers can manage plans at the set price").
+ *
+ * The browser sends the price it showed; the server works the set price out
+ * again from the business's own zones and services and refuses anything else
+ * BEFORE writing: a typed price, a discount, another zone, billing in advance,
+ * a start in the past. The subscriptions write policy stays manage_pricing, so
+ * the row is written as the service role by insertPlanAtSetPrice, which
+ * re-reads the client and property and refuses one outside the caller's
+ * business. Exported for tests.
+ */
+export async function createPlanAtSetPrice(
+  supabase: any,
+  userId: string,
+  orgId: string,
+  data: z.infer<typeof createSubSchema>,
+): Promise<string> {
+  const {
+    PLAN_CADENCE_IS_BILLING,
+    existingClientPlanSetPrice,
+    insertPlanAtSetPrice,
+  } = await import("@/lib/plan-set-price.server");
+  const { priceOverrideRefusal } = await import("@/lib/booking-price.server");
+  if ((data.billingCadence ?? "postpaid") !== "postpaid") throw new Error(PLAN_CADENCE_IS_BILLING);
+
+  const zonePriced = data.serviceId
+    ? (await assertServiceBookable(supabase, data.serviceId, null)).zonePriced
+    : true;
+  const set = await existingClientPlanSetPrice(supabase, {
+    orgId,
+    clientId: data.clientId,
+    propertyId: data.propertyId,
+    frequency: data.frequency,
+    intervalWeeks: data.intervalWeeks ?? null,
+    serviceId: data.serviceId ?? null,
+    dogCount: data.dogCount ?? null,
+    unitCount: data.unitCount ?? null,
+  });
+  if (set.cents == null) throw new Error(set.reason);
+  if (data.accountType !== set.accountType)
+    throw new Error("That is not this client's kind of account. Refresh and try again.");
+  if (data.priceCents !== set.cents) throw new Error(priceOverrideRefusal(set.cents));
+  // The zone is the quote's, not one the browser names.
+  if (data.zoneId && data.zoneId !== set.zoneId) throw new Error(priceOverrideRefusal(set.cents));
+
+  if (data.startedOn) {
+    const { data: orgRow } = await supabase
+      .from("organizations")
+      .select("timezone")
+      .eq("id", orgId)
+      .maybeSingle();
+    const { orgToday, DEFAULT_ORG_TIMEZONE } = await import("@/lib/org-day");
+    if (data.startedOn < orgToday(orgRow?.timezone || DEFAULT_ORG_TIMEZONE))
+      throw new Error("The first visit can't be in the past.");
+  }
+
+  const now = new Date().toISOString();
+  const { data: row, error } = await insertPlanAtSetPrice({
+    organization_id: orgId,
+    client_id: data.clientId,
+    property_id: data.propertyId,
+    account_type: set.accountType,
+    frequency: data.frequency,
+    price_cents: set.cents,
+    dog_count: set.accountType === "residential" ? (data.dogCount ?? 1) : null,
+    unit_count: set.accountType === "commercial" ? (data.unitCount ?? 1) : null,
+    zone_id: set.zoneId,
+    priced_from_zone_id: zonePriced ? set.zoneId : null,
+    priced_at: now,
+    billing_cadence: "postpaid",
+    interval_weeks: data.frequency === "weekly" ? (data.intervalWeeks ?? null) : null,
+    interval_days: data.frequency === "every_n_days" ? (data.intervalDays ?? null) : null,
+    ...(data.startedOn ? { started_on: data.startedOn } : {}),
+    ends_on: data.endsOn ?? null,
+    preferred_weekdays:
+      !data.weekdays?.length && data.preferredWeekdays?.length ? data.preferredWeekdays : null,
+    ...weekdaysFor(data),
+    earliest_time: data.earliestTime ?? null,
+    latest_time: data.latestTime ?? null,
+    ...(data.serviceId ? { service_id: data.serviceId } : {}),
+    ...seriesRulesPatch(data),
+    created_by: userId,
+    last_changed_by: userId,
+    last_changed_at: now,
+  });
+  if (error || !row) throw new Error(error?.message ?? "The plan could not be saved.");
+
+  const { recomputePropertyEstimate } = await import("@/lib/estimate.server");
+  await recomputePropertyEstimate(supabase, data.propertyId);
+  const { generateVisitHorizon } = await import("@/lib/visit-generation.server");
+  await generateVisitHorizon(supabase, orgId);
+
+  const { logActivity } = await import("@/lib/activity.server");
+  await logActivity(supabase, {
+    orgId,
+    clientId: data.clientId,
+    propertyId: data.propertyId,
+    subscriptionId: row.id,
+    actorUserId: userId,
+    kind: "service.created",
+    summary: `Created a ${cadenceWords(data.frequency, data.weekdays)} service at the set price, $${(set.cents / 100).toFixed(2)} per visit`,
+    meta: {
+      frequency: data.frequency,
+      weekdays: data.weekdays?.length ? normalizeWeekdays(data.weekdays) : null,
+      price_cents: set.cents,
+      at_set_price: true,
+    },
+  });
+  return row.id;
+}
 
 const updateSubSchema = z
   .object({
@@ -377,8 +532,13 @@ export const updateSubscription = createServerFn({ method: "POST" })
   .inputValidator((d) => updateSubSchema.parse(d))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    // Editing pricing/plan details is an office-manage-pricing action.
-    await requirePermission(supabase, userId, "manage_pricing");
+    // Editing a plan's price or terms is a pricing action. A dispatcher, who
+    // manages plans at the set price (#728), is told so in words.
+    const editor = await requirePermission(supabase, userId, "manage_plans");
+    if (!hasPermission(editor.role, "manage_pricing", editor.overrides)) {
+      const { PLAN_EDIT_IS_PRICING } = await import("@/lib/plan-set-price.server");
+      throw new Error(PLAN_EDIT_IS_PRICING);
+    }
     // Before-image for the activity log (spec Stage 5: price changes show
     // before -> after).
     const { data: before } = await supabase
@@ -450,6 +610,8 @@ export const updateSubscription = createServerFn({ method: "POST" })
         // A plan priced from its service cannot have come from a zone's rate.
         ...(zonePriced ? {} : { priced_from_zone_id: null }),
         ...seriesRulesPatch(data),
+        last_changed_by: userId,
+        last_changed_at: new Date().toISOString(),
       })
       .eq("id", data.subscriptionId)
       .select("organization_id");
@@ -689,15 +851,67 @@ export const listSubscriptionsForClient = createServerFn({ method: "GET" })
 // services with zero history (no started/completed visits, no invoice
 // lines). Pausing removes future scheduled visits; resuming regenerates.
 
-async function loadSubForLifecycle(supabase: any, userId: string, subscriptionId: string) {
-  await requirePermission(supabase, userId, "manage_pricing");
+// Pause, resume and end are manage_plans (#728): a dispatcher runs them too.
+// Somebody who sets prices writes with their own key, as before; anybody else
+// is written for by the server as the service role, through
+// updatePlanLifecycleAsServer, which only takes the lifecycle columns and is
+// filtered on the caller's business. Every change stamps who and when.
+type PlanLifecycle = {
+  sub: {
+    id: string;
+    organization_id: string;
+    client_id: string;
+    property_id: string;
+    status: string;
+    started_on: string | null;
+    ends_on: string | null;
+    frequency: string;
+  };
+  orgId: string;
+  /** The caller cannot write plans with their own key (no manage_pricing). */
+  asServer: boolean;
+};
+
+async function loadSubForLifecycle(
+  supabase: any,
+  userId: string,
+  subscriptionId: string,
+): Promise<PlanLifecycle> {
+  const caller = await requirePermission(supabase, userId, "manage_plans");
   const { data: sub, error } = await supabase
     .from("subscriptions")
     .select("id, organization_id, client_id, property_id, status, started_on, ends_on, frequency")
     .eq("id", subscriptionId)
+    .eq("organization_id", caller.orgId)
     .single();
+  // Another business's plan reads as no row (RLS, and the filter above).
+  if (error || !sub) throw new Error(error?.message ?? "That plan was not found.");
+  return { sub, orgId: caller.orgId, asServer: !hasPermission(caller.role, "manage_pricing", caller.overrides) };
+}
+
+async function writePlanLifecycle(
+  supabase: any,
+  userId: string,
+  plan: PlanLifecycle,
+  patch: Record<string, unknown>,
+  onlyIfStatus?: string,
+) {
+  const stamped = { ...patch, last_changed_by: userId, last_changed_at: new Date().toISOString() };
+  if (plan.asServer) {
+    const { updatePlanLifecycleAsServer } = await import("@/lib/plan-set-price.server");
+    const { error } = await updatePlanLifecycleAsServer(
+      plan.orgId,
+      plan.sub.id,
+      stamped,
+      onlyIfStatus,
+    );
+    if (error) throw new Error(error.message);
+    return;
+  }
+  let q = supabase.from("subscriptions").update(stamped).eq("id", plan.sub.id);
+  if (onlyIfStatus) q = q.eq("status", onlyIfStatus);
+  const { error } = await q;
   if (error) throw new Error(error.message);
-  return sub;
 }
 
 function localTodayISO(): string {
@@ -710,15 +924,17 @@ export const pauseSubscription = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ subscriptionId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const sub = await loadSubForLifecycle(supabase, userId, data.subscriptionId);
+    const plan = await loadSubForLifecycle(supabase, userId, data.subscriptionId);
+    const { sub } = plan;
     if (sub.status !== "active") throw new Error("Only an active service can be paused");
 
-    const { error } = await supabase
-      .from("subscriptions")
-      .update({ status: "paused", paused_at: new Date().toISOString() })
-      .eq("id", sub.id)
-      .eq("status", "active");
-    if (error) throw new Error(error.message);
+    await writePlanLifecycle(
+      supabase,
+      userId,
+      plan,
+      { status: "paused", paused_at: new Date().toISOString() },
+      "active",
+    );
 
     // Future scheduled visits come off the board; history is untouched.
     const { error: vErr } = await supabase
@@ -746,15 +962,11 @@ export const resumeSubscription = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ subscriptionId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const sub = await loadSubForLifecycle(supabase, userId, data.subscriptionId);
+    const plan = await loadSubForLifecycle(supabase, userId, data.subscriptionId);
+    const { sub } = plan;
     if (sub.status !== "paused") throw new Error("Only a paused service can be resumed");
 
-    const { error } = await supabase
-      .from("subscriptions")
-      .update({ status: "active", paused_at: null })
-      .eq("id", sub.id)
-      .eq("status", "paused");
-    if (error) throw new Error(error.message);
+    await writePlanLifecycle(supabase, userId, plan, { status: "active", paused_at: null }, "paused");
 
     // Refill the schedule out to the normal horizon.
     const { generateVisitHorizon } = await import("@/lib/visit-generation.server");
@@ -786,7 +998,8 @@ export const endSubscription = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const sub = await loadSubForLifecycle(supabase, userId, data.subscriptionId);
+    const plan = await loadSubForLifecycle(supabase, userId, data.subscriptionId);
+    const { sub } = plan;
 
     // ends_on drives generation (it stops there) and the DB trigger trims
     // future scheduled visits past it. Rows are never deleted here. Status
@@ -801,18 +1014,14 @@ export const endSubscription = createServerFn({ method: "POST" })
       today,
     });
     if (!decision.ok) throw new Error(decision.error);
-    const { error } = await supabase
-      .from("subscriptions")
-      .update({
-        ends_on: data.effectiveDate,
-        end_reason: data.reason,
-        end_notes: data.notes || null,
-        ended_by: userId,
-        paused_at: null,
-        status: decision.status,
-      })
-      .eq("id", sub.id);
-    if (error) throw new Error(error.message);
+    await writePlanLifecycle(supabase, userId, plan, {
+      ends_on: data.effectiveDate,
+      end_reason: data.reason,
+      end_notes: data.notes || null,
+      ended_by: userId,
+      paused_at: null,
+      status: decision.status,
+    });
 
     const { logActivity } = await import("@/lib/activity.server");
     await logActivity(supabase, {
@@ -832,7 +1041,13 @@ export const deleteDraftSubscription = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ subscriptionId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const sub = await loadSubForLifecycle(supabase, userId, data.subscriptionId);
+    const plan = await loadSubForLifecycle(supabase, userId, data.subscriptionId);
+    // Deleting is not on a dispatcher's list (add, pause, resume, end).
+    if (plan.asServer) {
+      const { PLAN_DELETE_IS_PRICING } = await import("@/lib/plan-set-price.server");
+      throw new Error(PLAN_DELETE_IS_PRICING);
+    }
+    const { sub } = plan;
 
     const { count: doneCount, error: vErr } = await supabase
       .from("visits")
