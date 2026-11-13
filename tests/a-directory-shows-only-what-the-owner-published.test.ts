@@ -178,11 +178,13 @@ describe("the pages", () => {
 
   it("draw the disclosure on every page, through the shell", () => {
     expect(read("src/components/directory/DirectoryShell.tsx")).toMatch(/\{DIRECTORY_DISCLOSURE\}/);
-    expect(DIRECTORY_DISCLOSURE).toMatch(/HoundStack customer/);
-    expect(DIRECTORY_DISCLOSURE).toMatch(/not affiliated with Angi/);
+    expect(DIRECTORY_DISCLOSURE).toMatch(/runs their business on HoundStack/);
+    expect(DIRECTORY_DISCLOSURE).toMatch(/chose to be listed/);
+    expect(DIRECTORY_DISCLOSURE).toMatch(/No paid placement/);
   });
 
-  it("imply no affiliation: Angi is named only in the disclosure that says we are not", () => {
+  it("imply no affiliation: Angi is named nowhere a visitor reads, the disclosure included", () => {
+    expect(DIRECTORY_DISCLOSURE).not.toMatch(/\bAngi\b/);
     const files = [
       ...PAGES,
       "src/components/directory/DirectoryShell.tsx",
