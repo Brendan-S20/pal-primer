@@ -7,9 +7,12 @@
 -- transaction, ROLLED BACK at the end, the migration included when given.
 -- Each check prints "ok: ..." or raises "PROOF FAILED [...]".
 --
--- Two businesses. A: an owner, an office manager, a dispatcher, a technician,
--- two homes with gate codes (the technician is assigned at one today and at
--- the other tomorrow), and an expense. B: an owner and a dispatcher. Each is
+-- Two businesses. A: two owners (so turning one off is not refused by the
+-- last-owner trigger, which fires BEFORE the policy's WITH CHECK, and the
+-- refusal seen is this rule's; the second owner is otherwise unused), an
+-- office manager, a dispatcher, a technician, two homes with gate codes (the
+-- technician is assigned at one today and at the other tomorrow), and an
+-- expense. B: an owner and a dispatcher. Each is
 -- tried as the API sees them: role authenticated, the JWT's sub set the way
 -- Supabase sets it. A direct INSERT, UPDATE or DELETE as `authenticated` is
 -- what PostgREST does.
@@ -36,6 +39,7 @@ INSERT INTO auth.users (id, email) VALUES
   ('f0000000-0000-4000-8000-000000086302', 'office-a@rp.proof.invalid'),
   ('f0000000-0000-4000-8000-000000086303', 'dispatch-a@rp.proof.invalid'),
   ('f0000000-0000-4000-8000-000000086304', 'tech-a@rp.proof.invalid'),
+  ('f0000000-0000-4000-8000-000000086305', 'owner2-a@rp.proof.invalid'),
   ('f0000000-0000-4000-8000-000000086311', 'owner-b@rp.proof.invalid'),
   ('f0000000-0000-4000-8000-000000086313', 'dispatch-b@rp.proof.invalid');
 INSERT INTO public.organizations (id, name, timezone) VALUES
@@ -46,6 +50,7 @@ INSERT INTO public.user_roles (user_id, organization_id, role) VALUES
   ('f0000000-0000-4000-8000-000000086302', '0a000000-0000-4000-8000-000000086300', 'office_manager'),
   ('f0000000-0000-4000-8000-000000086303', '0a000000-0000-4000-8000-000000086300', 'dispatcher'),
   ('f0000000-0000-4000-8000-000000086304', '0a000000-0000-4000-8000-000000086300', 'tech'),
+  ('f0000000-0000-4000-8000-000000086305', '0a000000-0000-4000-8000-000000086300', 'owner'),
   ('f0000000-0000-4000-8000-000000086311', '0b000000-0000-4000-8000-000000086300', 'owner'),
   ('f0000000-0000-4000-8000-000000086313', '0b000000-0000-4000-8000-000000086300', 'dispatcher');
 SET LOCAL app.allow_protected_org_write = '';
@@ -55,6 +60,7 @@ INSERT INTO public.staff (id, organization_id, user_id, role, display_name, acti
   ('5a000000-0000-4000-8000-000000086302', '0a000000-0000-4000-8000-000000086300', 'f0000000-0000-4000-8000-000000086302', 'office_manager', 'Office A', true),
   ('5a000000-0000-4000-8000-000000086303', '0a000000-0000-4000-8000-000000086300', 'f0000000-0000-4000-8000-000000086303', 'dispatcher', 'Dispatch A', true),
   ('5a000000-0000-4000-8000-000000086304', '0a000000-0000-4000-8000-000000086300', 'f0000000-0000-4000-8000-000000086304', 'tech', 'Tech A', true),
+  ('5a000000-0000-4000-8000-000000086305', '0a000000-0000-4000-8000-000000086300', 'f0000000-0000-4000-8000-000000086305', 'owner', 'Owner Two A', true),
   ('5b000000-0000-4000-8000-000000086311', '0b000000-0000-4000-8000-000000086300', 'f0000000-0000-4000-8000-000000086311', 'owner', 'Owner B', true),
   ('5b000000-0000-4000-8000-000000086313', '0b000000-0000-4000-8000-000000086300', 'f0000000-0000-4000-8000-000000086313', 'dispatcher', 'Dispatch B', true);
 
