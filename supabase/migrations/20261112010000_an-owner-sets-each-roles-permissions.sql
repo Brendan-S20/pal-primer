@@ -58,10 +58,13 @@
 --
 --   7. manage_plans (#907, Brendan 2026-11-10 2:24 PM ET: "Yes, dispatchers
 --      can manage plans at the set price") is in the dispatcher's defaults
---      here, so #907's own has_permission rewrite is not needed once this
---      file is in: a replay runs this file first (20261112010000 sorts before
---      #907's 20261112040000), and #907's $pre$ guard stops when
---      role_permission_overrides exists. Its grant lives here instead.
+--      here. #907's 20261112040000 (merged first, applied live before this
+--      file) branches on role_permission_overrides: absent, it replaces
+--      has_permission with the matrix plus manage_plans, which this file then
+--      supersedes with the body below; present (a replay, where this file
+--      sorts first), it leaves has_permission alone and asserts that
+--      permission_default gives the dispatcher manage_plans. Either way the
+--      grant lives here, and the plan audit columns 040000 adds are untouched.
 --
 -- NOTHING CHANGES FOR AN EXISTING BUSINESS. The table starts empty, and an
 -- empty table is the matrix every business already runs on. Replays into an
