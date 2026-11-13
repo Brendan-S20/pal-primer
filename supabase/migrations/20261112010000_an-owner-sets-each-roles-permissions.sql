@@ -394,7 +394,12 @@ GRANT EXECUTE ON FUNCTION public.change_user_role(uuid, uuid, app_role) TO authe
 
 -- PATCH /rest/v1/staff: the same rule. An owner anything; anyone else only
 -- with manage_users, only a role at or below their own, never on an owner's
--- row. Address, routing and skill edits change neither and pass as before.
+-- row. This policy is RESTRICTIVE: it only takes away. The permissive
+-- "Managers write staff" (20260804090000) asks has_permission(manage_users)
+-- for every staff write, so a role whose manage_users the owner turned off
+-- edits no staff row at all, address, routing and skills included (the proof
+-- asserts 0 rows for that office manager); a role that holds it edits those
+-- as before, and this policy decides only who may change active or role.
 DROP POLICY IF EXISTS "Only an owner changes who is on or their role" ON public.staff;
 DROP POLICY IF EXISTS "Owner or office manager sets who is on; never the owner" ON public.staff;
 DROP POLICY IF EXISTS "Whoever manages the team sets who is on; never the owner" ON public.staff;
