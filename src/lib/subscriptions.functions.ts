@@ -3,6 +3,7 @@ import { isZonePriced } from "@/lib/services";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
+import { orgTodayFor } from "@/lib/booking-dates.server";
 import { formatWeekdaySet, normalizeWeekdays } from "@/lib/weekday-set";
 import { MAX_MULTIPLIER, MIN_MULTIPLIER } from "@/lib/frequency-multipliers";
 import { endServiceDecision, seriesRulesPatch } from "@/lib/subscription-form";
@@ -378,7 +379,7 @@ export const updateSubscription = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     // Editing pricing/plan details is an office-manage-pricing action.
-    await requirePermission(supabase, userId, "manage_pricing");
+    const { orgId } = await requirePermission(supabase, userId, "manage_pricing");
     // Before-image for the activity log (spec Stage 5: price changes show
     // before -> after).
     const { data: before } = await supabase
@@ -401,7 +402,7 @@ export const updateSubscription = createServerFn({ method: "POST" })
     const priceWasTypedOver = !!before && before.price_cents !== data.priceCents;
     const weekdaysPatch = weekdaysFor(data);
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = await orgTodayFor(supabase, before?.organization_id ?? orgId);
     const endsInPast = !!data.endsOn && data.endsOn <= today;
     const statusPatch = endsInPast
       ? { status: "canceled" as const, paused_at: null }
@@ -618,7 +619,7 @@ export const applyFrequencyChangeRequest = createServerFn({ method: "POST" })
         .select("id, invoice_line_items(id)")
         .eq("subscription_id", data.subscriptionId)
         .eq("status", "scheduled")
-        .gt("scheduled_on", new Date().toISOString().slice(0, 10));
+        .gt("scheduled_on", await orgTodayFor(supabase, orgId));
       const removable = (future ?? [])
         .filter((v: any) => !(v.invoice_line_items ?? []).length)
         .map((v: any) => v.id);
@@ -794,7 +795,7 @@ export const endSubscription = createServerFn({ method: "POST" })
     // stays active until then (visits through the end date still happen)
     // and the isServiceEnded helper handles the flip in the UI. A service
     // that has not started may end before its start (#676): it never runs.
-    const today = new Date().toISOString().slice(0, 10);
+    const today = await orgTodayFor(supabase, sub.organization_id);
     const decision = endServiceDecision({
       startedOn: sub.started_on,
       effectiveDate: data.effectiveDate,
