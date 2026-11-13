@@ -695,6 +695,7 @@ jobs:
           fi
           for attempt in 1 2 3; do
             if supabase db reset --local 2>&1 | tee "reset-$attempt.log"; then
+              node scripts/run-sql-proofs.mjs --prepare
               echo "migrations replayed from empty on attempt $attempt"
               exit 0
             fi
@@ -747,10 +748,15 @@ jobs:
           exit $failed
 
       # These proofs need the migration paths and fixture values supplied by
-      # their Vitest wrappers. The runner uses this job's local DB_URL and
-      # rejects skipped tests so an unavailable database cannot pass the job.
+      # their Vitest wrappers. Each runs in its own clone of the pristine
+      # replay snapshot. Known failures are named in the runner and summary;
+      # any other failure or skipped test fails the job.
       - name: Every tests/sql proof, through its fixture wrapper
         run: node scripts/run-sql-proofs.mjs
+
+      - name: Remove the SQL proof databases and restore source connections
+        if: always()
+        run: node scripts/run-sql-proofs.mjs --cleanup
 
       # ── THE BEHAVIOURAL E2E SUITE, ON THE STACK THIS JOB JUST BUILT ──────
       #

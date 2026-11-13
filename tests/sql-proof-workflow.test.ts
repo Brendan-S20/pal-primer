@@ -1,15 +1,31 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { discoverSqlProofs, runSqlProofs, verifyProofResults } from "../scripts/run-sql-proofs.mjs";
+import {
+  KNOWN_FAILURES,
+  cleanupSqlProofs,
+  discoverSqlProofs,
+  prepareSqlProofs,
+  runSqlProofs,
+  verifyProofResults,
+} from "../scripts/run-sql-proofs.mjs";
 
 vi.setConfig({ testTimeout: 300_000 });
 
 const root = join(import.meta.dirname, "..");
 const temporary: string[] = [];
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const directory of temporary.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
@@ -17,8 +33,11 @@ function fixture() {
   const directory = mkdtempSync(join(tmpdir(), "sql-proof-runner-test-"));
   temporary.push(directory);
   mkdirSync(join(directory, "tests/sql"), { recursive: true });
-  const proof = ["tests", "sql", "fixture.proof.sql"].join("/");
-  const file = "tests/fixture.test.ts";
+  return { directory, ...addWrapper(directory, "fixture") };
+}
+
+function addWrapper(directory: string, name: string, file = `tests/${name}.test.ts`) {
+  const proof = ["tests", "sql", `${name}.proof.sql`].join("/");
   writeFileSync(join(directory, proof), "\\set ON_ERROR_STOP on\n");
   writeFileSync(
     join(directory, file),
@@ -28,7 +47,7 @@ function fixture() {
       'spawnSync("psql", [DB_URL, "-f", PROOF]);',
     ].join("\n"),
   );
-  return { directory, proof, file };
+  return { proof, file };
 }
 
 function report(directory: string, file: string, status = "passed") {
@@ -40,6 +59,49 @@ function report(directory: string, file: string, status = "passed") {
       },
     ],
   };
+}
+
+const originalUrl = "postgresql://postgres:postgres@127.0.0.1:54522/postgres";
+const stateFile = (directory: string) => join(directory, "supabase/.temp/sql-proof-template.json");
+
+function runtime(
+  directory: string,
+  failure: "vitest" | "report" | "skip" | "template" | undefined = undefined,
+) {
+  const statements: string[] = [];
+  const wrappers: Array<{ file: string; url: string; output: string }> = [];
+  const run = vi.fn((command, args, options) => {
+    if (command === "supabase") return { status: 0, stdout: `DB_URL="${originalUrl}"\n` };
+    if (command === "psql") {
+      if (args.includes("--version")) return { status: 0, stdout: "psql 17" };
+      const sql = args[args.indexOf("-c") + 1];
+      expect(sql).toBeTypeOf("string");
+      expect(new URL(args.find((arg) => arg.startsWith("postgresql:"))).pathname).toBe(
+        "/template1",
+      );
+      expect(args).toContain("ON_ERROR_STOP=1");
+      statements.push(sql);
+      return {
+        status: failure === "template" && /CREATE DATABASE/.test(sql) ? 1 : 0,
+        stdout: "",
+        stderr: "mock database command",
+      };
+    }
+    expect(command).toBe(process.execPath);
+    const file = args.find((arg) => /\.test\.tsx?$/.test(arg));
+    const output = args.find((arg) => arg.startsWith("--outputFile.json=")).split("=")[1];
+    wrappers.push({ file, url: options.env.FIXTURE_PROOF_DB_URL, output });
+    expect(args).toContain("--no-file-parallelism");
+    const first = wrappers.length === 1;
+    if (!(failure === "report" && first)) {
+      writeFileSync(
+        output,
+        JSON.stringify(report(directory, file, failure === "skip" && first ? "pending" : "passed")),
+      );
+    }
+    return { status: failure === "vitest" && first ? 1 : 0 };
+  });
+  return { run, statements, wrappers };
 }
 
 describe("SQL proof discovery", () => {
@@ -114,31 +176,123 @@ describe("SQL proof results", () => {
     empty.testResults[0].assertionResults = [];
     expect(() => verifyProofResults(empty, wrappers, directory)).toThrow("no test results");
   });
+});
 
-  it.each([0, 1])("uses the replay URL and propagates Vitest exit %i", (exitCode) => {
+describe("SQL proof database lifecycle", () => {
+  it("captures a replay snapshot while connections are blocked, then restores the source", () => {
+    const { directory } = fixture();
+    const { run, statements } = runtime(directory);
+    prepareSqlProofs(directory, run);
+    const state = JSON.parse(readFileSync(stateFile(directory), "utf8"));
+    expect(state.prefix).toMatch(/^proof_[a-f0-9]{12}$/);
+    expect(state.clones).toEqual([]);
+    expect(statements[0]).toMatch(/ALTER DATABASE\s+"?postgres"?\s+ALLOW_CONNECTIONS false/i);
+    expect(statements[1]).toMatch(/pg_terminate_backend/);
+    expect(statements[2]).toContain(`${state.prefix}_template`);
+    expect(statements[2]).toMatch(
+      /CREATE DATABASE.*TEMPLATE\s+"?postgres"?.*ALLOW_CONNECTIONS false/i,
+    );
+    expect(statements.at(-1)).toMatch(/ALTER DATABASE\s+"?postgres"?\s+ALLOW_CONNECTIONS true/i);
+  });
+
+  it("restores source connections if creating the snapshot fails", () => {
+    const { directory } = fixture();
+    const { run, statements } = runtime(directory, "template");
+    expect(() => prepareSqlProofs(directory, run)).toThrow();
+    expect(statements.at(-1)).toMatch(/ALLOW_CONNECTIONS true/i);
+  });
+
+  it("gives each wrapper a distinct clone and drops it after the test", () => {
     const { directory, file } = fixture();
-    const run = vi.fn((command, args, options) => {
-      if (command === "supabase") {
-        expect(args).toEqual(["status", "-o", "env"]);
-        return {
-          status: 0,
-          stdout: 'DB_URL="postgresql://postgres:postgres@127.0.0.1:54522/postgres"\n',
-        };
-      }
-      if (command === "psql") return { status: 0 };
-      expect(command).toBe(process.execPath);
-      expect(args).toContain(file);
-      expect(args).toContain("--no-file-parallelism");
-      expect(options.env.FIXTURE_PROOF_DB_URL).toBe(
-        "postgresql://postgres:postgres@127.0.0.1:54522/postgres",
+    const other = addWrapper(directory, "second");
+    const { run, wrappers, statements } = runtime(directory);
+    prepareSqlProofs(directory, run);
+    const prefix = JSON.parse(readFileSync(stateFile(directory), "utf8")).prefix;
+    runSqlProofs(directory, run);
+    expect(wrappers.map((wrapper) => wrapper.file)).toEqual([file, other.file]);
+    expect(new Set(wrappers.map((wrapper) => wrapper.url)).size).toBe(2);
+    for (const wrapper of wrappers) {
+      expect(wrapper.url).not.toBe(originalUrl);
+      const clone = new URL(wrapper.url).pathname.slice(1);
+      expect(clone).toMatch(new RegExp(`^${prefix}_[0-9]+$`));
+      expect(statements.some((sql) => sql.includes(clone) && /CREATE DATABASE/.test(sql))).toBe(
+        true,
       );
-      const output = args.find((arg) => arg.startsWith("--outputFile.json=")).split("=")[1];
-      writeFileSync(output, JSON.stringify(report(directory, file)));
-      return { status: exitCode };
-    });
-    if (exitCode) expect(() => runSqlProofs(directory, run)).toThrow("exit 1");
-    else expect(() => runSqlProofs(directory, run)).not.toThrow();
-    expect(run).toHaveBeenCalledTimes(3);
+      expect(
+        statements.some((sql) => sql.includes(clone) && /DROP DATABASE.*FORCE/.test(sql)),
+      ).toBe(true);
+      expect(existsSync(wrapper.output)).toBe(false);
+    }
+    expect(JSON.parse(readFileSync(stateFile(directory), "utf8")).clones).toEqual([]);
+  });
+
+  it.each(["vitest", "report", "skip"] as const)(
+    "drops failed clones, continues other wrappers, and fails the job after a %s failure",
+    (failure) => {
+      const { directory } = fixture();
+      addWrapper(directory, "second");
+      const { run, wrappers, statements } = runtime(directory, failure);
+      prepareSqlProofs(directory, run);
+      expect(() => runSqlProofs(directory, run)).toThrow();
+      expect(wrappers).toHaveLength(2);
+      for (const wrapper of wrappers) {
+        const clone = new URL(wrapper.url).pathname.slice(1);
+        expect(
+          statements.some((sql) => sql.includes(clone) && /DROP DATABASE.*FORCE/.test(sql)),
+        ).toBe(true);
+        expect(existsSync(wrapper.output)).toBe(false);
+      }
+    },
+  );
+
+  it("refuses to run wrappers without the replay snapshot", () => {
+    const { directory } = fixture();
+    const { run, wrappers } = runtime(directory);
+    expect(() => runSqlProofs(directory, run)).toThrow();
+    expect(wrappers).toEqual([]);
+  });
+
+  it("drops outstanding clones and the snapshot during cleanup", () => {
+    const { directory } = fixture();
+    const { run, statements } = runtime(directory);
+    prepareSqlProofs(directory, run);
+    const state = JSON.parse(readFileSync(stateFile(directory), "utf8"));
+    const clone = `${state.prefix}_0`;
+    writeFileSync(stateFile(directory), JSON.stringify({ ...state, clones: [clone] }));
+    cleanupSqlProofs(directory, run);
+    for (const name of [clone, `${state.prefix}_template`]) {
+      expect(statements.some((sql) => sql.includes(name) && /DROP DATABASE.*FORCE/.test(sql))).toBe(
+        true,
+      );
+    }
+    expect(
+      statements.some((sql) => /ALTER DATABASE\s+"?postgres"?\s+ALLOW_CONNECTIONS true/i.test(sql)),
+    ).toBe(true);
+    expect(existsSync(stateFile(directory))).toBe(false);
+  });
+
+  it("names every exclusion with an issue and reason in the job summary", () => {
+    const inventory = discoverSqlProofs(root);
+    const filenames = inventory.wrappers.map((wrapper) => wrapper.file);
+    expect(KNOWN_FAILURES.length).toBeGreaterThan(0);
+    for (const exclusion of KNOWN_FAILURES) {
+      expect(filenames).toContain(exclusion.file);
+      expect(exclusion.issue).toBe(895);
+      expect(exclusion.reason.trim().length).toBeGreaterThan(20);
+    }
+    const { directory } = fixture();
+    const exclusion = KNOWN_FAILURES[0];
+    addWrapper(directory, "excluded", exclusion.file);
+    const summary = join(directory, "summary.md");
+    vi.stubEnv("GITHUB_STEP_SUMMARY", summary);
+    const { run, wrappers } = runtime(directory);
+    prepareSqlProofs(directory, run);
+    runSqlProofs(directory, run);
+    expect(wrappers.some((wrapper) => wrapper.file === exclusion.file)).toBe(false);
+    const written = readFileSync(summary, "utf8");
+    expect(written).toContain(exclusion.file);
+    expect(written).toContain("895");
+    expect(written).toContain(exclusion.reason);
   });
 
   it.each([
@@ -151,7 +305,7 @@ describe("SQL proof results", () => {
   ])("fails before Vitest when the stack cannot supply a local URL", (status, message) => {
     const { directory } = fixture();
     const run = vi.fn(() => status);
-    expect(() => runSqlProofs(directory, run)).toThrow(message);
+    expect(() => prepareSqlProofs(directory, run)).toThrow(message);
     expect(run).toHaveBeenCalledTimes(1);
   });
 });
@@ -165,12 +319,18 @@ describe("the SQL proofs run in the migrations-alone job", () => {
       workflow.indexOf("\n  viewports:"),
     );
     const command = db.indexOf("run: node scripts/run-sql-proofs.mjs");
+    const snapshot = db.indexOf("node scripts/run-sql-proofs.mjs --prepare");
+    expect(snapshot).toBeGreaterThan(db.indexOf("- name: Replay every migration"));
+    expect(snapshot).toBeLessThan(db.indexOf("run: npm run test:db"));
     expect(command).toBeGreaterThan(db.indexOf("- name: Replay every migration"));
     expect(command).toBeLessThan(db.indexOf("\n          npm run test:e2e"));
     expect(db).toContain("name: A database built from the migrations alone");
     expect(db.slice(db.lastIndexOf("      - name:", command), command)).not.toMatch(
       /continue-on-error|if:/,
     );
+    const cleanup = db.indexOf("run: node scripts/run-sql-proofs.mjs --cleanup");
+    expect(cleanup).toBeGreaterThan(command);
+    expect(db.slice(db.lastIndexOf("      - name:", cleanup), cleanup)).toMatch(/if: always\(\)/);
   });
 
   it.each([["tests", "sql", "example.proof.sql"].join("/"), "scripts/run-sql-proofs.mjs"])(
