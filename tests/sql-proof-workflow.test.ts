@@ -68,7 +68,7 @@ const stateFile = (directory: string) => join(directory, "supabase/.temp/sql-pro
 
 function runtime(
   directory: string,
-  failure: "vitest" | "report" | "skip" | "template" | undefined = undefined,
+  failure: "vitest" | "report" | "skip" | "template" | "auth" | undefined = undefined,
 ) {
   const statements: string[] = [];
   const wrappers: Array<{ file: string; url: string; output: string }> = [];
@@ -79,6 +79,19 @@ function runtime(
       return { status: 0, stdout: "psql 17" };
     }
     if (command === "docker") {
+      if (args[0] === "restart") {
+        expect(args).toEqual(["restart", "--time", "10", "supabase_auth_fixture-ci"]);
+        return { status: 0, stdout: "supabase_auth_fixture-ci\n" };
+      }
+      if (args[0] === "inspect") {
+        expect(args).toEqual([
+          "inspect",
+          "--format",
+          "{{.State.Health.Status}}",
+          "supabase_auth_fixture-ci",
+        ]);
+        return { status: 0, stdout: failure === "auth" ? "unhealthy\n" : "healthy\n" };
+      }
       expect(args.slice(0, 7)).toEqual([
         "exec",
         "supabase_db_fixture-ci",
@@ -218,11 +231,45 @@ describe("SQL proof database lifecycle", () => {
     expect(statements.at(-1)).toMatch(/ALTER DATABASE\s+"?postgres"?\s+ALLOW_CONNECTIONS true/i);
   });
 
+  it("restarts Auth after source connections are restored and checks its health", () => {
+    const { directory } = fixture();
+    const { run } = runtime(directory);
+    prepareSqlProofs(directory, run);
+    const restored = run.mock.calls.findIndex(
+      ([command, args]) =>
+        command === "docker" &&
+        args[0] === "exec" &&
+        args.some((arg) => /ALTER DATABASE.*ALLOW_CONNECTIONS true/i.test(arg)),
+    );
+    const restarted = run.mock.calls.findIndex(
+      ([command, args]) => command === "docker" && args[0] === "restart",
+    );
+    const inspected = run.mock.calls.findIndex(
+      ([command, args]) => command === "docker" && args[0] === "inspect",
+    );
+    expect(restored).toBeGreaterThanOrEqual(0);
+    expect(restarted).toBeGreaterThan(restored);
+    expect(inspected).toBeGreaterThan(restarted);
+  });
+
+  it("fails preparation when restarted Auth is unhealthy", () => {
+    const { directory } = fixture();
+    const { run, statements } = runtime(directory, "auth");
+    expect(() => prepareSqlProofs(directory, run)).toThrow();
+    expect(statements.at(-1)).toMatch(/ALLOW_CONNECTIONS true/i);
+    expect(
+      run.mock.calls.filter(([command, args]) => command === "docker" && args[0] === "inspect"),
+    ).toHaveLength(1);
+  });
+
   it("restores source connections if creating the snapshot fails", () => {
     const { directory } = fixture();
     const { run, statements } = runtime(directory, "template");
     expect(() => prepareSqlProofs(directory, run)).toThrow();
     expect(statements.at(-1)).toMatch(/ALLOW_CONNECTIONS true/i);
+    expect(
+      run.mock.calls.some(([command, args]) => command === "docker" && args[0] === "restart"),
+    ).toBe(false);
   });
 
   it("gives each wrapper a distinct clone and drops it after the test", () => {
@@ -348,9 +395,9 @@ describe("the SQL proofs run in the migrations-alone job", () => {
     expect(command).toBeGreaterThan(db.indexOf("- name: Replay every migration"));
     expect(command).toBeLessThan(db.indexOf("\n          npm run test:e2e"));
     expect(db).toContain("name: A database built from the migrations alone");
-    expect(db.slice(db.lastIndexOf("      - name:", command), command)).not.toMatch(
-      /continue-on-error|if:/,
-    );
+    const proofStep = db.slice(db.lastIndexOf("      - name:", command), command);
+    expect(proofStep).not.toMatch(/continue-on-error/);
+    expect(proofStep).toContain("if: ${{ !cancelled() && steps.replay.outcome == 'success' }}");
     const cleanup = db.indexOf("run: node scripts/run-sql-proofs.mjs --cleanup");
     expect(cleanup).toBeGreaterThan(command);
     expect(db.slice(db.lastIndexOf("      - name:", cleanup), cleanup)).toMatch(/if: always\(\)/);

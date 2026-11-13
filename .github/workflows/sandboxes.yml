@@ -752,6 +752,7 @@ jobs:
       # replay snapshot. Known failures are named in the runner and summary;
       # any other failure or skipped test fails the job.
       - name: Every tests/sql proof, through its fixture wrapper
+        if: ${{ !cancelled() && steps.replay.outcome == 'success' }}
         run: node scripts/run-sql-proofs.mjs
 
       - name: Remove the SQL proof databases and restore source connections

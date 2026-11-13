@@ -156,7 +156,13 @@ function localDatabase(root, run) {
   const projectId = config.match(/^project_id\s*=\s*"([A-Za-z0-9_-]+)"\s*$/m)?.[1];
   if (!projectId?.endsWith("-ci"))
     throw new Error("SQL proof database lifecycle requires this job's CI project id");
-  return { source, database, container: `supabase_db_${projectId}`, run };
+  return {
+    source,
+    database,
+    container: `supabase_db_${projectId}`,
+    authContainer: `supabase_auth_${projectId}`,
+    run,
+  };
 }
 
 const identifier = (name) => `"${name.replaceAll('"', '""')}"`;
@@ -228,6 +234,31 @@ export function prepareSqlProofs(root = ROOT, run = spawnSync) {
   } finally {
     sql(context, `ALTER DATABASE ${identifier(context.database)} ALLOW_CONNECTIONS true`);
   }
+  // Snapshot capture closes Auth's backend connections too. Rebuild that pool
+  // and wait for the named CI container before the API integration tests start.
+  const restarted = run("docker", ["restart", "--time", "10", context.authContainer], {
+    encoding: "utf8",
+    timeout: 90_000,
+  });
+  if (restarted.status !== 0) throw new Error("CI Auth did not restart after snapshot capture");
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const health = run(
+      "docker",
+      ["inspect", "--format", "{{.State.Health.Status}}", context.authContainer],
+      {
+        encoding: "utf8",
+        timeout: 10_000,
+      },
+    );
+    if (health.status !== 0 || health.stdout.trim() === "unhealthy")
+      throw new Error("CI Auth is unhealthy after snapshot capture");
+    if (health.stdout.trim() === "healthy") {
+      console.log("CI Auth is healthy after rebuilding its database pool.");
+      return;
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000);
+  }
+  throw new Error("CI Auth did not become healthy after snapshot capture");
 }
 
 export function cleanupSqlProofs(root = ROOT, run = spawnSync) {
