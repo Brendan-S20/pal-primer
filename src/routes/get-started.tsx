@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { bootstrapOrganization, recordSmsConsent, validateSignupCode } from "@/lib/org.functions";
 import {
   checkEmailAccount,
+  checkNewPassword,
   registerAccount,
   sendEmailVerification,
 } from "@/lib/auth-entry.functions";
@@ -48,6 +49,11 @@ import {
   saveSignupDraft,
   SIGNUP_INTERRUPTED_MESSAGE,
 } from "@/lib/signup-draft";
+import {
+  readSessionEmail,
+  resumeSignup,
+  SIGNUP_RESUMED_SIGNED_IN_MESSAGE,
+} from "@/lib/signup-resume";
 
 // The Get-started walkthrough (Brendan's re-review): account creation is a
 // guided path, not a tab on the sign-in card. Steps: account → business →
@@ -154,13 +160,45 @@ function NewBusinessPage() {
   // Drawn again partway through, with no password to hand (it is never kept):
   // the last step asks for it once more (#785 (a)).
   const [askPasswordAgain, setAskPasswordAgain] = useState(false);
+  // A restored draft is checked against the session on this device before
+  // the last step decides whether it needs the password (#882): a reload
+  // after "Create my workspace" made the account is already signed in.
+  const [resuming, setResuming] = useState(false);
+  const [resumedSignedIn, setResumedSignedIn] = useState(false);
   // The auth server refused a password the rules passed (its leaked-password
   // check, #807). Said on a password field on the step the person is on, so
   // nothing else they typed has to be walked back through or typed again.
   const [passwordRejected, setPasswordRejected] = useState<string | null>(null);
+  // What is in the field right now, for an answer that arrives after the
+  // person has typed on.
+  const passwordNow = useRef("");
   const changePassword = (value: string) => {
+    passwordNow.current = value;
     setPassword(value);
     setPasswordRejected(null);
+  };
+  // The leaked-password check, asked of the server on the FIRST step (#807):
+  // when the person leaves the field, and again (the same answer, not a
+  // second request) when they press Continue. Only a password the shared
+  // rules already pass is sent; "couldn't tell" lets them carry on, and
+  // registerAccount at the end is still the check that decides.
+  const earlyCheck = useRef<{ value: string; answer: Promise<string | null> } | null>(null);
+  const passwordServerProblem = (value: string): Promise<string | null> => {
+    if (!isPasswordAcceptable(value)) return Promise.resolve(null);
+    if (earlyCheck.current?.value !== value) {
+      const answer = Promise.resolve()
+        .then(() => checkNewPassword({ data: { password: value } }))
+        .then((r) => (r && r.ok === false && r.problem ? r.problem : null))
+        .catch(() => null);
+      earlyCheck.current = { value, answer };
+    }
+    return earlyCheck.current.answer;
+  };
+  const checkPasswordOnLeave = () => {
+    const value = passwordNow.current;
+    void passwordServerProblem(value).then((problem) => {
+      if (problem && passwordNow.current === value) setPasswordRejected(problem);
+    });
   };
   // Nothing is written until what was kept has been read back, so the first,
   // empty render can never overwrite a draft it was about to restore.
@@ -192,8 +230,27 @@ function NewBusinessPage() {
       const step1Ok = isValidOrgName(draft.orgName) && draft.displayName.trim().length > 0;
       const step = draft.step === 2 && !step1Ok ? 1 : draft.step;
       setStep(step);
-      if (step > 0) setAskPasswordAgain(true);
-      if (draft.creating) setError(SIGNUP_INTERRUPTED_MESSAGE);
+      if (step > 0) {
+        setResuming(true);
+        void readSessionEmail(() => supabase.auth.getSession()).then((sessionEmail) => {
+          const resume = resumeSignup({ email: draft.email, step }, sessionEmail);
+          if (resume.signedIn) {
+            // The account exists and this device is signed in to it: the
+            // create carries on from building the business (finishSignup
+            // skips registerAccount and the sign-in). The business build is
+            // safe to run again (bootstrap_organization is idempotent).
+            progress.current.registered = true;
+            setResumedSignedIn(true);
+          }
+          setAskPasswordAgain(resume.askPassword);
+          if (draft.creating) {
+            setError(
+              resume.signedIn ? SIGNUP_RESUMED_SIGNED_IN_MESSAGE : SIGNUP_INTERRUPTED_MESSAGE,
+            );
+          }
+          setResuming(false);
+        });
+      }
     } else {
       if (draft) clearSignupDraft();
       if (handed) setEmail((typed) => typed || handed);
@@ -253,12 +310,25 @@ function NewBusinessPage() {
   const continueFromAccount = async () => {
     setError(null);
     setChecking(true);
+    const typed = password;
+    const passwordProblem = passwordServerProblem(typed);
+    // A new address: the password is about to be this account's, so a refusal
+    // the auth server would give at the end is given here, on the field it is
+    // about, and Continue stays put. Never rejects.
+    const passwordRefused = async () => {
+      const problem = await passwordProblem;
+      if (!problem) return false;
+      if (passwordNow.current === typed) setPasswordRejected(problem);
+      document.getElementById("gs-pass")?.focus();
+      return true;
+    };
     try {
       const r = await checkEmailAccount({ data: { email: email.trim() } });
       if (r.exists) {
         sendToSignIn(navigate, email);
         return;
       }
+      if (await passwordRefused()) return;
       if (r.pendingInvite) {
         setInvited(true);
         return;
@@ -266,6 +336,7 @@ function NewBusinessPage() {
     } catch {
       // The check is a courtesy. finish() still joins a pending invitation
       // before it would build anything.
+      if (await passwordRefused()) return;
     } finally {
       setChecking(false);
     }
@@ -381,6 +452,9 @@ function NewBusinessPage() {
     );
   }
   const step1Valid = isValidOrgName(orgName) && displayName.trim().length > 0;
+  // Once the account exists and this device is signed in to it, the last
+  // step needs no password (#882): finishSignup does not sign in again.
+  const canFinish = !resuming && (progress.current.registered || (passwordOk && !passwordRejected));
 
   const finish = async () => {
     setError(null);
@@ -476,7 +550,7 @@ function NewBusinessPage() {
             className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault();
-              if (step0Valid && !checking) void continueFromAccount();
+              if (step0Valid && !passwordRejected && !checking) void continueFromAccount();
             }}
           >
             <div>
@@ -498,10 +572,15 @@ function NewBusinessPage() {
               id="gs-pass"
               value={password}
               onChange={changePassword}
+              onBlur={checkPasswordOnLeave}
               serverError={passwordRejected}
             />
             {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button type="submit" className="w-full" disabled={!step0Valid || checking}>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={!step0Valid || !!passwordRejected || checking}
+            >
               {checking ? "Checking…" : "Continue"}
             </Button>
             <p className="text-center text-xs text-muted-foreground">
@@ -596,7 +675,7 @@ function NewBusinessPage() {
             className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault();
-              if (passwordOk && !passwordRejected) finish();
+              if (canFinish) finish();
             }}
           >
             {askPasswordAgain && (
@@ -610,10 +689,16 @@ function NewBusinessPage() {
                   <p className="break-words text-xs text-muted-foreground">
                     {passwordRejected
                       ? `Choose a different password for ${email.trim() || "your account"}. Everything else you entered is kept.`
-                      : `For ${email.trim() || "your account"}. We never keep it on this device, so it is asked for again after the page reloads.`}
+                      : `Your account for ${email.trim() || "this email"} is not created yet. We never keep your password on this device, so enter it again to create it.`}
                   </p>
                 }
               />
+            )}
+            {resumedSignedIn && !error && (
+              <p className="break-words text-sm text-muted-foreground" data-signup-resumed>
+                Your account for {email.trim()} is created and you are signed in. Press Finish
+                setting up to build your workspace.
+              </p>
             )}
             <SmsOptInHeading />
             <SmsOptInFields
@@ -634,15 +719,13 @@ function NewBusinessPage() {
               >
                 Back
               </Button>
-              <Button
-                type="submit"
-                className="flex-1"
-                disabled={busy || !passwordOk || !!passwordRejected}
-              >
+              <Button type="submit" className="flex-1" disabled={busy || !canFinish}>
                 {busy
                   ? "Creating your workspace…"
                   : progress.current.registered
-                    ? "Try again"
+                    ? error
+                      ? "Try again"
+                      : "Finish setting up"
                     : "Create my workspace"}
               </Button>
             </div>

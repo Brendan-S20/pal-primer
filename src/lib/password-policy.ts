@@ -119,6 +119,12 @@ export const passwordSchema = z.string().superRefine((value, ctx) => {
 
 // ── WHEN THE AUTH SERVER STILL SAYS NO ──────────────────────────────────────
 
+/** Supabase Auth's own words when its leaked-password check refuses a
+ *  password. checkNewPassword says the same thing on the first step that the
+ *  auth server says at the end, so the person reads one sentence, not two. */
+export const LEAKED_PASSWORD_REASON =
+  "Password is known to be weak and easy to guess, please choose a different one.";
+
 /** Prefix registerAccount puts on a refused password, so the browser can tell
  *  "this password" from "this email" or "the network" in a server function's
  *  error, which arrives as a message only. */
