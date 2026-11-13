@@ -529,6 +529,7 @@ const en = {
     length: "{{minutes}} min walk",
     minutesOut: "Out {{minutes}} min",
     groupWalk: "Group walk",
+    overDogCap: "Over the dog cap: {{dogs}} dogs, the cap is {{cap}}",
     pickupOrder: "Pickup order",
     thisStop: "This stop",
     wayIn: "How you get in",
@@ -1353,6 +1354,12 @@ const en = {
     checkAgain: "Check again",
     couldNotCheck: "Couldn't check right now. Try again in a moment.",
     stillOff: "Still turned off. Ask the owner to reactivate you.",
+    startOwn: "Start my own business",
+    startOwnExplain: "This takes you off <business/> for good, so you can start a business of your own or join another with this email. Their records stay with them. To come back later, they invite you again.",
+    startOwnConfirm: "Leave and start my own",
+    startOwnCancel: "Keep waiting",
+    startOwnBusy: "Leaving…",
+    startOwnFailed: "Couldn't do that right now. Try again in a moment.",
   },
   /** Settings > Services, pet sitting: the nightly stay-summary catch-up
    *  (#747, migration 20261109170000). */

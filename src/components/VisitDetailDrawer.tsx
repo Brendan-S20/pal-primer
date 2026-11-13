@@ -1,6 +1,8 @@
 import i18n from "@/lib/i18n";
 import { completeFromOffice, useOfficeCompleteOverride } from "@/components/OfficeCompleteOverride";
 import { useCompletionBlockWarning } from "@/components/CompletionBlockWarning";
+import { useDogCapWarning } from "@/components/DogCapWarning";
+import { isDogCapRefused } from "@/lib/dog-cap";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
@@ -198,6 +200,7 @@ export function VisitDetailDrawer({
   // had no way to do it. Reorder stays on the board; it has no meaning
   // without one.
   const doReassign = useServerFn(reassignVisit);
+  const dogCap = useDogCapWarning();
   const listStaffFn = useServerFn(listStaff);
   const { data: staffData } = useQuery({
     enabled: !!visitId,
@@ -289,13 +292,23 @@ export function VisitDetailDrawer({
     setPendingStaff(staffId);
     // The overnight clash warning is shown once the change is sent, since
     // nothing is checked while it is held.
+    // Over the walker's dog cap: the warning, then "Assign anyway" sends it
+    // again confirmed; Cancel leaves the visit as it was (#731).
     const send = () =>
-      doReassign({ data: { visitId: vid, staffId } }).then((r) => {
-        if (r.clash) toast.warning(r.clash);
-        warnLessonClashes(r);
-        if (r.clash) toast.warning(r.clash);
-        return r;
-      });
+      dogCap
+        .run((overCapAcknowledged) =>
+          doReassign({ data: { visitId: vid, staffId, overCapAcknowledged } }),
+        )
+        .then((r) => {
+          if (r === null || isDogCapRefused(r)) {
+            toast("Not reassigned.");
+            return r;
+          }
+          if (r.clash) toast.warning(r.clash);
+          warnLessonClashes(r);
+          if (r.clash) toast.warning(r.clash);
+          return r;
+        });
     // Written to the device as well, so a reload or a killed app inside the
     // window still sends it on the next start (#652). `ifStillFrom` makes
     // that replay a no-op if the first send already landed or somebody has
@@ -445,6 +458,7 @@ export function VisitDetailDrawer({
       {earlyDialog}
       {overrideDialog}
       {completionBlock.dialog}
+      {dogCap.dialog}
       {/* Safe area, top and bottom. Measured on an iPhone 17 Pro 2026-08-25:
           Close occupied y 8-52 and the title y 24-52 against a 54pt status
           bar, so the clock printed through the client name and the battery
