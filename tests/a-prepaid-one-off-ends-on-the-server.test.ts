@@ -18,10 +18,9 @@
 // Nov 3, being cleaned up on Nov 2 after the visit was canceled and the
 // payment refunded.
 //
-// The clock is pinned to the middle of the UTC day. endSubscription takes its
-// "today" from the UTC date while the drawer uses the org's; the evening
-// window where those differ is a separate finding, written up in the PR that
-// added this file, and is deliberately not what this measures.
+// The clock is pinned to the middle of the UTC day, where the UTC date and
+// the org's agree. The evening window where they differ is measured in
+// tests/subscriptions-today-is-the-businesss-day.test.ts.
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- a fake of the supabase-js builder and createServerFn chain */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -94,6 +93,8 @@ function fakeSupabase() {
         eq: (col: string, val: unknown) => (filters.push([col, val]), q),
         neq: (col: string, val: unknown) => (filters.push([`${col}<>`, val]), q),
         single: async () => ({ data: h.sub, error: null }),
+        // orgTodayFor reads organizations.timezone; none here means the default.
+        maybeSingle: async () => ({ data: null, error: null }),
         then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
           Promise.resolve(settle()).then(resolve, reject),
       };
