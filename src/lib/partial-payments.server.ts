@@ -13,7 +13,6 @@ import type { LedgerInvoice } from "@/lib/ar";
 
 // The same loose client shape invoice-labels.ts takes: callers hold either
 // the RLS-bound client or the admin one.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = { from: (table: string) => any };
 
 export async function attachDatedPartialPayments<T extends LedgerInvoice & { id: string }>(
@@ -72,11 +71,9 @@ export async function attachDatedPartialPayments<T extends LedgerInvoice & { id:
       // reversed the whole payment. Otherwise count only what was kept.
       const refunded = p.refunded_cents ?? 0;
       const kept =
-        p.status === "refunded"
-          ? refunded > 0
-            ? Math.max((p.amount_cents ?? 0) - refunded, 0)
-            : 0
-          : (p.amount_cents ?? 0);
+        p.status === "refunded" && refunded === 0
+          ? 0
+          : Math.max((p.amount_cents ?? 0) - refunded, 0);
       list.push({ amount_cents: kept, paid_at: p.paid_at ?? p.created_at });
       byInvoice.set(p.invoice_id, list);
     }

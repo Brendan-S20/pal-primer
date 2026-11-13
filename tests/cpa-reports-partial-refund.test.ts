@@ -180,6 +180,14 @@ beforeEach(() => {
 });
 
 describe("CPA receivables after a partial refund and a later payment", () => {
+  it("nets a recorded refund before the payment status catches up", async () => {
+    book(true, "pet_sitting");
+    state.tables.payments.find((row) => row.id === "partial-refund")!.status = "succeeded";
+    const aging = await report("ar_aging");
+    expect(aging.totals?.totalCents).toBe(65_000);
+    expect(aging.totals?.d30Cents).toBe(15_000);
+  });
+
   it("keeps $100 of the stay deposit and reports $650 owed after the $100 top-up", async () => {
     book(true, "pet_sitting");
     const aging = await report("ar_aging");

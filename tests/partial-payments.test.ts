@@ -77,6 +77,9 @@ const invoice = (over: Partial<LedgerInvoice & { id: string }> = {}) => ({
 describe("attachDatedPartialPayments", () => {
   it.each([
     ["succeeded", "succeeded", 0, 15_000],
+    ["succeeded with a partial refund", "succeeded", 5_000, 10_000],
+    ["succeeded with a full refund", "succeeded", 15_000, 0],
+    ["succeeded with a refund above the payment", "succeeded", 20_000, 0],
     ["partly refunded", "refunded", 5_000, 10_000],
     ["fully refunded", "refunded", 15_000, 0],
     ["legacy full refund", "refunded", 0, 0],
