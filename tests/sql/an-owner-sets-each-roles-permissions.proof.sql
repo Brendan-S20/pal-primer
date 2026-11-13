@@ -408,11 +408,15 @@ BEGIN
     IF _n <> 0 THEN RAISE EXCEPTION 'PROOF FAILED [om off]: an office manager with manage_users off turned the technician off by REST'; END IF;
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
-  -- Their address edits still pass: they change neither active nor role.
+  -- And no other staff edit either: "Managers write staff" (20260804090000)
+  -- is the permissive policy on the table and it asks for manage_users, so
+  -- the owner's switch takes the whole staff table from them, address
+  -- included. (The first run of this proof, CI 2026-11-13, expected the
+  -- address edit to pass; the policy, not the migration, was right.)
   UPDATE public.staff SET start_address = '1 Depot Rd' WHERE id = '5a000000-0000-4000-8000-000000086304';
   GET DIAGNOSTICS _n = ROW_COUNT;
-  IF _n <> 1 THEN RAISE EXCEPTION 'PROOF FAILED [om off]: the office manager can no longer edit an address'; END IF;
-  RAISE NOTICE 'ok: an office manager whose manage_users is off is refused on roles and access, by RPC and REST';
+  IF _n <> 0 THEN RAISE EXCEPTION 'PROOF FAILED [om off]: an office manager with manage_users off still edits a staff row'; END IF;
+  RAISE NOTICE 'ok: an office manager whose manage_users is off is refused on roles, access and every other staff edit, by RPC and REST';
 END $$;
 RESET ROLE;
 
