@@ -228,7 +228,7 @@ export function prepareSqlProofs(root = ROOT, run = spawnSync) {
     );
     sql(
       context,
-      `CREATE DATABASE ${identifier(`${state.prefix}_template`)} TEMPLATE ${identifier(context.database)} ALLOW_CONNECTIONS false`,
+      `CREATE DATABASE ${identifier(`${state.prefix}_template`)} OWNER ${identifier(decodeURIComponent(context.source.username))} TEMPLATE ${identifier(context.database)} ALLOW_CONNECTIONS false`,
     );
     console.log("Pristine SQL proof template captured immediately after migration replay.");
   } finally {
@@ -300,7 +300,9 @@ export function runSqlProofs(root = ROOT, run = spawnSync) {
       try {
         sql(
           context,
-          `CREATE DATABASE ${identifier(clone)} TEMPLATE ${identifier(`${state.prefix}_template`)} ALLOW_CONNECTIONS true`,
+          // Preserve the wrapper role as database owner, including its
+          // pg_database_owner privileges on the public schema.
+          `CREATE DATABASE ${identifier(clone)} OWNER ${identifier(decodeURIComponent(context.source.username))} TEMPLATE ${identifier(`${state.prefix}_template`)} ALLOW_CONNECTIONS true`,
         );
         const url = new URL(context.source);
         url.pathname = `/${clone}`;

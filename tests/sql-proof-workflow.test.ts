@@ -225,6 +225,7 @@ describe("SQL proof database lifecycle", () => {
     expect(statements[0]).toMatch(/ALTER DATABASE\s+"?postgres"?\s+ALLOW_CONNECTIONS false/i);
     expect(statements[1]).toMatch(/pg_terminate_backend/);
     expect(statements[2]).toContain(`${state.prefix}_template`);
+    expect(statements[2]).toMatch(/\bOWNER\s+"postgres"(?:\s|$)/);
     expect(statements[2]).toMatch(
       /CREATE DATABASE.*TEMPLATE\s+"?postgres"?.*ALLOW_CONNECTIONS false/i,
     );
@@ -285,6 +286,8 @@ describe("SQL proof database lifecycle", () => {
       expect(wrapper.url).not.toBe(originalUrl);
       const clone = new URL(wrapper.url).pathname.slice(1);
       expect(clone).toMatch(new RegExp(`^${prefix}_[0-9]+$`));
+      const creation = statements.find((sql) => sql.includes(clone) && /CREATE DATABASE/.test(sql));
+      expect(creation).toMatch(/\bOWNER\s+"postgres"(?:\s|$)/);
       expect(statements.some((sql) => sql.includes(clone) && /CREATE DATABASE/.test(sql))).toBe(
         true,
       );
