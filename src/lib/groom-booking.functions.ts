@@ -44,7 +44,7 @@ export const bookGroom = createServerFn({ method: "POST" })
     // Not on a day that is already over, on the business's calendar (#654).
     const { refusePastDay } = await import("@/lib/booking-dates.server");
     await refusePastDay(context.supabase, caller.orgId, data.scheduledOn);
-    if (hasPermission(caller.role, "manage_pricing")) {
+    if (hasPermission(caller.role, "manage_pricing", caller.overrides)) {
       return bookGroomAppointment(context.supabase, {
         ...data,
         orgId: caller.orgId,

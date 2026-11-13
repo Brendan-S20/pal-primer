@@ -1064,10 +1064,13 @@ function VisitDetailDrawer({
   const [newStaffId, setNewStaffId] = useState("");
 
   // Moving and reassigning a visit is routes work (#728): manage_schedule,
-  // which a dispatcher holds. Completing and canceling can bill, so they stay
-  // with canCorrect (manage_client_billing). The server asks the same.
+  // which a dispatcher holds. Completing and canceling can bill; since #863
+  // they are close_visits, on for a dispatcher by default and the owner's to
+  // turn off. canCorrect (manage_client_billing) keeps the billing
+  // corrections. The server asks the same of each.
   const { can: canDo } = usePermissions();
   const canSchedule = canDo("manage_schedule");
+  const canClose = canDo("close_visits");
 
   const completeFn = useServerFn(completeVisitFromOffice);
   const rescheduleFn = useServerFn(rescheduleVisitFromOffice);
@@ -1083,7 +1086,7 @@ function VisitDetailDrawer({
   const { data: staffData } = useQuery({
     queryKey: ["org-staff"],
     queryFn: () => listStaffFn(),
-    enabled: (canCorrect || canSchedule) && scheduled,
+    enabled: (canClose || canSchedule) && scheduled,
     staleTime: 60_000,
   });
   const staff = ((staffData as any)?.staff ?? []).filter((s: any) => s.is_field_tech !== false);
@@ -1276,7 +1279,7 @@ function VisitDetailDrawer({
         {overrideDialog}
         {completionBlock.dialog}
 
-        {((canCorrect && canComplete) || (canSchedule && canReschedule)) && (
+        {((canClose && canComplete) || (canSchedule && canReschedule)) && (
           <div className="space-y-3 rounded-md border bg-muted/20 p-3">
             {missed && neverOnARoute && (
               <p className="text-xs text-muted-foreground">
@@ -1292,7 +1295,7 @@ function VisitDetailDrawer({
               </p>
             )}
             <div className="flex flex-wrap items-center gap-1.5">
-              {canCorrect && canComplete && (
+              {canClose && canComplete && (
                 <Button
                   size="sm"
                   disabled={completeMut.isPending}
@@ -1338,7 +1341,7 @@ function VisitDetailDrawer({
                   Reassign…
                 </Button>
               )}
-              {scheduled && canCorrect && (
+              {scheduled && canClose && (
                 <>
                   <Button
                     size="sm"
@@ -1422,7 +1425,7 @@ function VisitDetailDrawer({
               </form>
             )}
 
-            {action === "cancel" && scheduled && canCorrect && (
+            {action === "cancel" && scheduled && canClose && (
               <form
                 className="space-y-2"
                 onSubmit={(e) => {

@@ -274,7 +274,7 @@ export const createSubscription = createServerFn({ method: "POST" })
     // types any price, as before; anybody else (a dispatcher) adds it at the
     // set price only, which the server works out and checks itself.
     const caller = await requirePermission(context.supabase, context.userId, "manage_plans");
-    if (!hasPermission(caller.role, "manage_pricing"))
+    if (!hasPermission(caller.role, "manage_pricing", caller.overrides))
       return { id: await createPlanAtSetPrice(context.supabase, context.userId, caller.orgId, data) };
     const result = await createSubscriptionPlans(context.supabase, context.userId, [data]);
     return { id: result.ids[0] };
@@ -535,7 +535,7 @@ export const updateSubscription = createServerFn({ method: "POST" })
     // Editing a plan's price or terms is a pricing action. A dispatcher, who
     // manages plans at the set price (#728), is told so in words.
     const editor = await requirePermission(supabase, userId, "manage_plans");
-    if (!hasPermission(editor.role, "manage_pricing")) {
+    if (!hasPermission(editor.role, "manage_pricing", editor.overrides)) {
       const { PLAN_EDIT_IS_PRICING } = await import("@/lib/plan-set-price.server");
       throw new Error(PLAN_EDIT_IS_PRICING);
     }
@@ -886,7 +886,7 @@ async function loadSubForLifecycle(
     .single();
   // Another business's plan reads as no row (RLS, and the filter above).
   if (error || !sub) throw new Error(error?.message ?? "That plan was not found.");
-  return { sub, orgId: caller.orgId, asServer: !hasPermission(caller.role, "manage_pricing") };
+  return { sub, orgId: caller.orgId, asServer: !hasPermission(caller.role, "manage_pricing", caller.overrides) };
 }
 
 async function writePlanLifecycle(

@@ -7453,6 +7453,41 @@ export type Database = {
         }
         Relationships: []
       }
+      role_permission_overrides: {
+        Row: {
+          allowed: boolean
+          organization_id: string
+          permission: string
+          role: Database["public"]["Enums"]["app_role"]
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          allowed: boolean
+          organization_id: string
+          permission: string
+          role: Database["public"]["Enums"]["app_role"]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          allowed?: boolean
+          organization_id?: string
+          permission?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_permission_overrides_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       staff: {
         Row: {
           active: boolean

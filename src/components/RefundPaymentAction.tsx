@@ -80,11 +80,11 @@ export function RefundPaymentAction({
   customerName?: string | null;
   onRefunded?: () => void;
 }) {
-  const { role } = usePermissions();
+  const { role, permissions } = usePermissions();
   const [open, setOpen] = useState(false);
   // THE UI GATE. Cosmetic — the server asks the same permission — but a
   // button a dispatcher can see and not use is a promise the product breaks.
-  if (!canOfferRefund(role, payment)) return null;
+  if (!canOfferRefund(role, payment, permissions)) return null;
   return (
     <>
       <Button
@@ -349,8 +349,8 @@ function RefundDialog({
               )}
               {taxShare > 0 && (
                 <li>
-                  About {fmt(taxShare, cur)} of it is sales tax, which was never your revenue, so
-                  it comes off the tax you collected rather than your income.
+                  About {fmt(taxShare, cur)} of it is sales tax, which was never your revenue, so it
+                  comes off the tax you collected rather than your income.
                 </li>
               )}
               {amountCents < quote.refundableCents && (

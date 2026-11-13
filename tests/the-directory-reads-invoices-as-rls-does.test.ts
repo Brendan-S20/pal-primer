@@ -97,7 +97,9 @@ describe("who reads invoices on /clients is who RLS lets read them", () => {
       src.indexOf("async function loadClientRoster"),
     );
     const checked = new Set(
-      [...reader.matchAll(/hasPermission\(caller\.role, "([a-z_]+)"\)/g)].map((m) => m[1]),
+      [...reader.matchAll(/hasPermission\(caller\.role, "([a-z_]+)", caller\.overrides\)/g)].map(
+        (m) => m[1],
+      ),
     );
     expect([...checked].sort()).toEqual([...granted].sort());
   });

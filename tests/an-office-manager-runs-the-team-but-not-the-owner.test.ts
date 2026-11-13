@@ -129,8 +129,12 @@ describe("an office manager, through the server functions", () => {
     expect([...ROLES_A_CALLER_MAY_GRANT.office_manager].sort()).toEqual(
       ["dispatcher", "office_manager", "tech"].sort(),
     );
-    expect(ROLES_A_CALLER_MAY_GRANT.dispatcher).toBeUndefined();
-    expect(ROLES_A_CALLER_MAY_GRANT.tech).toBeUndefined();
+    // Since #863 the rank rule is spelled out for every role, for the day an
+    // owner hands "manage the team" to a dispatcher: still nothing above
+    // their own, so a dispatcher is never offered office manager.
+    expect(ROLES_A_CALLER_MAY_GRANT.dispatcher).not.toContain("office_manager");
+    expect(ROLES_A_CALLER_MAY_GRANT.dispatcher).not.toContain("owner");
+    expect(ROLES_A_CALLER_MAY_GRANT.tech).toEqual(["tech"]);
   });
 });
 
