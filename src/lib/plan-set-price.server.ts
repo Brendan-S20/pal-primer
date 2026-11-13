@@ -135,3 +135,174 @@ export async function insertPlanAtSetPrice(row: {
     return { data: null, error: { message: "That client is not in your organization" } };
   return admin.from("subscriptions").insert(row).select("id").single();
 }
+
+// ── An EXISTING client's plans (#728, owner decision 2026-11-10) ───────────
+//
+// "Yes, dispatchers can manage plans at the set price". A dispatcher holds
+// manage_plans: they add a plan to a client who already exists, at the set
+// price this file works out, and pause, resume and end plans. They do not
+// hold manage_pricing, so the subscriptions write policy still refuses their
+// own key, and the server writes for them as the service role, through the two
+// functions below, which never write a row outside the caller's business.
+
+/** A schedule the business has no set price for (every 3+ weeks, every X days):
+ *  the zone multipliers name weekly, every two weeks, twice weekly and monthly. */
+export const NO_PLAN_SET_PRICE_SCHEDULE =
+  "This schedule has no set price. Choose weekly, every 2 weeks, twice weekly or monthly, or ask somebody who sets prices to add it.";
+/** What a person without manage_pricing is told when they try to edit a plan. */
+export const PLAN_EDIT_IS_PRICING =
+  "Only someone who sets prices can edit a plan's price or terms. You can pause, resume or end it, or add a new plan at the set price.";
+/** Deleting a plan is not on the dispatcher's list (add, pause, resume, end). */
+export const PLAN_DELETE_IS_PRICING =
+  "Only someone who sets prices can delete a plan. End it instead; its history is kept.";
+
+/** The zone multiplier's name for a schedule, or null when the business has
+ *  no set price for it. Every 2 weeks is stored as weekly + interval 2 by the
+ *  drawer and as biweekly by older rows; both are the biweekly price. */
+export function setPriceFrequency(input: {
+  frequency: string;
+  intervalWeeks?: number | null;
+}): PlanSetPriceInput["frequency"] | null {
+  switch (input.frequency) {
+    case "weekly": {
+      const n = input.intervalWeeks ?? 1;
+      if (n === 1) return "weekly";
+      if (n === 2) return "biweekly";
+      return null;
+    }
+    case "biweekly":
+    case "twice_weekly":
+    case "monthly":
+    case "one_time":
+      return input.frequency;
+    default:
+      return null;
+  }
+}
+
+export type ExistingClientPlanInput = {
+  orgId: string;
+  clientId: string;
+  propertyId: string;
+  frequency: string;
+  intervalWeeks?: number | null;
+  serviceId?: string | null;
+  dogCount?: number | null;
+  unitCount?: number | null;
+};
+
+/**
+ * The set price of a plan on a client who already exists: the property's own
+ * address, pin and yard, the client's account type, and the business's zones
+ * and services. Read with the CALLER's key, so another business's client or
+ * property is simply not found.
+ */
+export async function existingClientPlanSetPrice(
+  db: any,
+  input: ExistingClientPlanInput,
+): Promise<PlanSetPrice & { accountType: "residential" | "commercial" }> {
+  const [{ data: client, error: cErr }, { data: property, error: pErr }] = await Promise.all([
+    db
+      .from("clients")
+      .select("id, organization_id, account_type")
+      .eq("id", input.clientId)
+      .eq("organization_id", input.orgId)
+      .maybeSingle(),
+    db
+      .from("properties")
+      .select("id, organization_id, client_id, postal_code, latitude, longitude, boundary_area_sqm")
+      .eq("id", input.propertyId)
+      .eq("organization_id", input.orgId)
+      .maybeSingle(),
+  ]);
+  if (cErr) throw new Error(cErr.message);
+  if (pErr) throw new Error(pErr.message);
+  if (!client) throw new Error("That client was not found.");
+  if (!property || property.client_id !== client.id)
+    throw new Error("That property is not this client's.");
+  const accountType: "residential" | "commercial" =
+    client.account_type === "commercial" ? "commercial" : "residential";
+
+  const frequency = setPriceFrequency(input);
+  if (!frequency) {
+    // A walk, a sit or a groom is priced per visit by its service whatever the
+    // schedule; only a zone-priced plan needs the multiplier's name.
+    let zonePriced = true;
+    if (input.serviceId) {
+      const { data: svc } = await db
+        .from("services")
+        .select("service_line, price_unit")
+        .eq("id", input.serviceId)
+        .maybeSingle();
+      zonePriced = !svc || isZonePriced(svc);
+    }
+    if (zonePriced)
+      return { cents: null, zoneId: null, reason: NO_PLAN_SET_PRICE_SCHEDULE, accountType };
+  }
+
+  let stationCount = 0;
+  if (accountType === "commercial") {
+    const { count } = await db
+      .from("waste_stations")
+      .select("id", { count: "exact", head: true })
+      .eq("property_id", property.id)
+      .eq("organization_id", input.orgId);
+    stationCount = count ?? 0;
+  }
+
+  const set = await planSetPriceCents(db, {
+    orgId: input.orgId,
+    accountType,
+    frequency: frequency ?? "weekly",
+    serviceId: input.serviceId ?? null,
+    postalCode: property.postal_code ?? "",
+    latitude: property.latitude ?? undefined,
+    longitude: property.longitude ?? undefined,
+    boundaryAreaSqm:
+      property.boundary_area_sqm != null ? Number(property.boundary_area_sqm) : undefined,
+    dogCount: accountType === "residential" ? Math.max(1, input.dogCount ?? 1) : 1,
+    unitCount: accountType === "commercial" ? Math.max(1, input.unitCount ?? 1) : undefined,
+    stationCount: accountType === "commercial" ? stationCount : undefined,
+  });
+  return { ...set, accountType };
+}
+
+/**
+ * Change a plan's status or end it as the service role, for a caller who
+ * manages plans but not prices. Only the columns a pause, resume or end
+ * writes may be passed, never a price; the update is filtered on the
+ * caller's business AND the status the caller saw, so another business's plan,
+ * or one that moved underneath them, is written nowhere.
+ */
+const LIFECYCLE_COLUMNS = new Set([
+  "status",
+  "paused_at",
+  "ends_on",
+  "end_reason",
+  "end_notes",
+  "ended_by",
+  "last_changed_by",
+  "last_changed_at",
+]);
+
+export async function updatePlanLifecycleAsServer(
+  orgId: string,
+  subscriptionId: string,
+  patch: Record<string, unknown>,
+  onlyIfStatus?: string,
+): Promise<{ error: { message: string } | null }> {
+  for (const column of Object.keys(patch))
+    if (!LIFECYCLE_COLUMNS.has(column))
+      return { error: { message: `A plan change may not write ${column}` } };
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  let q = (supabaseAdmin as any)
+    .from("subscriptions")
+    .update(patch)
+    .eq("id", subscriptionId)
+    .eq("organization_id", orgId);
+  if (onlyIfStatus) q = q.eq("status", onlyIfStatus);
+  const { data, error } = await q.select("id");
+  if (error) return { error };
+  if (!data?.length) return { error: { message: "That plan was not found, or it just changed. Refresh and try again." } };
+  return { error: null };
+}
