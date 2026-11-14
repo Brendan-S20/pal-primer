@@ -37,7 +37,8 @@ const OUTSIDE = "48201";
 const MYPETS = "https://mypets.services";
 // PUBLIC_LISTING_FIELDS in lib/directory.ts, sorted: the view's columns and
 // nothing more (20261112090000 added tagline, highlights and areas;
-// 20261112100000 books_online, booking_policy_text and book_path).
+// 20261112100000 books_online, booking_policy_text and book_path;
+// 20261112110000 photos, approved only).
 // tests/a-directory-profile-says-what-a-business-is-and-where.test.ts holds
 // this list to that one.
 const PUBLIC_FIELDS = [
@@ -51,6 +52,7 @@ const PUBLIC_FIELDS = [
   "display_name",
   "highlights",
   "logo_url",
+  "photos",
   "published_at",
   "service_lines",
   "services",

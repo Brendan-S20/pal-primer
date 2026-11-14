@@ -144,8 +144,10 @@ BEGIN
     -- the end, and 20261112100000 books_online, booking_policy_text and
     -- book_path after them; their own proofs pin those six. This one pins the
     -- nine the RPCs and the view share, so it holds before and after both.
+    -- 20261112110000 adds photos after those six, pinned by its own proof.
     SELECT jsonb_object_keys(to_jsonb(t) - ARRAY['tagline', 'highlights', 'areas',
-                                                 'books_online', 'booking_policy_text', 'book_path']) k
+                                                 'books_online', 'booking_policy_text', 'book_path',
+                                                 'photos']) k
       FROM public.directory_public_listings t WHERE slug LIKE 'anon-dir-%'
     UNION ALL
     SELECT jsonb_object_keys(to_jsonb(t)) FROM public.directory_search('dog_walking', '48201') t
@@ -175,7 +177,7 @@ BEGIN
   END IF;
 
   -- The view and the profile reader agree, row for row.
-  IF (SELECT (to_jsonb(v) - ARRAY['tagline', 'highlights', 'areas', 'books_online', 'booking_policy_text', 'book_path'])
+  IF (SELECT (to_jsonb(v) - ARRAY['tagline', 'highlights', 'areas', 'books_online', 'booking_policy_text', 'book_path', 'photos'])
               || jsonb_build_object('services', COALESCE((
                    SELECT jsonb_agg(e - ARRAY['booking_mode', 'booking_key', 'package'] ORDER BY o)
                      FROM jsonb_array_elements(v.services) WITH ORDINALITY AS u(e, o)), '[]'::jsonb))

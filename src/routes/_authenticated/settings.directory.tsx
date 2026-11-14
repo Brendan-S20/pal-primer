@@ -35,6 +35,7 @@ import {
   type DirectoryArea,
 } from "@/lib/directory";
 import { DIRECTORY_BRAND } from "@/lib/directory-site";
+import { DirectoryPhotosSettings } from "@/components/directory/DirectoryPhotosSettings";
 
 // Settings → Directory listing (#630, phase 1). The owner's opt-in to
 // HoundStack's own directory: off by default, and nothing is public until
@@ -55,6 +56,11 @@ import { DIRECTORY_BRAND } from "@/lib/directory-site";
 // of the three is missing. Beside it, the owner's own cancellation and refund
 // policy, shown before a visitor pays. Nothing is written for them. An area groups ZIPs the profile
 // already covers, so its picker offers only the ZIPs listed below it.
+//
+// And Photos (directory v2 step 5b): up to eight, each with a description,
+// uploaded only with the owner's attestation and held for review by
+// HoundStack before it shows. Each photo saves on its own as it is uploaded
+// (components/directory/DirectoryPhotosSettings.tsx).
 //
 // Its own page rather than a section of Business defaults (#709 is editing
 // settings.business.tsx). Only an owner can save; the server and the
@@ -309,6 +315,8 @@ function DirectorySettings() {
           highlightProblems={problemsAt("highlights")}
         />
 
+        <DirectoryPhotosSettings disabled={!canEdit} />
+
         <section className="space-y-3 rounded-lg border bg-card p-4">
           <div>
             <h3 className="font-medium">Services and prices from</h3>
@@ -554,7 +562,10 @@ function BookOnline({
       ) : null}
       <ul className="space-y-1" aria-label="What Book online also needs">
         {needs.map((n) => (
-          <li key={n.label} className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+          <li
+            key={n.label}
+            className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 text-sm"
+          >
             <span className="flex min-w-0 flex-1 basis-56 items-center gap-2">
               {n.done ? (
                 <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />

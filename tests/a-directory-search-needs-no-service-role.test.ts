@@ -111,7 +111,10 @@ describe("the migration", () => {
     // add books_online, booking_policy_text and book_path at the end, and
     // booking keys on each service, keeping these nine columns in place;
     // tests/a-directory-listing-says-which-services-book-online.test.ts pins it.
-    const REPLACES_THE_VIEW_ONLY = new Set(["20261112090000", "20261112100000"]);
+    // And again: 20261112110000 (mypets v2 step 5b) replaces the VIEW to add
+    // photos (approved only) at the end, keeping these nine columns in place;
+    // tests/a-directory-photo-waits-for-a-moderator.test.ts pins it.
+    const REPLACES_THE_VIEW_ONLY = new Set(["20261112090000", "20261112100000", "20261112110000"]);
     for (const f of files.filter((f) => f.slice(0, 14) > STAMP)) {
       const later = codeOnly(readFileSync(join(ROOT, "supabase/migrations", f), "utf8"));
       expect(later, f).not.toMatch(

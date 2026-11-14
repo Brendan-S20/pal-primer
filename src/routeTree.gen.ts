@@ -73,6 +73,7 @@ import { Route as PlatformAddonsRouteImport } from './routes/platform.addons'
 import { Route as PlatformAnnouncementsRouteImport } from './routes/platform.announcements'
 import { Route as PlatformAuditRouteImport } from './routes/platform.audit'
 import { Route as PlatformCouponsRouteImport } from './routes/platform.coupons'
+import { Route as PlatformDirectoryPhotosRouteImport } from './routes/platform.directory-photos'
 import { Route as PlatformDirectoryReviewsRouteImport } from './routes/platform.directory-reviews'
 import { Route as PlatformHealthRouteImport } from './routes/platform.health'
 import { Route as PlatformInvitesRouteImport } from './routes/platform.invites'
@@ -169,6 +170,7 @@ import { Route as ApiPublicHooksTwilioRouteImport } from './routes/api/public/ho
 import { Route as ApiPublicHooksTwilioVoiceRouteImport } from './routes/api/public/hooks/twilio-voice'
 import { Route as ApiPublicHooksWebhookDeliveriesRouteImport } from './routes/api/public/hooks/webhook-deliveries'
 import { Route as ApiPublicHooksWeeklyDigestRouteImport } from './routes/api/public/hooks/weekly-digest'
+import { Route as DSlugPhotosKeyRouteImport } from './routes/d.$slug.photos.$key'
 import { Route as PortalSlugTokenIndexRouteImport } from './routes/portal.$slug.$token.index'
 import { Route as PortalSlugTokenAccountRouteImport } from './routes/portal.$slug.$token.account'
 import { Route as PortalSlugTokenBillingRouteImport } from './routes/portal.$slug.$token.billing'
@@ -501,6 +503,11 @@ const PlatformAuditRoute = PlatformAuditRouteImport.update({
 const PlatformCouponsRoute = PlatformCouponsRouteImport.update({
   id: '/coupons',
   path: '/coupons',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformDirectoryPhotosRoute = PlatformDirectoryPhotosRouteImport.update({
+  id: '/directory-photos',
+  path: '/directory-photos',
   getParentRoute: () => PlatformRoute,
 } as any)
 const PlatformDirectoryReviewsRoute =
@@ -1039,6 +1046,11 @@ const ApiPublicHooksWeeklyDigestRoute =
     path: '/api/public/hooks/weekly-digest',
     getParentRoute: () => rootRouteImport,
   } as any)
+const DSlugPhotosKeyRoute = DSlugPhotosKeyRouteImport.update({
+  id: '/d/$slug/photos/$key',
+  path: '/d/$slug/photos/$key',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PortalSlugTokenIndexRoute = PortalSlugTokenIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -1149,6 +1161,7 @@ export interface FileRoutesByFullPath {
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
+  '/platform/directory-photos': typeof PlatformDirectoryPhotosRoute
   '/platform/directory-reviews': typeof PlatformDirectoryReviewsRoute
   '/platform/health': typeof PlatformHealthRoute
   '/platform/invites': typeof PlatformInvitesRoute
@@ -1246,6 +1259,7 @@ export interface FileRoutesByFullPath {
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/webhook-deliveries': typeof ApiPublicHooksWebhookDeliveriesRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
+  '/d/$slug/photos/$key': typeof DSlugPhotosKeyRoute
   '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
   '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
   '/portal/$slug/$token/grooming': typeof PortalSlugTokenGroomingRoute
@@ -1312,6 +1326,7 @@ export interface FileRoutesByTo {
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
+  '/platform/directory-photos': typeof PlatformDirectoryPhotosRoute
   '/platform/directory-reviews': typeof PlatformDirectoryReviewsRoute
   '/platform/health': typeof PlatformHealthRoute
   '/platform/invites': typeof PlatformInvitesRoute
@@ -1407,6 +1422,7 @@ export interface FileRoutesByTo {
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/webhook-deliveries': typeof ApiPublicHooksWebhookDeliveriesRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
+  '/d/$slug/photos/$key': typeof DSlugPhotosKeyRoute
   '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
   '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
   '/portal/$slug/$token/grooming': typeof PortalSlugTokenGroomingRoute
@@ -1482,6 +1498,7 @@ export interface FileRoutesById {
   '/platform/announcements': typeof PlatformAnnouncementsRoute
   '/platform/audit': typeof PlatformAuditRoute
   '/platform/coupons': typeof PlatformCouponsRoute
+  '/platform/directory-photos': typeof PlatformDirectoryPhotosRoute
   '/platform/directory-reviews': typeof PlatformDirectoryReviewsRoute
   '/platform/health': typeof PlatformHealthRoute
   '/platform/invites': typeof PlatformInvitesRoute
@@ -1579,6 +1596,7 @@ export interface FileRoutesById {
   '/api/public/hooks/twilio-voice': typeof ApiPublicHooksTwilioVoiceRoute
   '/api/public/hooks/webhook-deliveries': typeof ApiPublicHooksWebhookDeliveriesRoute
   '/api/public/hooks/weekly-digest': typeof ApiPublicHooksWeeklyDigestRoute
+  '/d/$slug/photos/$key': typeof DSlugPhotosKeyRoute
   '/portal/$slug/$token/account': typeof PortalSlugTokenAccountRoute
   '/portal/$slug/$token/billing': typeof PortalSlugTokenBillingRoute
   '/portal/$slug/$token/grooming': typeof PortalSlugTokenGroomingRoute
@@ -1654,6 +1672,7 @@ export interface FileRouteTypes {
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
+    | '/platform/directory-photos'
     | '/platform/directory-reviews'
     | '/platform/health'
     | '/platform/invites'
@@ -1751,6 +1770,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/webhook-deliveries'
     | '/api/public/hooks/weekly-digest'
+    | '/d/$slug/photos/$key'
     | '/portal/$slug/$token/account'
     | '/portal/$slug/$token/billing'
     | '/portal/$slug/$token/grooming'
@@ -1817,6 +1837,7 @@ export interface FileRouteTypes {
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
+    | '/platform/directory-photos'
     | '/platform/directory-reviews'
     | '/platform/health'
     | '/platform/invites'
@@ -1912,6 +1933,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/webhook-deliveries'
     | '/api/public/hooks/weekly-digest'
+    | '/d/$slug/photos/$key'
     | '/portal/$slug/$token/account'
     | '/portal/$slug/$token/billing'
     | '/portal/$slug/$token/grooming'
@@ -1986,6 +2008,7 @@ export interface FileRouteTypes {
     | '/platform/announcements'
     | '/platform/audit'
     | '/platform/coupons'
+    | '/platform/directory-photos'
     | '/platform/directory-reviews'
     | '/platform/health'
     | '/platform/invites'
@@ -2083,6 +2106,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/twilio-voice'
     | '/api/public/hooks/webhook-deliveries'
     | '/api/public/hooks/weekly-digest'
+    | '/d/$slug/photos/$key'
     | '/portal/$slug/$token/account'
     | '/portal/$slug/$token/billing'
     | '/portal/$slug/$token/grooming'
@@ -2153,6 +2177,7 @@ export interface RootRouteChildren {
   ApiPublicHooksTwilioVoiceRoute: typeof ApiPublicHooksTwilioVoiceRoute
   ApiPublicHooksWebhookDeliveriesRoute: typeof ApiPublicHooksWebhookDeliveriesRoute
   ApiPublicHooksWeeklyDigestRoute: typeof ApiPublicHooksWeeklyDigestRoute
+  DSlugPhotosKeyRoute: typeof DSlugPhotosKeyRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -2603,6 +2628,13 @@ declare module '@tanstack/react-router' {
       path: '/coupons'
       fullPath: '/platform/coupons'
       preLoaderRoute: typeof PlatformCouponsRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/directory-photos': {
+      id: '/platform/directory-photos'
+      path: '/directory-photos'
+      fullPath: '/platform/directory-photos'
+      preLoaderRoute: typeof PlatformDirectoryPhotosRouteImport
       parentRoute: typeof PlatformRoute
     }
     '/platform/directory-reviews': {
@@ -3277,6 +3309,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksWeeklyDigestRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/d/$slug/photos/$key': {
+      id: '/d/$slug/photos/$key'
+      path: '/d/$slug/photos/$key'
+      fullPath: '/d/$slug/photos/$key'
+      preLoaderRoute: typeof DSlugPhotosKeyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/portal/$slug/$token/': {
       id: '/portal/$slug/$token/'
       path: '/'
@@ -3589,6 +3628,7 @@ interface PlatformRouteChildren {
   PlatformAnnouncementsRoute: typeof PlatformAnnouncementsRoute
   PlatformAuditRoute: typeof PlatformAuditRoute
   PlatformCouponsRoute: typeof PlatformCouponsRoute
+  PlatformDirectoryPhotosRoute: typeof PlatformDirectoryPhotosRoute
   PlatformDirectoryReviewsRoute: typeof PlatformDirectoryReviewsRoute
   PlatformHealthRoute: typeof PlatformHealthRoute
   PlatformInvitesRoute: typeof PlatformInvitesRoute
@@ -3610,6 +3650,7 @@ const PlatformRouteChildren: PlatformRouteChildren = {
   PlatformAnnouncementsRoute: PlatformAnnouncementsRoute,
   PlatformAuditRoute: PlatformAuditRoute,
   PlatformCouponsRoute: PlatformCouponsRoute,
+  PlatformDirectoryPhotosRoute: PlatformDirectoryPhotosRoute,
   PlatformDirectoryReviewsRoute: PlatformDirectoryReviewsRoute,
   PlatformHealthRoute: PlatformHealthRoute,
   PlatformInvitesRoute: PlatformInvitesRoute,
@@ -3732,6 +3773,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHooksTwilioVoiceRoute: ApiPublicHooksTwilioVoiceRoute,
   ApiPublicHooksWebhookDeliveriesRoute: ApiPublicHooksWebhookDeliveriesRoute,
   ApiPublicHooksWeeklyDigestRoute: ApiPublicHooksWeeklyDigestRoute,
+  DSlugPhotosKeyRoute: DSlugPhotosKeyRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

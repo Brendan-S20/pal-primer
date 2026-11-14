@@ -352,7 +352,13 @@ describe("no trigger function is executable by a signed-in user", () => {
     // signed-in write of directory_booking_enabled or booking_policy_text
     // that does not come through set_directory_booking (the owner's writer).
     // Revoked from PUBLIC, anon and authenticated there.
-    expect(triggerFunctions().size).toBe(116);
+    //
+    // 116 -> 117 (20261112110000, a directory photo is public only after a
+    // moderator approves it, #630): directory_profile_photos_guard holds a
+    // new photo to pending, stamps the attestation, keeps the file and the
+    // business fixed, lets only moderate_directory_photo decide, and stops
+    // at eight. Revoked from PUBLIC, anon and authenticated there.
+    expect(triggerFunctions().size).toBe(117);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

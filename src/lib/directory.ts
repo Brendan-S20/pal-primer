@@ -262,9 +262,19 @@ export type DirectoryListedService = DirectoryService & {
   package: DirectoryPackage | null;
 };
 
+/** One approved photo as the view shows it (directory v2 step 5b): a
+ *  HoundStack path, its alt text and its order. Never a storage path, never
+ *  an id, never a credit line. */
+export type DirectoryPhoto = {
+  /** `/d/{slug}/photos/{opaque key}` on HoundStack. */
+  url: string;
+  alt: string;
+  position: number;
+};
+
 /** One row of directory_public_listings: the public profile, plus the three
- *  columns 20261112090000 adds to the view and the three 20261112100000 adds
- *  after them. */
+ *  columns 20261112090000 adds to the view, the three 20261112100000 adds
+ *  after them, and the one 20261112110000 adds after those. */
 export type DirectoryListing = Omit<DirectoryProfile, "services"> & {
   services: DirectoryListedService[];
   tagline: string | null;
@@ -276,6 +286,8 @@ export type DirectoryListing = Omit<DirectoryProfile, "services"> & {
   booking_policy_text: string | null;
   /** `/d/{slug}/book` when books_online, else null. */
   book_path: string | null;
+  /** APPROVED photos only, in order. Empty when there are none. */
+  photos: DirectoryPhoto[];
 };
 
 /**
@@ -300,6 +312,7 @@ export const PUBLIC_LISTING_FIELDS = [
   "books_online",
   "booking_policy_text",
   "book_path",
+  "photos",
 ] as const satisfies readonly (keyof DirectoryListing)[];
 export const PUBLIC_SERVICE_FIELDS = [
   "label",
@@ -319,6 +332,11 @@ export const PUBLIC_AREA_FIELDS = [
   "name",
   "zips",
 ] as const satisfies readonly (keyof DirectoryArea)[];
+export const PUBLIC_PHOTO_FIELDS = [
+  "url",
+  "alt",
+  "position",
+] as const satisfies readonly (keyof DirectoryPhoto)[];
 
 /** Spaces collapsed and trimmed, as set_directory_profile stores text. */
 export function oneLine(s: string): string {
@@ -508,11 +526,107 @@ export function directoryBookingSearch(search: Record<string, unknown>): {
   const fromDirectory = search.ref === DIRECTORY_REF;
   const book = search.book === 1 || search.book === "1";
   const sid = typeof search.service === "string" ? search.service : "";
-  const zip = cleanZip(typeof search.zip === "number" ? String(search.zip).padStart(5, "0") : search.zip);
+  const zip = cleanZip(
+    typeof search.zip === "number" ? String(search.zip).padStart(5, "0") : search.zip,
+  );
   return {
     fromDirectory,
     quoteOnly: fromDirectory && !book,
-    serviceId: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid) ? sid : null,
+    serviceId: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid)
+      ? sid
+      : null,
     zip,
   };
+}
+
+// ── Photos and moderation (directory v2 step 5b) ──────────────────────────
+// The database half is
+// supabase/migrations/20261112110000_a-directory-photo-is-public-only-after-a-moderator-approves-it.sql;
+// these limits are its CHECKs and its bucket's, so the form can say no first.
+
+/** The private storage bucket. Nothing in it is public; a visitor gets an
+ *  approved photo only through /d/{slug}/photos/{key}. */
+export const DIRECTORY_PHOTO_BUCKET = "directory-photos";
+/** Pending and approved photos per business. Rejected ones do not count. */
+export const DIRECTORY_PHOTOS_MAX = 8;
+export const DIRECTORY_PHOTO_ALT_MAX = 140;
+/** The bucket's file_size_limit. */
+export const DIRECTORY_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
+/** The bucket's allowed_mime_types, and the extension each is stored as. */
+export const DIRECTORY_PHOTO_TYPES = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+} as const;
+export type DirectoryPhotoType = keyof typeof DIRECTORY_PHOTO_TYPES;
+
+/** The owner's attestation, word for word (brief section 4 item 2). Ticked,
+ *  it is what rights_attested_at records. */
+export const DIRECTORY_PHOTO_ATTESTATION =
+  "I took these or have the rights to use them, and they are not AI-generated";
+
+export const DIRECTORY_PHOTO_STATUSES = ["pending", "approved", "rejected"] as const;
+export type DirectoryPhotoStatus = (typeof DIRECTORY_PHOTO_STATUSES)[number];
+
+/** What an owner reads about each status. Plain words, no dashes. */
+export const DIRECTORY_PHOTO_STATUS_LABEL: Record<DirectoryPhotoStatus, string> = {
+  pending: "Waiting for review",
+  approved: "Approved, shown on your listing",
+  rejected: "Not approved, not shown",
+};
+
+/** Does this photo count toward the eight? Rejected ones do not. */
+export function countsTowardPhotoLimit(status: DirectoryPhotoStatus): boolean {
+  return status !== "rejected";
+}
+
+/** Alt text as the database keeps it: one line, trimmed. */
+export function cleanPhotoAlt(raw: string): string {
+  return oneLine(raw);
+}
+
+/** Problems with one photo's alt text, worded for the owner. */
+export function photoAltProblem(raw: string): string | null {
+  const alt = cleanPhotoAlt(raw);
+  if (!alt) return "Describe the photo for people who cannot see it.";
+  if (alt.length > DIRECTORY_PHOTO_ALT_MAX)
+    return `Keep the description to ${DIRECTORY_PHOTO_ALT_MAX} characters (it is ${alt.length}).`;
+  return null;
+}
+
+/** Problems with a file before it is uploaded. */
+export function photoFileProblem(file: { type: string; size: number }): string | null {
+  if (!(file.type in DIRECTORY_PHOTO_TYPES)) return "Use a JPEG, PNG or WebP photo.";
+  if (file.size > DIRECTORY_PHOTO_MAX_BYTES) return "Use a photo under 5 MB.";
+  return null;
+}
+
+const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+
+/** The object path the database accepts: {organization id}/{uuid}.{ext}. */
+export function directoryPhotoPath(
+  orgId: string,
+  fileId: string,
+  type: DirectoryPhotoType,
+): string {
+  return `${orgId}/${fileId}.${DIRECTORY_PHOTO_TYPES[type]}`;
+}
+
+/** directory_profile_photos_path_check, for one business's folder. */
+export function isDirectoryPhotoPath(path: string, orgId: string): boolean {
+  return (
+    new RegExp(`^${UUID}/${UUID}\\.(jpg|png|webp)$`).test(path) && path.split("/")[0] === orgId
+  );
+}
+
+/** A public photo URL the view can have produced for this listing. */
+export function isDirectoryPhotoUrl(url: string, slug: string): boolean {
+  return (
+    url === `/d/${slug}/photos/${url.split("/").at(-1)}` && /\/photos\/[0-9a-f]{16}$/.test(url)
+  );
+}
+
+/** The photo route's key: 16 hex characters, as the view makes it. */
+export function isDirectoryPhotoKey(key: string): boolean {
+  return /^[0-9a-f]{16}$/.test(key);
 }
