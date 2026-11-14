@@ -98,7 +98,7 @@ describe("the migration", () => {
     expect(files.filter((f) => f.startsWith(STAMP))).toEqual([
       `${STAMP}_a-directory-search-needs-no-service-role.sql`,
     ]);
-    // After the reserved series: #888 20261111150000, #870 20261112061000,
+    // After the reserved series: #888 20261111150000, #870 20261111151000,
     // #905 20261112010000.
     expect(STAMP > "20261112010000").toBe(true);
     // A later file that replaced the search, the verdict or the view would
