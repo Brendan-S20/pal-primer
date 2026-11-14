@@ -942,14 +942,23 @@ export function ZoneDrawer({
 
             {showAreaPricing && (
               <div className="space-y-2 rounded-md border bg-muted/20 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <Label className="text-sm font-medium">Pricing mode</Label>
+                {/* Label above, select full width (Product visual review): beside
+                    the label, the long Flat rate option ran past the drawer at 390
+                    and 768. A native select cannot wrap, so the box takes the whole
+                    row and a value still too long ends in an ellipsis inside it. */}
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <Label htmlFor="zone-pricing-mode" className="text-sm font-medium">
+                    Pricing mode
+                  </Label>
                   <select
+                    id="zone-pricing-mode"
                     value={pricingMode}
                     onChange={(e) => mark(setPricingMode)(e.target.value as any)}
-                    className="h-9 rounded-md border bg-background px-2 text-sm"
+                    className="h-9 w-full min-w-0 max-w-full truncate rounded-md border bg-background px-2 text-sm touch:min-h-11"
                   >
-                    <option value="flat">Flat rate (zone price, or the standard price when blank)</option>
+                    <option value="flat">
+                      Flat rate (zone price, or the standard price when blank)
+                    </option>
                     <option value="per_sqft">Per square foot of yard</option>
                     <option value="per_acre">Per acre of yard</option>
                   </select>
