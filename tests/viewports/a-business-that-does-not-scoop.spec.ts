@@ -114,7 +114,7 @@ async function expectServiceLineChoices(page: Page) {
   await expect(walking).toBeChecked();
   await expect(page.locator("li").filter({ has: walking }).getByText("Coming soon")).toHaveCount(0);
   const petWaste = page.getByRole("checkbox", {
-    name: "Pet waste removal (scooping)",
+    name: "Pet waste removal",
     exact: true,
   });
   await expect(petWaste).not.toBeChecked();

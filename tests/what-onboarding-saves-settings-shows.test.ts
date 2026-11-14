@@ -349,7 +349,7 @@ describe("Setup → Settings", () => {
     const services = (await call(listServices, {})).services;
     expect(services).toHaveLength(1);
     expect(services[0].name).toBe("Pet waste removal");
-    expect(directoryLineLabel("pet_waste")).toBe("Poop scooping");
+    expect(directoryLineLabel("pet_waste")).toBe("Pet waste removal");
     expect(defaultServiceSeedsFor(["pet_waste"]).map((s) => s.name)).toEqual([services[0].name]);
   });
 
