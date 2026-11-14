@@ -240,7 +240,7 @@ for (const w of [360, 768, 1280, 1920]) {
     await expect(southgate.getByText("Michigan", { exact: true })).toBeVisible();
     await expect(southgate).toContainText("is not a US 5-digit ZIP and matches no address.");
     await expect(
-      page.getByText("48229 is also in Ecorse circle, which wins on priority."),
+      page.getByText("48229 is also in Ecorse circle, which ranks higher and wins."),
     ).toBeVisible();
     await expect(
       page.getByText("No ZIPs listed, so the signup page and lead form can't quote this area."),

@@ -72,6 +72,7 @@ import {
 } from "@/components/ZonesOverviewMap";
 import { HelpTip } from "@/components/HelpTip";
 import { ZoneEnabledSwitch } from "@/components/ZoneEnabledSwitch";
+import { ZoneRankingPanel, ZipFillPendingNote } from "@/components/ZoneRanking";
 import { offZoneNotice } from "@/lib/zone-enabled";
 import { FirstCleanupPricingCard } from "@/components/FirstCleanupPricingCard";
 import { useServiceLines } from "@/components/CommercialOnly";
@@ -400,6 +401,8 @@ function ZonesPage() {
         )}
 
         <div className="min-w-0 space-y-3 lg:order-1">
+          {/* Which zone wins a ZIP two of them list (#858). */}
+          <ZoneRankingPanel zones={zones as any} canEdit={canEdit} />
           {zones.length > 1 && (
             // Inside Settings (#864) the list shares the row with the Settings
             // menu and the map from lg up, so three filters side by side
@@ -427,6 +430,7 @@ function ZonesPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="rank">Sort: Ranking</SelectItem>
                   <SelectItem value="name">Sort: Name</SelectItem>
                   <SelectItem value="clients">Sort: Most clients</SelectItem>
                   <SelectItem value="price">Sort: Highest price</SelectItem>
@@ -744,11 +748,6 @@ function ZoneCard({
               )}
               <span>{accountTypeLabel(zone.account_type)}</span>
               {zone.postal_prefix && <span>ZIP prefix {zone.postal_prefix}</span>}
-              {(zone.priority ?? 0) !== 0 && (
-                <span title="When zones overlap at the same match level, the higher priority wins.">
-                  Priority {zone.priority}
-                </span>
-              )}
             </p>
             {zipList.length > 0 && (
               <Button
@@ -799,6 +798,7 @@ function ZoneCard({
                 )}
               </div>
             )}
+            <ZipFillPendingNote zone={zone} />
             {deadZips.length > 0 && (
               // Named, not counted: "1 invalid ZIP" sends you hunting through
               // twelve chips for it, and the whole point of the colour above is
@@ -811,7 +811,7 @@ function ZoneCard({
               </p>
             )}
             {/* Two zones that list the same ZIP both match it at the exact-ZIP
-                level, so priority decides (src/lib/zone-match.ts). Said here,
+                level, so the ranking decides (src/lib/zone-match.ts). Said here,
                 beside the zone, rather than left for a quote to surprise. */}
             {overlaps.length > 0 && (
               <ul className="mt-2 space-y-0.5 text-xs text-amber-700 dark:text-amber-300">
