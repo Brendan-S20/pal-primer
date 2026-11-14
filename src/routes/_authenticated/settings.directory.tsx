@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,10 +17,19 @@ import {
   type MyDirectoryProfile,
 } from "@/lib/directory.functions";
 import {
+  DIRECTORY_AREAS_MAX,
+  DIRECTORY_AREA_NAME_MAX,
   DIRECTORY_DISCLOSURE,
+  DIRECTORY_HIGHLIGHTS_MAX,
+  DIRECTORY_HIGHLIGHT_MAX,
+  DIRECTORY_TAGLINE_MAX,
+  cleanHighlights,
+  directoryContentProblems,
   directoryLineLabel,
   isDirectorySlug,
+  oneLine,
   slugFromName,
+  type DirectoryArea,
 } from "@/lib/directory";
 
 // Settings → Directory listing (#630, phase 1). The owner's opt-in to
@@ -31,6 +40,10 @@ import {
 // if the owner chooses, the bio, the services ticked with the price-from
 // typed beside each, and the ZIPs and cities listed. No address, phone or
 // email is ever shown; quotes arrive in Leads.
+//
+// The tagline, up to four highlights and up to eight named business areas
+// (directory v2 5a) are on this page too. An area groups ZIPs the profile
+// already covers, so its picker offers only the ZIPs listed below it.
 //
 // Its own page rather than a section of Business defaults (#709 is editing
 // settings.business.tsx). Only an owner can save; the server and the
@@ -75,6 +88,9 @@ function DirectorySettings() {
   const [cities, setCities] = useState("");
   const [choices, setChoices] = useState<Record<string, ServiceChoice>>({});
   const [confirmed, setConfirmed] = useState(false);
+  const [tagline, setTagline] = useState("");
+  const [highlights, setHighlights] = useState<string[]>([]);
+  const [areas, setAreas] = useState<DirectoryArea[]>([]);
 
   useEffect(() => {
     if (!data) return;
@@ -99,6 +115,9 @@ function DirectorySettings() {
       ),
     );
     setConfirmed(!!p?.published);
+    setTagline(p?.tagline ?? "");
+    setHighlights(p?.highlights ?? []);
+    setAreas((p?.areas ?? []).map((a) => ({ name: a.name, zips: [...a.zips] })));
   }, [data]);
 
   const zipList = useMemo(() => splitList(zips), [zips]);
@@ -106,6 +125,18 @@ function DirectorySettings() {
   const cityList = useMemo(() => splitList(cities), [cities]);
   const listedServices = (data?.services ?? []).filter((s) => s.active && choices[s.id]?.listed);
   const slugOk = isDirectorySlug(slug.trim().toLowerCase());
+  const coveredZips = useMemo(
+    () => Array.from(new Set(zipList.filter((z) => /^\d{5}$/.test(z)))).sort(),
+    [zipList],
+  );
+  const contentProblems = directoryContentProblems({
+    tagline,
+    highlights,
+    areas,
+    coverageZips: coveredZips,
+  });
+  const problemsAt = (where: string) =>
+    contentProblems.filter((p) => p.where === where).map((p) => p.message);
 
   const save = useMutation({
     mutationFn: (publish: boolean) =>
@@ -115,13 +146,16 @@ function DirectorySettings() {
           displayName: displayName.trim(),
           bio: bio.trim() || null,
           showLogo,
-          coverageZips: zipList.filter((z) => /^\d{5}$/.test(z)),
+          coverageZips: coveredZips,
           coverageCities: cityList,
           services: listedServices.map((s) => ({
             serviceId: s.id,
             priceFromCents: cents(choices[s.id]?.price ?? ""),
           })),
           published: publish,
+          tagline: oneLine(tagline) || null,
+          highlights: cleanHighlights(highlights),
+          areas: areas.map((a) => ({ name: oneLine(a.name), zips: a.zips })),
         },
       }),
     onSuccess: (_r, publish) => {
@@ -146,6 +180,9 @@ function DirectorySettings() {
           : !confirmed
             ? "Confirm the details before you publish."
             : null;
+  const contentProblem = contentProblems.length
+    ? "Fix the highlighted tagline, highlights or areas first."
+    : null;
 
   return (
     <div className="space-y-6">
@@ -240,6 +277,15 @@ function DirectorySettings() {
           </label>
         </div>
 
+        <TaglineAndHighlights
+          tagline={tagline}
+          onTagline={setTagline}
+          highlights={highlights}
+          onHighlights={setHighlights}
+          taglineProblems={problemsAt("tagline")}
+          highlightProblems={problemsAt("highlights")}
+        />
+
         <section className="space-y-3 rounded-lg border bg-card p-4">
           <div>
             <h3 className="font-medium">Services and prices from</h3>
@@ -310,6 +356,13 @@ function DirectorySettings() {
           </div>
         </section>
 
+        <BusinessAreas
+          areas={areas}
+          onAreas={setAreas}
+          coveredZips={coveredZips}
+          problemsAt={problemsAt}
+        />
+
         <div className="space-y-3 rounded-lg border bg-card p-4">
           <label className="flex min-h-11 items-start gap-3">
             <Checkbox
@@ -331,13 +384,19 @@ function DirectorySettings() {
           <Button
             onClick={() => save.mutate(published)}
             disabled={
-              save.isPending || (published && !!publishProblem) || !slugOk || !displayName.trim()
+              save.isPending ||
+              (published && !!publishProblem) ||
+              !slugOk ||
+              !displayName.trim() ||
+              !!contentProblem
             }
           >
             {save.isPending ? "Saving…" : published ? "Save and publish" : "Save, not listed"}
           </Button>
-          {published && publishProblem ? (
-            <p className="min-w-0 text-sm text-muted-foreground">{publishProblem}</p>
+          {contentProblem || (published && publishProblem) ? (
+            <p className="min-w-0 text-sm text-muted-foreground">
+              {contentProblem ?? publishProblem}
+            </p>
           ) : null}
         </div>
       ) : null}
@@ -391,6 +450,305 @@ function ServiceRow({
           {s.price_unit ? `/ ${s.price_unit}` : ""}
         </span>
       </div>
+    </li>
+  );
+}
+
+function Problems({ id, messages }: { id?: string; messages: string[] }) {
+  if (!messages.length) return null;
+  return (
+    <ul id={id} className="space-y-0.5 text-xs text-destructive" role="alert">
+      {messages.map((m) => (
+        <li key={m}>{m}</li>
+      ))}
+    </ul>
+  );
+}
+
+function TaglineAndHighlights({
+  tagline,
+  onTagline,
+  highlights,
+  onHighlights,
+  taglineProblems,
+  highlightProblems,
+}: {
+  tagline: string;
+  onTagline: (v: string) => void;
+  highlights: string[];
+  onHighlights: (v: string[]) => void;
+  taglineProblems: string[];
+  highlightProblems: string[];
+}) {
+  const taglineLength = oneLine(tagline).length;
+  return (
+    <section className="space-y-4 rounded-lg border bg-card p-4">
+      <div>
+        <h3 className="font-medium">Tagline and highlights</h3>
+        <p className="text-xs text-muted-foreground">
+          One line under your name, and up to {DIRECTORY_HIGHLIGHTS_MAX} short points a pet owner
+          can scan. Both are optional.
+        </p>
+      </div>
+      <div className="space-y-1.5">
+        <div className="flex items-baseline justify-between gap-3">
+          <Label htmlFor="dir-tagline">Tagline</Label>
+          <span
+            className={`shrink-0 text-xs tabular-nums ${taglineLength > DIRECTORY_TAGLINE_MAX ? "text-destructive" : "text-muted-foreground"}`}
+            aria-live="polite"
+          >
+            {taglineLength}/{DIRECTORY_TAGLINE_MAX}
+          </span>
+        </div>
+        <Input
+          id="dir-tagline"
+          value={tagline}
+          onChange={(e) => onTagline(e.target.value)}
+          placeholder="Small-pack walks with the same walker every week"
+          aria-invalid={taglineProblems.length > 0}
+          aria-describedby={taglineProblems.length ? "dir-tagline-problems" : undefined}
+        />
+        <Problems id="dir-tagline-problems" messages={taglineProblems} />
+      </div>
+      <div className="space-y-2">
+        <Label>Highlights</Label>
+        {highlights.length ? (
+          <ul className="space-y-2">
+            {highlights.map((h, i) => {
+              const len = oneLine(h).length;
+              return (
+                <li key={i} className="flex items-center gap-2">
+                  <Input
+                    aria-label={`Highlight ${i + 1}`}
+                    className="min-w-0 flex-1"
+                    value={h}
+                    onChange={(e) =>
+                      onHighlights(highlights.map((x, j) => (j === i ? e.target.value : x)))
+                    }
+                    placeholder="Insured and bonded"
+                    aria-invalid={len > DIRECTORY_HIGHLIGHT_MAX}
+                  />
+                  <span
+                    className={`w-12 shrink-0 text-end text-xs tabular-nums ${len > DIRECTORY_HIGHLIGHT_MAX ? "text-destructive" : "text-muted-foreground"}`}
+                  >
+                    {len}/{DIRECTORY_HIGHLIGHT_MAX}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Remove highlight ${i + 1}`}
+                    onClick={() => onHighlights(highlights.filter((_, j) => j !== i))}
+                  >
+                    <X className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted-foreground">No highlights yet.</p>
+        )}
+        <Problems messages={highlightProblems} />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          disabled={highlights.length >= DIRECTORY_HIGHLIGHTS_MAX}
+          onClick={() => onHighlights([...highlights, ""])}
+        >
+          <Plus className="h-4 w-4 shrink-0" aria-hidden="true" />
+          {highlights.length >= DIRECTORY_HIGHLIGHTS_MAX
+            ? `${DIRECTORY_HIGHLIGHTS_MAX} highlights is the most`
+            : "Add highlight"}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+function BusinessAreas({
+  areas,
+  onAreas,
+  coveredZips,
+  problemsAt,
+}: {
+  areas: DirectoryArea[];
+  onAreas: (v: DirectoryArea[]) => void;
+  coveredZips: string[];
+  problemsAt: (where: string) => string[];
+}) {
+  const set = (i: number, a: DirectoryArea) => onAreas(areas.map((x, j) => (j === i ? a : x)));
+  const full = areas.length >= DIRECTORY_AREAS_MAX;
+  return (
+    <section className="space-y-4 rounded-lg border bg-card p-4">
+      <div>
+        <h3 className="font-medium">Business areas</h3>
+        <p className="text-xs text-muted-foreground">
+          Optional. Group the ZIP codes you cover into up to {DIRECTORY_AREAS_MAX} named areas, like
+          "Downtown" or "North suburbs", so a pet owner can see at a glance where you work. Only
+          ZIPs listed above can go in an area.
+        </p>
+      </div>
+      <Problems messages={problemsAt("areas")} />
+      {areas.length ? (
+        <ul className="space-y-3">
+          {areas.map((a, i) => (
+            <AreaEditor
+              key={i}
+              index={i}
+              area={a}
+              coveredZips={coveredZips}
+              problems={problemsAt(`area-${i}`)}
+              onChange={(next) => set(i, next)}
+              onRemove={() => onAreas(areas.filter((_, j) => j !== i))}
+            />
+          ))}
+        </ul>
+      ) : null}
+      {!coveredZips.length ? (
+        <p className="text-sm text-muted-foreground">
+          List the ZIP codes you cover above, then group them here.
+        </p>
+      ) : null}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="gap-1.5"
+        disabled={full || !coveredZips.length}
+        onClick={() => onAreas([...areas, { name: "", zips: [] }])}
+      >
+        <Plus className="h-4 w-4 shrink-0" aria-hidden="true" />
+        {full ? `${DIRECTORY_AREAS_MAX} areas is the most` : "Add area"}
+      </Button>
+    </section>
+  );
+}
+
+function AreaEditor({
+  index,
+  area,
+  coveredZips,
+  problems,
+  onChange,
+  onRemove,
+}: {
+  index: number;
+  area: DirectoryArea;
+  coveredZips: string[];
+  problems: string[];
+  onChange: (a: DirectoryArea) => void;
+  onRemove: () => void;
+}) {
+  const id = `dir-area-${index}`;
+  const picked = new Set(area.zips);
+  // A ZIP still in the area but no longer covered is shown, marked, so the
+  // owner can see why the area is refused and untick it.
+  const stale = area.zips.filter((z) => !coveredZips.includes(z));
+  const toggle = (z: string) =>
+    onChange({
+      ...area,
+      zips: picked.has(z) ? area.zips.filter((x) => x !== z) : [...area.zips, z].sort(),
+    });
+  const nameLength = oneLine(area.name).length;
+  return (
+    <li className="space-y-3 rounded-md border p-3">
+      <div className="flex items-end gap-2">
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <div className="flex items-baseline justify-between gap-3">
+            <Label id={`${id}-label`} htmlFor={`${id}-name`}>
+              Area {index + 1} name
+            </Label>
+            <span
+              className={`shrink-0 text-xs tabular-nums ${nameLength > DIRECTORY_AREA_NAME_MAX ? "text-destructive" : "text-muted-foreground"}`}
+            >
+              {nameLength}/{DIRECTORY_AREA_NAME_MAX}
+            </span>
+          </div>
+          <Input
+            id={`${id}-name`}
+            value={area.name}
+            onChange={(e) => onChange({ ...area, name: e.target.value })}
+            placeholder="Downtown"
+            aria-invalid={problems.length > 0}
+          />
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={`Remove area ${index + 1}`}
+          onClick={onRemove}
+        >
+          <X className="h-4 w-4 shrink-0" aria-hidden="true" />
+        </Button>
+      </div>
+      <div className="space-y-1.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm font-medium">
+            ZIP codes{" "}
+            <span className="font-normal text-muted-foreground">
+              ({area.zips.length} of {coveredZips.length})
+            </span>
+          </span>
+          <div className="flex flex-wrap gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => onChange({ ...area, zips: [...coveredZips] })}
+            >
+              All
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => onChange({ ...area, zips: [] })}
+            >
+              None
+            </Button>
+          </div>
+        </div>
+        <div
+          role="group"
+          aria-label={`ZIP codes in area ${index + 1}`}
+          className="flex max-h-48 flex-wrap gap-1.5 overflow-y-auto"
+          dir="ltr"
+        >
+          {coveredZips.map((z) => (
+            <Button
+              key={z}
+              type="button"
+              size="sm"
+              variant={picked.has(z) ? "default" : "outline"}
+              aria-pressed={picked.has(z)}
+              className="tabular-nums"
+              onClick={() => toggle(z)}
+            >
+              {z}
+            </Button>
+          ))}
+          {stale.map((z) => (
+            <Button
+              key={`stale-${z}`}
+              type="button"
+              size="sm"
+              variant="destructive"
+              aria-pressed={true}
+              aria-label={`${z}, not covered: remove from this area`}
+              className="gap-1 tabular-nums"
+              onClick={() => toggle(z)}
+            >
+              {z}
+              <X className="h-3 w-3 shrink-0" aria-hidden="true" />
+            </Button>
+          ))}
+        </div>
+      </div>
+      <Problems messages={problems} />
     </li>
   );
 }

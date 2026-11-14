@@ -34,10 +34,10 @@ const TAB_GROUPS: TabGroup[] = [
       { label: "Preferences", to: "/settings/preferences", techVisible: true },
       { label: "Business defaults", to: "/settings/business" },
       { label: "Scheduling", to: "/settings/scheduling" },
-      // Prices live on zones, and a first-time owner looking for "how much do
-      // I charge" opened Settings and did not find them (persona review,
-      // 2026-09-27). The page itself stays where the sidebar has it.
-      { label: "Zones & pricing", to: "/zones" },
+      // A zone's own price overrides the standard price inside that zone
+      // (#860). Inside the Settings layout since #864: it was /zones, and
+      // opening it from here took the owner out of Settings.
+      { label: "Zones & pricing", to: "/settings/zones" },
       // What the business sells: a walk, a sit, a groom, pet waste removal
       // (docs/other-trades-service-catalog.md, phase 1). Beside zones,
       // because both answer "what do I charge".

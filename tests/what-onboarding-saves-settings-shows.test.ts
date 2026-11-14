@@ -408,9 +408,13 @@ describe("Setup → Settings", () => {
     h.db.services[0].base_price_cents = 3500;
     await call(adoptSetupAreaPrice, { basePriceCents: 2500, perDogAddlCents: 500 });
     const std = await call(getStandardPricing);
-    // The one blank is filled; the one chosen is kept.
-    expect([std.basePriceCents, std.perDogAddlCents]).toEqual([3000, 500]);
+    // The one blank is filled; the one chosen is kept. Since #860 the
+    // standard price IS the service's (Settings → Services), so what was
+    // chosen there is what every screen reads.
+    expect(std.basePriceCents).toBe(3500);
     expect(h.db.services[0].base_price_cents).toBe(3500);
+    expect(h.db.organizations[0].std_base_price_cents).toBe(3000);
+    expect(h.db.organizations[0].std_per_dog_addl_cents).toBe(500);
   });
 
   it("team step: I run the route → Settings > Users (staff.is_field_tech)", async () => {

@@ -2,8 +2,8 @@
  * The ranking control, and the warning for an area it has left with no ZIPs
  * (#858), have to REACH THE SCREEN and work with a thumb.
  *
- * `every-signed-in-page-at-every-width.spec.ts` measures /zones on a
- * one-zone fixture, which draws no ranking at all: the panel needs two
+ * `every-signed-in-page-at-every-width.spec.ts` measures /settings/zones
+ * (where #870 moved the Zones page) on a one-zone fixture, which draws no ranking at all: the panel needs two
  * areas, and the warning needs one of them to lose every ZIP it lists to the
  * ones above it. So this answers listZones with three overlapping areas --
  * a 48-character name on top, a riverfront area at the bottom whose two ZIPs
@@ -96,7 +96,7 @@ for (const w of [360, 768, 1280, 1920]) {
     await installSignedInSession(context);
     await installStubBackend(context, { overrides: rankingStub() });
     await page.setViewportSize({ width: w, height: 1000 });
-    await page.goto("/zones");
+    await page.goto("/settings/zones");
     // A cold dev server pays for its first server function here, not in the
     // assertion (see a-zone-that-matches-nobody-says-so.spec.ts).
     await page.waitForLoadState("networkidle").catch(() => {});

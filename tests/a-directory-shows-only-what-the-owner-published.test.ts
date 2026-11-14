@@ -1,6 +1,6 @@
 // A directory shows only what the owner published (#630, phase 1).
 //
-// HoundStack's OWN directory of pet pros, not an Angi listing. This file:
+// HoundStack's OWN directory of pet pros, listing only businesses that opted in. This file:
 //   * pins the migration: anon reads only through the two public RPCs, which
 //     return published rows of live businesses and public columns only; anon
 //     holds no grant on either table and cannot execute the writer or the
@@ -178,11 +178,13 @@ describe("the pages", () => {
 
   it("draw the disclosure on every page, through the shell", () => {
     expect(read("src/components/directory/DirectoryShell.tsx")).toMatch(/\{DIRECTORY_DISCLOSURE\}/);
-    expect(DIRECTORY_DISCLOSURE).toMatch(/HoundStack customer/);
-    expect(DIRECTORY_DISCLOSURE).toMatch(/not affiliated with Angi/);
+    expect(DIRECTORY_DISCLOSURE).toMatch(/runs their business on HoundStack/);
+    expect(DIRECTORY_DISCLOSURE).toMatch(/chose to be listed/);
+    expect(DIRECTORY_DISCLOSURE).toMatch(/No paid placement/);
   });
 
-  it("imply no affiliation: Angi is named only in the disclosure that says we are not", () => {
+  it("imply no affiliation: Angi is named nowhere a visitor reads, the disclosure included", () => {
+    expect(DIRECTORY_DISCLOSURE).not.toMatch(/\bAngi\b/);
     const files = [
       ...PAGES,
       "src/components/directory/DirectoryShell.tsx",

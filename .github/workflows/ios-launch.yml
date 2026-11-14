@@ -66,6 +66,20 @@ on:
     # Mondays 14:17 UTC.
     - cron: "17 14 * * 1"
   workflow_dispatch:
+    # #726: by hand only, launch ONE exact simulator (both identifiers, e.g.
+    # com.apple.CoreSimulator.SimRuntime.iOS-27-2 and
+    # com.apple.CoreSimulator.SimDeviceType.iPad-Air-11-inch-M3) instead of
+    # the automatic picks. Empty, which every other trigger is, changes
+    # nothing. A pinned pair the Mac cannot run fails; it never falls back.
+    inputs:
+      pin_runtime:
+        description: "Simulator runtime identifier to launch on (with pin_device_type)"
+        required: false
+        default: ""
+      pin_device_type:
+        description: "Simulator device type identifier (with pin_runtime)"
+        required: false
+        default: ""
 
 concurrency:
   group: ios-launch-${{ github.ref }}
@@ -105,6 +119,8 @@ jobs:
         run: scripts/ios-launch-smoke.sh
         env:
           SMOKE_OUT: ${{ runner.temp }}/ios-launch-smoke
+          SMOKE_PIN_RUNTIME: ${{ inputs.pin_runtime }}
+          SMOKE_PIN_DEVICE_TYPE: ${{ inputs.pin_device_type }}
 
       - name: Keep the results
         if: always()

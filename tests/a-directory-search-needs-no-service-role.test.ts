@@ -103,10 +103,17 @@ describe("the migration", () => {
     expect(STAMP > "20261112010000").toBe(true);
     // A later file that replaced the search, the verdict or the view would
     // undo this one on replay; none may without saying so here.
+    // Said so: 20261112090000 (mypets v2 5a) replaces the VIEW to add
+    // tagline, highlights and areas at the end, keeping these nine columns
+    // in place; tests/a-directory-profile-says-what-a-business-is-and-where.test.ts
+    // pins that it does exactly that and touches nothing else named here.
+    const REPLACES_THE_VIEW_ONLY = new Set(["20261112090000"]);
     for (const f of files.filter((f) => f.slice(0, 14) > STAMP)) {
       const later = codeOnly(readFileSync(join(ROOT, "supabase/migrations", f), "utf8"));
       expect(later, f).not.toMatch(
-        /(FUNCTION|VIEW)\s+public\.(directory_search|directory_zone_verdict|directory_public_listings|directory_public_rows)\b/,
+        REPLACES_THE_VIEW_ONLY.has(f.slice(0, 14))
+          ? /(FUNCTION|VIEW)\s+public\.(directory_search|directory_zone_verdict|directory_public_rows)\b/
+          : /(FUNCTION|VIEW)\s+public\.(directory_search|directory_zone_verdict|directory_public_listings|directory_public_rows)\b/,
       );
     }
     expect(readFileSync(MIGRATION, "utf8")).toMatch(/PROPOSED MIGRATION\. File only/);

@@ -444,7 +444,9 @@ describe("the new-client wizard", () => {
     // The zone quote is off for a walk, and its last answer is not reused.
     expect(wizard).toMatch(/enabled:[\s\S]*?!walkLike &&[\s\S]*?queryKey: \["internal-quote"/);
     expect(wizard).toMatch(/const zoneQuote =\s*!walkLike &&/);
-    expect(wizard).toMatch(/zoneId: zoneQuote \? \(zoneQuote\.zoneId as string\) : undefined/);
+    expect(wizard).toMatch(
+      /zoneId: \(zoneQuote\?\.zoneId as string \| null \| undefined\) \?\? undefined/,
+    );
     // A first cleanup is a pet-waste thing.
     expect(wizard).toMatch(/!walkLike &&\s*can\("manage_client_billing"\)/);
   });

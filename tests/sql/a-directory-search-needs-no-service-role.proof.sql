@@ -140,7 +140,11 @@ BEGIN
 
   -- Exactly the public fields, from all three readers.
   SELECT array_agg(DISTINCT k ORDER BY k) INTO _keys FROM (
-    SELECT jsonb_object_keys(to_jsonb(t)) k FROM public.directory_public_listings t WHERE slug LIKE 'anon-dir-%'
+    -- 20261112090000 adds tagline, highlights and areas to the VIEW only, at
+    -- the end; its own proof pins those three. This one pins the nine the
+    -- RPCs and the view share, so it holds before and after that file.
+    SELECT jsonb_object_keys(to_jsonb(t) - ARRAY['tagline', 'highlights', 'areas']) k
+      FROM public.directory_public_listings t WHERE slug LIKE 'anon-dir-%'
     UNION ALL
     SELECT jsonb_object_keys(to_jsonb(t)) FROM public.directory_search('dog_walking', '48201') t
     UNION ALL
@@ -166,7 +170,7 @@ BEGIN
   END IF;
 
   -- The view and the profile reader agree, row for row.
-  IF (SELECT to_jsonb(v) FROM public.directory_public_listings v WHERE v.slug = 'anon-dir-aa')
+  IF (SELECT to_jsonb(v) - ARRAY['tagline', 'highlights', 'areas'] FROM public.directory_public_listings v WHERE v.slug = 'anon-dir-aa')
      IS DISTINCT FROM (SELECT to_jsonb(b) FROM public.directory_profiles_by_slug(ARRAY['anon-dir-aa']) b) THEN
     RAISE EXCEPTION 'PROOF FAILED [shape]: the view and directory_profiles_by_slug disagree about aa';
   END IF;
@@ -221,10 +225,15 @@ END $$;
 RESET ROLE;
 
 -- ── 4. Mutation: without the published filter, the view leaks 00 ───────────
-CREATE OR REPLACE VIEW public.directory_public_listings WITH (security_barrier = true) AS
+-- DROP and CREATE rather than CREATE OR REPLACE: after 20261112090000 the
+-- view has more columns than this mutant, and REPLACE cannot remove any.
+-- Rolled back with everything else.
+DROP VIEW public.directory_public_listings;
+CREATE VIEW public.directory_public_listings WITH (security_barrier = true) AS
   SELECT p.slug, p.display_name, NULL::text AS logo_url, p.bio, p.service_lines, p.coverage_zips,
          p.coverage_cities, '[]'::jsonb AS services, p.published_at
     FROM public.directory_profiles p;
+GRANT SELECT ON public.directory_public_listings TO anon;
 SET LOCAL ROLE anon;
 DO $$
 BEGIN

@@ -35,16 +35,23 @@ const SLUG = "e2e-mypets-yard";
 const SERVED = "48067";
 const OUTSIDE = "48201";
 const MYPETS = "https://mypets.services";
+// PUBLIC_LISTING_FIELDS in lib/directory.ts, sorted: the view's columns and
+// nothing more (20261112090000 added tagline, highlights and areas).
+// tests/a-directory-profile-says-what-a-business-is-and-where.test.ts holds
+// this list to that one.
 const PUBLIC_FIELDS = [
+  "areas",
   "bio",
   "coverage_cities",
   "coverage_zips",
   "display_name",
+  "highlights",
   "logo_url",
   "published_at",
   "service_lines",
   "services",
   "slug",
+  "tagline",
 ];
 
 test("a quote from mypets.services is one directory lead on the test org", async ({ request }) => {

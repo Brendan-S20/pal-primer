@@ -364,6 +364,9 @@ export function serviceProblem(d: ServiceDraft): string | null {
  *  waste, exactly as today. Every other line prices through
  *  servicePriceCents; this one never reaches it (phase 5, migration
  *  20261011100000). */
+/** Pet waste is priced by its standard price, which a zone may override
+ *  (standard-price.ts, #860), rather than by servicePriceCents alone. The
+ *  name predates #860, when a zone was the only price a plan could have. */
 export function isZonePriced(s: Pick<ServiceDraft, "service_line">): boolean {
   return s.service_line === "pet_waste";
 }
@@ -524,21 +527,41 @@ export function lowestZoneVisitCents(
   return low;
 }
 
-/** How a pet-waste service's prices read in the Services list: both real
- *  amounts once set, and what is still missing when they are not. */
+/** How many switched-on zones override the standard price (#860): a zone
+ *  whose base_price_cents is set. NULL is "uses the standard price". */
+export function zoneOverrideCount(zones: readonly ZoneVisitPrice[] | null | undefined): number {
+  let n = 0;
+  for (const z of zones ?? []) {
+    if (z.enabled === false) continue;
+    const c = z.base_price_cents;
+    if (typeof c === "number" && Number.isInteger(c) && c >= 0) n++;
+  }
+  return n;
+}
+
+/** How a pet-waste service's price reads in the Services list (#860): its
+ *  own standard price, and whether any zone overrides it. The one-time
+ *  cleanup price is ONE setting for the business, so it is said once above
+ *  the list, not repeated on every row as if it were each service's price. */
 export function petWastePriceLabel(input: {
-  zoneFromCents: number | null;
-  oneTimeCents: number | null;
+  standardCents: number | null;
+  perDogCents: number | null;
+  zoneOverrides: number;
 }): string {
-  const plans =
-    input.zoneFromCents === null
-      ? "Plans: no zone price yet"
-      : `Plans from ${formatServiceMoney(input.zoneFromCents)} per visit, by zone`;
-  const once =
-    input.oneTimeCents === null
-      ? "One-time cleanup: no price yet"
-      : `One-time cleanup ${formatServiceMoney(input.oneTimeCents)}`;
-  return `${plans} · ${once}`;
+  const std =
+    input.standardCents === null
+      ? "Standard price: not set yet"
+      : `Standard price ${formatServiceMoney(input.standardCents)} per visit` +
+        (input.perDogCents ? ` + ${formatServiceMoney(input.perDogCents)} per extra dog` : "");
+  if (input.zoneOverrides === 0) return std;
+  return `${std} · ${input.zoneOverrides} zone${input.zoneOverrides === 1 ? "" : "s"} with ${input.zoneOverrides === 1 ? "its" : "their"} own price`;
+}
+
+/** The one-time cleanup line above the Services list, said once (#860). */
+export function oneTimeCleanupListLine(oneTimeCents: number | null): string {
+  return oneTimeCents === null
+    ? "One-time cleanup (any pet waste service): no price yet"
+    : `One-time cleanup (any pet waste service): ${formatServiceMoney(oneTimeCents)}`;
 }
 
 /**

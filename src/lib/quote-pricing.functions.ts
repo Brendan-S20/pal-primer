@@ -40,18 +40,22 @@ export const getQuotePricing = createServerFn({ method: "GET" })
         .order("name"),
       supabase
         .from("organizations")
-        .select(
-          "std_base_price_cents, std_per_dog_addl_cents, frequency_multipliers, one_off_price_cents",
-        )
+        .select("frequency_multipliers, one_off_price_cents")
         .eq("id", orgId)
         .single(),
     ]);
     if (zonesRes.error) throw new Error(zonesRes.error.message);
     if (orgRes.error) throw new Error(orgRes.error.message);
 
+    // #860: the standard price is the default pet-waste service's (Settings →
+    // Services), the one setting every plan and quote reads. A zone with no
+    // price of its own is not "priced" (quote-pricing.ts zoneIsPricedFor), so
+    // the quote falls through to this.
+    const { loadPetWasteStandard } = await import("@/lib/standard-price");
+    const std = await loadPetWasteStandard(supabase, orgId);
     const standard: QuoteStandardPricing = {
-      basePriceCents: orgRes.data.std_base_price_cents ?? null,
-      perDogAddlCents: orgRes.data.std_per_dog_addl_cents ?? null,
+      basePriceCents: std?.base_price_cents ?? null,
+      perDogAddlCents: std?.base_price_cents == null ? null : (std.extra_pet_cents ?? 0),
       frequencyMultipliers: (orgRes.data.frequency_multipliers ?? {}) as Record<string, number>,
     };
 

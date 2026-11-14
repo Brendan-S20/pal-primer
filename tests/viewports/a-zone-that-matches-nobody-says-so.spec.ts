@@ -26,7 +26,7 @@ for (const w of [360, 1280]) {
     await installSignedInSession(context);
     await installStubBackend(context);
     await page.setViewportSize({ width: w, height: 900 });
-    await page.goto("/zones");
+    await page.goto("/settings/zones");
 
     // ── WHY THIS WAIT, AND WHY IT IS NOT A RETRY ──────────────────────────
     //
@@ -193,7 +193,7 @@ async function openEightZones(page: import("@playwright/test").Page, w: number) 
   await installSignedInSession(page.context());
   await installStubBackend(page.context(), { overrides: { listZones: EIGHT_ZONES } });
   await page.setViewportSize({ width: w, height: 900 });
-  await page.goto("/zones");
+  await page.goto("/settings/zones");
   await page.waitForLoadState("networkidle").catch(() => {});
   // Proof the fixture reached the page, not the one-zone default.
   await expect(page.getByRole("heading", { name: LONG })).toBeVisible({ timeout: 15000 });

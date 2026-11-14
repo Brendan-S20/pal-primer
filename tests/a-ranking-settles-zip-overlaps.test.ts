@@ -395,9 +395,12 @@ describe("reorderZones", () => {
 
 // ── The screen ─────────────────────────────────────────────────────────────
 
-describe("the Zones page", () => {
-  it("draws the ranking and the pending note, from one component the Settings move can carry", () => {
-    const page = read("src/routes/_authenticated/zones.tsx");
+describe("Settings > Zones & pricing", () => {
+  it("draws the ranking and the pending note, from one component; /zones only forwards there", () => {
+    const page = read("src/routes/_authenticated/settings.zones.tsx");
+    // #870 made /zones a redirect; the ranking lives on the page it forwards to.
+    expect(read("src/routes/_authenticated/zones.tsx")).toMatch(/RedirectFallback/);
+    expect(read("src/routes/_authenticated/zones.tsx")).not.toMatch(/ZoneRankingPanel/);
     expect(page).toMatch(/<ZoneRankingPanel zones=\{zones as any\} canEdit=\{canEdit\} \/>/);
     expect(page).toMatch(/<ZipFillPendingNote zone=\{zone\} \/>/);
     // The typed number is gone from the card: the ranking says the order.

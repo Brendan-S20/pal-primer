@@ -116,6 +116,7 @@
                 <data android:pathPrefix="/settings/sms" />
                 <data android:pathPrefix="/settings/users" />
                 <data android:pathPrefix="/settings/webhooks" />
+                <data android:pathPrefix="/settings/zones" />
             </intent-filter>
 
         </activity>
