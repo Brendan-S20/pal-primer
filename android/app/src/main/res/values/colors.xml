@@ -22,6 +22,9 @@
          `windowBackground`, which is white — a flash of white before a cream
          splash, which is exactly the fault the iOS pass fixed on that side. -->
     <color name="splashBackground">#fdfaf1</color>
+    <!-- The app's light background (styles.css), for the window behind the
+         WebView: see styles.xml, R2-28. -->
+    <color name="appBackground">#ffffff</color>
     <!-- Tint for the notification small icon and its header text in the
          shade. The same dark slate as colorAccent: cream would be invisible
          on a light shade. -->

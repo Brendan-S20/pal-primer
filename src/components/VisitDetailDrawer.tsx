@@ -1140,8 +1140,10 @@ function PhotosSection({
                   return;
                 }
               }
-            } catch {
-              /* fall through */
+            } catch (e) {
+              // Cancel on the native sheet is a no, not a reason to open a
+              // second picker; anything else falls through to the web input.
+              if (/cancel/i.test(String((e as { message?: string })?.message ?? e))) return;
             }
             document.getElementById(`photo-input-${visitId}`)?.click();
           }}
