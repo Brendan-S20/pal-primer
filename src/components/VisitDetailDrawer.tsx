@@ -1,6 +1,8 @@
 import i18n from "@/lib/i18n";
 import { completeFromOffice, useOfficeCompleteOverride } from "@/components/OfficeCompleteOverride";
 import { useCompletionBlockWarning } from "@/components/CompletionBlockWarning";
+import { useDogCapWarning } from "@/components/DogCapWarning";
+import { isDogCapRefused } from "@/lib/dog-cap";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
@@ -171,18 +173,20 @@ export function VisitDetailDrawer({
   // can_write_org.
   const doComplete = useServerFn(completeVisitFromOffice);
   const doCancel = useServerFn(cancelVisitFromOffice);
-  // Cosmetic gate only — requirePermission("manage_client_billing") inside the
-  // office server functions is the real one. Showing a dispatcher a button
-  // that throws is the failure this whole change is about, so hide it.
+  // Cosmetic gate only — requirePermission("close_visits") inside the office
+  // server functions is the real one. Showing a person a button that throws
+  // is the failure this whole change is about, so hide it.
   const { can, role } = usePermissions();
   // Yard wording only on a pet-waste visit, decided as My Day decides it
   // (#560): the visit's own line, and for a visit with no service, what the
   // business runs.
   const { petWaste: businessRunsPetWaste } = useServiceLines();
-  const canActFromOffice = can("manage_client_billing");
+  // Complete and Cancel can bill; since #863 they are close_visits, which a
+  // dispatcher holds by default and the owner can turn off per role.
+  const canActFromOffice = can("close_visits");
   // Moving a visit to another day is routes work, not billing (#728):
   // rescheduleVisitFromOffice asks for manage_schedule, which a dispatcher
-  // holds. Complete and Cancel can bill and stay on canActFromOffice.
+  // holds.
   const canMoveDay = can("manage_schedule");
 
   // Q-12, narrowest useful answer. Below 768px the dnd board is display:none
@@ -198,6 +202,7 @@ export function VisitDetailDrawer({
   // had no way to do it. Reorder stays on the board; it has no meaning
   // without one.
   const doReassign = useServerFn(reassignVisit);
+  const dogCap = useDogCapWarning();
   const listStaffFn = useServerFn(listStaff);
   const { data: staffData } = useQuery({
     enabled: !!visitId,
@@ -289,13 +294,23 @@ export function VisitDetailDrawer({
     setPendingStaff(staffId);
     // The overnight clash warning is shown once the change is sent, since
     // nothing is checked while it is held.
+    // Over the walker's dog cap: the warning, then "Assign anyway" sends it
+    // again confirmed; Cancel leaves the visit as it was (#731).
     const send = () =>
-      doReassign({ data: { visitId: vid, staffId } }).then((r) => {
-        if (r.clash) toast.warning(r.clash);
-        warnLessonClashes(r);
-        if (r.clash) toast.warning(r.clash);
-        return r;
-      });
+      dogCap
+        .run((overCapAcknowledged) =>
+          doReassign({ data: { visitId: vid, staffId, overCapAcknowledged } }),
+        )
+        .then((r) => {
+          if (r === null || isDogCapRefused(r)) {
+            toast("Not reassigned.");
+            return r;
+          }
+          if (r.clash) toast.warning(r.clash);
+          warnLessonClashes(r);
+          if (r.clash) toast.warning(r.clash);
+          return r;
+        });
     // Written to the device as well, so a reload or a killed app inside the
     // window still sends it on the next start (#652). `ifStillFrom` makes
     // that replay a no-op if the first send already landed or somebody has
@@ -445,6 +460,7 @@ export function VisitDetailDrawer({
       {earlyDialog}
       {overrideDialog}
       {completionBlock.dialog}
+      {dogCap.dialog}
       {/* Safe area, top and bottom. Measured on an iPhone 17 Pro 2026-08-25:
           Close occupied y 8-52 and the title y 24-52 against a 54pt status
           bar, so the clock printed through the client name and the battery
@@ -774,13 +790,13 @@ export function VisitDetailDrawer({
             {(canComplete || canCancel) && (
               <section className="space-y-2 border-t pt-3">
                 {!canActFromOffice ? (
-                  // A dispatcher reaches this drawer but holds neither
-                  // manage_client_billing nor the tech guard, so there is no
+                  // A person who reaches this drawer without close_visits (a
+                  // dispatcher whose owner turned it off, or a tech) has no
                   // path by which either action succeeds. Say that, rather
                   // than render buttons that throw.
                   <p className="text-xs text-muted-foreground">
                     {role === "dispatcher"
-                      ? "Completing or canceling a visit is an office action. The assigned tech closes it out, or an owner or office manager does it from the client's Visits tab."
+                      ? "Completing or canceling a visit is an office action. The assigned tech closes it out, or someone the owner allows to close out visits does it from the client's Visits tab."
                       : "You don't have permission to close out a visit."}
                   </p>
                 ) : (

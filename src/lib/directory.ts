@@ -1,6 +1,6 @@
-// HoundStack's own directory of pet pros (#630, phase 1). Not a listing on
-// Angi or anywhere else: every profile is a HoundStack customer that opted in,
-// and shows only what its owner confirmed when they did.
+// HoundStack's own directory of pet pros (#630, phase 1). Every profile is a
+// HoundStack customer that opted in, and shows only what its owner confirmed
+// when they did.
 //
 // Kept pure (no server import) so the pages, the settings screen and the tests
 // can all read it. The database half is
@@ -73,9 +73,8 @@ export type DirectoryProfile = {
 /** The sentence every directory page carries (FTC 16 CFR 465.6 territory, and
  *  plain honesty): who is listed and why. Also says what we are not. */
 export const DIRECTORY_DISCLOSURE =
-  "Every business listed here is a HoundStack customer that chose to be listed. " +
-  "Profiles show only what each business confirmed. HoundStack is not affiliated with Angi or any other directory, " +
-  "and businesses do not pay for placement.";
+  "Every pro here runs their business on HoundStack and chose to be listed. " +
+  "Profiles show only what each business confirmed. No paid placement.";
 
 /** A ZIP as the search takes it: five digits, or null. */
 export function cleanZip(raw: unknown): string | null {

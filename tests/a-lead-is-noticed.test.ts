@@ -132,6 +132,9 @@ import { resetNotifyMemoForTests } from "@/lib/notify-center.server";
 import {
   leadNotice,
   notifyOfficeOfNewLead,
+  notifyOfficeOfRepeatLead,
+  repeatLeadEventKey,
+  repeatLeadNotice,
   rolesThatWorkLeads,
 } from "@/lib/lead-notify.server";
 import {
@@ -255,6 +258,59 @@ describe("the office is told about a new lead", () => {
     const src = read("src/lib/lead-notify.server.ts").replace(/^\s*\/\/.*$/gm, "");
     expect(src).not.toMatch(/twilio|sendSms|sms\.server|enqueueAppEmail|email\//i);
     expect(src).toMatch(/notifyRoles\(rolesThatWorkLeads\(\)/);
+  });
+});
+
+// ── 1a. A repeat directory quote is told, once per repeat (#920) ───────────
+
+describe("the office is told when an open lead asks again", () => {
+  const REPEAT = { ...LEAD, source: "directory", serviceName: "Deep clean", requestId: "req-1" };
+
+  it("is told after the new-lead notice, not swallowed by it, to the same people", async () => {
+    staff();
+    await notifyOfficeOfNewLead(LEAD);
+    h.pushed = [];
+    await notifyOfficeOfRepeatLead(REPEAT);
+    const repeats = h.notifications.filter((n) => n.event_key !== "lead:lead-xyz");
+    expect(repeats.map((n) => n.recipient_user_id).sort()).toEqual([
+      "office-1",
+      "office-2",
+      "owner",
+    ]);
+    const key = repeatLeadEventKey("lead-xyz", "req-1");
+    expect(repeats.every((n) => n.event_key === key)).toBe(true);
+    expect(repeats[0]).toMatchObject({ type: "lead", title: "Repeat request: Marguerite Okonkwo" });
+    expect(h.pushed.map((p) => p.userId).sort()).toEqual(["office-1", "office-2", "owner"]);
+  });
+
+  it("is told again for a second repeat, and only once for the same one", async () => {
+    staff();
+    await notifyOfficeOfRepeatLead(REPEAT);
+    resetNotifyMemoForTests();
+    await notifyOfficeOfRepeatLead(REPEAT);
+    expect(h.notifications).toHaveLength(3);
+    await notifyOfficeOfRepeatLead({ ...REPEAT, requestId: "req-2" });
+    expect(h.notifications).toHaveLength(6);
+  });
+
+  it("leaves out anybody who muted new leads", async () => {
+    staff();
+    h.prefs = [{ user_id: "office-2", muted_types: ["lead"] }];
+    await notifyOfficeOfRepeatLead(REPEAT);
+    expect(recipients()).toEqual(["office-1", "owner"]);
+  });
+
+  it("never throws", async () => {
+    h.roles = null as any;
+    await expect(notifyOfficeOfRepeatLead(REPEAT)).resolves.toBeUndefined();
+  });
+
+  it("says it is a repeat, and what this ask named", () => {
+    expect(repeatLeadNotice(REPEAT)).toEqual({
+      title: "Repeat request: Marguerite Okonkwo",
+      body: "Asked again · 612 Maple St, Southfield, MI 48037 · 2 dogs · Weekly · Deep clean",
+    });
+    expect(repeatLeadEventKey("a", "b")).not.toBe("lead:a");
   });
 });
 

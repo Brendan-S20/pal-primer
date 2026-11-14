@@ -10,11 +10,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { DoorOpen, Footprints, KeyRound, Timer, Users } from "lucide-react";
+import { AlertTriangle, DoorOpen, Footprints, KeyRound, Timer, Users } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useServerFn } from "@tanstack/react-start";
 import { recordWalkReport } from "@/lib/walk-report.functions";
+import { listWalksOverDogCap } from "@/lib/walk-groups.functions";
+import { overCapByVisit } from "@/lib/dog-cap";
 import { REPORT_NOTE_MAX, cleanReportNote } from "@/lib/walk-report";
 import { enqueueAction } from "@/lib/offline/queue";
 import { runOrQueue } from "@/lib/offline/run-or-queue";
@@ -56,9 +59,24 @@ export function WalkMeta({ visit, dayVisits }: { visit: DayVisit; dayVisits: rea
   const { t } = useTranslation();
   const length = walkLengthMin(visit);
   const mates = groupWalkMates(visit, dayVisits);
-  if (length == null && mates.length === 0) return null;
+  const overCap = useOverDogCap(visit);
+  if (length == null && mates.length === 0 && !overCap) return null;
   return (
     <div className="mt-1 space-y-1.5 text-sm">
+      {/* The office confirmed this walk over the walker's dog cap (#731). It
+          stays flagged until the walk is back under. */}
+      {overCap && (
+        <p
+          role="status"
+          data-testid="over-dog-cap"
+          className="flex min-w-0 items-start gap-1.5 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-xs font-semibold text-destructive"
+        >
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 break-words">
+            {t("walk.overDogCap", { dogs: overCap.dogs, cap: overCap.cap })}
+          </span>
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         {length != null && (
           <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
@@ -103,6 +121,22 @@ export function WalkMeta({ visit, dayVisits }: { visit: DayVisit; dayVisits: rea
       )}
     </div>
   );
+}
+
+/** This stop's walk, when it is over the walker's dog cap on its day. One
+ *  request per day, shared by every card; a failed lookup (no signal) shows
+ *  no flag rather than blocking the card. */
+function useOverDogCap(visit: DayVisit) {
+  const list = useServerFn(listWalksOverDogCap);
+  const day = visit.scheduled_on ?? null;
+  const { data } = useQuery({
+    queryKey: ["my-day", "over-dog-cap", day],
+    queryFn: () => list({ data: { day: day! } }),
+    enabled: Boolean(day && visit.walk_group_id),
+    staleTime: 60_000,
+    retry: false,
+  });
+  return data ? (overCapByVisit(data.walks).get(visit.id) ?? null) : null;
 }
 
 type AccessProps = {

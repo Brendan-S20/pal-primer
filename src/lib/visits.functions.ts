@@ -1,3 +1,4 @@
+import { dogCapWarningFromError, withDogCapAck, type DogCapWarning } from "@/lib/dog-cap";
 import { createServerFn } from "@tanstack/react-start";
 import { blockedCompletionMeta, blockedCompletionSummary } from "@/lib/completion-block";
 import { refuseIfChanged, StaleWriteError } from "@/lib/stale-write";
@@ -225,7 +226,7 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
       await import("@/lib/booking-price.server");
     let priceCents: number;
     let asSetPrice = false;
-    if (hasPermission(caller.role, "manage_pricing")) {
+    if (hasPermission(caller.role, "manage_pricing", caller.overrides)) {
       if (data.priceCents != null) {
         priceCents = data.priceCents;
       } else {
@@ -309,6 +310,8 @@ export const reassignVisit = createServerFn({ method: "POST" })
         // else now, the first send already landed or somebody has moved it
         // since, and either way this one is left alone and nobody is told.
         ifStillFrom: z.string().uuid().nullable().optional(),
+        // "Assign anyway" after the dog cap warning (src/lib/dog-cap.ts, #731).
+        overCapAcknowledged: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -340,10 +343,20 @@ export const reassignVisit = createServerFn({ method: "POST" })
     // Both techs' lock screens: the one losing the stop and the one gaining it.
     const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
     const pushRoutes = await watchRouteLiveActivities([data.visitId]);
-    const { error } = await context.supabase.rpc("reassign_visit", {
-      _visit_id: data.visitId,
-      _staff_id: data.staffId as string,
-    });
+    const { error } = await withDogCapAck(
+      context.supabase.rpc("reassign_visit", {
+        _visit_id: data.visitId,
+        _staff_id: data.staffId as string,
+      }),
+      data.overCapAcknowledged,
+    );
+    // Over the walker's dog cap and not confirmed: nothing was saved and
+    // nobody is told; the board shows the warning and asks (#731).
+    const overCap = dogCapWarningFromError(error);
+    if (overCap) {
+      await watch.finish();
+      return { ok: false, skipped: false, clash: null, lessonClashes: [] as never[], overCap };
+    }
     if (error) throw await groomWriteError(context.supabase, error, move);
     await watch.finish();
     await pushRoutes();
@@ -613,12 +626,16 @@ async function loadVisitForOfficeAction(
   userId: string,
   visitId: string,
   // Complete and Cancel can bill (office_complete_visit invoices a completed
-  // visit, office_skip_visit applies the business's skip-charge rules), so
-  // they stay manage_client_billing. A move bills nothing and keeps the
-  // visit's price, so it asks for manage_schedule, which a dispatcher holds
-  // (#728). The default is the strict one: a new caller that forgets to say
-  // is refused, not let through.
-  permission: "manage_client_billing" | "manage_schedule" = "manage_client_billing",
+  // visit, office_skip_visit applies the business's skip-charge rules). They
+  // were manage_client_billing until #863; they are close_visits now, which
+  // a dispatcher holds by default (Brendan, 2026-11-12) and the owner can
+  // turn off. A move bills nothing and keeps the visit's price, so it asks
+  // for manage_schedule (#728). The default is the strict one: a new caller
+  // that forgets to say is refused, not let through.
+  permission:
+    | "manage_client_billing"
+    | "manage_schedule"
+    | "close_visits" = "manage_client_billing",
 ) {
   const { requirePermission } = await import("@/lib/authz.server");
   const caller = await requirePermission(supabase, userId, permission);
@@ -664,7 +681,7 @@ export const completeVisitFromOffice = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
+    const v = await loadVisitForOfficeAction(supabase, userId, data.visitId, "close_visits");
     // A missed visit can be completed too: it was marked missed overnight
     // because nobody closed it, not because it was proved undone (#455).
     if (!canOfficeComplete(v.status))
@@ -879,7 +896,7 @@ export const cancelVisitFromOffice = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
+    const v = await loadVisitForOfficeAction(supabase, userId, data.visitId, "close_visits");
     if (v.status !== "scheduled") throw new Error("Only scheduled visits can be canceled");
     const { startRouteWatch } = await import("@/lib/field-notify.server");
     const watch = await startRouteWatch({
@@ -1082,6 +1099,7 @@ export const bulkAssignVisits = createServerFn({ method: "POST" })
         visitIds: z.array(z.string().uuid()).min(1).max(500),
         // Null unassigns — how work comes OFF someone.
         staffId: z.string().uuid().nullable(),
+        overCapAcknowledged: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -1095,10 +1113,19 @@ export const bulkAssignVisits = createServerFn({ method: "POST" })
     const watch = await startRouteWatch({ actorUserId: context.userId, visitIds: data.visitIds });
     const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
     const pushRoutes = await watchRouteLiveActivities(data.visitIds);
-    const { data: n, error } = await (context.supabase as any).rpc("bulk_reassign_visits", {
-      _visit_ids: data.visitIds,
-      _staff_id: data.staffId,
-    });
+    const { data: n, error } = await withDogCapAck(
+      (context.supabase as any).rpc("bulk_reassign_visits", {
+        _visit_ids: data.visitIds,
+        _staff_id: data.staffId,
+      }),
+      data.overCapAcknowledged,
+    );
+    // One statement: refused for the dog cap, none of the batch moved (#731).
+    const overCap = dogCapWarningFromError(error);
+    if (overCap) {
+      await watch.finish();
+      return { moved: 0, clash: null, lessonClashes: [] as never[], overCap };
+    }
     if (error) throw await groomWriteError(context.supabase, error, move);
     await watch.finish();
     await pushRoutes();
@@ -1249,6 +1276,7 @@ export const redistributeStaffWork = createServerFn({ method: "POST" })
           .regex(/^\d{4}-\d{2}-\d{2}$/)
           .optional(),
         includeLater: z.boolean().optional(),
+        overCapAcknowledged: z.boolean().optional(),
       })
       .refine(
         (v) => !v.to || Boolean(v.from && v.from <= v.to),
@@ -1301,14 +1329,27 @@ export const redistributeStaffWork = createServerFn({ method: "POST" })
         .order("id");
       if (heldError) throw new Error(heldError.message);
       const { spreadVisits } = await import("@/lib/cover-window");
+      // A tech whose dog cap a visit would break is skipped like one who is
+      // off, so the visit goes to someone it fits. Only a visit that fits
+      // nobody comes back as the warning (#731); "Assign anyway" runs Cover
+      // again with the confirmation, and those go over the cap, recorded.
+      const capRefused = new Map<string, DogCapWarning>();
       const moved = await spreadVisits(
         (held ?? []) as Array<{ id: string; scheduled_on: string }>,
         others,
         async (visitId, staffId) => {
-          const { data: c, error: e } = await context.supabase.rpc("bulk_reassign_visits", {
-            _visit_ids: [visitId],
-            _staff_id: staffId,
-          });
+          const { data: c, error: e } = await withDogCapAck(
+            context.supabase.rpc("bulk_reassign_visits", {
+              _visit_ids: [visitId],
+              _staff_id: staffId,
+            }),
+            data.overCapAcknowledged,
+          );
+          const overCap = dogCapWarningFromError(e);
+          if (overCap) {
+            if (!capRefused.has(visitId)) capRefused.set(visitId, overCap);
+            return "refused";
+          }
           if (e) {
             // 23P01: the groom guard (zz_visits_groom_no_overlap), that tech
             // already has a groom then. 23514: the time-off guard
@@ -1321,11 +1362,31 @@ export const redistributeStaffWork = createServerFn({ method: "POST" })
         },
       );
       n = moved.length;
+      for (const id of moved) capRefused.delete(id);
+      const first = capRefused.values().next();
+      if (!first.done) {
+        await watch.finish();
+        return {
+          moved: n,
+          left: capRefused.size,
+          overCap: first.value,
+          overCapVisits: capRefused.size,
+        };
+      }
     } else {
-      const { data: count, error } = await (context.supabase as any).rpc(
-        "redistribute_staff_work",
-        { _staff_id: data.staffId, _from: data.from ?? null },
+      const { data: count, error } = await withDogCapAck(
+        (context.supabase as any).rpc("redistribute_staff_work", {
+          _staff_id: data.staffId,
+          _from: data.from ?? null,
+        }),
+        data.overCapAcknowledged,
       );
+      // One transaction: refused for the dog cap, nothing moved (#731).
+      const overCap = dogCapWarningFromError(error);
+      if (overCap) {
+        await watch.finish();
+        return { moved: 0, left: 0, overCap, overCapVisits: 1 };
+      }
       if (error) throw new Error(error.message);
       n = (count as number) ?? 0;
     }

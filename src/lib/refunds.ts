@@ -12,7 +12,7 @@
 // payment row gets a Refund button at all. It imports nothing server-side, so
 // the dialog can read it. The half that talks to Stripe is refunds.server.ts.
 
-import { hasPermission, type Permission } from "@/lib/permissions";
+import { holdsPermission, type Permission } from "@/lib/permissions";
 import type { AppRole } from "@/hooks/useMyRole";
 
 /** Who may refund. The same capability every other money-moving invoice action
@@ -115,8 +115,11 @@ export type RefundablePaymentRow = {
 export function canOfferRefund(
   role: AppRole | null | undefined,
   payment: RefundablePaymentRow,
+  // The configured set (#863), from usePermissions().permissions; the role's
+  // defaults when absent.
+  permissions?: readonly Permission[] | null,
 ): boolean {
-  if (!hasPermission(role, REFUND_PERMISSION)) return false;
+  if (!holdsPermission(role, REFUND_PERMISSION, permissions)) return false;
   if (!payment.stripe_payment_intent_id) return false;
   if (payment.status !== "succeeded" && payment.status !== "refunded") return false;
   const charged =
@@ -148,8 +151,9 @@ export type ManualRefundKind = (typeof MANUAL_REFUND_KINDS)[number];
 export function canRecordManualRefund(
   role: AppRole | null | undefined,
   payment: RefundablePaymentRow,
+  permissions?: readonly Permission[] | null,
 ): boolean {
-  if (!hasPermission(role, REFUND_PERMISSION)) return false;
+  if (!holdsPermission(role, REFUND_PERMISSION, permissions)) return false;
   if (payment.stripe_payment_intent_id) return false;
   if (payment.status !== "succeeded") return false;
   if ((payment.amount_cents ?? 0) <= 0) return false;

@@ -65,9 +65,9 @@ export function ManualRefundAction({
   customerName?: string | null;
   onRecorded?: () => void;
 }) {
-  const { role } = usePermissions();
+  const { role, permissions } = usePermissions();
   const [open, setOpen] = useState(false);
-  if (!canRecordManualRefund(role, payment)) return null;
+  if (!canRecordManualRefund(role, payment, permissions)) return null;
   return (
     <>
       <Button

@@ -7453,6 +7453,41 @@ export type Database = {
         }
         Relationships: []
       }
+      role_permission_overrides: {
+        Row: {
+          allowed: boolean
+          organization_id: string
+          permission: string
+          role: Database["public"]["Enums"]["app_role"]
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          allowed: boolean
+          organization_id: string
+          permission: string
+          role: Database["public"]["Enums"]["app_role"]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          allowed?: boolean
+          organization_id?: string
+          permission?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_permission_overrides_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       staff: {
         Row: {
           active: boolean
@@ -7841,6 +7876,7 @@ export type Database = {
           client_id: string
           client_package_id: string | null
           created_at: string
+          created_by: string | null
           dog_count: number | null
           earliest_time: string | null
           end_notes: string | null
@@ -7856,6 +7892,8 @@ export type Database = {
           id: string
           interval_days: number | null
           interval_weeks: number | null
+          last_changed_at: string | null
+          last_changed_by: string | null
           latest_time: string | null
           organization_id: string
           paused_at: string | null
@@ -7884,6 +7922,7 @@ export type Database = {
           client_id: string
           client_package_id?: string | null
           created_at?: string
+          created_by?: string | null
           dog_count?: number | null
           earliest_time?: string | null
           end_notes?: string | null
@@ -7899,6 +7938,8 @@ export type Database = {
           id?: string
           interval_days?: number | null
           interval_weeks?: number | null
+          last_changed_at?: string | null
+          last_changed_by?: string | null
           latest_time?: string | null
           organization_id: string
           paused_at?: string | null
@@ -7927,6 +7968,7 @@ export type Database = {
           client_id?: string
           client_package_id?: string | null
           created_at?: string
+          created_by?: string | null
           dog_count?: number | null
           earliest_time?: string | null
           end_notes?: string | null
@@ -7942,6 +7984,8 @@ export type Database = {
           id?: string
           interval_days?: number | null
           interval_weeks?: number | null
+          last_changed_at?: string | null
+          last_changed_by?: string | null
           latest_time?: string | null
           organization_id?: string
           paused_at?: string | null
@@ -8743,6 +8787,65 @@ export type Database = {
             columns: ["zone_id"]
             isOneToOne: false
             referencedRelation: "zones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      walk_dog_cap_overrides: {
+        Row: {
+          cap: number
+          dogs: number
+          id: string
+          organization_id: string
+          over_by: number | null
+          recorded_at: string
+          recorded_by: string | null
+          recorded_tx: number
+          staff_id: string
+          walk_group_id: string
+        }
+        Insert: {
+          cap: number
+          dogs: number
+          id?: string
+          organization_id: string
+          recorded_at?: string
+          recorded_by?: string | null
+          recorded_tx?: number
+          staff_id: string
+          walk_group_id: string
+        }
+        Update: {
+          cap?: number
+          dogs?: number
+          id?: string
+          organization_id?: string
+          recorded_at?: string
+          recorded_by?: string | null
+          recorded_tx?: number
+          staff_id?: string
+          walk_group_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "walk_dog_cap_overrides_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "walk_dog_cap_overrides_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "walk_dog_cap_overrides_walk_group_id_fkey"
+            columns: ["walk_group_id"]
+            isOneToOne: false
+            referencedRelation: "walk_groups"
             referencedColumns: ["id"]
           },
         ]
@@ -11258,6 +11361,16 @@ export type Database = {
       void_addon_charge: { Args: { _charge_id: string }; Returns: undefined }
       void_invoice: { Args: { _invoice_id: string }; Returns: undefined }
       walk_dogs_on_visit: { Args: { _visit_id: string }; Returns: number }
+      walks_over_dog_cap: {
+        Args: { _day: string; _org: string }
+        Returns: {
+          cap: number
+          dogs: number
+          staff_id: string
+          visit_ids: string[]
+          walk_group_id: string
+        }[]
+      }
       webhook_claim_deliveries: {
         Args: { _lease_seconds: number; _limit: number; _only?: string }
         Returns: {
