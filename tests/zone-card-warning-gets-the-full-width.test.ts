@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const ROOT = join(import.meta.dirname, "..");
-const SOURCE = readFileSync(join(ROOT, "src/routes/_authenticated/zones.tsx"), "utf8");
+const SOURCE = readFileSync(join(ROOT, "src/routes/_authenticated/settings.zones.tsx"), "utf8");
 
 const ROW = '<div className="flex flex-wrap items-start justify-between gap-3">';
 
@@ -31,7 +31,7 @@ function zoneCardRow(): string {
   let from = 0;
   for (;;) {
     const at = SOURCE.indexOf(ROW, from);
-    if (at < 0) throw new Error("zone card row not found in zones.tsx");
+    if (at < 0) throw new Error("zone card row not found in settings.zones.tsx");
     const tail = SOURCE.slice(at + ROW.length);
     if (tail.slice(0, 2000).includes("{zone.name}</h3>")) return tail;
     from = at + ROW.length;
@@ -64,7 +64,7 @@ describe("the zone card at 390px", () => {
 
   it("lets the no-ZIPs warning take a full line above the fill button below sm", () => {
     const at = SOURCE.indexOf('"No ZIPs listed, so the signup page');
-    expect(at, "the no-ZIPs warning is no longer in zones.tsx").toBeGreaterThan(0);
+    expect(at, "the no-ZIPs warning is no longer in settings.zones.tsx").toBeGreaterThan(0);
     const before = SOURCE.slice(0, at);
     const pOpen = before.slice(before.lastIndexOf("<p "));
     const tag = pOpen.match(/<p\b[^>]*>/);

@@ -17,6 +17,10 @@ export type InternalQuoteInput = {
   longitude?: number;
   unitCount?: number;
   stationCount?: number;
+  /** The pet-waste service the plan is for, whose standard price applies
+   *  where no zone overrides it (#860). Omitted: the default pet-waste
+   *  service (defaultPetWasteService). */
+  serviceId?: string;
 };
 
 export async function internalQuote(supabase: any, orgId: string, data: InternalQuoteInput) {
@@ -57,9 +61,45 @@ export async function internalQuote(supabase: any, orgId: string, data: Internal
       ? null
       : await matchByZipCenter(supabase, orgId, (zones ?? []) as any[], data, matchZone));
 
-  if (!z) return { available: false as const };
   const { perVisitMultiplier } = await import("@/lib/frequency-multipliers");
   const mult = perVisitMultiplier(org.frequency_multipliers as any, data.frequency);
+
+  // #860: the service's standard price, which a zone may override. Read for a
+  // residential yard only; a commercial account is priced by zone rates.
+  const { loadPetWasteStandard, petWasteZoneVisitPrice } = await import("@/lib/standard-price");
+  const standard =
+    data.accountType === "commercial"
+      ? null
+      : await loadPetWasteStandard(supabase, orgId, data.serviceId ?? null);
+
+  if (!z) {
+    // Outside every zone there is no override to apply, so the office is
+    // offered the standard price (#860). It used to be "No zone matches ZIP
+    // 48933. Set price manually below." with the standard price saved and
+    // never read. A commercial account has no standard to fall back on.
+    if (data.accountType === "commercial") return { available: false as const };
+    const price = petWasteZoneVisitPrice(standard, null, {
+      dogCount: data.dogCount,
+      multiplier: mult,
+    });
+    if (!price) return { available: false as const };
+    return {
+      available: true as const,
+      quote: {
+        zoneId: null,
+        zoneName: null,
+        priceSource: "standard" as const,
+        pricingMode: "flat" as const,
+        areaBasisCents: null,
+        basePriceCents: price.perVisitCents,
+        perDogAddlCents: price.perDogCents,
+        recurringPriceCents: price.recurringCents,
+        initialCleanupCents: 0,
+        currency: org.currency as string,
+        commercial: null,
+      },
+    };
+  }
   const mode = (z.pricing_mode ?? "flat") as "flat" | "per_sqft" | "per_acre";
 
   // A commercial account (an HOA, a park) is priced from the zone's
@@ -83,6 +123,7 @@ export async function internalQuote(supabase: any, orgId: string, data: Internal
       quote: {
         zoneId: z.id as string,
         zoneName: z.name as string,
+        priceSource: "zone" as const,
         pricingMode: "commercial" as const,
         areaBasisCents: price?.acreageCents ?? null,
         basePriceCents: price?.perVisitCents ?? null,
@@ -104,29 +145,26 @@ export async function internalQuote(supabase: any, orgId: string, data: Internal
     };
   }
 
-  const { computeZoneVisitPrice } = await import("@/lib/pricing");
-  const price = computeZoneVisitPrice(
-    {
-      base_price_cents: z.base_price_cents,
-      per_dog_addl_cents: z.per_dog_addl_cents,
-      pricing_mode: mode,
-      price_per_sqft_cents: Number(z.price_per_sqft_cents ?? 0),
-      price_per_acre_cents: z.price_per_acre_cents,
-      area_min_charge_cents: z.area_min_charge_cents,
-      area_max_charge_cents: z.area_max_charge_cents,
-    },
-    { dogCount: data.dogCount, boundaryAreaSqm: data.boundaryAreaSqm, multiplier: mult },
-  );
+  // The one residential zone price (#860 review): the zone's override, else
+  // the standard price, plus the zone's area charge. The Quotes page and the
+  // client's plan form call the same function. Null: no price, which the
+  // Plan step asks a person for.
+  const price = petWasteZoneVisitPrice(standard, z, {
+    dogCount: data.dogCount,
+    boundaryAreaSqm: data.boundaryAreaSqm,
+    multiplier: mult,
+  });
   return {
     available: true as const,
     quote: {
       zoneId: z.id as string,
       zoneName: z.name as string,
+      priceSource: price?.source ?? null,
       pricingMode: mode,
-      areaBasisCents: price.areaBasisCents,
-      basePriceCents: price.perVisitCents,
-      perDogAddlCents: z.per_dog_addl_cents ?? 0,
-      recurringPriceCents: price.recurringCents,
+      areaBasisCents: price?.areaBasisCents ?? null,
+      basePriceCents: price?.perVisitCents ?? null,
+      perDogAddlCents: price?.perDogCents ?? 0,
+      recurringPriceCents: price?.recurringCents ?? null,
       initialCleanupCents: z.initial_cleanup_cents ?? 0,
       currency: org.currency as string,
       commercial: null,

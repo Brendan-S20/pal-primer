@@ -26,6 +26,7 @@ import { SectionLabel } from "@/components/client-detail/primitives";
 import { ZoneCoverageMap, type CoverageValue } from "@/components/ZoneCoverageMap";
 import { Badge } from "@/components/ui/badge";
 import { getStandardPricing } from "@/lib/subscriptions.functions";
+import { standardPriceLine } from "@/lib/standard-price";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -326,38 +327,24 @@ export function ZoneDrawer({
   const [zipState, setZipState] = useState<ZipListState>(() => initialZipState(zone?.zip_codes));
   const zips = zipState.zips;
 
-  // Residential pricing. A NEW zone starts from the org's standard price
-  // (Settings > Preferences) when one is set -- the owner already told the
-  // app what a visit costs, and $25 + $5 was a number nobody chose. Seeded
-  // once, and only over the untouched placeholders.
+  // Residential pricing (#860). The standard price is the service's, set in
+  // Settings → Services. A zone's own price is an OVERRIDE: blank means this
+  // zone charges the standard price, so a new zone starts blank rather than
+  // with a copy of the standard (a copy would stop following it). Shown beside
+  // the field as "Standard: $X" so nobody has to guess which price applies.
   const [basePrice, setBasePrice] = useState<string>(
-    zone ? ((zone.base_price_cents ?? 0) / 100).toFixed(2) : "25.00",
+    zone && zone.base_price_cents != null ? (zone.base_price_cents / 100).toFixed(2) : "",
   );
   const [perDog, setPerDog] = useState<string>(
-    zone ? ((zone.per_dog_addl_cents ?? 0) / 100).toFixed(2) : "5.00",
+    zone && zone.base_price_cents != null ? ((zone.per_dog_addl_cents ?? 0) / 100).toFixed(2) : "",
   );
   const stdFn = useServerFn(getStandardPricing);
   const stdQ = useQuery({
     queryKey: ["std-pricing"],
     queryFn: () => stdFn(),
-    enabled: isNew,
     staleTime: 60_000,
   });
-  const [pricedFromStandard, setPricedFromStandard] = useState<string | null>(null);
-  const stdSeeded = useRef(false);
-  useEffect(() => {
-    const std = stdQ.data;
-    if (!isNew || stdSeeded.current || !std || std.basePriceCents == null) return;
-    stdSeeded.current = true;
-    if (basePrice !== "25.00" || perDog !== "5.00") return; // already typed over
-    const b = (std.basePriceCents / 100).toFixed(2);
-    const d = ((std.perDogAddlCents ?? 0) / 100).toFixed(2);
-    setBasePrice(b);
-    setPerDog(d);
-    setPricedFromStandard(`${b}|${d}`);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stdQ.data]);
-  const showsStandard = pricedFromStandard === `${basePrice}|${perDog}`;
+  const std = stdQ.data;
 
   // An existing zone that uses a note, a non-default type or a priority shows
   // them; anything else starts with them folded away.
@@ -642,8 +629,9 @@ export function ZoneDrawer({
         accountType: zoneType === "all" ? null : zoneType,
         priceNote: priceNote || null,
         priority: parseInt(priority, 10) || 0,
-        basePriceCents: Math.round((parseFloat(basePrice) || 0) * 100),
-        perDogAddlCents: Math.round((parseFloat(perDog) || 0) * 100),
+        // Blank is "no override: charge the standard price" (#860).
+        basePriceCents: basePrice.trim() ? Math.round((parseFloat(basePrice) || 0) * 100) : null,
+        perDogAddlCents: basePrice.trim() ? Math.round((parseFloat(perDog) || 0) * 100) : null,
         initialCleanupCents: Math.round((parseFloat(initialCleanup) || 0) * 100),
         pricingMode,
         pricePerSqftCents: parseFloat(perSqft) > 0 ? parseFloat(perSqft) * 100 : 0,
@@ -903,18 +891,39 @@ export function ZoneDrawer({
             <SectionLabel>Residential pricing</SectionLabel>
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
-                <Label htmlFor="zone-bp">Base price / visit</Label>
-                <MoneyInput id="zone-bp" value={basePrice} onChange={mark(setBasePrice)} />
-                {showsStandard && (
-                  <p className="text-xs text-muted-foreground">
-                    From your standard pricing. Change it for this zone if it costs more or less
-                    here.
-                  </p>
-                )}
+                <Label htmlFor="zone-bp">Zone price / visit</Label>
+                <MoneyInput
+                  id="zone-bp"
+                  value={basePrice}
+                  onChange={mark(setBasePrice)}
+                  placeholder={
+                    std?.basePriceCents != null ? (std.basePriceCents / 100).toFixed(2) : undefined
+                  }
+                />
+                <p className="text-xs text-muted-foreground" data-testid="zone-standard-line">
+                  {standardPriceLine(std ? std.basePriceCents : null)}.{" "}
+                  {basePrice.trim()
+                    ? "This price applies only inside this zone."
+                    : "Blank: this zone charges the standard price."}
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="zone-pd">Each additional dog</Label>
-                <MoneyInput id="zone-pd" value={perDog} onChange={mark(setPerDog)} />
+                <MoneyInput
+                  id="zone-pd"
+                  value={perDog}
+                  onChange={mark(setPerDog)}
+                  placeholder={
+                    std?.perDogAddlCents != null
+                      ? (std.perDogAddlCents / 100).toFixed(2)
+                      : undefined
+                  }
+                />
+                {!basePrice.trim() && (
+                  <p className="text-xs text-muted-foreground">
+                    Used with a zone price. Without one, the standard extra-dog price applies.
+                  </p>
+                )}
               </div>
               {showInitialCleanup && (
                 <div className="space-y-2">
@@ -933,14 +942,23 @@ export function ZoneDrawer({
 
             {showAreaPricing && (
               <div className="space-y-2 rounded-md border bg-muted/20 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <Label className="text-sm font-medium">Pricing mode</Label>
+                {/* Label above, select full width (Product visual review): beside
+                    the label, the long Flat rate option ran past the drawer at 390
+                    and 768. A native select cannot wrap, so the box takes the whole
+                    row and a value still too long ends in an ellipsis inside it. */}
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <Label htmlFor="zone-pricing-mode" className="text-sm font-medium">
+                    Pricing mode
+                  </Label>
                   <select
+                    id="zone-pricing-mode"
                     value={pricingMode}
                     onChange={(e) => mark(setPricingMode)(e.target.value as any)}
-                    className="h-9 rounded-md border bg-background px-2 text-sm"
+                    className="h-9 w-full min-w-0 max-w-full truncate rounded-md border bg-background px-2 text-sm touch:min-h-11"
                   >
-                    <option value="flat">Flat rate (use base price above)</option>
+                    <option value="flat">
+                      Flat rate (zone price, or the standard price when blank)
+                    </option>
                     <option value="per_sqft">Per square foot of yard</option>
                     <option value="per_acre">Per acre of yard</option>
                   </select>

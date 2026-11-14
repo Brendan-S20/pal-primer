@@ -292,13 +292,17 @@ describe("the first client's Plan step finds the area", () => {
     await createZone({ data: setupZone({ fillZipsFromShape: true }) } as any);
     state.db = fakeDb({ zones: [radiusZone([])] });
     await internalQuote(state.db, "org-1", quote());
-    expect(state.db.tablesRead).not.toContain("services");
+    // #860: the quote reads the services table for one thing, the standard
+    // price a zone without its own price charges (standard-price.ts). It
+    // never reads which lines the business runs, so which zone an address
+    // is in does not depend on it.
     for (const src of [
       read("src/lib/zone-zip-fill.server.ts"),
       read("src/lib/internal-quote.server.ts"),
     ]) {
-      expect(src).not.toMatch(/service_lines|petWaste|pet_waste/);
+      expect(src).not.toMatch(/service_lines|useServiceLines|\.eq\("service_line"/);
     }
+    expect(read("src/lib/zone-zip-fill.server.ts")).not.toMatch(/petWaste|pet_waste/);
   });
 
   it("the wizard sends the address's pin with the quote", () => {

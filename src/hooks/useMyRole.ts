@@ -155,6 +155,10 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   // The service catalog. Same audience as its server gate, manage_pricing,
   // which a dispatcher does not hold. Must precede the "/settings" prefix.
   "/settings/services": ["owner", "office_manager"],
+  // Zones & pricing, moved inside Settings (#864). The same roles that open
+  // /zones (which forwards here): a dispatcher sees zones for routing context,
+  // view-only. Must precede the "/settings" prefix.
+  "/settings/zones": ["owner", "office_manager", "dispatcher"],
   // Roles & permissions (#863): who can do what, for every other role. The
   // owner alone, so a business cannot be locked out of its own settings by
   // somebody it gave manage_settings to. Must precede the "/settings" prefix.

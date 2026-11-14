@@ -135,6 +135,7 @@ import { Route as AuthenticatedSettingsSkipRulesRouteImport } from './routes/_au
 import { Route as AuthenticatedSettingsSmsRouteImport } from './routes/_authenticated/settings.sms'
 import { Route as AuthenticatedSettingsUsersRouteImport } from './routes/_authenticated/settings.users'
 import { Route as AuthenticatedSettingsWebhooksRouteImport } from './routes/_authenticated/settings.webhooks'
+import { Route as AuthenticatedSettingsZonesRouteImport } from './routes/_authenticated/settings.zones'
 import { Route as ApiPublicInvoicePdfRouteImport } from './routes/api/public/invoice-pdf'
 import { Route as ApiPublicLeadsRouteImport } from './routes/api/public/leads'
 import { Route as ApiPublicQuotePdfRouteImport } from './routes/api/public/quote-pdf'
@@ -854,6 +855,12 @@ const AuthenticatedSettingsWebhooksRoute =
     path: '/webhooks',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
+const AuthenticatedSettingsZonesRoute =
+  AuthenticatedSettingsZonesRouteImport.update({
+    id: '/zones',
+    path: '/zones',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 const ApiPublicInvoicePdfRoute = ApiPublicInvoicePdfRouteImport.update({
   id: '/api/public/invoice-pdf',
   path: '/api/public/invoice-pdf',
@@ -1192,6 +1199,7 @@ export interface FileRoutesByFullPath {
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
+  '/settings/zones': typeof AuthenticatedSettingsZonesRoute
   '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
   '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
@@ -1352,6 +1360,7 @@ export interface FileRoutesByTo {
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
+  '/settings/zones': typeof AuthenticatedSettingsZonesRoute
   '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
   '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
@@ -1521,6 +1530,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/sms': typeof AuthenticatedSettingsSmsRoute
   '/_authenticated/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/_authenticated/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
+  '/_authenticated/settings/zones': typeof AuthenticatedSettingsZonesRoute
   '/api/public/invoice-pdf': typeof ApiPublicInvoicePdfRoute
   '/api/public/leads': typeof ApiPublicLeadsRoute
   '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
@@ -1691,6 +1701,7 @@ export interface FileRouteTypes {
     | '/settings/sms'
     | '/settings/users'
     | '/settings/webhooks'
+    | '/settings/zones'
     | '/api/public/invoice-pdf'
     | '/api/public/leads'
     | '/api/public/quote-pdf'
@@ -1851,6 +1862,7 @@ export interface FileRouteTypes {
     | '/settings/sms'
     | '/settings/users'
     | '/settings/webhooks'
+    | '/settings/zones'
     | '/api/public/invoice-pdf'
     | '/api/public/leads'
     | '/api/public/quote-pdf'
@@ -2019,6 +2031,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/sms'
     | '/_authenticated/settings/users'
     | '/_authenticated/settings/webhooks'
+    | '/_authenticated/settings/zones'
     | '/api/public/invoice-pdf'
     | '/api/public/leads'
     | '/api/public/quote-pdf'
@@ -3013,6 +3026,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsWebhooksRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
+    '/_authenticated/settings/zones': {
+      id: '/_authenticated/settings/zones'
+      path: '/zones'
+      fullPath: '/settings/zones'
+      preLoaderRoute: typeof AuthenticatedSettingsZonesRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
     '/api/public/invoice-pdf': {
       id: '/api/public/invoice-pdf'
       path: '/api/public/invoice-pdf'
@@ -3411,6 +3431,7 @@ interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsSmsRoute: typeof AuthenticatedSettingsSmsRoute
   AuthenticatedSettingsUsersRoute: typeof AuthenticatedSettingsUsersRoute
   AuthenticatedSettingsWebhooksRoute: typeof AuthenticatedSettingsWebhooksRoute
+  AuthenticatedSettingsZonesRoute: typeof AuthenticatedSettingsZonesRoute
   AuthenticatedSettingsIndexRoute: typeof AuthenticatedSettingsIndexRoute
 }
 
@@ -3446,6 +3467,7 @@ const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
   AuthenticatedSettingsSmsRoute: AuthenticatedSettingsSmsRoute,
   AuthenticatedSettingsUsersRoute: AuthenticatedSettingsUsersRoute,
   AuthenticatedSettingsWebhooksRoute: AuthenticatedSettingsWebhooksRoute,
+  AuthenticatedSettingsZonesRoute: AuthenticatedSettingsZonesRoute,
   AuthenticatedSettingsIndexRoute: AuthenticatedSettingsIndexRoute,
 }
 

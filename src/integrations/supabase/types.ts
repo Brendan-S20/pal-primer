@@ -9359,7 +9359,7 @@ export type Database = {
           account_type: Database["public"]["Enums"]["account_type"] | null
           area_max_charge_cents: number | null
           area_min_charge_cents: number
-          base_price_cents: number
+          base_price_cents: number | null
           boundary: Json | null
           center_latitude: number | null
           center_longitude: number | null
@@ -9377,7 +9377,7 @@ export type Database = {
           longitude: number | null
           name: string
           organization_id: string
-          per_dog_addl_cents: number
+          per_dog_addl_cents: number | null
           postal_prefix: string | null
           price_note: string | null
           price_per_acre_cents: number
@@ -9391,7 +9391,7 @@ export type Database = {
           account_type?: Database["public"]["Enums"]["account_type"] | null
           area_max_charge_cents?: number | null
           area_min_charge_cents?: number
-          base_price_cents?: number
+          base_price_cents?: number | null
           boundary?: Json | null
           center_latitude?: number | null
           center_longitude?: number | null
@@ -9409,7 +9409,7 @@ export type Database = {
           longitude?: number | null
           name: string
           organization_id: string
-          per_dog_addl_cents?: number
+          per_dog_addl_cents?: number | null
           postal_prefix?: string | null
           price_note?: string | null
           price_per_acre_cents?: number
@@ -9423,7 +9423,7 @@ export type Database = {
           account_type?: Database["public"]["Enums"]["account_type"] | null
           area_max_charge_cents?: number | null
           area_min_charge_cents?: number
-          base_price_cents?: number
+          base_price_cents?: number | null
           boundary?: Json | null
           center_latitude?: number | null
           center_longitude?: number | null
@@ -9441,7 +9441,7 @@ export type Database = {
           longitude?: number | null
           name?: string
           organization_id?: string
-          per_dog_addl_cents?: number
+          per_dog_addl_cents?: number | null
           postal_prefix?: string | null
           price_note?: string | null
           price_per_acre_cents?: number

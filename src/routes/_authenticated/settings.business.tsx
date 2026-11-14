@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -11,7 +11,6 @@ import { ServiceLinesChoices } from "@/components/ServiceLinesChoices";
 import { useServiceLines } from "@/components/CommercialOnly";
 import { toast } from "sonner";
 import { useMyRole, usePermissions } from "@/hooks/useMyRole";
-import { StandardPricingCard } from "@/components/StandardPricingCard";
 import { FrequencyPricingCard } from "@/components/FrequencyPricingCard";
 import { reseedDemoData } from "@/lib/demo.functions";
 import { isDemoOrganization } from "@/lib/demo-org";
@@ -167,9 +166,26 @@ function PricingBaselineCard() {
   if (!can("manage_pricing")) return null;
   // Schedule pricing is read for pet waste only (a walk costs the same at any
   // cadence), so a business without the line is not asked about it.
+  // The standard price per visit used to be edited here too (Standard
+  // pricing), while Services and Zones each held another. Since #860 it is
+  // each service's own price, set in Settings → Services and nowhere else;
+  // this says where it went rather than leaving a gap.
   return (
     <>
-      <StandardPricingCard />
+      <Card className="p-5" data-testid="standard-price-moved">
+        <h2 className="text-sm font-medium">Standard price</h2>
+        <p className="mt-1 max-w-lg text-xs text-muted-foreground">
+          Each service&apos;s standard price per visit is set in{" "}
+          <Link to="/settings/services" className="font-medium text-primary underline">
+            Settings → Services
+          </Link>
+          . A zone can override it inside that zone, in{" "}
+          <Link to="/settings/zones" className="font-medium text-primary underline">
+            Zones &amp; pricing
+          </Link>
+          .
+        </p>
+      </Card>
       {petWaste && <FrequencyPricingCard />}
     </>
   );
