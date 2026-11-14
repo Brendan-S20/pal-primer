@@ -223,4 +223,6 @@
          ACCESS_FINE_LOCATION (already declared above). -->
     <uses-permission android:name="android.permission.NFC" />
     <uses-feature android:name="android.hardware.nfc" android:required="false" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
 </manifest>
