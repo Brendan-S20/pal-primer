@@ -78,7 +78,7 @@ DECLARE
   _rate_base integer;
   _rate_dog integer;';
   _base_from CONSTANT text := '_base_visit_cents := _zone.base_price_cents + GREATEST(_dog_count - 1, 0) * _zone.per_dog_addl_cents;';
-  _base_to   CONSTANT text := '-- #860 (20261111151000): the zone''s OVERRIDE when it has one, else the
+  _base_to   CONSTANT text := '-- #860 (20261112061000): the zone''s OVERRIDE when it has one, else the
   -- pet-waste service''s STANDARD price: the named service, or with none
   -- named the business''s default pet-waste service, picked as
   -- defaultPetWasteService picks it (src/lib/standard-price.ts). Neither

@@ -26,6 +26,10 @@
 // actually INSERTED: a signup that re-uses the lead it wrote a minute ago
 // (recordSignupLead) is not new, and a signup that pays later is the same
 // lead being marked converted by the Stripe webhook, which says nothing.
+//
+// The one exception is a directory quote sent again to an open lead (#920):
+// that is a new ASK on the same lead, and it is told with
+// notifyOfficeOfRepeatLead, under a key of its own per request.
 
 import type { AppRole } from "@/hooks/useMyRole";
 import { ROLE_PERMISSIONS } from "@/lib/permissions";
@@ -97,5 +101,54 @@ export async function notifyOfficeOfNewLead(lead: NewLead): Promise<void> {
     });
   } catch (e) {
     console.error("new lead notification failed", lead.orgId, lead.leadId, e);
+  }
+}
+
+export type RepeatLead = NewLead & {
+  /** Unique per repeat (a fresh uuid per request): the event this notice is
+   *  about. Never the lead id alone, which is the NEW lead's key and would be
+   *  dropped by the (recipient, event_key) index as already told. */
+  requestId: string;
+};
+
+/** The event key for one repeat request on one lead. */
+export function repeatLeadEventKey(leadId: string, requestId: string): string {
+  return `lead:${leadId}:repeat:${requestId}`;
+}
+
+/** What the bell says when somebody asks again (#920). The same body as a
+ *  new lead's, so the office sees what this ask named, under its own title. */
+export function repeatLeadNotice(
+  lead: Omit<RepeatLead, "orgId" | "leadId" | "requestId">,
+): { title: string; body: string } {
+  const name = lead.name.trim().slice(0, 80) || "Someone";
+  const { body } = leadNotice(lead);
+  return {
+    title: `Repeat request: ${name}`,
+    body: body.replace(/^Asked for a quote/, "Asked again"),
+  };
+}
+
+/**
+ * Tell the office that an open lead asked again (a repeat directory quote,
+ * lib/directory-repeat.ts). Same people, same type ("lead", so muting it
+ * still mutes this), same thread as the lead; its own event key per request.
+ * Never throws.
+ */
+export async function notifyOfficeOfRepeatLead(lead: RepeatLead): Promise<void> {
+  try {
+    const { notifyRoles } = await import("@/lib/notify-center.server");
+    const { title, body } = repeatLeadNotice(lead);
+    await notifyRoles(rolesThatWorkLeads(), {
+      orgId: lead.orgId,
+      type: LEAD_NOTICE_TYPE,
+      title,
+      body,
+      link: "/leads",
+      threadId: `lead:${lead.leadId}`,
+      eventKey: repeatLeadEventKey(lead.leadId, lead.requestId),
+    });
+  } catch (e) {
+    console.error("repeat lead notification failed", lead.orgId, lead.leadId, e);
   }
 }

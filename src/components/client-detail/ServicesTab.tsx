@@ -33,6 +33,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { DateField, TimeField } from "@/components/fields";
 import { formatDay, formatWindow } from "@/lib/format";
 import { useOrgToday } from "@/hooks/useOrgToday";
+import { usePermissions } from "@/hooks/useMyRole";
+import { PlanAtSetPriceDrawer } from "@/components/client-detail/PlanAtSetPriceDrawer";
 import { MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
 import { TrainingPackagesSection } from "@/components/clients/TrainingPackagesSection";
 import {
@@ -162,6 +164,12 @@ export function ServicesTab({
   const [drawerSub, setDrawerSub] = useState<any | null | "new">(null);
   const [endingSub, setEndingSub] = useState<any | null>(null);
   const [detailSub, setDetailSub] = useState<any | null>(null);
+  // Adding, pausing, resuming and ending a plan is manage_plans (#728): a
+  // dispatcher holds it and adds a plan at the set price only (no price box).
+  // Editing a plan, deleting one and anything priced stay canManagePricing.
+  const { can } = usePermissions();
+  const canManagePlans = canManagePricing || can("manage_plans");
+  const [addingAtSetPrice, setAddingAtSetPrice] = useState(false);
 
   // Consume the ?editService deep link once the subscription list contains
   // the id (the drawer needs the full row). An unknown id is never consumed.
@@ -596,7 +604,7 @@ export function ServicesTab({
                         Edit
                       </Button>
                     )}
-                    {canManagePricing && !ended && s.status === "active" && (
+                    {canManagePlans && !ended && s.status === "active" && (
                       <Button
                         size="sm"
                         variant="outline"
@@ -606,7 +614,7 @@ export function ServicesTab({
                         <Pause className="mr-1 h-3.5 w-3.5 shrink-0" /> Pause
                       </Button>
                     )}
-                    {canManagePricing && paused && (
+                    {canManagePlans && paused && (
                       <Button
                         size="sm"
                         variant="outline"
@@ -619,7 +627,7 @@ export function ServicesTab({
                     {/* End service is a button with its name on it, beside
                         Pause: it used to be reachable only through an
                         unlabeled "…" (R2-46, waste-r2-11). */}
-                    {canManagePricing && showEnd && (
+                    {canManagePlans && showEnd && (
                       <Button size="sm" variant="outline" onClick={() => setEndingSub(s)}>
                         <Square className="mr-1 h-3.5 w-3.5 shrink-0" /> End service…
                       </Button>
@@ -677,8 +685,11 @@ export function ServicesTab({
         <h2 className="text-sm font-medium text-muted-foreground">
           {liveSubs.length} service{liveSubs.length === 1 ? "" : "s"}
         </h2>
-        {properties.length > 0 && canManagePricing && (
-          <Button size="sm" onClick={() => setDrawerSub("new")}>
+        {properties.length > 0 && canManagePlans && (
+          <Button
+            size="sm"
+            onClick={() => (canManagePricing ? setDrawerSub("new") : setAddingAtSetPrice(true))}
+          >
             <Plus className="mr-1 h-4 w-4 shrink-0" /> Add Service
           </Button>
         )}
@@ -743,6 +754,18 @@ export function ServicesTab({
           qc.invalidateQueries({ queryKey: ["quotes"] });
         }}
       />
+
+      {!canManagePricing && canManagePlans && (
+        <PlanAtSetPriceDrawer
+          open={addingAtSetPrice}
+          onClose={() => setAddingAtSetPrice(false)}
+          clientId={clientId}
+          client={client}
+          properties={properties}
+          dogs={dogs}
+          onSaved={invalidate}
+        />
+      )}
 
       <EndServiceDialog
         subscription={endingSub}

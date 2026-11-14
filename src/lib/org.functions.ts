@@ -1,3 +1,4 @@
+import type { AppRole } from "@/hooks/useMyRole";
 import { createServerFn, createServerOnlyFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -294,7 +295,20 @@ export const loadMyOrg = createServerOnlyFn(async (context: AuthedContext) => {
   );
   if (orgErr) throw new Error(orgErr.message);
 
-  return { organization: { ...org, role: role.role as string }, accessTurnedOff: null as null };
+  // What this person can do, after what the owner changed for their role
+  // (#863). usePermissions() reads this list; an owner's is every permission,
+  // and a role the owner never touched gets the defaults, so the shell draws
+  // the same controls it did before the screen existed.
+  const { effectivePermissions } = await import("@/lib/permissions");
+  const { readRoleOverrides } = await import("@/lib/role-permissions.server");
+  const appRole = role.role as AppRole;
+  const overrides = appRole === "owner" ? {} : await readRoleOverrides(supabase, org.id, appRole);
+  const permissions = effectivePermissions(appRole, overrides);
+
+  return {
+    organization: { ...org, role: role.role as string, permissions },
+    accessTurnedOff: null as null,
+  };
 });
 
 const slugSchema = z.object({ slug: z.string().trim().min(3).max(63) });

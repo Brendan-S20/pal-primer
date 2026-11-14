@@ -128,6 +128,7 @@ import { Route as AuthenticatedSettingsPreferencesRouteImport } from './routes/_
 import { Route as AuthenticatedSettingsPromotionsRouteImport } from './routes/_authenticated/settings.promotions'
 import { Route as AuthenticatedSettingsReferralsRouteImport } from './routes/_authenticated/settings.referrals'
 import { Route as AuthenticatedSettingsReviewsRouteImport } from './routes/_authenticated/settings.reviews'
+import { Route as AuthenticatedSettingsRolesRouteImport } from './routes/_authenticated/settings.roles'
 import { Route as AuthenticatedSettingsSchedulingRouteImport } from './routes/_authenticated/settings.scheduling'
 import { Route as AuthenticatedSettingsServicesRouteImport } from './routes/_authenticated/settings.services'
 import { Route as AuthenticatedSettingsSkipRulesRouteImport } from './routes/_authenticated/settings.skip-rules'
@@ -154,6 +155,7 @@ import { Route as ProsSlugIndexRouteImport } from './routes/pros.$slug.index'
 import { Route as ProsSlugQuoteRouteImport } from './routes/pros.$slug.quote'
 import { Route as AuthenticatedPropertiesPropertyIdBoundaryRouteImport } from './routes/_authenticated/properties.$propertyId.boundary'
 import { Route as ApiPublicCalendarTokenRouteImport } from './routes/api/public/calendar.$token'
+import { Route as ApiPublicDirectoryQuotesRouteImport } from './routes/api/public/directory/quotes'
 import { Route as ApiPublicHooksAnnouncementEmailsRouteImport } from './routes/api/public/hooks/announcement-emails'
 import { Route as ApiPublicHooksLateCheckRouteImport } from './routes/api/public/hooks/late-check'
 import { Route as ApiPublicHooksLiveActivityActionRouteImport } from './routes/api/public/hooks/live-activity-action'
@@ -811,6 +813,12 @@ const AuthenticatedSettingsReviewsRoute =
     path: '/reviews',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
+const AuthenticatedSettingsRolesRoute =
+  AuthenticatedSettingsRolesRouteImport.update({
+    id: '/roles',
+    path: '/roles',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 const AuthenticatedSettingsSchedulingRoute =
   AuthenticatedSettingsSchedulingRouteImport.update({
     id: '/scheduling',
@@ -951,6 +959,12 @@ const ApiPublicCalendarTokenRoute = ApiPublicCalendarTokenRouteImport.update({
   path: '/api/public/calendar/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicDirectoryQuotesRoute =
+  ApiPublicDirectoryQuotesRouteImport.update({
+    id: '/api/public/directory/quotes',
+    path: '/api/public/directory/quotes',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksAnnouncementEmailsRoute =
   ApiPublicHooksAnnouncementEmailsRouteImport.update({
     id: '/api/public/hooks/announcement-emails',
@@ -1178,6 +1192,7 @@ export interface FileRoutesByFullPath {
   '/settings/promotions': typeof AuthenticatedSettingsPromotionsRoute
   '/settings/referrals': typeof AuthenticatedSettingsReferralsRoute
   '/settings/reviews': typeof AuthenticatedSettingsReviewsRoute
+  '/settings/roles': typeof AuthenticatedSettingsRolesRoute
   '/settings/scheduling': typeof AuthenticatedSettingsSchedulingRoute
   '/settings/services': typeof AuthenticatedSettingsServicesRoute
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
@@ -1211,6 +1226,7 @@ export interface FileRoutesByFullPath {
   '/pros/$slug/': typeof ProsSlugIndexRoute
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/calendar/$token': typeof ApiPublicCalendarTokenRoute
+  '/api/public/directory/quotes': typeof ApiPublicDirectoryQuotesRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
   '/api/public/hooks/late-check': typeof ApiPublicHooksLateCheckRoute
   '/api/public/hooks/live-activity-action': typeof ApiPublicHooksLiveActivityActionRoute
@@ -1337,6 +1353,7 @@ export interface FileRoutesByTo {
   '/settings/promotions': typeof AuthenticatedSettingsPromotionsRoute
   '/settings/referrals': typeof AuthenticatedSettingsReferralsRoute
   '/settings/reviews': typeof AuthenticatedSettingsReviewsRoute
+  '/settings/roles': typeof AuthenticatedSettingsRolesRoute
   '/settings/scheduling': typeof AuthenticatedSettingsSchedulingRoute
   '/settings/services': typeof AuthenticatedSettingsServicesRoute
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
@@ -1369,6 +1386,7 @@ export interface FileRoutesByTo {
   '/pros/$slug': typeof ProsSlugIndexRoute
   '/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/calendar/$token': typeof ApiPublicCalendarTokenRoute
+  '/api/public/directory/quotes': typeof ApiPublicDirectoryQuotesRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
   '/api/public/hooks/late-check': typeof ApiPublicHooksLateCheckRoute
   '/api/public/hooks/live-activity-action': typeof ApiPublicHooksLiveActivityActionRoute
@@ -1505,6 +1523,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/promotions': typeof AuthenticatedSettingsPromotionsRoute
   '/_authenticated/settings/referrals': typeof AuthenticatedSettingsReferralsRoute
   '/_authenticated/settings/reviews': typeof AuthenticatedSettingsReviewsRoute
+  '/_authenticated/settings/roles': typeof AuthenticatedSettingsRolesRoute
   '/_authenticated/settings/scheduling': typeof AuthenticatedSettingsSchedulingRoute
   '/_authenticated/settings/services': typeof AuthenticatedSettingsServicesRoute
   '/_authenticated/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
@@ -1538,6 +1557,7 @@ export interface FileRoutesById {
   '/pros/$slug/': typeof ProsSlugIndexRoute
   '/_authenticated/properties/$propertyId/boundary': typeof AuthenticatedPropertiesPropertyIdBoundaryRoute
   '/api/public/calendar/$token': typeof ApiPublicCalendarTokenRoute
+  '/api/public/directory/quotes': typeof ApiPublicDirectoryQuotesRoute
   '/api/public/hooks/announcement-emails': typeof ApiPublicHooksAnnouncementEmailsRoute
   '/api/public/hooks/late-check': typeof ApiPublicHooksLateCheckRoute
   '/api/public/hooks/live-activity-action': typeof ApiPublicHooksLiveActivityActionRoute
@@ -1674,6 +1694,7 @@ export interface FileRouteTypes {
     | '/settings/promotions'
     | '/settings/referrals'
     | '/settings/reviews'
+    | '/settings/roles'
     | '/settings/scheduling'
     | '/settings/services'
     | '/settings/skip-rules'
@@ -1707,6 +1728,7 @@ export interface FileRouteTypes {
     | '/pros/$slug/'
     | '/properties/$propertyId/boundary'
     | '/api/public/calendar/$token'
+    | '/api/public/directory/quotes'
     | '/api/public/hooks/announcement-emails'
     | '/api/public/hooks/late-check'
     | '/api/public/hooks/live-activity-action'
@@ -1833,6 +1855,7 @@ export interface FileRouteTypes {
     | '/settings/promotions'
     | '/settings/referrals'
     | '/settings/reviews'
+    | '/settings/roles'
     | '/settings/scheduling'
     | '/settings/services'
     | '/settings/skip-rules'
@@ -1865,6 +1888,7 @@ export interface FileRouteTypes {
     | '/pros/$slug'
     | '/properties/$propertyId/boundary'
     | '/api/public/calendar/$token'
+    | '/api/public/directory/quotes'
     | '/api/public/hooks/announcement-emails'
     | '/api/public/hooks/late-check'
     | '/api/public/hooks/live-activity-action'
@@ -2000,6 +2024,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/promotions'
     | '/_authenticated/settings/referrals'
     | '/_authenticated/settings/reviews'
+    | '/_authenticated/settings/roles'
     | '/_authenticated/settings/scheduling'
     | '/_authenticated/settings/services'
     | '/_authenticated/settings/skip-rules'
@@ -2033,6 +2058,7 @@ export interface FileRouteTypes {
     | '/pros/$slug/'
     | '/_authenticated/properties/$propertyId/boundary'
     | '/api/public/calendar/$token'
+    | '/api/public/directory/quotes'
     | '/api/public/hooks/announcement-emails'
     | '/api/public/hooks/late-check'
     | '/api/public/hooks/live-activity-action'
@@ -2101,6 +2127,7 @@ export interface RootRouteChildren {
   ProsSlugQuoteRoute: typeof ProsSlugQuoteRoute
   ProsSlugIndexRoute: typeof ProsSlugIndexRoute
   ApiPublicCalendarTokenRoute: typeof ApiPublicCalendarTokenRoute
+  ApiPublicDirectoryQuotesRoute: typeof ApiPublicDirectoryQuotesRoute
   ApiPublicHooksAnnouncementEmailsRoute: typeof ApiPublicHooksAnnouncementEmailsRoute
   ApiPublicHooksLateCheckRoute: typeof ApiPublicHooksLateCheckRoute
   ApiPublicHooksLiveActivityActionRoute: typeof ApiPublicHooksLiveActivityActionRoute
@@ -2950,6 +2977,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsReviewsRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
+    '/_authenticated/settings/roles': {
+      id: '/_authenticated/settings/roles'
+      path: '/roles'
+      fullPath: '/settings/roles'
+      preLoaderRoute: typeof AuthenticatedSettingsRolesRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
     '/_authenticated/settings/scheduling': {
       id: '/_authenticated/settings/scheduling'
       path: '/scheduling'
@@ -3130,6 +3164,13 @@ declare module '@tanstack/react-router' {
       path: '/api/public/calendar/$token'
       fullPath: '/api/public/calendar/$token'
       preLoaderRoute: typeof ApiPublicCalendarTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/directory/quotes': {
+      id: '/api/public/directory/quotes'
+      path: '/api/public/directory/quotes'
+      fullPath: '/api/public/directory/quotes'
+      preLoaderRoute: typeof ApiPublicDirectoryQuotesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/hooks/announcement-emails': {
@@ -3383,6 +3424,7 @@ interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsPromotionsRoute: typeof AuthenticatedSettingsPromotionsRoute
   AuthenticatedSettingsReferralsRoute: typeof AuthenticatedSettingsReferralsRoute
   AuthenticatedSettingsReviewsRoute: typeof AuthenticatedSettingsReviewsRoute
+  AuthenticatedSettingsRolesRoute: typeof AuthenticatedSettingsRolesRoute
   AuthenticatedSettingsSchedulingRoute: typeof AuthenticatedSettingsSchedulingRoute
   AuthenticatedSettingsServicesRoute: typeof AuthenticatedSettingsServicesRoute
   AuthenticatedSettingsSkipRulesRoute: typeof AuthenticatedSettingsSkipRulesRoute
@@ -3418,6 +3460,7 @@ const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
   AuthenticatedSettingsPromotionsRoute: AuthenticatedSettingsPromotionsRoute,
   AuthenticatedSettingsReferralsRoute: AuthenticatedSettingsReferralsRoute,
   AuthenticatedSettingsReviewsRoute: AuthenticatedSettingsReviewsRoute,
+  AuthenticatedSettingsRolesRoute: AuthenticatedSettingsRolesRoute,
   AuthenticatedSettingsSchedulingRoute: AuthenticatedSettingsSchedulingRoute,
   AuthenticatedSettingsServicesRoute: AuthenticatedSettingsServicesRoute,
   AuthenticatedSettingsSkipRulesRoute: AuthenticatedSettingsSkipRulesRoute,
@@ -3655,6 +3698,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProsSlugQuoteRoute: ProsSlugQuoteRoute,
   ProsSlugIndexRoute: ProsSlugIndexRoute,
   ApiPublicCalendarTokenRoute: ApiPublicCalendarTokenRoute,
+  ApiPublicDirectoryQuotesRoute: ApiPublicDirectoryQuotesRoute,
   ApiPublicHooksAnnouncementEmailsRoute: ApiPublicHooksAnnouncementEmailsRoute,
   ApiPublicHooksLateCheckRoute: ApiPublicHooksLateCheckRoute,
   ApiPublicHooksLiveActivityActionRoute: ApiPublicHooksLiveActivityActionRoute,

@@ -180,7 +180,7 @@ describe("Settings → Accounting", () => {
     expect(page).toMatch(/Reconnect QuickBooks/);
     const dash = read("src/routes/_authenticated/dashboard.tsx");
     expect(dash).toMatch(/qbo\?\.connection\?\.status === "needs_reconnect"/);
-    expect(dash).toMatch(/enabled: hasPermission\(role \?\? null, "manage_settings"\)/);
+    expect(dash).toMatch(/enabled: can\("manage_settings"\)/);
   });
 
   it("shows recent errors with Intuit's transaction id, and how to reach support", () => {

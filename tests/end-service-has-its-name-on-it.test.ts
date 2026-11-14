@@ -10,10 +10,12 @@ const tab = readFileSync(
   "utf8",
 );
 
+// #728: End, Pause and Resume are manage_plans (canManagePlans), which a
+// dispatcher holds; Delete stays with whoever sets prices.
 describe("the service card", () => {
   it("shows End service as a labeled button", () => {
     expect(tab).toMatch(
-      /\{canManagePricing && showEnd && \(\s*<Button size="sm" variant="outline" onClick=\{\(\) => setEndingSub\(s\)\}>[\s\S]{0,120}End service…\s*<\/Button>/,
+      /\{canManagePlans && showEnd && \(\s*<Button size="sm" variant="outline" onClick=\{\(\) => setEndingSub\(s\)\}>[\s\S]{0,120}End service…\s*<\/Button>/,
     );
   });
   it("no longer hides End service in the menu", () => {

@@ -592,7 +592,8 @@ describe("who is shown the button", () => {
 
   it("the component draws nothing unless the rule says so, on both invoice surfaces", () => {
     const ui = codeOnly(read("src/components/RefundPaymentAction.tsx"));
-    const gate = ui.indexOf("if (!canOfferRefund(role, payment)) return null;");
+    // With the configured set since #863 (usePermissions().permissions).
+    const gate = ui.indexOf("if (!canOfferRefund(role, payment, permissions)) return null;");
     expect(gate).toBeGreaterThan(-1);
     expect(ui.indexOf("<Button", gate)).toBeGreaterThan(gate);
     expect(ui.slice(0, gate)).not.toContain("<Button");

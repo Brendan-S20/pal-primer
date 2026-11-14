@@ -109,6 +109,7 @@
                 <data android:pathPrefix="/settings/promotions" />
                 <data android:pathPrefix="/settings/referrals" />
                 <data android:pathPrefix="/settings/reviews" />
+                <data android:pathPrefix="/settings/roles" />
                 <data android:pathPrefix="/settings/scheduling" />
                 <data android:pathPrefix="/settings/services" />
                 <data android:pathPrefix="/settings/skip-rules" />

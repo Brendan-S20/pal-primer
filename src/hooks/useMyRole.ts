@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getMyOrg } from "@/lib/org.functions";
-import { hasPermission, type Permission } from "@/lib/permissions";
+import { hasPermission, permissionsOf, type Permission } from "@/lib/permissions";
+
+export { permissionsOf };
 
 export type AppRole = "owner" | "office_manager" | "dispatcher" | "tech";
 
@@ -11,6 +13,13 @@ export function useMyRole(): {
   loading: boolean;
   /** The owner turned this person's access off since the shell loaded. */
   accessTurnedOff: boolean;
+  /**
+   * What this person can do, as the server worked it out from their role
+   * and what the owner changed for it (#863). Null until getMyOrg has
+   * answered, or when an older server did not say: then usePermissions
+   * answers from the role's defaults.
+   */
+  permissions: Permission[] | null;
 } {
   const fn = useServerFn(getMyOrg);
   const { data, isLoading } = useQuery({
@@ -20,21 +29,40 @@ export function useMyRole(): {
   });
   const role = (data?.organization?.role as AppRole | undefined) ?? null;
   const orgId = data?.organization?.id ?? null;
-  return { role, orgId, loading: isLoading, accessTurnedOff: !!data?.accessTurnedOff };
+  return {
+    role,
+    orgId,
+    loading: isLoading,
+    accessTurnedOff: !!data?.accessTurnedOff,
+    permissions: permissionsOf(data?.organization),
+  };
 }
 
 /**
  * Action-level permission check for UI gating (hiding controls the caller
  * can't use). This is cosmetic — the same capability is enforced server-side
  * by requirePermission; never rely on this alone.
+ *
+ * Reads the configured set (#863): the server's list of what this person
+ * can do, which already has the owner's changes for their role folded in.
+ * Before that list arrives, or against a server that does not send one,
+ * the role's defaults.
  */
 export function usePermissions(): {
   can: (permission: Permission) => boolean;
   role: AppRole | null;
   loading: boolean;
+  /** The server's list, for a helper that takes a role (holdsPermission). */
+  permissions: Permission[] | null;
 } {
-  const { role, loading } = useMyRole();
-  return { can: (permission) => hasPermission(role, permission), role, loading };
+  const { role, loading, permissions } = useMyRole();
+  return {
+    can: (permission) =>
+      permissions ? permissions.includes(permission) : hasPermission(role, permission),
+    role,
+    loading,
+    permissions,
+  };
 }
 
 // Route → minimum roles allowed. Undefined = everyone signed in.
@@ -131,6 +159,10 @@ export const ROUTE_ROLES: Record<string, AppRole[]> = {
   // /zones (which forwards here): a dispatcher sees zones for routing context,
   // view-only. Must precede the "/settings" prefix.
   "/settings/zones": ["owner", "office_manager", "dispatcher"],
+  // Roles & permissions (#863): who can do what, for every other role. The
+  // owner alone, so a business cannot be locked out of its own settings by
+  // somebody it gave manage_settings to. Must precede the "/settings" prefix.
+  "/settings/roles": ["owner"],
   "/settings": ["owner", "office_manager", "tech"],
   "/neighbors": ["owner", "office_manager", "dispatcher", "tech"],
   // H1: the DNA compliance workspace (cross-client registry, fines, violation

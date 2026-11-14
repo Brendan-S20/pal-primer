@@ -19,6 +19,8 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- a fake of the supabase-js builder and createServerFn chain */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { directoryLineLabel } from "@/lib/directory";
+import { defaultServiceSeedsFor } from "@/lib/services";
 
 type Row = Record<string, any>;
 
@@ -339,6 +341,44 @@ describe("Setup → Settings", () => {
   it("step 1: services offered → Settings > Business > Services you offer", async () => {
     await call(setServiceLines, { lines: ["pet_waste"] });
     expect((await call(getMyOrgFeatures)).serviceLines).toEqual(["pet_waste"]);
+  });
+
+  it("keeps one default service after repeated setup saves (#883)", async () => {
+    await call(setServiceLines, { lines: ["pet_waste"] });
+    await call(setServiceLines, { lines: ["pet_waste"] });
+    const services = (await call(listServices, {})).services;
+    expect(services).toHaveLength(1);
+    expect(services[0].name).toBe("Pet waste removal");
+    expect(directoryLineLabel("pet_waste")).toBe("Poop scooping");
+    expect(defaultServiceSeedsFor(["pet_waste"]).map((s) => s.name)).toEqual([services[0].name]);
+  });
+
+  it.each([true, false])(
+    "preserves a saved Weekly scoop, active=%s, without adding a default (#883)",
+    async (active) => {
+      Object.assign(h.db.services[0], {
+        name: "Weekly scoop",
+        base_price_cents: 3500,
+        extra_pet_cents: 750,
+        active,
+      });
+      const saved = structuredClone(h.db.services);
+      await call(setServiceLines, { lines: ["pet_waste"] });
+      await call(setServiceLines, { lines: ["pet_waste"] });
+      expect(h.db.services).toEqual(saved);
+    },
+  );
+
+  it("seeds one consistently named service when none exists (#883)", async () => {
+    h.db.services = [];
+    await call(setServiceLines, { lines: ["pet_waste"] });
+    await call(setServiceLines, { lines: ["pet_waste"] });
+    expect(h.db.services).toHaveLength(1);
+    expect(h.db.services[0]).toMatchObject({
+      name: "Pet waste removal",
+      service_line: "pet_waste",
+      active: true,
+    });
   });
 
   it("price step: price per visit → Zones, Standard pricing AND the default service (#766)", async () => {

@@ -2,8 +2,9 @@
 //
 // Visitors: searchDirectory and getDirectoryProfiles read through the two
 // public RPCs with the PUBLISHABLE key, so the database decides what is
-// public (published rows of live businesses, public columns only) and this
-// file cannot widen it.
+// public (published rows of live businesses, public columns only, and for a
+// search, only businesses whose zones do not say "outside") and this file
+// cannot widen it. Neither uses the service role.
 //
 // Owners: getMyDirectoryProfile / saveMyDirectoryProfile. The save asks for an
 // owner here, before any RPC, and set_directory_profile asks again on the
@@ -77,13 +78,15 @@ export function toDirectoryProfiles(rows: unknown): DirectoryProfile[] {
 /**
  * Search by service and ZIP.
  *
- * The database answers "which published profiles confirmed this ZIP for this
- * line". Then each is checked against the business's CURRENT zones with
- * lib/lead-service-area.server.ts, the same verdict /leads shows the office:
- * a business whose zones now say "outside" for this ZIP is dropped, because
- * listing it would send a visitor a quote form the business will turn down.
- * "unknown" (no zones, a lookup that failed) keeps the listing: the owner
- * confirmed the ZIP, and a false "outside" costs more than a missing one.
+ * One call, with the publishable key and nothing else. The database answers
+ * "which published profiles confirmed this ZIP for this line, and whose zones
+ * do not now say 'outside' for it": since 20261112020000, directory_search
+ * asks directory_zone_verdict (a port of lib/lead-service-area.ts's verdict)
+ * itself, so a business whose CURRENT zones say "outside" is dropped without
+ * the service role ever being used here. "unknown" (no zones, a lookup that
+ * failed) keeps the listing: the owner confirmed the ZIP, and a false
+ * "outside" costs more than a missing one. The standalone directory app (DIRECTORY_BRAND)
+ * makes this same call with the same key.
  */
 export const searchDirectory = createServerFn({ method: "GET" })
   .inputValidator((d) =>
@@ -103,26 +106,7 @@ export const searchDirectory = createServerFn({ method: "GET" })
       _zip: data.zip,
     });
     if (error) throw new Error("The directory is unavailable right now.");
-    const found = toDirectoryProfiles(rows);
-    if (!found.length) return { profiles: found };
-    try {
-      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-      const { leadServiceAreas } = await import("@/lib/lead-service-area.server");
-      const verdicts = await Promise.all(
-        found.map(async (p) => {
-          const { data: orgId } = await (supabaseAdmin as any).rpc("directory_org_for_quote", {
-            _slug: p.slug,
-          });
-          if (typeof orgId !== "string") return "unknown" as const;
-          const [v] = await leadServiceAreas(supabaseAdmin, orgId, [data.zip]);
-          return v;
-        }),
-      );
-      return { profiles: found.filter((_, i) => verdicts[i] !== "outside") };
-    } catch (e) {
-      console.error("directory zone check failed; keeping confirmed ZIPs", e);
-      return { profiles: found };
-    }
+    return { profiles: toDirectoryProfiles(rows) };
   });
 
 /** One profile (the profile page and the quote page) or up to three (compare). */
