@@ -88,7 +88,7 @@ test("a directory quote is one lead, and Convert to client opens on it", async (
       email,
       phone: "",
       location: ZIP,
-      message: "Asked about: Poop scooping.",
+      message: "Asked about: Pet waste removal.",
       source: "directory",
       website_url: "",
       elapsed_ms: 20_000,
