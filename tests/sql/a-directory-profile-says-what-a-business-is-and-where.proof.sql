@@ -25,6 +25,13 @@ DO $turn$ BEGIN PERFORM pg_advisory_lock(hashtext('houndstack.proof')); END $tur
 BEGIN;
 
 \if :{?migration}
+-- A database that already holds a later version of the view (20261112100000
+-- adds three columns after these twelve) cannot take this file's CREATE OR
+-- REPLACE, which may only add columns. Inside this rolled-back transaction
+-- the view is dropped first so the file builds its own; nothing outlives the
+-- run, and on a database without the later file this drops what the file is
+-- about to recreate anyway.
+DROP VIEW IF EXISTS public.directory_public_listings;
 \i :migration
 \endif
 
@@ -281,7 +288,11 @@ BEGIN
   END IF;
 
   SELECT array_agg(k ORDER BY k) INTO _keys FROM (
-    SELECT jsonb_object_keys(to_jsonb(t)) k FROM public.directory_public_listings t WHERE slug = 'area-proof-a') s;
+    -- 20261112100000 adds books_online, booking_policy_text and book_path
+    -- after these twelve; its own proof pins those three. This one pins the
+    -- twelve, so it holds before and after that file.
+    SELECT jsonb_object_keys(to_jsonb(t) - ARRAY['books_online', 'booking_policy_text', 'book_path']) k
+      FROM public.directory_public_listings t WHERE slug = 'area-proof-a') s;
   IF _keys IS DISTINCT FROM ARRAY['areas', 'bio', 'coverage_cities', 'coverage_zips', 'display_name', 'highlights',
                                   'logo_url', 'published_at', 'service_lines', 'services', 'slug', 'tagline'] THEN
     RAISE EXCEPTION 'PROOF FAILED [fields]: the view carries %', _keys;

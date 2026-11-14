@@ -141,9 +141,11 @@ BEGIN
   -- Exactly the public fields, from all three readers.
   SELECT array_agg(DISTINCT k ORDER BY k) INTO _keys FROM (
     -- 20261112090000 adds tagline, highlights and areas to the VIEW only, at
-    -- the end; its own proof pins those three. This one pins the nine the
-    -- RPCs and the view share, so it holds before and after that file.
-    SELECT jsonb_object_keys(to_jsonb(t) - ARRAY['tagline', 'highlights', 'areas']) k
+    -- the end, and 20261112100000 books_online, booking_policy_text and
+    -- book_path after them; their own proofs pin those six. This one pins the
+    -- nine the RPCs and the view share, so it holds before and after both.
+    SELECT jsonb_object_keys(to_jsonb(t) - ARRAY['tagline', 'highlights', 'areas',
+                                                 'books_online', 'booking_policy_text', 'book_path']) k
       FROM public.directory_public_listings t WHERE slug LIKE 'anon-dir-%'
     UNION ALL
     SELECT jsonb_object_keys(to_jsonb(t)) FROM public.directory_search('dog_walking', '48201') t
@@ -152,8 +154,11 @@ BEGIN
   IF _keys IS DISTINCT FROM _want_keys THEN
     RAISE EXCEPTION 'PROOF FAILED [fields]: the public shape carries %', _keys;
   END IF;
+  -- 20261112100000 adds booking_mode, booking_key and package to each
+  -- listed service in the VIEW; its own proof pins those. These four are the
+  -- ones every reader shares.
   SELECT array_agg(DISTINCT k ORDER BY k) INTO _svc_keys FROM (
-    SELECT jsonb_object_keys(e) k
+    SELECT jsonb_object_keys(e - ARRAY['booking_mode', 'booking_key', 'package']) k
       FROM public.directory_public_listings t, jsonb_array_elements(t.services) e
      WHERE t.slug LIKE 'anon-dir-%') s;
   IF _svc_keys IS DISTINCT FROM _want_svc THEN
@@ -170,7 +175,11 @@ BEGIN
   END IF;
 
   -- The view and the profile reader agree, row for row.
-  IF (SELECT to_jsonb(v) - ARRAY['tagline', 'highlights', 'areas'] FROM public.directory_public_listings v WHERE v.slug = 'anon-dir-aa')
+  IF (SELECT (to_jsonb(v) - ARRAY['tagline', 'highlights', 'areas', 'books_online', 'booking_policy_text', 'book_path'])
+              || jsonb_build_object('services', COALESCE((
+                   SELECT jsonb_agg(e - ARRAY['booking_mode', 'booking_key', 'package'] ORDER BY o)
+                     FROM jsonb_array_elements(v.services) WITH ORDINALITY AS u(e, o)), '[]'::jsonb))
+         FROM public.directory_public_listings v WHERE v.slug = 'anon-dir-aa')
      IS DISTINCT FROM (SELECT to_jsonb(b) FROM public.directory_profiles_by_slug(ARRAY['anon-dir-aa']) b) THEN
     RAISE EXCEPTION 'PROOF FAILED [shape]: the view and directory_profiles_by_slug disagree about aa';
   END IF;

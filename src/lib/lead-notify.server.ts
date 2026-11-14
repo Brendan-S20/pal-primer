@@ -64,7 +64,9 @@ export type NewLead = {
 export function leadNotice(lead: Omit<NewLead, "orgId" | "leadId">): { title: string; body: string } {
   const name = lead.name.trim().slice(0, 80) || "Someone";
   const how =
-    lead.source === LEAD_SOURCE.onlineSignup
+    lead.source === LEAD_SOURCE.directoryBooking
+      ? "Came from a directory booking link"
+      : lead.source === LEAD_SOURCE.onlineSignup
       ? "Started signing up online"
       : lead.source === LEAD_SOURCE.doorSignup
         ? "Started signing up at the door"

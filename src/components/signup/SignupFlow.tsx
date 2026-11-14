@@ -84,9 +84,11 @@ import {
   askedFields,
   decideFormBranch,
   formCopy,
+  LEAD_SOURCE,
   leadBodyFromForm,
   type FormFields,
 } from "@/lib/new-customer-form";
+import { DIRECTORY_REF } from "@/lib/directory-site";
 import { ELAPSED_FIELD, HONEYPOT_FIELD } from "@/lib/public-form-guard";
 import {
   ACCESS_NOTES_MAX,
@@ -178,6 +180,9 @@ export function SignupFlow({
   offerQuoteRequest = true,
   channel = "page",
   onLineChange,
+  initialServiceId = null,
+  fromDirectory = false,
+  quoteOnly = false,
 }: {
   slug: string;
   variant?: "page" | "sheet";
@@ -196,6 +201,15 @@ export function SignupFlow({
   /** Told the line the page speaks for whenever it changes, so the route
    *  can word its headline for it (#560). */
   onLineChange?: (line: ServiceLine) => void;
+  /** The service to start on, when a link named one (the directory's
+   *  hand-off does). An id the business does not list is ignored. */
+  initialServiceId?: string | null;
+  /** Came through the directory's booking hand-off (#630, step 7): the lead
+   *  or signup is tagged as a directory booking. */
+  fromDirectory?: boolean;
+  /** Ask for a quote only, whatever the business's link would sell: the
+   *  hand-off says this service cannot be booked from the directory now. */
+  quoteOnly?: boolean;
 }) {
   const getQuote = useServerFn(getSignupQuote);
   const createIntent = useServerFn(createSignupPaymentIntent);
@@ -211,7 +225,9 @@ export function SignupFlow({
     staleTime: SIGNUP_FORM_STALE_MS,
     retry: false,
   });
-  const instantStart = !!formQ.data?.instantStart;
+  // A directory visitor who was not cleared to book gets the request path:
+  // no price to pay and no card, the same form a quote-only business has.
+  const instantStart = !!formQ.data?.instantStart && !quoteOnly;
 
   const [form, setForm] = useState({
     postal_code: prefill?.postal_code ?? "",
@@ -234,7 +250,7 @@ export function SignupFlow({
     // The service picked (phase 5). "" until the visitor picks, which reads
     // as the default (the business's pet-waste service, else the first
     // listed). Sent only when the business offers more than one.
-    service_id: "",
+    service_id: initialServiceId ?? "",
     // The extras picked for that service (#560): add-on ids, and a size per
     // pet where the service prices by size. Ids and sizes only.
     add_on_ids: [] as string[],
@@ -448,6 +464,7 @@ export function SignupFlow({
               }
             : {}),
           sms_opt_in: smsOptIn && !!form.phone.trim(),
+          ...(fromDirectory ? { ref: DIRECTORY_REF } : {}),
           channel,
           ...guardFields(),
         },
@@ -479,6 +496,8 @@ export function SignupFlow({
           frequency: stay || !repeats ? "" : frequency,
           ...serviceField,
           ...extrasField,
+          // From the directory's hand-off, the lead says so (#630, step 7).
+          ...(fromDirectory ? { source: LEAD_SOURCE.directoryBooking } : {}),
         }),
       });
       if (!res.ok) {

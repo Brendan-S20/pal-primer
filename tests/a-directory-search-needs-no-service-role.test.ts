@@ -107,7 +107,11 @@ describe("the migration", () => {
     // tagline, highlights and areas at the end, keeping these nine columns
     // in place; tests/a-directory-profile-says-what-a-business-is-and-where.test.ts
     // pins that it does exactly that and touches nothing else named here.
-    const REPLACES_THE_VIEW_ONLY = new Set(["20261112090000"]);
+    // Said so again: 20261112100000 (mypets v2 step 7) replaces the VIEW to
+    // add books_online, booking_policy_text and book_path at the end, and
+    // booking keys on each service, keeping these nine columns in place;
+    // tests/a-directory-listing-says-which-services-book-online.test.ts pins it.
+    const REPLACES_THE_VIEW_ONLY = new Set(["20261112090000", "20261112100000"]);
     for (const f of files.filter((f) => f.slice(0, 14) > STAMP)) {
       const later = codeOnly(readFileSync(join(ROOT, "supabase/migrations", f), "utf8"));
       expect(later, f).not.toMatch(

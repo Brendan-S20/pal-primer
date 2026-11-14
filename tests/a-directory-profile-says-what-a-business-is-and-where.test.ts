@@ -188,11 +188,19 @@ describe("the migration", () => {
 });
 
 describe("the public contract", () => {
+  // What THIS file's view has: the first twelve of the allowlist and the
+  // first four keys of a listed service. 20261112100000 (mypets v2 step 7)
+  // adds three columns after these and three keys to each service, and
+  // tests/a-directory-listing-says-which-services-book-online.test.ts pins
+  // the whole allowlist to that file's view.
+  const FIVE_A_FIELDS = PUBLIC_LISTING_FIELDS.slice(0, 12);
+  const FIVE_A_SERVICE_FIELDS = PUBLIC_SERVICE_FIELDS.slice(0, 4);
   const view = () =>
     sql().split("CREATE OR REPLACE VIEW public.directory_public_listings")[1].split(";")[0];
 
   it("is the view's columns, in order, and nothing else", () => {
-    expect(viewColumns(view())).toEqual([...PUBLIC_LISTING_FIELDS]);
+    expect(viewColumns(view())).toEqual([...FIVE_A_FIELDS]);
+    expect(FIVE_A_FIELDS.at(-1)).toBe("areas");
     // The nine 20261112020000 created keep their place: REPLACE can only add.
     const before = codeOnly(
       read("supabase/migrations/20261112020000_a-directory-search-needs-no-service-role.sql"),
@@ -209,7 +217,7 @@ describe("the public contract", () => {
   it("names exactly the allowlisted keys for a service and an area", () => {
     const v = view();
     const svc = [...v.matchAll(/'([a-z_]+)', s\.[a-z_]+/g)].map((m) => m[1]);
-    expect(svc).toEqual([...PUBLIC_SERVICE_FIELDS]);
+    expect(svc).toEqual([...FIVE_A_SERVICE_FIELDS]);
     const area = v.split("FROM public.directory_profile_areas a")[0].split("AS services,")[1];
     expect([...area.matchAll(/'([a-z_]+)', /g)].map((m) => m[1])).toEqual([...PUBLIC_AREA_FIELDS]);
   });
@@ -241,7 +249,7 @@ describe("the public contract", () => {
     const proof = readFileSync(PROOF, "utf8");
     const keys = /_keys IS DISTINCT FROM ARRAY\[([^\]]+)\]/.exec(proof)![1];
     expect([...keys.matchAll(/'([a-z_]+)'/g)].map((m) => m[1])).toEqual(
-      [...PUBLIC_LISTING_FIELDS].sort(),
+      [...FIVE_A_FIELDS].sort(),
     );
     expect(proof).toMatch(/_area_keys IS DISTINCT FROM ARRAY\['name', 'zips'\]/);
   });

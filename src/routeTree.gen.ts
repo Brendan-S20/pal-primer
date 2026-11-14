@@ -141,6 +141,7 @@ import { Route as ApiPublicLeadsRouteImport } from './routes/api/public/leads'
 import { Route as ApiPublicQuotePdfRouteImport } from './routes/api/public/quote-pdf'
 import { Route as ApiPublicVerifyEmailRouteImport } from './routes/api/public/verify-email'
 import { Route as ApiPublicWebsiteSubmissionsRouteImport } from './routes/api/public/website-submissions'
+import { Route as DSlugBookRouteImport } from './routes/d.$slug.book'
 import { Route as EmailAuthPreviewRouteImport } from './routes/email/auth/preview'
 import { Route as EmailAuthWebhookRouteImport } from './routes/email/auth/webhook'
 import { Route as EmailQueueProcessRouteImport } from './routes/email/queue/process'
@@ -887,6 +888,11 @@ const ApiPublicWebsiteSubmissionsRoute =
     path: '/api/public/website-submissions',
     getParentRoute: () => rootRouteImport,
   } as any)
+const DSlugBookRoute = DSlugBookRouteImport.update({
+  id: '/d/$slug/book',
+  path: '/d/$slug/book',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EmailAuthPreviewRoute = EmailAuthPreviewRouteImport.update({
   id: '/email/auth/preview',
   path: '/email/auth/preview',
@@ -1205,6 +1211,7 @@ export interface FileRoutesByFullPath {
   '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
   '/api/public/website-submissions': typeof ApiPublicWebsiteSubmissionsRoute
+  '/d/$slug/book': typeof DSlugBookRoute
   '/email/auth/preview': typeof EmailAuthPreviewRoute
   '/email/auth/webhook': typeof EmailAuthWebhookRoute
   '/email/queue/process': typeof EmailQueueProcessRoute
@@ -1366,6 +1373,7 @@ export interface FileRoutesByTo {
   '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
   '/api/public/website-submissions': typeof ApiPublicWebsiteSubmissionsRoute
+  '/d/$slug/book': typeof DSlugBookRoute
   '/email/auth/preview': typeof EmailAuthPreviewRoute
   '/email/auth/webhook': typeof EmailAuthWebhookRoute
   '/email/queue/process': typeof EmailQueueProcessRoute
@@ -1536,6 +1544,7 @@ export interface FileRoutesById {
   '/api/public/quote-pdf': typeof ApiPublicQuotePdfRoute
   '/api/public/verify-email': typeof ApiPublicVerifyEmailRoute
   '/api/public/website-submissions': typeof ApiPublicWebsiteSubmissionsRoute
+  '/d/$slug/book': typeof DSlugBookRoute
   '/email/auth/preview': typeof EmailAuthPreviewRoute
   '/email/auth/webhook': typeof EmailAuthWebhookRoute
   '/email/queue/process': typeof EmailQueueProcessRoute
@@ -1707,6 +1716,7 @@ export interface FileRouteTypes {
     | '/api/public/quote-pdf'
     | '/api/public/verify-email'
     | '/api/public/website-submissions'
+    | '/d/$slug/book'
     | '/email/auth/preview'
     | '/email/auth/webhook'
     | '/email/queue/process'
@@ -1868,6 +1878,7 @@ export interface FileRouteTypes {
     | '/api/public/quote-pdf'
     | '/api/public/verify-email'
     | '/api/public/website-submissions'
+    | '/d/$slug/book'
     | '/email/auth/preview'
     | '/email/auth/webhook'
     | '/email/queue/process'
@@ -2037,6 +2048,7 @@ export interface FileRouteTypes {
     | '/api/public/quote-pdf'
     | '/api/public/verify-email'
     | '/api/public/website-submissions'
+    | '/d/$slug/book'
     | '/email/auth/preview'
     | '/email/auth/webhook'
     | '/email/queue/process'
@@ -2118,6 +2130,7 @@ export interface RootRouteChildren {
   ApiPublicQuotePdfRoute: typeof ApiPublicQuotePdfRoute
   ApiPublicVerifyEmailRoute: typeof ApiPublicVerifyEmailRoute
   ApiPublicWebsiteSubmissionsRoute: typeof ApiPublicWebsiteSubmissionsRoute
+  DSlugBookRoute: typeof DSlugBookRoute
   EmailAuthPreviewRoute: typeof EmailAuthPreviewRoute
   EmailAuthWebhookRoute: typeof EmailAuthWebhookRoute
   EmailQueueProcessRoute: typeof EmailQueueProcessRoute
@@ -3068,6 +3081,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicWebsiteSubmissionsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/d/$slug/book': {
+      id: '/d/$slug/book'
+      path: '/d/$slug/book'
+      fullPath: '/d/$slug/book'
+      preLoaderRoute: typeof DSlugBookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/email/auth/preview': {
       id: '/email/auth/preview'
       path: '/email/auth/preview'
@@ -3689,6 +3709,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicQuotePdfRoute: ApiPublicQuotePdfRoute,
   ApiPublicVerifyEmailRoute: ApiPublicVerifyEmailRoute,
   ApiPublicWebsiteSubmissionsRoute: ApiPublicWebsiteSubmissionsRoute,
+  DSlugBookRoute: DSlugBookRoute,
   EmailAuthPreviewRoute: EmailAuthPreviewRoute,
   EmailAuthWebhookRoute: EmailAuthWebhookRoute,
   EmailQueueProcessRoute: EmailQueueProcessRoute,

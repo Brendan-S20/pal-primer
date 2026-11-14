@@ -2,7 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
-import { ExternalLink, Plus, X } from "lucide-react";
+import { CheckCircle2, Circle, ExternalLink, Plus, X } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,9 +15,11 @@ import { titleHead } from "@/lib/page-title";
 import {
   getMyDirectoryProfile,
   saveMyDirectoryProfile,
+  type MyDirectoryBooking,
   type MyDirectoryProfile,
 } from "@/lib/directory.functions";
 import {
+  BOOKING_POLICY_MAX,
   DIRECTORY_AREAS_MAX,
   DIRECTORY_AREA_NAME_MAX,
   DIRECTORY_DISCLOSURE,
@@ -31,6 +34,7 @@ import {
   slugFromName,
   type DirectoryArea,
 } from "@/lib/directory";
+import { DIRECTORY_BRAND } from "@/lib/directory-site";
 
 // Settings → Directory listing (#630, phase 1). The owner's opt-in to
 // HoundStack's own directory: off by default, and nothing is public until
@@ -42,7 +46,14 @@ import {
 // email is ever shown; quotes arrive in Leads.
 //
 // The tagline, up to four highlights and up to eight named business areas
-// (directory v2 5a) are on this page too. An area groups ZIPs the profile
+// (directory v2 5a) are on this page too.
+//
+// So is Book online (directory v2 step 7): a switch, off for every business
+// until its owner turns it on, that lets the directory show "Book online"
+// beside a service the booking link can sell right now. It needs the booking
+// link on and Stripe able to take charges as well, and the section says which
+// of the three is missing. Beside it, the owner's own cancellation and refund
+// policy, shown before a visitor pays. Nothing is written for them. An area groups ZIPs the profile
 // already covers, so its picker offers only the ZIPs listed below it.
 //
 // Its own page rather than a section of Business defaults (#709 is editing
@@ -91,6 +102,8 @@ function DirectorySettings() {
   const [tagline, setTagline] = useState("");
   const [highlights, setHighlights] = useState<string[]>([]);
   const [areas, setAreas] = useState<DirectoryArea[]>([]);
+  const [bookOnline, setBookOnline] = useState(false);
+  const [bookingPolicy, setBookingPolicy] = useState("");
 
   useEffect(() => {
     if (!data) return;
@@ -118,6 +131,8 @@ function DirectorySettings() {
     setTagline(p?.tagline ?? "");
     setHighlights(p?.highlights ?? []);
     setAreas((p?.areas ?? []).map((a) => ({ name: a.name, zips: [...a.zips] })));
+    setBookOnline(!!data.booking?.enabled);
+    setBookingPolicy(data.booking?.policyText ?? "");
   }, [data]);
 
   const zipList = useMemo(() => splitList(zips), [zips]);
@@ -156,6 +171,8 @@ function DirectorySettings() {
           tagline: oneLine(tagline) || null,
           highlights: cleanHighlights(highlights),
           areas: areas.map((a) => ({ name: oneLine(a.name), zips: a.zips })),
+          bookOnline,
+          bookingPolicyText: bookingPolicy.trim() || null,
         },
       }),
     onSuccess: (_r, publish) => {
@@ -180,9 +197,12 @@ function DirectorySettings() {
           : !confirmed
             ? "Confirm the details before you publish."
             : null;
+  const policyTooLong = bookingPolicy.trim().length > BOOKING_POLICY_MAX;
   const contentProblem = contentProblems.length
     ? "Fix the highlighted tagline, highlights or areas first."
-    : null;
+    : policyTooLong
+      ? `Keep the cancellation and refund policy to ${BOOKING_POLICY_MAX} characters.`
+      : null;
 
   return (
     <div className="space-y-6">
@@ -311,6 +331,14 @@ function DirectorySettings() {
             </ul>
           )}
         </section>
+
+        <BookOnline
+          booking={data.booking ?? NO_BOOKING}
+          enabled={bookOnline}
+          onEnabled={setBookOnline}
+          policy={bookingPolicy}
+          onPolicy={setBookingPolicy}
+        />
 
         <section className="grid gap-4 rounded-lg border bg-card p-4 md:grid-cols-2">
           <div className="space-y-1.5">
@@ -451,6 +479,128 @@ function ServiceRow({
         </span>
       </div>
     </li>
+  );
+}
+
+/** What the page reads when the server said nothing about booking (an older
+ *  server answering during a deploy): off, and not available to turn on. */
+const NO_BOOKING: MyDirectoryBooking = {
+  available: false,
+  enabled: false,
+  policyText: "",
+  publicSignupEnabled: false,
+  chargesEnabled: false,
+};
+
+/** Book online on the directory (step 7): the switch, what else it needs,
+ *  and the owner's own cancellation and refund policy. */
+function BookOnline({
+  booking,
+  enabled,
+  onEnabled,
+  policy,
+  onPolicy,
+}: {
+  booking: MyDirectoryBooking;
+  enabled: boolean;
+  onEnabled: (v: boolean) => void;
+  policy: string;
+  onPolicy: (v: string) => void;
+}) {
+  const policyLength = policy.trim().length;
+  const tooLong = policyLength > BOOKING_POLICY_MAX;
+  const needs: Array<{ done: boolean; label: string; to: string; action: string }> = [
+    {
+      done: booking.publicSignupEnabled,
+      label: "Your booking link takes signups online",
+      to: "/settings/online-signup",
+      action: "Turn it on",
+    },
+    {
+      done: booking.chargesEnabled,
+      label: "Stripe can take card payments",
+      to: "/payments",
+      action: "Set up Stripe",
+    },
+  ];
+  const ready = needs.every((n) => n.done);
+  return (
+    <section className="space-y-4 rounded-lg border bg-card p-4" data-directory-book-online>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1 basis-64">
+          <h3 className="font-medium">
+            <label htmlFor="dir-book-online">Show Book online on {DIRECTORY_BRAND}</label>
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            Book online appears beside a service only when this is on, your booking link takes
+            signups online, and Stripe can take card payments. Each service's own setting in
+            Services decides how it is sold. Otherwise visitors still see Request a quote.
+          </p>
+        </div>
+        <Switch
+          id="dir-book-online"
+          checked={enabled}
+          onCheckedChange={onEnabled}
+          disabled={!booking.available}
+        />
+      </div>
+      {!booking.available ? (
+        <p className="text-sm text-muted-foreground">
+          Book online isn't available for your account yet. Visitors see Request a quote.
+        </p>
+      ) : null}
+      <ul className="space-y-1" aria-label="What Book online also needs">
+        {needs.map((n) => (
+          <li key={n.label} className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+            <span className="flex min-w-0 flex-1 basis-56 items-center gap-2">
+              {n.done ? (
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+              ) : (
+                <Circle className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              )}
+              <span className="min-w-0">
+                {n.label}
+                <span className="sr-only">{n.done ? ": done" : ": not yet"}</span>
+              </span>
+            </span>
+            {n.done ? null : (
+              <Button asChild variant="outline" size="sm" className="shrink-0">
+                <Link to={n.to}>{n.action}</Link>
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {enabled && !ready ? (
+        <p className="text-sm text-muted-foreground" role="status">
+          Saved as on. Visitors keep seeing Request a quote until both of the above are done.
+        </p>
+      ) : null}
+      <div className="space-y-1.5">
+        <div className="flex items-baseline justify-between gap-3">
+          <Label htmlFor="dir-booking-policy">Cancellation and refund policy</Label>
+          <span
+            className={`shrink-0 text-xs tabular-nums ${tooLong ? "text-destructive" : "text-muted-foreground"}`}
+            aria-live="polite"
+          >
+            {policyLength}/{BOOKING_POLICY_MAX}
+          </span>
+        </div>
+        <Textarea
+          id="dir-booking-policy"
+          rows={3}
+          value={policy}
+          onChange={(e) => onPolicy(e.target.value)}
+          placeholder="In your own words, for example how much notice you need to cancel and what is refunded."
+          aria-invalid={tooLong}
+          aria-describedby="dir-booking-policy-hint"
+        />
+        <p id="dir-booking-policy-hint" className="text-xs text-muted-foreground">
+          Optional. Shown to a pet owner before they pay. Leave it empty if you don't have one: we
+          never write a policy for you.
+        </p>
+      </div>
+    </section>
   );
 }
 

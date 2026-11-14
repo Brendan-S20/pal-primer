@@ -81,6 +81,19 @@ const MY_PROFILE = {
     ],
     listed: [{ service_id: "5d000000-0000-4000-8000-000000000001", price_from_cents: 1800 }],
   },
+  // mypets v2 step 7: the switch on with one gate still missing, so the
+  // "Set up Stripe" action is drawn, and a policy at its 400-character limit.
+  booking: {
+    available: true,
+    enabled: true,
+    policyText: (
+      "Cancel at least 24 hours before a visit for a full refund. Cancellations inside 24 hours are charged for that visit. " +
+      "A visit we cannot make because of a locked gate or an unrestrained dog is charged in full. Prepaid packages are refundable " +
+      "for unused visits within 30 days of purchase, minus card processing fees. Holiday weeks follow the same rules as any week."
+    ).slice(0, 400),
+    publicSignupEnabled: true,
+    chargesEnabled: false,
+  },
 };
 
 const SHOTS = process.env.DIRECTORY_SCREENSHOTS;
@@ -107,6 +120,15 @@ for (const { w, h, label } of [...WIDTHS, { w: 390, h: 844, label: "390 · iPhon
     await expect(page.getByLabel("Tagline")).toHaveValue(MY_PROFILE.profile.tagline);
     await expect(page.getByLabel("Area 2 name")).toHaveValue(
       "North suburbs and the Woodward corridors",
+    );
+    // Step 7's section drew from the fixture too.
+    await expect(page.getByRole("switch", { name: /Show Book online on/ })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await expect(page.getByRole("link", { name: "Set up Stripe" })).toBeVisible();
+    await expect(page.getByLabel("Cancellation and refund policy")).toHaveValue(
+      MY_PROFILE.booking.policyText,
     );
     await page.waitForTimeout(300);
 

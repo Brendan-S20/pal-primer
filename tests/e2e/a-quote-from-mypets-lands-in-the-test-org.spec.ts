@@ -36,12 +36,16 @@ const SERVED = "48067";
 const OUTSIDE = "48201";
 const MYPETS = "https://mypets.services";
 // PUBLIC_LISTING_FIELDS in lib/directory.ts, sorted: the view's columns and
-// nothing more (20261112090000 added tagline, highlights and areas).
+// nothing more (20261112090000 added tagline, highlights and areas;
+// 20261112100000 books_online, booking_policy_text and book_path).
 // tests/a-directory-profile-says-what-a-business-is-and-where.test.ts holds
 // this list to that one.
 const PUBLIC_FIELDS = [
   "areas",
   "bio",
+  "book_path",
+  "booking_policy_text",
+  "books_online",
   "coverage_cities",
   "coverage_zips",
   "display_name",
@@ -112,12 +116,20 @@ test("a quote from mypets.services is one directory lead on the test org", async
     expect(listed.data).toHaveLength(1);
     const row = listed.data![0] as Record<string, unknown>;
     expect(Object.keys(row).sort()).toEqual(PUBLIC_FIELDS);
-    expect(Object.keys((row.services as Array<Record<string, unknown>>)[0]).sort()).toEqual([
+    // PUBLIC_SERVICE_FIELDS, sorted (20261112100000 added booking_mode,
+    // booking_key and package). Switched off by default, so request_only.
+    const svc0 = (row.services as Array<Record<string, unknown>>)[0];
+    expect(Object.keys(svc0).sort()).toEqual([
+      "booking_key",
+      "booking_mode",
       "label",
+      "package",
       "price_from_cents",
       "price_unit",
       "service_line",
     ]);
+    expect(svc0.booking_mode).toBe("request_only");
+    expect(row.books_online).toBe(false);
     expect(JSON.stringify(row)).not.toContain(orgId);
 
     for (const table of ["directory_profiles", "directory_profile_services", "directory_reviews"]) {
