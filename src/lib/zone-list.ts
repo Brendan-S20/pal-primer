@@ -43,7 +43,9 @@ export function zoneShapeDetail(z: ZoneListRow): string {
   return SHAPE_LABEL[shape];
 }
 
-export type ZoneSort = "name" | "clients" | "price";
+// "rank": the business's ranking (#858), highest first, so the cards sit in
+// the same order as the Ranking card above them.
+export type ZoneSort = "rank" | "name" | "clients" | "price";
 export type ZoneStatusFilter = "all" | "on" | "off";
 export type ZoneShapeFilter = "all" | ZoneShape;
 
@@ -58,7 +60,7 @@ export const DEFAULT_ZONE_QUERY: ZoneListQuery = {
   search: "",
   status: "all",
   shape: "all",
-  sort: "name",
+  sort: "rank",
 };
 
 export function zoneQueryIsFiltered(q: ZoneListQuery): boolean {
@@ -86,6 +88,7 @@ export function filterAndSortZones<T extends ZoneListRow>(
       (q.shape === "all" || zoneShape(z) === q.shape),
   );
   return out.sort((a, b) => {
+    if (q.sort === "rank") return (b.priority ?? 0) - (a.priority ?? 0) || a.id.localeCompare(b.id);
     if (q.sort === "clients")
       return (b.active_clients ?? 0) - (a.active_clients ?? 0) || byName(a, b);
     if (q.sort === "price")

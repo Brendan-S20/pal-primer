@@ -430,6 +430,7 @@ function ZonesPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="rank">Sort: Ranking</SelectItem>
                   <SelectItem value="name">Sort: Name</SelectItem>
                   <SelectItem value="clients">Sort: Most clients</SelectItem>
                   <SelectItem value="price">Sort: Highest price</SelectItem>

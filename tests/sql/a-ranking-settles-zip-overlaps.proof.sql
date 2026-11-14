@@ -83,7 +83,7 @@ BEGIN
   RAISE NOTICE 'ok: the ZIP all three list goes to the newest area';
 END $$;
 
--- ── 3. A second run changes nothing ────────────────────────────────────────
+-- ── 3. A second run, before any owner reorders, changes nothing ────────────
 CREATE TEMP TABLE rank_before AS
   SELECT id, priority FROM public.zones
    WHERE organization_id IN ('0a858000-0000-4000-8000-000000000001',
@@ -98,7 +98,7 @@ BEGIN
   IF _changed <> 0 THEN
     RAISE EXCEPTION 'PROOF FAILED [twice]: the second run changed % priorities', _changed;
   END IF;
-  RAISE NOTICE 'ok: running the migration twice changes nothing';
+  RAISE NOTICE 'ok: a second run before any owner reorders changes nothing';
 END $$;
 
 -- ── 4. The pending columns exist and a new area is written without them ────

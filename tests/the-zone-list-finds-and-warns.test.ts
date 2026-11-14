@@ -57,9 +57,21 @@ describe("search, filter and sort", () => {
   const run = (q: Partial<typeof DEFAULT_ZONE_QUERY>) =>
     filterAndSortZones(ZONES, { ...DEFAULT_ZONE_QUERY, ...q }).map((z) => z.id);
 
-  it("sorts by name without regard to case by default", () => {
+  it("sorts by the ranking by default (#858), highest first, id as the tie-break", () => {
+    expect(DEFAULT_ZONE_QUERY.sort).toBe("rank");
     expect(run({})).toEqual(["a", "b", "c", "d"]);
+    const ranked = ZONES.map((z) => ({ ...z, priority: { a: 2, b: 4, c: 1, d: 3 }[z.id] }));
+    expect(filterAndSortZones(ranked, { ...DEFAULT_ZONE_QUERY }).map((z) => z.id)).toEqual([
+      "b",
+      "d",
+      "a",
+      "c",
+    ]);
     expect(zoneQueryIsFiltered(DEFAULT_ZONE_QUERY)).toBe(false);
+  });
+
+  it("sorts by name without regard to case", () => {
+    expect(run({ sort: "name" })).toEqual(["a", "b", "c", "d"]);
   });
 
   it("sorts by clients and by price, most first", () => {

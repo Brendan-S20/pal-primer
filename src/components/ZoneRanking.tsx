@@ -14,8 +14,8 @@
 // on both. "Move up" and "Move down" are 44px on touch, keyboard-reachable,
 // and one tap is one swap. Nothing here is hover-only.
 //
-// Lives in its own file so the Zones page, which #870 is moving into
-// Settings, takes it with one line.
+// Lives in its own file so Settings > Zones & pricing (where #870 moved the
+// Zones page) takes it with one line.
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -41,6 +41,8 @@ type RankingZone = RankedZone & {
   zip_fill_pending_since?: string | null;
 };
 
+const RANKING_TOAST = "zone-ranking";
+
 export function ZoneRankingPanel({
   zones,
   canEdit,
@@ -61,15 +63,19 @@ export function ZoneRankingPanel({
   const reorderM = useMutation({
     mutationFn: (ids: string[]) => reorderFn({ data: { ids } }),
     onSuccess: (r: { propertiesUpdated: number }) => {
+      // One id, so a second tap replaces the first toast rather than
+      // stacking a column of "Ranking saved." over the header.
       toast.success(
         r.propertiesUpdated > 0
           ? `Ranking saved. ${r.propertiesUpdated} ${r.propertiesUpdated === 1 ? "property" : "properties"} re-assigned.`
           : "Ranking saved.",
+        { id: RANKING_TOAST },
       );
       qc.invalidateQueries({ queryKey: ["zones"] });
       qc.invalidateQueries({ queryKey: ["zone-coverage"] });
     },
-    onError: (e: unknown) => toast.error(`Could not save the ranking: ${(e as Error).message}`),
+    onError: (e: unknown) =>
+      toast.error(`Could not save the ranking: ${(e as Error).message}`, { id: RANKING_TOAST }),
   });
 
   if (zones.length < 2) return null;
@@ -83,9 +89,8 @@ export function ZoneRankingPanel({
         <div className="min-w-0">
           <h2 className="text-sm font-semibold">Ranking</h2>
           <p className="text-xs text-muted-foreground">
-            When two zones list the same ZIP, the higher one here gets its addresses and quotes.
-            A new zone starts at the bottom. Changing the order affects new visits and lookups
-            only.
+            When two zones list the same ZIP, the higher one here gets its addresses and quotes. A
+            new zone starts at the bottom. Changing the order affects new visits and lookups only.
           </p>
         </div>
       </div>
@@ -93,7 +98,10 @@ export function ZoneRankingPanel({
         <ul
           role="status"
           data-testid="zone-no-zips-left"
-          className="mt-3 space-y-1 rounded-lg border border-amber-300/60 bg-amber-50/60 p-3 text-sm dark:border-amber-900/60 dark:bg-amber-950/20"
+          // Opaque amber, not /60: a translucent border over a translucent
+          // fill blends to a green fleck at each rounded corner (seen in the
+          // 390 and 1280 shots at da9bbb70).
+          className="mt-3 space-y-1 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950"
         >
           {warnings.map((w) => (
             <li key={w.id} className="flex items-start gap-2">
@@ -123,6 +131,7 @@ export function ZoneRankingPanel({
                     "truncate text-sm font-medium",
                     z.enabled === false && "text-muted-foreground",
                   )}
+                  title={z.name}
                 >
                   {z.name}
                   {z.enabled === false ? " (off)" : ""}

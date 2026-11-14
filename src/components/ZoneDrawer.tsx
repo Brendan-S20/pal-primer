@@ -347,7 +347,7 @@ export function ZoneDrawer({
 
   // An existing zone that uses a note or a non-default type shows them;
   // anything else starts with them folded away. (The zone's rank in the
-  // business's list is set on the Zones page since #858, not typed here.)
+  // business's list is set on Settings > Zones & pricing since #858, not typed here.)
   const [moreOpen, setMoreOpen] = useState<boolean>(
     !!zone &&
       (!!zone.price_note ||
@@ -760,8 +760,8 @@ export function ZoneDrawer({
               </div>
               <p className="text-xs text-muted-foreground sm:self-end" data-testid="zone-rank-note">
                 {isNew
-                  ? "A new zone starts at the bottom of the ranking. Move it up on the Zones page."
-                  : "Which zone wins a ZIP both list is set by the ranking on the Zones page."}
+                  ? "A new zone starts at the bottom of the ranking. Move it up on the Zones & pricing page."
+                  : "Which zone wins a ZIP both list is set by the ranking on the Zones & pricing page."}
               </p>
             </div>
           </>
@@ -777,100 +777,106 @@ export function ZoneDrawer({
           </Button>
         )}
 
-        <div className="space-y-2">
-          <SectionLabel>Map coverage (required)</SectionLabel>
-          <p className="text-xs text-muted-foreground">
-            Draw a polygon or set a center with a radius or drive time. The ZIPs inside it fill in
-            below.
-          </p>
-          <ZoneCoverageMap
-            initial={initialCoverage}
-            openingCenter={isNew ? openingCenter : null}
-            onChange={handleCoverage}
-            focusPoint={focusPoint}
-            height={300}
-          />
-          {!coverageOk && (
-            <p className="text-xs text-destructive">
-              Map coverage is required. Click the map to place the center or draw a polygon.
+        {/* The map and the ZIP list it fills are one step, so on a laptop they
+            sit side by side: the drawer is 896px wide there, and stacked, a
+            300px map pushed the ZIPs below the fold at 1280x800 under copy
+            that said they "fill in below". A phone stacks them. */}
+        <div className="space-y-5 lg:grid lg:grid-cols-2 lg:gap-5 lg:space-y-0">
+          <div className="space-y-2">
+            <SectionLabel>Map coverage (required)</SectionLabel>
+            <p className="text-xs text-muted-foreground">
+              Draw a polygon or set a center with a radius or drive time. The ZIPs inside it fill in
+              the list.
             </p>
-          )}
-        </div>
+            <ZoneCoverageMap
+              initial={initialCoverage}
+              openingCenter={isNew ? openingCenter : null}
+              onChange={handleCoverage}
+              focusPoint={focusPoint}
+              height={300}
+            />
+            {!coverageOk && (
+              <p className="text-xs text-destructive">
+                Map coverage is required. Click the map to place the center or draw a polygon.
+              </p>
+            )}
+          </div>
 
-        <div className="space-y-2" data-testid="zone-zips">
-          <Label>ZIP codes served (US)</Label>
-          <ZipChips
-            value={zips}
-            onAdd={handleAddZips}
-            onRemove={handleRemoveZips}
-            claimed={claimed}
-            describedBy="zone-zips-help"
-          />
-          <p
-            className="text-xs text-muted-foreground"
-            aria-live="polite"
-            data-testid="zone-zip-fill-status"
-          >
-            {fillStatusText(fill, areaWord)}
-          </p>
-          {fill.status === "done" && missingFromArea.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed p-2 text-xs">
-              <span className="min-w-0 flex-1 text-muted-foreground">
-                {missingFromArea.length} {missingFromArea.length === 1 ? "ZIP" : "ZIPs"} inside{" "}
-                {areaWord} {missingFromArea.length === 1 ? "is" : "are"} not on the list.
-              </span>
-              <Button type="button" size="sm" variant="outline" onClick={fillFromArea}>
-                Fill ZIPs from the area
-              </Button>
-            </div>
-          )}
-          {claimedList.length > 0 && (
-            <div
-              className="space-y-1 text-xs text-amber-700 dark:text-amber-300"
-              data-testid="zone-zip-overlap"
+          <div className="space-y-2" data-testid="zone-zips">
+            <Label>ZIP codes served (US)</Label>
+            <ZipChips
+              value={zips}
+              onAdd={handleAddZips}
+              onRemove={handleRemoveZips}
+              claimed={claimed}
+              describedBy="zone-zips-help"
+            />
+            <p
+              className="text-xs text-muted-foreground"
+              aria-live="polite"
+              data-testid="zone-zip-fill-status"
             >
-              {claimedByZone.map(([zoneName, list]) => (
-                <p key={zoneName} className="break-words">
-                  {list.length === 1 ? "1 ZIP is" : `${list.length} ZIPs are`} also listed on{" "}
-                  <span className="font-medium">{zoneName}</span>: {list.slice(0, 12).join(", ")}
-                  {list.length > 12 ? `, and ${list.length - 12} more` : ""}.
-                </p>
-              ))}
-              <p>
-                An address in a ZIP two zones list goes to the one ranked higher in the Zones
-                page&apos;s ranking. Remove the chip here to leave it to the other zone.
-              </p>
-            </div>
-          )}
-          {fill.status === "done" && edgeOffered.length > 0 && (
-            <div className="space-y-1.5 rounded-md bg-muted/40 p-2" data-testid="zone-zip-edge">
-              <p className="text-xs font-medium">Nearby ZIPs that only partly overlap</p>
-              <p className="text-xs text-muted-foreground">
-                Not added for you, because a listed ZIP claims every address in it, including the
-                part outside {areaWord}. Tap one to add it anyway.
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {edgeOffered.slice(0, 40).map((z) => (
-                  <Button
-                    key={z}
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-7 px-2 tabular-nums"
-                    aria-label={`Add ${z}`}
-                    onClick={() => handleAddZips([z])}
-                  >
-                    + {z}
-                  </Button>
-                ))}
+              {fillStatusText(fill, areaWord)}
+            </p>
+            {fill.status === "done" && missingFromArea.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed p-2 text-xs">
+                <span className="min-w-0 flex-1 text-muted-foreground">
+                  {missingFromArea.length} {missingFromArea.length === 1 ? "ZIP" : "ZIPs"} inside{" "}
+                  {areaWord} {missingFromArea.length === 1 ? "is" : "are"} not on the list.
+                </span>
+                <Button type="button" size="sm" variant="outline" onClick={fillFromArea}>
+                  Fill ZIPs from the area
+                </Button>
               </div>
-            </div>
-          )}
-          <p id="zone-zips-help" className="text-xs text-muted-foreground">
-            US 5-digit ZIPs only. Type one and press Enter, or paste a list. A ZIP+4 keeps its first
-            five digits, and four digits are read as a ZIP whose leading zero was lost (1810 becomes
-            01810). An address in a listed ZIP always beats another zone's radius.
-          </p>
+            )}
+            {claimedList.length > 0 && (
+              <div
+                className="space-y-1 text-xs text-amber-700 dark:text-amber-300"
+                data-testid="zone-zip-overlap"
+              >
+                {claimedByZone.map(([zoneName, list]) => (
+                  <p key={zoneName} className="break-words">
+                    {list.length === 1 ? "1 ZIP is" : `${list.length} ZIPs are`} also listed on{" "}
+                    <span className="font-medium">{zoneName}</span>: {list.slice(0, 12).join(", ")}
+                    {list.length > 12 ? `, and ${list.length - 12} more` : ""}.
+                  </p>
+                ))}
+                <p>
+                  An address in a ZIP two zones list goes to the one ranked higher on the Zones
+                  &amp; pricing page. Remove the chip here to leave it to the other zone.
+                </p>
+              </div>
+            )}
+            {fill.status === "done" && edgeOffered.length > 0 && (
+              <div className="space-y-1.5 rounded-md bg-muted/40 p-2" data-testid="zone-zip-edge">
+                <p className="text-xs font-medium">Nearby ZIPs that only partly overlap</p>
+                <p className="text-xs text-muted-foreground">
+                  Not added for you, because a listed ZIP claims every address in it, including the
+                  part outside {areaWord}. Tap one to add it anyway.
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {edgeOffered.slice(0, 40).map((z) => (
+                    <Button
+                      key={z}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 tabular-nums"
+                      aria-label={`Add ${z}`}
+                      onClick={() => handleAddZips([z])}
+                    >
+                      + {z}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <p id="zone-zips-help" className="text-xs text-muted-foreground">
+              US 5-digit ZIPs only. Type one and press Enter, or paste a list. A ZIP+4 keeps its
+              first five digits, and four digits are read as a ZIP whose leading zero was lost (1810
+              becomes 01810). An address in a listed ZIP always beats another zone's radius.
+            </p>
+          </div>
         </div>
 
         {showResidential && !showVisitPricing && (

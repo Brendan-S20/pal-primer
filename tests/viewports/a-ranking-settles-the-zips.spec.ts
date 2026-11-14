@@ -70,7 +70,10 @@ function rankingStub() {
       for (const z of zones) z.priority = order.length - order.indexOf(z.id);
       return { ok: true, order, propertiesUpdated: 0 };
     },
-    getZoneCoverage: { problem: null, summary: { stale: 0, orphaned: 0, reassigned: 0, unassigned: 0 } },
+    getZoneCoverage: {
+      problem: null,
+      summary: { stale: 0, orphaned: 0, reassigned: 0, unassigned: 0 },
+    },
   };
 }
 

@@ -41,8 +41,11 @@
 --      a dense ranking is a tie waiting to happen.
 --
 -- Replays into an empty database: an ALTER and an UPDATE that touches no
--- rows. Running it twice changes nothing: the second UPDATE finds every
--- priority already equal to its rank. Checks at the end: what this file
+-- rows. A second run BEFORE any owner has reordered changes nothing: the
+-- UPDATE finds every priority already equal to its rank. After an owner has
+-- reordered, a replay would put the newest-first order back, which is why
+-- this runs once, under the ledger, and never as a repair. Checks at the
+-- end: what this file
 -- ESTABLISHES is raised on (no two areas of one business share a priority);
 -- what it found is only reported.
 
