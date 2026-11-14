@@ -231,7 +231,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     section: "Client-facing",
     body: [
       "Every client gets a private portal link where they can see upcoming visits, pay invoices, save a card, put service on hold, and refer neighbors.",
-      "Clients sign in with a one-time code sent by email. Codes by text are coming soon. If a client can't get their code, staff can read one to them over the phone from the client's detail page in [Clients](/clients).",
+      "Clients sign in with a one-time code sent by email. Once texting is set up for your business, codes can go by text too. If a client can't get their code, staff can read one to them over the phone from the client's detail page in [Clients](/clients).",
       "The portal carries your branding: set your logo and brand color in [Client portal](/settings/client-portal).",
     ],
     related: ["lead-form", "getting-paid", "credit-balance", "reclean-requests"],

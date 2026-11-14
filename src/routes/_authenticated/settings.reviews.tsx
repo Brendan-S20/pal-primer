@@ -97,7 +97,10 @@ function ReviewsSettings() {
             <div className="text-xs text-muted-foreground">
               {texting
                 ? "Send the text below after a completed visit (once per client per 90 days). Clients who can't be texted get it by email."
-                : "Send a review request after a completed visit (once per client per 90 days). It goes by email until texting your clients arrives."}
+                : // #930: says where it goes now, and nothing about setup: the
+                  // template below carries the state (Under review, Setup
+                  // needed...) and where to fix it, in the shared words.
+                  "Send a review request after a completed visit (once per client per 90 days). It goes by email until texting is on for your business."}
             </div>
           </div>
           <Switch checked={enabled} onCheckedChange={setEnabled} />
