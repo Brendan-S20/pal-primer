@@ -15,7 +15,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { resolveSupabaseUrl } from "@/lib/supabase-url";
 import {
@@ -50,7 +50,7 @@ export const ONLY_AN_OWNER_CHANGES_THE_DIRECTORY =
  *  visitor could read. Untyped on purpose: supabase/types.ts does not know
  *  the directory yet and is not edited by this change (#749, #733, #717,
  *  #716); the shapes are pinned in lib/directory.ts instead. */
-function visitorDb(): any {
+function visitorDb(): SupabaseClient {
   return createClient(resolveSupabaseUrl(), process.env.SUPABASE_PUBLISHABLE_KEY!, {
     auth: { storage: undefined, persistSession: false, autoRefreshToken: false },
   });
@@ -60,10 +60,13 @@ function visitorDb(): any {
  *  RPC might one day add is dropped here rather than passed to a page. */
 export function toDirectoryProfiles(rows: unknown): DirectoryProfile[] {
   if (!Array.isArray(rows)) return [];
-  const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
-  return rows.flatMap((r: any) => {
-    if (!r || typeof r.slug !== "string" || typeof r.display_name !== "string") return [];
-    const services = Array.isArray(r.services) ? r.services : [];
+  const strs = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  const asRow = (v: unknown) => (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  return rows.flatMap((raw: unknown) => {
+    const r = asRow(raw);
+    if (typeof r.slug !== "string" || typeof r.display_name !== "string") return [];
+    const services: unknown[] = Array.isArray(r.services) ? r.services : [];
     return [
       {
         slug: r.slug,
@@ -73,8 +76,9 @@ export function toDirectoryProfiles(rows: unknown): DirectoryProfile[] {
         service_lines: strs(r.service_lines),
         coverage_zips: strs(r.coverage_zips),
         coverage_cities: strs(r.coverage_cities),
-        services: services.flatMap((s: any) =>
-          s && typeof s.label === "string" && typeof s.service_line === "string"
+        services: services.flatMap((raw: unknown) => {
+          const s = asRow(raw);
+          return typeof s.label === "string" && typeof s.service_line === "string"
             ? [
                 {
                   label: s.label,
@@ -84,8 +88,8 @@ export function toDirectoryProfiles(rows: unknown): DirectoryProfile[] {
                   price_unit: typeof s.price_unit === "string" ? s.price_unit : null,
                 },
               ]
-            : [],
-        ),
+            : [];
+        }),
         published_at: typeof r.published_at === "string" ? r.published_at : null,
       },
     ];
@@ -140,7 +144,8 @@ export function toDirectoryListings(rows: unknown): DirectoryListing[] {
         package: pack,
       };
     });
-    const booksOnline = r.books_online === true && services.some((s) => s.booking_mode !== "request_only");
+    const booksOnline =
+      r.books_online === true && services.some((s) => s.booking_mode !== "request_only");
     // Photos (step 5b): url, alt and position only, a url only if it is the
     // HoundStack path the view makes for THIS listing, and never one without
     // alt text. A row from before step 5b reads as no photos.
@@ -288,7 +293,7 @@ export const getMyDirectoryProfile = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<MyDirectoryProfile> => {
     const { orgId, role } = await caller(context.supabase, context.userId);
-    const sb = context.supabase as any;
+    const sb = context.supabase as SupabaseClient;
     const [org, services, zones, profile, listed, areas, booking] = await Promise.all([
       sb.from("organizations").select("name, logo_url").eq("id", orgId).maybeSingle(),
       sb
@@ -455,7 +460,8 @@ export const saveMyDirectoryProfile = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { orgId, role } = await caller(context.supabase, context.userId);
     if (role !== "owner") throw new Error(ONLY_AN_OWNER_CHANGES_THE_DIRECTORY);
-    const { error } = await (context.supabase as any).rpc("set_directory_profile", {
+    const sb = context.supabase as SupabaseClient;
+    const { error } = await sb.rpc("set_directory_profile", {
       _org: orgId,
       _slug: data.slug,
       _display_name: data.displayName,
@@ -481,7 +487,7 @@ export const saveMyDirectoryProfile = createServerFn({ method: "POST" })
     // The directory switch and policy (step 7), owner-only in the database
     // too. On a database the step-7 migration has not reached there is
     // nothing to save unless the owner asked for something.
-    const { error: bErr } = await (context.supabase as any).rpc("set_directory_booking", {
+    const { error: bErr } = await sb.rpc("set_directory_booking", {
       _org: orgId,
       _enabled: data.bookOnline,
       _policy_text: data.bookingPolicyText,

@@ -55,6 +55,8 @@ import {
   servePublicDirectoryPhoto,
 } from "@/lib/directory-photos.functions";
 import { STAYS_IN_BROWSER } from "@/lib/android-app-links";
+import { stripImageMetadata } from "@/lib/image-metadata";
+import { ORG_STORAGE_BUCKETS } from "@/lib/account-deletion.server";
 
 // A proof waits its turn for the shared lock (the-proofs-take-turns.test.ts).
 vi.setConfig({ testTimeout: 300_000 });
@@ -170,13 +172,63 @@ describe("the migration", () => {
       ["directory photos delete", "DELETE", "authenticated"],
     ]);
     const check = s.split("FUNCTION public.can_use_directory_photo(")[1].split("$fn$;")[0];
+    // Read: the owner, or a platform admin.
     expect(check).toMatch(
-      /IF public\.has_role\(auth\.uid\(\), _org, 'owner'::public\.app_role\) THEN RETURN true;/,
+      /IF action = 'read' THEN\s+RETURN public\.has_role\(auth\.uid\(\), _org, 'owner'::public\.app_role\)\s+OR public\.is_platform_admin\(auth\.uid\(\)\);/,
     );
-    expect(check).toMatch(/RETURN NOT write AND public\.is_platform_admin\(auth\.uid\(\)\);/);
+    // Upload and delete: the owner only.
+    expect(check).toMatch(
+      /IF NOT public\.has_role\(auth\.uid\(\), _org, 'owner'::public\.app_role\) THEN RETURN false; END IF;/,
+    );
     expect(s).toMatch(
-      /REVOKE ALL ON FUNCTION public\.can_use_directory_photo\(text, boolean\) FROM PUBLIC, anon;/,
+      /REVOKE ALL ON FUNCTION public\.can_use_directory_photo\(text, text\) FROM PUBLIC, anon;/,
     );
+    expect(s).toMatch(/public\.can_use_directory_photo\(name, 'read'\)\);/);
+    expect(s).toMatch(/public\.can_use_directory_photo\(name, 'upload'\)\);/);
+    expect(s).toMatch(/public\.can_use_directory_photo\(name, 'delete'\)\);/);
+  });
+
+  // The review of 04649ef4 (#931): with delete and upload open on any name
+  // in its folder, an owner could delete an approved photo's file and upload
+  // other bytes under its name; the row stayed approved and the photo route
+  // served them.
+  it("freezes a file any photo row names: no delete, no upload under its name, before the cap or anything else", () => {
+    const check = sql().split("FUNCTION public.can_use_directory_photo(")[1].split("$fn$;")[0];
+    const freeze = check.indexOf(
+      "IF EXISTS (SELECT 1 FROM public.directory_profile_photos ph WHERE ph.path = name) THEN\n    RETURN false;",
+    );
+    expect(freeze).toBeGreaterThan(-1);
+    // After the owner check, before the upload branch and the final allow.
+    expect(freeze).toBeGreaterThan(check.indexOf("IF NOT public.has_role("));
+    expect(freeze).toBeLessThan(check.indexOf("IF action = 'upload' THEN"));
+    expect(freeze).toBeLessThan(check.lastIndexOf("RETURN true;"));
+    // No status filter: a pending or rejected photo's file is frozen too.
+    expect(check.slice(freeze, freeze + 120)).not.toMatch(/status/);
+    // The proof shows it, and a mutant without it.
+    const proof = readFileSync(PROOF, "utf8");
+    expect(proof).toMatch(/PROOF FAILED \[freeze\]: A''s owner deleted an approved photo''s file/);
+    expect(proof).toMatch(/pg_temp\.refused\('freeze: upload under an approved photo''s name'/);
+    expect(proof).toMatch(/mutation reproduces: without the freeze/);
+    // And the app deletes the row before the file.
+    const fns = read("src/lib/directory-photos.functions.ts");
+    const remove = fns.split("export const removeMyDirectoryPhoto")[1].split("export const")[0];
+    expect(remove.indexOf('.from("directory_profile_photos")')).toBeLessThan(
+      remove.indexOf(".storage.from(DIRECTORY_PHOTO_BUCKET).remove("),
+    );
+  });
+
+  it("caps files waiting for their row at three per business, and sweeps strays", () => {
+    const check = sql().split("FUNCTION public.can_use_directory_photo(")[1].split("$fn$;")[0];
+    expect(check).toMatch(
+      /IF action = 'upload' THEN[\s\S]*o\.name LIKE _org::text \|\| '\/%'[\s\S]*NOT EXISTS \(SELECT 1 FROM public\.directory_profile_photos ph WHERE ph\.path = o\.name\)\) < 3;/,
+    );
+    expect(readFileSync(PROOF, "utf8")).toMatch(
+      /pg_temp\.refused\('cap: a fourth file with no row'/,
+    );
+    const fns = read("src/lib/directory-photos.functions.ts");
+    const get = fns.split("export const getMyDirectoryPhotos")[1].split("export const")[0];
+    expect(get).toMatch(/await sweepStrayUploads\(/);
+    expect(fns).toMatch(/export const STRAY_UPLOAD_MINUTES = 10;/);
   });
 
   it("makes the table: alt required and at most 140, new photos pending, shut to anon, two-step sign-in", () => {
@@ -245,6 +297,12 @@ describe("the migration", () => {
     expect(g).toMatch(/AND status <> 'rejected'/);
     expect(g).toMatch(/IF _n >= 8 THEN/);
     expect(DIRECTORY_PHOTOS_MAX).toBe(8);
+    // The flag is not trusted alone: the caller is also a platform admin
+    // (or the service role / table owner, which has no auth.uid()).
+    expect(g).toMatch(
+      /_moderator boolean := COALESCE\(current_setting\('app\.directory_photo_moderator', true\), ''\) = '1'\s+AND \(auth\.uid\(\) IS NULL OR public\.is_platform_admin\(auth\.uid\(\)\)\);/,
+    );
+    expect(readFileSync(PROOF, "utf8")).toMatch(/mutation reproduces: trusting the flag alone/);
     // The moderator flag is set in exactly one place: the moderator's function.
     const sets = [...sql().matchAll(/set_config\('app\.directory_photo_moderator', '1', true\)/g)];
     expect(sets).toHaveLength(1);
@@ -568,6 +626,138 @@ describe("the photo URL", () => {
   });
 });
 
+// ── No location leaves the owner's phone ─────────────────────────────────────
+describe("photo metadata", () => {
+  const ascii = (t: string) => [...t].map((c) => c.charCodeAt(0));
+  const be16 = (n: number) => [(n >> 8) & 0xff, n & 0xff];
+  const be32 = (n: number) => [(n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff];
+  const le32 = (n: number) => [n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >>> 24) & 0xff];
+  const has = (b: Uint8Array, t: string) => Buffer.from(b).includes(Buffer.from(t));
+  const seg = (marker: number, body: number[]) => [0xff, marker, ...be16(body.length + 2), ...body];
+
+  it("drops EXIF (and its GPS), XMP and comments from a JPEG, keeping JFIF, ICC and the scan", () => {
+    const jpeg = new Uint8Array([
+      0xff,
+      0xd8,
+      ...seg(0xe0, ascii("JFIF\0keep")),
+      ...seg(0xe1, ascii("Exif\0\0GPSLatitude 42.33")),
+      ...seg(0xe1, ascii("http://ns.adobe.com/xap/1.0/ xmp")),
+      ...seg(0xe2, ascii("ICC_PROFILE\0keep")),
+      ...seg(0xfe, ascii("a comment")),
+      ...seg(0xdb, [0, 1, 2, 3]),
+      0xff,
+      0xda,
+      ...be16(4),
+      9,
+      9,
+      7,
+      7,
+      0xff,
+      0xd9,
+    ]);
+    const out = stripImageMetadata(jpeg, "image/jpeg")!;
+    expect(out).not.toBeNull();
+    for (const gone of ["Exif", "GPSLatitude", "xap", "a comment"])
+      expect(has(out, gone), gone).toBe(false);
+    for (const kept of ["JFIF", "ICC_PROFILE"]) expect(has(out, kept), kept).toBe(true);
+    // Everything from the start of scan on is byte for byte the same.
+    const sos = jpeg.indexOf(0xda, 4) - 1;
+    expect(Buffer.from(out.subarray(out.length - (jpeg.length - sos)))).toEqual(
+      Buffer.from(jpeg.subarray(sos)),
+    );
+  });
+
+  it("drops eXIf and text chunks from a PNG and WebP's EXIF and XMP, clearing their flags", () => {
+    const chunk = (type: string, data: number[]) => [
+      ...be32(data.length),
+      ...ascii(type),
+      ...data,
+      0,
+      0,
+      0,
+      0,
+    ];
+    const png = new Uint8Array([
+      0x89,
+      0x50,
+      0x4e,
+      0x47,
+      0x0d,
+      0x0a,
+      0x1a,
+      0x0a,
+      ...chunk("IHDR", [0, 0, 0, 1, 0, 0, 0, 1, 8, 2, 0, 0, 0]),
+      ...chunk("eXIf", ascii("GPS here")),
+      ...chunk("tEXt", ascii("Author\0someone")),
+      ...chunk("IDAT", [1, 2, 3]),
+      ...chunk("IEND", []),
+    ]);
+    const p = stripImageMetadata(png, "image/png")!;
+    expect(has(p, "GPS here")).toBe(false);
+    expect(has(p, "someone")).toBe(false);
+    expect(has(p, "IDAT")).toBe(true);
+    expect(has(p, "IEND")).toBe(true);
+
+    const wchunk = (id: string, data: number[]) => [
+      ...ascii(id),
+      ...le32(data.length),
+      ...data,
+      ...(data.length & 1 ? [0] : []),
+    ];
+    const body = [
+      ...ascii("WEBP"),
+      ...wchunk("VP8X", [0x0c, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+      ...wchunk("VP8 ", [1, 2, 3, 4]),
+      ...wchunk("EXIF", ascii("GPS there")),
+      ...wchunk("XMP ", ascii("<x:xmpmeta/>")),
+    ];
+    const webp = new Uint8Array([...ascii("RIFF"), ...le32(body.length), ...body]);
+    const w = stripImageMetadata(webp, "image/webp")!;
+    expect(has(w, "GPS there")).toBe(false);
+    expect(has(w, "xmpmeta")).toBe(false);
+    expect(has(w, "VP8 ")).toBe(true);
+    // The RIFF size is right, and VP8X no longer claims EXIF or XMP.
+    expect(new DataView(w.buffer, w.byteOffset).getUint32(4, true)).toBe(w.length - 8);
+    expect(w[20] & 0x0c).toBe(0);
+  });
+
+  it("serves nothing it cannot parse", () => {
+    expect(stripImageMetadata(new Uint8Array([1, 2, 3, 4]), "image/jpeg")).toBeNull();
+    expect(
+      stripImageMetadata(new Uint8Array([0xff, 0xd8, 0xff, 0xe1, 0xff, 0xff]), "image/jpeg"),
+    ).toBeNull();
+    expect(stripImageMetadata(new Uint8Array(8), "image/png")).toBeNull();
+    expect(stripImageMetadata(new Uint8Array(12), "image/webp")).toBeNull();
+  });
+
+  it("is stripped on the server for every photo served, and redrawn in the browser before every upload", () => {
+    const fns = read("src/lib/directory-photos.functions.ts");
+    const serve = fns.split("export async function servePublicDirectoryPhoto")[1];
+    expect(serve).toMatch(/const clean = stripImageMetadata\(/);
+    expect(serve).toMatch(/if \(!clean\) \{[\s\S]*?return notFound\(\);/);
+    expect(serve).toMatch(/new Response\(clean,/);
+    const ui = read("src/components/directory/DirectoryPhotosSettings.tsx");
+    expect(ui).toMatch(/reencodeDirectoryPhoto\(file\)/);
+    // Not compressImage, which uploads small files untouched.
+    expect(ui).not.toMatch(/compressImage/);
+    const re = read("src/lib/directory-photo-reencode.ts");
+    expect(re).toMatch(/canvas\.toBlob\(res, "image\/jpeg", QUALITY\)/);
+    expect(re).not.toMatch(/SKIP_UNDER_BYTES|passthrough/);
+  });
+});
+
+describe("a deleted business", () => {
+  it("takes its directory photo files with it, through the account-deletion job", () => {
+    expect(ORG_STORAGE_BUCKETS).toContain("directory-photos");
+    // A database the migration has not reached yet has no bucket; the job
+    // reads that as nothing to delete rather than failing.
+    expect(read("src/lib/account-deletion.server.ts")).toMatch(
+      /if \(error && \/bucket not found\/i\.test\(error\.message\)\) return out;/,
+    );
+    expect(sql()).not.toMatch(/DELETE FROM storage\.objects/);
+  });
+});
+
 // ── No credit line, no em dash ───────────────────────────────────────────────
 describe("the words", () => {
   const FILES = [
@@ -575,6 +765,7 @@ describe("the words", () => {
     "src/routes/platform.directory-photos.tsx",
     "src/lib/directory-photos.functions.ts",
     "src/routes/d.$slug.photos.$key.ts",
+    "src/lib/directory-photo-reencode.ts",
   ];
 
   it("render no credit line anywhere: Settings, /platform, the server or the view", () => {

@@ -526,11 +526,15 @@ export function directoryBookingSearch(search: Record<string, unknown>): {
   const fromDirectory = search.ref === DIRECTORY_REF;
   const book = search.book === 1 || search.book === "1";
   const sid = typeof search.service === "string" ? search.service : "";
-  const zip = cleanZip(typeof search.zip === "number" ? String(search.zip).padStart(5, "0") : search.zip);
+  const zip = cleanZip(
+    typeof search.zip === "number" ? String(search.zip).padStart(5, "0") : search.zip,
+  );
   return {
     fromDirectory,
     quoteOnly: fromDirectory && !book,
-    serviceId: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid) ? sid : null,
+    serviceId: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid)
+      ? sid
+      : null,
     zip,
   };
 }
@@ -600,7 +604,11 @@ export function photoFileProblem(file: { type: string; size: number }): string |
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
 /** The object path the database accepts: {organization id}/{uuid}.{ext}. */
-export function directoryPhotoPath(orgId: string, fileId: string, type: DirectoryPhotoType): string {
+export function directoryPhotoPath(
+  orgId: string,
+  fileId: string,
+  type: DirectoryPhotoType,
+): string {
   return `${orgId}/${fileId}.${DIRECTORY_PHOTO_TYPES[type]}`;
 }
 
@@ -613,7 +621,9 @@ export function isDirectoryPhotoPath(path: string, orgId: string): boolean {
 
 /** A public photo URL the view can have produced for this listing. */
 export function isDirectoryPhotoUrl(url: string, slug: string): boolean {
-  return url === `/d/${slug}/photos/${url.split("/").at(-1)}` && /\/photos\/[0-9a-f]{16}$/.test(url);
+  return (
+    url === `/d/${slug}/photos/${url.split("/").at(-1)}` && /\/photos\/[0-9a-f]{16}$/.test(url)
+  );
 }
 
 /** The photo route's key: 16 hex characters, as the view makes it. */

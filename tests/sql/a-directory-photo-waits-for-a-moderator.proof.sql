@@ -336,6 +336,87 @@ RESET ROLE;
 SELECT set_config('request.jwt.claims', '{}', true);
 DO $$ BEGIN RAISE NOTICE 'ok: the bucket is private; a visitor and A''s office manager read none of its objects, A''s owner reads A''s four and B''s owner B''s one, the moderator reads all five; A''s owner cannot upload into B''s folder'; END $$;
 
+-- ── 5b. A file a photo row names is frozen; strays are capped ───────────────
+-- The swap: delete an APPROVED photo's file and upload other bytes under its
+-- name, leaving the row 'approved'. The Storage API sets
+-- storage.allow_delete_query for its own deletes; set here so the DELETE
+-- reaches the policy, as one through the API would. An RLS DELETE that the
+-- policy refuses deletes nothing (no error), as Storage's remove() returns
+-- an empty list; an INSERT it refuses raises 42501.
+CREATE FUNCTION pg_temp.object_exists(_name text) RETURNS boolean LANGUAGE sql SECURITY DEFINER AS $$
+  SELECT EXISTS (SELECT 1 FROM storage.objects WHERE bucket_id = 'directory-photos' AND name = _name);
+$$;
+GRANT EXECUTE ON FUNCTION pg_temp.object_exists(text) TO authenticated;
+CREATE FUNCTION pg_temp.drop_object(_name text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  PERFORM set_config('storage.allow_delete_query', 'true', true);
+  DELETE FROM storage.objects WHERE bucket_id = 'directory-photos' AND name = _name;
+END $$;
+SET LOCAL storage.allow_delete_query = 'true';
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.as_user('f8820000-0000-4000-8000-000000000a01');
+DO $$
+DECLARE _n int;
+BEGIN
+  -- An approved photo's file, and a pending one's: neither can be deleted.
+  DELETE FROM storage.objects WHERE bucket_id = 'directory-photos' AND name = pg_temp.p('aa', 2);
+  GET DIAGNOSTICS _n = ROW_COUNT;
+  IF _n <> 0 OR NOT pg_temp.object_exists(pg_temp.p('aa', 2)) THEN
+    RAISE EXCEPTION 'PROOF FAILED [freeze]: A''s owner deleted an approved photo''s file';
+  END IF;
+  DELETE FROM storage.objects WHERE bucket_id = 'directory-photos' AND name = pg_temp.p('aa', 4);
+  GET DIAGNOSTICS _n = ROW_COUNT;
+  IF _n <> 0 OR NOT pg_temp.object_exists(pg_temp.p('aa', 4)) THEN
+    RAISE EXCEPTION 'PROOF FAILED [freeze]: A''s owner deleted a pending photo''s file';
+  END IF;
+END $$;
+RESET ROLE;
+-- Suppose the file were gone anyway: nobody signed in may upload under the
+-- approved photo's name.
+SELECT pg_temp.drop_object(pg_temp.p('aa', 2));
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.as_user('f8820000-0000-4000-8000-000000000a01');
+SELECT pg_temp.refused('freeze: upload under an approved photo''s name',
+  format($q$INSERT INTO storage.objects (bucket_id, name) VALUES ('directory-photos', %L)$q$, pg_temp.p('aa', 2)), '42501');
+-- Strays: three files no row names are allowed, a fourth is not; deleting
+-- one makes room.
+INSERT INTO storage.objects (bucket_id, name)
+SELECT 'directory-photos', pg_temp.p('aa', n) FROM generate_series(40, 42) n;
+SELECT pg_temp.refused('cap: a fourth file with no row',
+  format($q$INSERT INTO storage.objects (bucket_id, name) VALUES ('directory-photos', %L)$q$, pg_temp.p('aa', 43)), '42501');
+DO $$
+DECLARE _n int;
+BEGIN
+  DELETE FROM storage.objects WHERE bucket_id = 'directory-photos' AND name = pg_temp.p('aa', 40);
+  GET DIAGNOSTICS _n = ROW_COUNT;
+  IF _n <> 1 THEN
+    RAISE EXCEPTION 'PROOF FAILED [cap]: A''s owner could not delete a file no row names';
+  END IF;
+END $$;
+INSERT INTO storage.objects (bucket_id, name) VALUES ('directory-photos', pg_temp.p('aa', 43));
+RESET ROLE;
+SELECT set_config('request.jwt.claims', '{}', true);
+INSERT INTO storage.objects (bucket_id, name) VALUES ('directory-photos', pg_temp.p('aa', 2));
+DO $$ BEGIN RAISE NOTICE 'ok: a file an approved or pending photo names cannot be deleted by its owner, and nothing can be uploaded under an approved photo''s name, so an approved photo cannot be swapped; at most three files with no row, and deleting one makes room'; END $$;
+
+-- The moderator flag alone is not enough: an owner who sets it and changes
+-- an approved photo's words still sends it back to pending.
+SAVEPOINT before_flag;
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.as_user('f8820000-0000-4000-8000-000000000a01');
+SET LOCAL app.directory_photo_moderator = '1';
+UPDATE public.directory_profile_photos SET alt = 'Clean back lawn, new words' WHERE alt = 'Clean back lawn';
+RESET ROLE;
+SELECT set_config('request.jwt.claims', '{}', true);
+DO $$
+BEGIN
+  IF (SELECT status FROM public.directory_profile_photos WHERE alt = 'Clean back lawn, new words') <> 'pending' THEN
+    RAISE EXCEPTION 'PROOF FAILED [flag]: an owner with the moderator flag set kept an approved photo approved under new words';
+  END IF;
+  RAISE NOTICE 'ok: an owner who sets the moderator flag is still not a moderator: new words send the photo back to pending';
+END $$;
+ROLLBACK TO SAVEPOINT before_flag;
+
 -- ── 6. The lookup serves only what the view shows ──────────────────────────
 SET LOCAL ROLE service_role;
 DO $$
@@ -400,8 +481,18 @@ SELECT pg_temp.refused('limit: a ninth',
             VALUES ('08820000-0000-4000-8000-0000000000aa', %L, 'Ninth', 10, now())$q$, pg_temp.p('aa', 10)), '23514');
 SELECT pg_temp.refused('limit: a rejected photo re-sent for review as the ninth',
   $q$UPDATE public.directory_profile_photos SET alt = 'Our van, new words' WHERE alt = 'Our van at the curb'$q$, '23514');
--- The owner removes the rejected one: still eight, still no room.
+-- The owner removes the rejected one: still eight, still no room. Row first;
+-- then its file is the owner's to delete.
 DELETE FROM public.directory_profile_photos WHERE alt = 'Our van at the curb';
+DO $$
+DECLARE _n int;
+BEGIN
+  DELETE FROM storage.objects WHERE bucket_id = 'directory-photos' AND name = pg_temp.p('aa', 3);
+  GET DIAGNOSTICS _n = ROW_COUNT;
+  IF _n <> 1 THEN
+    RAISE EXCEPTION 'PROOF FAILED [freeze]: with its row gone, the owner could not delete the file';
+  END IF;
+END $$;
 SELECT pg_temp.refused('limit: still eight after deleting a rejected one',
   format($q$INSERT INTO public.directory_profile_photos (organization_id, path, alt, position, rights_attested_at)
             VALUES ('08820000-0000-4000-8000-0000000000aa', %L, 'Ninth', 10, now())$q$, pg_temp.p('aa', 10)), '23514');
@@ -473,6 +564,59 @@ BEGIN
     RAISE EXCEPTION 'PROOF INCONCLUSIVE [mutation: pending]: without pending-on-insert, a self-approved photo still did not show';
   END IF;
   RAISE NOTICE 'ok: mutation reproduces: without pending-on-insert, an owner publishes their own photo';
+END $$;
+ROLLBACK TO SAVEPOINT before_mutation;
+
+SAVEPOINT before_mutation;
+DO $$
+DECLARE
+  _def text := pg_get_functiondef('public.can_use_directory_photo(text, text)'::regprocedure);
+  _freeze text := E'  IF EXISTS (SELECT 1 FROM public.directory_profile_photos ph WHERE ph.path = name) THEN\n    RETURN false;\n  END IF;\n';
+BEGIN
+  IF strpos(_def, _freeze) = 0 THEN
+    RAISE EXCEPTION 'PROOF INCONCLUSIVE [mutation]: the bucket check does not freeze a named file';
+  END IF;
+  EXECUTE replace(_def, _freeze, '');
+END $$;
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.as_user('f8820000-0000-4000-8000-000000000a01');
+DO $$
+DECLARE _n int;
+BEGIN
+  DELETE FROM storage.objects WHERE bucket_id = 'directory-photos' AND name = pg_temp.p('aa', 2);
+  GET DIAGNOSTICS _n = ROW_COUNT;
+  IF _n <> 1 THEN
+    RAISE EXCEPTION 'PROOF INCONCLUSIVE [mutation: freeze]: without the freeze the owner still could not delete an approved photo''s file';
+  END IF;
+  RAISE NOTICE 'ok: mutation reproduces: without the freeze, an owner deletes an approved photo''s file, ready to upload other bytes under its name';
+END $$;
+RESET ROLE;
+ROLLBACK TO SAVEPOINT before_mutation;
+SELECT set_config('request.jwt.claims', '{}', true);
+
+SAVEPOINT before_mutation;
+DO $$
+DECLARE
+  _def text := pg_get_functiondef('public.directory_profile_photos_guard()'::regprocedure);
+  _admin text := E'\n                        AND (auth.uid() IS NULL OR public.is_platform_admin(auth.uid()))';
+BEGIN
+  IF strpos(_def, _admin) = 0 THEN
+    RAISE EXCEPTION 'PROOF INCONCLUSIVE [mutation]: the guard does not ask for a platform admin';
+  END IF;
+  EXECUTE replace(_def, _admin, '');
+END $$;
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.as_user('f8820000-0000-4000-8000-000000000a01');
+SET LOCAL app.directory_photo_moderator = '1';
+UPDATE public.directory_profile_photos SET alt = 'Clean back lawn, flagged' WHERE alt = 'Clean back lawn';
+RESET ROLE;
+SELECT set_config('request.jwt.claims', '{}', true);
+DO $$
+BEGIN
+  IF (SELECT status FROM public.directory_profile_photos WHERE alt = 'Clean back lawn, flagged') <> 'approved' THEN
+    RAISE EXCEPTION 'PROOF INCONCLUSIVE [mutation: flag]: without the admin check the flag still did not keep it approved';
+  END IF;
+  RAISE NOTICE 'ok: mutation reproduces: trusting the flag alone, an owner keeps an approved photo approved under new words';
 END $$;
 ROLLBACK TO SAVEPOINT before_mutation;
 

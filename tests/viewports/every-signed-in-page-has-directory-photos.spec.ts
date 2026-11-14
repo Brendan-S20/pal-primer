@@ -246,6 +246,14 @@ for (const { w, h, label } of SIZES) {
       });
       await section.scrollIntoViewIfNeeded();
       await section.screenshot({ path: join(SHOTS, `settings-directory-photos-${w}.png`) });
+      // And the whole Directory listing page once, so the section is seen in
+      // its place on it.
+      if (w === 1280) {
+        await page.screenshot({
+          path: join(SHOTS, `settings-directory-page-${w}.png`),
+          fullPage: true,
+        });
+      }
     }
   });
 

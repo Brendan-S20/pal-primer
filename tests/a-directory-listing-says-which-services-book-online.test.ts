@@ -56,10 +56,7 @@ const ROOT = join(import.meta.dirname, "..");
 const STAMP = "20261112100000";
 const NAME = "a-directory-listing-says-which-services-book-online";
 const MIGRATION = join(ROOT, `supabase/migrations/${STAMP}_${NAME}.sql`);
-const PROOF = join(
-  ROOT,
-  "tests/sql/a-directory-listing-says-which-services-book-online.proof.sql",
-);
+const PROOF = join(ROOT, "tests/sql/a-directory-listing-says-which-services-book-online.proof.sql");
 const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 const codeOnly = (s: string) =>
   s
@@ -246,7 +243,10 @@ describe("the public contract", () => {
         "",
       )
       .replace("CASE WHEN p.show_logo THEN o.logo_url END AS logo_url", "")
-      .replace(/left\(md5\('directory-service:' \|\| ds\.service_id::text\), 12\) AS booking_key/, "")
+      .replace(
+        /left\(md5\('directory-service:' \|\| ds\.service_id::text\), 12\) AS booking_key/,
+        "",
+      )
       .replace(/WHEN sv\.id IS NULL/, "")
       .replace(/pk\.id IS NOT NULL/g, "");
     for (const forbidden of [
@@ -294,9 +294,7 @@ describe("the public contract", () => {
   it("is the list the proof expects, key for key", () => {
     const proof = readFileSync(PROOF, "utf8");
     const keys = /_keys IS DISTINCT FROM ARRAY\[([^\]]+)\]/.exec(proof)![1];
-    expect([...keys.matchAll(/'([a-z_]+)'/g)].map((m) => m[1])).toEqual(
-      [...STEP_7_FIELDS].sort(),
-    );
+    expect([...keys.matchAll(/'([a-z_]+)'/g)].map((m) => m[1])).toEqual([...STEP_7_FIELDS].sort());
     const svc = /_svc IS DISTINCT FROM ARRAY\[([^\]]+)\]/.exec(proof)![1];
     expect([...svc.matchAll(/'([a-z_]+)'/g)].map((m) => m[1])).toEqual(
       [...PUBLIC_SERVICE_FIELDS].sort(),
@@ -375,7 +373,11 @@ describe("the public contract", () => {
       expect(Object.keys(s).sort()).toEqual([...PUBLIC_SERVICE_FIELDS].sort());
     }
     expect(l.services.map((s) => s.booking_mode)).toEqual(["recurring", "package", "request_only"]);
-    expect(l.services[1].package).toEqual({ name: "Five lessons", sessions_count: 5, price_cents: 27500 });
+    expect(l.services[1].package).toEqual({
+      name: "Five lessons",
+      sessions_count: 5,
+      price_cents: 27500,
+    });
     expect(Object.keys(l.services[1].package!).sort()).toEqual([...PUBLIC_PACKAGE_FIELDS].sort());
     // A package is shown only for a package-mode service.
     expect(l.services[0].package).toBeNull();
@@ -391,7 +393,9 @@ describe("the public contract", () => {
       {
         slug: "old-row",
         display_name: "Old",
-        services: [{ label: "Walk", service_line: "dog_walking", price_from_cents: 1, price_unit: "visit" }],
+        services: [
+          { label: "Walk", service_line: "dog_walking", price_from_cents: 1, price_unit: "visit" },
+        ],
         service_lines: [],
         coverage_zips: [],
         coverage_cities: [],
@@ -400,7 +404,11 @@ describe("the public contract", () => {
         book_path: "/d/old-row/book",
       },
     ]);
-    expect(l.services[0]).toMatchObject({ booking_mode: "request_only", booking_key: "", package: null });
+    expect(l.services[0]).toMatchObject({
+      booking_mode: "request_only",
+      booking_key: "",
+      package: null,
+    });
     expect(l.books_online).toBe(false);
     expect(l.book_path).toBeNull();
     expect(l.booking_policy_text).toBeNull();
@@ -432,7 +440,9 @@ describe("the effective booking mode", () => {
     );
   });
   it("is request only while public signup is off", () => {
-    expect(directoryBookingMode({ ...on, publicSignupEnabled: false }, walk())).toBe("request_only");
+    expect(directoryBookingMode({ ...on, publicSignupEnabled: false }, walk())).toBe(
+      "request_only",
+    );
   });
   it("is request only while Stripe charges are off", () => {
     expect(directoryBookingMode({ ...on, chargesEnabled: false }, walk())).toBe("request_only");
@@ -451,13 +461,19 @@ describe("the effective booking mode", () => {
   });
   it("is request only for a package mode with no package that can be sold", () => {
     expect(directoryBookingMode(on, lesson({ pack: null }))).toBe("request_only");
-    expect(directoryBookingMode(on, lesson({ pack: { ...pack, active: false } }))).toBe("request_only");
-    expect(directoryBookingMode(on, lesson({ pack: { ...pack, price_cents: 0 } }))).toBe("request_only");
+    expect(directoryBookingMode(on, lesson({ pack: { ...pack, active: false } }))).toBe(
+      "request_only",
+    );
+    expect(directoryBookingMode(on, lesson({ pack: { ...pack, price_cents: 0 } }))).toBe(
+      "request_only",
+    );
     expect(directoryBookingMode(on, lesson({ pack: { ...pack, sessions_count: 0 } }))).toBe(
       "request_only",
     );
     // A groom is a day and a time on a van, never a package.
-    expect(directoryBookingMode(on, lesson({ service_line: "mobile_grooming" }))).toBe("request_only");
+    expect(directoryBookingMode(on, lesson({ service_line: "mobile_grooming" }))).toBe(
+      "request_only",
+    );
   });
   it("is request only for a service the booking link would not list", () => {
     expect(directoryBookingMode(on, walk({ active: false }))).toBe("request_only");
@@ -503,7 +519,10 @@ describe("the hand-off", () => {
   });
 
   it("answers an unpublished or unknown listing with a page, and a failed lookup with the quote form", () => {
-    expect(decideDirectoryBooking([], { slug: "gone" })).toEqual({ kind: "unavailable", back: null });
+    expect(decideDirectoryBooking([], { slug: "gone" })).toEqual({
+      kind: "unavailable",
+      back: null,
+    });
     expect(decideDirectoryBooking(null, { slug: "acme" })).toEqual({
       kind: "go",
       href: "/pros/acme/quote",
@@ -517,17 +536,23 @@ describe("the hand-off", () => {
   });
 
   it("takes a return URL only from the directory app's own origins", () => {
-    expect(directoryReturnUrl(`https://${DIRECTORY_BRAND}/acme`)).toBe(`https://${DIRECTORY_BRAND}/acme`);
-    expect(directoryReturnUrl(`https://www.${DIRECTORY_BRAND}/`)).toBe(`https://www.${DIRECTORY_BRAND}/`);
+    expect(directoryReturnUrl(`https://${DIRECTORY_BRAND}/acme`)).toBe(
+      `https://${DIRECTORY_BRAND}/acme`,
+    );
+    expect(directoryReturnUrl(`https://www.${DIRECTORY_BRAND}/`)).toBe(
+      `https://www.${DIRECTORY_BRAND}/`,
+    );
     expect(directoryReturnUrl(`http://${DIRECTORY_BRAND}/`)).toBeNull();
     expect(directoryReturnUrl(`https://${DIRECTORY_BRAND}.evil.example/`)).toBeNull();
     expect(directoryReturnUrl("https://evil.example/")).toBeNull();
     expect(directoryReturnUrl("javascript:alert(1)")).toBeNull();
     expect(directoryReturnUrl(42)).toBeNull();
-    expect(decideDirectoryBooking([], { slug: "gone", returnTo: "https://evil.example/" })).toEqual({
-      kind: "unavailable",
-      back: null,
-    });
+    expect(decideDirectoryBooking([], { slug: "gone", returnTo: "https://evil.example/" })).toEqual(
+      {
+        kind: "unavailable",
+        back: null,
+      },
+    );
   });
 
   it("is read back by the booking link: quote only unless book=1, and only for the directory's ref", () => {
@@ -562,7 +587,8 @@ describe("the hand-off", () => {
     expect(STAYS_IN_BROWSER["/d"]).toBeTruthy();
     expect(appLinkClaims("/d/acme/book")).toBe(false);
     // It makes no charge: nothing in the hand-off talks to Stripe.
-    const noComments = (t: string) => t.replace(/^\s*\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    const noComments = (t: string) =>
+      t.replace(/^\s*\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
     for (const f of ["src/routes/d.$slug.book.tsx", "src/lib/directory-booking.functions.ts"]) {
       expect(noComments(read(f)), f).not.toMatch(/stripe|paymentIntent|createSignupPaymentIntent/i);
     }
@@ -585,7 +611,11 @@ describe("the attribution", () => {
     expect(leadOriginLabel("directory_booking", { status: "provisioned", refunded_at: null })).toBe(
       "Directory booking, started service",
     );
-    for (const s of [null, { status: "failed", refunded_at: null }, { status: "provisioned", refunded_at: "x" }]) {
+    for (const s of [
+      null,
+      { status: "failed", refunded_at: null },
+      { status: "provisioned", refunded_at: "x" },
+    ]) {
       expect(leadOriginLabel("directory_booking", s)).toMatch(/^Directory booking/);
       expect(leadOriginLabel("directory_booking", s)).not.toMatch(/—|–/);
     }
@@ -702,7 +732,9 @@ describe("Settings → Directory listing", () => {
     ).toThrow(/400/);
     const fn = read("src/lib/directory.functions.ts");
     const save = fn.split("export const saveMyDirectoryProfile")[1];
-    expect(save.indexOf('if (role !== "owner")')).toBeLessThan(save.indexOf('rpc("set_directory_booking"'));
+    expect(save.indexOf('if (role !== "owner")')).toBeLessThan(
+      save.indexOf('rpc("set_directory_booking"'),
+    );
   });
 });
 
@@ -738,20 +770,23 @@ if (!reachable) {
   );
 }
 
-describe.skipIf(!reachable)("a directory listing says which services book online, in a real database", () => {
-  it("has the files it runs", () => {
-    expect(existsSync(MIGRATION)).toBe(true);
-    expect(existsSync(PROOF)).toBe(true);
-  });
-
-  it("off by default, owner-only writes, the effective mode on every gate, anon through the view only, the hand-off agrees, and both mutations reproduce", () => {
-    const r = spawnSync(psql!, [DB_URL, "-X", "-v", `migration=${MIGRATION}`, "-f", PROOF], {
-      encoding: "utf8",
-      timeout: 300_000,
+describe.skipIf(!reachable)(
+  "a directory listing says which services book online, in a real database",
+  () => {
+    it("has the files it runs", () => {
+      expect(existsSync(MIGRATION)).toBe(true);
+      expect(existsSync(PROOF)).toBe(true);
     });
-    const out = `${r.stdout}\n${r.stderr}`;
-    expect(r.status, out).toBe(0);
-    expect(out).not.toMatch(/PROOF FAILED|PROOF INCONCLUSIVE/);
-    expect(out).toMatch(/ALL DIRECTORY BOOKING PROOFS PASSED/);
-  });
-});
+
+    it("off by default, owner-only writes, the effective mode on every gate, anon through the view only, the hand-off agrees, and both mutations reproduce", () => {
+      const r = spawnSync(psql!, [DB_URL, "-X", "-v", `migration=${MIGRATION}`, "-f", PROOF], {
+        encoding: "utf8",
+        timeout: 300_000,
+      });
+      const out = `${r.stdout}\n${r.stderr}`;
+      expect(r.status, out).toBe(0);
+      expect(out).not.toMatch(/PROOF FAILED|PROOF INCONCLUSIVE/);
+      expect(out).toMatch(/ALL DIRECTORY BOOKING PROOFS PASSED/);
+    });
+  },
+);

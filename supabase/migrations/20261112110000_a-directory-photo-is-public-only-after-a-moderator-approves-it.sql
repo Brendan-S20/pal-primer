@@ -18,9 +18,11 @@
 --     JPEG / PNG / WebP. Objects live at {organization id}/{uuid}.{ext}.
 --     Storage policies: a business's OWNER may upload into, read and delete
 --     from its own folder; a platform admin may read (to moderate). No
---     policy names anon, and nobody may overwrite an object, so a pending or
---     rejected photo cannot be fetched by a visitor and an approved one
---     cannot be swapped for something else after it was approved.
+--     policy names anon, and nobody may overwrite an object. A file that a
+--     photo row names cannot be deleted or uploaded over at all (the row
+--     goes first), so a pending or rejected photo cannot be fetched by a
+--     visitor and an approved one cannot be swapped after approval. At most
+--     3 files per folder may wait for their row.
 --   * directory_profile_photos(id, organization_id, path, alt, position,
 --     rights_attested_at, status, moderated_by, moderated_at, created_at,
 --     updated_at). RLS on, two-step sign-in (require_mfa_policy), no grant
@@ -70,6 +72,42 @@
 -- base tables stay REVOKE ALL from anon; anon reads only the view. noindex is
 -- untouched. No credit line is stored or shown: the table has no source,
 -- photographer or licence column, and the view has none either.
+--
+-- WHEN A BUSINESS IS DELETED. directory_profile_photos rows go with the
+-- organization (ON DELETE CASCADE); the FILES do not, since a row delete
+-- cannot reach Storage. The account-deletion job removes them:
+-- src/lib/account-deletion.server.ts lists directory-photos in
+-- ORG_STORAGE_BUCKETS and removes every object under {organization id}/
+-- with the service role (which the freeze below does not bind). A business
+-- removed any other way: list and remove its folder through the Storage
+-- API as the service role, `storage.from('directory-photos').list(orgId)`
+-- then `.remove(paths)`; never DELETE FROM storage.objects, which leaves
+-- the files behind.
+--
+-- ROLLBACK, if this file must be undone (in this order, one transaction;
+-- remove the bucket's files through the Storage API first, as above, for
+-- every folder in it):
+--   1. CREATE OR REPLACE cannot drop a column, so put the view back by
+--      dropping it and re-running 20261112100000's section 3 (its CREATE OR
+--      REPLACE VIEW, COMMENT, REVOKE and GRANTs) and section 4 (it
+--      recreates directory_booking_handoff, which reads the view):
+--        DROP FUNCTION IF EXISTS public.directory_photo_object(text, text);
+--        DROP VIEW public.directory_public_listings;
+--        -- then 20261112100000 sections 3 and 4, verbatim
+--   2. DROP FUNCTION IF EXISTS public.moderate_directory_photo(uuid, boolean);
+--      DROP FUNCTION IF EXISTS public.directory_photo_queue(text);
+--   3. DROP POLICY IF EXISTS "directory photos read" ON storage.objects;
+--      DROP POLICY IF EXISTS "directory photos upload" ON storage.objects;
+--      DROP POLICY IF EXISTS "directory photos delete" ON storage.objects;
+--      DROP FUNCTION IF EXISTS public.can_use_directory_photo(text, text);
+--   4. DROP TABLE IF EXISTS public.directory_profile_photos;  -- its policies,
+--      trigger and indexes go with it
+--      DROP FUNCTION IF EXISTS public.directory_profile_photos_guard();
+--   5. DELETE FROM storage.buckets WHERE id = 'directory-photos';  -- only
+--      once the bucket is empty
+-- The app reads a database without this file as "photos not available"
+-- (getMyDirectoryPhotos) and a listing row without photos as none
+-- (toDirectoryListings), so the code can stay deployed through a rollback.
 --
 -- Replays into an empty database: a bucket row, a table, functions, a
 -- trigger, policies, a view and grants, then assertions about what this file
@@ -130,7 +168,11 @@ CREATE OR REPLACE FUNCTION public.directory_profile_photos_guard()
  SET search_path TO 'public', 'pg_temp'
 AS $fn$
 DECLARE
-  _moderator boolean := COALESCE(current_setting('app.directory_photo_moderator', true), '') = '1';
+  -- The flag is set only inside moderate_directory_photo. Not trusted alone:
+  -- the caller must also be a platform admin, or the service role / table
+  -- owner (no auth.uid()).
+  _moderator boolean := COALESCE(current_setting('app.directory_photo_moderator', true), '') = '1'
+                        AND (auth.uid() IS NULL OR public.is_platform_admin(auth.uid()));
   _n integer;
 BEGIN
   IF TG_OP = 'INSERT' THEN
@@ -221,7 +263,21 @@ CREATE POLICY "directory photos owner delete" ON public.directory_profile_photos
 -- ── 5. Storage policies for the bucket ──────────────────────────────────────
 -- The object name has to be {organization id}/{uuid}.{ext}; the caller has to
 -- be that business's owner (or, to read, a platform admin).
-CREATE OR REPLACE FUNCTION public.can_use_directory_photo(name text, write boolean)
+--
+-- A file a photo row names is FROZEN: nobody signed in may delete it or
+-- upload under its name, whatever the row's status. Without this the owner
+-- could remove an approved photo's file and upload other bytes under the same
+-- name, and the row, still 'approved', would publish them unreviewed. The
+-- owner removes a photo by deleting its ROW first (removeMyDirectoryPhoto),
+-- after which the file is theirs to delete.
+--
+-- Uploads ahead of their row are capped: at most 3 files in a business's
+-- folder that no row names. The app uploads the file and then writes the
+-- row, and removes the file if the row is refused, so a stray file comes
+-- only from a closed tab or a direct call; getMyDirectoryPhotos sweeps the
+-- owner's strays older than ten minutes. Storage stays bounded by the rows
+-- (8 counted, plus moderated rejections) and 3.
+CREATE OR REPLACE FUNCTION public.can_use_directory_photo(name text, action text)
  RETURNS boolean
  LANGUAGE plpgsql
  STABLE
@@ -232,30 +288,46 @@ DECLARE
   _parts text[] := string_to_array(name, '/');
   _org uuid;
 BEGIN
-  IF auth.uid() IS NULL OR COALESCE(array_length(_parts, 1), 0) <> 2
+  IF auth.uid() IS NULL OR action IS NULL OR action NOT IN ('read', 'upload', 'delete')
+    OR COALESCE(array_length(_parts, 1), 0) <> 2
     OR _parts[1] !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
     OR _parts[2] !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|png|webp)$'
   THEN RETURN false; END IF;
   _org := _parts[1]::uuid;
-  IF public.has_role(auth.uid(), _org, 'owner'::public.app_role) THEN RETURN true; END IF;
-  RETURN NOT write AND public.is_platform_admin(auth.uid());
+  IF action = 'read' THEN
+    RETURN public.has_role(auth.uid(), _org, 'owner'::public.app_role)
+        OR public.is_platform_admin(auth.uid());
+  END IF;
+  IF NOT public.has_role(auth.uid(), _org, 'owner'::public.app_role) THEN RETURN false; END IF;
+  -- A file a photo row names is frozen.
+  IF EXISTS (SELECT 1 FROM public.directory_profile_photos ph WHERE ph.path = name) THEN
+    RETURN false;
+  END IF;
+  IF action = 'upload' THEN
+    -- At most 3 files in the folder that no row names.
+    RETURN (SELECT count(*) FROM storage.objects o
+             WHERE o.bucket_id = 'directory-photos'
+               AND o.name LIKE _org::text || '/%'
+               AND NOT EXISTS (SELECT 1 FROM public.directory_profile_photos ph WHERE ph.path = o.name)) < 3;
+  END IF;
+  RETURN true;
 END
 $fn$;
 
-REVOKE ALL ON FUNCTION public.can_use_directory_photo(text, boolean) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.can_use_directory_photo(text, boolean) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.can_use_directory_photo(text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.can_use_directory_photo(text, text) TO authenticated, service_role;
 
 DROP POLICY IF EXISTS "directory photos read" ON storage.objects;
 CREATE POLICY "directory photos read" ON storage.objects FOR SELECT TO authenticated
-  USING (bucket_id = 'directory-photos' AND public.can_use_directory_photo(name, false));
+  USING (bucket_id = 'directory-photos' AND public.can_use_directory_photo(name, 'read'));
 DROP POLICY IF EXISTS "directory photos upload" ON storage.objects;
 CREATE POLICY "directory photos upload" ON storage.objects FOR INSERT TO authenticated
-  WITH CHECK (bucket_id = 'directory-photos' AND public.can_use_directory_photo(name, true));
+  WITH CHECK (bucket_id = 'directory-photos' AND public.can_use_directory_photo(name, 'upload'));
 DROP POLICY IF EXISTS "directory photos delete" ON storage.objects;
 CREATE POLICY "directory photos delete" ON storage.objects FOR DELETE TO authenticated
-  USING (bucket_id = 'directory-photos' AND public.can_use_directory_photo(name, true));
--- No UPDATE policy: an object is never overwritten, so what a moderator
--- approved is what a visitor sees.
+  USING (bucket_id = 'directory-photos' AND public.can_use_directory_photo(name, 'delete'));
+-- No UPDATE policy, and the freeze above: what a moderator approved is what
+-- a visitor sees, until the owner deletes the photo itself.
 
 -- ── 6. The moderator's queue ────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.directory_photo_queue(_status text DEFAULT 'pending')
@@ -553,7 +625,7 @@ BEGIN
       RAISE EXCEPTION '% is callable by a client role', _fn;
     END IF;
   END LOOP;
-  IF has_function_privilege('anon', 'public.can_use_directory_photo(text, boolean)', 'EXECUTE') THEN
+  IF has_function_privilege('anon', 'public.can_use_directory_photo(text, text)', 'EXECUTE') THEN
     RAISE EXCEPTION 'anon can execute can_use_directory_photo';
   END IF;
 

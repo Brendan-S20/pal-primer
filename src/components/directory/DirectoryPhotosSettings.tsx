@@ -21,7 +21,6 @@ import {
   directoryPhotoPath,
   photoAltProblem,
   photoFileProblem,
-  type DirectoryPhotoType,
 } from "@/lib/directory";
 import {
   addMyDirectoryPhoto,
@@ -123,7 +122,7 @@ export function DirectoryPhotosSettings({ disabled }: { disabled: boolean }) {
       ) : (
         <>
           {photos.length ? (
-            <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-4">
               {photos.map((p, i) => (
                 <PhotoCard
                   key={p.id}
@@ -211,7 +210,9 @@ function PhotoCard({
           />
         ) : null}
       </div>
-      <Badge variant={STATUS_TONE[p.status]}>{DIRECTORY_PHOTO_STATUS_LABEL[p.status]}</Badge>
+      <Badge variant={STATUS_TONE[p.status]} className="w-fit max-w-full">
+        {DIRECTORY_PHOTO_STATUS_LABEL[p.status]}
+      </Badge>
       <div className="space-y-1.5">
         <Label htmlFor={`${id}-alt`}>Description</Label>
         <Input
@@ -304,15 +305,14 @@ function AddPhoto({
     mutationFn: async () => {
       if (!file || !folder) throw new Error("Choose a photo first.");
       if (!attested) throw new Error(`Tick "${DIRECTORY_PHOTO_ATTESTATION}" first.`);
-      const { compressImage } = await import("@/lib/offline/compressImage");
-      const out = await compressImage(file);
-      const type = (out.contentType in DIRECTORY_PHOTO_TYPES ? out.contentType : "") as
-        DirectoryPhotoType | "";
-      if (!type) throw new Error("Use a JPEG, PNG or WebP photo.");
-      const path = directoryPhotoPath(folder, crypto.randomUUID(), type);
+      // Always redrawn, whatever its size: the upload carries pixels only,
+      // never the file's EXIF or GPS.
+      const { reencodeDirectoryPhoto } = await import("@/lib/directory-photo-reencode");
+      const clean = await reencodeDirectoryPhoto(file);
+      const path = directoryPhotoPath(folder, crypto.randomUUID(), "image/jpeg");
       const { error } = await supabase.storage
         .from(DIRECTORY_PHOTO_BUCKET)
-        .upload(path, out.file, { contentType: type, upsert: false });
+        .upload(path, clean, { contentType: "image/jpeg", upsert: false });
       if (error) throw new Error(error.message);
       try {
         await onAdd({

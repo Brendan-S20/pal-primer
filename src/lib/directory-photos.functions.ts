@@ -22,9 +22,10 @@
 // No credit line, photographer, source or licence is read, stored or
 // returned anywhere in this file.
 
-// The Supabase clients here are untyped on purpose: supabase/types.ts does not
-// know the directory tables and is not edited here, as in
-// directory.functions.ts; the shapes are pinned in lib/directory.ts.
+// The Supabase clients here are the untyped SupabaseClient on purpose:
+// supabase/types.ts does not know the directory tables and is not edited
+// here, as in directory.functions.ts; the shapes are pinned in lib/directory.ts.
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -40,6 +41,10 @@ import {
   type DirectoryPhotoStatus,
 } from "@/lib/directory";
 import { assertModerator } from "@/lib/directory-reviews.functions";
+import { stripImageMetadata } from "@/lib/image-metadata";
+
+/** The request's own client, untyped (see the note above). */
+const db = (supabase: unknown) => supabase as SupabaseClient;
 
 export const ONLY_AN_OWNER_CHANGES_PHOTOS = "Only an owner can change the directory photos.";
 
@@ -94,7 +99,7 @@ async function caller(supabase: unknown, userId: string) {
 /** How long a preview link lives. Long enough to look, short enough to rot. */
 const PREVIEW_SECONDS = 600;
 
-async function sign(sb: any, paths: string[]): Promise<Map<string, string>> {
+async function sign(sb: SupabaseClient, paths: string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   if (!paths.length) return out;
   const { data, error } = await sb.storage
@@ -107,12 +112,35 @@ async function sign(sb: any, paths: string[]): Promise<Map<string, string>> {
   return out;
 }
 
+/** A file older than this that no row names is a stray: an upload whose
+ *  row was never written (a closed tab, a refused insert whose clean-up
+ *  failed). The bucket lets an owner hold at most 3 at once. */
+export const STRAY_UPLOAD_MINUTES = 10;
+
+/** Remove the owner's strays, on the owner's own client. Best effort: the
+ *  bucket's own cap is what bounds them; this frees the room again. */
+async function sweepStrayUploads(sb: SupabaseClient, orgId: string, named: string[]) {
+  const { data, error } = await sb.storage
+    .from(DIRECTORY_PHOTO_BUCKET)
+    .list(orgId, { limit: 100, sortBy: { column: "created_at", order: "asc" } });
+  if (error || !data) return;
+  const cutoff = Date.now() - STRAY_UPLOAD_MINUTES * 60_000;
+  const keep = new Set(named);
+  const strays = data
+    .filter((o) => o.id && o.created_at && Date.parse(o.created_at) < cutoff)
+    .map((o) => `${orgId}/${o.name}`)
+    .filter((path) => !keep.has(path));
+  if (!strays.length) return;
+  const { error: rmErr } = await sb.storage.from(DIRECTORY_PHOTO_BUCKET).remove(strays);
+  if (rmErr) console.error("directory photo strays not removed", orgId, rmErr);
+}
+
 export const getMyDirectoryPhotos = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<MyDirectoryPhotos> => {
     const { orgId, role } = await caller(context.supabase, context.userId);
     if (role !== "owner") return { canEdit: false, folder: null, photos: [], available: true };
-    const sb = context.supabase as any;
+    const sb = db(context.supabase);
     const { data, error } = await sb
       .from("directory_profile_photos")
       .select("id, path, alt, position, status, moderated_at")
@@ -131,6 +159,11 @@ export const getMyDirectoryPhotos = createServerFn({ method: "GET" })
       status: DirectoryPhotoStatus;
       moderated_at: string | null;
     }>;
+    await sweepStrayUploads(
+      sb,
+      orgId,
+      rows.map((r) => r.path),
+    );
     const signed = await sign(
       sb,
       rows.map((r) => r.path),
@@ -183,7 +216,7 @@ export const addMyDirectoryPhoto = createServerFn({ method: "POST" })
     if (role !== "owner") throw new Error(ONLY_AN_OWNER_CHANGES_PHOTOS);
     if (!isDirectoryPhotoPath(data.path, orgId))
       throw new Error("That upload is not in your folder.");
-    const { data: row, error } = await (context.supabase as any)
+    const { data: row, error } = await db(context.supabase)
       .from("directory_profile_photos")
       .insert({
         organization_id: orgId,
@@ -220,7 +253,7 @@ export const updateMyDirectoryPhoto = createServerFn({ method: "POST" })
     if (role !== "owner") throw new Error(ONLY_AN_OWNER_CHANGES_PHOTOS);
     // Only alt and position: the client role holds UPDATE on nothing else.
     // A new alt sends the photo back for review (the database does that).
-    const { error } = await (context.supabase as any)
+    const { error } = await db(context.supabase)
       .from("directory_profile_photos")
       .update({ alt: data.alt, position: data.position })
       .eq("id", data.id)
@@ -239,7 +272,7 @@ export const removeMyDirectoryPhoto = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { orgId, role } = await caller(context.supabase, context.userId);
     if (role !== "owner") throw new Error(ONLY_AN_OWNER_CHANGES_PHOTOS);
-    const sb = context.supabase as any;
+    const sb = db(context.supabase);
     const { data: rows, error } = await sb
       .from("directory_profile_photos")
       .delete()
@@ -248,9 +281,11 @@ export const removeMyDirectoryPhoto = createServerFn({ method: "POST" })
       .select("path");
     if (error) throw new Error(error.message);
     const paths = ((rows ?? []) as Array<{ path: string }>).map((r) => r.path);
-    // The file goes too, on the owner's own client (the bucket's delete
-    // policy is owner-only). A file left behind is unreachable: no row names
-    // it, so neither the listing nor the photo route can serve it.
+    // The row first, then the file: while a row names a file the bucket
+    // refuses to delete it (or upload over it), so an approved photo cannot
+    // be swapped. With the row gone the file is the owner's to delete, on
+    // their own client. A file left behind is unreachable (no row names it)
+    // and the next sweep removes it.
     if (paths.length) {
       const { error: rmErr } = await sb.storage.from(DIRECTORY_PHOTO_BUCKET).remove(paths);
       if (rmErr) console.error("directory photo file not removed", orgId, rmErr);
@@ -267,7 +302,7 @@ export const listDirectoryPhotoQueue = createServerFn({ method: "GET" })
   )
   .handler(async ({ data, context }) => {
     await assertModerator(context.supabase, context.userId);
-    const sb = context.supabase as any;
+    const sb = db(context.supabase);
     const { data: rows, error } = await sb.rpc("directory_photo_queue", { _status: data.status });
     if (error) throw new Error(error.message);
     const list = (rows ?? []) as Array<Omit<QueuedDirectoryPhoto, "imageUrl"> & { path: string }>;
@@ -290,7 +325,7 @@ export const moderateDirectoryPhoto = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ id: z.string().uuid(), approve: z.boolean() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertModerator(context.supabase, context.userId);
-    const { error } = await (context.supabase as any).rpc("moderate_directory_photo", {
+    const { error } = await db(context.supabase).rpc("moderate_directory_photo", {
       _id: data.id,
       _approve: data.approve,
     });
@@ -307,7 +342,7 @@ export const PUBLIC_PHOTO_MAX_AGE = 300;
 
 /**
  * GET /d/{slug}/photos/{key}: the bytes of an APPROVED photo of a published
- * listing of a live business, or 404. The lookup (directory_photo_object,
+ * listing of a live business, with its metadata stripped, or 404. The lookup (directory_photo_object,
  * service role only) reads directory_public_listings, so this serves exactly
  * what the listing shows. The storage path never leaves the server: no
  * redirect, no signed URL, just the image.
@@ -325,7 +360,7 @@ export async function servePublicDirectoryPhoto(
     });
   if (!isDirectorySlug(slug) || !isDirectoryPhotoKey(key)) return notFound();
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const admin = supabaseAdmin as any;
+  const admin = db(supabaseAdmin);
   const { data: rows, error } = await admin.rpc("directory_photo_object", {
     _slug: slug,
     _key: key,
@@ -345,7 +380,14 @@ export async function servePublicDirectoryPhoto(
   }
   const ext = path.split(".").at(-1);
   const type = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
-  return new Response(blob as Blob, {
+  // No EXIF, GPS, XMP or text chunks reach a visitor, whatever was uploaded.
+  // Bytes that cannot be parsed are not served at all.
+  const clean = stripImageMetadata(new Uint8Array(await blob.arrayBuffer()), type);
+  if (!clean) {
+    console.error("directory photo could not be cleaned", slug);
+    return notFound();
+  }
+  return new Response(clean, {
     status: 200,
     headers: {
       "Content-Type": type,

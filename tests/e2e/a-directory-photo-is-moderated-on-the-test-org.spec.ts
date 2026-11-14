@@ -154,6 +154,8 @@ test("a directory photo is public only after a moderator approves it, on the tes
     });
     expect(first![0].rights_attested_at).toBeTruthy();
     expect(String(first![0].path).startsWith(`${orgId}/`)).toBe(true);
+    // Whatever was chosen, what went up is a JPEG redrawn in the browser.
+    expect(String(first![0].path).endsWith(".jpg")).toBe(true);
 
     // Three more on the owner's own client, and one with no attestation.
     const more: Array<[string, [number, number, number]]> = [
@@ -261,10 +263,40 @@ test("a directory photo is public only after a moderator approves it, on the tes
     for (const p of row.photos) {
       const res = await request.get(p.url);
       expect(res.status(), p.alt).toBe(200);
-      expect(res.headers()["content-type"]).toBe("image/png");
       expect(res.headers()["location"]).toBeUndefined();
-      expect((await res.body()).subarray(1, 4).toString()).toBe("PNG");
+      const bytes = await res.body();
+      if (p.alt === "Gate latched after a visit (TEST)") {
+        // Uploaded through Settings: redrawn in the browser as a JPEG, so
+        // nothing but pixels went up, and nothing but pixels comes back.
+        expect(res.headers()["content-type"]).toBe("image/jpeg");
+        expect([bytes[0], bytes[1]]).toEqual([0xff, 0xd8]);
+        expect(bytes.includes(Buffer.from("Exif"))).toBe(false);
+      } else {
+        expect(res.headers()["content-type"]).toBe("image/png");
+        expect(bytes.subarray(1, 4).toString()).toBe("PNG");
+      }
     }
+    // The swap the review of 04649ef4 found: delete an approved photo's file
+    // and upload other bytes under its name. Through the real Storage API,
+    // the delete removes nothing and the upload is refused; the photo still
+    // serves its approved bytes.
+    const { data: approvedRow } = await db
+      .from("directory_profile_photos")
+      .select("path")
+      .eq("id", id("Clean back lawn (TEST)"))
+      .single();
+    const approvedPath = approvedRow!.path as string;
+    const served = async () =>
+      Buffer.from(await (await request.get(row.photos[1].url)).body()).toString("hex");
+    const before = await served();
+    const { data: removed } = await owner.storage.from(BUCKET).remove([approvedPath]);
+    expect(removed ?? [], "an approved photo's file cannot be deleted").toEqual([]);
+    const { error: swapErr } = await owner.storage
+      .from(BUCKET)
+      .upload(approvedPath, png([255, 0, 0]), { contentType: "image/png", upsert: true });
+    expect(swapErr, "nothing can be uploaded over an approved photo").not.toBeNull();
+    expect(await served()).toBe(before);
+
     const pending = await request.get(
       `/d/${SLUG}/photos/${keyOf(id("Bagged waste by the bin (TEST)"))}`,
     );

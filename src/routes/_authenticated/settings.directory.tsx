@@ -559,7 +559,10 @@ function BookOnline({
       ) : null}
       <ul className="space-y-1" aria-label="What Book online also needs">
         {needs.map((n) => (
-          <li key={n.label} className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+          <li
+            key={n.label}
+            className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 text-sm"
+          >
             <span className="flex min-w-0 flex-1 basis-56 items-center gap-2">
               {n.done ? (
                 <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
