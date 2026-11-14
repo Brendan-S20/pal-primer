@@ -77,3 +77,63 @@ for (const size of SIZES) {
     }
   });
 }
+
+/**
+ * #813 again, at the size it was last seen: 375×667 (iPhone SE), touch on,
+ * in the Apple pass of run 42941238203. That failure, like the two before it,
+ * was not a missed click: the page's main thread stopped answering just after
+ * the sheet opened. Caught locally on 2026-11-12 under gdb, the frozen
+ * renderer's main thread was parked in Chromium's `cc::CompletionEvent::Wait`
+ * (a wait on the compositor), with the compositor and raster threads idle and
+ * `Runtime.terminateExecution` unable to free it, so no page script was
+ * running. See the PR for #813 for what was tried.
+ *
+ * Opening is not the only half a tech does, so each run here opens, closes by
+ * Escape, opens again and closes with the X, twenty fresh pages in a row. One
+ * failure fails the step. No retry, no wait added, no timeout raised: the 10s
+ * on each assertion is the one the sweep already uses for this sheet.
+ */
+const SE = { w: 375, h: 667, label: "375×667 · iPhone SE (2nd/3rd)" } as const;
+
+test.describe(`${SE.label}, opened and closed`, () => {
+  test.use({ hasTouch: true });
+
+  for (let run = 1; run <= RUNS; run++) {
+    test(`the Log an expense sheet opens and closes at ${SE.w}px, run ${run} of ${RUNS}`, async ({
+      page,
+      context,
+    }) => {
+      expect(
+        surface,
+        "the /my-day · log an expense surface is gone from fixtures/surfaces.ts",
+      ).toBeTruthy();
+      const s = surface!;
+      await installSignedInSession(context, s.prefs);
+      await installStubBackend(context);
+
+      await page.setViewportSize({ width: SE.w, height: SE.h });
+      await page.goto(s.path);
+      await settle(page, s, SE.label);
+
+      const sheet = s.opened!(page).first();
+      const card = page.locator("ol > li").first();
+
+      await s.open!(page);
+      await expect(sheet, `run ${run}: the sheet never opened`).toBeVisible({ timeout: 10_000 });
+      await page.keyboard.press("Escape");
+      await expect(sheet, `run ${run}: Escape did not close the sheet`).toBeHidden({
+        timeout: 10_000,
+      });
+
+      // More options is still open on the card, so the button is one tap away.
+      await card.getByRole("button", { name: "Log an expense" }).click();
+      await expect(sheet, `run ${run}: the sheet did not open a second time`).toBeVisible({
+        timeout: 10_000,
+      });
+      await sheet.getByRole("button", { name: "Close" }).click();
+      await expect(sheet, `run ${run}: the X did not close the sheet`).toBeHidden({
+        timeout: 10_000,
+      });
+    });
+  }
+});
