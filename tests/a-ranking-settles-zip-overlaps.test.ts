@@ -112,7 +112,12 @@ describe("the rank is the priority", () => {
     ]);
     const tied = [zone(C, "c", 0, []), zone(A, "a", 0, []), zone(B, "b", 0, [])];
     expect(rankedZones(tied).map((z) => z.id)).toEqual([A, B, C]);
-    expect(matchZone(tied.map((z) => ({ ...z, zip_codes: ["48226"] })), { postalCode: "48226" })?.id).toBe(A);
+    expect(
+      matchZone(
+        tied.map((z) => ({ ...z, zip_codes: ["48226"] })),
+        { postalCode: "48226" },
+      )?.id,
+    ).toBe(A);
   });
 
   it("an order writes N down to 1", () => {
@@ -269,7 +274,10 @@ function fakeDb(zones: Array<Record<string, any>>) {
       const ids: string[] = args._ids;
       const mine = rows.filter((r) => r.organization_id === args._org_id);
       if (ids.length !== mine.length || ids.some((id) => !mine.some((r) => r.id === id))) {
-        return { data: null, error: { message: "reorder_zones: the list is not this business's areas" } };
+        return {
+          data: null,
+          error: { message: "reorder_zones: the list is not this business's areas" },
+        };
       }
       ids.forEach((id, i) => {
         rows.find((r) => r.id === id)!.priority = ids.length - i;
@@ -324,7 +332,11 @@ beforeEach(() => {
 
 describe("reorderZones", () => {
   it("writes the business's areas N down to 1 in the order sent, in one statement, and re-detects", async () => {
-    state.db = fakeDb([dbZone(A, "Downtown", 3), dbZone(B, "Midtown", 2), dbZone(C, "Riverfront", 1)]);
+    state.db = fakeDb([
+      dbZone(A, "Downtown", 3),
+      dbZone(B, "Midtown", 2),
+      dbZone(C, "Riverfront", 1),
+    ]);
     const { reorderZones } = await import("@/lib/zones.functions");
     const out = await reorderZones({ data: { ids: [C, A, B] } } as any);
     expect(state.permissionsAsked).toContain("manage_pricing");
@@ -347,14 +359,16 @@ describe("reorderZones", () => {
   it("an id that is not the business's is refused, and nothing is written", async () => {
     state.db = fakeDb([dbZone(A, "Downtown", 3)]);
     const { reorderZones } = await import("@/lib/zones.functions");
-    await expect(reorderZones({ data: { ids: [A, B] } } as any)).rejects.toThrow(
-      "Zone not found.",
-    );
+    await expect(reorderZones({ data: { ids: [A, B] } } as any)).rejects.toThrow("Zone not found.");
     expect(state.db.rpcCalls).toHaveLength(0);
   });
 
   it("an area left out of the order is put after the ones sent; an order already in place writes nothing", async () => {
-    state.db = fakeDb([dbZone(A, "Downtown", 3), dbZone(B, "Midtown", 2), dbZone(C, "Riverfront", 1)]);
+    state.db = fakeDb([
+      dbZone(A, "Downtown", 3),
+      dbZone(B, "Midtown", 2),
+      dbZone(C, "Riverfront", 1),
+    ]);
     const { reorderZones } = await import("@/lib/zones.functions");
     const out = await reorderZones({ data: { ids: [B] } } as any);
     expect(out.order).toEqual([B, A, C]);
@@ -443,7 +457,9 @@ describe("the migration that ranks existing areas newest first", () => {
     expect(fn).toMatch(/SECURITY INVOKER/);
     expect(fn).not.toMatch(/SECURITY DEFINER/);
     // One UPDATE over the list, not a loop.
-    expect(code.match(/UPDATE public\.zones z\s+SET priority = cardinality\(_ids\)/g)).toHaveLength(1);
+    expect(code.match(/UPDATE public\.zones z\s+SET priority = cardinality\(_ids\)/g)).toHaveLength(
+      1,
+    );
     expect(code).toMatch(/FROM unnest\(_ids\) WITH ORDINALITY AS o\(id, ord\)/);
     expect(code).toMatch(/the list is not this business''s areas/);
     expect(code).toMatch(
@@ -470,8 +486,14 @@ describe("the migration that ranks existing areas newest first", () => {
 // ── The migration, proved against a real Postgres when one answers ─────────
 
 const PROOF = join(ROOT, "tests/sql/a-ranking-settles-zip-overlaps.proof.sql");
-const DB_URL =
-  process.env.RANKING_PROOF_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54422/postgres";
+// CI's proof runner (scripts/run-sql-proofs.mjs, #913) sets this to a fresh
+// clone of the replayed database. When it is set, the proof is REQUIRED: no
+// psql, no answer or a failing proof fails this file, and nothing below is
+// skipped. Without it (a laptop with no stack up) the proof is skipped with
+// a warning that says so.
+const PROOF_DB_URL = process.env.RANKING_PROOF_DB_URL;
+const DB_URL = PROOF_DB_URL ?? "postgresql://postgres:postgres@127.0.0.1:54422/postgres";
+const PROOF_REQUIRED = !!PROOF_DB_URL;
 
 function findPsql(): string | null {
   for (const p of [
@@ -495,15 +517,19 @@ const reachable =
     timeout: 5_000,
   }).stdout?.trim() === "1";
 
-if (!reachable) {
+if (!reachable && !PROOF_REQUIRED) {
   console.warn(
     `\n  SKIPPED: the ranking proof did NOT run. ${psql ? `No database answered at ${DB_URL}.` : "psql was not found."}\n` +
       "  Start the local stack (supabase start) or set RANKING_PROOF_DB_URL to run it.\n",
   );
 }
 
-describe.skipIf(!reachable)("the ranking migration, in a real database", () => {
-  it("has the files it runs", () => {
+// Not skippable under RANKING_PROOF_DB_URL: a proof the runner asked for and
+// could not run is a failure, never a pass by omission.
+describe.skipIf(!reachable && !PROOF_REQUIRED)("the ranking migration, in a real database", () => {
+  it("has psql, a database that answers, and the files it runs", () => {
+    expect(psql, "psql was not found on PATH").not.toBeNull();
+    expect(reachable, `no database answered at ${DB_URL}`).toBe(true);
     expect(existsSync(join(ROOT, MIGRATION))).toBe(true);
     expect(existsSync(PROOF)).toBe(true);
   });
@@ -515,6 +541,16 @@ describe.skipIf(!reachable)("the ranking migration, in a real database", () => {
       { encoding: "utf8", timeout: 300_000 },
     );
     const out = `${r.stdout}\n${r.stderr}`;
+    // The proof's own verdict lines, echoed so the CI job log shows them
+    // (vitest prints a test's console output under its name).
+    const verdicts = out
+      .split("\n")
+      .filter((l) => /NOTICE:\s+ok: |ALL RANKING PROOFS PASSED|PROOF FAILED|ERROR/.test(l))
+      .map((l) => l.trim());
+    console.log(
+      `ranking proof against ${DB_URL.replace(/\/\/[^@]*@/, "//***@")}:\n` +
+        (verdicts.length ? verdicts.map((l) => `  ${l}`).join("\n") : out),
+    );
     expect(r.status, out).toBe(0);
     expect(out).not.toMatch(/PROOF FAILED/);
     expect(out.match(/NOTICE:\s+ok: /g)?.length, out).toBe(6);
