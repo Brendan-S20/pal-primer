@@ -350,7 +350,7 @@ describe("SQL proof database lifecycle", () => {
     expect(KNOWN_FAILURES.length).toBeGreaterThan(0);
     for (const exclusion of KNOWN_FAILURES) {
       expect(filenames).toContain(exclusion.file);
-      expect(exclusion.issue).toBe(895);
+      expect(exclusion.issue).toBe(392);
       expect(exclusion.reason.trim().length).toBeGreaterThan(20);
     }
     const { directory } = fixture();
@@ -364,7 +364,7 @@ describe("SQL proof database lifecycle", () => {
     expect(wrappers.some((wrapper) => wrapper.file === exclusion.file)).toBe(false);
     const written = readFileSync(summary, "utf8");
     expect(written).toContain(exclusion.file);
-    expect(written).toContain("895");
+    expect(written).toContain("392");
     expect(written).toContain(exclusion.reason);
   });
 

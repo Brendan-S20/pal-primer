@@ -16,54 +16,54 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(import.meta.dirname, "..");
 
-// Tracked in #895. Keep the observed error here until the old fixture or
+// Tracked in #392. Keep the observed error here until the old fixture or
 // historical replay is repaired. These files are reported, never counted as passes.
 export const KNOWN_FAILURES = [
   {
     file: "tests/a-collection-is-told-by-the-app-that-pushes.test.ts",
-    issue: 895,
+    issue: 392,
     reason:
       "Historical cash migration redefines my_day_stop_facts with an obsolete return type: cannot change return type of existing function.",
   },
   {
     file: "tests/a-tech-records-cash-and-the-office-applies-it.test.ts",
-    issue: 895,
+    issue: 392,
     reason:
       "Historical cash migration redefines my_day_stop_facts with an obsolete return type: cannot change return type of existing function.",
   },
   {
     file: "tests/a-double-tap-books-one-extra-cleanup.test.ts",
-    issue: 895,
+    issue: 392,
     reason:
       "Historical replay recreates the four-argument portal_request_one_off overload alongside its current defaulted overload: function is not unique.",
   },
   {
     file: "tests/a-stranger-can-see-what-is-for-sale-in-a-real-database.test.ts",
-    issue: 895,
+    issue: 392,
     reason:
       "Current organization triggers seed priced grooming services; the fixture's exact service list predates those rows: PROOF FAILED [list].",
   },
   {
     file: "tests/a-trial-with-four-people-could-not-add-a-client.proof.test.ts",
-    issue: 895,
+    issue: 392,
     reason:
       "Current plan synchronization moves four active seats to Growth; the fixture cannot retain its old Launch state: PROOF FAILED [fixture].",
   },
   {
     file: "tests/a-truck-that-never-moved.test.ts",
-    issue: 895,
+    issue: 392,
     reason:
       "Current one-person route trigger assigns the fixture's supposedly unassigned stop: PROOF FAILED [not open].",
   },
   {
     file: "tests/a-walk-is-priced-as-a-walk-in-a-real-database.test.ts",
-    issue: 895,
+    issue: 392,
     reason:
       "Current organization triggers seed Overnight stay and Drop-in before the fixture inserts them: duplicate key violates services_org_name.",
   },
   {
     file: "tests/only-an-owner-changes-staff.test.ts",
-    issue: 895,
+    issue: 392,
     reason:
       "The old proof expects the earlier role error; current office-manager enforcement rejects a role above the caller's own ceiling.",
   },
