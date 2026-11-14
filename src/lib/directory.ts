@@ -230,3 +230,139 @@ export function directoryQuoteBody(directorySlug: string, f: DirectoryQuoteForm)
 /** How long a second quote from the same email to the same business is the
  *  same quote (merged, not a second lead). */
 export const DIRECTORY_QUOTE_MERGE_HOURS = 24;
+
+// ── Profile content: tagline, highlights, business areas (directory v2 5a) ──
+// The database half is
+// supabase/migrations/20261112090000_a-directory-profile-says-what-a-business-is-and-where.sql;
+// these limits are its CHECKs, so the form can say no before the server does.
+
+export const DIRECTORY_TAGLINE_MAX = 90;
+export const DIRECTORY_HIGHLIGHTS_MAX = 4;
+export const DIRECTORY_HIGHLIGHT_MAX = 40;
+export const DIRECTORY_AREAS_MAX = 8;
+export const DIRECTORY_AREA_NAME_MAX = 40;
+
+/** A named group of the ZIPs a profile already covers. */
+export type DirectoryArea = { name: string; zips: string[] };
+
+/** One row of directory_public_listings: the public profile, plus the three
+ *  columns 20261112090000 adds to the view. */
+export type DirectoryListing = DirectoryProfile & {
+  tagline: string | null;
+  highlights: string[];
+  areas: DirectoryArea[];
+};
+
+/**
+ * The allowlist. A public reader keeps these keys and drops everything else,
+ * whatever the database returns; the contract tests hold the view's columns,
+ * the proof's expected keys and these lists to each other. Adding a public
+ * field is a change to this list first.
+ */
+export const PUBLIC_LISTING_FIELDS = [
+  "slug",
+  "display_name",
+  "logo_url",
+  "bio",
+  "service_lines",
+  "coverage_zips",
+  "coverage_cities",
+  "services",
+  "published_at",
+  "tagline",
+  "highlights",
+  "areas",
+] as const satisfies readonly (keyof DirectoryListing)[];
+export const PUBLIC_SERVICE_FIELDS = [
+  "label",
+  "service_line",
+  "price_from_cents",
+  "price_unit",
+] as const satisfies readonly (keyof DirectoryService)[];
+export const PUBLIC_AREA_FIELDS = [
+  "name",
+  "zips",
+] as const satisfies readonly (keyof DirectoryArea)[];
+
+/** Spaces collapsed and trimmed, as set_directory_profile stores text. */
+export function oneLine(s: string): string {
+  return s.replace(/\s+/g, " ").trim();
+}
+
+/** Highlights as the database keeps them: one line each, blanks and repeats
+ *  (any case) dropped, order kept. */
+export function cleanHighlights(raw: readonly string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const r of raw) {
+    const h = oneLine(r);
+    if (!h || seen.has(h.toLowerCase())) continue;
+    seen.add(h.toLowerCase());
+    out.push(h);
+  }
+  return out;
+}
+
+export type DirectoryContentInput = {
+  tagline: string;
+  highlights: readonly string[];
+  areas: readonly DirectoryArea[];
+  /** The profile's coverage: every area ZIP must be one of these. */
+  coverageZips: readonly string[];
+};
+
+/** Problems with the tagline, highlights and areas, worded for the owner.
+ *  `where` says which field, so the form can put each one beside it. Empty
+ *  when the database would accept them. */
+export function directoryContentProblems(
+  v: DirectoryContentInput,
+): Array<{ where: "tagline" | "highlights" | `area-${number}` | "areas"; message: string }> {
+  const out: ReturnType<typeof directoryContentProblems> = [];
+  const tagline = oneLine(v.tagline);
+  if (tagline.length > DIRECTORY_TAGLINE_MAX) {
+    out.push({
+      where: "tagline",
+      message: `Keep the tagline to ${DIRECTORY_TAGLINE_MAX} characters (it is ${tagline.length}).`,
+    });
+  }
+  const highlights = cleanHighlights(v.highlights);
+  if (highlights.length > DIRECTORY_HIGHLIGHTS_MAX) {
+    out.push({
+      where: "highlights",
+      message: `List up to ${DIRECTORY_HIGHLIGHTS_MAX} highlights.`,
+    });
+  }
+  const long = highlights.find((h) => h.length > DIRECTORY_HIGHLIGHT_MAX);
+  if (long) {
+    out.push({
+      where: "highlights",
+      message: `Keep each highlight to ${DIRECTORY_HIGHLIGHT_MAX} characters: "${long.slice(0, 20)}…" is ${long.length}.`,
+    });
+  }
+  if (v.areas.length > DIRECTORY_AREAS_MAX) {
+    out.push({ where: "areas", message: `A profile has at most ${DIRECTORY_AREAS_MAX} areas.` });
+  }
+  const covered = new Set(v.coverageZips);
+  const names = new Set<string>();
+  v.areas.forEach((a, i) => {
+    const where = `area-${i}` as const;
+    const name = oneLine(a.name);
+    if (!name) out.push({ where, message: "Give this area a name." });
+    else if (name.length > DIRECTORY_AREA_NAME_MAX)
+      out.push({
+        where,
+        message: `Keep the area name to ${DIRECTORY_AREA_NAME_MAX} characters (it is ${name.length}).`,
+      });
+    else if (names.has(name.toLowerCase()))
+      out.push({ where, message: `Another area is already called "${name}".` });
+    names.add(name.toLowerCase());
+    if (!a.zips.length) out.push({ where, message: "Pick at least one ZIP code for this area." });
+    const outside = a.zips.filter((z) => !covered.has(z));
+    if (outside.length)
+      out.push({
+        where,
+        message: `Not in the ZIP codes you cover: ${outside.join(", ")}. Add them above, or untick them here.`,
+      });
+  });
+  return out;
+}

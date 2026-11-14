@@ -340,7 +340,13 @@ describe("no trigger function is executable by a signed-in user", () => {
     // #863): tg_log_role_permission_change writes activity_log for every
     // change to role_permission_overrides, with the actor. Revoked from
     // PUBLIC, anon and authenticated there.
-    expect(triggerFunctions().size).toBe(113);
+    //
+    // 113 -> 115 (20261112090000, a directory profile says what a business
+    // is and where, #630): directory_profile_areas_guard keeps an area's ZIPs
+    // inside the profile's coverage on any write, and
+    // directory_profile_areas_follow_coverage prunes areas when the coverage
+    // shrinks. Both revoked from PUBLIC, anon and authenticated there.
+    expect(triggerFunctions().size).toBe(115);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

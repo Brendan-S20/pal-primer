@@ -19,9 +19,19 @@ import { createClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { resolveSupabaseUrl } from "@/lib/supabase-url";
 import {
+  DIRECTORY_AREAS_MAX,
+  DIRECTORY_AREA_NAME_MAX,
+  DIRECTORY_HIGHLIGHTS_MAX,
+  DIRECTORY_HIGHLIGHT_MAX,
   DIRECTORY_SEARCH_LINES,
+  DIRECTORY_TAGLINE_MAX,
   MAX_COMPARE,
+  cleanHighlights,
+  directoryContentProblems,
   isDirectorySlug,
+  oneLine,
+  type DirectoryArea,
+  type DirectoryListing,
   type DirectoryProfile,
 } from "@/lib/directory";
 
@@ -72,6 +82,32 @@ export function toDirectoryProfiles(rows: unknown): DirectoryProfile[] {
         published_at: typeof r.published_at === "string" ? r.published_at : null,
       },
     ];
+  });
+}
+
+/** Rows of directory_public_listings narrowed to PUBLIC_LISTING_FIELDS: the
+ *  profile's own fields as toDirectoryProfiles keeps them, plus tagline,
+ *  highlights and areas (name and ZIPs only). Anything else the view might
+ *  one day carry is dropped here. */
+export function toDirectoryListings(rows: unknown): DirectoryListing[] {
+  if (!Array.isArray(rows)) return [];
+  type Row = Record<string, unknown>;
+  const isRow = (v: unknown): v is Row => !!v && typeof v === "object";
+  const strs = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  const bySlug = new Map<string, Row>();
+  for (const r of rows) if (isRow(r) && typeof r.slug === "string") bySlug.set(r.slug, r);
+  return toDirectoryProfiles(rows).map((p) => {
+    const r = bySlug.get(p.slug) ?? {};
+    const areas: DirectoryArea[] = (Array.isArray(r.areas) ? r.areas : []).flatMap((a: unknown) =>
+      isRow(a) && typeof a.name === "string" ? [{ name: a.name, zips: strs(a.zips) }] : [],
+    );
+    return {
+      ...p,
+      tagline: typeof r.tagline === "string" ? r.tagline : null,
+      highlights: strs(r.highlights),
+      areas,
+    };
   });
 }
 
@@ -164,6 +200,9 @@ export type MyDirectoryProfile = {
     coverage_zips: string[];
     coverage_cities: string[];
     confirmed_at: string | null;
+    tagline: string | null;
+    highlights: string[];
+    areas: DirectoryArea[];
     listed: Array<{ service_id: string; price_from_cents: number | null }>;
   };
 };
@@ -173,7 +212,7 @@ export const getMyDirectoryProfile = createServerFn({ method: "GET" })
   .handler(async ({ context }): Promise<MyDirectoryProfile> => {
     const { orgId, role } = await caller(context.supabase, context.userId);
     const sb = context.supabase as any;
-    const [org, services, zones, profile, listed] = await Promise.all([
+    const [org, services, zones, profile, listed, areas] = await Promise.all([
       sb.from("organizations").select("name, logo_url").eq("id", orgId).maybeSingle(),
       sb
         .from("services")
@@ -184,13 +223,18 @@ export const getMyDirectoryProfile = createServerFn({ method: "GET" })
       sb
         .from("directory_profiles")
         .select(
-          "slug, published, display_name, show_logo, bio, coverage_zips, coverage_cities, confirmed_at",
+          "slug, published, display_name, show_logo, bio, coverage_zips, coverage_cities, confirmed_at, tagline, highlights",
         )
         .eq("organization_id", orgId)
         .maybeSingle(),
       sb
         .from("directory_profile_services")
         .select("service_id, price_from_cents, position")
+        .eq("organization_id", orgId)
+        .order("position"),
+      sb
+        .from("directory_profile_areas")
+        .select("name, zips, position")
         .eq("organization_id", orgId)
         .order("position"),
     ]);
@@ -210,7 +254,14 @@ export const getMyDirectoryProfile = createServerFn({ method: "GET" })
       services: (services.data ?? []) as MyDirectoryProfile["services"],
       profile: profile.data
         ? {
-            ...(profile.data as Omit<NonNullable<MyDirectoryProfile["profile"]>, "listed">),
+            ...(profile.data as Omit<
+              NonNullable<MyDirectoryProfile["profile"]>,
+              "listed" | "areas" | "highlights"
+            >),
+            highlights: (profile.data.highlights as string[] | null) ?? [],
+            areas: ((areas.data ?? []) as Array<{ name: string; zips: string[] | null }>).map(
+              (a) => ({ name: a.name, zips: a.zips ?? [] }),
+            ),
             listed: (
               (listed.data ?? []) as Array<{ service_id: string; price_from_cents: number | null }>
             ).map((l) => ({ service_id: l.service_id, price_from_cents: l.price_from_cents })),
@@ -247,8 +298,38 @@ export const directoryProfileSchema = z
       )
       .max(50),
     published: z.boolean(),
+    tagline: z.string().transform(oneLine).pipe(z.string().max(DIRECTORY_TAGLINE_MAX)).nullable(),
+    highlights: z
+      .array(z.string().max(500))
+      .max(20)
+      .transform(cleanHighlights)
+      .pipe(z.array(z.string().max(DIRECTORY_HIGHLIGHT_MAX)).max(DIRECTORY_HIGHLIGHTS_MAX)),
+    areas: z
+      .array(
+        z.object({
+          name: z.string().transform(oneLine).pipe(z.string().min(1).max(DIRECTORY_AREA_NAME_MAX)),
+          zips: z
+            .array(
+              z
+                .string()
+                .trim()
+                .regex(/^\d{5}$/),
+            )
+            .min(1)
+            .max(200),
+        }),
+      )
+      .max(DIRECTORY_AREAS_MAX),
   })
   .superRefine((v, ctx) => {
+    for (const p of directoryContentProblems({
+      tagline: v.tagline ?? "",
+      highlights: v.highlights,
+      areas: v.areas,
+      coverageZips: v.coverageZips,
+    })) {
+      ctx.addIssue({ code: "custom", message: p.message });
+    }
     if (v.published && !v.coverageZips.length) {
       ctx.addIssue({ code: "custom", message: "Add at least one ZIP code before you publish." });
     }
@@ -276,6 +357,9 @@ export const saveMyDirectoryProfile = createServerFn({ method: "POST" })
         price_from_cents: s.priceFromCents,
       })),
       _published: data.published,
+      _tagline: data.tagline,
+      _highlights: data.highlights,
+      _areas: data.areas.map((a) => ({ name: a.name, zips: a.zips })),
     });
     if (error) {
       if (/directory_profiles_slug_key|duplicate key/i.test(error.message)) {
