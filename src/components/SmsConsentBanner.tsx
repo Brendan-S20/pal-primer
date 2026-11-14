@@ -5,6 +5,8 @@ import { MessageSquareOff } from "lucide-react";
 import { getSmsConsentCoverage } from "@/lib/clients.functions";
 import { useMyRole } from "@/hooks/useMyRole";
 import { useClientTexting } from "@/hooks/useClientTexting";
+import { useTextingState } from "@/hooks/useTextingState";
+import { consentGapCopy } from "@/lib/sms-consent-gap";
 import { useDismissed } from "@/lib/dismissible";
 import { DismissButton } from "@/components/DismissButton";
 
@@ -28,8 +30,10 @@ import { DismissButton } from "@/components/DismissButton";
 export function SmsConsentBanner() {
   const fn = useServerFn(getSmsConsentCoverage);
   const q = useQuery({ queryKey: ["sms-consent-coverage"], queryFn: () => fn() });
-  const { orgId } = useMyRole();
+  const { orgId, role } = useMyRole();
   const texting = useClientTexting();
+  const state = useTextingState();
+  const gap = consentGapCopy({ texting, state, role });
   const d = q.data;
   const missing = d ? d.withPhone - d.consented : 0;
   const { dismissed, dismiss } = useDismissed(
@@ -49,19 +53,15 @@ export function SmsConsentBanner() {
           <strong>
             {missing} of {d.withPhone}
           </strong>{" "}
-          clients with a phone number have no texting consent on file,{" "}
-          {texting ? (
-            "so reminders and notifications will not reach them."
-          ) : (
-            // #930: Managed texting is on sale, so a business without it is
-            // told to set it up, not that texting is coming.
+          clients with a phone number have no texting consent on file, {gap.text}
+          {gap.link && (
             <>
-              so they won&apos;t get texts once you set up texting.{" "}
+              {" "}
               <Link
-                to="/settings/sms"
-                className="font-medium underline underline-offset-2 hover:no-underline"
+                to={gap.link.to}
+                className="relative whitespace-nowrap font-medium underline underline-offset-2 hover:no-underline touch:before:absolute touch:before:inset-x-0 touch:before:top-1/2 touch:before:h-11 touch:before:-translate-y-1/2 touch:before:content-['']"
               >
-                Set up texting
+                {gap.link.label}
               </Link>
             </>
           )}

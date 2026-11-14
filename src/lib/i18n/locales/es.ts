@@ -165,7 +165,7 @@ const es: Translations = {
       "Clientes fundadores: las primeras {{spots}} cuentas de pago reciben un {{percent}}% de descuento en su plan mientras mantengan la suscripción. Las personas adicionales y los complementos se cobran al precio normal. Usa el código {{code}} al pagar.",
     remaining: "Quedan {{left}} de {{spots}}.",
     help0:
-      "Los clientes inician sesión con un código de un solo uso enviado por correo electrónico. Cuando configures los mensajes de texto en [Ajustes de texto](/settings/sms), los códigos también podrán enviarse por texto. Si un cliente no recibe su código, el personal puede leérselo por teléfono desde su página de detalle en [Clientes](/clients).",
+      "Los clientes inician sesión con un código de un solo uso enviado por correo electrónico. Cuando los mensajes de texto estén configurados para tu negocio, los códigos también podrán enviarse por texto. Si un cliente no recibe su código, el personal puede leérselo por teléfono desde su página de detalle en [Clientes](/clients).",
     help1:
       "Próximamente: publicaciones de marketing y [recepción con IA](article:platform-addons), que responderá mensajes y llamadas de clientes. Ninguna está activada todavía.",
     help2:

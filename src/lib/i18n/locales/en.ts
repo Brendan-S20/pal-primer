@@ -170,7 +170,7 @@ const en = {
       "Founding pricing: the first {{spots}} paying accounts get {{percent}}% off their plan price for as long as they stay subscribed. Extra people and add-ons are billed at regular price. Use code {{code}} at checkout.",
     remaining: "{{left}} of {{spots}} left.",
     help0:
-      "Clients sign in with a one-time code sent by email. Once you set up texting in [Texting settings](/settings/sms), codes can go by text too. If a client can't get their code, staff can read one to them over the phone from the client's detail page in [Clients](/clients).",
+      "Clients sign in with a one-time code sent by email. Once texting is set up for your business, codes can go by text too. If a client can't get their code, staff can read one to them over the phone from the client's detail page in [Clients](/clients).",
     help1:
       "Coming soon: marketing posts, and the [AI Receptionist](article:platform-addons), which will answer client texts and calls for you. Neither is switched on for anyone yet.",
     help2:

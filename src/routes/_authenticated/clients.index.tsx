@@ -37,7 +37,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
-  MessageSquareOff,
   Search,
   Tag,
   Users,

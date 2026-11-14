@@ -249,7 +249,9 @@ function TextOptIn({ token, client }: { token: string; client: any }) {
           </div>
           {!textsLive && (
             <div className="mt-1 text-xs text-muted-foreground">
-              {copy("Text messages aren't turned on here yet. Until then, these updates come by email.")}
+              {copy(
+                "Text messages aren't turned on here yet. Until then, these updates come by email.",
+              )}
             </div>
           )}
         </div>

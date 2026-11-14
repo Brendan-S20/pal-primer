@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { TextingNotLiveText, TextingStateBadge } from "@/components/TextingNotLive";
 import { AiSection, ReviewPanel } from "@/components/ai/AiPanels";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -97,16 +97,10 @@ function ReviewsSettings() {
             <div className="text-xs text-muted-foreground">
               {texting
                 ? "Send the text below after a completed visit (once per client per 90 days). Clients who can't be texted get it by email."
-                : (
-                  <>
-                    Send a review request after a completed visit (once per client per 90 days). It
-                    goes by email until you{" "}
-                    <Link to="/settings/sms" className="underline underline-offset-2">
-                      set up texting
-                    </Link>
-                    .
-                  </>
-                )}
+                : // #930: says where it goes now, and nothing about setup: the
+                  // template below carries the state (Under review, Setup
+                  // needed...) and where to fix it, in the shared words.
+                  "Send a review request after a completed visit (once per client per 90 days). It goes by email until texting is on for your business."}
             </div>
           </div>
           <Switch checked={enabled} onCheckedChange={setEnabled} />
