@@ -208,9 +208,10 @@ describe("5. the server and the screens", () => {
     expect(src).toContain('return { available: state === "active", state };');
   });
 
-  // clients.index.tsx is left to #709, which has it open; its one
-  // "(coming soon)" is listed in the PR body as a follow-up.
+  // clients.index.tsx joined in #930, when its consent notice stopped
+  // saying "(coming soon)".
   const SCREENS = [
+    "src/routes/_authenticated/clients.index.tsx",
     "src/components/client-detail/EditClientDrawer.tsx",
     "src/components/client-detail/CommunicationTab.tsx",
     "src/components/client-detail/SummaryTab.tsx",

@@ -128,8 +128,8 @@ export const portalContext = createServerFn({ method: "GET" })
     if (!client)
       return { verified: false as const, valid: false as const, channels: [], branding: null };
     // Can this business text its clients yet? The same answer the sign-in
-    // form uses. The account page's text opt-in says "coming soon" until it
-    // can, rather than offering texts that are never sent.
+    // form uses. The account page's text opt-in says texts aren't turned on yet
+    // until it can (#930), rather than offering texts that are never sent.
     const { smsOtpDeliverable } = await portalAuth();
     const textsLive =
       addonPurchasable("managed-sms") &&

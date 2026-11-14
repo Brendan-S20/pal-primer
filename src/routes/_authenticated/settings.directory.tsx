@@ -177,8 +177,11 @@ function DirectorySettings() {
           tagline: oneLine(tagline) || null,
           highlights: cleanHighlights(highlights),
           areas: areas.map((a) => ({ name: oneLine(a.name), zips: a.zips })),
-          bookOnline,
-          bookingPolicyText: bookingPolicy.trim() || null,
+          // Sent only where the page could read them (#929): a page that
+          // never saw the switch has no business writing it.
+          ...(data?.booking?.available
+            ? { bookOnline, bookingPolicyText: bookingPolicy.trim() || null }
+            : {}),
         },
       }),
     onSuccess: (_r, publish) => {
