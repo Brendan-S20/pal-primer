@@ -660,6 +660,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     reason: "原因",
     detailsPlaceholder: "详情（发生了什么、照片等）",
     confirm: "确认跳过",
+    detailsRequired: "请写明发生了什么，才能确认跳过。",
     billingNote: "每种跳过原因如何收费由办公室决定。",
   },
   groomSkipReason: {

@@ -695,6 +695,7 @@ const en = {
     reason: "Reason",
     detailsPlaceholder: "Details (what happened, photos, etc.)",
     confirm: "Confirm skip",
+    detailsRequired: "Write what happened to confirm the skip.",
     billingNote: "The office sets the billing rules for each skip reason.",
   },
   groomSkipReason: {
