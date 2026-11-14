@@ -36,7 +36,9 @@ import {
   type DirectoryListedService,
   type DirectoryListing,
   type DirectoryPackage,
+  type DirectoryPhoto,
   type DirectoryProfile,
+  isDirectoryPhotoUrl,
 } from "@/lib/directory";
 import { isPublicBookingMode, type PublicBookingMode } from "@/lib/public-booking-mode";
 
@@ -92,8 +94,9 @@ export function toDirectoryProfiles(rows: unknown): DirectoryProfile[] {
 
 /** Rows of directory_public_listings narrowed to PUBLIC_LISTING_FIELDS: the
  *  profile's own fields as toDirectoryProfiles keeps them, plus tagline,
- *  highlights and areas (name and ZIPs only). Anything else the view might
- *  one day carry is dropped here. */
+ *  highlights and areas (name and ZIPs only), the booking fields and the
+ *  approved photos (url, alt, position). Anything else the view might one
+ *  day carry is dropped here. */
 export function toDirectoryListings(rows: unknown): DirectoryListing[] {
   if (!Array.isArray(rows)) return [];
   type Row = Record<string, unknown>;
@@ -138,6 +141,21 @@ export function toDirectoryListings(rows: unknown): DirectoryListing[] {
       };
     });
     const booksOnline = r.books_online === true && services.some((s) => s.booking_mode !== "request_only");
+    // Photos (step 5b): url, alt and position only, a url only if it is the
+    // HoundStack path the view makes for THIS listing, and never one without
+    // alt text. A row from before step 5b reads as no photos.
+    const photos: DirectoryPhoto[] = (Array.isArray(r.photos) ? r.photos : [])
+      .flatMap((ph: unknown) =>
+        isRow(ph) &&
+        typeof ph.url === "string" &&
+        isDirectoryPhotoUrl(ph.url, p.slug) &&
+        typeof ph.alt === "string" &&
+        ph.alt.trim() !== "" &&
+        typeof ph.position === "number"
+          ? [{ url: ph.url, alt: ph.alt, position: ph.position }]
+          : [],
+      )
+      .sort((a, b) => a.position - b.position);
     return {
       ...p,
       services,
@@ -147,6 +165,7 @@ export function toDirectoryListings(rows: unknown): DirectoryListing[] {
       books_online: booksOnline,
       booking_policy_text: typeof r.booking_policy_text === "string" ? r.booking_policy_text : null,
       book_path: booksOnline && typeof r.book_path === "string" ? r.book_path : null,
+      photos,
     };
   });
 }

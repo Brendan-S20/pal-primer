@@ -35,6 +35,13 @@ INSERT INTO public.organizations (id, name, timezone, service_lines)
 VALUES ('07370000-0000-4000-8000-0000000000ee', 'Booking Proof ee (TEST)', 'UTC', '{dog_walking}');
 
 \if :{?migration}
+-- A database that already holds a later version of the view (20261112110000
+-- adds photos after these fifteen) cannot take this file's CREATE OR
+-- REPLACE, which may only add columns. Inside this rolled-back transaction
+-- the view is dropped first so the file builds its own; nothing outlives the
+-- run, and on a database without the later file this drops what the file is
+-- about to recreate anyway.
+DROP VIEW IF EXISTS public.directory_public_listings;
 \i :migration
 \endif
 
@@ -322,7 +329,9 @@ BEGIN
     RAISE EXCEPTION 'PROOF FAILED [published]: a visitor reads %', _slugs;
   END IF;
   SELECT array_agg(DISTINCT k ORDER BY k) INTO _keys FROM (
-    SELECT jsonb_object_keys(to_jsonb(t)) k FROM public.directory_public_listings t WHERE slug LIKE 'booking-proof-%') s;
+    -- 20261112110000 adds photos after these fifteen; its own proof pins it.
+    -- This one pins the fifteen, so it holds before and after that file.
+    SELECT jsonb_object_keys(to_jsonb(t) - 'photos') k FROM public.directory_public_listings t WHERE slug LIKE 'booking-proof-%') s;
   IF _keys IS DISTINCT FROM ARRAY['areas', 'bio', 'book_path', 'booking_policy_text', 'books_online', 'coverage_cities',
                                   'coverage_zips', 'display_name', 'highlights', 'logo_url', 'published_at',
                                   'service_lines', 'services', 'slug', 'tagline'] THEN

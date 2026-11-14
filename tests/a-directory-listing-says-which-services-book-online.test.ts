@@ -112,7 +112,15 @@ describe("the migration", () => {
     // checked when this was written hold 20261112080000 (#912) and
     // 20261112030000 (#906).
     expect(STAMP > "20261112090000").toBe(true);
-    expect(files.map((f) => f.slice(0, 14)).sort().at(-1)).toBe(STAMP);
+    // 20261112110000 (mypets v2 step 5b, photos) is the only file after it,
+    // and it replaces the view only to add photos at the end:
+    // tests/a-directory-photo-waits-for-a-moderator.test.ts pins that.
+    expect(
+      files
+        .map((f) => f.slice(0, 14))
+        .filter((s) => s > STAMP)
+        .sort(),
+    ).toEqual(["20261112110000"]);
     expect(readFileSync(MIGRATION, "utf8")).toMatch(/PROPOSED MIGRATION\. File only/);
     expect(read(`supabase/proofs/${STAMP}-${NAME}.sql`)).toMatch(
       new RegExp(`\\\\ir \\.\\./\\.\\./tests/sql/${NAME}\\.proof\\.sql`),
@@ -180,9 +188,15 @@ describe("the migration", () => {
   });
 });
 
+// The fifteen columns this file's view has. 20261112110000 (step 5b) adds
+// photos after them, and its own test holds PUBLIC_LISTING_FIELDS to that
+// view; this one holds the first fifteen to this file's.
+const STEP_7_FIELDS = PUBLIC_LISTING_FIELDS.slice(0, 15);
+
 describe("the public contract", () => {
   it("is the view's columns, in order, and nothing else", () => {
-    expect(viewColumns(view())).toEqual([...PUBLIC_LISTING_FIELDS]);
+    expect(STEP_7_FIELDS.at(-1)).toBe("book_path");
+    expect(viewColumns(view())).toEqual([...STEP_7_FIELDS]);
     expect(sql()).toMatch(
       /IF _cols IS DISTINCT FROM ARRAY\['slug', 'display_name', 'logo_url', 'bio', 'service_lines',\s+'coverage_zips', 'coverage_cities', 'services', 'published_at',\s+'tagline', 'highlights', 'areas',\s+'books_online', 'booking_policy_text', 'book_path'\]/,
     );
@@ -281,7 +295,7 @@ describe("the public contract", () => {
     const proof = readFileSync(PROOF, "utf8");
     const keys = /_keys IS DISTINCT FROM ARRAY\[([^\]]+)\]/.exec(proof)![1];
     expect([...keys.matchAll(/'([a-z_]+)'/g)].map((m) => m[1])).toEqual(
-      [...PUBLIC_LISTING_FIELDS].sort(),
+      [...STEP_7_FIELDS].sort(),
     );
     const svc = /_svc IS DISTINCT FROM ARRAY\[([^\]]+)\]/.exec(proof)![1];
     expect([...svc.matchAll(/'([a-z_]+)'/g)].map((m) => m[1])).toEqual(
