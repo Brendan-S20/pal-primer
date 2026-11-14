@@ -43,7 +43,12 @@ import {
   type DirectoryPackage,
 } from "@/lib/directory";
 import { DIRECTORY_BRAND, DIRECTORY_REF } from "@/lib/directory-site";
-import { directoryProfileSchema, toDirectoryListings } from "@/lib/directory.functions";
+import {
+  directoryBookingWrite,
+  directoryProfileSchema,
+  saveDirectoryBooking,
+  toDirectoryListings,
+} from "@/lib/directory.functions";
 import { decideDirectoryBooking, directoryReturnUrl } from "@/lib/directory-booking.functions";
 import { LEAD_SOURCE, leadBodyFromForm, leadOriginLabel } from "@/lib/new-customer-form";
 import { signupCheckoutSchema } from "@/lib/signup.functions";
@@ -662,33 +667,200 @@ describe("Settings → Directory listing", () => {
     expect(codeOnly(route).replace(/\/\/.*$/gm, "")).not.toMatch(/—|–/);
   });
 
-  it("saves through the owner-only schema, with off and empty as the defaults", () => {
-    const base = {
-      slug: "acme-scoop",
-      displayName: "Acme",
-      bio: null,
-      showLogo: false,
-      coverageZips: ["48201"],
-      coverageCities: [],
-      services: [],
-      published: false,
-      tagline: null,
-      highlights: [],
-      areas: [],
-    };
-    const parsed = directoryProfileSchema.parse(base);
-    expect(parsed.bookOnline).toBe(false);
-    expect(parsed.bookingPolicyText).toBeNull();
+  it("saves through the owner-only schema, and leaves out what the caller left out (#929)", () => {
+    const parsed = directoryProfileSchema.parse(PROFILE_BASE);
+    // Omitted stays omitted: no default of off and null to write over the owner's choice.
+    expect(parsed.bookOnline).toBeUndefined();
+    expect(parsed.bookingPolicyText).toBeUndefined();
     expect(
-      directoryProfileSchema.parse({ ...base, bookOnline: true, bookingPolicyText: "  x  " })
-        .bookingPolicyText,
+      directoryProfileSchema.parse({
+        ...PROFILE_BASE,
+        bookOnline: true,
+        bookingPolicyText: "  x  ",
+      }).bookingPolicyText,
     ).toBe("x");
+    // Sent as off and as cleared: both are values, and both are kept.
+    const cleared = directoryProfileSchema.parse({
+      ...PROFILE_BASE,
+      bookOnline: false,
+      bookingPolicyText: null,
+    });
+    expect(cleared.bookOnline).toBe(false);
+    expect(cleared.bookingPolicyText).toBeNull();
+    expect(
+      directoryProfileSchema.parse({ ...PROFILE_BASE, bookingPolicyText: "   " }).bookingPolicyText,
+    ).toBeNull();
     expect(() =>
-      directoryProfileSchema.parse({ ...base, bookingPolicyText: "p".repeat(401) }),
+      directoryProfileSchema.parse({ ...PROFILE_BASE, bookingPolicyText: "p".repeat(401) }),
     ).toThrow(/400/);
     const fn = read("src/lib/directory.functions.ts");
     const save = fn.split("export const saveMyDirectoryProfile")[1];
-    expect(save.indexOf('if (role !== "owner")')).toBeLessThan(save.indexOf('rpc("set_directory_booking"'));
+    expect(save.indexOf('if (role !== "owner")')).toBeGreaterThan(-1);
+    expect(save.indexOf('if (role !== "owner")')).toBeLessThan(
+      save.indexOf("saveDirectoryBooking("),
+    );
+    expect(fn).toMatch(/rpc\("set_directory_booking"/);
+  });
+});
+
+// ── #929: a save that leaves the switch out cannot turn it off ─────────────
+const PROFILE_BASE = {
+  slug: "acme-scoop",
+  displayName: "Acme",
+  bio: null,
+  showLogo: false,
+  coverageZips: ["48201"],
+  coverageCities: [],
+  services: [],
+  published: false,
+  tagline: null,
+  highlights: [],
+  areas: [],
+};
+
+/** A stand-in for the signed-in client: one organizations row, read with
+ *  .from().select().eq().maybeSingle(), and set_directory_booking doing what
+ *  the migration's writer does to it. Records every call. */
+function fakeOrgDb(row: {
+  directory_booking_enabled: boolean;
+  booking_policy_text: string | null;
+}) {
+  const calls: Array<{ kind: "read" | "rpc"; args?: Record<string, unknown> }> = [];
+  const db = {
+    row: { ...row },
+    calls,
+    from(table: string) {
+      expect(table).toBe("organizations");
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => {
+              calls.push({ kind: "read" });
+              return { data: { ...db.row }, error: null };
+            },
+          }),
+        }),
+      };
+    },
+    async rpc(name: string, args: Record<string, unknown>) {
+      expect(name).toBe("set_directory_booking");
+      calls.push({ kind: "rpc", args });
+      db.row = {
+        directory_booking_enabled: args._enabled as boolean,
+        booking_policy_text: cleanBookingPolicy(args._policy_text as string | null),
+      };
+      return { error: null };
+    },
+  };
+  return db;
+}
+
+const ON = { directory_booking_enabled: true, booking_policy_text: "Cancel a day ahead. TEST." };
+
+describe("the Book online switch is left alone when a save leaves it out (#929)", () => {
+  it("omits both: nothing is written, the switch stays on and the policy stays set", async () => {
+    const db = fakeOrgDb(ON);
+    const parsed = directoryProfileSchema.parse(PROFILE_BASE);
+    await saveDirectoryBooking(db, "org-test", parsed);
+    expect(db.calls.filter((c) => c.kind === "rpc")).toHaveLength(0);
+    expect(db.row).toEqual(ON);
+    expect(directoryBookingWrite(parsed, null)).toBeNull();
+  });
+
+  it("omits both while off: still nothing written, still off", async () => {
+    const off = { directory_booking_enabled: false, booking_policy_text: null };
+    const db = fakeOrgDb(off);
+    await saveDirectoryBooking(db, "org-test", directoryProfileSchema.parse(PROFILE_BASE));
+    expect(db.calls).toHaveLength(0);
+    expect(db.row).toEqual(off);
+  });
+
+  it("sends both: written exactly as sent, on with a policy and then off and cleared", async () => {
+    const db = fakeOrgDb({ directory_booking_enabled: false, booking_policy_text: null });
+    await saveDirectoryBooking(
+      db,
+      "org-test",
+      directoryProfileSchema.parse({
+        ...PROFILE_BASE,
+        bookOnline: true,
+        bookingPolicyText: " P. ",
+      }),
+    );
+    expect(db.row).toEqual({ directory_booking_enabled: true, booking_policy_text: "P." });
+    await saveDirectoryBooking(
+      db,
+      "org-test",
+      directoryProfileSchema.parse({ ...PROFILE_BASE, bookOnline: false, bookingPolicyText: null }),
+    );
+    expect(db.row).toEqual({ directory_booking_enabled: false, booking_policy_text: null });
+    // Both were sent, so neither needed reading.
+    expect(db.calls.filter((c) => c.kind === "read")).toHaveLength(0);
+  });
+
+  it("sends only the switch: the policy is carried through, not cleared", async () => {
+    const db = fakeOrgDb(ON);
+    await saveDirectoryBooking(
+      db,
+      "org-test",
+      directoryProfileSchema.parse({ ...PROFILE_BASE, bookOnline: false }),
+    );
+    expect(db.row).toEqual({
+      directory_booking_enabled: false,
+      booking_policy_text: ON.booking_policy_text,
+    });
+  });
+
+  it("sends only the policy: the switch is carried through, not turned off", async () => {
+    const db = fakeOrgDb(ON);
+    await saveDirectoryBooking(
+      db,
+      "org-test",
+      directoryProfileSchema.parse({ ...PROFILE_BASE, bookingPolicyText: "New policy. TEST." }),
+    );
+    expect(db.row).toEqual({
+      directory_booking_enabled: true,
+      booking_policy_text: "New policy. TEST.",
+    });
+    await saveDirectoryBooking(
+      db,
+      "org-test",
+      directoryProfileSchema.parse({ ...PROFILE_BASE, bookingPolicyText: "" }),
+    );
+    expect(db.row).toEqual({ directory_booking_enabled: true, booking_policy_text: null });
+  });
+
+  it("a later profile save without the fields, after Settings turned it on, cannot turn it off", async () => {
+    const db = fakeOrgDb({ directory_booking_enabled: false, booking_policy_text: null });
+    // Settings sends what it shows.
+    await saveDirectoryBooking(
+      db,
+      "org-test",
+      directoryProfileSchema.parse({
+        ...PROFILE_BASE,
+        bookOnline: true,
+        bookingPolicyText: ON.booking_policy_text,
+      }),
+    );
+    expect(db.row).toEqual(ON);
+    // Another caller saves the profile and knows nothing about step 7.
+    for (let i = 0; i < 3; i++) {
+      await saveDirectoryBooking(
+        db,
+        "org-test",
+        directoryProfileSchema.parse({ ...PROFILE_BASE, displayName: `Acme ${i}` }),
+      );
+    }
+    expect(db.row).toEqual(ON);
+  });
+
+  it("the server function hands the parsed fields to that one writer and nothing else", () => {
+    const fn = read("src/lib/directory.functions.ts");
+    const save = fn.split("export const saveMyDirectoryProfile")[1];
+    expect(save).toMatch(/await saveDirectoryBooking\(context\.supabase, orgId, data\)/);
+    // No default of off or null hides in the schema again.
+    const schema = fn.split("export const directoryProfileSchema")[1].split(".superRefine(")[0];
+    expect(schema).not.toMatch(/bookOnline:\s*z\.boolean\(\)\.default/);
+    expect(schema).not.toMatch(/\.default\(null\)/);
   });
 });
 
@@ -739,5 +911,36 @@ describe.skipIf(!reachable)("a directory listing says which services book online
     expect(r.status, out).toBe(0);
     expect(out).not.toMatch(/PROOF FAILED|PROOF INCONCLUSIVE/);
     expect(out).toMatch(/ALL DIRECTORY BOOKING PROOFS PASSED/);
+  });
+});
+
+// ── #929: the quote fallback starts on the named service ───────────────────
+describe("the directory hand-off names its service in the first paint (#929)", () => {
+  it("passes the named service to the form on both paths, the quote fallback included", () => {
+    const route = read("src/routes/signup.$slug.tsx");
+    // One prop, not gated on book=1: the quote fallback gets it too.
+    expect(route).toMatch(/initialServiceId=\{fromDirectory\.serviceId\}/);
+    expect(route).not.toMatch(/initialServiceId=\{[^}]*quoteOnly/);
+    const search = directoryBookingSearch({
+      ref: DIRECTORY_REF,
+      service: "11111111-2222-4333-8444-555555555555",
+      zip: "48067",
+    });
+    expect(search).toMatchObject({
+      quoteOnly: true,
+      serviceId: "11111111-2222-4333-8444-555555555555",
+      zip: "48067",
+    });
+  });
+
+  it("renders the picked service's label in the trigger, not only after the options mount", () => {
+    const flow = read("src/components/signup/SignupFlow.tsx");
+    expect(flow).toMatch(/service_id: initialServiceId \?\? ""/);
+    expect(flow).toMatch(
+      /<SelectValue placeholder="Pick a service">\{chosenLabel\}<\/SelectValue>/,
+    );
+    expect(flow).toMatch(
+      /publicServiceOptionLabel\(serviceOptions\[chosenIndex\], chosenIndex, serviceOptions\)/,
+    );
   });
 });

@@ -15,7 +15,8 @@
 //      link with ref and the ZIP but WITHOUT book=1, and the page there is the
 //      quote request (no instant price, no card). A quote sent from it is ONE
 //      lead with source directory_booking, which Leads labels "Directory
-//      booking, asked for a quote".
+//      booking, asked for a quote". The quote request starts on the walk the
+//      listing named, in the server's HTML and after hydration (#929).
 //   3. The owner turns "Show Book online" on in Settings, with a policy, and
 //      Save writes both (the database says so). With public signup and
 //      Stripe charges also on, the walk is recurring and books_online true;
@@ -150,11 +151,25 @@ test("a directory booking hands off to the test org, and only books online when 
     expect(off.searchParams.get("zip")).toBe(ZIP);
     expect(off.searchParams.has("book"), "switch off: no book=1").toBe(false);
 
+    // The server's own HTML, before any script runs, already names the
+    // service in "What would you like?" (#929). Read as text so nothing can
+    // hydrate first and fill it in.
+    const firstPaint = await (await request.get(`${off.pathname}${off.search}`)).text();
+    expect(firstPaint).toMatch(/id="service"[^>]*>[\s\S]{0,400}?Booking walk \(TEST\)/);
+
     await page.goto(`${off.pathname}${off.search}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Request a quote", {
       timeout: 30_000,
     });
     await expect(page.locator("#postal_code")).toHaveValue(ZIP);
+    // The quote fallback starts on the service the listing named too (#929),
+    // in the server's first paint and after hydration: "What would you
+    // like?" is never left blank.
+    await expect(page.locator("#service")).toContainText("Booking walk (TEST)");
+    await waitForHydration(page, "#service");
+    await expect(page.locator("#service")).toContainText("Booking walk (TEST)", {
+      timeout: 20_000,
+    });
     await expect(page.getByRole("button", { name: "Get instant price" })).toHaveCount(0);
 
     // The quote the page sends: one lead, tagged as a directory booking.
@@ -247,6 +262,9 @@ test("a directory booking hands off to the test org, and only books online when 
     expect(on.pathname).toBe(`/signup/${PORTAL}`);
     expect(on.searchParams.get("ref")).toBe(REF);
     expect(on.searchParams.get("book")).toBe("1");
+    expect(await (await request.get(`${on.pathname}${on.search}`)).text()).toMatch(
+      /id="service"[^>]*>[\s\S]{0,400}?Booking walk \(TEST\)/,
+    );
     await page.goto(`${on.pathname}${on.search}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Get an instant quote", {
       timeout: 30_000,

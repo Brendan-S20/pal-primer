@@ -275,6 +275,14 @@ export function SignupFlow({
   // server prices THAT and adds no first cleanup to a walk.
   const chosen = quotedPublicService(services, form.service_id);
   const serviceField = chosen ? { service_id: chosen.id } : {};
+  // The picker's options, and the picked one's label as its option reads.
+  const serviceOptions = publicServiceOptions(services);
+  const chosenIndex = chosen ? serviceOptions.findIndex((o) => o.id === chosen.id) : -1;
+  const chosenLabel = chosen
+    ? chosenIndex >= 0
+      ? publicServiceOptionLabel(serviceOptions[chosenIndex], chosenIndex, serviceOptions)
+      : chosen.name
+    : undefined;
 
   // The words that depend on what is being sold (lib/booking-copy.ts, #525):
   // the service picked, else the business's only one, else pet waste. The
@@ -864,10 +872,15 @@ export function SignupFlow({
               }}
             >
               <SelectTrigger id="service" className="min-w-0 whitespace-normal text-left">
-                <SelectValue placeholder="Pick a service" />
+                {/* The picked service's own words, in the server's first
+                    paint too (#929). Left to Radix, the value is filled in
+                    only once the client has mounted the options, so a
+                    directory hand-off (the quote fallback included) showed a
+                    blank "What would you like?" until then. */}
+                <SelectValue placeholder="Pick a service">{chosenLabel}</SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {publicServiceOptions(services).map((s, i, options) => (
+                {serviceOptions.map((s, i, options) => (
                   <SelectItem key={s.id} value={s.id}>
                     {publicServiceOptionLabel(s, i, options)}
                   </SelectItem>
@@ -927,7 +940,8 @@ export function SignupFlow({
               onValueChange={(v) => setFormField({ ...form, frequency: v })}
             >
               <SelectTrigger id="frequency">
-                <SelectValue />
+                {/* Named in the first paint too, as the service is (#929). */}
+                <SelectValue>{bookingCadenceLabel(line, frequency)}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {lineCopy.cadences.map((k) => (
