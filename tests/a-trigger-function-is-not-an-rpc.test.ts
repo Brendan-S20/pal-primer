@@ -292,7 +292,55 @@ describe("no trigger function is executable by a signed-in user", () => {
     //
     // 98 -> 99 (20261102190000, gaps-r2-07): tg_stays_invoice_period, an
     // unpaid stay invoice's period follows the stay's dates. Revoked there.
-    expect(triggerFunctions().size).toBe(99);
+    //
+    // 99 -> 101 (#729): pet_safety_entries_before_write (20261108152900)
+    // derives a safety entry's tenant from its pet, stamps who reported it
+    // and keeps the log append-only; organizations_guard_vaccine_start_rule
+    // (20261108153100) refuses any write to vaccine_start_rule that is not
+    // the owner's set_vaccine_start_rule(). Both revoked from PUBLIC, anon
+    // and authenticated in their files.
+    //
+    // 101 -> 103 (20261108153700, a portal change waits for the owner, #730):
+    // tg_orgs_portal_change_owner_only (only an owner changes the portal
+    // change policy or the fee auto-charge switch) and
+    // tg_orgs_log_portal_change_settings (the activity_log row naming who).
+    // Each revoked from PUBLIC, anon and authenticated there.
+    //
+    // 103 -> 107 (#731, walker groups): enforce_walker_dog_cap_on_member and
+    // enforce_walker_dog_cap_on_group (20261108170000, a walker's dog cap),
+    // validate_plan_walker and fill_visit_walker (20261108170100, a walk plan
+    // has a walker). Each revoked from PUBLIC, anon and authenticated there.
+    //
+    // Still 107 after #716 (20261102171500): its training_progress_row_guard
+    // is a CREATE OR REPLACE of the function 20261023100000 already defines,
+    // so it adds no new name. main alone counts 103; main plus #733 counts
+    // 107, not 104/108.
+    //
+    // 107 -> 108 (20261102172500, a lesson series skips closed days and can
+    // stop, R2-49): visits_follow_series_rules, which leaves out a series
+    // visit on a closed or holiday date, or past the series' session count.
+    // Revoked from PUBLIC, anon and authenticated there.
+    //
+    // 108 -> 109 (20261109170000, a stay summary catch-up is the owner's
+    // choice, #747): tg_orgs_stay_summary_settings refuses a signed-in write
+    // to stay_summary_catch_up or stay_summaries_live_at that is not
+    // set_stay_summary_catch_up(), and stamps the go-live moment when pet
+    // sitting is added. Revoked from PUBLIC, anon and authenticated there.
+    //
+    // 109 -> 110 (20261110140000, a blocked Start holds against a direct
+    // write, #729): visits_vaccine_start_guard applies the owner's BLOCK rule
+    // to a signed-in tech's own UPDATE of visits.status, so a PATCH cannot do
+    // what start_visit refuses. Revoked from PUBLIC, anon and authenticated
+    // there.
+    // 110 -> 112 (#883): retirement of an unused starter after Add service,
+    // and a service-specific edit timestamp that records same-transaction edits.
+    // Both functions revoke EXECUTE from PUBLIC, anon and authenticated.
+    //
+    // 112 -> 113 (20261112010000, an owner sets each role's permissions,
+    // #863): tg_log_role_permission_change writes activity_log for every
+    // change to role_permission_overrides, with the actor. Revoked from
+    // PUBLIC, anon and authenticated there.
+    expect(triggerFunctions().size).toBe(113);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

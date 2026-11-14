@@ -1,5 +1,6 @@
+import { isVaccineStartBlocked, petsMissingVaccines, type MissingVaccine } from "@/lib/pet-safety";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { humanizeRole } from "@/lib/humanize";
+import { roleLabelKey, techIsTrainer } from "@/lib/humanize";
 import { daysBetweenOrgDays, orgLocalDay, orgLocalDayTime, orgLocalTime } from "@/lib/org-day";
 import { visitEta } from "@/lib/visit-eta";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
@@ -65,6 +66,10 @@ import { withQueuedLifecycle, type LifecycleKind } from "@/lib/offline/queued-vi
 import { resolveOfflineUserId } from "@/lib/offline/action-owner";
 import { confirmEndWithEmptyReport } from "@/lib/offline/walk-drafts";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import {
+  useCompletionBlockWarning,
+  usePrefetchCompletionBlock,
+} from "@/components/CompletionBlockWarning";
 import {
   describeReadFreshness,
   READ_REFRESH_GRACE_MS,
@@ -350,6 +355,10 @@ function MyDay() {
   }, []);
   const pending = usePendingCount();
   const { t } = useTranslation();
+  // A training-only business calls its technicians trainers (train-17).
+  const { lines: orgLines, known: orgLinesKnown } = useServiceLines();
+  const trainerWords = orgLinesKnown && techIsTrainer(orgLines);
+  const roleLabel = (role: string) => t(roleLabelKey(role, orgLinesKnown ? orgLines : null));
   // In the language this device reads. The route's head is English because
   // it runs before i18n has read the device's choice.
   useDocumentTitle(pageTitle(t("nav.item.my-day")));
@@ -820,7 +829,7 @@ function MyDay() {
               {previewing || !staff ? (
                 <p className="truncate text-xs text-muted-foreground">
                   {staff
-                    ? `${staff.display_name}${staff.role ? ` · ${humanizeRole(staff.role)}` : ""}`
+                    ? `${staff.display_name}${staff.role ? ` · ${roleLabel(staff.role)}` : ""}`
                     : t("myDay.notOnStaff")}
                 </p>
               ) : null}
@@ -875,6 +884,7 @@ function MyDay() {
                   (below) is the date control (Mobile Phase 2). */}
               <input
                 type="date"
+                aria-label={t("myDay.pickADay")}
                 value={day}
                 onChange={(e) => {
                   // Clearing the field (Backspace/Delete) yields an empty value.
@@ -952,11 +962,16 @@ function MyDay() {
                     screen); it is one tap away now, and the glyph says so. */}
                 <Popover>
                   <PopoverTrigger asChild>
+                    {/* Named "How progress is counted 42%", not only the
+                        first half: an aria-label that drops the number on
+                        the button is axe's label-content-name-mismatch, and a
+                        voice-control user says what they see. The number
+                        stays last, so the row's text still ends in "%". */}
                     <button
                       type="button"
-                      aria-label={t("myDay.howProgressCounts")}
                       className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-md pe-2 ps-1 text-xs font-medium text-muted-foreground hover:text-foreground"
                     >
+                      <span className="sr-only">{t("myDay.howProgressCounts")} </span>
                       {pct}%
                       <InfoIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                     </button>
@@ -1033,12 +1048,12 @@ function MyDay() {
                 className="h-9 min-w-0 max-w-full rounded-md border bg-background px-2 text-sm touch:min-h-11"
               >
                 <option value="">
-                  {data?.staff && !previewing ? t("myDay.title") : t("myDay.selectTechnician")}
+                  {data?.staff && !previewing ? t("myDay.title") : t(trainerWords ? "myDay.selectTrainer" : "myDay.selectTechnician")}
                 </option>
                 {fieldStaff.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.display_name}
-                    {s.role ? ` · ${humanizeRole(s.role)}` : ""}
+                    {s.role ? ` · ${roleLabel(s.role)}` : ""}
                   </option>
                 ))}
               </select>
@@ -1076,7 +1091,7 @@ function MyDay() {
 
         {!staff && isOfficeRole && (
           <div className="rounded-lg border bg-card p-(--card-pad) text-center text-sm text-muted-foreground">
-            {fieldStaff.length === 0 ? t("myDay.noTechnicians") : t("myDay.pickTechnician")}
+            {fieldStaff.length === 0 ? t(trainerWords ? "myDay.noTrainers" : "myDay.noTechnicians") : t(trainerWords ? "myDay.pickTrainer" : "myDay.pickTechnician")}
           </div>
         )}
 
@@ -1186,8 +1201,13 @@ function MyDay() {
              the bar spans the content column and mx-auto centres within it.
              The variable is the docked width, so on the icon rail the bar
              starts at the rail's edge rather than 16rem in. */
+          /* Opaque, like the sticky header above. At 70% with a blur, the
+             "In progress" label's blue measured 2.67:1 whenever a dark
+             primary button scrolled under it (axe, /my-day at 1280px,
+             main 7d6274f), and 4.5:1 or better everywhere else, so its
+             contrast depended on the scroll position. */
           data-bottom-chrome=""
-          className={`fixed inset-x-0 bottom-0 z-40 border-t bg-background/90 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-background/70 ${nextUpClearOfSidebar} ${nextUpAboveTabBar}`}
+          className={`fixed inset-x-0 bottom-0 z-40 border-t bg-background pb-[env(safe-area-inset-bottom)] ${nextUpClearOfSidebar} ${nextUpAboveTabBar}`}
         >
           <a
             href={`#visit-${nextUp.id}`}
@@ -1452,10 +1472,12 @@ function serviceLineName(t: TFunction, line: ServiceLine): string {
 function statusBadge(status: string, queuedSync: LifecycleKind | undefined, t: TFunction) {
   const map: Record<string, string> = {
     scheduled: "bg-muted text-muted-foreground",
-    in_progress: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
-    completed: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-    skipped: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
-    canceled: "bg-destructive/15 text-destructive",
+    // 700/800 on a /15 tint: the 600s were 3.16 (emerald) and 4.39 (blue)
+    // on their own tints, and amber-700 4.48 (axe, gaps-r2-11 part 2).
+    in_progress: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
+    completed: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+    skipped: "bg-amber-500/15 text-amber-800 dark:text-amber-400",
+    canceled: "bg-destructive/10 text-destructive",
   };
   return (
     <span
@@ -1776,6 +1798,10 @@ function VisitCard({
   // Preview mode (office role viewing another tech's day) also disables actions.
   const canPerformVisit = !preview && role !== "dispatcher";
   const isGroom = visit.services?.service_line === "mobile_grooming";
+  // The owner's BLOCK rule never stops a Complete; it is explained first
+  // (#851 follow-up). Only a groom can be held, so only a groom asks.
+  const completionBlock = useCompletionBlockWarning();
+  usePrefetchCompletionBlock(visit.id, isGroom && canPerformVisit && visit.status !== "completed");
 
   const actions = useOfflineVisitActions(visit.id, visit.organization_id as string | undefined);
   // Billing an add-on is the one action on this card that is NOT queued when
@@ -1998,7 +2024,13 @@ function VisitCard({
     mutationFn: () => actions.start(),
     onSuccess: (r) => {
       haptic("select");
-      toast.success(r.queued ? t("visit.startQueued") : t("visit.started"));
+      // The owner's vaccine Start rule is "warn" (#729): started, and said so.
+      const missing = petsMissingVaccines(
+        (r.result as { vaccineWarnings?: MissingVaccine[] } | undefined)?.vaccineWarnings,
+      );
+      if (missing.length > 0)
+        toast.warning(t("visit.vaccineStartWarn", { pets: missing.join(", ") }));
+      else toast.success(r.queued ? t("visit.startQueued") : t("visit.started"));
       if (!r.queued) invalidate();
       // The button moves on to its next step now, not when the refetch (or
       // the queue's change event) lands. It does NOT open the camera: that
@@ -2007,7 +2039,12 @@ function VisitCard({
     },
     onError: (e: Error) => {
       haptic("error");
-      toast.error(readableError(e, t("common.notSaved")));
+      // The owner's vaccine Start rule is "block" (#729).
+      toast.error(
+        isVaccineStartBlocked(e)
+          ? t("visit.vaccineStartBlocked")
+          : readableError(e, t("common.notSaved")),
+      );
     },
   });
   const completeToast = (r: { queued: boolean; result?: unknown }) => {
@@ -2038,6 +2075,9 @@ function VisitCard({
   };
   const complete = useMutation({
     mutationFn: async () => {
+      // Before anything is saved: Cancel here leaves the visit as it was.
+      const block = isGroom ? await completionBlock.check(visit.id) : "clear";
+      if (block === "cancelled") return null;
       // A walk's report goes first, so the completion email is written from
       // it (#410). Queued, the completion queues behind it, never ahead.
       const reportQueued = (walk || sit) && (await walkReport.send()).queued;
@@ -2053,9 +2093,11 @@ function VisitCard({
             ? checkedItems.filter((id) => checklist.some((i) => i.id === id))
             : undefined,
         queueOnly: reportQueued || careQueued,
+        ...(block === "acknowledged" ? { blockAcknowledged: true } : {}),
       });
     },
     onSuccess: (r) => {
+      if (!r) return;
       haptic("success");
       showCompletionCheck();
       toast.success(completeToast(r));
@@ -2991,6 +3033,7 @@ function VisitCard({
             <WalkReportFields visitId={visit.id} report={walkReport} />
           )}
           {walk && endWalkDialog}
+          {isGroom && completionBlock.dialog}
 
           {sit && underWay && canPerformVisit && (
             <>

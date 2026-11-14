@@ -11,9 +11,11 @@ import type { AppRole } from "@/hooks/useMyRole";
 
 // IMP-3 — authorization has two implementations and they must not drift.
 //
-// public.has_permission() in SQL guards RLS policies and RPCs; ROLE_PERMISSIONS
-// in TypeScript guards requirePermission() in the server-fn layer. Both decide
-// the same question, and the SQL is only documented as a "mirror" of the TS —
+// public.has_permission() in SQL guards RLS policies and RPCs, and since #863
+// answers from public.permission_default() unless the business's owner stored
+// something else; ROLE_PERMISSIONS in TypeScript is the same default behind
+// requirePermission() in the server-fn layer. Both decide the same question,
+// and the SQL is only documented as a "mirror" of the TS —
 // documentation that nothing enforced. A permission granted on one side and not
 // the other is either a hole or a phantom failure, and neither shows up until
 // someone hits it in production.
@@ -29,69 +31,72 @@ import type { AppRole } from "@/hooks/useMyRole";
 // silently passing, because a parity test that quietly stops checking is worse
 // than no test at all.
 
-// The LATEST migration that defines has_permission, not a hard-coded one.
+// The LATEST migration that defines the DEFAULT matrix, not a hard-coded one.
 //
 // This used to name 20260718000000 outright, and that broke quietly the moment
 // a later migration replaced the function: the test kept passing while parsing
 // a definition the database no longer used, so a drift introduced in the newer
 // file would sail through the very check built to catch drift. A parity test
 // anchored to superseded history is the failure it exists to prevent.
+//
+// Since 20261112010000 (#863) the matrix is public.permission_default(role,
+// permission), which has_permission reads behind the business's stored
+// overrides. The role clauses parsed here are that function's; has_permission
+// itself no longer names a role but the owner.
 const MIGRATIONS_DIR = join(__dirname, "..", "supabase", "migrations");
-const DEFINES_HAS_PERMISSION =
-  /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.has_permission\s*\(/i;
+const DEFINES_DEFAULTS = /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.permission_default\s*\(/i;
 
-function latestHasPermissionMigration(): string {
+function latestDefaultsMigration(): string {
   const hits = readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith(".sql"))
     .sort() // timestamp-prefixed, so lexical order is chronological
-    .filter((f) => DEFINES_HAS_PERMISSION.test(readFileSync(join(MIGRATIONS_DIR, f), "utf8")));
+    .filter((f) => DEFINES_DEFAULTS.test(readFileSync(join(MIGRATIONS_DIR, f), "utf8")));
   if (!hits.length) {
-    throw new Error("No migration defines public.has_permission — parity cannot be checked.");
+    throw new Error("No migration defines public.permission_default — parity cannot be checked.");
   }
   return join(MIGRATIONS_DIR, hits[hits.length - 1]);
 }
 
-const MIGRATION = latestHasPermissionMigration();
+const MIGRATION = latestDefaultsMigration();
 
-/** Role clauses, as they appear inside the EXISTS predicate. */
+/** Role clauses, as they appear inside permission_default's CASE. */
 type SqlRule =
   | { role: string; kind: "all" }
   | { role: string; kind: "allExcept"; permissions: string[] }
   | { role: string; kind: "only"; permissions: string[] };
 
-function parseHasPermissionSql(sql: string): SqlRule[] {
-  const start = sql.indexOf("CREATE OR REPLACE FUNCTION public.has_permission");
-  if (start === -1) throw new Error("has_permission is not defined in the expected migration");
+function parseDefaultsSql(sql: string): SqlRule[] {
+  const start = sql.search(DEFINES_DEFAULTS);
+  if (start === -1) throw new Error("permission_default is not defined in the expected migration");
   // Bound the search to this function body so a later statement in the same
   // file can never be mistaken for part of the matrix.
-  // Either dollar-quote: older migrations close with `$$;`, the later ones
-  // re-issue pg_get_functiondef's own `$function$;`.
-  const ends = ["$$;", "$function$;"].map((d) => sql.indexOf(d, start)).filter((i) => i > -1);
-  const body = sql.slice(start, ends.length ? Math.min(...ends) : -1);
-  if (!body) throw new Error("Could not find the end of the has_permission body");
+  const end = sql.indexOf("$function$;", start);
+  const body = end === -1 ? "" : sql.slice(start, end);
+  if (!body) throw new Error("Could not find the end of the permission_default body");
 
   const rules: SqlRule[] = [];
   const list = (raw: string) => raw.match(/'([^']+)'/g)!.map((s) => s.slice(1, -1));
 
-  // ur.role = 'owner'  (no permission predicate → every permission)
-  for (const m of body.matchAll(/ur\.role\s*=\s*'(\w+)'\s*(?=\n|\r|\s*OR\b|\s*\))/g)) {
-    const after = body.slice(m.index! + m[0].length, m.index! + m[0].length + 12);
-    if (!/AND/i.test(after)) rules.push({ role: m[1], kind: "all" });
+  // WHEN _role = 'owner' THEN true  (every permission)
+  for (const m of body.matchAll(/WHEN\s+_role\s*=\s*'(\w+)'\s+THEN\s+true\b/gi)) {
+    rules.push({ role: m[1], kind: "all" });
   }
-  // (ur.role = 'x' AND _permission NOT IN ('a','b'))
+  // WHEN _role = 'x' THEN _permission NOT IN ('a','b')
   for (const m of body.matchAll(
-    /ur\.role\s*=\s*'(\w+)'\s+AND\s+_permission\s+NOT\s+IN\s*\(([^)]*)\)/gi,
+    /WHEN\s+_role\s*=\s*'(\w+)'\s+THEN\s+_permission\s+NOT\s+IN\s*\(([^)]*)\)/gi,
   )) {
     rules.push({ role: m[1], kind: "allExcept", permissions: list(m[2]) });
   }
-  // (ur.role = 'x' AND _permission IN ('a','b'))  — NOT IN already consumed above
+  // WHEN _role = 'x' THEN _permission IN ('a','b')  — NOT IN already consumed above
   for (const m of body.matchAll(
-    /ur\.role\s*=\s*'(\w+)'\s+AND\s+_permission\s+(?!NOT\s)IN\s*\(([^)]*)\)/gi,
+    /WHEN\s+_role\s*=\s*'(\w+)'\s+THEN\s+_permission\s+(?!NOT\s)IN\s*\(([^)]*)\)/gi,
   )) {
     rules.push({ role: m[1], kind: "only", permissions: list(m[2]) });
   }
-  // (ur.role = 'x' AND _permission = 'a')
-  for (const m of body.matchAll(/ur\.role\s*=\s*'(\w+)'\s+AND\s+_permission\s*=\s*'([^']+)'/gi)) {
+  // WHEN _role = 'x' THEN _permission = 'a'
+  for (const m of body.matchAll(
+    /WHEN\s+_role\s*=\s*'(\w+)'\s+THEN\s+_permission\s*=\s*'([^']+)'/gi,
+  )) {
     rules.push({ role: m[1], kind: "only", permissions: [m[2]] });
   }
   return rules;
@@ -108,17 +113,17 @@ function sqlGrants(rules: SqlRule[], role: string, permission: string): boolean 
 }
 
 const sql = readFileSync(MIGRATION, "utf8");
-const rules = parseHasPermissionSql(sql);
+const rules = parseDefaultsSql(sql);
 const ROLES = Object.keys(ROLE_PERMISSIONS) as AppRole[];
 
 describe("TS ↔ SQL permission parity (IMP-3)", () => {
   it("recognizes a rule for every role the TS matrix defines", () => {
-    // Guards the parser itself: if has_permission is rewritten into a shape
-    // this cannot read, the suite must go red rather than vacuously pass.
+    // Guards the parser itself: if permission_default is rewritten into a
+    // shape this cannot read, the suite must go red rather than vacuously pass.
     for (const role of ROLES) {
       expect(
         rules.some((r) => r.role === role),
-        `No has_permission clause found for role "${role}". Either the SQL dropped the role, or it was restructured and this parser needs updating — do not delete the assertion.`,
+        `No permission_default clause found for role "${role}". Either the SQL dropped the role, or it was restructured and this parser needs updating — do not delete the assertion.`,
       ).toBe(true);
     }
   });
@@ -138,7 +143,7 @@ describe("TS ↔ SQL permission parity (IMP-3)", () => {
     }
     expect(
       mismatches,
-      `The SQL mirror of ROLE_PERMISSIONS has drifted:\n  ${mismatches.join("\n  ")}\n\nUpdate public.has_permission and src/lib/permissions.ts together.`,
+      `The SQL mirror of ROLE_PERMISSIONS has drifted:\n  ${mismatches.join("\n  ")}\n\nUpdate public.permission_default and src/lib/permissions.ts together.`,
     ).toEqual([]);
   });
 

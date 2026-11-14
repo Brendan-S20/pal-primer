@@ -27,7 +27,7 @@ const STYLES: Record<string, { label: string; className: string }> = {
   },
   uncollectible: {
     label: "Uncollectible",
-    className: "border-transparent bg-destructive/15 text-destructive hover:bg-destructive/15",
+    className: "border-transparent bg-destructive/10 text-destructive hover:bg-destructive/10",
   },
 };
 
@@ -45,7 +45,7 @@ const REFUND_STYLES: Record<
   partly_refunded: {
     label: "Partly refunded",
     className:
-      "border-transparent bg-amber-500/15 text-amber-700 dark:text-amber-400 hover:bg-amber-500/15",
+      "border-transparent bg-amber-500/15 text-amber-800 dark:text-amber-400 hover:bg-amber-500/15",
   },
 };
 

@@ -173,14 +173,17 @@ export function chosenPublicService(
  *  walk is still a walk: quoted by its id, public_quote prices the service
  *  (no first cleanup, no rate card) instead of the zone's scooping price, and
  *  the yard questions are not asked. A pet-waste-only business, or one that
- *  lists nothing, still gets null and sends no id: its form is unchanged. */
+ *  lists nothing, still gets null and sends no id: its form is unchanged.
+ *  Except a pet-waste service the owner sells as ONE VISIT (D12): with no id
+ *  the server cannot see that setting and sold a repeating plan instead, so
+ *  that one is quoted by its id like a walk. */
 export function quotedPublicService(
   services: readonly PublicService[],
   pickedId: string | null | undefined,
 ): PublicService | null {
   if (offersAChoice(services)) return chosenPublicService(services, pickedId);
   const only = services.length === 1 ? services[0] : null;
-  return only && !isZonePriced(only) ? only : null;
+  return only && (!isZonePriced(only) || only.booking_mode === "one_time") ? only : null;
 }
 
 /** Whether the pet-waste questions ("when was your yard last cleaned?", the

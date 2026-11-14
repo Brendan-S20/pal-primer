@@ -21,7 +21,7 @@ export type PortalBookingSettings = {
 export const getPortalBookingSettings = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<PortalBookingSettings> => {
-    const { orgId, role } = await resolveCaller(context.supabase, context.userId);
+    const { orgId, role, overrides } = await resolveCaller(context.supabase, context.userId);
     const { data, error } = await (context.supabase.from("organizations") as any)
       .select("portal_auto_accept_bookings, one_off_price_cents, currency")
       .eq("id", orgId)
@@ -31,7 +31,7 @@ export const getPortalBookingSettings = createServerFn({ method: "GET" })
       autoAccept: !!data?.portal_auto_accept_bookings,
       priceCents: (data?.one_off_price_cents as number | null) ?? null,
       currency: ((data?.currency as string | null) ?? "usd").toLowerCase(),
-      canEdit: hasPermission(role, "manage_settings"),
+      canEdit: hasPermission(role, "manage_settings", overrides),
     };
   });
 

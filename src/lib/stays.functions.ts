@@ -7,9 +7,13 @@
 // the service, a stay visit takes the stay's sitter, a sitter never has two
 // overnights on one night, and canceling a stay cancels its future visits.
 //
-// Permissions are the existing ones (#460 redesigns roles): booking a stay
-// writes plans, so it needs manage_pricing as every plan writer does;
-// changing the sitter or canceling needs can_write_org, as walk groups do;
+// Permissions: booking a stay needs 'booking', the front desk's permission
+// (#616), so a dispatcher books one at the service's own price. Typing a
+// different price, or a deposit, is a price decision and still needs
+// manage_pricing; confirm_stay refuses either from anyone without it
+// (migration 20261109120000). The plans are written inside confirm_stay,
+// SECURITY DEFINER, so nobody writes a plan with their own key here.
+// Changing the sitter or canceling needs can_write_org, as walk groups do;
 // reading needs the client directory, as the client's dogs do.
 
 import { createServerFn } from "@tanstack/react-start";
@@ -18,6 +22,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
+import { hasPermission } from "@/lib/permissions";
 import {
   arrivalWindowProblem,
   firstTakenNight,
@@ -165,12 +170,28 @@ export const createStaySchema = z.object({
 
 export type CreateStayInput = z.infer<typeof createStaySchema>;
 
+/** Booking without manage_pricing (a dispatcher) is at the service's own
+ *  price and with no deposit. Null when the caller may book what they sent. */
+export function stayPriceRefusal(
+  canSetPrices: boolean,
+  input: { priceCents?: number | null; depositCents?: number | null },
+): string | null {
+  if (canSetPrices) return null;
+  if (input.priceCents != null)
+    return "Only an owner or office manager can set a stay's price. Book it at the service's price.";
+  if (input.depositCents != null) return "Only an owner or office manager can ask for a deposit.";
+  return null;
+}
+
 export const createStay = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => createStaySchema.parse(d))
   .handler(async ({ data, context }) => {
     const supabase = context.supabase as SupabaseClient<Database>;
-    const { orgId } = await requirePermission(supabase, context.userId, "manage_pricing");
+    const { orgId, role, overrides } = await requirePermission(supabase, context.userId, "booking");
+    const canSetPrices = hasPermission(role, "manage_pricing", overrides);
+    const refusal = stayPriceRefusal(canSetPrices, data);
+    if (refusal) throw new Error(refusal);
 
     const { data: service, error: sErr } = await supabase
       .from("services")
@@ -249,9 +270,11 @@ export const createStay = createServerFn({ method: "POST" })
     if (stErr) throw new Error(stErr.message);
     const stayId = stay.id as string;
 
+    // Without manage_pricing, confirm_stay works the price out itself from
+    // the same service rule (service_price_cents) and refuses one sent in.
     const { data: invoiceId, error: confirmError } = await supabase.rpc("confirm_stay", {
       _stay_id: stayId,
-      _price_cents: priceCents,
+      ...(canSetPrices ? { _price_cents: priceCents } : {}),
     });
     if (confirmError) {
       await (supabase as any).from("stays").delete().eq("id", stayId).eq("status", "requested");

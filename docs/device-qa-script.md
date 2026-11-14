@@ -16,6 +16,13 @@ Two habits follow from it:
 
 - **Screenshot every visual claim.** A claim with no image is an opinion.
 - **Say which build.** `git rev-parse --short HEAD` at the start of the run.
+  And which backend: a store-style bundle talks to production unless it was
+  built with `npm run build:native:staging`. Acceptance runs on production,
+  signed into the production demo org (`organizations.slug` is `demo`,
+  `@demo.test` accounts), not a staging build. Use only demo or test records,
+  never touch Detroit Doo Disposal's or any other real org's data, and send no
+  real customer email or text. The full rules, and how to check you are in
+  the demo org, are in `docs/native-qa-staging.md`.
 
 ## Setup
 
@@ -92,6 +99,7 @@ screenshot path, and one of PASS / FAIL / NOT RUN.
   upgrade / subscribe / buy / update payment.
 - The client's own Billing tab is the opposite case and MUST still take a
   customer's payment. Do not report that as a gate failure.
+  On production, check the payment control is there; do not submit a payment.
 
 ### 8. Offline
 - `xcrun simctl status_bar "$D" override --dataNetwork hide --cellularMode notSupported`

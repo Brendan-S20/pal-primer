@@ -1,6 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { feeReversalCents } from "@/lib/platform-fee";
+import {
+  readChargeMetadata,
+  reversibleFeeBaseCents,
+  type ChargeMetadataRead,
+} from "@/lib/tap-to-pay";
 import { makeStripe, warnOnApiVersionMismatch } from "@/lib/stripe-client.server";
 import { bookedGroomPhrase, onlineGroomBookingFrom } from "@/lib/groom-online";
 import {
@@ -595,6 +600,10 @@ async function provisionSignup(
             // reverse the application fee as part of the same call. Keeping a
             // fee on a sale that was unwound and refunded in full would be
             // charging the tenant for our own failure.
+            //
+            // That includes any Stripe cost passed through on the fee, such
+            // as Radar (#825): this sale failed on HoundStack's side, so the
+            // platform absorbs it and the business is handed back all of it.
             refund_application_fee: true,
           },
           {
@@ -631,6 +640,62 @@ async function provisionSignup(
     }
 
     await supabaseAdmin.from("signup_requests").update(refundPatch).eq("id", signupRequestId);
+  }
+}
+
+/**
+ * The charge's PaymentIntent metadata, for the fee reversal (#579): off the
+ * charge when it carries a copy, else read from the intent on the connected
+ * account. `readable: false` when neither works; the callers then hold back
+ * at most the per-tap fee and file the case for a person (#826; see
+ * reversibleFeeBaseCents in src/lib/tap-to-pay.ts).
+ */
+async function chargeMetadataRead(
+  charge: { metadata?: Record<string, string> | null } | null,
+  paymentIntentId: string | null,
+  stripeAccount: string | null | undefined,
+): Promise<ChargeMetadataRead> {
+  return readChargeMetadata(
+    charge,
+    paymentIntentId,
+    stripeAccount
+      ? async (id) => {
+          const { connectStripe } = await import("@/lib/stripe-connect.server");
+          const connect = await connectStripe();
+          const pi = await connect.paymentIntents.retrieve(id, {}, { stripeAccount });
+          return pi?.metadata as Record<string, string> | undefined;
+        }
+      : null,
+  );
+}
+
+/**
+ * A fee reversal a person has to look at (#826): the charge's intent metadata
+ * could not be read, so up to TAP_TO_PAY_FEE_CENTS was held back, or the
+ * reversal failed outright. The webhook answers 2xx either way and Stripe does
+ * not redeliver, so a console line alone is read by nobody. Filed on
+ * `platform_admin_audit` with no actor (the billing system did it), which
+ * /platform/audit and the tenant's audit tab already show.
+ *
+ * Best-effort, like every other actorless audit write: losing the row must not
+ * stop the reversal ledger below from recording the refund.
+ */
+async function recordFeeReversalForReview(
+  supabaseAdmin: SupabaseClient,
+  action: "application_fee_reversal_unreadable" | "application_fee_reversal_failed",
+  organizationId: string,
+  detail: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const { error } = await supabaseAdmin.from("platform_admin_audit").insert({
+      actor_user_id: null,
+      organization_id: organizationId,
+      action,
+      after_json: detail,
+    });
+    if (error) throw new Error(error.message);
+  } catch (e) {
+    console.error("fee reversal audit row failed", { action, organizationId, detail }, e);
   }
 }
 
@@ -725,6 +790,28 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 .eq("stripe_connect_account_id", event.account);
               if (error) console.error("deauthorize update failed", event.account, error);
               else console.warn("connected account deauthorized by tenant", event.account);
+            }
+            return new Response("ok", { status: 200 });
+          }
+
+          // A late-change fee on a portal reschedule or cancel (#730). Settled
+          // only here: matched by PaymentIntent AND event.account in the
+          // database, and recorded once per event id, so a duplicate delivery
+          // or another tenant's event changes nothing. A database error
+          // throws to the 500 below and Stripe retries.
+          if (
+            (event.type === "payment_intent.succeeded" ||
+              event.type === "payment_intent.payment_failed") &&
+            (event.data.object as { metadata?: Record<string, string> } | null)?.metadata
+              ?.source === "portal_change_fee"
+          ) {
+            const { recordPortalChangeFeeEvent } = await import("@/lib/portal-change-fees.server");
+            const settled = await recordPortalChangeFeeEvent(supabaseAdmin as any, event as any);
+            // Never acknowledge an event that settled nothing it should have
+            // (#730 review, finding 2): non-2xx, so Stripe delivers it again.
+            if (settled === "unknown") {
+              console.warn("portal change fee event matched no fee yet; asking Stripe to retry", event.id);
+              return new Response("Fee not found yet", { status: 409 });
             }
             return new Response("ok", { status: 200 });
           }
@@ -1294,7 +1381,10 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               .from("payments")
               // tax_cents: the sales-tax share inside amount_cents, which a
               // refund gives back to the customer but never took off revenue.
-              .select("id, organization_id, amount_cents, surcharge_cents, tip_cents, tax_cents")
+              // status: whether the re-read has to move it (below).
+              .select(
+                "id, organization_id, amount_cents, surcharge_cents, tip_cents, tax_cents, status",
+              )
               .eq("stripe_payment_intent_id", piId)
               .maybeSingle();
             if (!rpay) return new Response("ok", { status: 200 });
@@ -1333,6 +1423,8 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
             // What went back, re-read from Stripe, so it REPLACES the stored
             // figure: on the payment (which moves the invoice's amount paid
             // and refunded) and on a provisioned signup it paid for.
+            const { paymentStatusAfterReread, refundIdFromReread } =
+              await import("@/lib/refund-outcome");
             {
               const { recordRefundOnPayment, recordRefundOnSignup } =
                 await import("@/lib/refund-outcome.server");
@@ -1343,7 +1435,10 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                 supabaseAdmin,
                 { organizationId: rpay.organization_id, paymentIntentId: piId },
                 {
-                  refundId: null,
+                  // This event IS the refund, so it knows the id even when
+                  // charge.refunded could not find it (#675). Not a failed
+                  // one: no money went back on that.
+                  refundId: refundIdFromReread(refund),
                   amountRefundedCents: trueRefunded,
                   at: new Date().toISOString(),
                   authoritative: true,
@@ -1351,13 +1446,20 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               );
             }
 
-            // The payment's own status has to follow, or the charge path keeps
-            // treating a payment as refunded when the money never went back.
-            if (trueRefunded <= 0) {
-              await (supabaseAdmin as any)
-                .from("payments")
-                .update({ status: "succeeded" })
-                .eq("id", rpay.id);
+            // The payment's own status has to follow, after refunded_cents is
+            // written: back to 'succeeded' when nothing went back, or the
+            // charge path keeps treating it as refunded; to 'refunded' when
+            // money went back on a payment charge.refunded never flipped, or
+            // the invoice keeps reading Paid in full (#674).
+            {
+              const next = paymentStatusAfterReread(rpay.status, trueRefunded);
+              if (next) {
+                await (supabaseAdmin as any)
+                  .from("payments")
+                  .update({ status: next })
+                  .eq("id", rpay.id)
+                  .eq("status", rpay.status);
+              }
             }
 
             if (refund?.status === "failed" || refund?.status === "canceled") {
@@ -1565,14 +1667,42 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               if (feeId) {
                 try {
                   const fee = await stripe.applicationFees.retrieve(feeId);
+                  // Tap to Pay (#579): the per-tap part of the fee is not
+                  // handed back. When the intent's metadata cannot be read,
+                  // the fee less at most the per-tap fee is (#826), and the
+                  // case is filed for a person. See reversibleFeeBaseCents.
+                  const read = await chargeMetadataRead(obj, paymentIntentId, event.account);
+                  const feeCents = Number(fee?.amount ?? 0);
+                  const base = reversibleFeeBaseCents(feeCents, read);
                   const target = feeReversalCents(
-                    Number(fee?.amount ?? 0),
+                    base,
                     Number(obj?.amount ?? 0),
                     Number(obj?.amount_refunded ?? 0),
                   );
                   const delta = target - Number(fee?.amount_refunded ?? 0);
                   if (delta > 0) {
                     await stripe.applicationFees.createRefund(feeId, { amount: delta });
+                  }
+                  if (!read.readable) {
+                    const detail = {
+                      event_type: event.type,
+                      fee_id: feeId,
+                      charge_id: obj?.id ?? null,
+                      payment_intent_id: paymentIntentId,
+                      reason: read.reason,
+                      fee_cents: feeCents,
+                      reversed_cents: Math.max(0, delta),
+                    };
+                    console.error(
+                      "application fee reversal: the charge's intent metadata could not be read, so up to the per-tap fee was held back (it also covers a Radar fee). Check whether this was a tap or a screened card payment.",
+                      detail,
+                    );
+                    await recordFeeReversalForReview(
+                      supabaseAdmin,
+                      "application_fee_reversal_unreadable",
+                      pay.organization_id,
+                      detail,
+                    );
                   }
                 } catch (e) {
                   console.error(
@@ -1582,6 +1712,18 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                       paymentIntentId,
                     },
                     e,
+                  );
+                  await recordFeeReversalForReview(
+                    supabaseAdmin,
+                    "application_fee_reversal_failed",
+                    pay.organization_id,
+                    {
+                      event_type: event.type,
+                      fee_id: feeId,
+                      charge_id: obj?.id ?? null,
+                      payment_intent_id: paymentIntentId,
+                      error: e instanceof Error ? e.message : String(e),
+                    },
                   );
                 }
               }
@@ -1678,8 +1820,14 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                         Number(pay.amount_cents ?? 0) +
                         Number(pay.surcharge_cents ?? 0) +
                         Number(pay.tip_cents ?? 0);
+                      // Tap to Pay (#579): never the per-tap part. When the
+                      // intent's metadata cannot be read, the fee less at most
+                      // the per-tap fee (#826), filed for a person.
+                      const read = await chargeMetadataRead(null, paymentIntentId, event.account);
+                      const feeCents = Number(fee.amount ?? 0);
+                      const base = reversibleFeeBaseCents(feeCents, read);
                       const target = feeReversalCents(
-                        Number(fee.amount ?? 0),
+                        base,
                         chargeTotal,
                         // The DISPUTED amount, not the charge total. A partial
                         // dispute takes part of the charge and should take the
@@ -1690,12 +1838,46 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                       if (delta > 0) {
                         await stripe.applicationFees.createRefund(fee.id, { amount: delta });
                       }
+                      if (!read.readable) {
+                        const detail = {
+                          event_type: event.type,
+                          fee_id: fee.id,
+                          charge_id: chargeId,
+                          payment_intent_id: paymentIntentId,
+                          dispute_ref: disputeRef,
+                          reason: read.reason,
+                          fee_cents: feeCents,
+                          reversed_cents: Math.max(0, delta),
+                        };
+                        console.error(
+                          "application fee reversal on dispute: the charge's intent metadata could not be read, so up to the per-tap fee was held back (it also covers a Radar fee). Check whether this was a tap or a screened card payment.",
+                          detail,
+                        );
+                        await recordFeeReversalForReview(
+                          supabaseAdmin,
+                          "application_fee_reversal_unreadable",
+                          pay.organization_id,
+                          detail,
+                        );
+                      }
                     }
                   } catch (e) {
                     console.error(
                       "application fee reversal on dispute failed",
                       { chargeId, paymentIntentId, disputeRef },
                       e,
+                    );
+                    await recordFeeReversalForReview(
+                      supabaseAdmin,
+                      "application_fee_reversal_failed",
+                      pay.organization_id,
+                      {
+                        event_type: event.type,
+                        charge_id: chargeId,
+                        payment_intent_id: paymentIntentId,
+                        dispute_ref: disputeRef,
+                        error: e instanceof Error ? e.message : String(e),
+                      },
                     );
                   }
                 }

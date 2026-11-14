@@ -53,7 +53,35 @@ class HSBridgeViewController: CAPBridgeViewController {
         configuration.userContentController.addUserScript(
             WKUserScript(source: bridgeConfigAnswers, injectionTime: .atDocumentStart, forMainFrameOnly: true)
         )
+        configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: Self.tapToPayEntitledScript(Self.tapToPayEntitled()),
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
         return super.webView(with: frame, configuration: configuration)
+    }
+
+    // ── Whether THIS binary was signed with Tap to Pay on iPhone ────────────
+    //
+    // Apple granted com.apple.developer.proximity-reader.payment.acceptance
+    // for DEVELOPMENT only (case 23404969). Debug signs with App.entitlements,
+    // which carries it; Release signs with App.Release.entitlements, which does
+    // not, because a distribution profile cannot include it and Xcode Cloud's
+    // export failed on it. The build setting HS_TAP_TO_PAY_ENTITLED says which
+    // (YES in Debug, NO in Release), Info.plist carries it as
+    // HSTapToPayEntitled, and the page reads window.__HS_TAP_TO_PAY_ENTITLED__
+    // (src/lib/tap-to-pay-entitlement.ts) so a Release build never draws a
+    // button whose first call would fail. See
+    // docs/tap-to-pay-release-entitlements.md.
+    static func tapToPayEntitled() -> Bool {
+        let raw = Bundle.main.object(forInfoDictionaryKey: "HSTapToPayEntitled") as? String
+        return raw?.uppercased() == "YES"
+    }
+
+    static func tapToPayEntitledScript(_ entitled: Bool) -> String {
+        "window.__HS_TAP_TO_PAY_ENTITLED__ = \(entitled);"
     }
 
     static func bridgeConfigAnswerScript(cookies: Bool, http: Bool) -> String {
@@ -82,6 +110,8 @@ class HSBridgeViewController: CAPBridgeViewController {
         // CapApp-SPM lists), so they are registered here, which is the
         // approach Capacitor documents for a local iOS plugin.
         bridge?.registerPluginInstance(RouteActivityPlugin())
+        // Apple's Tap to Pay on iPhone merchant education (ProximityReaderDiscovery).
+        bridge?.registerPluginInstance(TapToPayEducationPlugin())
 
         // The iOS edge swipe back. WKWebView turns it off by default; on, a
         // swipe from the leading edge walks the web view's back list, and in

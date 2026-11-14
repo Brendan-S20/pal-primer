@@ -1,5 +1,6 @@
 import i18n from "@/lib/i18n";
 import { completeFromOffice, useOfficeCompleteOverride } from "@/components/OfficeCompleteOverride";
+import { useCompletionBlockWarning } from "@/components/CompletionBlockWarning";
 import { warnLessonClashes } from "@/components/training/lessonClashWarning";
 // Visits tab (spec): scheduled window and actual timing are separate,
 // clearly labeled things. Missing timestamps say so instead of blurring
@@ -48,6 +49,7 @@ import {
   nowAsCalledAt,
 } from "@/components/training/ClientCalledAtField";
 import { orgToday } from "@/lib/org-day";
+import { markVisitCompletedInClientHistory } from "@/lib/client-visit-history-cache";
 import { toastSaveError } from "@/lib/stale-write-toast";
 import { visitBookedCents } from "@/lib/booked-value";
 import { visitServiceLabel } from "@/lib/subscription-form";
@@ -786,9 +788,7 @@ function VisitTable({
                     />
                   )}
                   {v.status === "skipped" && (v.skip_reason_code || v.skip_reason) && (
-                    <span className="ml-1 text-xs text-muted-foreground">
-                      {skipReasonText(v)}
-                    </span>
+                    <span className="ml-1 text-xs text-muted-foreground">{skipReasonText(v)}</span>
                   )}
                   {v.is_deepclean && <MetaChip className="ml-1">Deep clean</MetaChip>}
                 </td>
@@ -831,12 +831,12 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 // so the span-based StatusChip does not fit).
 const CHIP_TONES: Record<string, string> = {
   scheduled: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
-  in_progress: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  in_progress: "bg-amber-500/15 text-amber-800 dark:text-amber-400",
   completed: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
   missed: "bg-orange-500/15 text-orange-700 dark:text-orange-400",
   [NEVER_ON_A_ROUTE]: "bg-muted text-muted-foreground",
   skipped: "bg-muted text-muted-foreground",
-  canceled: "bg-destructive/15 text-destructive",
+  canceled: "bg-destructive/10 text-destructive",
 };
 
 /** Local YYYY-MM-DD key for a Date (no UTC parsing pitfalls). */
@@ -1063,6 +1063,15 @@ function VisitDetailDrawer({
   const [calledAt, setCalledAt] = useState("");
   const [newStaffId, setNewStaffId] = useState("");
 
+  // Moving and reassigning a visit is routes work (#728): manage_schedule,
+  // which a dispatcher holds. Completing and canceling can bill; since #863
+  // they are close_visits, on for a dispatcher by default and the owner's to
+  // turn off. canCorrect (manage_client_billing) keeps the billing
+  // corrections. The server asks the same of each.
+  const { can: canDo } = usePermissions();
+  const canSchedule = canDo("manage_schedule");
+  const canClose = canDo("close_visits");
+
   const completeFn = useServerFn(completeVisitFromOffice);
   const rescheduleFn = useServerFn(rescheduleVisitFromOffice);
   const cancelFn = useServerFn(cancelVisitFromOffice);
@@ -1077,7 +1086,7 @@ function VisitDetailDrawer({
   const { data: staffData } = useQuery({
     queryKey: ["org-staff"],
     queryFn: () => listStaffFn(),
-    enabled: canCorrect && scheduled,
+    enabled: (canClose || canSchedule) && scheduled,
     staleTime: 60_000,
   });
   const staff = ((staffData as any)?.staff ?? []).filter((s: any) => s.is_field_tech !== false);
@@ -1091,20 +1100,30 @@ function VisitDetailDrawer({
     setNewStaffId("");
     qc.invalidateQueries({ queryKey: ["client-visit-history", clientId] });
     qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
+    // Completing a visit billed after each visit invoices it (#859).
+    qc.invalidateQueries({ queryKey: ["invoices"] });
     onClose();
   };
 
   // No photo or checklist: the office says why, or the visit stays open (#658).
   const { askWhy, dialog: overrideDialog } = useOfficeCompleteOverride();
+  // A client the owner's BLOCK rule holds: say why first, never refuse (#851).
+  const completionBlock = useCompletionBlockWarning();
   const completeMut = useMutation({
     mutationFn: (confirmedEarly: boolean) =>
       completeFromOffice(
-        (overrideReason) =>
-          completeFn({ data: { visitId: v.id, confirmedEarly, overrideReason } }),
+        (overrideReason, blockAcknowledged) =>
+          completeFn({
+            data: { visitId: v.id, confirmedEarly, overrideReason, blockAcknowledged },
+          }),
         askWhy,
+        () => completionBlock.check(v.id),
       ),
     onSuccess: (done) => {
-      if (done) afterAction("Visit marked completed");
+      if (!done) return;
+      // The row says what the toast says, now, not after the refetch (#789).
+      markVisitCompletedInClientHistory(qc, clientId, v.id);
+      afterAction("Visit marked completed");
     },
     onError: (e) => toast.error((e as Error).message),
   });
@@ -1258,8 +1277,9 @@ function VisitDetailDrawer({
 
         {confirmDialog}
         {overrideDialog}
+        {completionBlock.dialog}
 
-        {canCorrect && (canComplete || canReschedule) && (
+        {((canClose && canComplete) || (canSchedule && canReschedule)) && (
           <div className="space-y-3 rounded-md border bg-muted/20 p-3">
             {missed && neverOnARoute && (
               <p className="text-xs text-muted-foreground">
@@ -1275,7 +1295,7 @@ function VisitDetailDrawer({
               </p>
             )}
             <div className="flex flex-wrap items-center gap-1.5">
-              {canComplete && (
+              {canClose && canComplete && (
                 <Button
                   size="sm"
                   disabled={completeMut.isPending}
@@ -1300,7 +1320,7 @@ function VisitDetailDrawer({
                   {completeMut.isPending ? "Completing…" : "Mark completed"}
                 </Button>
               )}
-              {canReschedule && (
+              {canSchedule && canReschedule && (
                 <Button
                   size="sm"
                   variant={action === "reschedule" ? "default" : "outline"}
@@ -1312,15 +1332,17 @@ function VisitDetailDrawer({
                   Reschedule…
                 </Button>
               )}
-              {scheduled && (
+              {scheduled && canSchedule && (
+                <Button
+                  size="sm"
+                  variant={action === "reassign" ? "default" : "outline"}
+                  onClick={() => setAction(action === "reassign" ? null : "reassign")}
+                >
+                  Reassign…
+                </Button>
+              )}
+              {scheduled && canClose && (
                 <>
-                  <Button
-                    size="sm"
-                    variant={action === "reassign" ? "default" : "outline"}
-                    onClick={() => setAction(action === "reassign" ? null : "reassign")}
-                  >
-                    Reassign…
-                  </Button>
                   <Button
                     size="sm"
                     variant={action === "cancel" ? "destructive" : "outline"}
@@ -1336,7 +1358,7 @@ function VisitDetailDrawer({
               )}
             </div>
 
-            {action === "reschedule" && canReschedule && (
+            {action === "reschedule" && canReschedule && canSchedule && (
               <form
                 className="space-y-2"
                 onSubmit={(e) => {
@@ -1367,7 +1389,7 @@ function VisitDetailDrawer({
               </form>
             )}
 
-            {action === "reassign" && scheduled && (
+            {action === "reassign" && scheduled && canSchedule && (
               <form
                 className="space-y-2"
                 onSubmit={(e) => {
@@ -1403,7 +1425,7 @@ function VisitDetailDrawer({
               </form>
             )}
 
-            {action === "cancel" && scheduled && (
+            {action === "cancel" && scheduled && canClose && (
               <form
                 className="space-y-2"
                 onSubmit={(e) => {

@@ -21,11 +21,20 @@ import { appOrigin, appUrl } from "@/lib/app-origin";
 import { THEME_BOOT_SCRIPT, applyTheme, followSystemTheme, readThemePref } from "@/lib/theme";
 import { RootRecovery } from "@/components/RootRecovery";
 import { markAppMounted } from "@/lib/app-mounted";
+import { captureRecoveryFromUrl } from "@/lib/password-recovery";
 
 // Error monitoring starts here, at module load on the client, so it is armed
 // before hydration rather than after the first effect. Off (no download, no
 // request) in dev and test; see lib/monitoring/config.ts.
 if (typeof window !== "undefined") initClientMonitoring();
+
+// A password-recovery link, read before supabase-js reads it. The client's
+// start-up is asynchronous and removes an implicit-flow hash from the address
+// bar once it has made a session of it, after which a recovery and a sign-in
+// look identical. Module evaluation is synchronous, so this sees the URL the
+// page was opened with. /auth and / then send the tab to /reset-password
+// instead of landing it (lib/password-recovery.ts).
+if (typeof window !== "undefined") captureRecoveryFromUrl(window.location.href);
 
 function NotFoundComponent() {
   return (
@@ -357,12 +366,14 @@ function RootComponent() {
     import("../lib/native")
       .then(async (m) => {
         keep(await m.initBackButton());
-        const { routeDeepLink, forgetDeepLink } = await import("../lib/pending-deep-link");
+        const { routeDeepLink, signedOut } = await import("../lib/pending-deep-link");
         if (IS_NATIVE_BUNDLE) {
-          // A held link is the tapper's, not the next account's.
+          // A held link is the tapper's, not the next account's. But an
+          // expired session announced at launch, before anybody landed, is
+          // the tapper being asked to sign in: that keeps the link.
           const { supabase } = await import("../integrations/supabase/client");
           const { data: auth } = supabase.auth.onAuthStateChange((event) => {
-            if (event === "SIGNED_OUT") forgetDeepLink();
+            if (event === "SIGNED_OUT") signedOut();
           });
           keep(() => auth.subscription.unsubscribe());
         }

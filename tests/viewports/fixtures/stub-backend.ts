@@ -52,6 +52,23 @@ function decodeSeroval(node: unknown): unknown {
     return out;
   }
   if (Array.isArray(n.a)) return n.a.map(decodeSeroval);
+  // A constant (SerovalNodeType.Constant = 2) carries a code, not the value:
+  // null 0, undefined 1, true 2, false 3. Read as a number, `false` came out
+  // as 3, which is truthy, so a stub could not tell a "no" from a "yes" (#731:
+  // overCapAcknowledged: false read as confirmed).
+  if (n.t === 2 && "s" in n) {
+    const constants: Record<number, unknown> = {
+      0: null,
+      1: undefined,
+      2: true,
+      3: false,
+      4: -0,
+      5: Infinity,
+      6: -Infinity,
+      7: NaN,
+    };
+    return constants[n.s as number];
+  }
   if ("s" in n) return n.s;
   if ("t" in n && typeof n.t === "object") return decodeSeroval(n.t);
   return undefined;
@@ -88,6 +105,16 @@ function argsOf(route: Route): Record<string, any> {
 
 export type Stub = unknown | ((args: Record<string, any>) => unknown);
 
+/**
+ * Thrown by a stub to make the server function fail, the way a refused write
+ * fails in production: the browser gets a non-JSON 500 whose text becomes the
+ * Error's message (serverFnFetcher: `if (!response.ok) throw new Error(await
+ * response.text())`), and the page shows it however it shows a real refusal.
+ * Use the database's own wording, so the spec measures the message a person
+ * would actually read.
+ */
+export class StubRefusal extends Error {}
+
 const ok = { ok: true };
 
 /** The end-of-day step's wording for a business that does not run pet waste
@@ -98,10 +125,80 @@ const ok = { ok: true };
 const DAY_END_WORDING = {
   label: "Where does your day end?",
   description:
-    "Set where each tech finishes the day: home, the shop, wherever the van parks. Routes end there instead of at the last stop, which usually cuts a lot of driving.",
+    "Set where each person finishes the day: home, the shop, wherever they park. Routes end there instead of at the last stop, which usually cuts a lot of driving.",
   done: false,
   cta: "Set day's end",
 };
+
+/** The same step for a business that scoops AND does something else (#768,
+ *  dayEndQuestion "both"): worded for everybody, the dump site offered on the
+ *  form as the pet-waste half. */
+const DAY_END_WORDING_BOTH = {
+  ...DAY_END_WORDING,
+  description: `${DAY_END_WORDING.description} Pet waste routes can end at a dump site instead.`,
+};
+
+/** The price step a walking business is asked on /setup (#769), as the
+ *  server words it: the walks priced in place, open. A walker alone gets the
+ *  one-line step; a business that also scoops gets a part per line. */
+const WALK_PRICE_STEP = {
+  label: "Price your walks",
+  description:
+    "Set what a 30-minute walk and a 60-minute walk cost, and a drop-in if you offer one. New clients are quoted these prices. Your service area is on Zones.",
+  done: false,
+  to: "/setup",
+  cta: "Price walks",
+  gate: "/settings/services",
+};
+const MIXED_PRICE_STEP = {
+  label: "Price your services",
+  description:
+    "You run 2 services. Set a price for each: pet waste visits and walks. New clients are quoted these prices.",
+  done: false,
+  to: "/setup",
+  cta: "Set your prices",
+  gate: "/zones",
+  parts: [
+    {
+      id: "area",
+      label: "Pet waste service area",
+      description:
+        "Where you work and what you charge per visit. New pet waste clients in the area are quoted this price.",
+      done: false,
+      to: "/zones",
+      cta: "Set area price",
+    },
+    {
+      id: "walks",
+      label: "Walks",
+      description: "What a 30-minute walk and a 60-minute walk cost.",
+      done: false,
+      to: "/settings/services",
+      cta: "Price walks",
+    },
+  ],
+};
+
+/** Signup's three walks (DEFAULT_SERVICE_SEEDS.dog_walking), unpriced, as a
+ *  new walking business has them. */
+const SEEDED_WALKS = [
+  ["c511", "30-minute walk", 30],
+  ["c512", "60-minute walk", 60],
+  ["c513", "Drop-in visit (20 min)", 20],
+].map(([id, name, min]) => ({
+  id: `aaaaaaaa-0000-4000-8000-00000000${id}`,
+  organization_id: fx.ORG_ID,
+  name,
+  service_line: "dog_walking",
+  price_unit: "visit",
+  base_price_cents: null,
+  extra_pet_cents: 0,
+  default_duration_min: min,
+  holiday_surcharge_pct: 0,
+  active: true,
+  created_at: "2026-11-09T12:00:00Z",
+  updated_at: "2026-11-09T12:00:00Z",
+}));
 
 /**
  * Name → reply. Named for the export, so one entry serves every route that
@@ -537,6 +634,8 @@ export const BASE_STUBS: Record<string, Stub> = {
     visits: fx.visitsBetween(a.day ?? fx.TODAY, a.throughDay ?? a.day ?? fx.TODAY),
   }),
   listStaff: { staff: fx.STAFF },
+  // Walks over a walker's dog cap (#731): none in the base fixture.
+  listWalksOverDogCap: { walks: [] },
   listTimeOff: { rows: [] },
   getDispatchSettings: {
     settings: {
@@ -911,8 +1010,20 @@ export const BASE_STUBS: Record<string, Stub> = {
       business_email: "compliance@greatermetropolitandetroitdoodisposal.com",
       business_phone: "+13135550100",
       contacts: [
-        { first_name: "Devin", last_name: "Abernathy-Kowalczyk", title: "Owner", email: "devin@greatermetropolitandetroitdoodisposal.com", phone: "+13135550101" },
-        { first_name: "Samantha", last_name: "Okonkwo", title: "Office manager", email: "sam@greatermetropolitandetroitdoodisposal.com", phone: "+13135550102" },
+        {
+          first_name: "Devin",
+          last_name: "Abernathy-Kowalczyk",
+          title: "Owner",
+          email: "devin@greatermetropolitandetroitdoodisposal.com",
+          phone: "+13135550101",
+        },
+        {
+          first_name: "Samantha",
+          last_name: "Okonkwo",
+          title: "Office manager",
+          email: "sam@greatermetropolitandetroitdoodisposal.com",
+          phone: "+13135550102",
+        },
       ],
       ein_last4: "4567",
       phone_number: "+18445550123",
@@ -936,10 +1047,8 @@ export const BASE_STUBS: Record<string, Stub> = {
     displayName: "Detroit Doo",
     termsUrl: "https://www.greatermetropolitandetroitdoodisposal.com/legal/terms-of-service",
     privacyUrl: "https://www.greatermetropolitandetroitdoodisposal.com/legal/privacy-policy",
-    lead:
-      "I agree to receive text messages from Detroit Doo at the number provided about my appointments, visit updates and billing. Consent is optional and is not a condition of purchase. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out, HELP for help.",
-    text:
-      "I agree to receive text messages from Detroit Doo at the number provided about my appointments, visit updates and billing. Consent is optional and is not a condition of purchase. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out, HELP for help. Detroit Doo Terms: https://www.greatermetropolitandetroitdoodisposal.com/legal/terms-of-service Privacy Policy: https://www.greatermetropolitandetroitdoodisposal.com/legal/privacy-policy",
+    lead: "I agree to receive text messages from Detroit Doo at the number provided about my appointments, visit updates and billing. Consent is optional and is not a condition of purchase. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out, HELP for help.",
+    text: "I agree to receive text messages from Detroit Doo at the number provided about my appointments, visit updates and billing. Consent is optional and is not a condition of purchase. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out, HELP for help. Detroit Doo Terms: https://www.greatermetropolitandetroitdoodisposal.com/legal/terms-of-service Privacy Policy: https://www.greatermetropolitandetroitdoodisposal.com/legal/privacy-policy",
   },
 
   // /settings/automation, /settings/invoicing and /settings/emails, which
@@ -1225,6 +1334,56 @@ export const BASE_STUBS: Record<string, Stub> = {
   listOrgInvites: { invites: [] },
   listStaffAddresses: { staff: fx.STAFF },
   listStaffServices: { rows: [] },
+  // Settings -> Roles & permissions (#863). Every configurable role with
+  // every permission; the dispatcher carries two changes (one on, one off)
+  // so the "Changed" badge, the count and the "last changed by" line are
+  // drawn, and the office manager and technician the defaults, so "The
+  // defaults." and a disabled Reset are measured too.
+  getRolePermissions: (() => {
+    const DEFAULTS: Record<string, string[]> = {
+      office_manager: fx.ALL_PERMISSION_NAMES.filter(
+        (p) => p !== "manage_org_billing" && p !== "manage_franchise",
+      ),
+      dispatcher: [
+        "view_client_directory",
+        "record_field_addons",
+        "booking",
+        "manage_schedule",
+        "close_visits",
+        "manage_plans",
+        "message_clients",
+      ],
+      tech: ["record_field_addons"],
+    };
+    const OWNER_ONLY = ["manage_org_billing", "manage_franchise"];
+    const CHANGED: Record<string, Record<string, boolean>> = {
+      dispatcher: { view_financials: true, message_clients: false },
+    };
+    return {
+      roles: (["office_manager", "dispatcher", "tech"] as const).map((role) => {
+        const permissions = fx.ALL_PERMISSION_NAMES.map((permission) => {
+          const byDefault = DEFAULTS[role].includes(permission);
+          const ownerOnly = OWNER_ONLY.includes(permission);
+          const stored = CHANGED[role]?.[permission];
+          return {
+            permission,
+            byDefault,
+            ownerOnly,
+            allowed: ownerOnly ? false : typeof stored === "boolean" ? stored : byDefault,
+          };
+        });
+        const changed = permissions.filter((p) => p.allowed !== p.byDefault).length;
+        return {
+          role,
+          permissions,
+          changed,
+          lastChange: changed ? { by: "Dana Whitfield-Ramirez", at: "2026-11-11T15:04:00Z" } : null,
+        };
+      }),
+    };
+  })(),
+  setRolePermission: (args) => ({ ok: true, allowed: args.allowed, byDefault: false }),
+  resetRolePermissions: ok,
   listOrgUsers: {
     users: fx.STAFF.map((s, i) => ({
       user_id: `77777777-0000-4000-8000-${String(500000000000 + i).slice(0, 12)}`,
@@ -1549,6 +1708,9 @@ export const BASE_STUBS: Record<string, Stub> = {
   // of the card's two states ("Needs a price first") and the dialog's note
   // that this one is the office's to price.
   getPortalBookingSettings: fx.PORTAL_BOOKING_SETTINGS,
+  // #730: the owner's choice and the approval queue.
+  getPortalChangeSettings: fx.PORTAL_CHANGE_SETTINGS,
+  listPortalChangeRequests: fx.PORTAL_CHANGE_REQUESTS,
   // "Create link" answers with a URL the length production makes: the app
   // origin, the path, 43 base64url characters and `.ics`. A short fixture URL
   // would never test the box it is shown in.
@@ -1663,6 +1825,8 @@ export const PORTAL_STUBS: Record<string, Stub> = {
   }),
   portalGetClient: pfx.PORTAL_CLIENT,
   portalListUpcomingVisits: pfx.PORTAL_UPCOMING_VISITS,
+  // #730: the client's reschedules and skips, with the business's answers.
+  portalListMyChangeRequests: pfx.PORTAL_CHANGE_REQUESTS,
   portalListRecentVisits: pfx.PORTAL_RECENT_VISITS,
   portalListInvoices: pfx.PORTAL_INVOICES,
   portalListPrepaidSubs: pfx.PORTAL_SUBS,
@@ -1804,12 +1968,26 @@ export async function installStubBackend(
       serviceLines: lines,
     };
     const onboarding = BASE_STUBS.getOnboardingStatus as { steps: Array<{ id: string }> };
+    const scoops = lines.includes("pet_waste");
+    const walks = lines.includes("dog_walking");
+    const mixed = scoops && lines.some((l) => l !== "pet_waste");
     STUBS.getOnboardingStatus = {
       ...onboarding,
-      steps: onboarding.steps.map((st) =>
-        st.id === "dump_site" && !lines.includes("pet_waste") ? { ...st, ...DAY_END_WORDING } : st,
-      ),
+      steps: onboarding.steps.map((st) => {
+        if (st.id === "dump_site" && !scoops) return { ...st, ...DAY_END_WORDING };
+        if (st.id === "dump_site" && mixed) return { ...st, ...DAY_END_WORDING_BOTH };
+        if (st.id === "zones" && walks && lines.length === 1) return { ...st, ...WALK_PRICE_STEP };
+        if (st.id === "zones" && walks && scoops && lines.length === 2)
+          return { ...st, ...MIXED_PRICE_STEP };
+        return st;
+      }),
     };
+    // A walking business has signup's walks, unpriced (#769), beside the
+    // dataset's own long-named walk.
+    if (walks) {
+      const listed = (BASE_STUBS.listServices as { services: any[] }).services ?? [];
+      STUBS.listServices = { services: [...listed, ...SEEDED_WALKS] };
+    }
     // Pet sitting screenshots and a sitting sweep. The default fixture stays a
     // pet-waste business; these answers exist only when the run asks for the line.
     if (lines.includes("pet_sitting")) {
@@ -1843,7 +2021,7 @@ export async function installStubBackend(
         created_at: "2026-10-09T12:00:00Z",
         updated_at: "2026-10-09T12:00:00Z",
       };
-      const listed = ((BASE_STUBS.listServices as { services: any[] }).services ?? []).map((s) =>
+      const listed = ((STUBS.listServices as { services: any[] }).services ?? []).map((s) =>
         s.service_line === "pet_sitting"
           ? { ...s, holiday_surcharge_pct: 0, default_duration_min: null }
           : s,
@@ -2092,10 +2270,15 @@ export async function installStubBackend(
     let value: unknown = null;
     if (name in STUBS) {
       const stub = STUBS[name];
-      value =
-        typeof stub === "function"
-          ? (stub as (a: Record<string, any>) => unknown)(argsOf(route))
-          : stub;
+      try {
+        value =
+          typeof stub === "function"
+            ? (stub as (a: Record<string, any>) => unknown)(argsOf(route))
+            : stub;
+      } catch (refusal) {
+        if (!(refusal instanceof StubRefusal)) throw refusal;
+        return route.fulfill({ status: 500, contentType: "text/plain", body: refusal.message });
+      }
     } else {
       const label = `${name || id.slice(0, 24)}  (${file})`;
       if (!report.unstubbed.includes(label)) report.unstubbed.push(label);

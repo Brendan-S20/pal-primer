@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useDogCapWarning } from "@/components/DogCapWarning";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Plus, Trash2, X } from "lucide-react";
+import { Plus, Trash2, Users, X } from "lucide-react";
 import { useServiceLines } from "@/components/CommercialOnly";
 import { useOrgServices } from "@/components/client-detail/ServicePicker";
 import { Button } from "@/components/ui/button";
@@ -10,13 +11,25 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDay, formatWindow } from "@/lib/format";
 import type { Service } from "@/lib/services";
-import type { WalkGroupSummary, WalkGroupVisit } from "@/lib/walk-groups";
+import { formatMoney } from "@/lib/stop-facts";
 import {
+  CAPACITY_KEEP_REASON,
+  dogsHoldingPlaces,
+  groupBilling,
+  groupCapacity,
+  groupWalkerView,
+  walkerOptions,
+  type WalkGroupSummary,
+  type WalkGroupVisit,
+} from "@/lib/walk-groups";
+import {
+  assignWalkGroupsByCapacity,
   createWalkGroup,
   deleteWalkGroup,
   listWalkGroups,
   setWalkGroupMember,
   setWalkGroupWalker,
+  type WalkGroupStaff,
 } from "@/lib/walk-groups.functions";
 
 type Walker = { id: string; display_name: string | null; is_field_tech: boolean };
@@ -42,6 +55,9 @@ function GroupWalksDay({ day, staff, services, onChanged }: Props & { services: 
   const remove = useServerFn(deleteWalkGroup);
   const member = useServerFn(setWalkGroupMember);
   const walker = useServerFn(setWalkGroupWalker);
+  const byCapacity = useServerFn(assignWalkGroupsByCapacity);
+  // Over a walker's dog cap: warn, then allow (#731). Cancel saves nothing.
+  const dogCap = useDogCapWarning();
   const [creating, setCreating] = useState(false);
   const [serviceId, setServiceId] = useState(services[0].id);
   const [walkerId, setWalkerId] = useState("");
@@ -63,19 +79,65 @@ function GroupWalksDay({ day, staff, services, onChanged }: Props & { services: 
 
   return (
     <section className="min-w-0 space-y-4 rounded-lg border bg-card p-4" aria-label="Group walks">
+      {dogCap.dialog}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="font-semibold">Group walks</h2>
           <p className="text-sm text-muted-foreground">{formatDay(day)}</p>
         </div>
-        <Button
-          variant="outline"
-          className="min-h-11 shrink-0"
-          onClick={() => setCreating(!creating)}
-        >
-          <Plus className="h-4 w-4 shrink-0" />
-          {creating ? "Close form" : "Create group"}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {/* Assign by capacity (#731). Fills only groups with no walker and no
+              walk already held, so it never undoes a hand assignment. */}
+          <Button
+            variant="outline"
+            className="min-h-11 shrink-0"
+            disabled={
+              write.isPending ||
+              !query.data?.groups.some((group) => groupWalkerView(group).kind === "none")
+            }
+            onClick={() =>
+              write.mutate(async () => {
+                const result = await byCapacity({ data: { day } });
+                const names = new Map(
+                  (query.data?.groups ?? []).map((group) => [group.id, group.service]),
+                );
+                const skipped = result.kept
+                  .filter((k) => k.reason !== "has_walker")
+                  .map(
+                    (k) =>
+                      `${names.get(k.groupId) ?? "A group"} ${
+                        CAPACITY_KEEP_REASON[k.reason as keyof typeof CAPACITY_KEEP_REASON] ??
+                        "was left as it is"
+                      }`,
+                  );
+                if (result.assigned.length)
+                  toast.success(
+                    `Assigned ${result.assigned.length} group walk${
+                      result.assigned.length === 1 ? "" : "s"
+                    } by capacity.`,
+                    skipped.length ? { description: `Left alone: ${skipped.join("; ")}.` } : {},
+                  );
+                else
+                  toast.info(
+                    skipped.length
+                      ? `Nothing assigned. ${skipped.join("; ")}.`
+                      : "Nothing to assign: every group has a walker.",
+                  );
+              })
+            }
+          >
+            <Users className="h-4 w-4 shrink-0" />
+            Assign by capacity
+          </Button>
+          <Button
+            variant="outline"
+            className="min-h-11 shrink-0"
+            onClick={() => setCreating(!creating)}
+          >
+            <Plus className="h-4 w-4 shrink-0" />
+            {creating ? "Close form" : "Create group"}
+          </Button>
+        </div>
       </div>
 
       {creating && (
@@ -169,15 +231,26 @@ function GroupWalksDay({ day, staff, services, onChanged }: Props & { services: 
             key={group.id}
             group={group}
             walkers={walkers}
+            everyone={query.data?.staff ?? []}
             available={(query.data?.available ?? []).filter(
               (visit) => visit.serviceId === group.serviceId,
             )}
             pending={write.isPending}
             onWalker={(id) =>
-              write.mutate(() => walker({ data: { groupId: group.id, walkerId: id } }))
+              write.mutate(() =>
+                dogCap.run((overCapAcknowledged) =>
+                  walker({ data: { groupId: group.id, walkerId: id, overCapAcknowledged } }),
+                ),
+              )
             }
             onMember={(visitId, joining) =>
-              write.mutate(() => member({ data: { visitId, groupId: joining ? group.id : null } }))
+              write.mutate(() =>
+                dogCap.run((overCapAcknowledged) =>
+                  member({
+                    data: { visitId, groupId: joining ? group.id : null, overCapAcknowledged },
+                  }),
+                ),
+              )
             }
             onDelete={() => write.mutate(() => remove({ data: { groupId: group.id } }))}
           />
@@ -187,9 +260,10 @@ function GroupWalksDay({ day, staff, services, onChanged }: Props & { services: 
   );
 }
 
-function GroupWalkCard({
+export function GroupWalkCard({
   group,
   walkers,
+  everyone,
   available,
   pending,
   onWalker,
@@ -198,6 +272,7 @@ function GroupWalkCard({
 }: {
   group: WalkGroupSummary;
   walkers: Walker[];
+  everyone: WalkGroupStaff[];
   available: WalkGroupVisit[];
   pending: boolean;
   onWalker: (id: string | null) => void;
@@ -205,7 +280,18 @@ function GroupWalkCard({
   onDelete: () => void;
 }) {
   const [visitId, setVisitId] = useState("");
-  const dogs = group.members.reduce((sum, visit) => sum + visit.dogCount, 0);
+  // Completed walks stay in the group as history but no longer hold a place,
+  // the database's own rule (validate_walk_group_member).
+  const dogs = dogsHoldingPlaces(group.members);
+  // R2-29: the select showed "Unassigned" while the walks were held by a
+  // walker, because it read only the group row. It now says who holds them.
+  const view = groupWalkerView(group);
+  const shown = view.kind === "group" || view.kind === "members" ? view.walkerId : null;
+  const options = walkerOptions(walkers, everyone, shown);
+  const walkerCap = shown ? (everyone.find((p) => p.id === shown)?.maxDogs ?? null) : null;
+  const capacity = groupCapacity(group.maxDogs, walkerCap);
+  const nameOf = (id: string) => everyone.find((p) => p.id === id)?.display_name ?? "a walker";
+  const bills = groupBilling(group.members);
   return (
     <article className="min-w-0 space-y-3 rounded-md border p-3">
       <div className="flex min-w-0 items-start justify-between gap-2">
@@ -216,8 +302,10 @@ function GroupWalkCard({
           <p className="text-sm text-muted-foreground">
             {formatWindow(group.earliestTime, group.latestTime)}
           </p>
-          <p className="text-sm">
-            {dogs} of {group.maxDogs} dogs
+          <p className={`text-sm ${dogs > capacity ? "font-medium text-destructive" : ""}`}>
+            {dogs} of {capacity} dogs
+            {capacity < group.maxDogs && ` (walker's cap)`}
+            {dogs > capacity && ", over the cap"}
           </p>
         </div>
         <Button
@@ -236,17 +324,35 @@ function GroupWalkCard({
         <select
           id={`walker-${group.id}`}
           className={selectClass}
-          value={group.walkerId ?? ""}
+          value={view.kind === "mixed" ? "__mixed" : (shown ?? "")}
           disabled={pending}
           onChange={(e) => onWalker(e.target.value || null)}
         >
+          {view.kind === "mixed" && (
+            <option value="__mixed" disabled>
+              Different walkers
+            </option>
+          )}
           <option value="">Unassigned</option>
-          {walkers.map((person) => (
-            <option key={person.id} value={person.id}>
-              {person.display_name}
+          {options.map((option) => (
+            <option key={option.id} value={option.id} disabled={option.outsideList}>
+              {option.label}
+              {option.outsideList ? " (does not run routes)" : ""}
             </option>
           ))}
         </select>
+        {view.kind === "members" && (
+          <p className="text-xs text-muted-foreground">
+            Every walk in this group is with {nameOf(view.walkerId)}. Choose them here to keep walks
+            that join later with them too.
+          </p>
+        )}
+        {view.kind === "mixed" && (
+          <p className="text-xs text-muted-foreground">
+            These walks are with {view.walkerIds.map(nameOf).join(", ")}. Choose one walker to move
+            them all.
+          </p>
+        )}
       </div>
       <ul className="space-y-2">
         {group.members.map((visit) => (
@@ -272,6 +378,26 @@ function GroupWalkCard({
           </li>
         ))}
       </ul>
+      {bills.length > 0 && (
+        <div className="min-w-0 space-y-1 rounded-md bg-muted/40 p-2">
+          <p className="text-xs font-medium">Each client is billed separately</p>
+          <ul className="space-y-1">
+            {bills.map((bill) => (
+              <li
+                key={bill.clientId ?? bill.visitIds[0]}
+                className="flex min-w-0 items-baseline justify-between gap-2 text-xs"
+              >
+                <span className="truncate" title={bill.client}>
+                  {bill.client}, {bill.dogs} {bill.dogs === 1 ? "dog" : "dogs"}
+                </span>
+                <span className="shrink-0 tabular-nums">
+                  {bill.priceCents == null ? "Plan price" : formatMoney(bill.priceCents)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="space-y-1">
         <Label htmlFor={`member-${group.id}`}>Add a scheduled walk</Label>
         <div className="flex min-w-0 flex-wrap gap-2">

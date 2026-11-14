@@ -1,4 +1,6 @@
+import { dogCapWarningFromError, withDogCapAck, type DogCapWarning } from "@/lib/dog-cap";
 import { createServerFn } from "@tanstack/react-start";
+import { blockedCompletionMeta, blockedCompletionSummary } from "@/lib/completion-block";
 import { refuseIfChanged, StaleWriteError } from "@/lib/stale-write";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -224,7 +226,7 @@ export const createOneOffVisit = createServerFn({ method: "POST" })
       await import("@/lib/booking-price.server");
     let priceCents: number;
     let asSetPrice = false;
-    if (hasPermission(caller.role, "manage_pricing")) {
+    if (hasPermission(caller.role, "manage_pricing", caller.overrides)) {
       if (data.priceCents != null) {
         priceCents = data.priceCents;
       } else {
@@ -308,6 +310,8 @@ export const reassignVisit = createServerFn({ method: "POST" })
         // else now, the first send already landed or somebody has moved it
         // since, and either way this one is left alone and nobody is told.
         ifStillFrom: z.string().uuid().nullable().optional(),
+        // "Assign anyway" after the dog cap warning (src/lib/dog-cap.ts, #731).
+        overCapAcknowledged: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -339,10 +343,20 @@ export const reassignVisit = createServerFn({ method: "POST" })
     // Both techs' lock screens: the one losing the stop and the one gaining it.
     const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
     const pushRoutes = await watchRouteLiveActivities([data.visitId]);
-    const { error } = await context.supabase.rpc("reassign_visit", {
-      _visit_id: data.visitId,
-      _staff_id: data.staffId as string,
-    });
+    const { error } = await withDogCapAck(
+      context.supabase.rpc("reassign_visit", {
+        _visit_id: data.visitId,
+        _staff_id: data.staffId as string,
+      }),
+      data.overCapAcknowledged,
+    );
+    // Over the walker's dog cap and not confirmed: nothing was saved and
+    // nobody is told; the board shows the warning and asks (#731).
+    const overCap = dogCapWarningFromError(error);
+    if (overCap) {
+      await watch.finish();
+      return { ok: false, skipped: false, clash: null, lessonClashes: [] as never[], overCap };
+    }
     if (error) throw await groomWriteError(context.supabase, error, move);
     await watch.finish();
     await pushRoutes();
@@ -607,13 +621,30 @@ export const correctVisitTimestamps = createServerFn({ method: "POST" })
 // TECH (and complete requires a photo). These office variants call the
 // office_* SQL functions (can_write_org inside) and log to the timeline.
 
-async function loadVisitForOfficeAction(supabase: any, userId: string, visitId: string) {
+async function loadVisitForOfficeAction(
+  supabase: any,
+  userId: string,
+  visitId: string,
+  // Complete and Cancel can bill (office_complete_visit invoices a completed
+  // visit, office_skip_visit applies the business's skip-charge rules). They
+  // were manage_client_billing until #863; they are close_visits now, which
+  // a dispatcher holds by default (Brendan, 2026-11-12) and the owner can
+  // turn off. A move bills nothing and keeps the visit's price, so it asks
+  // for manage_schedule (#728). The default is the strict one: a new caller
+  // that forgets to say is refused, not let through.
+  permission:
+    | "manage_client_billing"
+    | "manage_schedule"
+    | "close_visits" = "manage_client_billing",
+) {
   const { requirePermission } = await import("@/lib/authz.server");
-  await requirePermission(supabase, userId, "manage_client_billing");
+  const caller = await requirePermission(supabase, userId, permission);
   const { data: v, error } = await supabase
     .from("visits")
     .select("id, organization_id, client_id, property_id, scheduled_on, status, updated_at")
     .eq("id", visitId)
+    // The caller's own business, said out loud as well as left to RLS.
+    .eq("organization_id", caller.orgId)
     .single();
   if (error) throw new Error(error.message);
   return v as {
@@ -642,12 +673,15 @@ export const completeVisitFromOffice = createServerFn({ method: "POST" })
          *  with required checklist items nobody checked (#658, F-15). Asked
          *  only when the database says one is missing. */
         overrideReason: z.string().trim().min(1).max(250).optional(),
+        /** The person saw the BLOCK warning and chose Continue (#851
+         *  follow-up). Recorded, never required. */
+        blockAcknowledged: z.boolean().optional(),
       })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
+    const v = await loadVisitForOfficeAction(supabase, userId, data.visitId, "close_visits");
     // A missed visit can be completed too: it was marked missed overnight
     // because nobody closed it, not because it was proved undone (#455).
     if (!canOfficeComplete(v.status))
@@ -671,6 +705,9 @@ export const completeVisitFromOffice = createServerFn({ method: "POST" })
     });
     const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
     const pushRoutes = await watchRouteLiveActivities([data.visitId]);
+    // The owner's BLOCK rule, for the record only (#851 follow-up).
+    const { completionBlockWarning } = await import("@/lib/completion-block.server");
+    const block = await completionBlockWarning(supabase as any, data.visitId);
     const { error } = await (supabase as any).rpc("office_complete_visit", {
       _visit_id: data.visitId,
       ...(data.overrideReason ? { _override_reason: data.overrideReason } : {}),
@@ -691,14 +728,36 @@ export const completeVisitFromOffice = createServerFn({ method: "POST" })
       propertyId: v.property_id,
       actorUserId: userId,
       kind: "visit.completed",
-      summary: data.overrideReason
-        ? `Marked the visit on ${v.scheduled_on} completed from the office without its photo or checklist: ${data.overrideReason}`
-        : `Marked the visit on ${v.scheduled_on} completed from the office`,
-      ...(data.overrideReason ? { meta: { override_reason: data.overrideReason } } : {}),
+      summary:
+        (data.overrideReason
+          ? `Marked the visit on ${v.scheduled_on} completed from the office without its photo or checklist: ${data.overrideReason}`
+          : `Marked the visit on ${v.scheduled_on} completed from the office`) +
+        (block ? blockedCompletionSummary(block, !!data.blockAcknowledged) : ""),
+      ...(data.overrideReason || block
+        ? {
+            meta: {
+              ...(data.overrideReason ? { override_reason: data.overrideReason } : {}),
+              ...(block
+                ? {
+                    blocked_completion: blockedCompletionMeta(block, {
+                      acknowledged: !!data.blockAcknowledged,
+                      completedBy: userId,
+                      completedAt: new Date().toISOString(),
+                    }),
+                  }
+                : {}),
+            },
+          }
+        : {}),
     });
     // A lesson that leaves one session on its package. Never throws.
     const { afterLessonSessionChange } = await import("@/lib/training-portal.server");
     await afterLessonSessionChange(data.visitId);
+    // Billed after each visit on a postpaid plan: the invoice now, not
+    // tonight (#859, D2). Once per visit however often this runs; nothing for
+    // a prepaid plan. Never throws.
+    const { invoiceAtCompletionSafely } = await import("@/lib/visit-completion-invoice.server");
+    await invoiceAtCompletionSafely({ visitId: data.visitId, actorUserId: userId });
     return { ok: true as const };
   });
 
@@ -718,7 +777,8 @@ export const rescheduleVisitFromOffice = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
+    // Routes are the dispatcher's job (#728): a move takes manage_schedule.
+    const v = await loadVisitForOfficeAction(supabase, userId, data.visitId, "manage_schedule");
     // Somebody else changed the visit since this drawer loaded it: refused
     // before anyone is told about a move (#655).
     refuseIfChanged(v.updated_at, data.expectedUpdatedAt);
@@ -836,7 +896,7 @@ export const cancelVisitFromOffice = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const v = await loadVisitForOfficeAction(supabase, userId, data.visitId);
+    const v = await loadVisitForOfficeAction(supabase, userId, data.visitId, "close_visits");
     if (v.status !== "scheduled") throw new Error("Only scheduled visits can be canceled");
     const { startRouteWatch } = await import("@/lib/field-notify.server");
     const watch = await startRouteWatch({
@@ -1039,6 +1099,7 @@ export const bulkAssignVisits = createServerFn({ method: "POST" })
         visitIds: z.array(z.string().uuid()).min(1).max(500),
         // Null unassigns — how work comes OFF someone.
         staffId: z.string().uuid().nullable(),
+        overCapAcknowledged: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -1052,10 +1113,19 @@ export const bulkAssignVisits = createServerFn({ method: "POST" })
     const watch = await startRouteWatch({ actorUserId: context.userId, visitIds: data.visitIds });
     const { watchRouteLiveActivities } = await import("@/lib/push-liveactivity.server");
     const pushRoutes = await watchRouteLiveActivities(data.visitIds);
-    const { data: n, error } = await (context.supabase as any).rpc("bulk_reassign_visits", {
-      _visit_ids: data.visitIds,
-      _staff_id: data.staffId,
-    });
+    const { data: n, error } = await withDogCapAck(
+      (context.supabase as any).rpc("bulk_reassign_visits", {
+        _visit_ids: data.visitIds,
+        _staff_id: data.staffId,
+      }),
+      data.overCapAcknowledged,
+    );
+    // One statement: refused for the dog cap, none of the batch moved (#731).
+    const overCap = dogCapWarningFromError(error);
+    if (overCap) {
+      await watch.finish();
+      return { moved: 0, clash: null, lessonClashes: [] as never[], overCap };
+    }
     if (error) throw await groomWriteError(context.supabase, error, move);
     await watch.finish();
     await pushRoutes();
@@ -1206,6 +1276,7 @@ export const redistributeStaffWork = createServerFn({ method: "POST" })
           .regex(/^\d{4}-\d{2}-\d{2}$/)
           .optional(),
         includeLater: z.boolean().optional(),
+        overCapAcknowledged: z.boolean().optional(),
       })
       .refine(
         (v) => !v.to || Boolean(v.from && v.from <= v.to),
@@ -1258,14 +1329,27 @@ export const redistributeStaffWork = createServerFn({ method: "POST" })
         .order("id");
       if (heldError) throw new Error(heldError.message);
       const { spreadVisits } = await import("@/lib/cover-window");
+      // A tech whose dog cap a visit would break is skipped like one who is
+      // off, so the visit goes to someone it fits. Only a visit that fits
+      // nobody comes back as the warning (#731); "Assign anyway" runs Cover
+      // again with the confirmation, and those go over the cap, recorded.
+      const capRefused = new Map<string, DogCapWarning>();
       const moved = await spreadVisits(
         (held ?? []) as Array<{ id: string; scheduled_on: string }>,
         others,
         async (visitId, staffId) => {
-          const { data: c, error: e } = await context.supabase.rpc("bulk_reassign_visits", {
-            _visit_ids: [visitId],
-            _staff_id: staffId,
-          });
+          const { data: c, error: e } = await withDogCapAck(
+            context.supabase.rpc("bulk_reassign_visits", {
+              _visit_ids: [visitId],
+              _staff_id: staffId,
+            }),
+            data.overCapAcknowledged,
+          );
+          const overCap = dogCapWarningFromError(e);
+          if (overCap) {
+            if (!capRefused.has(visitId)) capRefused.set(visitId, overCap);
+            return "refused";
+          }
           if (e) {
             // 23P01: the groom guard (zz_visits_groom_no_overlap), that tech
             // already has a groom then. 23514: the time-off guard
@@ -1278,11 +1362,31 @@ export const redistributeStaffWork = createServerFn({ method: "POST" })
         },
       );
       n = moved.length;
+      for (const id of moved) capRefused.delete(id);
+      const first = capRefused.values().next();
+      if (!first.done) {
+        await watch.finish();
+        return {
+          moved: n,
+          left: capRefused.size,
+          overCap: first.value,
+          overCapVisits: capRefused.size,
+        };
+      }
     } else {
-      const { data: count, error } = await (context.supabase as any).rpc(
-        "redistribute_staff_work",
-        { _staff_id: data.staffId, _from: data.from ?? null },
+      const { data: count, error } = await withDogCapAck(
+        (context.supabase as any).rpc("redistribute_staff_work", {
+          _staff_id: data.staffId,
+          _from: data.from ?? null,
+        }),
+        data.overCapAcknowledged,
       );
+      // One transaction: refused for the dog cap, nothing moved (#731).
+      const overCap = dogCapWarningFromError(error);
+      if (overCap) {
+        await watch.finish();
+        return { moved: 0, left: 0, overCap, overCapVisits: 1 };
+      }
       if (error) throw new Error(error.message);
       n = (count as number) ?? 0;
     }

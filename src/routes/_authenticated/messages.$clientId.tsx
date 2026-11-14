@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { TextingNotLiveText, TextingStateBadge } from "@/components/TextingNotLive";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState, useEffect, useRef } from "react";
@@ -10,7 +11,6 @@ import { toast } from "sonner";
 import { formatDateTime } from "@/lib/format";
 import { pageTitle, titleHead, useDocumentTitle } from "@/lib/page-title";
 import { useClientTexting } from "@/hooks/useClientTexting";
-import { ComingSoonBadge } from "@/components/ComingSoonBadge";
 
 export const Route = createFileRoute("/_authenticated/messages/$clientId")({
   head: () => titleHead("Conversation", "Messages"),
@@ -115,8 +115,10 @@ function Thread() {
       <div className="border-t p-3">
         {!texting ? (
           <p className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <ComingSoonBadge />
-            <span className="min-w-0">Texting your clients is coming soon.</span>
+            <TextingStateBadge />
+            <span className="min-w-0">
+              <TextingNotLiveText />
+            </span>
           </p>
         ) : !canSend && (
           <p className="mb-2 text-xs text-destructive">

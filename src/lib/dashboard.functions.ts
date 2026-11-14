@@ -14,10 +14,57 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    const { orgId, role } = await resolveCaller(supabase, userId);
+    const { orgId, role, overrides } = await resolveCaller(supabase, userId);
     // Financial KPIs are scoped server-side: roles without view_financials
     // (e.g. dispatcher) get null for these fields, and the queries never run.
-    const canViewFinancials = hasPermission(role, "view_financials");
+    const canViewFinancials = hasPermission(role, "view_financials", overrides);
+    const emptyRes = { data: [] as any[], error: null as any };
+
+    // #786: only TWO of the reads below depend on the org's time zone (today's
+    // visits, and month-to-date collections). The other four used to wait for
+    // the timezone read anyway, so every dashboard paid one more database
+    // round trip in skeletons than it needed. They start now, beside it.
+    const activeClientsP = supabase
+      .from("clients")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", orgId)
+      .eq("active", true);
+    const openInvoicesP = canViewFinancials
+      ? supabase
+          .from("invoices")
+          // `status` MUST be selected (B1): the shared AR math keys on it,
+          // and dropping it from this select made every row sum to $0
+          // while Reports (which selects status) showed the real figure.
+          // due_on + credit_applied_cents feed the shared overdue/net math.
+          .select(
+            "id, status, total_cents, credit_applied_cents, amount_paid_cents, deposit_for_invoice_id, due_on, issued_at, client_id, clients(display_name)",
+          )
+          .eq("organization_id", orgId)
+          .eq("status", "open")
+          .order("due_on", { ascending: true, nullsFirst: false })
+      : Promise.resolve(emptyRes);
+    const staffP = supabase
+      .from("staff")
+      // "Techs today" is a FIELD-worker view (C3/I4): non-field roles that
+      // own a stray visit are excluded by the capability flag, not a
+      // role-name check, matching Routes tech-load and Reports perTech.
+      .select("id, display_name")
+      .eq("organization_id", orgId)
+      .eq("active", true)
+      .eq("is_field_tech", true);
+    const openTicketsP = supabase
+      .from("qc_tickets")
+      .select("id, category, message, created_at, client_id, visit_id, clients(display_name)")
+      .eq("organization_id", orgId)
+      .eq("status", "open")
+      .order("created_at", { ascending: false })
+      .limit(10);
+    // Started reads that are not awaited until later must not reject with
+    // nobody listening if the timezone read throws first. Their results are
+    // still read (and their errors still thrown) below.
+    const independent = Promise.all([activeClientsP, openInvoicesP, staffP, openTicketsP]);
+    independent.catch(() => {});
+
     const { data: orgRow, error: orgError } = await supabase
       .from("organizations")
       .select("timezone, disputes_in_analytics")
@@ -26,71 +73,47 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
     if (orgError) throw new Error(orgError.message);
     const timezone = orgRow?.timezone || "UTC";
     const today = orgToday((orgRow as { timezone?: string | null } | null)?.timezone || undefined);
-    const emptyRes = { data: [] as any[], error: null as any };
 
-    const [activeClientsRes, todayVisitsRes, collected, openInvoicesRes, staffRes, openTicketsRes] =
-      await Promise.all([
-        supabase
-          .from("clients")
-          .select("id", { count: "exact", head: true })
-          .eq("organization_id", orgId)
-          .eq("active", true),
-        supabase
-          .from("visits")
-          .select(
-            "id, status, sequence, assigned_staff_id, weather_flagged, weather_note, clients(display_name), properties(street, city, latitude, longitude)",
-          )
-          .eq("organization_id", orgId)
-          .eq("scheduled_on", today)
-          .order("assigned_staff_id", { ascending: true, nullsFirst: true })
-          .order("sequence", { ascending: true, nullsFirst: false }),
-        // IMP-10: this used to sum PAID INVOICES dated by `issued_at`, with the
-        // month boundary taken from the SERVER's clock. Three things wrong at
-        // once: an invoice issued in March and paid in May counted in March; a
-        // refund never appeared, because the invoice stays 'paid' forever; and
-        // for any org west of UTC the first hours of a month landed in the
-        // previous one. Now one shared cash-basis query — see revenue.server.ts.
-        canViewFinancials
-          ? import("@/lib/revenue.server").then((m) => m.collectedInPeriod(supabase, {
+    const [
+      [activeClientsRes, openInvoicesRes, staffRes, openTicketsRes],
+      todayVisitsRes,
+      collected,
+    ] = await Promise.all([
+      independent,
+      supabase
+        .from("visits")
+        .select(
+          "id, status, sequence, assigned_staff_id, weather_flagged, weather_note, clients(display_name), properties(street, city, latitude, longitude)",
+        )
+        .eq("organization_id", orgId)
+        .eq("scheduled_on", today)
+        .order("assigned_staff_id", { ascending: true, nullsFirst: true })
+        .order("sequence", { ascending: true, nullsFirst: false }),
+      // IMP-10: this used to sum PAID INVOICES dated by `issued_at`, with the
+      // month boundary taken from the SERVER's clock. Three things wrong at
+      // once: an invoice issued in March and paid in May counted in March; a
+      // refund never appeared, because the invoice stays 'paid' forever; and
+      // for any org west of UTC the first hours of a month landed in the
+      // previous one. Now one shared cash-basis query — see revenue.server.ts.
+      canViewFinancials
+        ? import("@/lib/revenue.server").then((m) =>
+            m.collectedInPeriod(supabase, {
               orgId,
               ...m.monthToDate(timezone),
               timezone,
               includeOpenDisputes: !!orgRow?.disputes_in_analytics,
-            }))
-          : Promise.resolve(null),
-        canViewFinancials
-          ? supabase
-              .from("invoices")
-              // `status` MUST be selected (B1): the shared AR math keys on it,
-              // and dropping it from this select made every row sum to $0
-              // while Reports (which selects status) showed the real figure.
-              // due_on + credit_applied_cents feed the shared overdue/net math.
-              .select(
-                "id, status, total_cents, credit_applied_cents, amount_paid_cents, deposit_for_invoice_id, due_on, issued_at, client_id, clients(display_name)",
-              )
-              .eq("organization_id", orgId)
-              .eq("status", "open")
-              .order("due_on", { ascending: true, nullsFirst: false })
-          : Promise.resolve(emptyRes),
-        supabase
-          .from("staff")
-          // "Techs today" is a FIELD-worker view (C3/I4): non-field roles that
-          // own a stray visit are excluded by the capability flag, not a
-          // role-name check, matching Routes tech-load and Reports perTech.
-          .select("id, display_name")
-          .eq("organization_id", orgId)
-          .eq("active", true)
-          .eq("is_field_tech", true),
-        supabase
-          .from("qc_tickets")
-          .select("id, category, message, created_at, client_id, visit_id, clients(display_name)")
-          .eq("organization_id", orgId)
-          .eq("status", "open")
-          .order("created_at", { ascending: false })
-          .limit(10),
-      ]);
+            }),
+          )
+        : Promise.resolve(null),
+    ]);
 
-    for (const result of [activeClientsRes, todayVisitsRes, openInvoicesRes, staffRes, openTicketsRes]) {
+    for (const result of [
+      activeClientsRes,
+      todayVisitsRes,
+      openInvoicesRes,
+      staffRes,
+      openTicketsRes,
+    ]) {
       if (result.error) throw new Error(result.error.message);
     }
 
@@ -161,4 +184,3 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
       })),
     };
   });
-

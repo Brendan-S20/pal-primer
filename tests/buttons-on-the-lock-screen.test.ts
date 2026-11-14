@@ -187,9 +187,12 @@ describe("the state carries what the buttons need", () => {
     expect(buildRouteActivityState(route(), ctx("ar")).navigateLabel).toBe("ملاحة");
   });
 
-  it("says nothing about the customer", () => {
-    const json = JSON.stringify(buildRouteActivityState(route(), ctx("en")));
-    expect(json).not.toMatch(/Jane|555-0100/);
+  it("says nothing about the customer outside the watch and car line", () => {
+    // shortStop names the client on an Apple Watch and a CarPlay Dashboard
+    // only (Brendan, #454, 2026-11-09); no other field may.
+    const { shortStop: _watchAndCar, ...rest } = buildRouteActivityState(route(), ctx("en"));
+    expect(JSON.stringify(rest)).not.toMatch(/Jane|555-0100/);
+    expect(JSON.stringify(buildRouteActivityState(route(), ctx("en")))).not.toMatch(/555-0100/);
   });
 
   it("every field is a plain value, so an unchanged route is still not pushed again", () => {
@@ -235,6 +238,9 @@ const NEW_KEYS = [
   "nextAction",
   "navigateLabel",
   "actionLabel",
+  // The watch and car line (#454), added after the buttons on the same
+  // terms: optional, absent from every older state.
+  "shortStop",
 ];
 
 /** Exactly what TestFlight build 261 sends and saves: the twelve keys. */
@@ -367,7 +373,9 @@ describe("a lock-screen link opens My Day and nothing else", () => {
   it("the scheme is the app's, and the OAuth hand-back is a different host", () => {
     expect(read("ios/App/App/Info.plist")).toContain(`<string>${APP_URL_SCHEME}</string>`);
     expect(read("capacitor.config.ts")).toContain(`appId: "${APP_URL_SCHEME}"`);
-    expect(read("src/lib/native-oauth.ts")).toContain(`"${APP_URL_SCHEME}://auth-callback"`);
+    expect(read("src/lib/native-oauth-redirect.ts")).toContain(
+      `"${APP_URL_SCHEME}://auth-callback"`,
+    );
     expect(LIVE_ACTIVITY_LINK_HOST).not.toBe("auth-callback");
   });
 });

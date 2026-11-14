@@ -113,6 +113,15 @@ restores into a new Supabase project with every row and every reference
 intact. What it does not prove: that the app works against the restored copy
 (nothing signs in to it), or anything about Storage files.
 
+A second weekly drill, `.github/workflows/restore-drill.yml` (Wednesdays,
+also GitHub-hosted), restores the newest kept backup and adds the deeper
+checks: tables against the migrations, RLS on every public table, the auth
+schema and the migration ledger. The same drill can be run by hand on a
+private machine as the fallback: `scripts/restore-drill.sh`, with the
+runbook in [docs/runbooks/restore-drill.md](runbooks/restore-drill.md).
+Backups made before that script landed carry no migration ledger, and its
+`ledger` check fails on them.
+
 ## Owner steps (one time)
 
 1. **Create the passphrase and keep it in two places.** Run
@@ -389,6 +398,12 @@ stack, and delete the decrypted files.
   where it does.
 - `scripts/backup/` — `dump.sh`, `crypt.sh`, `summarize.mjs`, `restore.sh`,
   `verify-restore.mjs`, `drill.sh`, and the two SQL files they run.
+- `.github/workflows/restore-drill.yml`: the Wednesday drill of the newest
+  backup.
+- `scripts/restore-drill.sh`, `scripts/restore-drill-selftest.sh` and
+  `docs/runbooks/restore-drill.md`: the drill (weekly and by hand), its
+  self-test on seed data (run in sandboxes.yml's database job), and its
+  runbook.
 - `tests/a-backup-nobody-has-restored-is-a-hope.test.ts` — pins the parts of
   this design that are easy to undo by accident: hosted runners, encrypt
   before upload, the drill comparing counts.

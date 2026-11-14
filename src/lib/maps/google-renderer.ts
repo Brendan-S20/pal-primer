@@ -341,7 +341,13 @@ export class GoogleRenderer implements MapRenderer {
   fitBounds(points: LatLng[], opts: FitOptions): void {
     if (points.length === 0) return;
     if (points.length === 1) {
-      this.setView(points[0], opts.maxZoom);
+      // Not this.setView: that is the location button's path, and it drops
+      // the pending fit. One pin is still a fit, and a map adopted from the
+      // pool has to make it again once Google knows the new box (#773: a
+      // fresh org's one Detroit visit opened somewhere else).
+      this.map.setCenter(points[0]);
+      this.map.setZoom(opts.maxZoom);
+      if (!this.measured) this.pendingFit = { points, opts };
       return;
     }
     const b = new this.g.LatLngBounds();

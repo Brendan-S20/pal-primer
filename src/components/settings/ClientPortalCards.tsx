@@ -24,6 +24,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { useMyRole } from "@/hooks/useMyRole";
+import { useMyProfile } from "@/hooks/useMyProfile";
+import { portalSlugFromName } from "@/lib/setup-prefill";
 import { isValidOrgName } from "@/lib/dna-linkage";
 import { linkOrigin } from "@/lib/app-origin";
 import {
@@ -44,10 +46,16 @@ export function PortalAddressCard() {
 
   const q = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn(), staleTime: 60_000 });
   const currentSlug = (q.data?.organization as any)?.portal_slug as string | undefined;
+  const orgName = (q.data?.organization as { name?: string | null } | undefined)?.name ?? undefined;
   const [slug, setSlug] = useState("");
+  // A business with no address yet (one set up before setup step 1 asked for
+  // it, D14) is shown the one its name gives, ready to save, rather than an
+  // empty box after `/portal/`. Shown, not saved: Save address saves it.
+  const suggested = !currentSlug && !!orgName && slug === portalSlugFromName(orgName);
   useEffect(() => {
     if (currentSlug) setSlug(currentSlug);
-  }, [currentSlug]);
+    else if (orgName) setSlug((s) => s || portalSlugFromName(orgName));
+  }, [currentSlug, orgName]);
 
   const mut = useMutation({
     mutationFn: () => setFn({ data: { slug } }),
@@ -87,6 +95,7 @@ export function PortalAddressCard() {
         <div className="flex flex-wrap items-center gap-1 text-sm">
           <span className="text-muted-foreground">{base.replace(/^https?:\/\//, "")}/portal/</span>
           <Input
+            aria-label="Portal address"
             value={slug}
             onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
             className="h-8 w-48"
@@ -111,6 +120,7 @@ export function PortalAddressCard() {
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
+          {suggested ? "Suggested from your business name. Save it to turn the address on. " : ""}
           Letters, numbers, and hyphens only. Existing client links keep working automatically.
         </p>
       </CardContent>
@@ -125,6 +135,7 @@ export function BrandingCard() {
   const q = useQuery({ queryKey: ["org-branding"], queryFn: () => getFn() });
   const { role } = useMyRole();
   const canEdit = role === "owner" || role === "office_manager";
+  const { authEmail } = useMyProfile();
 
   const [orgName, setOrgName] = useState("");
   const [brandColor, setBrandColor] = useState("#16a34a");
@@ -170,8 +181,12 @@ export function BrandingCard() {
           portalAutoApplyChanges: autoApply,
         },
       }),
-    onSuccess: () => {
+    onSuccess: (res) => {
       toast.success("Business details saved");
+      // The office phone saved; only its copy to the owner's Profile did not (#787).
+      if (res?.profilePhoneWarning) toast.warning(res.profilePhoneWarning);
+      // A first office phone may also have filled the owner's Profile phone.
+      qc.invalidateQueries({ queryKey: ["my-profile"] });
       qc.invalidateQueries({ queryKey: ["org-branding"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -196,8 +211,11 @@ export function BrandingCard() {
             Full width and first because it is the one field a customer is
             certain to read. */}
         <div>
-          <Label className="text-xs">Business name</Label>
+          <Label htmlFor="portal-org-name" className="text-xs">
+            Business name
+          </Label>
           <Input
+            id="portal-org-name"
             className="mt-1"
             value={orgName}
             onChange={(e) => setOrgName(e.target.value)}
@@ -211,15 +229,19 @@ export function BrandingCard() {
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <Label className="text-xs">Brand color</Label>
+            <Label htmlFor="portal-brand-color" className="text-xs">
+              Brand color
+            </Label>
             <div className="mt-1 flex gap-2">
               <Input
+                id="portal-brand-color"
                 type="color"
                 value={brandColor}
                 onChange={(e) => setBrandColor(e.target.value)}
                 className="h-10 w-14 p-1"
               />
               <Input
+                aria-label="Brand color, as a hex code"
                 value={brandColor}
                 onChange={(e) => setBrandColor(e.target.value)}
                 placeholder="#16a34a"
@@ -227,8 +249,11 @@ export function BrandingCard() {
             </div>
           </div>
           <div>
-            <Label className="text-xs">Logo URL</Label>
+            <Label htmlFor="portal-logo-url" className="text-xs">
+              Logo URL
+            </Label>
             <Input
+              id="portal-logo-url"
               className="mt-1"
               value={logoUrl}
               onChange={(e) => setLogoUrl(e.target.value)}
@@ -236,8 +261,11 @@ export function BrandingCard() {
             />
           </div>
           <div>
-            <Label className="text-xs">Office phone (tap-to-call in the portal)</Label>
+            <Label htmlFor="portal-phone" className="text-xs">
+              Office phone (tap-to-call in the portal)
+            </Label>
             <Input
+              id="portal-phone"
               className="mt-1"
               value={contactPhone}
               onChange={(e) => setContactPhone(e.target.value)}
@@ -245,8 +273,11 @@ export function BrandingCard() {
             />
           </div>
           <div>
-            <Label className="text-xs">Office email</Label>
+            <Label htmlFor="portal-email" className="text-xs">
+              Office email
+            </Label>
             <Input
+              id="portal-email"
               className="mt-1"
               value={contactEmail}
               onChange={(e) => setContactEmail(e.target.value)}
@@ -262,14 +293,32 @@ export function BrandingCard() {
                 Replies to invoices and reminders come back to this address.
               </p>
             ) : (
-              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                Add one. Invoices and reminders are sent from a no-reply address, so any client who
-                hits Reply today is writing to nobody.
-              </p>
+              <div className="mt-1 space-y-1">
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  Add one. Invoices and reminders are sent from a no-reply address, so any client
+                  who hits Reply today is writing to nobody.
+                </p>
+                {/* One tap to the address the owner already reads (D14). It
+                    fills the field; Save below saves it, like any edit. */}
+                {authEmail && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="max-w-full"
+                    data-use-sign-in-email
+                    onClick={() => setContactEmail(authEmail)}
+                  >
+                    <span className="min-w-0 truncate">Use {authEmail}</span>
+                  </Button>
+                )}
+              </div>
             )}
           </div>
           <div>
-            <Label className="text-xs">Business address</Label>
+            <Label htmlFor="portal-address" className="text-xs">
+              Business address
+            </Label>
             {/* Autocomplete over ONE free-text line, which is a deliberate
                 pair of decisions.
                   Autocomplete, because the claim in the note below that
@@ -285,6 +334,7 @@ export function BrandingCard() {
                 Splitting into street/city/state would lock them out for a
                 field that is mostly printed in an email footer. */}
             <AddressAutocomplete
+              id="portal-address"
               className="mt-1"
               value={contactAddress}
               onChangeText={setContactAddress}
@@ -299,8 +349,11 @@ export function BrandingCard() {
             </p>
           </div>
           <div>
-            <Label className="text-xs">Change cutoff (hours before visit)</Label>
+            <Label htmlFor="portal-cutoff" className="text-xs">
+              Change cutoff (hours before visit)
+            </Label>
             <Input
+              id="portal-cutoff"
               className="mt-1"
               type="number"
               min={0}
@@ -318,15 +371,27 @@ export function BrandingCard() {
           <p className="text-sm font-medium">Self-serve permissions</p>
           <div className="flex items-center justify-between">
             <div className="text-sm">Allow clients to reschedule visits</div>
-            <Switch checked={allowResched} onCheckedChange={setAllowResched} />
+            <Switch
+              checked={allowResched}
+              onCheckedChange={setAllowResched}
+              aria-label="Allow clients to reschedule visits"
+            />
           </div>
           <div className="flex items-center justify-between">
             <div className="text-sm">Allow clients to request vacation holds</div>
-            <Switch checked={allowHold} onCheckedChange={setAllowHold} />
+            <Switch
+              checked={allowHold}
+              onCheckedChange={setAllowHold}
+              aria-label="Allow clients to request vacation holds"
+            />
           </div>
           <div className="flex items-center justify-between">
             <div className="text-sm">Allow clients to change plan frequency</div>
-            <Switch checked={allowFreq} onCheckedChange={setAllowFreq} />
+            <Switch
+              checked={allowFreq}
+              onCheckedChange={setAllowFreq}
+              aria-label="Allow clients to change plan frequency"
+            />
           </div>
           <div className="flex items-center justify-between">
             <div>
@@ -335,7 +400,11 @@ export function BrandingCard() {
                 Off (default): the office reviews every change. On: changes take effect immediately.
               </div>
             </div>
-            <Switch checked={autoApply} onCheckedChange={setAutoApply} />
+            <Switch
+              checked={autoApply}
+              onCheckedChange={setAutoApply}
+              aria-label="Auto-apply requested changes"
+            />
           </div>
         </div>
 

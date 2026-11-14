@@ -50,6 +50,8 @@ export type BatchState = {
   created_at: string;
   commit_started_at?: string | null;
   superseded_by?: string | null;
+  /** Set once undoImport deleted everything the batch created (#857). */
+  undone_at?: string | null;
 };
 
 /** The status a person is shown. "committing" and "superseded" are not
@@ -59,6 +61,9 @@ export type BatchState = {
  *  than IMPORT_COMMIT_STALL_MS is shown as "failed" (#569): it used to read
  *  "Committing" for ever, with no error and no way to try again. */
 export function importDisplayStatus(batch: BatchState, now: number = Date.now()): string {
+  // "undone" is spelled with a column too: a committed batch whose
+  // creations were deleted again (undoImport, #857).
+  if (batch.undone_at) return "undone";
   if (batch.status === "previewing" && batch.commit_started_at) {
     return commitStalled(batch, now) ? "failed" : "committing";
   }

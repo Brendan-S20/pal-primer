@@ -69,6 +69,9 @@ const TAB_GROUPS: TabGroup[] = [
       // things the customer sees, so they sit beside Promotions. The label
       // now matches the page's own heading.
       { label: "Reviews & referrals", to: "/settings/reviews" },
+      // HoundStack's own directory (#630): the owner's opt-in profile, off
+      // by default. Client-facing because what it shows, a pet owner reads.
+      { label: "Directory listing", to: "/settings/directory" },
     ],
   },
   {
@@ -101,7 +104,12 @@ const TAB_GROUPS: TabGroup[] = [
   },
   {
     title: "Team",
-    tabs: [{ label: "Users & roles", to: "/settings/users" }],
+    tabs: [
+      { label: "Users & roles", to: "/settings/users" },
+      // What each role may do (#863). Owner only (ROUTE_ROLES), so the rail
+      // hides it from everyone else through the same canAccess filter.
+      { label: "Roles & permissions", to: "/settings/roles" },
+    ],
   },
   {
     // ── THE BUSINESS'S OWN ACCOUNT WITH HOUNDSTACK ──────────────────────────

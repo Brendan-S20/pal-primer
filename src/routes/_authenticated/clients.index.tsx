@@ -51,6 +51,7 @@ import { titleHead } from "@/lib/page-title";
 import { useClientTexting } from "@/hooks/useClientTexting";
 import { useMotionList } from "@/lib/motion/use-motion-list";
 import { CLIENTS_PAGE_SIZE } from "@/lib/client-roster";
+import { summaryLagsRows } from "@/lib/client-book-queries";
 
 export const Route = createFileRoute("/_authenticated/clients/")({
   head: () => titleHead("Clients"),
@@ -161,18 +162,34 @@ function ClientsList() {
     staleTime: 60_000,
     throwOnError: (_error, query) => query.state.data === undefined,
   });
-  const summary = summaryQ.data;
-  const tagSpellings =
-    tag !== "all" ? summary?.tagSpellings?.[tag.toLowerCase()] : undefined;
+  const tagSpellings = tag !== "all" ? summaryQ.data?.tagSpellings?.[tag.toLowerCase()] : undefined;
   const filters = { q: searched, status, type, tag, tagSpellings };
-  const { data, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    dataUpdatedAt: pageUpdatedAt,
+  } = useQuery({
     queryKey: ["clients", "page", { q: searched, status, type, tag }, offset],
     queryFn: () => fn({ data: { ...filters, offset, limit: CLIENTS_PAGE_SIZE } }),
     placeholderData: keepPreviousData,
     // A tag filter waits for the spellings it is sent with.
-    enabled: tag === "all" || !!summary,
+    enabled: tag === "all" || !!summaryQ.data,
     throwOnError: (_error, query) => query.state.data === undefined,
   });
+
+  // #790: "0 total" over a listed row. The summary is held fresh for 60s, so
+  // a client added since it was read (another tab, a teammate) leaves the
+  // tiles below the list itself. A summary the list contradicts, read
+  // before the list was, is not shown: the tiles stay on their loading state
+  // until it is read again. One read after the list is the server's answer,
+  // and is shown whatever it says, so this can never hold the tiles forever.
+  const summaryLags =
+    summaryLagsRows(summaryQ.data, data) && summaryQ.dataUpdatedAt < pageUpdatedAt;
+  const summary = summaryLags ? undefined : summaryQ.data;
+  useEffect(() => {
+    if (summaryLags && !summaryQ.isFetching) void summaryQ.refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summaryLags, pageUpdatedAt]);
 
   const filtered = (data?.rows ?? []) as any[];
   const matched = data?.matched ?? 0;
@@ -187,7 +204,7 @@ function ClientsList() {
   };
   // Every tag in use, for the filter: tags came in by the hundred once
   // imports carried Jobber's Tags column across, and nothing could find them.
-  const allTags: string[] = summary?.tags ?? [];
+  const allTags: string[] = summaryQ.data?.tags ?? [];
 
   // Export CSV is every row the filters match, not just this page.
   const [exporting, setExporting] = useState(false);
@@ -407,13 +424,19 @@ function ClientsList() {
           </div>
           <div className="mt-1 text-2xl font-semibold">{!summary ? <TileValueBone /> : stats.active}</div>
         </Card>
-        <Card className="min-w-0 p-4">
+        <Card className="@container min-w-0 p-4">
           <div className="text-xs text-muted-foreground">Outstanding</div>
           {/* A book of thousands owes six figures: "$340,125.00" in text-2xl is
-              wider than half a 360px phone. Smaller below sm, on the same 2rem
-              line box so the bone does not move, and allowed to wrap rather
-              than push the tile past the column. */}
-          <div className="mt-1 text-lg leading-8 font-semibold [overflow-wrap:anywhere] sm:text-2xl">
+              wider than half a 360px phone. On the same 2rem line box as the
+              bone, so the list under the tiles does not move when the number
+              lands — but only if the number stays on ONE line, and whether
+              it does depends on the font, which is the system's. In DejaVu
+              Sans (a stock Linux runner) it wrapped at 320, 360, 768 and
+              900px, and the list jumped 32px. So the size follows the tile's
+              own width (12cqi: an 11-character amount is ~7.7em in the
+              widest common sans), capped at text-lg / text-2xl. Wrapping
+              stays as the last resort for an amount longer than that. */}
+          <div className="mt-1 text-[length:min(1.125rem,12cqi)] leading-8 font-semibold [overflow-wrap:anywhere] sm:text-[length:min(1.5rem,12cqi)]">
             {!summary ? <TileValueBone /> : money(stats.owedTotal)}
           </div>
           <div className="text-xs text-muted-foreground">{!summary ? <Skeleton className="h-4 w-20" /> : `${stats.outstanding} clients`}</div>
@@ -462,7 +485,7 @@ function ClientsList() {
           />
         </div>
         <Select value={status} onValueChange={(v) => setStatus(v as StatusFilter)}>
-          <SelectTrigger className="w-44">
+          <SelectTrigger className="w-44" aria-label="Filter by status">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -475,7 +498,7 @@ function ClientsList() {
           </SelectContent>
         </Select>
         <Select value={type} onValueChange={(v) => setType(v as TypeFilter)}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-40" aria-label="Filter by type">
             <SelectValue placeholder="Type" />
           </SelectTrigger>
           <SelectContent>

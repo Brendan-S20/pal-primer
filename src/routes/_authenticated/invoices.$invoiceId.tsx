@@ -6,6 +6,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { LineQuantity } from "@/components/LineQuantity";
 import { useRef, useState } from "react";
 import { bulkMarkInvoicesPaid, getInvoice, voidInvoice } from "@/lib/invoices.functions";
+import { voidRefundedInvoice } from "@/lib/invoice-void.functions";
 import { showsTaxLine, taxLineLabel } from "@/lib/sales-tax";
 import { useRecordPaymentDialog, type RecordPaymentAnswer } from "@/components/RecordPaymentDialog";
 import { describeManualPayment } from "@/lib/manual-payments";
@@ -14,14 +15,14 @@ import { RefundPaymentAction } from "@/components/RefundPaymentAction";
 import { ManualRefundAction } from "@/components/ManualRefundAction";
 import { getMyOrg } from "@/lib/org.functions";
 import { getQuickBooksStatus, syncInvoice } from "@/lib/accounting.functions";
-import { hasPermission } from "@/lib/permissions";
+import { hasPermission, permissionsOf } from "@/lib/permissions";
 import { sendInvoiceEmail, getEmailSendStatus } from "@/lib/notifications.functions";
 import { reportQueuedSend } from "@/lib/send-report";
 import { describePaymentSplit, formatDay, formatDateTime, surchargeSplit } from "@/lib/format";
 import { formatLineItemDescription, invoiceNumberLabel } from "@/lib/invoice-labels";
 import { Button } from "@/components/ui/button";
 import { StatusChip, SectionLabel } from "@/components/client-detail/primitives";
-import { invoiceRefundState, invoiceStatusChip } from "@/lib/refund-outcome";
+import { invoiceRefundState, invoiceStatusChip, voidAfterRefund } from "@/lib/refund-outcome";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { DownloadPdfButton } from "@/components/DownloadPdfButton";
 import { downloadInvoicePdf } from "@/lib/document-pdf.functions";
@@ -88,6 +89,7 @@ function InvoiceDetail() {
   const { invoiceId } = Route.useParams();
   const get = useServerFn(getInvoice);
   const voidFn = useServerFn(voidInvoice);
+  const voidRefundedFn = useServerFn(voidRefundedInvoice);
   const paidFn = useServerFn(bulkMarkInvoicesPaid);
   const orgFn = useServerFn(getMyOrg);
   const pdfFn = useServerFn(downloadInvoicePdf);
@@ -107,7 +109,10 @@ function InvoiceDetail() {
     queryFn: () => qboFn(),
     staleTime: 5 * 60_000,
     retry: false,
-    enabled: hasPermission((orgQ.data?.organization?.role as any) ?? null, "manage_settings"),
+    // The configured set (#863), or the role's defaults before it arrives.
+    enabled:
+      permissionsOf(orgQ.data?.organization)?.includes("manage_settings") ??
+      hasPermission((orgQ.data?.organization?.role as any) ?? null, "manage_settings"),
   });
   const qboConnected = qboQ.data?.connection?.status === "connected";
   // "INV-10420 · Invoices", from the same label the page's heading prints.
@@ -181,6 +186,24 @@ function InvoiceDetail() {
     },
     onError: (e: Error) => toastSaveError(e, reloadInvoice),
   });
+  // Void after a full refund (#674): the record changes, no money moves. A
+  // different server function from the one above, which cancels the pay
+  // page's PaymentIntent on Stripe; this one makes no Stripe call at all.
+  const voidRefundedM = useMutation({
+    mutationFn: async () =>
+      voidRefundedFn({
+        data: {
+          id: invoiceId,
+          ...(voidFrom.current !== undefined ? { expectedVersion: voidFrom.current } : {}),
+        },
+      }),
+    onSuccess: () => {
+      toast.success("Invoice voided. No money moved.");
+      qc.invalidateQueries({ queryKey: ["invoice", invoiceId] });
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+    },
+    onError: (e: Error) => toastSaveError(e, reloadInvoice),
+  });
 
   const emailFn = useServerFn(sendInvoiceEmail);
   const statusFn = useServerFn(getEmailSendStatus);
@@ -226,6 +249,10 @@ function InvoiceDetail() {
     (orgQ.data?.organization as { timezone?: string | null } | undefined)?.timezone ||
     DEFAULT_ORG_TIMEZONE;
   const overdue = isInvoiceOverdue(invoice.status, dueOn, orgToday(tz));
+  // Void on a paid invoice is offered only once all of its money went back
+  // (#674); partly refunded, the page says to refund the rest first.
+  const refundVoid = voidAfterRefund(invoice);
+  const voidedAt = (invoice as { voided_at?: string | null }).voided_at ?? null;
   const period =
     invoice.period_start && invoice.period_end && invoice.period_start !== invoice.period_end
       ? `${formatDay(invoice.period_start)} to ${formatDay(invoice.period_end)}`
@@ -400,13 +427,16 @@ function InvoiceDetail() {
                     </span>
                   </div>
                 )}
-              {invoice.status === "paid" && invoice.paid_at && (
+              {/* paid_at stays on a void after a full refund (#674), so the
+                  invoice reads paid, then refunded, then voided. */}
+              {invoice.paid_at && (invoice.status === "paid" || invoice.status === "void") && (
                 <p className="text-right text-xs text-muted-foreground">
                   Paid {formatDay(String(invoice.paid_at), undefined, tz)}
                 </p>
               )}
               {invoice.status === "void" && (
                 <p className="text-right text-xs text-muted-foreground">
+                  {voidedAt ? `Voided ${formatDay(String(voidedAt), undefined, tz)}. ` : ""}
                   This invoice was voided and is no longer payable.
                 </p>
               )}
@@ -491,6 +521,23 @@ function InvoiceDetail() {
           >
             Void
           </ConfirmButton>
+        )}
+        {invoice.status === "paid" && refundVoid.offered && (
+          <ConfirmButton
+            title="Void this refunded invoice?"
+            description="All of the payment already went back to the client. Voiding changes only the record: nothing is refunded, reversed or charged, the invoice keeps its paid and refunded amounts, and the visit can be invoiced again. This can't be undone."
+            confirmLabel="Void invoice"
+            onOpen={() => {
+              voidFrom.current = q.data?.version;
+            }}
+            onConfirm={() => voidRefundedM.mutate()}
+            disabled={voidRefundedM.isPending}
+          >
+            Void
+          </ConfirmButton>
+        )}
+        {invoice.status === "paid" && !refundVoid.offered && refundVoid.reason && (
+          <p className="self-center text-xs text-muted-foreground">{refundVoid.reason}</p>
         )}
         {(invoice as any).accounting_remote_id && (
           <span className="self-center text-xs text-muted-foreground">

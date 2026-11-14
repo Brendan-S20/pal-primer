@@ -1,4 +1,5 @@
 import { RequestedStays } from "@/components/RequestedStays";
+import { PortalChangeRequestQueue } from "@/components/PortalChangeRequestQueue";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useClientTexting } from "@/hooks/useClientTexting";
 import { CalendarCheck, CalendarOff, CalendarPlus, Inbox, Repeat, Sparkles } from "lucide-react";
@@ -427,6 +428,8 @@ function ConcernsPage() {
       </div>
 
       <RequestedStays />
+
+      <PortalChangeRequestQueue />
 
       <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => (

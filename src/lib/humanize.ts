@@ -12,10 +12,33 @@ const ROLE_LABELS: Record<string, string> = {
   platform_admin: "Platform admin",
 };
 
-/** Human-readable label for a role enum value. */
-export function humanizeRole(role: string | null | undefined): string {
+/** Whether a business calls its technicians trainers (train-17): it runs
+ *  training and nothing else. A business with training and another line
+ *  keeps "Technician", because the same person may scoop a yard and teach a
+ *  lesson in one day and the role is one role. Only the word changes; the
+ *  role is `tech` with a technician's permissions either way. */
+export function techIsTrainer(serviceLines: readonly string[] | null | undefined): boolean {
+  return !!serviceLines && serviceLines.length === 1 && serviceLines[0] === "training";
+}
+
+/** Human-readable label for a role enum value. Pass the business's service
+ *  lines where they are known, so a training-only business reads "Trainer". */
+export function humanizeRole(
+  role: string | null | undefined,
+  serviceLines?: readonly string[] | null,
+): string {
   if (!role) return "-";
+  if (role === "tech" && techIsTrainer(serviceLines)) return "Trainer";
   return ROLE_LABELS[role] ?? humanizeEnum(role);
+}
+
+/** The i18n key for a role's label on a tech screen (`role.*`). */
+export function roleLabelKey(
+  role: string,
+  serviceLines?: readonly string[] | null,
+): `role.${string}` {
+  if (role === "tech" && techIsTrainer(serviceLines)) return "role.trainer";
+  return ROLE_LABELS[role] ? `role.${role}` : "role.other";
 }
 
 /** Generic snake_case → "Sentence case" for any unmapped enum value. */
@@ -72,6 +95,10 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   add_support_note: "Added support note",
   delete_support_note: "Deleted support note",
   billing_status_change: "Billing status changed",
+  // #826: written by the Connect webhook, with no actor, when a refund or
+  // dispute fee reversal needs a person to look at it.
+  application_fee_reversal_unreadable: "Fee reversal held back the tap fee (metadata unreadable)",
+  application_fee_reversal_failed: "Fee reversal failed",
   clear_feature_flag: "Cleared feature flag",
   create_announcement: "Created announcement",
   create_invite: "Created invite",

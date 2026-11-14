@@ -24,10 +24,14 @@ name: Sandboxes
 # Both jobs are minutes slower than the whole of `verify`, and both need
 # software the runner may not have (Docker, the Supabase CLI, a browser). Tying
 # PR feedback to them would make the common case wait on the rare one. So this
-# runs on main and on demand, and reports its prerequisites loudly instead of
-# dying on a confusing ENOENT three steps in — the same shape as the `Find
+# runs on main, on demand, on a batch/* branch through batch.yml, and on a
+# pull request only once it is out of draft. It reports its prerequisites
+# loudly instead of dying on a confusing ENOENT three steps in — the same shape as the `Find
 # psql` step in ci.yml, and for the same reason.
 on:
+  # By hand, and from batch.yml on a batch/* branch: on a dispatch both heavy
+  # jobs run unconditionally (the gate below says so), which is what a batch
+  # of several approved PRs merged together needs exactly once.
   workflow_dispatch:
   push:
     branches: [main]
@@ -75,10 +79,39 @@ on:
   # The tests/support files are what the DB tests import. #683 changed only
   # select-embeds.ts, which decides every query every-select-embed-resolves
   # sends; without them the fix to that test would not have run it.
+  #
+  # src/** routes to the browser jobs only (Four widths + the one-off cases),
+  # never the database job. Product asked for it so a UI change in src/ gets
+  # browser coverage on its PR without someone dispatching viewports=true by
+  # hand. The gate in `changes` still keeps a src-only PR off the Docker replay.
+  #
+  # Build-config files belong here for the same reason as playwright.config.ts:
+  # they change how the app is built and how every browser job starts, without
+  # necessarily touching src/ or a spec. #815 changed vite.config.ts and this
+  # filter left it out, so Four widths and the one-off cases never started on
+  # that PR and had to be dispatched by hand. There is no postcss.config or
+  # tailwind.config in the repo; Tailwind is wired through the Vite plugin in
+  # vite.config.ts.
+  #
+  # public/** is here for the same reason as src/**: it is what the browser
+  # loads. public/push-handlers.js is not only a static file; vite.config.ts
+  # injects it into the service worker with importScripts, so a PR that only
+  # touches it changes what every page runs. It routes to the viewports jobs
+  # only, never the database replay.
   pull_request:
     paths:
+      - "src/**"
+      - "public/**"
+      - "vite.config.ts"
+      - "vitest.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "bun.lock"
+      - "tsconfig*.json"
       - "supabase/migrations/**"
       - "supabase/proofs/**"
+      - "tests/sql/**"
+      - "scripts/run-sql-proofs.mjs"
       - "tests/integration/*.db.test.ts"
       - "tests/run-db-tests.sh"
       - "tests/support/walk-db.ts"
@@ -89,7 +122,19 @@ on:
       - "playwright.e2e.config.ts"
       - "tests/viewports/**"
       - "playwright.config.ts"
+      - "scripts/install-playwright-browser.sh"
       - ".github/workflows/sandboxes.yml"
+      - "scripts/backup/**"
+      - "scripts/restore-drill.sh"
+      - "scripts/restore-drill-selftest.sh"
+    # ── DRAFT, THEN READY ───────────────────────────────────────────────────
+    #
+    # The three defaults plus ready_for_review, so marking a PR "Ready for
+    # review" starts this workflow even with no new push. On a DRAFT the gate
+    # job below still runs and says what the change would affect, then answers
+    # false for both heavy jobs; from Ready on, every push runs them as it
+    # always did. Merging needs Ready, so a merge is never gated on a draft run.
+    types: [opened, synchronize, reopened, ready_for_review]
 
 # ── CANCEL SUPERSEDED PULL-REQUEST RUNS, NEVER main ─────────────────────
 #
@@ -173,6 +218,7 @@ jobs:
         shell: bash
         env:
           EVENT: ${{ github.event_name }}
+          DRAFT: ${{ github.event.pull_request.draft }}
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
@@ -210,16 +256,41 @@ jobs:
               # The E2E suite runs inside the database job (it needs the
               # stack that job builds), so its inputs route there too.
               supabase/migrations/*|supabase/proofs/*)     database=true ;;
+              tests/sql/*|scripts/run-sql-proofs.mjs)       database=true ;;
               tests/integration/*.db.test.ts)              database=true ;;
               tests/run-db-tests.sh)                       database=true ;;
               tests/support/walk-db.ts|tests/support/org-day.ts) database=true ;;
               tests/support/select-embeds.ts|tests/support/withheld-columns.ts) database=true ;;
               tests/e2e/*|playwright.e2e.config.ts)        database=true ;;
+              # The restore drill's self-test runs in the database job, on
+              # the stack it builds, so the backup scripts route there.
+              scripts/backup/*|scripts/restore-drill.sh|scripts/restore-drill-selftest.sh) database=true ;;
               tests/viewports/*|playwright.config.ts)      viewports=true ;;
+              # How both browser jobs get their Chromium; see that step.
+              scripts/install-playwright-browser.sh)       viewports=true ;;
+              # App source: the browser jobs only, never the database replay.
+              src/*)                                       viewports=true ;;
+              # Static files the browser loads, including the push handler
+              # the service worker imports. Browser jobs only, like src/.
+              public/*)                                    viewports=true ;;
+              # Build config changes how the app is built for every browser
+              # job, so it routes to the viewports jobs only, like src/.
+              vite.config.ts|vitest.config.ts)             viewports=true ;;
+              package.json|package-lock.json|bun.lock)     viewports=true ;;
+              tsconfig*.json)                              viewports=true ;;
               # The workflow itself changes what both jobs DO, so it runs both.
               .github/workflows/sandboxes.yml)             database=true; viewports=true ;;
             esac
           done <<< "$changed"
+
+          # A draft gets the answer, not the run. Both jobs are reported as
+          # what they WOULD be, so the log says what Ready for review will
+          # start, and then both are switched off until it is pressed.
+          if [ "$DRAFT" = "true" ]; then
+            echo "draft pull request: would run database=$database, viewports=$viewports once marked Ready for review; neither runs now."
+            database=false
+            viewports=false
+          fi
 
           for v in "$database" "$viewports"; do
             case "$v" in
@@ -273,6 +344,48 @@ jobs:
           # does need the cache.
           cache: ${{ (vars.UNIX_RUNNER || vars.CI_RUNNER) == '' && 'npm' || '' }}
       - run: npm ci
+
+      # ── ON A GITHUB-HOSTED LINUX RUNNER, BRING WHAT THE MAC ALREADY HAS ─
+      #
+      # The Mac has Docker Desktop and a brew-installed Supabase CLI, and the
+      # check below was written for it. On 2026-11-07 UNIX_RUNNER moved to
+      # ubuntu-latest while the Mac was offline, and every run failed in that
+      # check with "Missing on this runner: supabase" (runs 42379608839,
+      # 41779015531, 41779020096): hosted Ubuntu has Docker running but no
+      # Supabase CLI. These two steps run on hosted Linux ONLY, so the Mac's
+      # preinstalled path and the refusal on Windows are both untouched, and
+      # the check below still runs everywhere and still decides.
+      #
+      # `latest` for the same reason backup.yml gives: the local stack must be
+      # at least as new as what config.toml is written for (#720).
+      - name: Install the Supabase CLI (GitHub-hosted Linux only)
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # The 15 GiB guard below is NOT lowered for hosted runners: a cold
+      # start really is the whole Supabase stack. A hosted image ships with
+      # toolchains this job never touches (.NET, Android SDK, GHC, CodeQL),
+      # and removing them is the room. Only when short, so a roomy image
+      # pays nothing; and psql, which the proofs and the E2E harness call,
+      # is installed if a future image drops it.
+      - name: Make room and fill gaps (GitHub-hosted Linux only)
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
+        run: |
+          avail_kb=$(df -Pk . | awk 'NR==2 {print $4}')
+          echo "$((avail_kb / 1048576)) GiB free before cleanup"
+          if [ "$avail_kb" -lt 15728640 ]; then
+            sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+              /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/share/swift
+            sudo docker image prune --all --force >/dev/null || true
+            avail_kb=$(df -Pk . | awk 'NR==2 {print $4}')
+            echo "$((avail_kb / 1048576)) GiB free after removing unused toolchains"
+          fi
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+          fi
+          psql --version
 
       - name: Find Docker and the Supabase CLI
         id: prereq
@@ -372,7 +485,12 @@ jobs:
             if [ "${st:-0}" -gt 0 ]; then
               pct=$(awk -v t="$st" -v f="$sf" 'BEGIN{printf "%d", (t-f)*100/t}')
               echo "swap ${pct}% used, load ${load1} on ${cores} cores"
-              [ "$pct" -ge 50 ] && echo "::warning::Swap is ${pct}% full on this runner, load ${load1} on ${cores} cores. Treat timeouts and SIGBUS here as suspect and re-run once. See docs/owner-actions-before-submission.md §12."
+              # `if`, not `[ ] && echo`: as the step's last command the
+              # latter exits 1 whenever swap is UNDER 50%, failing a check
+              # that is meant only to warn (first hit on hosted Linux).
+              if [ "$pct" -ge 50 ]; then
+                echo "::warning::Swap is ${pct}% full on this runner, load ${load1} on ${cores} cores. Treat timeouts and SIGBUS here as suspect and re-run once. See docs/owner-actions-before-submission.md §12."
+              fi
             else
               echo "no swap configured; load ${load1} on ${cores} cores"
             fi
@@ -530,6 +648,7 @@ jobs:
           EOF
 
       - name: Replay every migration into an empty database
+        id: replay
         run: |
           set -o pipefail
           started=""
@@ -576,6 +695,7 @@ jobs:
           fi
           for attempt in 1 2 3; do
             if supabase db reset --local 2>&1 | tee "reset-$attempt.log"; then
+              node scripts/run-sql-proofs.mjs --prepare
               echo "migrations replayed from empty on attempt $attempt"
               exit 0
             fi
@@ -627,6 +747,18 @@ jobs:
           done
           exit $failed
 
+      # These proofs need the migration paths and fixture values supplied by
+      # their Vitest wrappers. Each runs in its own clone of the pristine
+      # replay snapshot. Known failures are named in the runner and summary;
+      # any other failure or skipped test fails the job.
+      - name: Every tests/sql proof, through its fixture wrapper
+        if: ${{ !cancelled() && steps.replay.outcome == 'success' }}
+        run: node scripts/run-sql-proofs.mjs
+
+      - name: Remove the SQL proof databases and restore source connections
+        if: always()
+        run: node scripts/run-sql-proofs.mjs --cleanup
+
       # ── THE BEHAVIOURAL E2E SUITE, ON THE STACK THIS JOB JUST BUILT ──────
       #
       # Until 2026-09-19 this suite could not run in CI at all: it and this
@@ -651,6 +783,34 @@ jobs:
         run: |
           npx playwright install chromium
           npm run test:e2e
+
+      # ── THE RESTORE DRILL, ON DATA THAT BELONGS TO NOBODY ───────────────
+      #
+      # backup.yml makes an encrypted copy of production every night, and
+      # until this step nothing outside that workflow had ever restored one.
+      # This backs up THIS job's stack -- built from the migrations, seeded
+      # with one made-up business on .invalid addresses -- with the same
+      # dump.sh / crypt.sh / summarize.mjs the nightly job runs, under a
+      # passphrase generated for the run, and then runs
+      # scripts/restore-drill.sh on it: decrypt, restore into a second,
+      # throwaway stack on random ports, every row count against the dump,
+      # every foreign key, then tables vs the migrations, RLS on every public
+      # table, the auth schema and the migration ledger.
+      #
+      # No secret is read and no production backup is downloaded here. The
+      # production drill is restore-drill.yml (weekly, GitHub-hosted) and
+      # backup.yml's Sunday job, with a person on a private machine as the
+      # fallback (docs/runbooks/restore-drill.md). This step only ever sees
+      # seed data, so it is safe on whatever runner this job uses.
+      #
+      # After the E2E suite, which seeds its own tenant; the seed here adds a
+      # second one beside it. It runs even when the E2E suite failed, so a
+      # flaky browser does not hide a backup that no longer restores.
+      - name: The restore drill, on a backup of local seed data
+        if: always() && steps.replay.outcome == 'success'
+        run: |
+          command -v gpg >/dev/null || { echo "::error::gpg is not on this runner. The backup is OpenPGP-encrypted, so the drill cannot open it without gpg. macOS: brew install gnupg"; exit 1; }
+          scripts/restore-drill-selftest.sh
 
       - name: Keep what the E2E suite saw when it failed
         if: failure()
@@ -856,6 +1016,23 @@ jobs:
     # the full sweep was cancelled at 45 with 280 checks passed and the Apple
     # sizes still running. Delete the variable with VIEWPORTS_RUNNER when the
     # PC is back; the 45, and everything said above it, applies to the PC.
+    # ── NO APT ON GITHUB'S LINUX MACHINE (2026-11-11) ────────────────────
+    #
+    # When VIEWPORTS_RUNNER_JSON points this job at a GitHub-hosted Ubuntu
+    # image, it runs INSIDE Playwright's own image, which ships Chromium and
+    # every system library it needs. Until this, `playwright install
+    # --with-deps` ran apt-get against archive.ubuntu.com on every run, and on
+    # 2026-11-11 a resolver outage there ("Temporary failure resolving
+    # archive.ubuntu.com") failed this job on nine PRs and on main 3a028504
+    # with no test having run (e.g. run 43038568319). The image is one pull
+    # from mcr.microsoft.com and no apt at all.
+    #
+    # The tag MUST equal the Playwright version in package-lock.json --
+    # `tests/the-browser-image-is-the-lockfile-playwright.test.ts` fails by
+    # name if a bump moves one and not the other. On any other runner (the
+    # Mac, the PC, a self-hosted Linux box) the expression is '' and the job
+    # runs on the host exactly as before.
+    container: ${{ contains(vars.VIEWPORTS_RUNNER_JSON || '', 'ubuntu') && fromJSON('{"image":"mcr.microsoft.com/playwright:v1.62.1-noble","options":"--ipc=host"}') || '' }}
     timeout-minutes: ${{ fromJSON(vars.VIEWPORTS_TIMEOUT_MINUTES || '45') }}
     steps:
       # Git Bash is installed but not on the runner's PATH. Add it so the
@@ -923,8 +1100,14 @@ jobs:
       # usually a no-op after the first run. On Windows `--with-deps` runs
       # Playwright's media-pack script, which installs something only on
       # Windows SERVER; on a desktop edition it checks and exits.
+      #
+      # Inside the Playwright image (see `container:` above) the browser and
+      # its libraries are already there, so the script skips `--with-deps`
+      # and apt never runs. Anywhere else that still needs apt, it retries a
+      # bounded number of times with backoff, so one resolver blip is not a
+      # red PR. Nothing about the tests changes either way.
       - name: Install the browser
-        run: npx playwright install --with-deps chromium
+        run: bash scripts/install-playwright-browser.sh
 
       # The dev server is what gets measured, not `.output`: the web build
       # targets the cloudflare-module preset, so the server bundle is a Worker
@@ -952,6 +1135,17 @@ jobs:
       # pages.
       - name: Sweep 360 / 768 / 1280 / 1920 — signed-in routes
         run: npm run test:viewports:auth
+
+      # ── AXE, IN THE BROWSER THE SWEEPS ALREADY START ─────────────────────
+      #
+      # gaps-r2-11 part 2. Same surfaces, session and stub as the step above,
+      # at 1280 and 360, with axe-core's WCAG 2.1 A/AA rules over what
+      # rendered. Serious and critical fail. It needs a browser for the same
+      # reason the sweeps do: colour contrast is a computed foreground over a
+      # composited background, and jsdom (where part 1's scan runs) has no
+      # layout to compute either. Measured at 3.7 minutes for 92 tests.
+      - name: axe over the signed-in pages — names and contrast
+        run: npm run test:viewports:axe
 
       # ── ELEVEN REAL DEVICES, AND A POINTER THAT IS NOT A MOUSE ───────────
       #
@@ -1060,6 +1254,8 @@ jobs:
     # the full sweep was cancelled at 45 with 280 checks passed and the Apple
     # sizes still running. Delete the variable with VIEWPORTS_RUNNER when the
     # PC is back; the 45, and everything said above it, applies to the PC.
+    # Same image, same reason, as the `viewports` job above.
+    container: ${{ contains(vars.VIEWPORTS_RUNNER_JSON || '', 'ubuntu') && fromJSON('{"image":"mcr.microsoft.com/playwright:v1.62.1-noble","options":"--ipc=host"}') || '' }}
     timeout-minutes: ${{ fromJSON(vars.VIEWPORTS_TIMEOUT_MINUTES || '45') }}
     steps:
       # Git Bash is installed but not on the runner's PATH. Add it so the
@@ -1093,7 +1289,7 @@ jobs:
         run: node scripts/runner-headroom.mjs --need-disk-gib 5
 
       - name: Install the browser
-        run: npx playwright install --with-deps chromium
+        run: bash scripts/install-playwright-browser.sh
 
       # ── THE SWEEPS ARE NOT ALL OF IT ─────────────────────────────────────
       #

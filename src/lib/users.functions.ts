@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { resolveCaller } from "@/lib/authz.server";
+import { hasPermission } from "@/lib/permissions";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   // Through the shared gate, so a person whose access is turned off is
@@ -34,25 +35,59 @@ export const listOrgUsers = createServerFn({ method: "GET" })
   });
 
 /**
- * D7 (#659, decided by Brendan 2026-11-02): only an owner turns a person on
- * or off, or changes anybody's role -- and so only an owner can make somebody
- * an owner. Settings -> Users already showed these controls to the owner
- * alone; setStaffActive did not ask at all, so an office manager could
- * deactivate any teammate through it. The database refuses the same things
- * (set_staff_active, change_user_role, and the restrictive policies on staff
- * in 20261102140000); this is the readable sentence, not the only lock.
+ * D7 (#659). Decided by Brendan 2026-11-02 as owner-only, and changed by him
+ * on 2026-11-10: "Let managers too." So an owner OR an office manager turns a
+ * person on or off and changes roles. What did not change:
+ *
+ *   * nobody but an owner changes or turns off an owner;
+ *   * an office manager never grants a role above their own (never owner);
+ *   * a dispatcher or a technician does neither.
+ *
+ * Asked here first, before anything is read or written, so the refusal is a
+ * sentence. The database refuses the same things (set_staff_active,
+ * change_user_role and the restrictive UPDATE policy on staff in
+ * 20261111120000); this is the readable sentence, not the only lock. Whether
+ * the TARGET is an owner is the database's to answer, from the stored row.
  */
-export const ONLY_AN_OWNER_TURNS_PEOPLE_ON_OR_OFF = "Only an owner can turn people on or off.";
-export const ONLY_AN_OWNER_CHANGES_ROLES = "Only an owner can change roles.";
+export const ONLY_AN_OWNER_OR_OFFICE_MANAGER_TURNS_PEOPLE_ON_OR_OFF =
+  "Only someone allowed to manage the team can turn people on or off.";
+export const ONLY_AN_OWNER_OR_OFFICE_MANAGER_CHANGES_ROLES =
+  "Only someone allowed to manage the team can change roles.";
+export const NOT_ABOVE_YOUR_OWN_ROLE =
+  "Nobody but an owner can give anyone a role above their own.";
 
-async function requireOwner(
+/**
+ * The roles each caller may hand out: an owner any; anyone else nothing
+ * above their own. Since #863 "manage the team" is a permission the owner can
+ * turn on for a dispatcher too, so the rank rule is spelled out for every
+ * role rather than for the office manager alone. Mirrors change_user_role in
+ * 20261112010000.
+ */
+export const ROLES_A_CALLER_MAY_GRANT: Record<string, readonly string[]> = {
+  owner: ["owner", "office_manager", "dispatcher", "tech"],
+  office_manager: ["office_manager", "dispatcher", "tech"],
+  dispatcher: ["dispatcher", "tech"],
+  tech: ["tech"],
+};
+
+/**
+ * Who may turn people on or off and change roles: the owner, and anyone
+ * whose role holds manage_users after the owner's changes for it (#863). An
+ * office manager holds it by default (D7 as changed 2026-11-10); a dispatcher
+ * or technician does not, unless the owner turned it on for them. The
+ * database asks has_permission the same question (set_staff_active,
+ * change_user_role, the restrictive UPDATE policy on staff), and keeps the
+ * rules no permission lifts: never the owner's row, never a role above the
+ * caller's own.
+ */
+async function requireStaffAuthority(
   supabase: unknown,
   userId: string,
   refusal: string,
-): Promise<{ orgId: string }> {
+): Promise<{ orgId: string; role: string }> {
   const caller = await resolveCaller(supabase, userId);
-  if (caller.role !== "owner") throw new Error(refusal);
-  return { orgId: caller.orgId };
+  if (!hasPermission(caller.role, "manage_users", caller.overrides)) throw new Error(refusal);
+  return { orgId: caller.orgId, role: caller.role };
 }
 
 const roleEnum = z.enum(["owner", "office_manager", "dispatcher", "tech"]);
@@ -61,11 +96,14 @@ export const changeUserRole = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ userId: z.string().uuid(), role: roleEnum }).parse(d))
   .handler(async ({ data, context }) => {
-    const { orgId } = await requireOwner(
+    const { orgId, role: callerRole } = await requireStaffAuthority(
       context.supabase,
       context.userId,
-      ONLY_AN_OWNER_CHANGES_ROLES,
+      ONLY_AN_OWNER_OR_OFFICE_MANAGER_CHANGES_ROLES,
     );
+    if (!ROLES_A_CALLER_MAY_GRANT[callerRole]?.includes(data.role)) {
+      throw new Error(NOT_ABOVE_YOUR_OWN_ROLE);
+    }
     const { error } = await context.supabase.rpc("change_user_role", {
       _org_id: orgId,
       _user_id: data.userId,
@@ -93,11 +131,13 @@ export const setStaffActive = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ staffId: z.string().uuid(), active: z.boolean() }).parse(d))
   .handler(async ({ data, context }) => {
-    // Owner only (D7, #659), asked before anything is read or written.
-    const { orgId } = await requireOwner(
+    // Owner, or a role the owner let manage the team (D7, #659; #863), asked
+    // before anything is read or written. That the target is not an owner is
+    // set_staff_active's check.
+    const { orgId } = await requireStaffAuthority(
       context.supabase,
       context.userId,
-      ONLY_AN_OWNER_TURNS_PEOPLE_ON_OR_OFF,
+      ONLY_AN_OWNER_OR_OFFICE_MANAGER_TURNS_PEOPLE_ON_OR_OFF,
     );
     // Enabling somebody past the plan's team-size cap is refused here, before
     // the write, with the sentence the owner needs (NP-10). The database
@@ -469,13 +509,29 @@ export const setStaffRouting = createServerFn({ method: "POST" })
     }
     if (data.routingAvailable !== undefined) patch.routing_available = data.routingAvailable;
     if (Object.keys(patch).length === 0) return { ok: true };
-    const { error } = await (context.supabase.from("staff") as any)
+    const { data: rows, error } = await (context.supabase.from("staff") as any)
       .update(patch)
       .eq("id", data.staffId)
-      .eq("organization_id", orgId);
+      .eq("organization_id", orgId)
+      .select("id");
     if (error) throw new Error(error.message);
+    refuseUnwrittenStaff(rows);
     return { ok: true };
   });
+
+/**
+ * An UPDATE that matches no row is a successful UPDATE, so a staff write that
+ * RLS (or a restrictive policy such as two-step sign-in) refused came back as
+ * `{ error: null }`, and setup said "You're on the schedule" over a row that
+ * never changed. Same rule as updateOwnOrg: ask for the row back, and refuse
+ * to claim success without it.
+ */
+export const STAFF_WRITE_NOT_SAVED =
+  "That change wasn't saved: the team member's record could not be written. Reload and try again; if it keeps happening, tell support what you were changing.";
+
+function refuseUnwrittenStaff(rows: unknown): void {
+  if (!Array.isArray(rows) || rows.length === 0) throw new Error(STAFF_WRITE_NOT_SAVED);
+}
 
 export const listStaffAddresses = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -518,12 +574,14 @@ export const setStaffAddresses = createServerFn({ method: "POST" })
     if (data.endAddress !== undefined) patch.end_address = data.endAddress || null;
     if (data.endLatitude !== undefined) patch.end_latitude = data.endLatitude;
     if (data.endLongitude !== undefined) patch.end_longitude = data.endLongitude;
-    const { error } = await context.supabase
+    const { data: rows, error } = await context.supabase
       .from("staff")
       .update(patch as any)
       .eq("id", data.staffId)
-      .eq("organization_id", orgId);
+      .eq("organization_id", orgId)
+      .select("id");
     if (error) throw new Error(error.message);
+    refuseUnwrittenStaff(rows);
     return { ok: true };
   });
 

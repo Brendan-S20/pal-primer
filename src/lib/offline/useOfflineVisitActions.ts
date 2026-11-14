@@ -31,10 +31,14 @@ export type CompleteExtra = {
   note?: string;
   noPhotoReason?: string;
   checkedItems?: string[];
+  /** The tech saw the BLOCK warning and chose Continue (#851 follow-up). */
+  blockAcknowledged?: boolean;
 };
 
 export interface OfflineVisitActions {
-  start: () => Promise<{ queued: boolean }>;
+  /** `result` is the server's answer when the start went out, including any
+   *  vaccine warning under the owner's "warn" rule (#729). */
+  start: () => Promise<{ queued: boolean; result?: unknown }>;
   /** `queueOnly` is not sent anywhere: it puts the completion straight on the
    *  queue, no network attempt, so it replays behind something already queued
    *  there (a walk's report, #410, or a sit's care log, #411). `result` is

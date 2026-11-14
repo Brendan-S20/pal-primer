@@ -33,7 +33,8 @@ import {
   cancelPlatformAddon,
 } from "@/lib/platform-addons.functions";
 import { isSetupAddon, setupIsFreeFor, SETUP_FREE_BECAUSE } from "@/lib/done-for-you-setup";
-import { addonCardState, HELD_ADDON_ON_PLAN } from "@/lib/addon-launch";
+import { addonCardState, HELD_ADDON_ON_PLAN, managedTextingCard } from "@/lib/addon-launch";
+import { ComingSoonBadge } from "@/components/ComingSoonBadge";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusChip, MetaChip, SectionLabel } from "@/components/client-detail/primitives";
@@ -102,6 +103,10 @@ const STATUS_CHIP: Record<string, { status: string; label: string }> = {
   canceled: { status: "canceled", label: "Canceled" },
   suspended: { status: "failed", label: "Suspended" },
 };
+
+// A trialing org past trial_ends_at (#848). Not "Free trial": the lock banner
+// above this page already says the trial has ended.
+const TRIAL_ENDED_CHIP = { status: "overdue", label: "Trial ended" };
 
 function BillingPage() {
   // Read once per render rather than memoised: Capacitor.getPlatform() is a
@@ -239,7 +244,13 @@ function BillingPage() {
 
   if (isLoading || !data) return <p className="text-muted-foreground">Loading…</p>;
 
-  const chip = STATUS_CHIP[data.billingStatus] ?? { status: "inactive", label: data.billingStatus };
+  // plan_status stays 'trialing' after trial_ends_at passes, by design. Whether
+  // the trial is still running is the phase trialStateFor derives on the
+  // server, the same answer the account lock reads (#848). No second clock.
+  const trialEnded = data.billingStatus === "trialing" && data.trialPhase === "expired";
+  const chip = trialEnded
+    ? TRIAL_ENDED_CHIP
+    : (STATUS_CHIP[data.billingStatus] ?? { status: "inactive", label: data.billingStatus });
   const cancelPending = !!(subInfo as any)?.cancelAtPeriodEnd;
   // A saved org date can outlive its subscription. Only show a future date
   // returned by Stripe for an actual subscription, including during refresh.
@@ -301,11 +312,16 @@ function BillingPage() {
             )}
             {data.billingStatus === "trialing" && (
               <p className="mt-2 text-sm text-amber-700">
-                {canBuySaas
-                  ? "You're on a free trial. Pick a plan below before it ends to keep full access."
-                  : // Native: the STATUS stays, the steer goes. No domain, and
-                    // no verb that reads as a purchase instruction.
-                    "Your trial status is shown here. Plan changes are handled outside the mobile app."}
+                {trialEnded
+                  ? canBuySaas
+                    ? "Your free trial has ended and your account is locked. Choose a plan below to open it again."
+                    : // Native: the STATUS stays, the steer goes.
+                      "Your free trial has ended and your account is locked. Plan changes are handled outside the mobile app."
+                  : canBuySaas
+                    ? "You're on a free trial. Pick a plan below before it ends to keep full access."
+                    : // Native: the STATUS stays, the steer goes. No domain, and
+                      // no verb that reads as a purchase instruction.
+                      "Your trial status is shown here. Plan changes are handled outside the mobile app."}
               </p>
             )}
             {data.billingStatus === "past_due" && (
@@ -365,6 +381,7 @@ function BillingPage() {
           <PlanPicker
             currentSlug={data.planSlug}
             currentInterval={currentInterval}
+            paid={!!data.isPaidTier}
             onSelect={onPickPlan}
             switchingPlanId={switchPlan.isPending ? switchPlan.variables?.planId : null}
             chooseLabel={data.isPaidTier ? "Switch to this plan" : "Choose plan"}
@@ -727,6 +744,8 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
                 ? (a.waivedReason ?? null)
                 : setupFree;
             const state = addonCardState(a);
+            // Managed texting on the plan but not sending yet (site-r2-05).
+            const texting = managedTextingCard(a);
             return (
             <div
               key={a.id}
@@ -741,6 +760,8 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
                       when it is on the plan (addonCardState, #428). */}
                     {state === "coming_soon" ? (
                       <Badge variant="outline">{copy("Coming soon")}</Badge>
+                    ) : texting ? (
+                      <ComingSoonBadge>{texting.label}</ComingSoonBadge>
                     ) : state === "for_sale" ? null : (
                     <StatusChip
                         status={state === "purchased" ? "paid" : "active"}
@@ -786,6 +807,11 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
               {description && (
                 <p className="mt-1 flex-1 text-sm text-muted-foreground">{description}</p>
               )}
+                {texting && (
+                  <p className="mt-1 text-xs font-medium text-muted-foreground" data-testid="managed-texting-state">
+                    {texting.line}
+                  </p>
+                )}
                 {state === "coming_soon" && a.subscribed && (
                   <p className="mt-1 text-xs font-medium text-muted-foreground">
                     {copy(HELD_ADDON_ON_PLAN)}

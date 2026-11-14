@@ -7,9 +7,10 @@
 //      (credits auto-apply first server-side), behind a styled confirm.
 //   2. Credit:      "Apply credit ($Y available)" → applyCreditToInvoice,
 //      showing the remaining due it would leave.
+//   0. Tap to Pay:  native app only, always first (Apple 5.2).
 //   3. New card:    the Payment Element form (createInvoicePaymentIntent +
 //      Elements on the org's connected account), explicit card entry.
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 // The /pure entry adds js.stripe.com only when loadStripe() runs, on a
@@ -34,6 +35,18 @@ import {
   chargeAutopayForInvoice,
   reconcileInvoiceNow,
 } from "@/lib/invoices.functions";
+
+// Tap to Pay (#579) is native only. Loaded lazily behind the build-time flag so
+// the web build carries neither the button nor the Stripe Terminal plugin (a
+// static import left the plugin's chunks in the service worker's precache).
+// The env read is inline, not IS_NATIVE_BUNDLE: Vite replaces it in THIS module
+// at transform time, so the web build sees `undefined === "1"` and drops the
+// import() before Rollup decides which chunks to emit. Through the imported
+// constant, the chunks were emitted anyway.
+const TapToPayButton =
+  import.meta.env.VITE_NATIVE_BUNDLE === "1"
+    ? lazy(() => import("@/components/TapToPayButton").then((m) => ({ default: m.TapToPayButton })))
+    : null;
 
 // Contracts for the credit/autopay server fns (owned by invoices.functions.ts).
 type ChargeAutopayResult = { appliedCreditCents: number; chargedCents: number; status: string };
@@ -254,6 +267,24 @@ export function StaffInvoicePayForm({
         )}
       </div>
 
+      {/* Tap to Pay (#579): NATIVE ONLY, and FIRST in the payment options
+          (Apple's Tap to Pay on iPhone review guide 5.2: at the top, reachable
+          with no scrolling). The button decides for itself what this phone
+          and this role see (src/lib/tap-to-pay.ts). The web build drops this
+          branch. */}
+      {IS_NATIVE_BUNDLE && TapToPayButton && (
+        <Suspense fallback={null}>
+          <TapToPayButton
+            invoiceId={invoiceId}
+            invoiceStatus={inv.status}
+            dueCents={dueCents}
+            currencyLabel={fmtCents(dueCents, currency)}
+            cardPaymentsReady={cardReady}
+            onPaid={refresh}
+          />
+        </Suspense>
+      )}
+
       {/* 1. Saved default card — exact instrument + exact amount on the button. */}
       {hasSavedCard && (
         <div className="rounded-lg border bg-card p-3">
@@ -309,6 +340,22 @@ export function StaffInvoicePayForm({
               : `Leaves ${fmtCents(remainingAfterCredit, currency)} due after the credit.`}
           </p>
         </div>
+      )}
+
+      {/* Tap to Pay (#579): NATIVE ONLY. The phone is the reader; the button
+          decides for itself whether this phone and this role may use it
+          (src/lib/tap-to-pay.ts). The web build drops this branch. */}
+      {IS_NATIVE_BUNDLE && TapToPayButton && (
+        <Suspense fallback={null}>
+          <TapToPayButton
+            invoiceId={invoiceId}
+            invoiceStatus={inv.status}
+            dueCents={dueCents}
+            currencyLabel={fmtCents(dueCents, currency)}
+            cardPaymentsReady={cardReady}
+            onPaid={refresh}
+          />
+        </Suspense>
       )}
 
       {/* 3. New card entry. */}

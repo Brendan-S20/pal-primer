@@ -99,8 +99,10 @@ const readHeader = (page: import("@playwright/test").Page) =>
       ),
       buttons,
       pill: box(pill),
+      // The desktop field is named "Pick a day" too (axe: an input with no
+      // name), so it is told from the chip by the chip's invisible overlay.
       nativeDateVisible: !!(
-        document.querySelector('input[type="date"]:not([aria-label="Pick a day"])') as HTMLElement
+        document.querySelector('input[type="date"]:not(.opacity-0)') as HTMLElement
       )?.offsetParent,
     };
   });

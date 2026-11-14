@@ -213,8 +213,14 @@ export const SURFACES: Surface[] = [
     open: async (p) => {
       await p.getByRole("button", { name: "New invoice" }).first().click();
     },
+    // The results are a list of buttons, not a listbox of options (a row was
+    // an option holding a button: axe nested-interactive, gaps-r2-11 part 2).
     opened: (p) =>
-      p.getByRole("dialog", { name: "New invoice" }).getByRole("option").first(),
+      p
+        .getByRole("dialog", { name: "New invoice" })
+        .getByRole("list", { name: "Matching clients" })
+        .getByRole("button")
+        .first(),
     openedLabel: "the New invoice dialog's client search results",
   },
   {
@@ -262,6 +268,18 @@ export const SURFACES: Surface[] = [
     proof: (p) => p.getByRole("heading", { name: "Users & roles" }).first(),
     proofLabel: 'the "Users & roles" heading',
     expectsData: "Marguerite Delacroix-Bennett",
+  },
+  {
+    // Settings -> Roles & permissions (#863): three cards of nineteen switch
+    // rows each, a header with a title, a description and a Reset button
+    // that has to wrap on a phone, and the "Changed" badge beside a label.
+    // The data proof is the fixture's "last changed by" line, which only
+    // draws when a role carries a change.
+    id: "/settings/roles",
+    path: "/settings/roles",
+    proof: (p) => p.getByRole("heading", { name: "Roles & permissions" }).first(),
+    proofLabel: 'the "Roles & permissions" heading',
+    expectsData: "Last changed by Dana Whitfield-Ramirez",
   },
   {
     // The long-value case CLAUDE.md names by hand: a signup URL with nowhere
@@ -408,7 +426,8 @@ export const SURFACES: Surface[] = [
     path: "/platform/users",
     proof: (p) => p.getByText("Global directory across every tenant").first(),
     proofLabel: "the directory strapline",
-    expectsData: "of 173 users",
+    // "accounts" since #765: accounts with no business are listed too.
+    expectsData: "of 173 accounts",
   },
   {
     id: "/platform/plans",

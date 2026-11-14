@@ -17,6 +17,7 @@
  * questions arrive in: can I text them, why not, and what do I do about it.
  */
 import { useState } from "react";
+import { TextingNotLiveText } from "@/components/TextingNotLive";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -115,7 +116,7 @@ export function TextingConsentPanel({ client }: { client: any }) {
       </div>
       {!texting && (
         <p className="mt-1 text-xs text-muted-foreground">
-          Texting your clients is coming soon. Consent you record now is kept for it.
+          <TextingNotLiveText tail="Consent you record now is kept for it." />
         </p>
       )}
 

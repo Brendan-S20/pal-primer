@@ -146,7 +146,8 @@ describe("never a secret or a card", () => {
 
   it("the wizard does not hand its gate code to the draft at all", () => {
     const src = read("src/routes/_authenticated/clients.new.tsx");
-    const block = src.slice(src.indexOf("useFormDraft({"), src.indexOf("reset: onDiscarded"));
+    // The kept value is built as `draftValue` just above the hook (#784).
+    const block = src.slice(src.indexOf("const draftValue"), src.indexOf("reset: onDiscarded"));
     expect(block).not.toMatch(/gateCode/);
     expect(block).toMatch(/\bstep,/);
     expect(block).toMatch(/setStep\(d\.step\)/);
@@ -212,7 +213,10 @@ describe("the wiring", () => {
       expect(src).toMatch(
         /draft\.restored && <DraftRestoredNotice onDiscard=\{draft\.discard\} \/>/,
       );
-      const success = src.slice(src.indexOf("onSuccess:"));
+      // setup.tsx saves through stepSave (src/lib/setup-step-save.ts), whose
+      // `saved` runs from onSuccess, so it is the same moment under that name.
+      const marker = file.endsWith("setup.tsx") ? "saved: () =>" : "onSuccess:";
+      const success = src.slice(src.indexOf(marker));
       expect(success.slice(0, success.indexOf("toast.success"))).toMatch(/draft\.clear\(\)/);
     });
   }

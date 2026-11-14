@@ -717,6 +717,20 @@ export const ROUTING_HEALTH = {
 export function platformUsers(offset: number, limit: number) {
   const rows = [];
   for (let i = offset; i < Math.min(offset + limit, PLATFORM_USER_TOTAL); i++) {
+    // Since #765 an account with no business is a row, with a badge where the
+    // organizations go. Every eleventh row is one, so the first page draws it.
+    if (i % 11 === 3) {
+      rows.push({
+        user_id: `77777777-0000-4000-8000-${String(300000000000 + i).slice(0, 12)}`,
+        email: `removed.teammate.${i}.longmailboxname@detroit-doo-disposal-example.example.com`,
+        last_sign_in_at: null,
+        created_at: iso(new Date(Date.now() - (i + 30) * 864e5)),
+        organizations: [],
+        no_business: true,
+        platform_admin: false,
+      });
+      continue;
+    }
     rows.push({
       user_id: `77777777-0000-4000-8000-${String(300000000000 + i).slice(0, 12)}`,
       email: `dispatcher.${i}.longmailboxname@whitfield-ramirez-yard-services.example.com`,
@@ -940,7 +954,14 @@ export const REPORTS = {
   outstandingCents: 392_450,
   openInvoiceCount: 31,
   aging: { current: 204_300, d30: 118_650, d60: 52_000, d90: 17_500 },
-  visitCounts: { completed: 812, skipped: 37, missed: 4, scheduled: 96, in_progress: 0, cancelled: 3 },
+  visitCounts: {
+    completed: 812,
+    skipped: 37,
+    missed: 4,
+    scheduled: 96,
+    in_progress: 0,
+    cancelled: 3,
+  },
   completionRate: 812 / (812 + 37 + 4),
   perTech: STAFF.filter((s) => s.role === "tech").map((s, i) => ({
     id: s.id,
@@ -951,7 +972,10 @@ export const REPORTS = {
   })),
   perZone: [
     { id: "zzzz1111-0000-4000-8000-000000000001", name: "Ravenswood Manor / Lincoln Square North" },
-    { id: "zzzz1111-0000-4000-8000-000000000002", name: "Uptown / Edgewater Beach Commercial Grounds" },
+    {
+      id: "zzzz1111-0000-4000-8000-000000000002",
+      name: "Uptown / Edgewater Beach Commercial Grounds",
+    },
     { id: "no_zone", name: "No zone" },
   ].map((z, i) => ({ ...z, completed: 420 - i * 150, skipped: 20 - i * 7, total: 446 - i * 158 })),
   // The longest reason on purpose: it sits in a two-column table in a
@@ -1251,6 +1275,81 @@ export const PORTAL_BOOKING_SETTINGS = {
   canEdit: true,
 };
 
+/** Settings -> Client portal, reschedules and skips (#730). Every line the
+ *  product offers, so the per-line blocks are measured at their tallest; fees
+ *  typed on two of them, a cutoff override on one. */
+export const PORTAL_CHANGE_SETTINGS = {
+  policy: "approval",
+  autocharge: false,
+  defaultCutoffHours: 18,
+  serviceLines: ["pet_waste", "dog_walking", "pet_sitting", "mobile_grooming", "training"],
+  rules: [
+    {
+      service_line: "pet_waste",
+      cutoff_hours: null,
+      late_window_hours: 48,
+      late_reschedule_fee_cents: 1000,
+      late_cancel_fee_cents: 2500,
+    },
+    {
+      service_line: "mobile_grooming",
+      cutoff_hours: 24,
+      late_window_hours: 72,
+      late_reschedule_fee_cents: 0,
+      late_cancel_fee_cents: 4500,
+    },
+  ],
+  canEdit: true,
+};
+
+/** The Requests page's approval queue (#730): a late reschedule with a fee
+ *  the client accepted and a long reason, and a skip with none. The long
+ *  client name is the dataset's own. */
+export const PORTAL_CHANGE_REQUESTS = {
+  canDecide: true,
+  rows: [
+    {
+      id: "9c000000-0000-4000-8000-000000000001",
+      kind: "reschedule",
+      status: "pending",
+      policy: "approval",
+      original_date: "2026-08-21",
+      requested_date: "2026-08-25",
+      reason:
+        "Contractors are pouring the new patio on Thursday and the side gate will be blocked until the weekend.",
+      late: true,
+      fee_cents: 2500,
+      fee_disclosed_cents: 2500,
+      decision_note: null,
+      decided_at: null,
+      created_at: "2026-08-19T14:00:00Z",
+      client_id: "c1000000-0000-4000-8000-000000000001",
+      visit_id: "71000000-0000-4000-8000-0000000000c1",
+      service_line: "pet_waste",
+      clients: { display_name: "Kimberly-Anne Rutherford-Sinclair" },
+    },
+    {
+      id: "9c000000-0000-4000-8000-000000000002",
+      kind: "cancel",
+      status: "pending",
+      policy: "approval",
+      original_date: "2026-08-22",
+      requested_date: null,
+      reason: null,
+      late: false,
+      fee_cents: 0,
+      fee_disclosed_cents: null,
+      decision_note: null,
+      decided_at: null,
+      created_at: "2026-08-19T15:00:00Z",
+      client_id: "c1000000-0000-4000-8000-000000000002",
+      visit_id: "71000000-0000-4000-8000-0000000000c2",
+      service_line: "mobile_grooming",
+      clients: { display_name: "Bartholomew Featherstonehaugh-Wolstenholme" },
+    },
+  ],
+};
+
 /**
  * The calendar feed card (Profile, and Settings -> Scheduling), added
  * 2026-09-29 with the feeds.
@@ -1317,7 +1416,8 @@ export const QUOTES = {
     quoteRow(1, "accepted", {
       recipientName: QUOTE_PROSPECT_NAME,
       isProspect: true,
-      title: "Weekly service and common-area stations for the Lakeview Terrace Condominium Association",
+      title:
+        "Weekly service and common-area stations for the Lakeview Terrace Condominium Association",
       acceptedAt: iso(new Date(Date.now() - 864e5)),
       oneTimeCents: 16500,
       recurringCents: 5100,
@@ -1376,7 +1476,8 @@ export function quoteDetail(id: string) {
       label: accepted ? "Q-1041" : "Q-1042",
       rawStatus: accepted ? "accepted" : "draft",
       status: accepted ? "accepted" : "draft",
-      title: "Weekly service and common-area stations for the Lakeview Terrace Condominium Association",
+      title:
+        "Weekly service and common-area stations for the Lakeview Terrace Condominium Association",
       message:
         "Thanks for walking the grounds with me on Tuesday. This covers the courtyard, the east greenway and both dog runs.",
       validUntil: day(25),
@@ -1403,7 +1504,9 @@ export function quoteDetail(id: string) {
       prospectPhone: "+1 (312) 555-0177",
       recipientName: QUOTE_PROSPECT_NAME,
       recipientEmail: "board.of.managers@lakeviewterracecondominiumassociation.example.com",
-      publicUrl: accepted ? "https://app.houndstack.com/q/dddddddd-0000-4000-8000-00000000d002" : null,
+      publicUrl: accepted
+        ? "https://app.houndstack.com/q/dddddddd-0000-4000-8000-00000000d002"
+        : null,
     },
     lines: QUOTE_DETAIL_LINES,
     totals: { oneTimeCents: 16500, recurringCents: 5100, oneTimeCount: 2, recurringCount: 2 },
@@ -1561,7 +1664,15 @@ const CAMPAIGN_SENT = campaignRow(CAMPAIGN_SENT_ID, "sent", {
   recipientCount: 4213,
   sentAt: iso(new Date(Date.now() - 3 * 864e5)),
   completedAt: iso(new Date(Date.now() - 2.6 * 864e5)),
-  stats: { recipients: 4213, waiting: 0, inQueue: 0, skipped: 187, sent: 4011, failed: 15, bounced: 38 },
+  stats: {
+    recipients: 4213,
+    waiting: 0,
+    inQueue: 0,
+    skipped: 187,
+    sent: 4011,
+    failed: 15,
+    bounced: 38,
+  },
 });
 
 export const CAMPAIGNS = {
@@ -1578,7 +1689,15 @@ export const CAMPAIGNS = {
       audienceLabel: "Inactive and former clients",
       recipientCount: 1250,
       sentAt: iso(new Date(Date.now() - 3600e3)),
-      stats: { recipients: 1250, waiting: 830, inQueue: 10, skipped: 12, sent: 396, failed: 0, bounced: 2 },
+      stats: {
+        recipients: 1250,
+        waiting: 830,
+        inQueue: 10,
+        skipped: 12,
+        sent: 396,
+        failed: 0,
+        bounced: 2,
+      },
     }),
     CAMPAIGN_SENT,
   ],
@@ -1829,3 +1948,31 @@ export const FIELD_COLLECTIONS = {
     },
   ],
 };
+
+/** Every permission the product defines, as src/lib/permissions.ts lists
+ *  them. Spelled out here rather than imported, like the rest of this file,
+ *  so the fixture never depends on app code; tests/an-owner-sets-each-roles-
+ *  permissions.test.ts holds it to ALL_PERMISSIONS. */
+export const ALL_PERMISSION_NAMES = [
+  "manage_pricing",
+  "booking",
+  "manage_schedule",
+  "close_visits",
+  "message_clients",
+  "manage_plans",
+  "manage_client_billing",
+  "view_financials",
+  "view_client_directory",
+  "manage_dna_billing",
+  "reveal_signin_code",
+  "record_field_addons",
+  "manage_org_billing",
+  "manage_leads",
+  "send_campaigns",
+  "manage_imports",
+  "use_ai_tools",
+  "manage_inventory",
+  "manage_franchise",
+  "manage_users",
+  "manage_settings",
+];

@@ -11,6 +11,8 @@ import { RecoveryEmail } from "@/lib/email-templates/recovery";
 import { EmailChangeEmail } from "@/lib/email-templates/email-change";
 import { ReauthenticationEmail } from "@/lib/email-templates/reauthentication";
 import { resolveSupabaseUrl } from "@/lib/supabase-url";
+import { appOrigin } from "@/lib/app-origin";
+import { authEmailLink } from "@/lib/auth-email-links";
 
 // Supabase Auth "Send Email" hook action types
 type SupabaseEmailActionType =
@@ -123,14 +125,21 @@ export const Route = createFileRoute("/email/auth/webhook")({
         }
 
         // Build the confirmation URL. Supabase does NOT provide a ready-made
-        // URL in the hook payload — the standard template pattern is
-        // `${SUPABASE_URL}/auth/v1/verify?token=<token_hash>&type=<action>&redirect_to=<site>`.
-        // The app has no custom /auth/callback route that verifies token_hash
-        // via supabase-js, so we point at Supabase's hosted verify endpoint,
-        // which will then redirect the user back to redirect_to.
+        // URL in the hook payload, only a token_hash. A password reset goes
+        // straight to the app's /reset-password, which verifies the hash
+        // itself; everything else goes through Supabase's hosted verify
+        // endpoint, which redirects to redirect_to (or site_url). Why the
+        // two differ: lib/auth-email-links.ts.
         const supabaseUrl = resolveSupabaseUrl();
         const buildVerifyUrl = (tokenHash: string, type: string) =>
-          `${supabaseUrl}/auth/v1/verify?token=${encodeURIComponent(tokenHash)}&type=${encodeURIComponent(type)}&redirect_to=${encodeURIComponent(email_data.redirect_to || email_data.site_url)}`;
+          authEmailLink({
+            supabaseUrl,
+            tokenHash,
+            type,
+            redirectTo: email_data.redirect_to,
+            siteUrl: email_data.site_url,
+            appOrigin: appOrigin(),
+          });
 
         // For email_change Supabase fans out to both old and new addresses.
         // The token_hash confirms the old address; token_hash_new confirms

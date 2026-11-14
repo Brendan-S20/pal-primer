@@ -38,8 +38,10 @@ import { totalReversals, type Reversal } from "@/lib/reversals.server";
 // $2,550.00 open for July and the page reported $2,655.00. One implementation,
 // two callers.
 import { billedDay, invoiceDueCents, outstandingAsOf } from "@/lib/ar";
+import { voidedAfterRefund } from "@/lib/refund-outcome";
 import { fetchAllPages as fetchAll } from "@/lib/supabase-paging.server";
 import type { AppRole } from "@/hooks/useMyRole";
+import type { PermissionOverrides } from "@/lib/permissions";
 import { formatLineItemDescription, invoiceNumberLabel } from "@/lib/invoice-labels";
 import { qboRows, splitForImport, type QboInvoice } from "@/lib/quickbooks-import";
 
@@ -105,6 +107,8 @@ type OrgContext = {
   /** Carried so a report needing a tighter gate than view_financials can be
    *  answered without resolving the caller a second time. */
   role: AppRole;
+  /** The business's overrides for that role (#863), for the same reason. */
+  overrides?: PermissionOverrides;
   name: string;
   timezone: string;
   parentOrganizationId: string | null;
@@ -114,7 +118,7 @@ type OrgContext = {
 };
 
 async function loadOrgContext(supabase: any, userId: string): Promise<OrgContext> {
-  const { orgId, role } = await requirePermission(supabase, userId, "view_financials");
+  const { orgId, role, overrides } = await requirePermission(supabase, userId, "view_financials");
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
   // Service-role, scoped to this one row: the franchise columns are readable
@@ -142,6 +146,7 @@ async function loadOrgContext(supabase: any, userId: string): Promise<OrgContext
   return {
     orgId,
     role,
+    overrides,
     name: org?.name ?? "Your business",
     // Falling back to UTC rather than a guess: a wrong timezone silently files
     // year-end payments in the wrong tax year, and UTC at least fails in a
@@ -715,7 +720,9 @@ async function buildBridge(supabase: any, ctx: OrgContext, from: string, to: str
 
     const issued = inv.issued_at ? orgLocalDay(inv.issued_at, tz) : null;
     const issuedThisPeriod = !!issued && inRange(issued, from, to);
-    const billed = issuedThisPeriod && inv.status !== "void";
+    // The same answer billedDay gives: a void after a full refund (#674)
+    // stays billed, so the bridge and the accrual sheet agree on it.
+    const billed = issuedThisPeriod && (inv.status !== "void" || voidedAfterRefund(inv));
     if (billed) {
       invoiced += inv.total_cents ?? 0;
       creditsApplied += inv.credit_applied_cents ?? 0;
@@ -986,7 +993,14 @@ async function buildWriteOffs(supabase: any, ctx: OrgContext, from: string, to: 
   for (const inv of invoices) {
     const voided = inv.voided_at ? orgLocalDay(inv.voided_at, tz) : null;
     if (voided && inRange(voided, from, to)) {
-      hits.push({ inv, day: voided, label: "Voided", amount: inv.total_cents ?? 0 });
+      // A void after a full refund (#674) is listed on its day, as the event
+      // it is, with nothing written off: the sale stays on the accrual sheet
+      // and the refund is already the deduction, on the reversals sheet.
+      hits.push(
+        voidedAfterRefund(inv)
+          ? { inv, day: voided, label: "Voided after a full refund", amount: 0 }
+          : { inv, day: voided, label: "Voided", amount: inv.total_cents ?? 0 },
+      );
       continue;
     }
     if (inv.status === "uncollectible") {
@@ -1417,7 +1431,8 @@ export const getTaxReportIndex = createServerFn({ method: "GET" })
     // getTaxReport is what says no.
     const { planTierForOrg } = await import("@/lib/entitlements.server");
     const canSeeSettlements =
-      inFranchise && mayViewFranchiseSettlements(ctx.role, await planTierForOrg(ctx.orgId));
+      inFranchise &&
+      mayViewFranchiseSettlements(ctx.role, await planTierForOrg(ctx.orgId), ctx.overrides);
     const audience = routingAudience({
       parentOrganizationId: ctx.parentOrganizationId,
       isFranchiseParent: ctx.isFranchiseParent,

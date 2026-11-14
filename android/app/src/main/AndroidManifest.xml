@@ -98,6 +98,7 @@
                 <data android:pathPrefix="/settings/business" />
                 <data android:pathPrefix="/settings/client-portal" />
                 <data android:pathPrefix="/settings/deep-clean" />
+                <data android:pathPrefix="/settings/directory" />
                 <data android:pathPrefix="/settings/emails" />
                 <data android:pathPrefix="/settings/franchise" />
                 <data android:pathPrefix="/settings/invoicing" />
@@ -108,6 +109,7 @@
                 <data android:pathPrefix="/settings/promotions" />
                 <data android:pathPrefix="/settings/referrals" />
                 <data android:pathPrefix="/settings/reviews" />
+                <data android:pathPrefix="/settings/roles" />
                 <data android:pathPrefix="/settings/scheduling" />
                 <data android:pathPrefix="/settings/services" />
                 <data android:pathPrefix="/settings/skip-rules" />
@@ -209,4 +211,15 @@
          on devices without one rather than having Play filter them out. -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.location" android:required="false" />
+
+    <!-- Tap to Pay on Android (#579): the phone's own NFC reads the card, via
+         @capacitor-community/stripe-terminal. Optional, like the camera: most
+         of the product never touches NFC, and a phone without it should still
+         install. The app decides at runtime whether to offer Tap to Pay
+         (src/lib/tap-to-pay.ts, Android 13+), and Stripe's SDK refuses a phone
+         that fails its own checks (NFC off, rooted, Developer options on).
+         The plugin's own manifest merges in BLUETOOTH_CONNECT and
+         ACCESS_FINE_LOCATION (already declared above). -->
+    <uses-permission android:name="android.permission.NFC" />
+    <uses-feature android:name="android.hardware.nfc" android:required="false" />
 </manifest>

@@ -33,6 +33,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { DateField, TimeField } from "@/components/fields";
 import { formatDay, formatWindow } from "@/lib/format";
 import { useOrgToday } from "@/hooks/useOrgToday";
+import { usePermissions } from "@/hooks/useMyRole";
+import { PlanAtSetPriceDrawer } from "@/components/client-detail/PlanAtSetPriceDrawer";
 import { MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
 import { TrainingPackagesSection } from "@/components/clients/TrainingPackagesSection";
 import {
@@ -55,6 +57,7 @@ import {
   blankSubscriptionFormValues,
   scheduleChoiceFromRecord,
   scheduleChoiceToFields,
+  sessionLimitProblem,
   formatFrequency,
   isServiceEnded,
   serviceScheduleState,
@@ -93,6 +96,8 @@ import { WORK_WEEK, normalizeWeekdays, offersSetDays } from "@/lib/weekday-set";
 import { servicePriceCents } from "@/lib/services";
 import { useIntlLocale } from "@/lib/i18n";
 import { createWalkPlans } from "@/lib/walk-plans.functions";
+import { getTrainingSessionRules } from "@/lib/training-packages.functions";
+import { PlanWalker } from "@/components/client-detail/PlanWalker";
 import { walkWindowsProblem, type WalkWindow } from "@/lib/subscription-form";
 import { isDog } from "@/lib/pets";
 import { formatMultiplier, perVisitMultiplier } from "@/lib/frequency-multipliers";
@@ -159,6 +164,12 @@ export function ServicesTab({
   const [drawerSub, setDrawerSub] = useState<any | null | "new">(null);
   const [endingSub, setEndingSub] = useState<any | null>(null);
   const [detailSub, setDetailSub] = useState<any | null>(null);
+  // Adding, pausing, resuming and ending a plan is manage_plans (#728): a
+  // dispatcher holds it and adds a plan at the set price only (no price box).
+  // Editing a plan, deleting one and anything priced stay canManagePricing.
+  const { can } = usePermissions();
+  const canManagePlans = canManagePricing || can("manage_plans");
+  const [addingAtSetPrice, setAddingAtSetPrice] = useState(false);
 
   // Consume the ?editService deep link once the subscription list contains
   // the id (the drawer needs the full row). An unknown id is never consumed.
@@ -593,7 +604,7 @@ export function ServicesTab({
                         Edit
                       </Button>
                     )}
-                    {canManagePricing && !ended && s.status === "active" && (
+                    {canManagePlans && !ended && s.status === "active" && (
                       <Button
                         size="sm"
                         variant="outline"
@@ -603,7 +614,7 @@ export function ServicesTab({
                         <Pause className="mr-1 h-3.5 w-3.5 shrink-0" /> Pause
                       </Button>
                     )}
-                    {canManagePricing && paused && (
+                    {canManagePlans && paused && (
                       <Button
                         size="sm"
                         variant="outline"
@@ -616,7 +627,7 @@ export function ServicesTab({
                     {/* End service is a button with its name on it, beside
                         Pause: it used to be reachable only through an
                         unlabeled "…" (R2-46, waste-r2-11). */}
-                    {canManagePricing && showEnd && (
+                    {canManagePlans && showEnd && (
                       <Button size="sm" variant="outline" onClick={() => setEndingSub(s)}>
                         <Square className="mr-1 h-3.5 w-3.5 shrink-0" /> End service…
                       </Button>
@@ -674,8 +685,11 @@ export function ServicesTab({
         <h2 className="text-sm font-medium text-muted-foreground">
           {liveSubs.length} service{liveSubs.length === 1 ? "" : "s"}
         </h2>
-        {properties.length > 0 && canManagePricing && (
-          <Button size="sm" onClick={() => setDrawerSub("new")}>
+        {properties.length > 0 && canManagePlans && (
+          <Button
+            size="sm"
+            onClick={() => (canManagePricing ? setDrawerSub("new") : setAddingAtSetPrice(true))}
+          >
             <Plus className="mr-1 h-4 w-4 shrink-0" /> Add Service
           </Button>
         )}
@@ -740,6 +754,18 @@ export function ServicesTab({
           qc.invalidateQueries({ queryKey: ["quotes"] });
         }}
       />
+
+      {!canManagePricing && canManagePlans && (
+        <PlanAtSetPriceDrawer
+          open={addingAtSetPrice}
+          onClose={() => setAddingAtSetPrice(false)}
+          clientId={clientId}
+          client={client}
+          properties={properties}
+          dogs={dogs}
+          onSaved={invalidate}
+        />
+      )}
 
       <EndServiceDialog
         subscription={endingSub}
@@ -1069,6 +1095,18 @@ function ServiceDetailDrawer({
             <dt className="text-xs text-muted-foreground">Ends</dt>
             <dd>{s.ends_on ? formatDay(s.ends_on) : "Open-ended"}</dd>
           </div>
+          {s.session_limit != null && (
+            <div>
+              <dt className="text-xs text-muted-foreground">Stops after</dt>
+              <dd>{s.session_limit} lessons</dd>
+            </div>
+          )}
+          {s.skip_closed_days === false && (
+            <div>
+              <dt className="text-xs text-muted-foreground">Closed days</dt>
+              <dd>Books lessons on holidays</dd>
+            </div>
+          )}
           {s.end_reason && (
             <div className="col-span-2">
               <dt className="text-xs text-muted-foreground">End reason</dt>
@@ -1079,6 +1117,10 @@ function ServiceDetailDrawer({
             </div>
           )}
         </dl>
+        {/* The walker on a walk plan (#731, F-17). */}
+        {s.services?.service_line === "dog_walking" && !s.stay_id && (
+          <PlanWalker subscriptionId={s.id} />
+        )}
 
         {/* What this service has cost over time, and what was billed on top of
             it. The drawer showed today's price and nothing about how it got
@@ -1252,6 +1294,19 @@ function ServiceDrawer({
       (x) => x.id === effectiveServiceId(form.serviceId, orgServices, pickerLines),
     ) ?? null;
   const creatingWalk = !subscription && chosenService?.service_line === "dog_walking";
+  // A recurring training plan that is not a package's: a lesson series, which
+  // can skip closed days and stop after a number of lessons (R2-49).
+  const lessonSeries =
+    chosenService?.service_line === "training" &&
+    form.choice !== "one_time" &&
+    !subscription?.client_package_id;
+  const rulesFn = useServerFn(getTrainingSessionRules);
+  const seriesRules = useQuery({
+    queryKey: ["training-session-rules"],
+    queryFn: () => rulesFn(),
+    enabled: open && lessonSeries,
+  });
+  const skipClosed = form.skipClosedDays ?? seriesRules.data?.seriesSkipClosed ?? true;
   const walkWindows = [
     { earliestTime: form.earliestTime, latestTime: form.latestTime },
     ...extraWalkWindows,
@@ -1289,6 +1344,10 @@ function ServiceDrawer({
   if (!form.propertyId) errors.propertyId = "Choose a property";
   if (form.choice === "set_days" && form.weekdays.length === 0)
     errors.weekdays = "Choose at least one day";
+  if (lessonSeries) {
+    const problem = sessionLimitProblem(form.sessionLimit ?? "");
+    if (problem) errors.sessionLimit = problem;
+  }
   if (form.earliestTime && form.latestTime && form.earliestTime >= form.latestTime)
     errors.window = "The earliest arrival must be before the latest arrival";
   if (creatingWalk && extraWalkWindows.length > 0) {
@@ -1532,6 +1591,13 @@ function ServiceDrawer({
         earliestTime: form.earliestTime || null,
         latestTime: form.latestTime || null,
         serviceId: effectiveServiceId(form.serviceId, orgServices, pickerLines) ?? undefined,
+        // Written only for a lesson series; any other plan keeps what it has.
+        ...(lessonSeries
+          ? {
+              skipClosedDays: skipClosed,
+              sessionLimit: form.sessionLimit?.trim() ? parseInt(form.sessionLimit, 10) : null,
+            }
+          : {}),
       };
       const run = subscription
         ? updateFn({ data: { subscriptionId: subscription.id, ...common } })
@@ -1872,6 +1938,48 @@ function ServiceDrawer({
             />
           )}
         </div>
+
+        {lessonSeries && (
+          <div className="space-y-3 rounded-md border p-3" data-testid="lesson-series-rules">
+            <label className="flex min-h-11 items-center gap-3 text-sm">
+              <input
+                type="checkbox"
+                className="h-4 w-4 shrink-0"
+                checked={skipClosed}
+                onChange={(e) => set("skipClosedDays", e.target.checked)}
+              />
+              <span className="min-w-0">Skip holidays and closed days</span>
+            </label>
+            <p className="text-xs text-muted-foreground">
+              No lesson is booked on a holiday date (Settings, Services) or a blackout date
+              (Settings, Blackouts). The series skips that week rather than moving the lesson.
+            </p>
+            <div className="max-w-xs space-y-1">
+              <Label htmlFor="lesson-series-limit">Stop after</Label>
+              <div className="flex min-w-0 items-center gap-2">
+                <Input
+                  id="lesson-series-limit"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={520}
+                  className="w-24 shrink-0"
+                  value={form.sessionLimit ?? ""}
+                  placeholder="Any"
+                  onChange={(e) => set("sessionLimit", e.target.value)}
+                />
+                <span className="min-w-0 text-sm text-muted-foreground">lessons</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Leave empty for an open-ended series. A lesson canceled without a charge does not
+                count.
+              </p>
+              {showErrors && errors.sessionLimit && (
+                <p className="text-xs text-destructive">{errors.sessionLimit}</p>
+              )}
+            </div>
+          </div>
+        )}
 
         <div>
           <div className="grid gap-3 sm:grid-cols-2">

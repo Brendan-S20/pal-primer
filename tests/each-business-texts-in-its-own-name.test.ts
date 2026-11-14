@@ -123,6 +123,10 @@ vi.mock("@/integrations/supabase/client.server", () => ({
     },
   },
 }));
+let holdsAddon = true;
+vi.mock("@/lib/managed-texting.server", () => ({
+  orgHoldsManagedTexting: async () => holdsAddon,
+}));
 const notified: unknown[] = [];
 vi.mock("@/lib/notify-center.server", () => ({
   notifyRoles: vi.fn(async (_r: unknown, n: unknown) => void notified.push(n)),
@@ -258,6 +262,7 @@ beforeEach(() => {
   notified.length = 0;
   logged.length = 0;
   rpcError = null;
+  holdsAddon = true;
   tfvStatus = "PENDING_REVIEW";
   failNumberPurchase = false;
   editAllowed = true;
@@ -442,10 +447,29 @@ describe("2 and 3. status, and texting only on approval", () => {
     expect(rpcs.find((r) => r.fn === "activate_org_texting")).toBeUndefined();
   });
 
-  it("approval writes the credential through activate_org_texting: v1. ciphertext, same E.164", async () => {
+  it("carrier approval alone does not turn texting on: it waits for an admin (site-r2-05)", async () => {
     await submit();
     tfvStatus = "TWILIO_APPROVED";
     expect(await prov.refreshTextingStatus("org-1")).toBe("approved");
+    expect(rpcs.find((r) => r.fn === "activate_org_texting")).toBeUndefined();
+    expect(notified).not.toContainEqual(expect.objectContaining({ type: "texting_approved" }));
+    // The poll leaves it alone too: nothing to ask, nothing it may finish.
+    calls.length = 0;
+    await prov.refreshAllTextingStatuses();
+    expect(rpcs.find((r) => r.fn === "activate_org_texting")).toBeUndefined();
+    expect(calls).toEqual([]);
+  });
+
+  it("approval plus the admin's activation writes the credential through activate_org_texting: v1. ciphertext, same E.164", async () => {
+    await submit();
+    tfvStatus = "TWILIO_APPROVED";
+    expect(await prov.refreshTextingStatus("org-1")).toBe("approved");
+    holdsAddon = true;
+    expect(await prov.opsActivateTexting("org-1", "admin-1")).toEqual({
+      status: "approved",
+      live: true,
+    });
+    expect(reg?.ops_approved_by).toBe("admin-1");
     const act = rpcs.find((r) => r.fn === "activate_org_texting")!;
     expect(act.args._org_id).toBe("org-1");
     expect(act.args._account_sid).toBe(SUB_SID);
@@ -453,6 +477,35 @@ describe("2 and 3. status, and texting only on approval", () => {
     expect(act.args._token_last4).toBe(SUB_TOKEN.slice(-4));
     expect(act.args._from).toBe(NUMBER);
     expect(notified).toContainEqual(expect.objectContaining({ type: "texting_approved" }));
+  });
+
+  it("an admin may activate first: texting then switches on the moment the carrier approves", async () => {
+    await submit();
+    tfvStatus = "IN_REVIEW";
+    expect(await prov.opsActivateTexting("org-1", "admin-1")).toEqual({
+      status: "in_review",
+      live: false,
+    });
+    expect(rpcs.find((r) => r.fn === "activate_org_texting")).toBeUndefined();
+    tfvStatus = "TWILIO_APPROVED";
+    await prov.refreshAllTextingStatuses();
+    expect(rpcs.filter((r) => r.fn === "activate_org_texting")).toHaveLength(1);
+    expect(notified).toContainEqual(expect.objectContaining({ type: "texting_approved" }));
+  });
+
+  it("an admin cannot activate a business without the add-on, or with nothing under review", async () => {
+    await expect(prov.opsActivateTexting("org-1", "admin-1")).rejects.toThrow(
+      /no texting registration under review/,
+    );
+    await submit();
+    tfvStatus = "TWILIO_APPROVED";
+    await prov.refreshTextingStatus("org-1");
+    holdsAddon = false;
+    await expect(prov.opsActivateTexting("org-1", "admin-1")).rejects.toThrow(
+      /does not have the Managed texting add-on/,
+    );
+    expect(reg?.ops_approved_at ?? null).toBeNull();
+    expect(rpcs.find((r) => r.fn === "activate_org_texting")).toBeUndefined();
   });
 
   it("a rejection records reason and deadline, and alerts HoundStack and the owner once", async () => {
@@ -482,11 +535,17 @@ describe("2 and 3. status, and texting only on approval", () => {
     expect(tr.statusFromVerification("TWILIO_REJECTED")).toBe("rejected");
     expect(tr.describeStatus(null).title).toBe("Not started");
     expect(tr.describeStatus({ status: "draft" }).title).toBe("Waiting on your details");
-    expect(tr.describeStatus({ status: "submitted" }).detail).toMatch(/three business days/);
-    expect(tr.describeStatus({ status: "in_review" }).title).toBe("In review");
-    expect(tr.describeStatus({ status: "approved", phone_number: NUMBER }).detail).toContain(
-      NUMBER,
-    );
+    // site-r2-05: one state, in one set of words, from submit to switch-on.
+    for (const status of ["submitted", "in_review", "approved"] as const) {
+      const d = tr.describeStatus({ status, phone_number: NUMBER });
+      expect(d.title).toBe("Under review");
+      expect(d.detail).toMatch(/^Under review, usually ready shortly\./);
+      expect(d.detail).toContain(NUMBER);
+      expect(d.tone).toBe("waiting");
+    }
+    const live = tr.describeStatus({ status: "approved", phone_number: NUMBER }, undefined, true);
+    expect(live.title).toBe("Approved and live");
+    expect(live.detail).toContain(NUMBER);
     const rejected = tr.describeStatus({
       status: "rejected",
       rejection_reason: "Opt-in image does not show consent",
@@ -511,7 +570,8 @@ describe("B1 (Product review): a business that is already live is left alone", (
   async function liveBusiness() {
     await submit();
     tfvStatus = "TWILIO_APPROVED";
-    await prov.refreshTextingStatus("org-1");
+    holdsAddon = true;
+    await prov.opsActivateTexting("org-1", "admin-1");
     expect(rpcs.filter((r) => r.fn === "activate_org_texting")).toHaveLength(1);
     expect(notified.filter((n: any) => n.type === "texting_approved")).toHaveLength(1);
   }

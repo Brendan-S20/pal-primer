@@ -1,3 +1,4 @@
+import type { AppRole } from "@/hooks/useMyRole";
 import { createServerFn, createServerOnlyFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -22,6 +23,10 @@ const bootstrapSchema = z.object({
   // bootstrap_organization asks it. An unrecognised zone is dropped there
   // rather than raised on, so a browser string can never block a signup.
   timezone: z.string().trim().max(64).optional(),
+  // The mobile number from Get-started's last step. Saved as the business's
+  // contact phone and the owner's own phone where neither is set yet (see
+  // signup-contact.server.ts); until 2026-11-09 it only reached user_metadata.
+  phone: z.string().trim().max(40).optional(),
   // The service line the visitor came for (/sign-up?service=, site-r2-03).
   // Only an offered line passes; anything else is dropped, not raised on.
   serviceLine: z
@@ -108,6 +113,34 @@ export const bootstrapOrganization = createServerFn({ method: "POST" })
       _timezone: data.timezone || undefined,
     });
     if (error) throw new Error(error.message);
+
+    // The signup is finished: from here on an empty user_roles means the
+    // person was taken off a business, not that theirs was never built
+    // (#765, lib/signup-marker.ts).
+    if (orgId) {
+      const { clearSignupMarker } = await import("@/lib/signup-marker");
+      await clearSignupMarker(supabaseAdmin, userId);
+
+      // The number typed at signup, where Settings and Profile read it. Not
+      // best-effort: a lost write here is exactly the "didn't save" this was
+      // reported as, so it throws, and the signup screen offers to try again.
+      // Safe to re-run: it fills only what is still empty.
+      const { applySignupEmail, applySignupPhone } = await import("@/lib/signup-contact.server");
+      const admin = supabaseAdmin as unknown as import("@/lib/signup-contact.server").AdminClient;
+      // The address they signed in with, from auth rather than the browser.
+      const { data: who } = await supabaseAdmin.auth.admin.getUserById(userId);
+      await applySignupEmail(admin, {
+        orgId: orgId as string,
+        email: who?.user?.email,
+      });
+      if (data.phone) {
+        await applySignupPhone(admin, {
+          orgId: orgId as string,
+          userId,
+          phone: data.phone,
+        });
+      }
+    }
 
     // The line the visitor came for (site-r2-03 / F-06). Only for somebody who
     // had no business before this call -- an idempotent re-run for an existing
@@ -204,11 +237,14 @@ export const recordSmsConsent = createServerFn({ method: "POST" })
       .eq("id", orgId);
     if (error) throw new Error(error.message);
 
-    await (supabaseAdmin as any)
+    // Checked, like the write above: this error used to be dropped, so a
+    // consent that "saved" could leave Profile without the number it covers.
+    const { error: staffError } = await (supabaseAdmin as any)
       .from("staff")
       .update({ phone: data.phone })
       .eq("organization_id", orgId)
       .eq("user_id", userId);
+    if (staffError) throw new Error(staffError.message);
     return { ok: true };
   });
 
@@ -259,7 +295,20 @@ export const loadMyOrg = createServerOnlyFn(async (context: AuthedContext) => {
   );
   if (orgErr) throw new Error(orgErr.message);
 
-  return { organization: { ...org, role: role.role as string }, accessTurnedOff: null as null };
+  // What this person can do, after what the owner changed for their role
+  // (#863). usePermissions() reads this list; an owner's is every permission,
+  // and a role the owner never touched gets the defaults, so the shell draws
+  // the same controls it did before the screen existed.
+  const { effectivePermissions } = await import("@/lib/permissions");
+  const { readRoleOverrides } = await import("@/lib/role-permissions.server");
+  const appRole = role.role as AppRole;
+  const overrides = appRole === "owner" ? {} : await readRoleOverrides(supabase, org.id, appRole);
+  const permissions = effectivePermissions(appRole, overrides);
+
+  return {
+    organization: { ...org, role: role.role as string, permissions },
+    accessTurnedOff: null as null,
+  };
 });
 
 const slugSchema = z.object({ slug: z.string().trim().min(3).max(63) });
@@ -388,7 +437,26 @@ export const updateOrgBranding = createServerFn({ method: "POST" })
     if (data.name !== undefined) patch.name = assertValidOrgName(data.name);
     if (data.brandColor !== undefined) patch.brand_color = data.brandColor;
     if (data.logoUrl !== undefined) patch.logo_url = data.logoUrl;
-    if (data.contactPhone !== undefined) patch.contact_phone = data.contactPhone;
+    // Through handoffPhone, as the sign-up number is (#787): a fragment such as
+    // `555-` is refused here rather than stored from any screen, and in
+    // particular cannot replace a whole number kept from sign-up.
+    let officePhone: string | null = null;
+    let officePhoneWasBlank = false;
+    if (data.contactPhone !== undefined) {
+      const { handoffPhone, PHONE_FRAGMENT_MESSAGE } = await import("@/lib/phone-handoff");
+      const typed = (data.contactPhone ?? "").trim();
+      officePhone = typed ? handoffPhone(typed) : null;
+      if (typed && !officePhone) throw new Error(PHONE_FRAGMENT_MESSAGE);
+      patch.contact_phone = officePhone;
+      if (officePhone) {
+        const { data: before } = await supabase
+          .from("organizations")
+          .select("contact_phone")
+          .eq("id", orgId)
+          .maybeSingle();
+        officePhoneWasBlank = !(before?.contact_phone ?? "").trim();
+      }
+    }
     if (data.contactEmail !== undefined) patch.contact_email = data.contactEmail;
     if (data.contactAddress !== undefined) {
       patch.contact_address = data.contactAddress;
@@ -432,5 +500,19 @@ export const updateOrgBranding = createServerFn({ method: "POST" })
     const { countryColumnMissing } = await updateWithCountryFallback(patch, (p) =>
       updateOwnOrg(supabase, orgId, p),
     );
-    return { ok: true, countryColumnMissing };
+    // The office phone and the owner's Profile phone are one number until the
+    // owner says otherwise (#787). Setup step 1 saves its Business phone
+    // through here, so a number typed (or re-typed) there reaches Profile too.
+    // Only on the FIRST office phone: once there was one, a blank Profile is
+    // the owner's choice, and changing the office line must not refill it.
+    let profilePhoneWarning: string | null = null;
+    if (officePhone && officePhoneWasBlank) {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { fillOwnerProfilePhoneFromOffice } = await import("@/lib/signup-contact.server");
+      profilePhoneWarning = await fillOwnerProfilePhoneFromOffice(
+        supabaseAdmin as unknown as import("@/lib/signup-contact.server").AdminClient,
+        { orgId, userId, phone: officePhone },
+      );
+    }
+    return { ok: true, countryColumnMissing, profilePhoneWarning };
   });

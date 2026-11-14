@@ -10,6 +10,7 @@ import {
   updatePlatformUserEmail,
   updatePlatformUserPhone,
   removePlatformUserMfa,
+  NO_BUSINESS_LABEL,
 } from "@/lib/platform-directory.functions";
 import { startImpersonation } from "@/lib/platform.functions";
 import { launchImpersonationTab } from "@/lib/impersonation-launch";
@@ -210,7 +211,7 @@ function UsersPage() {
                   ? narrowed
                     ? "No users match."
                     : "No users in the directory yet."
-                  : `Showing ${firstShown.toLocaleString()}–${lastShown.toLocaleString()} of ${total.toLocaleString()} ${narrowed ? "matching " : ""}user${total === 1 ? "" : "s"} with an organization membership.`}
+                  : `Showing ${firstShown.toLocaleString()}–${lastShown.toLocaleString()} of ${total.toLocaleString()} ${narrowed ? "matching " : ""}account${total === 1 ? "" : "s"}.`}
           </p>
           {/* The population here is memberships, not accounts. Saying "12 users"
               beside a database holding 22 of them reads as a census, and the ten
@@ -220,12 +221,16 @@ function UsersPage() {
               Rendered only when the number is knowable — `unattached` is null
               under a filter or a short scan, and null means "not answerable",
               not none. */}
+          {/* Since #765 those accounts are LISTED, labelled "No business" (a
+              signup that never finished, or a teammate taken off a business)
+              or "Platform admin". The count says how many; search "No
+              business" to see only them. */}
           {scan && scan.unattached ? (
             <p className="mt-1 text-xs text-muted-foreground">
-              {scan.unattached.toLocaleString()} other account
-              {scan.unattached === 1 ? " holds" : "s hold"} no role in any organization —
-              abandoned signups and platform admins — so {scan.unattached === 1 ? "it is" : "they are"}{" "}
-              not listed here.
+              {scan.unattached.toLocaleString()} account
+              {scan.unattached === 1 ? " holds" : "s hold"} no role in any organization and{" "}
+              {scan.unattached === 1 ? "is" : "are"} labelled {NO_BUSINESS_LABEL} or Platform
+              admin. Search &quot;{NO_BUSINESS_LABEL}&quot; to list only those.
             </p>
           ) : null}
         </CardHeader>
@@ -246,7 +251,8 @@ function UsersPage() {
           {/* A scan that ran short says so. Everything on this screen is a
               count of something, and a count nobody can trust is worse than
               no count. */}
-          {scan && (!scan.membershipsComplete || !scan.accountsComplete) ? (
+          {scan &&
+          (!scan.membershipsComplete || !scan.accountsComplete || scan.unreadableAccounts) ? (
             <div
               role="status"
               className="mb-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-950"
@@ -264,6 +270,14 @@ function UsersPage() {
                     Read {scan.accounts.toLocaleString()} accounts but could not resolve an email
                     for every user shown. Rows without one show a user id, and a search by email
                     will not match them.
+                  </li>
+                ) : null}
+                {scan.unreadableAccounts ? (
+                  <li>
+                    {scan.unreadableAccounts.toLocaleString()} account
+                    {scan.unreadableAccounts === 1 ? " could" : "s could"} not be read at all: the
+                    auth service rejects rows with empty (NULL) token fields. Those need a data
+                    repair; every other account is listed.
                   </li>
                 ) : null}
               </ul>
@@ -339,7 +353,11 @@ function UsersPage() {
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
                         {u.organizations.length === 0 ? (
-                          <span className="text-xs text-muted-foreground">No org</span>
+                          // Listed since #765: an account with no business is
+                          // the one support most needs to find and send a reset.
+                          <Badge variant="secondary" className="text-3xs">
+                            {u.platform_admin ? "Platform admin" : NO_BUSINESS_LABEL}
+                          </Badge>
                         ) : (
                           u.organizations.map((o) => (
                             <Link
@@ -582,7 +600,10 @@ function UserDetailDialog({ userId, onClose }: { userId: string | null; onClose:
                 Organizations
               </div>
               {d.organizations.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No org memberships.</p>
+                <p className="text-sm text-muted-foreground">
+                  {NO_BUSINESS_LABEL}: this account belongs to no organization. It can still sign
+                  in, and a password reset can still be sent from here.
+                </p>
               ) : (
                 <div className="flex flex-wrap gap-1">
                   {d.organizations.map((o) => (

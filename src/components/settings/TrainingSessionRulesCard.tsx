@@ -21,16 +21,23 @@ export function TrainingSessionRulesCard({ canEdit }: { canEdit: boolean }) {
   const [hours, setHours] = useState("24");
   const [uses, setUses] = useState(true);
   const [share, setShare] = useState(true);
+  const [skipClosed, setSkipClosed] = useState(true);
   useEffect(() => {
     if (!q.data) return;
     setHours(String(q.data.lateCancelHours));
     setUses(q.data.missedUsesSession);
     setShare(q.data.shareProgress);
+    setSkipClosed(q.data.seriesSkipClosed);
   }, [q.data]);
   const save = useMutation({
     mutationFn: () =>
       saveFn({
-        data: { lateCancelHours: Number(hours), missedUsesSession: uses, shareProgress: share },
+        data: {
+          lateCancelHours: Number(hours),
+          missedUsesSession: uses,
+          shareProgress: share,
+          seriesSkipClosed: skipClosed,
+        },
       }),
     onSuccess: () => {
       toast.success(t("training.rulesSaved"));
@@ -96,6 +103,19 @@ export function TrainingSessionRulesCard({ canEdit }: { canEdit: boolean }) {
             <span className="min-w-0">{t("training.shareProgress")}</span>
           </label>
           <p className="text-sm text-muted-foreground">{t("training.shareProgressHint")}</p>
+        </div>
+        <div className="space-y-1 border-t pt-4">
+          <label className="flex min-h-11 items-center gap-3 text-sm">
+            <input
+              type="checkbox"
+              className="h-4 w-4 shrink-0"
+              checked={skipClosed}
+              disabled={!canEdit || !q.data}
+              onChange={(e) => setSkipClosed(e.target.checked)}
+            />
+            <span className="min-w-0">{t("training.seriesSkipClosed")}</span>
+          </label>
+          <p className="text-sm text-muted-foreground">{t("training.seriesSkipClosedHint")}</p>
         </div>
         {canEdit && (
           <Button type="submit" className="shrink-0" disabled={!q.data || !valid || save.isPending}>

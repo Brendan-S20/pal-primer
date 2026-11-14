@@ -15,7 +15,6 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { defaultPlanWeekdays, planStartsSkipped } from "@/lib/new-client-plan";
 import { defaultServiceId, hidesPetWasteService, servicePickerOptions } from "@/lib/visit-service";
-import { WORK_WEEK } from "@/lib/weekday-set";
 
 const read = (p: string) => readFileSync(join(__dirname, "..", p), "utf8");
 
@@ -50,8 +49,8 @@ describe("the Plan step's starting values follow the line", () => {
     expect(planStartsSkipped(["training"], false)).toBe(false);
   });
 
-  it("a walk is Monday to Friday; anything else is the first visit's weekday", () => {
-    expect(defaultPlanWeekdays("dog_walking", 3)).toEqual([...WORK_WEEK]);
+  it("every line, a walk included, starts on the first visit's weekday (#774)", () => {
+    expect(defaultPlanWeekdays("dog_walking", 3)).toEqual([3]);
     expect(defaultPlanWeekdays("mobile_grooming", 3)).toEqual([3]);
     expect(defaultPlanWeekdays("training", 6)).toEqual([6]);
     expect(defaultPlanWeekdays("pet_sitting", 1)).toEqual([1]);

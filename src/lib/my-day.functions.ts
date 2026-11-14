@@ -1,3 +1,5 @@
+import type { MissingVaccine } from "@/lib/pet-safety";
+import { blockedCompletionMeta, blockedCompletionSummary } from "@/lib/completion-block";
 import { createServerFn } from "@tanstack/react-start";
 import { orgToday } from "@/lib/org-day";
 import { formatDay } from "@/lib/format";
@@ -435,7 +437,21 @@ export const startVisit = createServerFn({ method: "POST" })
     // The same line the lock screen's Start writes (visit-activity.server.ts).
     const { logVisitStarted } = await import("@/lib/visit-activity.server");
     await logVisitStarted(context.supabase, { visitId: data.visitId, actorUserId: context.userId });
-    return { ok: true };
+    // The owner's vaccine Start rule (#729). Under "block" the RPC above has
+    // already refused; under "warn" (the default) the Start went ahead and
+    // the tech is told which pet is missing what. A failed lookup never
+    // undoes a Start that happened: it only means no warning is shown.
+    let vaccineWarnings: MissingVaccine[] = [];
+    try {
+      const { data: rows, error: gapError } = await context.supabase.rpc("visit_missing_vaccines", {
+        _visit_id: data.visitId,
+      });
+      if (gapError) throw gapError;
+      vaccineWarnings = rows ?? [];
+    } catch (e) {
+      console.warn("visit_missing_vaccines failed; the Start shows no vaccine warning", e);
+    }
+    return { ok: true, vaccineWarnings };
   });
 
 export const completeVisit = createServerFn({ method: "POST" })
@@ -461,10 +477,18 @@ export const completeVisit = createServerFn({ method: "POST" })
           .array(z.string().min(1).max(MAX_CHECKLIST_ID))
           .max(MAX_CHECKLIST_ITEMS)
           .optional(),
+        /** The person saw the BLOCK warning and chose Continue (#851
+         *  follow-up). Recorded, never required: BLOCK does not stop a
+         *  Complete, by the owner's decision. */
+        blockAcknowledged: z.boolean().optional(),
       })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    // The owner's BLOCK rule, as it stands at this moment, for the record.
+    // Never refuses and never throws (completion-block.server.ts).
+    const { completionBlockWarning } = await import("@/lib/completion-block.server");
+    const block = await completionBlockWarning(context.supabase as any, data.visitId);
     const { error } = await context.supabase.rpc("complete_visit", {
       _visit_id: data.visitId,
       _completed_at: data.completedAt ?? undefined,
@@ -473,6 +497,14 @@ export const completeVisit = createServerFn({ method: "POST" })
       _checked_items: data.checkedItems ?? undefined,
     });
     if (error) throw new Error(error.message);
+    // Billed after each visit on a postpaid plan: the invoice now, not
+    // tonight (#859, D2). Made with the service role, because a tech holds no
+    // billing permission; once per visit however often a replay arrives;
+    // nothing for a prepaid plan. Never throws.
+    {
+      const { invoiceAtCompletionSafely } = await import("@/lib/visit-completion-invoice.server");
+      await invoiceAtCompletionSafely({ visitId: data.visitId, actorUserId: context.userId });
+    }
     try {
       const { data: v } = await context.supabase
         .from("visits")
@@ -487,7 +519,18 @@ export const completeVisit = createServerFn({ method: "POST" })
           propertyId: v.property_id,
           actorUserId: context.userId,
           kind: "visit.completed",
-          summary: `Completed the visit scheduled for ${v.scheduled_on}`,
+          summary: `Completed the visit scheduled for ${v.scheduled_on}${block ? blockedCompletionSummary(block, !!data.blockAcknowledged) : ""}`,
+          ...(block
+            ? {
+                meta: {
+                  blocked_completion: blockedCompletionMeta(block, {
+                    acknowledged: !!data.blockAcknowledged,
+                    completedBy: context.userId,
+                    completedAt: new Date().toISOString(),
+                  }),
+                },
+              }
+            : {}),
         });
       }
     } catch (e) {

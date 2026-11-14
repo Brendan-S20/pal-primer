@@ -41,8 +41,63 @@ let landed = false;
  *  app", not a target, so it is not held. A later link replaces an earlier
  *  one: the last tap is the one the person meant. */
 export function holdDeepLink(path: string, now = Date.now()): void {
-  if (!path || path === "/") return;
-  held = { path, at: now };
+  const inApp = inAppPath(path);
+  if (!inApp) return;
+  held = { path: inApp, at: now };
+}
+
+/**
+ * The in-app path a link names, or null when it names nothing worth holding.
+ *
+ * Delivered with `router.history.push`, which takes a PATH: a full URL there
+ * is pushed as a path segment and draws a not-found page. And /auth is never
+ * a destination: holding it sends a person who has just signed in straight
+ * back to the sign-in form, which is the #785 screen with no error on it.
+ * Bare `/` is "open the app", not a target.
+ */
+export function inAppPath(link: string): string | null {
+  if (!link) return null;
+  let path = link;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(link) || link.startsWith("//")) {
+    try {
+      const base = typeof window === "undefined" ? undefined : window.location?.origin;
+      const url = new URL(link, base);
+      if (base && url.origin !== base) return null;
+      path = url.pathname + url.search + url.hash;
+    } catch {
+      return null;
+    }
+  }
+  if (!path.startsWith("/") || path.startsWith("//")) return null;
+  const pathname = path.split(/[?#]/)[0];
+  if (pathname === "/" || pathname === "" || pathname === "/auth" || pathname.startsWith("/auth/"))
+    return null;
+  return path;
+}
+
+/** A sign-out on purpose is under way or done, and nobody has signed in
+ *  since: the page being left belongs to the session that ended (#785). */
+let signingOut = false;
+
+/** The guard's, and a save's, "come back here after sign-in" (#659): an
+ *  in-app path, never /auth, and nothing while a sign-out is under way. A
+ *  tapped app link goes through holdDeepLink and is still held. */
+export function holdReturnPath(path: string, now = Date.now()): void {
+  if (signingOut) return;
+  holdDeepLink(path, now);
+}
+
+/** An intentional sign-out starts: drop any held link, and hold no return
+ *  path until somebody signs in. */
+export function beginSignOut(): void {
+  forgetDeepLink();
+  signingOut = true;
+}
+
+/** A password was accepted, or /auth found a session: the guard may hold a
+ *  page again. */
+export function signedInAgain(): void {
+  signingOut = false;
 }
 
 /** The held link, left in place, or null when there is none or it is stale. */
@@ -73,7 +128,8 @@ export function markLanded(): void {
  */
 export function takeLinkForLanding(now = Date.now()): string | null {
   markLanded();
-  return takeDeepLink(now) ?? takeWaitingAppUrl("path");
+  const link = takeDeepLink(now) ?? takeWaitingAppUrl("path");
+  return link ? inAppPath(link) : null;
 }
 
 /** Sign-out: a held link belongs to the person who tapped it, not to the
@@ -86,7 +142,12 @@ export function forgetDeepLink(): void {
 
 /** Pages a link may open without anyone signed in. Each handles a missing
  *  session itself. */
-const NEEDS_NO_SESSION = ["/invite/"];
+const NEEDS_NO_SESSION = [
+  "/invite/",
+  // A recovery link is the way back in for somebody who cannot sign in; it
+  // brings its own session, and /auth must not land it first.
+  "/reset-password",
+];
 
 export function needsSession(path: string): boolean {
   return !NEEDS_NO_SESSION.some((p) => path.startsWith(p));
@@ -120,7 +181,25 @@ export async function routeDeepLink(path: string, env: DeepLinkEnv): Promise<voi
   env.push(next);
 }
 
+/**
+ * The root's SIGNED_OUT listener. A sign-out AFTER /auth landed somebody is
+ * a person leaving: forget their link and their landing (forgetDeepLink).
+ *
+ * A sign-out BEFORE anybody landed is not. On a cold start whose saved
+ * session has expired, supabase-js tries the refresh token while it starts
+ * up, the auth server refuses it, and the client announces SIGNED_OUT, often
+ * after the launch link is already held. Nobody has used the app on this
+ * launch, so the person about to see the sign-in form is the person who
+ * tapped the link; forgetting it there sent them to My Day after signing in,
+ * the #621 symptom by another road. The TTL still bounds how long it waits.
+ */
+export function signedOut(): void {
+  if (!landed) return;
+  forgetDeepLink();
+}
+
 /** Tests only. */
 export function __resetDeepLinkForTests(): void {
   forgetDeepLink();
+  signingOut = false;
 }

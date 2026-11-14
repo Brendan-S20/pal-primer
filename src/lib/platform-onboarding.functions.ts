@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { resolveSupabaseUrl } from "@/lib/supabase-url";
+import { humanizeRole } from "@/lib/humanize";
 
 async function assertPlatformAdmin(supabase: any, userId: string) {
   const { data, error } = await supabase.rpc("is_platform_admin", { _user_id: userId });
@@ -207,6 +208,9 @@ export type InviteLookupResult = {
   /** Who sent a teammate invitation, by the name they go by in that business.
    *  Said on a failed link too, so the invitee knows who to ask (gaps-r2-14). */
   inviter_name?: string | null;
+  /** The role in the business's words: "Trainer" for a technician of a
+   *  training-only business (train-17). Teammate invitations only. */
+  role_label?: string;
 };
 
 export const lookupInviteByToken = createServerFn({ method: "GET" })
@@ -237,7 +241,9 @@ export const lookupInviteByToken = createServerFn({ method: "GET" })
 async function lookupStaffInvite(admin: any, token: string): Promise<InviteLookupResult> {
   const { data: inv, error } = await admin
     .from("org_invites")
-    .select("email, role, status, expires_at, organization_id, invited_by, organizations:organization_id(name)")
+    .select(
+      "email, role, status, expires_at, organization_id, invited_by, organizations:organization_id(name, service_lines)",
+    )
     .eq("token", token)
     .maybeSingle();
   if (error || !inv) return { ok: false, reason: "not_found" };
@@ -255,6 +261,7 @@ async function lookupStaffInvite(admin: any, token: string): Promise<InviteLooku
     ok: true,
     email: inv.email,
     role: inv.role,
+    role_label: humanizeRole(inv.role, inv.organizations?.service_lines ?? null),
     organization_id: inv.organization_id,
     ...known,
   };
@@ -372,6 +379,9 @@ export const acceptPlatformInvite = createServerFn({ method: "POST" })
         { onConflict: "user_id,organization_id,role" as any },
       );
     if (roleErr) throw new Error(roleErr.message);
+    // A membership now exists; the signup marker must not outlive it (#765).
+    const { clearSignupMarker } = await import("@/lib/signup-marker");
+    await clearSignupMarker(supabaseAdmin, context.userId);
 
     // Mark accepted.
     await supabaseAdmin
