@@ -146,7 +146,7 @@ test("a quote from mypets.services is one directory lead on the test org", async
       email,
       phone: "",
       location: SERVED,
-      message: "Asked about: Poop scooping.\n\nSent from mypets.services.",
+      message: "Asked about: Pet waste removal.\n\nSent from mypets.services.",
       source: "directory",
       website_url: "",
       elapsed_ms: 4_000,
