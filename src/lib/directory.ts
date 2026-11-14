@@ -10,6 +10,8 @@
 // request a quote. Reviews, held for moderation, are in lib/directory-reviews.ts.
 
 import { SERVICE_LINE_LABEL, type ServiceLine } from "@/lib/service-lines";
+import { DIRECTORY_REF } from "@/lib/directory-site";
+import type { PublicBookingMode } from "@/lib/public-booking-mode";
 
 /** The lines a visitor can search for. `other` is accepted by the database
  *  but means nothing to a visitor, so it is never offered as a search. */
@@ -245,12 +247,35 @@ export const DIRECTORY_AREA_NAME_MAX = 40;
 /** A named group of the ZIPs a profile already covers. */
 export type DirectoryArea = { name: string; zips: string[] };
 
+/** A listed service's package, as the view shows it: never its id. */
+export type DirectoryPackage = { name: string; sessions_count: number; price_cents: number };
+
+/** One element of directory_public_listings.services: the four keys every
+ *  directory reader shares, plus what 20261112100000 adds (directory v2 step 7). */
+export type DirectoryListedService = DirectoryService & {
+  /** The EFFECTIVE mode: request_only unless the business can sell this
+   *  service online right now (directoryBookingMode below). */
+  booking_mode: PublicBookingMode;
+  /** Opaque, for /d/{slug}/book?service=<key>. Not a service id. */
+  booking_key: string;
+  /** Only when booking_mode is package. */
+  package: DirectoryPackage | null;
+};
+
 /** One row of directory_public_listings: the public profile, plus the three
- *  columns 20261112090000 adds to the view. */
-export type DirectoryListing = DirectoryProfile & {
+ *  columns 20261112090000 adds to the view and the three 20261112100000 adds
+ *  after them. */
+export type DirectoryListing = Omit<DirectoryProfile, "services"> & {
+  services: DirectoryListedService[];
   tagline: string | null;
   highlights: string[];
   areas: DirectoryArea[];
+  /** At least one listed service can be booked online now. */
+  books_online: boolean;
+  /** The owner's own cancellation and refund policy, or null. */
+  booking_policy_text: string | null;
+  /** `/d/{slug}/book` when books_online, else null. */
+  book_path: string | null;
 };
 
 /**
@@ -272,13 +297,24 @@ export const PUBLIC_LISTING_FIELDS = [
   "tagline",
   "highlights",
   "areas",
+  "books_online",
+  "booking_policy_text",
+  "book_path",
 ] as const satisfies readonly (keyof DirectoryListing)[];
 export const PUBLIC_SERVICE_FIELDS = [
   "label",
   "service_line",
   "price_from_cents",
   "price_unit",
-] as const satisfies readonly (keyof DirectoryService)[];
+  "booking_mode",
+  "booking_key",
+  "package",
+] as const satisfies readonly (keyof DirectoryListedService)[];
+export const PUBLIC_PACKAGE_FIELDS = [
+  "name",
+  "sessions_count",
+  "price_cents",
+] as const satisfies readonly (keyof DirectoryPackage)[];
 export const PUBLIC_AREA_FIELDS = [
   "name",
   "zips",
@@ -365,4 +401,118 @@ export function directoryContentProblems(
       });
   });
   return out;
+}
+
+// ── Booking exposure (directory v2 step 7) ────────────────────────────────
+// The database half is
+// supabase/migrations/20261112100000_a-directory-listing-says-which-services-book-online.sql.
+
+/** organizations.booking_policy_text's CHECK. */
+export const BOOKING_POLICY_MAX = 400;
+
+/** The policy as set_directory_booking stores it: trimmed, empty is null. */
+export function cleanBookingPolicy(raw: string | null | undefined): string | null {
+  const t = (raw ?? "").trim();
+  return t ? t : null;
+}
+
+/** The business's three gates. Every one has to be on. */
+export type DirectoryBookingGates = {
+  /** organizations.directory_booking_enabled: the owner's directory switch. */
+  directoryBookingEnabled: boolean;
+  /** organizations.public_signup_enabled: "Accept signups online". */
+  publicSignupEnabled: boolean;
+  /** organizations.stripe_connect_charges_enabled, synced from Stripe. */
+  chargesEnabled: boolean;
+};
+
+/** A listed service, as the rules need to see it. */
+export type DirectoryBookingService = {
+  active: boolean;
+  service_line: string;
+  base_price_cents: number | null;
+  /** services.public_booking_mode as stored (NULL or junk reads request_only). */
+  public_booking_mode: unknown;
+  /** The platform lets a visitor book this line (platform_service_lines). */
+  lineBookable: boolean;
+  /** The package public_package_id names, if it is this service's. */
+  pack?: { active: boolean; sessions_count: number; price_cents: number } | null;
+};
+
+/**
+ * The EFFECTIVE booking mode the directory shows for one listed service. The
+ * same rule as the view's CASE in 20261112100000, and the contract test
+ * holds the two to each other:
+ *
+ *   request_only unless the switch, public signup AND Stripe charges are on,
+ *   and the service is active, on a bookable line, priced (or zone-priced
+ *   pet waste), and stored as one_time / recurring, or package with a
+ *   package on sale (sessions and price above zero). A groom is never a
+ *   package. The directory app never decides this itself; it reads it.
+ */
+export function directoryBookingMode(
+  gates: DirectoryBookingGates,
+  s: DirectoryBookingService,
+): PublicBookingMode {
+  if (!(gates.directoryBookingEnabled && gates.publicSignupEnabled && gates.chargesEnabled))
+    return "request_only";
+  if (!s.active || !s.lineBookable) return "request_only";
+  if (!(s.service_line === "pet_waste" || s.base_price_cents != null)) return "request_only";
+  if (s.public_booking_mode === "one_time" || s.public_booking_mode === "recurring")
+    return s.public_booking_mode;
+  if (
+    s.public_booking_mode === "package" &&
+    s.service_line !== "mobile_grooming" &&
+    s.pack &&
+    s.pack.active &&
+    s.pack.sessions_count > 0 &&
+    s.pack.price_cents > 0
+  )
+    return "package";
+  return "request_only";
+}
+
+/** What the server's hand-off lookup (directory_booking_handoff) answers. */
+export type DirectoryHandoff = {
+  signup_slug: string;
+  service_id: string | null;
+  booking_mode: string;
+  books_online: boolean;
+};
+
+/**
+ * Where /d/{directory slug}/book sends a visitor: the business's own booking
+ * link with the service and ZIP filled in and `ref` saying it came from the
+ * directory. `book=1` only when the lookup says this service can be sold now;
+ * without it the booking link asks for a quote and offers no card (the
+ * request path), whatever the business's link would otherwise do.
+ */
+export function directoryBookingHref(h: DirectoryHandoff, zip: string | null): string {
+  const q = new URLSearchParams();
+  if (h.service_id) q.set("service", h.service_id);
+  if (zip) q.set("zip", zip);
+  q.set("ref", DIRECTORY_REF);
+  if (h.books_online && h.service_id && h.booking_mode !== "request_only") q.set("book", "1");
+  return `/signup/${encodeURIComponent(h.signup_slug)}?${q.toString()}`;
+}
+
+/** The booking link's own reading of those params: came from the directory,
+ *  and may it sell. Anything but the exact values reads as no. */
+export function directoryBookingSearch(search: Record<string, unknown>): {
+  fromDirectory: boolean;
+  /** From the directory and not cleared to sell: ask for a quote only. */
+  quoteOnly: boolean;
+  serviceId: string | null;
+  zip: string | null;
+} {
+  const fromDirectory = search.ref === DIRECTORY_REF;
+  const book = search.book === 1 || search.book === "1";
+  const sid = typeof search.service === "string" ? search.service : "";
+  const zip = cleanZip(typeof search.zip === "number" ? String(search.zip).padStart(5, "0") : search.zip);
+  return {
+    fromDirectory,
+    quoteOnly: fromDirectory && !book,
+    serviceId: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid) ? sid : null,
+    zip,
+  };
 }

@@ -98,6 +98,10 @@ export const LEAD_SOURCE = {
   quoteRequest: "website",
   onlineSignup: "online_signup",
   doorSignup: "door_signup",
+  /** A booking, or the quote request it fell back to, that reached the
+   *  booking link through the directory's hand-off (/d/{slug}/book, which
+   *  adds ref=DIRECTORY_REF). Only that ref writes it (#630, step 7). */
+  directoryBooking: "directory_booking",
 } as const;
 
 export type QuoteRequestForm = {
@@ -256,6 +260,15 @@ export type LeadSignupState = {
  *  got. A signup that never paid is the most useful row on the page, because
  *  it is somebody who saw a price and stopped, and it says so. */
 export function leadOriginLabel(source: string, signup: LeadSignupState): string {
+  // Came through the directory's booking hand-off: said first, then how far
+  // it got. A quote request writes no signup, so no signup is a quote here.
+  if (source === LEAD_SOURCE.directoryBooking) {
+    if (!signup) return "Directory booking, asked for a quote";
+    if (signup.refunded_at) return "Directory booking, refunded";
+    if (signup.status === "provisioned") return "Directory booking, started service";
+    if (signup.status === "failed") return "Directory booking, couldn't finish";
+    return "Directory booking, didn't pay";
+  }
   const isSignup = source === LEAD_SOURCE.onlineSignup || source === LEAD_SOURCE.doorSignup;
   if (!isSignup) {
     if (source === LEAD_SOURCE.quoteRequest) return "Quote request";

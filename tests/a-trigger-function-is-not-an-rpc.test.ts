@@ -346,7 +346,13 @@ describe("no trigger function is executable by a signed-in user", () => {
     // inside the profile's coverage on any write, and
     // directory_profile_areas_follow_coverage prunes areas when the coverage
     // shrinks. Both revoked from PUBLIC, anon and authenticated there.
-    expect(triggerFunctions().size).toBe(115);
+    //
+    // 115 -> 116 (20261112100000, a directory listing says which services
+    // book online, #630): organizations_guard_directory_booking refuses a
+    // signed-in write of directory_booking_enabled or booking_policy_text
+    // that does not come through set_directory_booking (the owner's writer).
+    // Revoked from PUBLIC, anon and authenticated there.
+    expect(triggerFunctions().size).toBe(116);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

@@ -143,6 +143,7 @@ export const STAYS_IN_BROWSER: Readonly<Record<string, string>> = {
   "/track": "a customer's live arrival tracker",
   "/lead": "a tenant's public lead form",
   "/pros": "HoundStack's public directory of pet pros, for pet owners who do not have the app",
+  "/d": "the public directory's booking hand-off, which forwards a pet owner to a business's booking link",
   "/unsubscribe": "a customer's email preference link",
   "/legal": "public policy pages, linked from store listings",
   "/email": "server endpoints for email",

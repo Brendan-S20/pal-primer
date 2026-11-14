@@ -30,10 +30,15 @@ import {
   directoryContentProblems,
   isDirectorySlug,
   oneLine,
+  BOOKING_POLICY_MAX,
+  cleanBookingPolicy,
   type DirectoryArea,
+  type DirectoryListedService,
   type DirectoryListing,
+  type DirectoryPackage,
   type DirectoryProfile,
 } from "@/lib/directory";
+import { isPublicBookingMode, type PublicBookingMode } from "@/lib/public-booking-mode";
 
 export const ONLY_AN_OWNER_CHANGES_THE_DIRECTORY =
   "Only an owner can change the directory profile.";
@@ -102,11 +107,46 @@ export function toDirectoryListings(rows: unknown): DirectoryListing[] {
     const areas: DirectoryArea[] = (Array.isArray(r.areas) ? r.areas : []).flatMap((a: unknown) =>
       isRow(a) && typeof a.name === "string" ? [{ name: a.name, zips: strs(a.zips) }] : [],
     );
+    // The services as toDirectoryProfiles kept them, in the same order, each
+    // with the three step-7 keys read from the row it came from. A mode this
+    // reader does not know, or a row from a database the step-7 view has not
+    // reached, reads request_only: the safe answer is always "ask".
+    const rawServices = (Array.isArray(r.services) ? r.services : []).filter(
+      (s: unknown): s is Row =>
+        isRow(s) && typeof s.label === "string" && typeof s.service_line === "string",
+    );
+    const services: DirectoryListedService[] = p.services.map((svc, i) => {
+      const raw = rawServices[i] ?? {};
+      const mode: PublicBookingMode = isPublicBookingMode(raw.booking_mode)
+        ? raw.booking_mode
+        : "request_only";
+      const pk = isRow(raw.package) ? raw.package : null;
+      const pack: DirectoryPackage | null =
+        mode === "package" &&
+        pk &&
+        typeof pk.name === "string" &&
+        typeof pk.sessions_count === "number" &&
+        typeof pk.price_cents === "number"
+          ? { name: pk.name, sessions_count: pk.sessions_count, price_cents: pk.price_cents }
+          : null;
+      return {
+        ...svc,
+        // A package mode with no package to show is not sold here either.
+        booking_mode: mode === "package" && !pack ? "request_only" : mode,
+        booking_key: typeof raw.booking_key === "string" ? raw.booking_key : "",
+        package: pack,
+      };
+    });
+    const booksOnline = r.books_online === true && services.some((s) => s.booking_mode !== "request_only");
     return {
       ...p,
+      services,
       tagline: typeof r.tagline === "string" ? r.tagline : null,
       highlights: strs(r.highlights),
       areas,
+      books_online: booksOnline,
+      booking_policy_text: typeof r.booking_policy_text === "string" ? r.booking_policy_text : null,
+      book_path: booksOnline && typeof r.book_path === "string" ? r.book_path : null,
     };
   });
 }
@@ -205,14 +245,32 @@ export type MyDirectoryProfile = {
     areas: DirectoryArea[];
     listed: Array<{ service_id: string; price_from_cents: number | null }>;
   };
+  /** Book online on the directory (step 7): the owner's switch and policy,
+   *  and the two other gates, so the page can say which one is missing. */
+  booking: MyDirectoryBooking;
 };
+
+export type MyDirectoryBooking = {
+  /** False on a database 20261112100000 has not reached: the switch is
+   *  shown off and cannot be turned on yet. */
+  available: boolean;
+  enabled: boolean;
+  policyText: string;
+  publicSignupEnabled: boolean;
+  chargesEnabled: boolean;
+};
+
+/** Postgres / PostgREST for "that column or function is not there yet". */
+function notThereYet(error: { code?: string } | null | undefined): boolean {
+  return ["42703", "PGRST204", "PGRST202", "42883"].includes(error?.code ?? "");
+}
 
 export const getMyDirectoryProfile = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<MyDirectoryProfile> => {
     const { orgId, role } = await caller(context.supabase, context.userId);
     const sb = context.supabase as any;
-    const [org, services, zones, profile, listed, areas] = await Promise.all([
+    const [org, services, zones, profile, listed, areas, booking] = await Promise.all([
       sb.from("organizations").select("name, logo_url").eq("id", orgId).maybeSingle(),
       sb
         .from("services")
@@ -237,7 +295,19 @@ export const getMyDirectoryProfile = createServerFn({ method: "GET" })
         .select("name, zips, position")
         .eq("organization_id", orgId)
         .order("position"),
+      // Its own read, so a database without the step-7 columns costs the
+      // switch and nothing else on the page.
+      sb
+        .from("organizations")
+        .select(
+          "directory_booking_enabled, booking_policy_text, public_signup_enabled, stripe_connect_charges_enabled",
+        )
+        .eq("id", orgId)
+        .maybeSingle(),
     ]);
+    const b = booking.error ? null : booking.data;
+    if (booking.error && !notThereYet(booking.error))
+      console.error("directory booking settings read failed", orgId, booking.error);
     const zoneZips = Array.from(
       new Set(
         ((zones.data ?? []) as Array<{ zip_codes: string[] | null; enabled: boolean | null }>)
@@ -267,6 +337,13 @@ export const getMyDirectoryProfile = createServerFn({ method: "GET" })
             ).map((l) => ({ service_id: l.service_id, price_from_cents: l.price_from_cents })),
           }
         : null,
+      booking: {
+        available: !!b,
+        enabled: b?.directory_booking_enabled === true,
+        policyText: (b?.booking_policy_text as string | null) ?? "",
+        publicSignupEnabled: b?.public_signup_enabled === true,
+        chargesEnabled: b?.stripe_connect_charges_enabled === true,
+      },
     };
   });
 
@@ -320,6 +397,21 @@ export const directoryProfileSchema = z
         }),
       )
       .max(DIRECTORY_AREAS_MAX),
+    // Step 7. Optional, so a caller from before it (and the 5a tests) still
+    // parses: absent is "off, no policy", which is what every business is.
+    bookOnline: z.boolean().default(false),
+    bookingPolicyText: z
+      .string()
+      .max(4000)
+      .nullable()
+      .default(null)
+      .transform(cleanBookingPolicy)
+      .pipe(
+        z
+          .string()
+          .max(BOOKING_POLICY_MAX, `Keep the policy to ${BOOKING_POLICY_MAX} characters.`)
+          .nullable(),
+      ),
   })
   .superRefine((v, ctx) => {
     for (const p of directoryContentProblems({
@@ -366,6 +458,22 @@ export const saveMyDirectoryProfile = createServerFn({ method: "POST" })
         throw new Error("That web address is taken. Try another.");
       }
       throw new Error(error.message);
+    }
+    // The directory switch and policy (step 7), owner-only in the database
+    // too. On a database the step-7 migration has not reached there is
+    // nothing to save unless the owner asked for something.
+    const { error: bErr } = await (context.supabase as any).rpc("set_directory_booking", {
+      _org: orgId,
+      _enabled: data.bookOnline,
+      _policy_text: data.bookingPolicyText,
+    });
+    if (bErr) {
+      if (notThereYet(bErr) && !data.bookOnline && !data.bookingPolicyText) return { ok: true };
+      if (notThereYet(bErr))
+        throw new Error(
+          "Your profile was saved. Book online and the policy can't be saved yet: try again later.",
+        );
+      throw new Error(bErr.message);
     }
     return { ok: true };
   });
