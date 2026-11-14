@@ -397,20 +397,23 @@ export const directoryProfileSchema = z
         }),
       )
       .max(DIRECTORY_AREAS_MAX),
-    // Step 7. Optional, so a caller from before it (and the 5a tests) still
-    // parses: absent is "off, no policy", which is what every business is.
-    bookOnline: z.boolean().default(false),
+    // Step 7. Optional, and OMITTED MEANS UNCHANGED (#929): a caller that
+    // saves the profile without these two leaves the owner's switch and
+    // policy as they are. Only a value that is sent is written: false turns
+    // the switch off, and null or blank clears the policy.
+    bookOnline: z.boolean().optional(),
     bookingPolicyText: z
       .string()
       .max(4000)
       .nullable()
-      .default(null)
-      .transform(cleanBookingPolicy)
+      .optional()
+      .transform((v) => (v === undefined ? undefined : cleanBookingPolicy(v)))
       .pipe(
         z
           .string()
           .max(BOOKING_POLICY_MAX, `Keep the policy to ${BOOKING_POLICY_MAX} characters.`)
-          .nullable(),
+          .nullable()
+          .optional(),
       ),
   })
   .superRefine((v, ctx) => {
@@ -429,6 +432,80 @@ export const directoryProfileSchema = z
       ctx.addIssue({ code: "custom", message: "List at least one service before you publish." });
     }
   });
+
+/** The switch and policy as a save asked for them: each one undefined when
+ *  the caller left it out, which means "leave it as it is". */
+export type DirectoryBookingInput = {
+  bookOnline?: boolean;
+  bookingPolicyText?: string | null;
+};
+
+/**
+ * What set_directory_booking is called with, or null when nothing was sent
+ * and nothing is written (#929). The writer takes both values, so a save
+ * that sends only one carries the other through from `current` (what the
+ * organization holds now). A field that was sent always wins, so an
+ * explicit off or an explicit clear is still written.
+ */
+export function directoryBookingWrite(
+  input: DirectoryBookingInput,
+  current: { enabled: boolean; policyText: string | null } | null,
+): { _enabled: boolean; _policy_text: string | null } | null {
+  const sentSwitch = input.bookOnline !== undefined;
+  const sentPolicy = input.bookingPolicyText !== undefined;
+  if (!sentSwitch && !sentPolicy) return null;
+  return {
+    _enabled: sentSwitch ? input.bookOnline! : (current?.enabled ?? false),
+    _policy_text: sentPolicy
+      ? cleanBookingPolicy(input.bookingPolicyText)
+      : cleanBookingPolicy(current?.policyText),
+  };
+}
+
+/** Saves the directory switch and policy, touching neither unless the
+ *  caller sent it (#929). Exported for its test. */
+export async function saveDirectoryBooking(
+  supabase: unknown,
+  orgId: string,
+  input: DirectoryBookingInput,
+): Promise<void> {
+  const sb = supabase as any;
+  const sentSwitch = input.bookOnline !== undefined;
+  const sentPolicy = input.bookingPolicyText !== undefined;
+  if (!sentSwitch && !sentPolicy) return;
+  // Only one was sent: read the other, so the writer puts it back as it was.
+  let current: { enabled: boolean; policyText: string | null } | null = null;
+  if (!sentSwitch || !sentPolicy) {
+    const { data: row, error } = await sb
+      .from("organizations")
+      .select("directory_booking_enabled, booking_policy_text")
+      .eq("id", orgId)
+      .maybeSingle();
+    if (error) {
+      // Not there yet: nothing to keep, and the write below says so.
+      if (!notThereYet(error)) throw new Error(error.message);
+    } else if (!row) {
+      throw new Error("Your profile was saved, but Book online could not be read. Try again.");
+    } else {
+      current = {
+        enabled: row.directory_booking_enabled === true,
+        policyText: (row.booking_policy_text as string | null) ?? null,
+      };
+    }
+  }
+  const write = directoryBookingWrite(input, current)!;
+  const { error: bErr } = await sb.rpc("set_directory_booking", { _org: orgId, ...write });
+  if (bErr) {
+    // On a database the step-7 migration has not reached there is nothing
+    // to save unless the owner asked for something.
+    if (notThereYet(bErr) && !write._enabled && !write._policy_text) return;
+    if (notThereYet(bErr))
+      throw new Error(
+        "Your profile was saved. Book online and the policy can't be saved yet: try again later.",
+      );
+    throw new Error(bErr.message);
+  }
+}
 
 export const saveMyDirectoryProfile = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -460,20 +537,7 @@ export const saveMyDirectoryProfile = createServerFn({ method: "POST" })
       throw new Error(error.message);
     }
     // The directory switch and policy (step 7), owner-only in the database
-    // too. On a database the step-7 migration has not reached there is
-    // nothing to save unless the owner asked for something.
-    const { error: bErr } = await (context.supabase as any).rpc("set_directory_booking", {
-      _org: orgId,
-      _enabled: data.bookOnline,
-      _policy_text: data.bookingPolicyText,
-    });
-    if (bErr) {
-      if (notThereYet(bErr) && !data.bookOnline && !data.bookingPolicyText) return { ok: true };
-      if (notThereYet(bErr))
-        throw new Error(
-          "Your profile was saved. Book online and the policy can't be saved yet: try again later.",
-        );
-      throw new Error(bErr.message);
-    }
+    // too, and written only when the caller sent them (#929).
+    await saveDirectoryBooking(context.supabase, orgId, data);
     return { ok: true };
   });
