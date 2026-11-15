@@ -637,6 +637,8 @@ describe("the hand-off", () => {
     expect(route).toMatch(/directoryBookingParams\(new URL\(request\.url\), params\.slug\)/);
     expect(route).toMatch(/new Response\(null, \{\s*status: 302,/);
     expect(route).toMatch(/return next\(\);/);
+    // The router path never re-canonicalises the key: passed through as parsed.
+    expect(route).toMatch(/^\s*service: s\.service,$/m);
   });
 
   it("uses the directory app's origin list, and no new environment variable", () => {

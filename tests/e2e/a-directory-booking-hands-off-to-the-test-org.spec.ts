@@ -305,6 +305,14 @@ test("a directory booking hands off to the test org, and only books online when 
     });
     expect(gone.status()).toBe(200);
     expect(await gone.text()).toContain("taking bookings here right now");
+    // And with a key the router reads as a number: the same page, not a 307.
+    for (const numeric of ["123456789012", "1234567890e1", "12e345678901"]) {
+      const odd = await request.get(`/d/no-such-listing-e2e/book?service=${numeric}&zip=${ZIP}`, {
+        maxRedirects: 0,
+      });
+      expect(odd.status(), numeric).toBe(200);
+      expect(await odd.text(), numeric).toContain("taking bookings here right now");
+    }
   } finally {
     await db.from("leads").delete().eq("organization_id", orgId).eq("email", email);
     await db.from("directory_profiles").delete().eq("organization_id", orgId);

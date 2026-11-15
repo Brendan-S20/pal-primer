@@ -30,7 +30,13 @@ import { pageTitle } from "@/lib/page-title";
 // answered 307 instead. The loader stays for a navigation inside the app,
 // and a listing that is not published says so here, with a way back.
 
-type Search = { service?: string; zip?: unknown; return?: unknown };
+// `service` is passed through as the router parsed it, whatever its type.
+// The router compares its own re-serialisation of the parsed search with
+// that of what validateSearch returns, and answers a 307 to the latter when
+// they differ; dropping a key the parser had turned into a number made them
+// differ. Passed through, they never do. The loader uses it only when it is
+// a string, and the server handler above reads the raw key regardless.
+type Search = { service?: unknown; zip?: unknown; return?: unknown };
 
 export const Route = createFileRoute("/d/$slug/book")({
   server: {
@@ -58,11 +64,15 @@ export const Route = createFileRoute("/d/$slug/book")({
     },
   },
   validateSearch: (s: Record<string, unknown>): Search => ({
-    service: typeof s.service === "string" ? s.service : undefined,
+    service: s.service,
     zip: s.zip,
     return: s.return,
   }),
-  loaderDeps: ({ search }) => ({ service: search.service, zip: search.zip, ret: search.return }),
+  loaderDeps: ({ search }) => ({
+    service: typeof search.service === "string" ? search.service : undefined,
+    zip: search.zip,
+    ret: search.return,
+  }),
   loader: async ({ params, deps }) => {
     let answer: DirectoryBookingAnswer;
     try {
