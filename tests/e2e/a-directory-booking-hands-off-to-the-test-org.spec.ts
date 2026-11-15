@@ -272,7 +272,9 @@ test("a directory booking hands off to the test org, and only books online when 
     await expect(page.locator("#postal_code")).toHaveValue(ZIP);
     // The service the listing named is the one picked.
     await waitForHydration(page, "#service");
-    await expect(page.locator("#service")).toContainText("Booking walk (TEST)", { timeout: 20_000 });
+    await expect(page.locator("#service")).toContainText("Booking walk (TEST)", {
+      timeout: 20_000,
+    });
     await expect(page.getByRole("button", { name: "Get instant price" })).toBeVisible();
 
     // A request-only service does not become Book online.

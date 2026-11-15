@@ -248,9 +248,7 @@ describe("the public contract", () => {
   it("is the list the proof expects, key for key", () => {
     const proof = readFileSync(PROOF, "utf8");
     const keys = /_keys IS DISTINCT FROM ARRAY\[([^\]]+)\]/.exec(proof)![1];
-    expect([...keys.matchAll(/'([a-z_]+)'/g)].map((m) => m[1])).toEqual(
-      [...FIVE_A_FIELDS].sort(),
-    );
+    expect([...keys.matchAll(/'([a-z_]+)'/g)].map((m) => m[1])).toEqual([...FIVE_A_FIELDS].sort());
     expect(proof).toMatch(/_area_keys IS DISTINCT FROM ARRAY\['name', 'zips'\]/);
   });
 
