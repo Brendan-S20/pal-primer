@@ -2,10 +2,11 @@
  * #925 and #926, follow-ups from #911's shot review of the import result
  * page.
  *
- * #925: at 390px "← All imports" sat under the sticky top bar. The link is
- * now a 44px row in normal flow below the bar: its whole box is below the
- * header's bottom edge and inside the viewport, and it is a tappable target,
- * at 390 / 768 / 1280 with touch on.
+ * #925: at 390px "← All imports" sat under the sticky top bar. Measured at
+ * rest with the trial banner dismissed (a banner pushes the page down and
+ * hides the fault): the link's whole box is inside the viewport, below the
+ * bar, a 44px target, and below md a full bar height is reserved above it.
+ * Then again after scrolling down and back. 390 / 768 / 1280, touch on.
  *
  * #926: a failed import showed "Errors 0", which reads as a clean result.
  * The tile now counts the rows that failed, and says "Stopped" when the
@@ -113,6 +114,15 @@ for (const width of WIDTHS) {
     const back = page.getByRole("link", { name: /All imports/ });
     await expect(back).toBeVisible();
 
+    // The #911 case: no trial or billing banner above the bar. A banner
+    // pushes the page down by its own height and hides the fault, so it is
+    // dismissed here and proved gone before anything is measured.
+    const hideTrial = page.getByRole("button", { name: "Hide the trial notice" });
+    if (await hideTrial.isVisible()) await hideTrial.click();
+    await expect(page.getByText("Your free trial has ended")).toHaveCount(0);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+
     await shoot(page, "issue-925", "import-result-back-link", width);
     const header = page.locator('header[data-vt="header"]');
     const headerBottom = async () =>
@@ -137,8 +147,22 @@ for (const width of WIDTHS) {
       return box;
     };
 
-    const box = await clearOfTheBar("at the top");
+    // At rest, no banner: fully inside the viewport, under no part of the bar.
+    const box = await clearOfTheBar("at rest with no banner");
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.y + box.height).toBeLessThanOrEqual(width < 768 ? 844 : 1100);
     expect.soft(box.height, `@${width}: the back link is a 44px target`).toBeGreaterThanOrEqual(44);
+    // Below md the page reserves the bar's full height above the link, so it
+    // is clear even where the bar sits over the column. Before #925's fix the
+    // link was 16px below the bar here: clear in a desktop browser, with no
+    // room to spare anywhere the bar overlays the page.
+    if (width < 768) {
+      const bar = await header.evaluate((h) => h.getBoundingClientRect());
+      expect(
+        box.y - bar.bottom,
+        `@${width}: a full bar height (${bar.height}px) is reserved above the back link`,
+      ).toBeGreaterThanOrEqual(bar.height);
+    }
 
     // Scrolled down, then brought back into view the way the browser does it
     // (focus, scrollIntoView): it stops below the sticky bar, not under it.

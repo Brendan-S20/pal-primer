@@ -174,7 +174,11 @@ function BatchDetail() {
   return (
     <>
       {confirmDialog}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* #925: below md the page's first row reserves the sticky top bar's
+          full height (3.5rem, with the shell's own 1rem top padding), so
+          "All imports" is clear of the bar at rest even where the bar sits
+          over the column, not only when something scrolls the link into view. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 max-md:pt-10">
         <div className="min-w-0 flex-1">
           {/* #925: a 44px target on touch, and when anything scrolls it into
               view (focus, a scroll to the top of the page) it stops clear of
