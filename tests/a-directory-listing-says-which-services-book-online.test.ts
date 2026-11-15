@@ -49,7 +49,11 @@ import {
   saveDirectoryBooking,
   toDirectoryListings,
 } from "@/lib/directory.functions";
-import { decideDirectoryBooking, directoryReturnUrl } from "@/lib/directory-booking.functions";
+import {
+  decideDirectoryBooking,
+  directoryBookingParams,
+  directoryReturnUrl,
+} from "@/lib/directory-booking.functions";
 import { LEAD_SOURCE, leadBodyFromForm, leadOriginLabel } from "@/lib/new-customer-form";
 import { signupCheckoutSchema } from "@/lib/signup.functions";
 import { STAYS_IN_BROWSER, appLinkClaims } from "@/lib/android-app-links";
@@ -597,6 +601,42 @@ describe("the hand-off", () => {
     for (const f of ["src/routes/d.$slug.book.tsx", "src/lib/directory-booking.functions.ts"]) {
       expect(noComments(read(f)), f).not.toMatch(/stripe|paymentIntent|createSignupPaymentIntent/i);
     }
+  });
+
+  it("reads the booking key as the string that was sent, so a digit-only key cannot become a 307", async () => {
+    const { defaultParseSearch } = await import("@tanstack/router-core");
+    // What the router's own parser does with these: a number, or worse.
+    for (const key of ["123456789012", "1234567890e1", "12e345678901"]) {
+      expect(typeof defaultParseSearch(`?service=${key}`).service, key).not.toBe("string");
+    }
+    for (const key of [
+      "123456789012",
+      "1234567890e1",
+      "12e345678901",
+      "a1b2c3d4e5f6",
+      "012345678901",
+    ]) {
+      const url = new URL(
+        `http://x.test/d/acme/book?service=${key}&zip=08001&return=https%3A%2F%2Fx.test`,
+      );
+      expect(directoryBookingParams(url, "acme")).toEqual({
+        slug: "acme",
+        service: key,
+        zip: "08001",
+        returnTo: "https://x.test",
+      });
+    }
+    expect(directoryBookingParams(new URL("http://x.test/d/acme/book"), "acme")).toEqual({
+      slug: "acme",
+      service: null,
+      zip: undefined,
+      returnTo: undefined,
+    });
+    const route = read("src/routes/d.$slug.book.tsx");
+    expect(route).toMatch(/server: \{\s*handlers: \{\s*GET:/);
+    expect(route).toMatch(/directoryBookingParams\(new URL\(request\.url\), params\.slug\)/);
+    expect(route).toMatch(/new Response\(null, \{\s*status: 302,/);
+    expect(route).toMatch(/return next\(\);/);
   });
 
   it("uses the directory app's origin list, and no new environment variable", () => {

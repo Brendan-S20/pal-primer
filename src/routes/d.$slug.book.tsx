@@ -23,12 +23,40 @@ import { pageTitle } from "@/lib/page-title";
 // of "this service can be sold right now" is the quote request instead:
 // see lib/directory-booking.functions.ts for every way it fails safe.
 //
-// A 302 from the loader on the server, so a link opens straight onto the
-// form. A listing that is not published says so here, with a way back.
+// A 302 from the server handler below, so a link opens straight onto the
+// form. It reads the query string itself rather than the router's parsed
+// search, which turns an all-digit booking key into a number (see
+// directoryBookingParams); that used to cost the visitor their service and
+// answered 307 instead. The loader stays for a navigation inside the app,
+// and a listing that is not published says so here, with a way back.
 
 type Search = { service?: string; zip?: unknown; return?: unknown };
 
 export const Route = createFileRoute("/d/$slug/book")({
+  server: {
+    handlers: {
+      GET: async ({ request, params, next }) => {
+        const { directoryBookingParams, lookUpDirectoryBooking } =
+          await import("@/lib/directory-booking.functions");
+        let answer: DirectoryBookingAnswer;
+        try {
+          answer = await lookUpDirectoryBooking(
+            directoryBookingParams(new URL(request.url), params.slug),
+          );
+        } catch {
+          answer = { kind: "go", href: `/pros/${encodeURIComponent(params.slug)}/quote` };
+        }
+        if (answer.kind === "go") {
+          return new Response(null, {
+            status: 302,
+            headers: { Location: answer.href, "Cache-Control": "no-store" },
+          });
+        }
+        // Not a listing that takes bookings: render the page below.
+        return next();
+      },
+    },
+  },
   validateSearch: (s: Record<string, unknown>): Search => ({
     service: typeof s.service === "string" ? s.service : undefined,
     zip: s.zip,

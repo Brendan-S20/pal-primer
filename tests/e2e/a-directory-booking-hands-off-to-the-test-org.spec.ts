@@ -1,6 +1,9 @@
 // A directory booking hands off to the TEST org's own booking link (#630;
 // mypets v2 step 7), against the real local stack: real Postgres, real RLS,
 // the real /d/{slug}/book route and /signup/{slug} page behind the dev server.
+// The hand-off answers 302, and only 302: the route's server handler sets it
+// and reads the raw query string, so no booking key can make the router
+// answer with its own 307 instead.
 //
 // Only the e2e org seed.mjs builds (e2eOrgId), only a local database
 // (serviceDb refuses anything else), only made-up addresses on example.test,
@@ -150,6 +153,20 @@ test("a directory booking hands off to the test org, and only books online when 
     expect(off.searchParams.get("service")).toBe(walkId);
     expect(off.searchParams.get("zip")).toBe(ZIP);
     expect(off.searchParams.has("book"), "switch off: no book=1").toBe(false);
+
+    // A key that is all digits, or digits with one "e", is a key the
+    // router's search parser reads as a number. It used to answer the
+    // router's own canonical 307, to a URL with no service at all. A key is
+    // left(md5(...), 12), so a real one is like that about one time in a
+    // hundred: the flake this file had. Neither names a listed service, so
+    // both land on the quote request like any unknown key, with the same 302.
+    for (const numeric of ["123456789012", "1234567890e1"]) {
+      const odd = await handOff(numeric);
+      expect(odd.pathname, numeric).toBe(`/signup/${PORTAL}`);
+      expect(odd.searchParams.get("ref"), numeric).toBe(REF);
+      expect(odd.searchParams.get("zip"), numeric).toBe(ZIP);
+      expect(odd.searchParams.has("book"), numeric).toBe(false);
+    }
 
     // The server's own HTML, before any script runs, already names the
     // service in "What would you like?" (#929). Read as text so nothing can

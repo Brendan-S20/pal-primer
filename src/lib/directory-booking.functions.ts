@@ -26,12 +26,16 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { cleanZip, directoryBookingHref, isDirectorySlug, type DirectoryHandoff } from "@/lib/directory";
+import {
+  cleanZip,
+  directoryBookingHref,
+  isDirectorySlug,
+  type DirectoryHandoff,
+} from "@/lib/directory";
 import { isDirectoryAppOrigin } from "@/lib/directory-quote-cors";
 
 export type DirectoryBookingAnswer =
-  | { kind: "go"; href: string }
-  | { kind: "unavailable"; back: string | null };
+  { kind: "go"; href: string } | { kind: "unavailable"; back: string | null };
 
 /** A return address the directory app passed, if it is one of its own
  *  origins (https, the brand and www, and its previews), else null. */
@@ -57,7 +61,9 @@ export function decideDirectoryBooking(
   rows: DirectoryHandoff[] | null,
   input: { slug: string; zip?: unknown; returnTo?: unknown },
 ): DirectoryBookingAnswer {
-  const zip = cleanZip(typeof input.zip === "number" ? String(input.zip).padStart(5, "0") : input.zip);
+  const zip = cleanZip(
+    typeof input.zip === "number" ? String(input.zip).padStart(5, "0") : input.zip,
+  );
   const back = directoryReturnUrl(input.returnTo);
   // No answer from the lookup at all: the directory's own quote form.
   if (rows === null) return { kind: "go", href: `/pros/${encodeURIComponent(input.slug)}/quote` };
@@ -66,18 +72,44 @@ export function decideDirectoryBooking(
   return { kind: "go", href: directoryBookingHref(row, zip) };
 }
 
+/**
+ * The hand-off's input read straight off the request's query string, as the
+ * strings the visitor sent. Not through the router's search parser: that
+ * JSON-parses every value, so a booking key that happens to be all digits
+ * ("123456789012") or digits with one "e" ("1234567890e1") arrives as a
+ * number (or Infinity, or null). The route's validateSearch then had no
+ * string, dropped the key, and the router answered with its own canonical
+ * 307 to /d/{slug}/book?zip=... with no service at all. A key is
+ * left(md5(...), 12), so roughly one listed service in a hundred has one.
+ */
+export function directoryBookingParams(url: URL, slug: string) {
+  const q = url.searchParams;
+  return {
+    slug,
+    service: q.get("service"),
+    zip: q.get("zip") ?? undefined,
+    returnTo: q.get("return") ?? undefined,
+  };
+}
+
+/** The lookup and the decision. Server only (service role). */
+export async function lookUpDirectoryBooking(
+  input: z.input<typeof directoryBookingInput>,
+): Promise<DirectoryBookingAnswer> {
+  const data = directoryBookingInput.parse(input);
+  if (!isDirectorySlug(data.slug)) return decideDirectoryBooking([], data);
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data: rows, error } = await (supabaseAdmin as any).rpc("directory_booking_handoff", {
+    _slug: data.slug,
+    _booking_key: data.service ?? null,
+  });
+  if (error) {
+    console.error("directory booking hand-off lookup failed", data.slug, error);
+    return decideDirectoryBooking(null, data);
+  }
+  return decideDirectoryBooking((rows ?? []) as DirectoryHandoff[], data);
+}
+
 export const resolveDirectoryBooking = createServerFn({ method: "GET" })
   .inputValidator((d) => directoryBookingInput.parse(d))
-  .handler(async ({ data }): Promise<DirectoryBookingAnswer> => {
-    if (!isDirectorySlug(data.slug)) return decideDirectoryBooking([], data);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: rows, error } = await (supabaseAdmin as any).rpc("directory_booking_handoff", {
-      _slug: data.slug,
-      _booking_key: data.service ?? null,
-    });
-    if (error) {
-      console.error("directory booking hand-off lookup failed", data.slug, error);
-      return decideDirectoryBooking(null, data);
-    }
-    return decideDirectoryBooking((rows ?? []) as DirectoryHandoff[], data);
-  });
+  .handler(async ({ data }): Promise<DirectoryBookingAnswer> => lookUpDirectoryBooking(data));
