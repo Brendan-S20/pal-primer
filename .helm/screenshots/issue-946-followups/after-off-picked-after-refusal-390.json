@@ -1,0 +1,10 @@
+{
+  "phase": "after",
+  "state": "off-picked-after-refusal",
+  "width": 390,
+  "scrollWidth": 390,
+  "innerWidth": 390,
+  "barTop": 650,
+  "scrollPaddingBottom": "185px",
+  "alertText": null
+}

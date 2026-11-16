@@ -67,13 +67,8 @@ import {
 import { useServiceLineAvailability } from "@/hooks/useServiceLineAvailability";
 import { getDispatchSettings, updateDispatchSettings } from "@/lib/visits.functions";
 import { createZone, geocodePostal } from "@/lib/zones.functions";
-import {
-  setupAreaCenter,
-  setupAreaCenterProblem,
-  setupAreaZipValue,
-  zip5,
-  zipFromAddress,
-} from "@/lib/setup-area-center";
+import { setupAreaCenter, setupAreaZipValue, zip5, zipFromAddress } from "@/lib/setup-area-center";
+import { serviceAreaStepProblem } from "@/lib/setup-area-problem";
 import { setupZoneOverride } from "@/lib/standard-price";
 import { getFirstCleanupPricing, setFirstCleanupPricing } from "@/lib/first-cleanup.functions";
 import { getStandardPricing, updateFrequencyMultipliers } from "@/lib/subscriptions.functions";
@@ -992,13 +987,20 @@ function ServiceAreaPanel({
   // screen to say why (#881). It now says so, with a way to ask again.
   const pricesFailed = !pricesLoaded && (fcQ.isError || stdQ.isError);
 
-  // The last failed save's sentence, kept beside Save until the next try.
-  // A toast alone is four seconds at the top of the screen (#881).
+  // The last failed SERVER save's sentence, kept beside Save until the next
+  // try. A toast alone is four seconds at the top of the screen (#881).
   const [failure, setFailure] = useState<string | null>(null);
-  // Brought to the middle of the screen when it appears: it sits at the end of
-  // the form, which on a phone is under the sticky bar Save is drawn in, so
-  // "in view" alone would leave it covered.
+  // Refused presses. What the form still needs is shown from the first one
+  // on and read live after that (serviceAreaStepProblem, as step 1 does since
+  // #942), so picking Off takes the first-cleanup refusal away as it is fixed.
+  const [pressed, setPressed] = useState(0);
+  // Brought to the middle of the screen when it appears, and on each refused
+  // press: it sits at the end of the form, which on a phone is under the
+  // sticky bar Save is drawn in, so "in view" alone would leave it covered.
   const failureRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (pressed > 0) failureRef.current?.scrollIntoView({ block: "center" });
+  }, [pressed]);
   useEffect(() => {
     if (failure) failureRef.current?.scrollIntoView({ block: "center" });
   }, [failure]);
@@ -1128,6 +1130,7 @@ function ServiceAreaPanel({
         createdZone.current = null;
         setMultDraft({});
         setFailure(null);
+        setPressed(0);
         toast.success("Service area saved");
       },
       onFailed: setFailure,
@@ -1166,12 +1169,19 @@ function ServiceAreaPanel({
     );
   }
 
-  // Every refusal is said twice: a toast, and beside Save where the owner is
-  // looking (#881).
-  const refuse = (message: string) => {
-    setFailure(message);
-    toast.error(message);
-  };
+  // What the form still needs (null when it can save), and the sentence
+  // beside Save: that, once a press has been refused, else the server's.
+  const problem = serviceAreaStepProblem({
+    price,
+    zip: zipVal,
+    pin,
+    tiered,
+    firstCleanup: firstCleanupVal,
+    firstCleanupPrice,
+    schedulesOk: !!setupMultipliers(storedMults, multDraft),
+  });
+  const shownProblem = pressed > 0 ? problem : null;
+  const message = shownProblem?.message ?? failure;
 
   const saveButton = (
     <Button
@@ -1192,21 +1202,13 @@ function ServiceAreaPanel({
       onSubmit={(e) => {
         e.preventDefault();
         if (m.isPending) return;
-        if (!priceOk) return refuse("Enter what you charge per visit.");
-        const centerProblem = setupAreaCenterProblem({ zip: zipVal, pin });
-        if (centerProblem) return refuse(centerProblem);
-        if (!tiered && !firstCleanupVal) {
-          return refuse("Choose whether new clients pay for a first cleanup.");
-        }
-        if (
-          !tiered &&
-          firstCleanupVal &&
-          setupFirstCleanupCents(firstCleanupVal, firstCleanupPrice) == null
-        ) {
-          return refuse("Enter what a first cleanup costs, or choose Off.");
-        }
-        if (!setupMultipliers(storedMults, multDraft)) {
-          return refuse("Each schedule needs a number between 0.1 and 10.");
+        // Every refusal is said twice: a toast, and beside Save where it stays
+        // until it is fixed (#881, read live as step 1 does since #942).
+        if (problem) {
+          setFailure(null);
+          setPressed((n) => n + 1);
+          toast.error(problem.message);
+          return;
         }
         setFailure(null);
         m.mutate();
@@ -1373,14 +1375,14 @@ function ServiceAreaPanel({
           </Button>
         </div>
       )}
-      {failure && (
+      {message && (
         <p
           ref={failureRef}
           role="alert"
           className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"
           data-setup-error
         >
-          {failure}
+          {message}
         </p>
       )}
       {inBar ? <SetupStepPrimary>{saveButton}</SetupStepPrimary> : saveButton}
