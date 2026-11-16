@@ -92,6 +92,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { VaccineSettings } from "@/components/settings/VaccineSettings";
+import { SettingsLoadError } from "@/components/settings/SettingsLoadGate";
 import { titleHead } from "@/lib/page-title";
 import { TrainingOnly } from "@/components/training/TrainingOnly";
 import { TrainingPackagesCard } from "@/components/settings/TrainingPackagesCard";
@@ -253,10 +254,11 @@ function ServicesPage() {
       .catch(() => {});
   }, [trainingOn, canEdit, ensure, qc]);
 
-  const { data, isLoading, error } = useQuery({
+  const servicesQ = useQuery({
     queryKey: QUERY_KEY,
     queryFn: () => list({ data: { includeInactive: true } }),
   });
+  const { data, isLoading } = servicesQ;
   const services: Service[] = data?.services ?? [];
 
   const [sizeService, setSizeService] = useState<Service | null>(null);
@@ -379,8 +381,16 @@ function ServicesPage() {
       <section className="rounded-lg border bg-card">
         {isLoading ? (
           <p className="p-5 text-sm text-muted-foreground">Loading services…</p>
-        ) : error ? (
-          <p className="p-5 text-sm text-destructive">{(error as Error).message}</p>
+        ) : data === undefined ? (
+          // Before #945 a failed load said why in red and stopped there, with
+          // no way to ask again short of reloading the page.
+          <div className="p-5">
+            <SettingsLoadError
+              what="services"
+              onRetry={() => void servicesQ.refetch()}
+              retrying={servicesQ.isFetching}
+            />
+          </div>
         ) : services.length === 0 ? (
           <p className="p-5 text-sm text-muted-foreground">
             No services yet. Add the first thing you sell, like{" "}

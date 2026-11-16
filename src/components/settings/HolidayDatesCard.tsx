@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SettingsLoadGate } from "@/components/settings/SettingsLoadGate";
 import { addHoliday, deleteHoliday, listHolidays } from "@/lib/holidays.functions";
 import { holidayDateLabel, holidayNightLabel } from "@/lib/stays";
 
@@ -29,7 +30,7 @@ export function HolidayDatesCard({
   const list = useServerFn(listHolidays);
   const add = useServerFn(addHoliday);
   const del = useServerFn(deleteHoliday);
-  const { data } = useQuery({ queryKey: ["holidays"], queryFn: () => list() });
+  const q = useQuery({ queryKey: ["holidays"], queryFn: () => list() });
   const [holidayOn, setHolidayOn] = useState("");
   const [name, setName] = useState("");
   const refresh = () => qc.invalidateQueries({ queryKey: ["holidays"] });
@@ -48,7 +49,6 @@ export function HolidayDatesCard({
     onSuccess: refresh,
     onError: (e: Error) => toast.error(e.message),
   });
-  const holidays = data?.holidays ?? [];
 
   return (
     <section className="space-y-3 rounded-lg border bg-card p-4 sm:p-5">
@@ -57,8 +57,8 @@ export function HolidayDatesCard({
         {sitting && (
           <p className="text-sm text-muted-foreground">
             Sitting visits on these dates are charged the service's holiday surcharge. You stay
-            open: no sitting visit is skipped or moved. For an overnight,
-            the night that starts on the date counts. The night of Dec 24 starts on the 24th.
+            open: no sitting visit is skipped or moved. For an overnight, the night that starts on
+            the date counts. The night of Dec 24 starts on the 24th.
           </p>
         )}
         {training && (
@@ -104,38 +104,50 @@ export function HolidayDatesCard({
         </form>
       )}
 
-      {holidays.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No holiday dates yet.</p>
-      ) : (
-        <ul className="divide-y rounded-md border">
-          {holidays.map((h) => (
-            <li key={h.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-              <div className="min-w-0">
-                <p className="font-medium">
-                  {holidayDateLabel(h.holiday_on)}
-                  {h.name && (
-                    <span className="font-normal text-muted-foreground">
-                      {" · "}
-                      <bdi>{h.name}</bdi>
-                    </span>
-                  )}
-                </p>
-                <p className="text-xs text-muted-foreground">{holidayNightLabel(h.holiday_on)}</p>
-              </div>
-              {canEdit && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={delMut.isPending}
-                  onClick={() => delMut.mutate(h.id)}
+      {/* Before #945 "No holiday dates yet." was what this said while the
+          dates were loading and after a failed load, which reads as dates
+          that were saved being gone. */}
+      <SettingsLoadGate query={q} what="holiday dates" fields={1}>
+        {({ holidays }) =>
+          holidays.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No holiday dates yet.</p>
+          ) : (
+            <ul className="divide-y rounded-md border">
+              {holidays.map((h) => (
+                <li
+                  key={h.id}
+                  className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
                 >
-                  Remove
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+                  <div className="min-w-0">
+                    <p className="font-medium">
+                      {holidayDateLabel(h.holiday_on)}
+                      {h.name && (
+                        <span className="font-normal text-muted-foreground">
+                          {" · "}
+                          <bdi>{h.name}</bdi>
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {holidayNightLabel(h.holiday_on)}
+                    </p>
+                  </div>
+                  {canEdit && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={delMut.isPending}
+                      onClick={() => delMut.mutate(h.id)}
+                    >
+                      Remove
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )
+        }
+      </SettingsLoadGate>
     </section>
   );
 }

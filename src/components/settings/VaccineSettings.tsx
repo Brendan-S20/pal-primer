@@ -9,26 +9,30 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { VaccineStartRuleSettings } from "@/components/settings/VaccineStartRuleSettings";
+import { SettingsLoadGate } from "@/components/settings/SettingsLoadGate";
 
 export function VaccineSettings() {
   const get = useServerFn(getVaccineSettings);
   const q = useQuery({ queryKey: ["vaccine-settings"], queryFn: () => get() });
-  if (q.error)
-    return (
-      <p role="alert" className="text-sm text-destructive">
-        {q.error.message}
-      </p>
-    );
-  return q.data?.enabled ? (
-    <>
-      <VaccineSettingsForm
-        key={`${q.data.rule}:${q.data.required.join(",")}:${q.data.bufferMin}`}
-        initial={q.data}
-        refresh={() => q.refetch()}
-      />
-      <VaccineStartRuleSettings />
-    </>
-  ) : null;
+  // Before #945 this drew nothing while loading and, on a failure, the raw
+  // error with no way to ask again. The form was already seeded from the
+  // saved values (it mounts only with data); what was missing was the wait.
+  return (
+    <SettingsLoadGate query={q} what="grooming settings" fields={3}>
+      {(data) =>
+        data.enabled ? (
+          <>
+            <VaccineSettingsForm
+              key={`${data.rule}:${data.required.join(",")}:${data.bufferMin}`}
+              initial={data}
+              refresh={() => q.refetch()}
+            />
+            <VaccineStartRuleSettings />
+          </>
+        ) : null
+      }
+    </SettingsLoadGate>
+  );
 }
 
 function VaccineSettingsForm({

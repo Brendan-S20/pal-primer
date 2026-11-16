@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { HelpTip } from "@/components/HelpTip";
 import { titleHead } from "@/lib/page-title";
+import { SettingsLoadGate } from "@/components/settings/SettingsLoadGate";
 
 export const Route = createFileRoute("/_authenticated/settings/blackouts")({
   head: () => titleHead("Blackouts", "Settings"),
@@ -19,7 +20,7 @@ function BlackoutsPage() {
   const add = useServerFn(addBlackout);
   const del = useServerFn(deleteBlackout);
   const qc = useQueryClient();
-  const { data } = useQuery({ queryKey: ["blackouts"], queryFn: () => list() });
+  const q = useQuery({ queryKey: ["blackouts"], queryFn: () => list() });
   const [blackoutOn, setBlackoutOn] = useState("");
   const [reason, setReason] = useState("");
 
@@ -89,37 +90,44 @@ function BlackoutsPage() {
         )}
       </form>
 
-      <div className="rounded-lg border bg-card">
-        <table className="w-full text-sm">
-          <thead className="border-b text-left text-muted-foreground">
-            <tr>
-              <th className="px-4 py-2">Date</th>
-              <th className="px-4 py-2">Reason</th>
-              <th className="px-4 py-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {(data?.blackouts ?? []).map((b: any) => (
-              <tr key={b.id} className="border-b last:border-0">
-                <td className="px-4 py-2 font-medium">{b.blackout_on}</td>
-                <td className="px-4 py-2 text-muted-foreground">{b.reason ?? "-"}</td>
-                <td className="px-4 py-2 text-right">
-                  <Button size="sm" variant="ghost" onClick={() => delMut.mutate(b.id)}>
-                    Remove
-                  </Button>
-                </td>
-              </tr>
-            ))}
-            {data && data.blackouts.length === 0 && (
-              <tr>
-                <td colSpan={3} className="px-4 py-6 text-center text-muted-foreground">
-                  No blackout dates yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {/* Before #945 the table was drawn with no rows while the dates loaded
+          and stayed that way when the load failed, with nothing saying so:
+          saved closures read as none. */}
+      <SettingsLoadGate query={q} what="blackout dates" fields={1}>
+        {(data) => (
+          <div className="rounded-lg border bg-card">
+            <table className="w-full text-sm">
+              <thead className="border-b text-left text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-2">Date</th>
+                  <th className="px-4 py-2">Reason</th>
+                  <th className="px-4 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.blackouts.map((b: any) => (
+                  <tr key={b.id} className="border-b last:border-0">
+                    <td className="px-4 py-2 font-medium">{b.blackout_on}</td>
+                    <td className="px-4 py-2 text-muted-foreground">{b.reason ?? "-"}</td>
+                    <td className="px-4 py-2 text-right">
+                      <Button size="sm" variant="ghost" onClick={() => delMut.mutate(b.id)}>
+                        Remove
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+                {data.blackouts.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="px-4 py-6 text-center text-muted-foreground">
+                      No blackout dates yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SettingsLoadGate>
     </div>
   );
 }
