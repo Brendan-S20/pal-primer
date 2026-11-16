@@ -126,6 +126,11 @@ android {
                 signingConfig signingConfigs.release
             }
             minifyEnabled false
+            // Play Console symbolicates native crashes (Capacitor plugins and
+            // Stripe Terminal ship .so files) only with these in the bundle.
+            ndk {
+                debugSymbolLevel 'SYMBOL_TABLE'
+            }
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
