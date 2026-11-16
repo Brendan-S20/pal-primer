@@ -1,0 +1,110 @@
+[
+  {
+    "page": "business",
+    "state": "loading",
+    "width": 390,
+    "scrollWidth": 390,
+    "bodyScrollWidth": 390,
+    "inner": 390,
+    "overflow": false
+  },
+  {
+    "page": "business",
+    "state": "error",
+    "width": 390,
+    "scrollWidth": 390,
+    "bodyScrollWidth": 390,
+    "inner": 390,
+    "overflow": false
+  },
+  {
+    "page": "business",
+    "state": "loaded",
+    "width": 390,
+    "scrollWidth": 390,
+    "bodyScrollWidth": 390,
+    "inner": 390,
+    "overflow": false
+  },
+  {
+    "page": "client-portal",
+    "state": "loading",
+    "width": 390,
+    "scrollWidth": 390,
+    "bodyScrollWidth": 390,
+    "inner": 390,
+    "overflow": false
+  },
+  {
+    "page": "client-portal",
+    "state": "error",
+    "width": 390,
+    "scrollWidth": 390,
+    "bodyScrollWidth": 390,
+    "inner": 390,
+    "overflow": false
+  },
+  {
+    "page": "client-portal",
+    "state": "loaded",
+    "width": 390,
+    "scrollWidth": 390,
+    "bodyScrollWidth": 390,
+    "inner": 390,
+    "overflow": false
+  },
+  {
+    "page": "business",
+    "state": "loading",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "bodyScrollWidth": 1440,
+    "inner": 1440,
+    "overflow": false
+  },
+  {
+    "page": "business",
+    "state": "error",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "bodyScrollWidth": 1440,
+    "inner": 1440,
+    "overflow": false
+  },
+  {
+    "page": "business",
+    "state": "loaded",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "bodyScrollWidth": 1440,
+    "inner": 1440,
+    "overflow": false
+  },
+  {
+    "page": "client-portal",
+    "state": "loading",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "bodyScrollWidth": 1440,
+    "inner": 1440,
+    "overflow": false
+  },
+  {
+    "page": "client-portal",
+    "state": "error",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "bodyScrollWidth": 1440,
+    "inner": 1440,
+    "overflow": false
+  },
+  {
+    "page": "client-portal",
+    "state": "loaded",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "bodyScrollWidth": 1440,
+    "inner": 1440,
+    "overflow": false
+  }
+]

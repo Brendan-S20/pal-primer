@@ -28,6 +28,7 @@ import { getOrgTwilioSettings } from "@/lib/twilio-settings.functions";
 import { useMyRole } from "@/hooks/useMyRole";
 import { titleHead } from "@/lib/page-title";
 import { formatDateTime, formatDay } from "@/lib/format";
+import { SettingsLoadGate } from "@/components/settings/SettingsLoadGate";
 
 // Settings → Texting (#538, BUILD-3).
 //
@@ -110,7 +111,6 @@ function formFrom(
   };
 }
 
-
 function TextingSettings() {
   const qc = useQueryClient();
   const getFn = useServerFn(getTextingRegistration);
@@ -121,7 +121,8 @@ function TextingSettings() {
     refetchInterval: (query) => {
       const s = (query.state.data as any)?.registration?.status as RegistrationStatus | undefined;
       const live = (query.state.data as any)?.live === true;
-      return !live && (s === "submitting" || s === "submitted" || s === "in_review" || s === "approved")
+      return !live &&
+        (s === "submitting" || s === "submitted" || s === "in_review" || s === "approved")
         ? 60_000
         : false;
     },
@@ -154,13 +155,12 @@ function TextingSettings() {
         </p>
       </div>
 
-      {q.isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : q.isError ? (
-        <p className="text-sm text-destructive">
-          Could not load your texting setup. Refresh to try again.
-        </p>
-      ) : (
+      {/* #945: this was `isLoading ? … : isError ? … : form`, so a failed
+          first load said "Refresh to try again" with nothing to press, and
+          because this query polls every minute while carriers review it, one
+          failed poll replaced a half-typed registration with that message.
+          The gate keeps the form while the saved draft is held. */}
+      <SettingsLoadGate query={q} what="texting setup" fields={4}>
         <>
           <StatusCard
             summary={summary}
@@ -186,7 +186,7 @@ function TextingSettings() {
             HoundStack&apos;s own number texts account holders only. It never texts your clients.
           </p>
         </>
-      )}
+      </SettingsLoadGate>
     </div>
   );
 }
@@ -602,8 +602,8 @@ function RegistrationForm({
         <p>
           When you submit, we create a Twilio account for your business, register your business
           profile, buy a toll-free number in that account, and file its verification with your
-          details. This page then shows {UNDER_REVIEW_LABEL}: {UNDER_REVIEW_LINE.toLowerCase()}. Your
-          number cannot send texts until it is switched on, and we tell you the moment it is.
+          details. This page then shows {UNDER_REVIEW_LABEL}: {UNDER_REVIEW_LINE.toLowerCase()}.
+          Your number cannot send texts until it is switched on, and we tell you the moment it is.
         </p>
         {!isOwner && (
           <p className="font-medium text-foreground">

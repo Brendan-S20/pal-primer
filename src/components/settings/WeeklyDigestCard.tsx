@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { AlertTriangle } from "lucide-react";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDateTime } from "@/lib/format";
+import { SettingsLoadGate } from "@/components/settings/SettingsLoadGate";
 import {
   previewWeeklyDigest,
   sendWeeklyDigestNow,
@@ -36,13 +37,13 @@ export function WeeklyDigestCard() {
     queryFn: () => settingsFn(),
   });
 
-  const [enabled, setEnabled] = useState<boolean | null>(null);
-  const [recipient, setRecipient] = useState<string>("");
-  const initialized = useMemo(() => settings.data != null, [settings.data]);
-  if (initialized && enabled === null) {
-    setEnabled(settings.data!.enabled);
-    setRecipient(settings.data!.recipientEmail ?? "");
-  }
+  // What the person has changed, over what is saved. Null means untouched, so
+  // the fields read the stored values from their first frame rather than
+  // being copied in once the query answers (#945).
+  const [enabledEdit, setEnabled] = useState<boolean | null>(null);
+  const [recipientEdit, setRecipient] = useState<string | null>(null);
+  const enabled = enabledEdit ?? settings.data?.enabled ?? true;
+  const recipient = recipientEdit ?? settings.data?.recipientEmail ?? "";
 
   // What is SAVED, not what is typed. A half-entered address in the box does
   // not make the Monday job able to send — only the stored value does, so the
@@ -64,10 +65,12 @@ export function WeeklyDigestCard() {
   const save = useMutation({
     mutationFn: () =>
       updateFn({
-        data: { enabled: enabled ?? true, recipientEmail: recipient.trim() || null },
+        data: { enabled, recipientEmail: recipient.trim() || null },
       }),
     onSuccess: () => {
       toast.success("Digest settings saved");
+      setEnabled(null);
+      setRecipient(null);
       qc.invalidateQueries({ queryKey: ["digest", "settings"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -87,80 +90,85 @@ export function WeeklyDigestCard() {
             numbers.
           </p>
 
-          {/* This panel promised a Monday email from the day it shipped, and for
+          {/* #945: this drew an empty "Send to" box and a ticked Enabled while
+              the settings were loading, or after they failed, with Save live —
+              one tap wrote "on, nobody to send to" over a saved address. */}
+          <SettingsLoadGate query={settings} what="digest settings" fields={2}>
+            {/* This panel promised a Monday email from the day it shipped, and for
               months nothing was ever sent — no scheduler existed, and no
               organization had a recipient. The schedule exists now; the second
               half is this. A checkbox reading "Enabled" beside a promise the
               product cannot keep is how a feature stays broken without anyone
               filing a bug: the owner believes it is on, and the absence of an
               email is indistinguishable from a quiet week. */}
-          {initialized && (enabled ?? true) && !savedRecipient && (
-            <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-              <div>
-                <p className="font-medium">No digest will be sent yet.</p>
-                <p className="mt-0.5 text-muted-foreground">
-                  This is switched on, but there is no address to send to. Add one below and save,
-                  and the first digest goes out on the next Monday.
-                </p>
+            {enabled && !savedRecipient && (
+              <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                <div>
+                  <p className="font-medium">No digest will be sent yet.</p>
+                  <p className="mt-0.5 text-muted-foreground">
+                    This is switched on, but there is no address to send to. Add one below and save,
+                    and the first digest goes out on the next Monday.
+                  </p>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
-            <div>
-              <Label htmlFor="digest-email">Send to</Label>
-              <Input
-                id="digest-email"
-                type="email"
-                placeholder="owner@yourbusiness.com"
-                value={recipient}
-                onChange={(e) => setRecipient(e.target.value)}
-              />
-            </div>
-            {/* The label wraps the box, so the whole 44px row is the target.
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+              <div>
+                <Label htmlFor="digest-email">Send to</Label>
+                <Input
+                  id="digest-email"
+                  type="email"
+                  placeholder="owner@yourbusiness.com"
+                  value={recipient}
+                  onChange={(e) => setRecipient(e.target.value)}
+                />
+              </div>
+              {/* The label wraps the box, so the whole 44px row is the target.
                 On Analytics this was a 16px box beside an unclickable word;
                 Settings → Emails is opened on a phone. */}
-            <label
-              htmlFor="digest-enabled"
-              className="flex min-h-11 cursor-pointer items-center gap-2 text-sm font-medium"
-            >
-              <input
-                id="digest-enabled"
-                type="checkbox"
-                checked={enabled ?? true}
-                onChange={(e) => setEnabled(e.target.checked)}
-                className="h-4 w-4 shrink-0"
-              />
-              Enabled
-            </label>
-            <Button variant="outline" onClick={() => save.mutate()} disabled={save.isPending}>
-              {save.isPending ? "Saving…" : "Save"}
-            </Button>
-          </div>
+              <label
+                htmlFor="digest-enabled"
+                className="flex min-h-11 cursor-pointer items-center gap-2 text-sm font-medium"
+              >
+                <input
+                  id="digest-enabled"
+                  type="checkbox"
+                  checked={enabled}
+                  onChange={(e) => setEnabled(e.target.checked)}
+                  className="h-4 w-4 shrink-0"
+                />
+                Enabled
+              </label>
+              <Button variant="outline" onClick={() => save.mutate()} disabled={save.isPending}>
+                {save.isPending ? "Saving…" : "Save"}
+              </Button>
+            </div>
 
-          {settings.data?.lastSentAt ? (
-            <p className="text-xs text-muted-foreground">
-              Last sent {formatDateTime(settings.data.lastSentAt)}.
-            </p>
-          ) : savedRecipient ? (
-            <p className="text-xs text-muted-foreground">
-              Not sent yet. The first one goes out on the next Monday.
-            </p>
-          ) : null}
+            {settings.data?.lastSentAt ? (
+              <p className="text-xs text-muted-foreground">
+                Last sent {formatDateTime(settings.data.lastSentAt)}.
+              </p>
+            ) : savedRecipient ? (
+              <p className="text-xs text-muted-foreground">
+                Not sent yet. The first one goes out on the next Monday.
+              </p>
+            ) : null}
 
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={() => preview.mutate()} disabled={preview.isPending}>
-              {preview.isPending ? "Generating preview…" : "Preview this week"}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => send.mutate()}
-              disabled={send.isPending || (!recipient && !settings.data?.recipientEmail)}
-            >
-              {send.isPending ? "Sending…" : "Send now"}
-            </Button>
-          </div>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => preview.mutate()} disabled={preview.isPending}>
+                {preview.isPending ? "Generating preview…" : "Preview this week"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => send.mutate()}
+                disabled={send.isPending || (!recipient && !settings.data?.recipientEmail)}
+              >
+                {send.isPending ? "Sending…" : "Send now"}
+              </Button>
+            </div>
+          </SettingsLoadGate>
         </CardContent>
       </Card>
 

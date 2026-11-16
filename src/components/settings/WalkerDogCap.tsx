@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { useServiceLines } from "@/components/CommercialOnly";
+import { SettingsLoadGate } from "@/components/settings/SettingsLoadGate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,34 +59,39 @@ function WalkerDogCapField({ staffId, canEdit }: { staffId: string; canEdit: boo
         Leave empty for no cap. A group walk with this person never holds more dogs than this, even
         when the service allows more.
       </p>
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          id={id}
-          className="min-h-11 w-28 min-w-0"
-          inputMode="numeric"
-          placeholder="No cap"
-          value={value}
-          disabled={!canEdit || q.isLoading || save.isPending}
-          onChange={(e) => setDraft(e.target.value)}
-          aria-invalid={!parsed.ok}
-        />
-        {canEdit && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="min-h-11 shrink-0"
-            disabled={draft == null || !parsed.ok || save.isPending}
-            onClick={() => parsed.ok && save.mutate(parsed.value)}
-          >
-            Save cap
-          </Button>
+      {/* Before #945 the field was drawn before the caps had loaded, empty
+          with "No cap" in it, which is a real answer that may not be the
+          stored one; on a failed load it was enabled as well. */}
+      <SettingsLoadGate query={q} what="dog cap" fields={1}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            id={id}
+            className="min-h-11 w-28 min-w-0"
+            inputMode="numeric"
+            placeholder="No cap"
+            value={value}
+            disabled={!canEdit || save.isPending}
+            onChange={(e) => setDraft(e.target.value)}
+            aria-invalid={!parsed.ok}
+          />
+          {canEdit && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="min-h-11 shrink-0"
+              disabled={draft == null || !parsed.ok || save.isPending}
+              onClick={() => parsed.ok && save.mutate(parsed.value)}
+            >
+              Save cap
+            </Button>
+          )}
+        </div>
+        {!parsed.ok && (
+          <p role="alert" className="text-xs text-destructive">
+            Enter a whole number from 1 to 50, or leave it empty.
+          </p>
         )}
-      </div>
-      {!parsed.ok && (
-        <p role="alert" className="text-xs text-destructive">
-          Enter a whole number from 1 to 50, or leave it empty.
-        </p>
-      )}
+      </SettingsLoadGate>
     </div>
   );
 }

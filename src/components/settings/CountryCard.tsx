@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { SettingsLoadGate } from "@/components/settings/SettingsLoadGate";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -53,28 +54,33 @@ export function CountryCard() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Label htmlFor="org-country" className="text-xs">
-          Country
-        </Label>
-        <select
-          id="org-country"
-          value={current ?? ""}
-          disabled={q.isLoading || m.isPending || columnMissing}
-          onChange={(e) => m.mutate(e.target.value || null)}
-          className="mt-1 h-10 w-full max-w-sm rounded-md border bg-background px-3 text-sm disabled:opacity-60 touch:min-h-11"
-        >
-          {options.map((c) => (
-            <option key={c.value} value={c.value}>
-              {c.label}
-            </option>
-          ))}
-          <option value="">Other or not listed</option>
-        </select>
-        {columnMissing && (
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            {COUNTRY_NOT_YET} It turns on with the next database update.
-          </p>
-        )}
+        {/* "Other or not listed" is the empty value, so before #945 it was
+            what this showed while loading, and what a change on a failed
+            load would have replaced. */}
+        <SettingsLoadGate query={q} what="country" fields={1}>
+          <Label htmlFor="org-country" className="text-xs">
+            Country
+          </Label>
+          <select
+            id="org-country"
+            value={current ?? ""}
+            disabled={m.isPending || columnMissing}
+            onChange={(e) => m.mutate(e.target.value || null)}
+            className="mt-1 h-10 w-full max-w-sm rounded-md border bg-background px-3 text-sm disabled:opacity-60 touch:min-h-11"
+          >
+            {options.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+            <option value="">Other or not listed</option>
+          </select>
+          {columnMissing && (
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {COUNTRY_NOT_YET} It turns on with the next database update.
+            </p>
+          )}
+        </SettingsLoadGate>
       </CardContent>
     </Card>
   );

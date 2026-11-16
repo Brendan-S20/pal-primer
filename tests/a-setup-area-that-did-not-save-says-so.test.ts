@@ -120,10 +120,15 @@ describe("setup step 2, from source", () => {
     // step brings it to the middle of the screen rather than leave it covered.
     expect(panel).toMatch(/ref=\{failureRef\}/);
     expect(panel).toMatch(/failureRef\.current\?\.scrollIntoView\(\{ block: "center" \}\)/);
-    // Every client-side refusal goes through refuse(), which sets it too.
+    // Every client-side refusal is serviceAreaStepProblem's, said in a toast
+    // and beside Save, where it is read live until fixed (#946 follow-up).
     const submit = panel.slice(panel.indexOf("onSubmit={"), panel.indexOf("m.mutate();"));
-    expect(submit).not.toMatch(/toast\.error\(/);
-    expect(submit.match(/refuse\(/g)?.length).toBeGreaterThanOrEqual(5);
+    expect(panel).toMatch(/const problem = serviceAreaStepProblem\(/);
+    expect(submit).toMatch(
+      /if \(problem\) \{[\s\S]*setPressed\([\s\S]*toast\.error\(problem\.message[,)]/,
+    );
+    expect(panel).toMatch(/const message = shownProblem\?\.message \?\? failure;/);
+    expect(panel).toMatch(/\{message && \(\s*<p\s+ref=\{failureRef\}/);
   });
 
   it("draws Save in the sticky bar, tied to its form, where the bar cannot cover it (#771)", () => {

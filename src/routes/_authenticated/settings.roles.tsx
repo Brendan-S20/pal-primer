@@ -16,6 +16,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
+import { SettingsLoadError } from "@/components/settings/SettingsLoadGate";
 import { Lock } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -69,10 +70,11 @@ function RolePermissionsSettings() {
   const setFn = useServerFn(setRolePermission);
   const resetFn = useServerFn(resetRolePermissions);
 
-  const { data, error, isLoading } = useQuery({
+  const q = useQuery({
     queryKey: ROLE_PERMISSIONS_QUERY_KEY,
     queryFn: () => getFn(),
   });
+  const { data, error } = q;
 
   // Which switch is mid-save, so it cannot be flipped twice before the
   // server has answered once.
@@ -155,14 +157,25 @@ function RolePermissionsSettings() {
         </p>
       </div>
 
-      {error ? (
+      {error && data ? (
         <p className="text-sm text-destructive" role="alert">
           {error instanceof Error ? error.message : "Could not load role permissions."}
         </p>
       ) : null}
 
-      {isLoading || !data ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
+      {/* A failed first load used to print the error above a "Loading…" that
+          never finished, with no way to ask again but reloading (#945). The
+          switches save on change, so they wait for the saved answer. */}
+      {!data ? (
+        error ? (
+          <SettingsLoadError
+            what="role permissions"
+            onRetry={() => q.refetch()}
+            retrying={q.isFetching}
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        )
       ) : (
         <>
           <Card>

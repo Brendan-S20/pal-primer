@@ -141,7 +141,11 @@ describe("the first-cleanup choice is visibly required before Save", () => {
   it("is the choice step 2 draws, starting unanswered, with the #881 refusal kept", () => {
     expect(SETUP).toMatch(/<SetupFirstCleanupChoice\b/);
     expect(SETUP).toMatch(/useState<SetupFirstCleanup \| null>\(null\)/);
-    expect(SETUP).toContain('refuse("Choose whether new clients pay for a first cleanup.")');
+    // The refusal is serviceAreaStepProblem's now (read live, #946 follow-up).
+    expect(SETUP).toMatch(/serviceAreaStepProblem\(/);
+    expect(read("src/lib/setup-area-problem.ts")).toContain(
+      '"Choose whether new clients pay for a first cleanup."',
+    );
   });
 });
 

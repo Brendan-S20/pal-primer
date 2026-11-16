@@ -20,6 +20,7 @@ import { centsToDollarInput, parseDollarsToCents } from "@/lib/services";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SettingsLoadError, SettingsLoadingFields } from "@/components/settings/SettingsLoadGate";
 
 export function ServiceSizeRulesEditor({
   serviceId,
@@ -39,14 +40,20 @@ function GroomSizeRules({ serviceId }: { serviceId: string }) {
   const query = useQuery({ queryKey: key, queryFn: () => list({ data: { serviceId } }) });
   const [adding, setAdding] = useState(false);
   const refresh = () => qc.invalidateQueries({ queryKey: key });
-  if (query.isLoading) return <p>Loading size rules…</p>;
-  if (query.error)
-    return (
-      <p role="alert" className="text-destructive">
-        {query.error.message}
-      </p>
+  // Before #945 a failed load drew the raw error with no way to ask again;
+  // the rows below were already held back until the saved rules arrived.
+  if (query.data === undefined) {
+    return query.isError ? (
+      <SettingsLoadError
+        what="size rules"
+        onRetry={() => void query.refetch()}
+        retrying={query.isFetching}
+      />
+    ) : (
+      <SettingsLoadingFields what="size rules" fields={2} />
     );
-  const rules = query.data?.rules ?? [];
+  }
+  const rules = query.data.rules;
   return (
     <div className="min-w-0 space-y-3" data-testid="size-matrix">
       <p className="text-sm text-muted-foreground">

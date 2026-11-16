@@ -1,0 +1,13 @@
+{
+  "phase": "before",
+  "state": "tab-to-every-2-weeks",
+  "width": 1440,
+  "scrollWidth": 1440,
+  "innerWidth": 1440,
+  "barTop": 839,
+  "scrollPaddingBottom": null,
+  "focusedField": {
+    "top": 859,
+    "bottom": 895
+  }
+}

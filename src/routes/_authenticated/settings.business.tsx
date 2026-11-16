@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,6 +33,7 @@ import { RECLEAN_WINDOW_DEFAULT_HOURS, RECLEAN_WINDOW_MAX_HOURS } from "@/lib/re
 import { VisitChecklistEditor } from "@/components/VisitChecklistEditor";
 import type { ChecklistItem } from "@/lib/visit-checklist";
 import { titleHead } from "@/lib/page-title";
+import { SettingsLoadGate } from "@/components/settings/SettingsLoadGate";
 
 // ── WHAT THE WHOLE BUSINESS USES, NOT WHAT THIS PHONE DOES ───────────────
 //
@@ -133,22 +134,27 @@ function TimeZoneCard() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Label htmlFor="org-timezone" className="text-xs">
-          Time zone
-        </Label>
-        <select
-          id="org-timezone"
-          value={current ?? DEFAULT_TIMEZONE}
-          disabled={q.isLoading || m.isPending}
-          onChange={(e) => m.mutate(e.target.value)}
-          className="mt-1 h-10 w-full max-w-sm rounded-md border bg-background px-3 text-sm disabled:opacity-60"
-        >
-          {timezoneOptions(current ?? DEFAULT_TIMEZONE).map((tz) => (
-            <option key={tz.value} value={tz.value}>
-              {tz.label}
-            </option>
-          ))}
-        </select>
+        {/* The default zone used to stand in while this loaded, and stayed
+            enabled when the load failed, so a change saved over the real
+            zone (#945). Now nothing to pick until the saved one is here. */}
+        <SettingsLoadGate query={q} what="time zone" fields={1}>
+          <Label htmlFor="org-timezone" className="text-xs">
+            Time zone
+          </Label>
+          <select
+            id="org-timezone"
+            value={current ?? DEFAULT_TIMEZONE}
+            disabled={m.isPending}
+            onChange={(e) => m.mutate(e.target.value)}
+            className="mt-1 h-10 w-full max-w-sm rounded-md border bg-background px-3 text-sm disabled:opacity-60"
+          >
+            {timezoneOptions(current ?? DEFAULT_TIMEZONE).map((tz) => (
+              <option key={tz.value} value={tz.value}>
+                {tz.label}
+              </option>
+            ))}
+          </select>
+        </SettingsLoadGate>
       </CardContent>
     </Card>
   );
@@ -274,31 +280,33 @@ function CompletionPhotoCard() {
         <CardTitle className="text-base">Finishing a visit</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <Label htmlFor="require-completion-photo" className="text-sm font-medium">
-              Require a completion photo
-            </Label>
-            <div className="mt-0.5 text-xs text-muted-foreground">
-              On: a photo before completing, or the tech&apos;s reason there isn&apos;t one. Off:
-              optional.
+        <SettingsLoadGate query={q} what="visit rules" fields={2}>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <Label htmlFor="require-completion-photo" className="text-sm font-medium">
+                Require a completion photo
+              </Label>
+              <div className="mt-0.5 text-xs text-muted-foreground">
+                On: a photo before completing, or the tech&apos;s reason there isn&apos;t one. Off:
+                optional.
+              </div>
             </div>
+            <Switch
+              id="require-completion-photo"
+              checked={on}
+              disabled={!canEdit || mut.isPending}
+              onCheckedChange={(v) => mut.mutate(v)}
+            />
           </div>
-          <Switch
-            id="require-completion-photo"
-            checked={on}
-            disabled={!canEdit || mut.isPending || q.isLoading}
-            onCheckedChange={(v) => mut.mutate(v)}
-          />
-        </div>
-        <div className="mt-3">
-          <VisitChecklistEditor
-            saved={q.data?.visitChecklist ?? NO_CHECKLIST}
-            emailOn={q.data?.emailVisitChecklist ?? false}
-            canEdit={canEdit}
-            loading={q.isLoading}
-          />
-        </div>
+          <div className="mt-3">
+            <VisitChecklistEditor
+              saved={q.data?.visitChecklist ?? NO_CHECKLIST}
+              emailOn={q.data?.emailVisitChecklist ?? false}
+              canEdit={canEdit}
+              loading={false}
+            />
+          </div>
+        </SettingsLoadGate>
       </CardContent>
     </Card>
   );
@@ -330,10 +338,10 @@ function RecleanGuaranteeCard() {
   const setFn = useServerFn(setRecleanWindowHours);
   const q = useQuery({ queryKey: ["my-org-features"], queryFn: () => getFn() });
   const saved = q.data?.recleanWindowHours ?? RECLEAN_WINDOW_DEFAULT_HOURS;
-  const [draft, setDraft] = useState<string>("");
-  useEffect(() => {
-    if (q.data) setDraft(String(q.data.recleanWindowHours ?? RECLEAN_WINDOW_DEFAULT_HOURS));
-  }, [q.data]);
+  // null until touched: the box shows what is stored, so it is never blank
+  // for a frame between the answer arriving and an effect copying it (#945).
+  const [draftEdit, setDraft] = useState<string | null>(null);
+  const draft = draftEdit ?? String(saved);
 
   const hours = Number(draft);
   const valid =
@@ -346,6 +354,7 @@ function RecleanGuaranteeCard() {
     mutationFn: (h: number) => setFn({ data: { hours: h } }),
     onSuccess: (_r, h) => {
       qc.invalidateQueries({ queryKey: ["my-org-features"] });
+      setDraft(null);
       toast.success(
         h === 0
           ? "Re-clean guarantee is off. Clients won't see the button."
@@ -365,34 +374,36 @@ function RecleanGuaranteeCard() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Label htmlFor="reclean-window" className="text-xs">
-          Hours after a visit
-        </Label>
-        <div className="mt-1 flex flex-wrap items-center gap-2">
-          <Input
-            id="reclean-window"
-            type="number"
-            inputMode="numeric"
-            min={0}
-            max={RECLEAN_WINDOW_MAX_HOURS}
-            step={1}
-            className="w-28"
-            value={draft}
-            disabled={q.isLoading || mut.isPending}
-            onChange={(e) => setDraft(e.target.value)}
-          />
-          <Button
-            disabled={!valid || hours === saved || mut.isPending || q.isLoading}
-            onClick={() => mut.mutate(hours)}
-          >
-            {mut.isPending ? "Saving…" : "Save"}
-          </Button>
-        </div>
-        {!valid && draft.trim() !== "" && (
-          <p className="mt-1.5 text-xs text-destructive">
-            A whole number from 0 to {RECLEAN_WINDOW_MAX_HOURS} (a week).
-          </p>
-        )}
+        <SettingsLoadGate query={q} what="re-clean guarantee" fields={1}>
+          <Label htmlFor="reclean-window" className="text-xs">
+            Hours after a visit
+          </Label>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <Input
+              id="reclean-window"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={RECLEAN_WINDOW_MAX_HOURS}
+              step={1}
+              className="w-28"
+              value={draft}
+              disabled={mut.isPending}
+              onChange={(e) => setDraft(e.target.value)}
+            />
+            <Button
+              disabled={!valid || hours === saved || mut.isPending}
+              onClick={() => mut.mutate(hours)}
+            >
+              {mut.isPending ? "Saving…" : "Save"}
+            </Button>
+          </div>
+          {!valid && draft.trim() !== "" && (
+            <p className="mt-1.5 text-xs text-destructive">
+              A whole number from 0 to {RECLEAN_WINDOW_MAX_HOURS} (a week).
+            </p>
+          )}
+        </SettingsLoadGate>
       </CardContent>
     </Card>
   );
@@ -450,31 +461,35 @@ function CommercialAccountsCard() {
       <CardHeader>
         <CardTitle className="text-base">Commercial accounts</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div id="commercial-accounts-label" className="text-sm font-medium">
-              We serve HOAs, apartment complexes or dog parks
+      <CardContent>
+        <SettingsLoadGate query={q} what="commercial accounts setting" fields={1}>
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div id="commercial-accounts-label" className="text-sm font-medium">
+                  We serve HOAs, apartment complexes or dog parks
+                </div>
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  Off: every screen talks about homes and dogs, and the DNA compliance workspace and
+                  client-type picker are hidden. On: you also get unit rosters, waste stations and
+                  per-unit pricing.
+                </div>
+              </div>
+              <Switch
+                aria-labelledby="commercial-accounts-label"
+                checked={on}
+                disabled={!canEdit || locked || mut.isPending}
+                onCheckedChange={(v) => mut.mutate(v)}
+              />
             </div>
-            <div className="mt-0.5 text-xs text-muted-foreground">
-              Off: every screen talks about homes and dogs, and the DNA compliance workspace and
-              client-type picker are hidden. On: you also get unit rosters, waste stations and
-              per-unit pricing.
-            </div>
+            {locked && (
+              <p className="text-xs text-muted-foreground">
+                Commercial clients, properties or waste stations still use these screens. Switch
+                this off after moving them to residential.
+              </p>
+            )}
           </div>
-          <Switch
-            aria-labelledby="commercial-accounts-label"
-            checked={on}
-            disabled={!canEdit || locked || mut.isPending || q.isLoading}
-            onCheckedChange={(v) => mut.mutate(v)}
-          />
-        </div>
-        {locked && (
-          <p className="text-xs text-muted-foreground">
-            Commercial clients, properties or waste stations still use these screens. Switch this
-            off after moving them to residential.
-          </p>
-        )}
+        </SettingsLoadGate>
       </CardContent>
     </Card>
   );
@@ -492,6 +507,12 @@ function CommercialAccountsCard() {
 function ServiceLinesCard() {
   const qc = useQueryClient();
   const setFn = useServerFn(setServiceLines);
+  // The same cache entry useServiceLines reads. That hook fails OPEN (an
+  // error reads as pet waste, which is right for menus), but a form that
+  // fails open offers the default as if it were saved, and one tick would
+  // write it over the real lines (#945). So the boxes wait for the answer.
+  const getFn = useServerFn(getMyOrgFeatures);
+  const q = useQuery({ queryKey: ["my-org-features"], queryFn: () => getFn(), staleTime: 60_000 });
   const { role } = useMyRole();
   const { can } = usePermissions();
   const canEdit = can("manage_settings");
@@ -523,11 +544,13 @@ function ServiceLinesCard() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <ServiceLinesChoices
-          lines={lines}
-          onChange={(next) => mut.mutate(next)}
-          disabled={!canEdit || !known || mut.isPending}
-        />
+        <SettingsLoadGate query={q} what="services" fields={2}>
+          <ServiceLinesChoices
+            lines={lines}
+            onChange={(next) => mut.mutate(next)}
+            disabled={!canEdit || !known || mut.isPending}
+          />
+        </SettingsLoadGate>
       </CardContent>
     </Card>
   );

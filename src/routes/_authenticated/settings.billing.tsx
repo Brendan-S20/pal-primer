@@ -6,6 +6,7 @@ import { nextInvoiceTotalCents } from "@/lib/next-invoice-total";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
+import { SettingsLoadError } from "@/components/settings/SettingsLoadGate";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import {
   getBillingStatus,
@@ -120,10 +121,11 @@ function BillingPage() {
   const itemsFn = useServerFn(listSubscriptionItems);
   const createSubFn = useServerFn(createPlanSubscription);
 
-  const { data, isLoading } = useQuery({
+  const statusQ = useQuery({
     queryKey: ["billing-status"],
     queryFn: () => statusFn(),
   });
+  const { data, isLoading } = statusQ;
   const {
     data: subInfo,
     isLoading: subInfoLoading,
@@ -242,6 +244,17 @@ function BillingPage() {
     }
   };
 
+  // A failed first load used to leave "Loading…" up for good, with no way to
+  // ask again but reloading the page (#945).
+  if (!data && statusQ.isError) {
+    return (
+      <SettingsLoadError
+        what="plan and billing"
+        onRetry={() => statusQ.refetch()}
+        retrying={statusQ.isFetching}
+      />
+    );
+  }
   if (isLoading || !data) return <p className="text-muted-foreground">Loading…</p>;
 
   // plan_status stays 'trialing' after trial_ends_at passes, by design. Whether
@@ -476,10 +489,11 @@ function PaymentMethodsCard() {
   const removeFn = useServerFn(removeOrgPaymentMethod);
   const [adding, setAdding] = useState(false);
 
-  const { data, isLoading } = useQuery({
+  const methodsQ = useQuery({
     queryKey: ["org-payment-methods"],
     queryFn: () => listFn(),
   });
+  const { data, isLoading } = methodsQ;
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["org-payment-methods"] });
     qc.invalidateQueries({ queryKey: ["billing-status"] });
@@ -523,6 +537,16 @@ function PaymentMethodsCard() {
       </div>
       {isLoading ? (
         <p className="mt-3 text-sm text-muted-foreground">Loading…</p>
+      ) : methodsQ.isError && !data ? (
+        // A failed load used to say "No saved cards yet", which tells an
+        // owner whose card is on file that it is gone (#945).
+        <div className="mt-3">
+          <SettingsLoadError
+            what="cards"
+            onRetry={() => methodsQ.refetch()}
+            retrying={methodsQ.isFetching}
+          />
+        </div>
       ) : methods.length === 0 && !adding ? (
         <p className="mt-3 text-sm text-muted-foreground">
           No saved cards yet. Add one so your subscription can renew.
@@ -678,10 +702,11 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
   const listFn = useServerFn(listPlatformAddons);
   const subFn = useServerFn(subscribePlatformAddon);
   const cancelFn = useServerFn(cancelPlatformAddon);
-  const { data, isLoading } = useQuery({
+  const addonsQ = useQuery({
     queryKey: ["platform-addons"],
     queryFn: () => listFn(),
   });
+  const { data, isLoading } = addonsQ;
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["platform-addons"] });
@@ -714,7 +739,10 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
   const removingId = cancel.isPending ? (cancel.variables as string) : null;
 
   const addons = data?.addons ?? [];
-  if (!isLoading && !addons.length) return null;
+  // A failed load used to hide the section as if there were no add-ons,
+  // including the ones this business pays for (#945).
+  const loadFailed = addonsQ.isError && !data;
+  if (!isLoading && !loadFailed && !addons.length) return null;
   // Done-for-you setup is free on Scale, for founding accounts and on yearly
   // billing (NP-4). The same rule the purchase runs on the server; the
   // interval comes from the subscription this page already reads.
@@ -731,6 +759,12 @@ function PlatformAddonsSection({ planInterval }: { planInterval: BillingInterval
       </div>
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : loadFailed ? (
+        <SettingsLoadError
+          what="add-ons"
+          onRetry={() => addonsQ.refetch()}
+          retrying={addonsQ.isFetching}
+        />
       ) : (
         <div className="grid gap-3 md:grid-cols-2">
           {addons.map((a) => {
@@ -1026,10 +1060,11 @@ function NextInvoice({
 // to see or download an invoice.
 function InvoiceHistory() {
   const listFn = useServerFn(listPlatformInvoices);
-  const { data, isLoading } = useQuery({
+  const invoicesQ = useQuery({
     queryKey: ["platform-invoices"],
     queryFn: () => listFn(),
   });
+  const { data, isLoading } = invoicesQ;
   const invoices: any[] = (data as any)?.invoices ?? [];
 
   return (
@@ -1039,6 +1074,15 @@ function InvoiceHistory() {
       <h2 className="text-lg font-semibold">Billing history</h2>
       {isLoading ? (
         <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
+      ) : invoicesQ.isError && !data ? (
+        // A failed load used to say "No invoices yet" (#945).
+        <div className="mt-2">
+          <SettingsLoadError
+            what="invoices"
+            onRetry={() => invoicesQ.refetch()}
+            retrying={invoicesQ.isFetching}
+          />
+        </div>
       ) : invoices.length === 0 ? (
         <p className="mt-2 text-sm text-muted-foreground">
           No invoices yet. Your subscription invoices will appear here once you're billed.
