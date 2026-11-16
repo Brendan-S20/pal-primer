@@ -80,6 +80,8 @@ const world = vi.hoisted(() => ({
   toast: { success: vi.fn(), error: vi.fn() },
   writes: [] as string[],
   clock: 0,
+  /** Saved zones (#958): every non-waste line also needs a service area. */
+  zones: 0,
 }));
 const { toast } = world;
 
@@ -252,6 +254,7 @@ const service = (
 
 function freshBusiness() {
   world.clock = 0;
+  world.zones = 0;
   world.writes = [];
   // The sitting starters (migration 20261024081200), created with prices.
   world.services = [
@@ -328,6 +331,7 @@ function context(lines: ServiceLine[]) {
         }
         if (table === "service_packages")
           return { count: world.packages.filter((p) => p.active && p.price_cents > 0).length };
+        if (table === "zones") return { count: world.zones };
         if (table === "training_skills")
           return { count: world.skills.filter((s) => s.active).length };
         return { count: 0 };
@@ -339,6 +343,17 @@ function context(lines: ServiceLine[]) {
     },
   };
   return { supabase, userId: "owner" } as never;
+}
+
+/** #959 with #958: the line's own part is done once its prices are saved,
+ *  and the whole step once a service area (a zone) exists as well. */
+async function expectDoneOnceAnAreaExists(lines: ServiceLine[], part: string) {
+  const before = await priceStep(lines);
+  expect(before.parts?.find((p) => p.id === part)?.done).toBe(true);
+  expect(before.parts?.find((p) => p.id === "area")?.done).toBe(false);
+  expect(before.done).toBe(false);
+  world.zones = 1;
+  expect((await priceStep(lines)).done).toBe(true);
 }
 
 async function priceStep(lines: ServiceLine[]): Promise<OnboardingStep> {
@@ -471,7 +486,7 @@ describe("#959 a sitter-only business", () => {
     expect(onSaved).toHaveBeenCalledTimes(1);
     const cents = Object.fromEntries(world.services.map((s) => [s.id, s.base_price_cents]));
     expect([cents[DROP_IN], cents[OVERNIGHT], cents[HOUSE_SIT]]).toEqual([3000, 7500, 10000]);
-    expect((await priceStep(SITTER)).done).toBe(true);
+    await expectDoneOnceAnAreaExists(SITTER, "stays");
 
     // 5. The rows Settings, Services lists and the Plan step quotes from.
     for (const id of [DROP_IN, OVERNIGHT, HOUSE_SIT]) {
@@ -536,7 +551,7 @@ describe("#959 a groomer-only business", () => {
     expect(world.org.buffer).toBe(20);
     expect(world.org.groom_setup_reviewed_at).not.toBeNull();
     expect(onSaved).toHaveBeenCalledTimes(1);
-    expect((await priceStep(GROOMER)).done).toBe(true);
+    await expectDoneOnceAnAreaExists(GROOMER, "grooms");
   });
 });
 
@@ -577,7 +592,7 @@ describe("#959 a trainer-only business", () => {
     expect(world.packages[0]).toMatchObject({ price_cents: 30000, active: true });
     expect(world.skills.map((s) => s.name)).toEqual(["Loose-leash walking"]);
     expect(onSaved).toHaveBeenCalledTimes(1);
-    expect((await priceStep(TRAINER)).done).toBe(true);
+    await expectDoneOnceAnAreaExists(TRAINER, "lessons");
   });
 
   it("a business with skills already is not made to add another", async () => {
@@ -587,7 +602,7 @@ describe("#959 a trainer-only business", () => {
     await type("setup-package-price", "250");
     await submit("data-setup-training");
     expect(world.writes).toEqual(["service_packages", "service_packages.active"]);
-    expect((await priceStep(TRAINER)).done).toBe(true);
+    await expectDoneOnceAnAreaExists(TRAINER, "lessons");
   });
 });
 
@@ -599,7 +614,9 @@ describe("#959 a mixed business", () => {
   it("has a part per line, finished one form at a time, all on /setup", async () => {
     let step = await priceStep(MIXED);
     expect(step.to).toBe("/setup");
+    // #958 asks the service area first; #959 prices the three inline.
     expect(step.parts?.map((p) => [p.id, p.done])).toEqual([
+      ["area", false],
       ["stays", false],
       ["grooms", false],
       ["lessons", false],
@@ -616,7 +633,7 @@ describe("#959 a mixed business", () => {
     await submit("data-setup-stay-prices");
     act(() => root?.unmount());
     step = await priceStep(MIXED);
-    expect(step.parts?.map((p) => p.done)).toEqual([true, false, false]);
+    expect(step.parts?.map((p) => p.done)).toEqual([false, true, false, false]);
     expect(step.done).toBe(false);
 
     await open(<GroomSetupForm done={false} onSaved={() => {}} saveLabel="Save grooming setup" />);
@@ -624,14 +641,19 @@ describe("#959 a mixed business", () => {
     await submit("data-setup-groom");
     act(() => root?.unmount());
     step = await priceStep(MIXED);
-    expect(step.parts?.map((p) => p.done)).toEqual([true, true, false]);
+    expect(step.parts?.map((p) => p.done)).toEqual([false, true, true, false]);
 
     await open(<TrainingSetupForm done={false} onSaved={() => {}} saveLabel="Save lessons" />);
     await type("setup-package-price", "300");
     await type("setup-new-skill", "Recall");
     await submit("data-setup-training");
     step = await priceStep(MIXED);
-    expect(step.parts?.map((p) => p.done)).toEqual([true, true, true]);
+    expect(step.parts?.map((p) => p.done)).toEqual([false, true, true, true]);
+    // Every price saved, and the step still waits on the area (#958).
+    expect(step.done).toBe(false);
+    world.zones = 1;
+    step = await priceStep(MIXED);
+    expect(step.parts?.every((p) => p.done)).toBe(true);
     expect(step.done).toBe(true);
   });
 });

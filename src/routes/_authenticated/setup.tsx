@@ -15,6 +15,7 @@ import { ServiceLinesChoices } from "@/components/ServiceLinesChoices";
 import { DayEndPanel } from "@/components/SetupDayEndPanel";
 import { WalkPricesForm } from "@/components/SetupWalkPrices";
 import { GroomSetupForm, StayPricesForm, TrainingSetupForm } from "@/components/SetupLinePrices";
+import { ServiceAreaOnlyForm } from "@/components/SetupServiceArea";
 import { SetupFirstCleanupChoice } from "@/components/SetupFirstCleanupChoice";
 import { BusinessSaveButton, SETUP_BUSINESS_FORM_ID } from "@/components/SetupBusinessSave";
 import { businessStepProblem } from "@/lib/setup-business-problem";
@@ -840,6 +841,7 @@ function PricesPanel({
   const linked = parts.filter((p) => !INLINE_PARTS.includes(p.id));
   const openBesides = (id: PricePart["id"]) => parts.some((p) => p.id !== id && !p.done);
   const qc = useQueryClient();
+  const { petWaste } = useServiceLines();
   // Saving the area or the walks finishes one part, not the step. Refresh the
   // parts and stay here while the others are still open; move on only once
   // the server says every part is done.
@@ -904,7 +906,31 @@ function PricesPanel({
           />
         </div>
       )}
-      {/* Stays, grooms and lessons, the same way (#959). */}
+      {/* Extension point for the area part's own fields (first cleanup,
+          schedule multipliers): they belong inside ServiceAreaPanel. */}
+      {area && (
+        <div className="space-y-3" data-setup-price-form="area">
+          <h3 className="text-sm font-medium">{area.label}</h3>
+          {petWaste ? (
+            <ServiceAreaPanel
+              step={{ ...step, done: area.done }}
+              onSaved={partSaved}
+              saveLabel={openBesides("area") ? "Save area" : undefined}
+              inBar={false}
+            />
+          ) : (
+            // Walking, sitting, grooming, training: where, with no price
+            // (#958). public_quote needs a zone for every line it books.
+            <ServiceAreaOnlyForm
+              done={area.done}
+              onSaved={partSaved}
+              saveLabel={openBesides("area") ? "Save area" : undefined}
+            />
+          )}
+        </div>
+      )}
+      {/* Stays, grooms and lessons, the same way (#959), after the area
+          (#958): where first, then what each costs. */}
       {stays && (
         <div className="space-y-3" data-setup-price-form="stays">
           <h3 className="text-sm font-medium">{stays.label}</h3>
@@ -932,19 +958,6 @@ function PricesPanel({
             done={lessons.done}
             onSaved={partSaved}
             saveLabel={openBesides("lessons") ? "Save lessons" : undefined}
-          />
-        </div>
-      )}
-      {/* Extension point for the area part's own fields (first cleanup,
-          schedule multipliers): they belong inside ServiceAreaPanel. */}
-      {area && (
-        <div className="space-y-3" data-setup-price-form="area">
-          <h3 className="text-sm font-medium">{area.label}</h3>
-          <ServiceAreaPanel
-            step={{ ...step, done: area.done }}
-            onSaved={partSaved}
-            saveLabel={openBesides("area") ? "Save area" : undefined}
-            inBar={false}
           />
         </div>
       )}

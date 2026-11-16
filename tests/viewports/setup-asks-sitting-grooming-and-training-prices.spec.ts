@@ -54,6 +54,13 @@ async function measure(page: Page, width: number, where: string) {
   if (width < 768) expect(await findControlsUnder44px(page), where).toEqual([]);
 }
 
+/** #958 merged in: the service area is drawn on the same step, first, and
+ *  the step is not finished without it. */
+const areaFormToo = async (page: Page) => {
+  await expect(page.locator('[data-setup-price-form="area"]')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('[data-setup-price-part="area"]')).toContainText("Your service area");
+};
+
 const noSettingsButton = async (page: Page) => {
   for (const name of [/^Review sitting prices$/, /^Review grooming setup$/, /^Price lessons$/])
     await expect(page.getByRole("link", { name })).toHaveCount(0);
@@ -73,6 +80,7 @@ for (const { w, h, label } of WIDTHS) {
         timeout: 15_000,
       });
       await expect(page.getByLabel("Drop-in ($ per visit)")).toHaveValue("25.00");
+      await areaFormToo(page);
       await noSettingsButton(page);
       await measure(page, w, `/setup stays @${w}px`);
 
@@ -99,6 +107,7 @@ for (const { w, h, label } of WIDTHS) {
       await expect(page.locator("#setup-size-small-minutes")).toHaveValue("60");
       await expect(page.getByLabel("Setup, cleanup and travel minutes")).toHaveValue("15");
       await expect(page.getByLabel("Size prices for")).toBeVisible();
+      await areaFormToo(page);
       await noSettingsButton(page);
       await measure(page, w, `/setup grooms @${w}px`);
 
@@ -117,6 +126,7 @@ for (const { w, h, label } of WIDTHS) {
       await expect(page.getByLabel("6-session package ($)")).toBeVisible({ timeout: 15_000 });
       await expect(page.getByLabel("Lessons in the package")).toHaveValue("6");
       await expect(page.getByText("No skills yet. Add at least one.")).toBeVisible();
+      await areaFormToo(page);
       await noSettingsButton(page);
       await measure(page, w, `/setup lessons @${w}px`);
     });
@@ -136,6 +146,7 @@ for (const { w, h, label } of WIDTHS) {
       await expect(page.locator("[data-setup-size]")).toHaveCount(4);
       await expect(page.locator("[data-setup-skills] li")).toHaveCount(2);
       await expect(page.locator('[data-setup-action="save-stays"]')).toHaveText("Save stay prices");
+      await areaFormToo(page);
       await noSettingsButton(page);
       await measure(page, w, `/setup mixed @${w}px`);
     });

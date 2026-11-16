@@ -21,8 +21,29 @@ import { setupLinePriceOverrides } from "../../tests/viewports/fixtures/setup-li
 const directory = ".helm/screenshots/issue-959";
 const phase = process.env.PHASE === "before" ? "before" : "after";
 
-/** What origin/main's loadOnboardingStatus said for the same business. */
-function asMainSaidIt(step: Record<string, any>, lines: string[]) {
+/** What origin/main's loadOnboardingStatus said for the same business:
+ *  before #958 too, so no service-area part, and a one-line business had no
+ *  parts at all. */
+function asMainSaidIt(merged: Record<string, any>, lines: string[]) {
+  const parts = (merged.parts ?? []).filter((p: Record<string, any>) => p.id !== "area");
+  const step: Record<string, any> =
+    lines.length === 1
+      ? {
+          ...merged,
+          parts: undefined,
+          description: String(merged.description).replace(
+            " Clients book inside the service area you set here.",
+            lines[0] === "training" ? " Your service area is on Zones." : "",
+          ),
+        }
+      : {
+          ...merged,
+          parts,
+          description: String(merged.description).replace(
+            "Set your service area, and a price for each",
+            "Set a price for each",
+          ),
+        };
   if (lines.length === 1 && lines[0] === "pet_sitting")
     return {
       ...step,

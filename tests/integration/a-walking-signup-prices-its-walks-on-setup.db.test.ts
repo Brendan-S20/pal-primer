@@ -263,9 +263,17 @@ describe.skipIf(!dbEnabled)(
         expect(byLength(ws, 20).base_price_cents).toBeNull();
         const { walksPricedForSetup } = await import("@/lib/setup-walk-prices");
         expect(walksPricedForSetup(ws)).toBe(true);
-        // Read back the way the server reads it: done, and still on /setup.
+        // Read back the way the server reads it: the walks part done, still
+        // on /setup. The step itself also waits on the service area (#958),
+        // which a walker sets beside the walks; that half is
+        // a-walker-is-in-area-once-setup-is-done.db.test.ts.
         const step = await setupStatus(owner);
-        expect(step).toMatchObject({ label: "Price your walks", to: "/setup", done: true });
+        expect(step).toMatchObject({ label: "Price your walks", to: "/setup" });
+        expect(step.parts?.map((p) => [p.id, p.done])).toEqual([
+          ["area", false],
+          ["walks", true],
+        ]);
+        expect(step.done).toBe(false);
       });
     });
 

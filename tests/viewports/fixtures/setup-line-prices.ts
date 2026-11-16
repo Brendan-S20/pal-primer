@@ -12,7 +12,7 @@
 // nothing (CLAUDE.md).
 
 import * as fx from "./dataset";
-import { BASE_STUBS } from "./stub-backend";
+import { BASE_STUBS, SERVICE_AREA_PART } from "./stub-backend";
 
 const id = (n: string) => `aaaaaaaa-0000-4000-8000-00000000${n}`;
 const svc = (
@@ -85,7 +85,7 @@ const ONE_LINE: Record<string, Record<string, unknown>> = {
   pet_sitting: {
     label: "Price your sitting services",
     description:
-      "Set what a Drop-in, an Overnight stay and a House sit cost before booking your first stay. New clients are quoted these prices.",
+      "Set what a Drop-in, an Overnight stay and a House sit cost before booking your first stay. New clients are quoted these prices. Clients book inside the service area you set here.",
     to: "/setup",
     cta: "Price stays",
     gate: "/settings/services",
@@ -93,7 +93,7 @@ const ONE_LINE: Record<string, Record<string, unknown>> = {
   mobile_grooming: {
     label: "Review your grooming prices, vaccines and buffer",
     description:
-      "Price the size grid, and review required vaccines and setup, cleanup and travel minutes. New clients are quoted these prices.",
+      "Price the size grid, and review required vaccines and setup, cleanup and travel minutes. New clients are quoted these prices. Clients book inside the service area you set here.",
     to: "/setup",
     cta: "Review grooming setup",
     gate: "/settings/services",
@@ -101,7 +101,7 @@ const ONE_LINE: Record<string, Record<string, unknown>> = {
   training: {
     label: "Price your lessons",
     description:
-      "Price your lesson package, turn it on, and add the skills a trainer scores. New clients are quoted these prices. Your service area is on Zones.",
+      "Price your lesson package, turn it on, and add the skills a trainer scores. New clients are quoted these prices. Clients book inside the service area you set here.",
     to: "/setup",
     cta: "Price lessons",
     gate: "/settings/services",
@@ -114,17 +114,19 @@ const PART_OF: Record<string, keyof typeof PART> = {
   training: "lessons",
 };
 
-/** The price step for a business running these of the three lines. */
+/** The price step for a business running these of the three lines, as the
+ *  server words it with #958 merged: the service area is a part, first, and
+ *  a one-line business keeps its line's wording with the area beside it. */
 function zonesStep(lines: string[]) {
-  if (lines.length === 1) return { ...ONE_LINE[lines[0]], done: false };
-  const parts = lines.map((l) => ({ ...PART[PART_OF[l]], done: false }));
+  const parts = [SERVICE_AREA_PART, ...lines.map((l) => ({ ...PART[PART_OF[l]], done: false }))];
+  if (lines.length === 1) return { ...ONE_LINE[lines[0]], done: false, parts };
   const nouns = lines.map(
     (l) => ({ pet_sitting: "stays", mobile_grooming: "grooms", training: "lessons" })[l],
   );
   const list = `${nouns.slice(0, -1).join(", ")} and ${nouns[nouns.length - 1]}`;
   return {
     label: "Price your services",
-    description: `You run ${lines.length} services. Set a price for each: ${list}. New clients are quoted these prices.`,
+    description: `You run ${lines.length} services. Set your service area, and a price for each: ${list}. New clients are quoted these prices.`,
     done: false,
     to: "/setup",
     cta: "Set your prices",
