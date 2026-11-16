@@ -538,6 +538,16 @@ export const saveMyDirectoryProfile = createServerFn({ method: "POST" })
     const { orgId, role } = await caller(context.supabase, context.userId);
     if (role !== "owner") throw new Error(ONLY_AN_OWNER_CHANGES_THE_DIRECTORY);
     const sb = context.supabase as SupabaseClient;
+    // What a visitor saw before this save, so the directory site's cache is
+    // told the right thing afterwards (#939). A failed read is "not listed
+    // under any slug": the save goes ahead, and a listing saved as published
+    // still revalidates as a publish.
+    const before = await sb
+      .from("directory_profiles")
+      .select("slug, published")
+      .eq("organization_id", orgId)
+      .maybeSingle();
+    const was = before.error ? null : (before.data as { slug: string; published: boolean } | null);
     const { error } = await sb.rpc("set_directory_profile", {
       _org: orgId,
       _slug: data.slug,
@@ -563,6 +573,34 @@ export const saveMyDirectoryProfile = createServerFn({ method: "POST" })
     }
     // The directory switch and policy (step 7), owner-only in the database
     // too, and written only when the caller sent them (#929).
-    await saveDirectoryBooking(context.supabase, orgId, data);
+    // The profile is written by now, so the directory site is told whatever
+    // happens to the booking write below: a booking error must not leave the
+    // public pages showing the old listing.
+    try {
+      await saveDirectoryBooking(context.supabase, orgId, data);
+    } finally {
+      await revalidateAfterProfileSave(was, { slug: data.slug, published: data.published });
+    }
     return { ok: true };
   });
+
+/**
+ * Tell the directory site (DIRECTORY_BRAND) about a saved profile (#939): publish, unpublish or
+ * update for the new slug, and an update for the old slug too when a listed
+ * profile changed its address. Nothing for an unlisted profile saved as
+ * unlisted. Never throws (revalidateMypetsListing does not), and bounded by
+ * its timeouts. Exported for its test.
+ */
+export async function revalidateAfterProfileSave(
+  was: { slug: string; published: boolean } | null,
+  now: { slug: string; published: boolean },
+): Promise<void> {
+  const { revalidateMypetsListing, revalidateEventForSave } =
+    await import("@/lib/mypets-revalidate.server");
+  const event = revalidateEventForSave(!!was?.published, now.published);
+  if (!event) return;
+  await revalidateMypetsListing(event, now.slug);
+  if (was?.published && was.slug && was.slug !== now.slug) {
+    await revalidateMypetsListing("unpublish", was.slug);
+  }
+}

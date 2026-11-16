@@ -96,6 +96,56 @@ async function caller(supabase: unknown, userId: string) {
   return resolveCaller(supabase, userId);
 }
 
+/**
+ * Tell the directory site (DIRECTORY_BRAND) that a listing's photos changed (#939): event
+ * "update" with the listing's slug. `slugFor` finds the slug; a business
+ * with no profile has no listing to refresh, so nothing is sent. Never
+ * throws: a failed lookup or call is a warning, and the photo change it
+ * follows has already happened.
+ */
+async function revalidatePhotosOf(slugFor: () => Promise<string | null>): Promise<void> {
+  try {
+    const slug = await slugFor();
+    if (!slug) return;
+    const { revalidateMypetsListing } = await import("@/lib/mypets-revalidate.server");
+    await revalidateMypetsListing("update", slug);
+  } catch {
+    console.warn("mypets revalidate skipped: the listing could not be looked up");
+  }
+}
+
+/** The caller's own published listing slug, read on their own client. */
+async function ownListedSlug(sb: SupabaseClient, orgId: string): Promise<string | null> {
+  const { data, error } = await sb
+    .from("directory_profiles")
+    .select("slug, published")
+    .eq("organization_id", orgId)
+    .maybeSingle();
+  if (error || !data || !data.published) return null;
+  return typeof data.slug === "string" ? data.slug : null;
+}
+
+/** The slug of the listing a photo belongs to, for the moderator. Read with
+ *  the service role (a read, after assertModerator): a platform admin's own
+ *  client has no policy on another business's profile row. */
+export async function listingSlugForPhoto(photoId: string): Promise<string | null> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const admin = db(supabaseAdmin);
+  const { data: photo, error } = await admin
+    .from("directory_profile_photos")
+    .select("organization_id")
+    .eq("id", photoId)
+    .maybeSingle();
+  if (error || !photo?.organization_id) return null;
+  const { data: profile, error: pErr } = await admin
+    .from("directory_profiles")
+    .select("slug")
+    .eq("organization_id", photo.organization_id)
+    .maybeSingle();
+  if (pErr || !profile) return null;
+  return typeof profile.slug === "string" ? profile.slug : null;
+}
+
 /** How long a preview link lives. Long enough to look, short enough to rot. */
 const PREVIEW_SECONDS = 600;
 
@@ -263,6 +313,9 @@ export const updateMyDirectoryPhoto = createServerFn({ method: "POST" })
         throw new Error(`A listing has at most ${DIRECTORY_PHOTOS_MAX} photos. Remove one first.`);
       throw new Error(error.message);
     }
+    // A new order, or a new alt (which takes an approved photo off the
+    // listing until it is reviewed again), changes what visitors see.
+    await revalidatePhotosOf(() => ownListedSlug(db(context.supabase), orgId));
     return { ok: true };
   });
 
@@ -290,6 +343,7 @@ export const removeMyDirectoryPhoto = createServerFn({ method: "POST" })
       const { error: rmErr } = await sb.storage.from(DIRECTORY_PHOTO_BUCKET).remove(paths);
       if (rmErr) console.error("directory photo file not removed", orgId, rmErr);
     }
+    if (paths.length) await revalidatePhotosOf(() => ownListedSlug(sb, orgId));
     return { ok: true };
   });
 
@@ -330,6 +384,9 @@ export const moderateDirectoryPhoto = createServerFn({ method: "POST" })
       _approve: data.approve,
     });
     if (error) throw new Error(error.message);
+    // Approved: the photo joins the listing. Rejected: it leaves it, if it
+    // was there. Either way the directory site is told (#939).
+    await revalidatePhotosOf(() => listingSlugForPhoto(data.id));
     return { ok: true };
   });
 
@@ -337,8 +394,10 @@ export const moderateDirectoryPhoto = createServerFn({ method: "POST" })
 
 /** How long a browser or CDN may keep a served photo. A photo rejected after
  *  approval stops being served by the origin at once and from caches within
- *  this many seconds. */
-export const PUBLIC_PHOTO_MAX_AGE = 300;
+ *  this many seconds. 60 s, the same window the directory site promises for a
+ *  listing change (#939): it was 300, so a rejected photo outlived the
+ *  revalidated page that no longer named it by four minutes. */
+export const PUBLIC_PHOTO_MAX_AGE = 60;
 
 /**
  * GET /d/{slug}/photos/{key}: the bytes of an APPROVED photo of a published
@@ -391,7 +450,9 @@ export async function servePublicDirectoryPhoto(
     status: 200,
     headers: {
       "Content-Type": type,
-      "Cache-Control": `public, max-age=${PUBLIC_PHOTO_MAX_AGE}`,
+      // s-maxage too, so a shared cache (Cloudflare in front of Lovable)
+      // keeps it no longer than a browser does.
+      "Cache-Control": `public, max-age=${PUBLIC_PHOTO_MAX_AGE}, s-maxage=${PUBLIC_PHOTO_MAX_AGE}`,
       "X-Content-Type-Options": "nosniff",
       // A directory photo is not a page for search engines either.
       "X-Robots-Tag": "noindex",

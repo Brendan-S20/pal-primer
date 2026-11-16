@@ -186,9 +186,13 @@ function DirectorySettings() {
       }),
     onSuccess: (_r, publish) => {
       toast.success(publish ? "Your profile is live in the directory" : "Saved. Not listed.");
-      qc.invalidateQueries({ queryKey: ["my-directory-profile"] });
     },
     onError: (e: Error) => toast.error(e.message),
+    // Refetch on an error too (#939). The profile (published flag included)
+    // is written before Book online is; when that second write failed, the
+    // page used to keep the old answer, so the header still said "Not
+    // listed" over a listing that was live, and the owner saved again.
+    onSettled: () => qc.invalidateQueries({ queryKey: ["my-directory-profile"] }),
   });
 
   if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
