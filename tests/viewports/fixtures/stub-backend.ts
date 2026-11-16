@@ -201,6 +201,54 @@ const SEEDED_WALKS = [
 }));
 
 /**
+ * getMyUpcomingDays, as it would answer at `now`: its first row is the org's
+ * today AT THAT INSTANT, not at the instant the worker imported the dataset.
+ *
+ * A function rather than a constant since #941. A spec that pins the browser
+ * to a moment (11:59 PM, 12:01 AM) has to serve the schedule the server would
+ * have built at that same moment, or it is testing two clocks against each
+ * other again — which is the flake this exists to make impossible.
+ */
+export function myUpcomingDays(now: Date) {
+  const today = fx.day(0, now);
+  const plus = (n: number) => fx.day(n, now);
+  return {
+    staff: {
+      id: fx.STAFF[0].id,
+      organization_id: fx.ORG_ID,
+      display_name: "Dana Whitfield-Ramirez",
+    },
+    days: [
+      {
+        date: today,
+        stops: 12,
+        done: 5,
+        zones: ["Grosse Pointe Woods & Harper Woods", "Downriver \u2014 Taylor"],
+        firstEta: `${today}T13:05:00.000Z`,
+        lastEta: `${today}T21:40:00.000Z`,
+      },
+      {
+        date: plus(1),
+        stops: 8,
+        done: 0,
+        zones: ["Southgate"],
+        firstEta: `${plus(1)}T13:15:00.000Z`,
+        lastEta: `${plus(1)}T19:50:00.000Z`,
+      },
+      // A gap here on purpose: day+2 is a day off and must simply not appear.
+      {
+        date: plus(3),
+        stops: 1,
+        done: 0,
+        zones: [],
+        firstEta: null,
+        lastEta: null,
+      },
+    ],
+  };
+}
+
+/**
  * Name → reply. Named for the export, so one entry serves every route that
  * calls it and a rename in `src/lib` shows up here as an unstubbed call
  * rather than as a wrong-looking page.
@@ -1477,40 +1525,7 @@ export const BASE_STUBS: Record<string, Stub> = {
   // renders; and the dates are spread rather than consecutive, because "which
   // days they work" is only a real answer if days off are absent rather than
   // shown as zero.
-  getMyUpcomingDays: {
-    staff: {
-      id: fx.STAFF[0].id,
-      organization_id: fx.ORG_ID,
-      display_name: "Dana Whitfield-Ramirez",
-    },
-    days: [
-      {
-        date: fx.TODAY,
-        stops: 12,
-        done: 5,
-        zones: ["Grosse Pointe Woods & Harper Woods", "Downriver \u2014 Taylor"],
-        firstEta: `${fx.TODAY}T13:05:00.000Z`,
-        lastEta: `${fx.TODAY}T21:40:00.000Z`,
-      },
-      {
-        date: fx.day(1),
-        stops: 8,
-        done: 0,
-        zones: ["Southgate"],
-        firstEta: `${fx.day(1)}T13:15:00.000Z`,
-        lastEta: `${fx.day(1)}T19:50:00.000Z`,
-      },
-      // A gap here on purpose: day(2) is a day off and must simply not appear.
-      {
-        date: fx.day(3),
-        stops: 1,
-        done: 0,
-        zones: [],
-        firstEta: null,
-        lastEta: null,
-      },
-    ],
-  },
+  getMyUpcomingDays: myUpcomingDays(fx.FIXTURE_NOW),
   // ── THE WASTE LOG, a tab on every tech's bar ─────────────────────────────
   //
   // Until a-tech-who-reads-spanish measured it, nothing answered these and the
