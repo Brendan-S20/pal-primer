@@ -152,7 +152,7 @@ const en = {
     visits: "Your next visit will show here once it is scheduled.",
     cards: "We accept credit and debit cards. Your card details never touch our servers.",
     pay: "Payments are processed securely. Cards accepted.",
-    texts: "Texts are coming soon. Until then, these updates come by email.",
+    texts: "Text messages aren't turned on here yet. Until then, these updates come by email.",
     cardPayments: "Get paid by card, straight to your own bank account.",
     held: "On your plan, but it has not launched yet, so it does nothing on your account. You can remove it any time.",
     soon: "Coming soon",
@@ -170,7 +170,7 @@ const en = {
       "Founding pricing: the first {{spots}} paying accounts get {{percent}}% off their plan price for as long as they stay subscribed. Extra people and add-ons are billed at regular price. Use code {{code}} at checkout.",
     remaining: "{{left}} of {{spots}} left.",
     help0:
-      "Clients sign in with a one-time code sent by email. Codes by text are coming soon. If a client can't get their code, staff can read one to them over the phone from the client's detail page in [Clients](/clients).",
+      "Clients sign in with a one-time code sent by email. Once texting is set up for your business, codes can go by text too. If a client can't get their code, staff can read one to them over the phone from the client's detail page in [Clients](/clients).",
     help1:
       "Coming soon: marketing posts, and the [AI Receptionist](article:platform-addons), which will answer client texts and calls for you. Neither is switched on for anyone yet.",
     help2:
@@ -529,6 +529,7 @@ const en = {
     length: "{{minutes}} min walk",
     minutesOut: "Out {{minutes}} min",
     groupWalk: "Group walk",
+    overDogCap: "Over the dog cap: {{dogs}} dogs, the cap is {{cap}}",
     pickupOrder: "Pickup order",
     thisStop: "This stop",
     wayIn: "How you get in",
@@ -1353,6 +1354,12 @@ const en = {
     checkAgain: "Check again",
     couldNotCheck: "Couldn't check right now. Try again in a moment.",
     stillOff: "Still turned off. Ask the owner to reactivate you.",
+    startOwn: "Start my own business",
+    startOwnExplain: "This takes you off <business/> for good, so you can start a business of your own or join another with this email. Their records stay with them. To come back later, they invite you again.",
+    startOwnConfirm: "Leave and start my own",
+    startOwnCancel: "Keep waiting",
+    startOwnBusy: "Leaving…",
+    startOwnFailed: "Couldn't do that right now. Try again in a moment.",
   },
   /** Settings > Services, pet sitting: the nightly stay-summary catch-up
    *  (#747, migration 20261109170000). */

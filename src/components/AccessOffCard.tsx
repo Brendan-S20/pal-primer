@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { UserX } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,12 +19,35 @@ export function AccessOffCard({
   state,
   onCheckAgain,
   onSignOut,
+  onStartOwn,
 }: {
   state: AccessOffState;
   onCheckAgain: () => void;
   onSignOut: () => void;
+  /**
+   * Leave the business that turned this person off, so the address can start
+   * or join another (#765). Absent: the button is not drawn. Resolves when
+   * the person has been sent on; throws to say it could not be done.
+   */
+  onStartOwn?: () => Promise<void>;
 }) {
   const { t } = useTranslation();
+  // Two taps, not one: leaving cannot be undone from this side.
+  const [confirming, setConfirming] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [leaveFailed, setLeaveFailed] = useState(false);
+  const leave = async () => {
+    if (!onStartOwn) return;
+    setLeaveFailed(false);
+    setLeaving(true);
+    try {
+      await onStartOwn();
+    } catch {
+      setLeaveFailed(true);
+    } finally {
+      setLeaving(false);
+    }
+  };
   const business =
     state.kind === "off" && state.business ? state.business : t("accessOff.thisBusiness");
 
@@ -53,13 +77,50 @@ export function AccessOffCard({
         </p>
       )}
       <div className="mt-5 flex flex-col gap-2">
-        <Button onClick={onCheckAgain} disabled={state.kind === "checking"}>
+        <Button onClick={onCheckAgain} disabled={state.kind === "checking" || leaving}>
           {t("accessOff.checkAgain")}
         </Button>
-        <Button variant="outline" onClick={onSignOut}>
+        {onStartOwn && state.kind === "off" && !confirming && (
+          <Button variant="outline" onClick={() => setConfirming(true)}>
+            {t("accessOff.startOwn")}
+          </Button>
+        )}
+        <Button variant="outline" onClick={onSignOut} disabled={leaving}>
           {t("nav.signOut")}
         </Button>
       </div>
+      {onStartOwn && state.kind === "off" && confirming && (
+        <div
+          className="mt-4 min-w-0 rounded-md border p-3 text-start"
+          data-testid="start-own-confirm"
+        >
+          <p className="break-words text-sm text-muted-foreground">
+            <Trans
+              i18nKey="accessOff.startOwnExplain"
+              components={{
+                business: <bdi className="font-medium text-foreground">{business}</bdi>,
+              }}
+            />
+          </p>
+          {leaveFailed && (
+            <p className="mt-2 text-sm text-destructive" role="alert">
+              {t("accessOff.startOwnFailed")}
+            </p>
+          )}
+          <div className="mt-3 flex flex-col gap-2">
+            <Button
+              onClick={() => void leave()}
+              disabled={leaving}
+              aria-busy={leaving || undefined}
+            >
+              {leaving ? t("accessOff.startOwnBusy") : t("accessOff.startOwnConfirm")}
+            </Button>
+            <Button variant="outline" onClick={() => setConfirming(false)} disabled={leaving}>
+              {t("accessOff.startOwnCancel")}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

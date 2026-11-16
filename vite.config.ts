@@ -8,7 +8,7 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { loadEnv } from "vite";
+import { loadEnv, type Connect, type Plugin } from "vite";
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 import { VitePWA } from "vite-plugin-pwa";
 
@@ -30,6 +30,70 @@ Object.assign(process.env, serverEnv);
 // the web product and not something to change as a side effect of fixing the
 // native one. `npm run build:native` sets it; `npm run build` is untouched.
 const NATIVE_BUILD = process.env.NATIVE_BUILD === "1";
+
+// ── A PREFLIGHT THE DEV SERVER ANSWERED BEFORE THE ROUTE COULD ───────────
+//
+// /api/public/directory/quotes answers its own CORS preflight: it echoes the
+// Origin only for the directory app (src/lib/directory-quote-cors.ts). On the
+// deployed build that is all there is. Under `vite dev` it never ran: Vite
+// installs its own `cors` middleware ahead of every route, and that
+// middleware ends every OPTIONS request itself -- 204, its default method
+// list, and no Access-Control-Allow-Origin for any origin that is not
+// localhost. The E2E suite, which drives the dev server, saw exactly that
+// (#909, job 131382922076), and a person testing the directory app against a
+// local HoundStack would have too.
+//
+// `server.cors` itself is left alone: the Lovable wrapper warns that its
+// sandbox depends on it (and strips a user's `server.cors`). Instead this
+// hands the preflight for the routes listed here to the ROUTE'S OWN OPTIONS
+// handler, loaded through Vite, so dev and production answer with the same
+// code. Every other request, and every other path's preflight, goes on to
+// Vite exactly as before. Dev only (`apply: "serve"`); a production build
+// does not contain it.
+const ROUTES_THAT_ANSWER_THEIR_OWN_PREFLIGHT: Record<string, string> = {
+  "/api/public/directory/quotes": "/src/routes/api/public/directory/quotes.ts",
+};
+
+type RouteModule = {
+  Route: {
+    options: {
+      server: { handlers: { OPTIONS: (ctx: { request: Request }) => Promise<Response> } };
+    };
+  };
+};
+
+const preflightToTheRoute: Plugin = {
+  name: "houndstack:preflight-to-the-route",
+  apply: "serve",
+  configureServer(server) {
+    const handle: Connect.NextHandleFunction = async (req, res, next) => {
+      const file = ROUTES_THAT_ANSWER_THEIR_OWN_PREFLIGHT[(req.url ?? "").split("?")[0]];
+      if (req.method !== "OPTIONS" || !file) return next();
+      try {
+        const mod = (await server.ssrLoadModule(file)) as RouteModule;
+        const headers = new Headers();
+        for (const [k, v] of Object.entries(req.headers)) {
+          if (typeof v === "string") headers.set(k, v);
+          else if (Array.isArray(v)) headers.set(k, v.join(", "));
+        }
+        const request = new Request(`http://${req.headers.host ?? "localhost"}${req.url}`, {
+          method: "OPTIONS",
+          headers,
+        });
+        const response = await mod.Route.options.server.handlers.OPTIONS({ request });
+        res.statusCode = response.status;
+        response.headers.forEach((value, key) => res.setHeader(key, value));
+        res.end();
+      } catch (e) {
+        next(e);
+      }
+    };
+    // FIRST in the stack, not merely before the plugin-added middleware:
+    // Vite installs its cors middleware before configureServer hooks run,
+    // so a plain `use` lands behind it and never sees the preflight.
+    server.middlewares.stack.unshift({ route: "", handle });
+  },
+};
 
 // ── DOES THIS BINARY HAVE A FIREBASE CONFIG? ──────────────────────────────
 //
@@ -585,6 +649,7 @@ export default defineConfig({
       },
     },
     plugins: [
+      preflightToTheRoute,
       // ── THE ALIAS BELOW WAS DEAD, AND THE BINARY SHIPPED THE REAL ONE ──
       //
       // `resolve.alias` carried a NATIVE_BUILD entry mapping

@@ -1,7 +1,7 @@
 // Zone create/edit drawer (QA round 3, C5/G5): the Zones page used inline
 // cards with a ZIP-only creation form. This drawer follows the app-wide
 // EditDrawer pattern and carries everything a zone needs up front: name,
-// residential/commercial type, priority, ZIPs, REQUIRED map coverage
+// residential/commercial type, ZIPs, REQUIRED map coverage
 // (centered on the first typed ZIP), residential pricing, and commercial
 // rates. Server-side validation in zones.functions.ts mirrors every rule.
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -15,6 +15,7 @@ import {
   listZones,
   zipsInZoneShape,
   geocodePostal,
+  getNewZoneCenter,
   splitZipInput,
   parseUsZips,
   normalizeUsZip,
@@ -25,6 +26,7 @@ import { SectionLabel } from "@/components/client-detail/primitives";
 import { ZoneCoverageMap, type CoverageValue } from "@/components/ZoneCoverageMap";
 import { Badge } from "@/components/ui/badge";
 import { getStandardPricing } from "@/lib/subscriptions.functions";
+import { standardPriceLine } from "@/lib/standard-price";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -268,6 +270,13 @@ export function ZoneDrawer({
   activeClientsKnown?: boolean;
 }) {
   const isNew = !zone;
+  const getCenter = useServerFn(getNewZoneCenter);
+  const { data: openingCenter } = useQuery({
+    queryKey: ["new-zone-center"],
+    queryFn: () => getCenter(),
+    enabled: open && isNew,
+    staleTime: 60_000,
+  });
   // The switch saves on its own (#449); this only keeps the drawer's copy of
   // the status current while it stays open.
   const [enabledNow, setEnabledNow] = useState<boolean>(zone?.enabled !== false);
@@ -314,53 +323,38 @@ export function ZoneDrawer({
   const [zoneType, setZoneType] = useState<ZoneType>(
     (zone?.account_type as ZoneType) ?? (commercialEnabled ? "all" : "residential"),
   );
-  const [priority, setPriority] = useState<string>(String(zone?.priority ?? 0));
   const [zipState, setZipState] = useState<ZipListState>(() => initialZipState(zone?.zip_codes));
   const zips = zipState.zips;
 
-  // Residential pricing. A NEW zone starts from the org's standard price
-  // (Settings > Preferences) when one is set -- the owner already told the
-  // app what a visit costs, and $25 + $5 was a number nobody chose. Seeded
-  // once, and only over the untouched placeholders.
+  // Residential pricing (#860). The standard price is the service's, set in
+  // Settings → Services. A zone's own price is an OVERRIDE: blank means this
+  // zone charges the standard price, so a new zone starts blank rather than
+  // with a copy of the standard (a copy would stop following it). Shown beside
+  // the field as "Standard: $X" so nobody has to guess which price applies.
   const [basePrice, setBasePrice] = useState<string>(
-    zone ? ((zone.base_price_cents ?? 0) / 100).toFixed(2) : "25.00",
+    zone && zone.base_price_cents != null ? (zone.base_price_cents / 100).toFixed(2) : "",
   );
   const [perDog, setPerDog] = useState<string>(
-    zone ? ((zone.per_dog_addl_cents ?? 0) / 100).toFixed(2) : "5.00",
+    zone && zone.base_price_cents != null ? ((zone.per_dog_addl_cents ?? 0) / 100).toFixed(2) : "",
   );
   const stdFn = useServerFn(getStandardPricing);
   const stdQ = useQuery({
     queryKey: ["std-pricing"],
     queryFn: () => stdFn(),
-    enabled: isNew,
     staleTime: 60_000,
   });
-  const [pricedFromStandard, setPricedFromStandard] = useState<string | null>(null);
-  const stdSeeded = useRef(false);
-  useEffect(() => {
-    const std = stdQ.data;
-    if (!isNew || stdSeeded.current || !std || std.basePriceCents == null) return;
-    stdSeeded.current = true;
-    if (basePrice !== "25.00" || perDog !== "5.00") return; // already typed over
-    const b = (std.basePriceCents / 100).toFixed(2);
-    const d = ((std.perDogAddlCents ?? 0) / 100).toFixed(2);
-    setBasePrice(b);
-    setPerDog(d);
-    setPricedFromStandard(`${b}|${d}`);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stdQ.data]);
-  const showsStandard = pricedFromStandard === `${basePrice}|${perDog}`;
+  const std = stdQ.data;
 
-  // An existing zone that uses a note, a non-default type or a priority shows
-  // them; anything else starts with them folded away.
+  // An existing zone that uses a note or a non-default type shows them;
+  // anything else starts with them folded away. (The zone's rank in the
+  // business's list is set on Settings > Zones & pricing since #858, not typed here.)
   const [moreOpen, setMoreOpen] = useState<boolean>(
     !!zone &&
       (!!zone.price_note ||
-        (zone.priority ?? 0) !== 0 ||
         // Typed other than a new zone here would be: worth seeing.
         (zone.account_type ?? "all") !== (commercialEnabled ? "all" : "residential")),
   );
-  const showMore = moreOpen || !!priceNote || priority !== "0";
+  const showMore = moreOpen || !!priceNote;
   const [initialCleanup, setInitialCleanup] = useState<string>(
     zone ? ((zone.initial_cleanup_cents ?? 0) / 100).toFixed(2) : "0",
   );
@@ -633,9 +627,12 @@ export function ZoneDrawer({
         postalPrefix: zone?.postal_prefix ?? undefined,
         accountType: zoneType === "all" ? null : zoneType,
         priceNote: priceNote || null,
-        priority: parseInt(priority, 10) || 0,
-        basePriceCents: Math.round((parseFloat(basePrice) || 0) * 100),
-        perDogAddlCents: Math.round((parseFloat(perDog) || 0) * 100),
+        // Chips the owner removed during this edit: the server's save-time
+        // fill (#858) leaves them out rather than putting them back.
+        zipCodesRemoved: zipState.dismissed,
+        // Blank is "no override: charge the standard price" (#860).
+        basePriceCents: basePrice.trim() ? Math.round((parseFloat(basePrice) || 0) * 100) : null,
+        perDogAddlCents: basePrice.trim() ? Math.round((parseFloat(perDog) || 0) * 100) : null,
         initialCleanupCents: Math.round((parseFloat(initialCleanup) || 0) * 100),
         pricingMode,
         pricePerSqftCents: parseFloat(perSqft) > 0 ? parseFloat(perSqft) * 100 : 0,
@@ -676,7 +673,7 @@ export function ZoneDrawer({
       open={open}
       onClose={onClose}
       title={isNew ? "New zone" : `Edit ${zone.name}`}
-      description="Coverage, priority, and pricing for this service area."
+      description="Coverage, ZIPs and pricing for this service area."
       size="lg"
       dirty={dirty}
     >
@@ -729,9 +726,9 @@ export function ZoneDrawer({
           )}
         </div>
 
-        {/* Note, type and priority: each has a sensible default and most zones
-            never change one, so on a NEW zone they wait behind one button. A
-            zone that already uses any of them opens with them showing. */}
+        {/* Note and type: each has a sensible default and most zones never
+            change one, so on a NEW zone they wait behind one button. A zone
+            that already uses either opens with them showing. */}
         {showMore ? (
           <>
             <div className="space-y-2">
@@ -761,20 +758,11 @@ export function ZoneDrawer({
                   When zones overlap, a property prefers a zone typed for its account.
                 </p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="zone-priority">Priority</Label>
-                <Input
-                  id="zone-priority"
-                  type="number"
-                  inputMode="numeric"
-                  className="w-32"
-                  value={priority}
-                  onChange={(e) => mark(setPriority)(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  When zones overlap at the same match level, the higher priority wins.
-                </p>
-              </div>
+              <p className="text-xs text-muted-foreground sm:self-end" data-testid="zone-rank-note">
+                {isNew
+                  ? "A new zone starts at the bottom of the ranking. Move it up on the Zones & pricing page."
+                  : "Which zone wins a ZIP both list is set by the ranking on the Zones & pricing page."}
+              </p>
             </div>
           </>
         ) : (
@@ -785,103 +773,110 @@ export function ZoneDrawer({
             aria-expanded={false}
             onClick={() => setMoreOpen(true)}
           >
-            <Plus className="mr-1 h-3.5 w-3.5 shrink-0" /> Note, zone type and priority
+            <Plus className="mr-1 h-3.5 w-3.5 shrink-0" /> Note and zone type
           </Button>
         )}
 
-        <div className="space-y-2">
-          <SectionLabel>Map coverage (required)</SectionLabel>
-          <p className="text-xs text-muted-foreground">
-            Draw a polygon or set a center with a radius or drive time. The ZIPs inside it fill in
-            below.
-          </p>
-          <ZoneCoverageMap
-            initial={initialCoverage}
-            onChange={handleCoverage}
-            focusPoint={focusPoint}
-            height={300}
-          />
-          {!coverageOk && (
-            <p className="text-xs text-destructive">
-              Map coverage is required. Click the map to place the center or draw a polygon.
+        {/* The map and the ZIP list it fills are one step, so on a laptop they
+            sit side by side: the drawer is 896px wide there, and stacked, a
+            300px map pushed the ZIPs below the fold at 1280x800 under copy
+            that said they "fill in below". A phone stacks them. */}
+        <div className="space-y-5 lg:grid lg:grid-cols-2 lg:gap-5 lg:space-y-0">
+          <div className="space-y-2">
+            <SectionLabel>Map coverage (required)</SectionLabel>
+            <p className="text-xs text-muted-foreground">
+              Draw a polygon or set a center with a radius or drive time. The ZIPs inside it fill in
+              the list.
             </p>
-          )}
-        </div>
+            <ZoneCoverageMap
+              initial={initialCoverage}
+              openingCenter={isNew ? openingCenter : null}
+              onChange={handleCoverage}
+              focusPoint={focusPoint}
+              height={300}
+            />
+            {!coverageOk && (
+              <p className="text-xs text-destructive">
+                Map coverage is required. Click the map to place the center or draw a polygon.
+              </p>
+            )}
+          </div>
 
-        <div className="space-y-2" data-testid="zone-zips">
-          <Label>ZIP codes served (US)</Label>
-          <ZipChips
-            value={zips}
-            onAdd={handleAddZips}
-            onRemove={handleRemoveZips}
-            claimed={claimed}
-            describedBy="zone-zips-help"
-          />
-          <p
-            className="text-xs text-muted-foreground"
-            aria-live="polite"
-            data-testid="zone-zip-fill-status"
-          >
-            {fillStatusText(fill, areaWord)}
-          </p>
-          {fill.status === "done" && missingFromArea.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed p-2 text-xs">
-              <span className="min-w-0 flex-1 text-muted-foreground">
-                {missingFromArea.length} {missingFromArea.length === 1 ? "ZIP" : "ZIPs"} inside{" "}
-                {areaWord} {missingFromArea.length === 1 ? "is" : "are"} not on the list.
-              </span>
-              <Button type="button" size="sm" variant="outline" onClick={fillFromArea}>
-                Fill ZIPs from the area
-              </Button>
-            </div>
-          )}
-          {claimedList.length > 0 && (
-            <div
-              className="space-y-1 text-xs text-amber-700 dark:text-amber-300"
-              data-testid="zone-zip-overlap"
+          <div className="space-y-2" data-testid="zone-zips">
+            <Label>ZIP codes served (US)</Label>
+            <ZipChips
+              value={zips}
+              onAdd={handleAddZips}
+              onRemove={handleRemoveZips}
+              claimed={claimed}
+              describedBy="zone-zips-help"
+            />
+            <p
+              className="text-xs text-muted-foreground"
+              aria-live="polite"
+              data-testid="zone-zip-fill-status"
             >
-              {claimedByZone.map(([zoneName, list]) => (
-                <p key={zoneName} className="break-words">
-                  {list.length === 1 ? "1 ZIP is" : `${list.length} ZIPs are`} also listed on{" "}
-                  <span className="font-medium">{zoneName}</span>: {list.slice(0, 12).join(", ")}
-                  {list.length > 12 ? `, and ${list.length - 12} more` : ""}.
-                </p>
-              ))}
-              <p>
-                An address in a ZIP two zones list goes to the one with the higher priority. Remove
-                the chip here to leave it to the other zone.
-              </p>
-            </div>
-          )}
-          {fill.status === "done" && edgeOffered.length > 0 && (
-            <div className="space-y-1.5 rounded-md bg-muted/40 p-2" data-testid="zone-zip-edge">
-              <p className="text-xs font-medium">Nearby ZIPs that only partly overlap</p>
-              <p className="text-xs text-muted-foreground">
-                Not added for you, because a listed ZIP claims every address in it, including the
-                part outside {areaWord}. Tap one to add it anyway.
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {edgeOffered.slice(0, 40).map((z) => (
-                  <Button
-                    key={z}
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-7 px-2 tabular-nums"
-                    aria-label={`Add ${z}`}
-                    onClick={() => handleAddZips([z])}
-                  >
-                    + {z}
-                  </Button>
-                ))}
+              {fillStatusText(fill, areaWord)}
+            </p>
+            {fill.status === "done" && missingFromArea.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed p-2 text-xs">
+                <span className="min-w-0 flex-1 text-muted-foreground">
+                  {missingFromArea.length} {missingFromArea.length === 1 ? "ZIP" : "ZIPs"} inside{" "}
+                  {areaWord} {missingFromArea.length === 1 ? "is" : "are"} not on the list.
+                </span>
+                <Button type="button" size="sm" variant="outline" onClick={fillFromArea}>
+                  Fill ZIPs from the area
+                </Button>
               </div>
-            </div>
-          )}
-          <p id="zone-zips-help" className="text-xs text-muted-foreground">
-            US 5-digit ZIPs only. Type one and press Enter, or paste a list. A ZIP+4 keeps its first
-            five digits, and four digits are read as a ZIP whose leading zero was lost (1810 becomes
-            01810). An address in a listed ZIP always beats another zone's radius.
-          </p>
+            )}
+            {claimedList.length > 0 && (
+              <div
+                className="space-y-1 text-xs text-amber-700 dark:text-amber-300"
+                data-testid="zone-zip-overlap"
+              >
+                {claimedByZone.map(([zoneName, list]) => (
+                  <p key={zoneName} className="break-words">
+                    {list.length === 1 ? "1 ZIP is" : `${list.length} ZIPs are`} also listed on{" "}
+                    <span className="font-medium">{zoneName}</span>: {list.slice(0, 12).join(", ")}
+                    {list.length > 12 ? `, and ${list.length - 12} more` : ""}.
+                  </p>
+                ))}
+                <p>
+                  An address in a ZIP two zones list goes to the one ranked higher on the Zones
+                  &amp; pricing page. Remove the chip here to leave it to the other zone.
+                </p>
+              </div>
+            )}
+            {fill.status === "done" && edgeOffered.length > 0 && (
+              <div className="space-y-1.5 rounded-md bg-muted/40 p-2" data-testid="zone-zip-edge">
+                <p className="text-xs font-medium">Nearby ZIPs that only partly overlap</p>
+                <p className="text-xs text-muted-foreground">
+                  Not added for you, because a listed ZIP claims every address in it, including the
+                  part outside {areaWord}. Tap one to add it anyway.
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {edgeOffered.slice(0, 40).map((z) => (
+                    <Button
+                      key={z}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 tabular-nums"
+                      aria-label={`Add ${z}`}
+                      onClick={() => handleAddZips([z])}
+                    >
+                      + {z}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <p id="zone-zips-help" className="text-xs text-muted-foreground">
+              US 5-digit ZIPs only. Type one and press Enter, or paste a list. A ZIP+4 keeps its
+              first five digits, and four digits are read as a ZIP whose leading zero was lost (1810
+              becomes 01810). An address in a listed ZIP always beats another zone's radius.
+            </p>
+          </div>
         </div>
 
         {showResidential && !showVisitPricing && (
@@ -894,18 +889,39 @@ export function ZoneDrawer({
             <SectionLabel>Residential pricing</SectionLabel>
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
-                <Label htmlFor="zone-bp">Base price / visit</Label>
-                <MoneyInput id="zone-bp" value={basePrice} onChange={mark(setBasePrice)} />
-                {showsStandard && (
-                  <p className="text-xs text-muted-foreground">
-                    From your standard pricing. Change it for this zone if it costs more or less
-                    here.
-                  </p>
-                )}
+                <Label htmlFor="zone-bp">Zone price / visit</Label>
+                <MoneyInput
+                  id="zone-bp"
+                  value={basePrice}
+                  onChange={mark(setBasePrice)}
+                  placeholder={
+                    std?.basePriceCents != null ? (std.basePriceCents / 100).toFixed(2) : undefined
+                  }
+                />
+                <p className="text-xs text-muted-foreground" data-testid="zone-standard-line">
+                  {standardPriceLine(std ? std.basePriceCents : null)}.{" "}
+                  {basePrice.trim()
+                    ? "This price applies only inside this zone."
+                    : "Blank: this zone charges the standard price."}
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="zone-pd">Each additional dog</Label>
-                <MoneyInput id="zone-pd" value={perDog} onChange={mark(setPerDog)} />
+                <MoneyInput
+                  id="zone-pd"
+                  value={perDog}
+                  onChange={mark(setPerDog)}
+                  placeholder={
+                    std?.perDogAddlCents != null
+                      ? (std.perDogAddlCents / 100).toFixed(2)
+                      : undefined
+                  }
+                />
+                {!basePrice.trim() && (
+                  <p className="text-xs text-muted-foreground">
+                    Used with a zone price. Without one, the standard extra-dog price applies.
+                  </p>
+                )}
               </div>
               {showInitialCleanup && (
                 <div className="space-y-2">
@@ -924,14 +940,23 @@ export function ZoneDrawer({
 
             {showAreaPricing && (
               <div className="space-y-2 rounded-md border bg-muted/20 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <Label className="text-sm font-medium">Pricing mode</Label>
+                {/* Label above, select full width (Product visual review): beside
+                    the label, the long Flat rate option ran past the drawer at 390
+                    and 768. A native select cannot wrap, so the box takes the whole
+                    row and a value still too long ends in an ellipsis inside it. */}
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <Label htmlFor="zone-pricing-mode" className="text-sm font-medium">
+                    Pricing mode
+                  </Label>
                   <select
+                    id="zone-pricing-mode"
                     value={pricingMode}
                     onChange={(e) => mark(setPricingMode)(e.target.value as any)}
-                    className="h-9 rounded-md border bg-background px-2 text-sm"
+                    className="h-9 w-full min-w-0 max-w-full truncate rounded-md border bg-background px-2 text-sm touch:min-h-11"
                   >
-                    <option value="flat">Flat rate (use base price above)</option>
+                    <option value="flat">
+                      Flat rate (zone price, or the standard price when blank)
+                    </option>
                     <option value="per_sqft">Per square foot of yard</option>
                     <option value="per_acre">Per acre of yard</option>
                   </select>

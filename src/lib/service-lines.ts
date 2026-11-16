@@ -165,7 +165,7 @@ export function customerCanRequestStay(availability: ServiceLineAvailability): b
 }
 
 export const SERVICE_LINE_LABEL: Record<ServiceLine, string> = {
-  pet_waste: "Pet waste removal (scooping)",
+  pet_waste: "Pet waste removal",
   dog_walking: "Dog walking",
   pet_sitting: "Pet sitting",
   mobile_grooming: "Mobile grooming",

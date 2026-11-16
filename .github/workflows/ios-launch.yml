@@ -9,6 +9,11 @@ name: iOS launch
 # from cold and a link while running. scripts/ios-launch-smoke.sh
 # is the implementation and says what it does and does not prove.
 #
+# By hand only (workflow_dispatch, release_signed_in ticked), a second step
+# repeats that on one iPad in a RELEASE build and, when the runner has the
+# credentials in its own environment, signed in (#726). Off for every other
+# trigger.
+#
 # ── WHY ─────────────────────────────────────────────────────────────────────
 #
 # #570: the app crashed on every launch on iOS 27.1, built with Xcode 27.1,
@@ -66,6 +71,33 @@ on:
     # Mondays 14:17 UTC.
     - cron: "17 14 * * 1"
   workflow_dispatch:
+    # #726: by hand only, launch ONE exact simulator (both identifiers, e.g.
+    # com.apple.CoreSimulator.SimRuntime.iOS-27-2 and
+    # com.apple.CoreSimulator.SimDeviceType.iPad-Air-11-inch-M3) instead of
+    # the automatic picks. Empty, which every other trigger is, changes
+    # nothing. A pinned pair the Mac cannot run fails; it never falls back.
+    inputs:
+      pin_runtime:
+        description: "Simulator runtime identifier to launch on (with pin_device_type)"
+        required: false
+        default: ""
+      pin_device_type:
+        description: "Simulator device type identifier (with pin_runtime)"
+        required: false
+        default: ""
+      # #726: by hand only, and off unless ticked. After the usual run, a
+      # second step builds the app in RELEASE (as Xcode Cloud does), launches
+      # it five times cold on iOS 27.2 on an iPad Air 11-inch (M4) (or on the
+      # pinned pair above, if one is given), and then, only if HS_EMAIL and
+      # HS_PASSWORD are already in the self-hosted runner's own environment,
+      # signs in through the form and cold-launches five more times signed in.
+      # Nothing in this file carries a credential; without them that half is
+      # skipped and says so in the job summary.
+      release_signed_in:
+        description: "Also run the Release, signed-in iPad launch check (#726)"
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   group: ios-launch-${{ github.ref }}
@@ -105,6 +137,23 @@ jobs:
         run: scripts/ios-launch-smoke.sh
         env:
           SMOKE_OUT: ${{ runner.temp }}/ios-launch-smoke
+          SMOKE_PIN_RUNTIME: ${{ inputs.pin_runtime }}
+          SMOKE_PIN_DEVICE_TYPE: ${{ inputs.pin_device_type }}
+
+      # #726: opt-in, workflow_dispatch only. Every other trigger has no
+      # inputs, so this is skipped and the job is exactly what it was. Runs
+      # even if the step above failed, so a Debug failure does not hide the
+      # Release answer; never after a cancel. scripts/ios-launch-smoke.sh
+      # ("RELEASE, SIGNED IN") says what it does with the runner's HS_EMAIL
+      # and HS_PASSWORD, and that it scrubs both from everything it keeps.
+      - name: Release, signed-in iPad launch (opt-in)
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && inputs.release_signed_in }}
+        run: scripts/ios-launch-smoke.sh
+        env:
+          SMOKE_OUT: ${{ runner.temp }}/ios-launch-smoke
+          SMOKE_RELEASE_SIGNED_IN: "1"
+          SMOKE_PIN_RUNTIME: ${{ inputs.pin_runtime }}
+          SMOKE_PIN_DEVICE_TYPE: ${{ inputs.pin_device_type }}
 
       - name: Keep the results
         if: always()

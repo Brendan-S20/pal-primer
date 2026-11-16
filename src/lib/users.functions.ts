@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { resolveCaller } from "@/lib/authz.server";
+import { hasPermission } from "@/lib/permissions";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   // Through the shared gate, so a person whose access is turned off is
@@ -49,25 +50,43 @@ export const listOrgUsers = createServerFn({ method: "GET" })
  * the TARGET is an owner is the database's to answer, from the stored row.
  */
 export const ONLY_AN_OWNER_OR_OFFICE_MANAGER_TURNS_PEOPLE_ON_OR_OFF =
-  "Only an owner or an office manager can turn people on or off.";
+  "Only someone allowed to manage the team can turn people on or off.";
 export const ONLY_AN_OWNER_OR_OFFICE_MANAGER_CHANGES_ROLES =
-  "Only an owner or an office manager can change roles.";
-export const NOT_ABOVE_YOUR_OWN_ROLE = "An office manager cannot give anyone a role above their own.";
+  "Only someone allowed to manage the team can change roles.";
+export const NOT_ABOVE_YOUR_OWN_ROLE =
+  "Nobody but an owner can give anyone a role above their own.";
 
-/** The roles each caller may hand out. An owner any; an office manager
- *  nothing above office manager. Mirrors change_user_role in 20261111120000. */
+/**
+ * The roles each caller may hand out: an owner any; anyone else nothing
+ * above their own. Since #863 "manage the team" is a permission the owner can
+ * turn on for a dispatcher too, so the rank rule is spelled out for every
+ * role rather than for the office manager alone. Mirrors change_user_role in
+ * 20261112010000.
+ */
 export const ROLES_A_CALLER_MAY_GRANT: Record<string, readonly string[]> = {
   owner: ["owner", "office_manager", "dispatcher", "tech"],
   office_manager: ["office_manager", "dispatcher", "tech"],
+  dispatcher: ["dispatcher", "tech"],
+  tech: ["tech"],
 };
 
+/**
+ * Who may turn people on or off and change roles: the owner, and anyone
+ * whose role holds manage_users after the owner's changes for it (#863). An
+ * office manager holds it by default (D7 as changed 2026-11-10); a dispatcher
+ * or technician does not, unless the owner turned it on for them. The
+ * database asks has_permission the same question (set_staff_active,
+ * change_user_role, the restrictive UPDATE policy on staff), and keeps the
+ * rules no permission lifts: never the owner's row, never a role above the
+ * caller's own.
+ */
 async function requireStaffAuthority(
   supabase: unknown,
   userId: string,
   refusal: string,
 ): Promise<{ orgId: string; role: string }> {
   const caller = await resolveCaller(supabase, userId);
-  if (caller.role !== "owner" && caller.role !== "office_manager") throw new Error(refusal);
+  if (!hasPermission(caller.role, "manage_users", caller.overrides)) throw new Error(refusal);
   return { orgId: caller.orgId, role: caller.role };
 }
 
@@ -112,8 +131,9 @@ export const setStaffActive = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ staffId: z.string().uuid(), active: z.boolean() }).parse(d))
   .handler(async ({ data, context }) => {
-    // Owner or office manager (D7, #659), asked before anything is read or
-    // written. That the target is not an owner is set_staff_active's check.
+    // Owner, or a role the owner let manage the team (D7, #659; #863), asked
+    // before anything is read or written. That the target is not an owner is
+    // set_staff_active's check.
     const { orgId } = await requireStaffAuthority(
       context.supabase,
       context.userId,

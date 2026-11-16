@@ -21,8 +21,12 @@ export const confirmStay = createServerFn({ method: "POST" })
     // Booking, not pricing (#616): a dispatcher confirms a requested stay at
     // the service's price. A deposit is a price decision (confirm_stay
     // refuses it too, migration 20261109120000).
-    const { role } = await requirePermission(context.supabase, context.userId, "booking");
-    if (data.depositCents != null && !hasPermission(role, "manage_pricing"))
+    const { role, overrides } = await requirePermission(
+      context.supabase,
+      context.userId,
+      "booking",
+    );
+    if (data.depositCents != null && !hasPermission(role, "manage_pricing", overrides))
       throw new Error("Only an owner or office manager can ask for a deposit.");
     const { data: invoiceId, error } = await context.supabase.rpc("confirm_stay", {
       _stay_id: data.stayId,
