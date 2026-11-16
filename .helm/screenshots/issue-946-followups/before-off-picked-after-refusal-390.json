@@ -6,5 +6,8 @@
   "innerWidth": 390,
   "barTop": 650,
   "scrollPaddingBottom": null,
-  "alertText": "Choose whether new clients pay for a first cleanup."
+  "alertText": "Choose whether new clients pay for a first cleanup.",
+  "toastTexts": [
+    "Choose whether new clients pay for a first cleanup."
+  ]
 }
