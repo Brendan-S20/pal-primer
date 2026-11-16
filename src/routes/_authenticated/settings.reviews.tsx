@@ -4,11 +4,7 @@ import { AiSection, ReviewPanel } from "@/components/ai/AiPanels";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
-import {
-  getReviewSettings,
-  updateReviewSettings,
-  getReferralStats,
-} from "@/lib/reviews.functions";
+import { getReviewSettings, updateReviewSettings, getReferralStats } from "@/lib/reviews.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { titleHead } from "@/lib/page-title";
 import { useClientTexting } from "@/hooks/useClientTexting";
+import { SettingsLoadError, SettingsLoadingFields } from "@/components/settings/SettingsLoadGate";
 
 export const Route = createFileRoute("/_authenticated/settings/reviews")({
   head: () => titleHead("Reviews & referrals", "Settings"),
@@ -34,7 +31,7 @@ function ReviewsSettings() {
   // otherwise. The template is a draft until then, kept for when it can.
   const texting = useClientTexting();
 
-  const { data, isLoading } = useQuery({
+  const { data, isError, isFetching, refetch } = useQuery({
     queryKey: ["review-settings"],
     queryFn: () => settingsFn({}),
   });
@@ -47,6 +44,9 @@ function ReviewsSettings() {
   const [enabled, setEnabled] = useState(false);
   const [reward, setReward] = useState("20.00");
   const [template, setTemplate] = useState("");
+  // Set once the effect below has copied the saved settings into the fields;
+  // the form waits for it rather than for the query (#945).
+  const [seeded, setSeeded] = useState(false);
 
   useEffect(() => {
     if (!data) return;
@@ -54,6 +54,7 @@ function ReviewsSettings() {
     setEnabled(!!data.review_ask_enabled);
     setReward(((data.referral_reward_cents ?? 0) / 100).toFixed(2));
     setTemplate(data.review_ask_template ?? "");
+    setSeeded(true);
   }, [data]);
 
   const save = useMutation({
@@ -74,8 +75,22 @@ function ReviewsSettings() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
-  if (!data) return <p>Set up your organization first.</p>;
+  // #945: a failed load fell through `isLoading` to `!data` and said "Set up
+  // your organization first" to a business that had, with no way to retry;
+  // and for one render after a good load the fields were still the blanks
+  // above, with Save live. Null (no staff row) is the only real "set up" case.
+  if (data === null) return <p>Set up your organization first.</p>;
+  if (!data || !seeded) {
+    return isError && !data ? (
+      <SettingsLoadError
+        what="review and referral settings"
+        onRetry={() => refetch()}
+        retrying={isFetching}
+      />
+    ) : (
+      <SettingsLoadingFields what="review and referral settings" fields={4} />
+    );
+  }
 
   const preview = (template.trim() || DEFAULT_TEMPLATE)
     .replace(/\{name\}/g, "Alex")
@@ -168,7 +183,10 @@ function ReviewsSettings() {
       </Button>
 
       {/* Review-reply drafting lives with review settings (punch list #11). */}
-      <AiSection title="Draft a review reply" description="Paste a public review, get a reply to start from.">
+      <AiSection
+        title="Draft a review reply"
+        description="Paste a public review, get a reply to start from."
+      >
         <ReviewPanel />
       </AiSection>
 

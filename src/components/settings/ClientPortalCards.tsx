@@ -15,6 +15,7 @@
 // Moved rather than duplicated: there is one place to change a brand colour.
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { SettingsLoadGate } from "@/components/settings/SettingsLoadGate";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -47,15 +48,15 @@ export function PortalAddressCard() {
   const q = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn(), staleTime: 60_000 });
   const currentSlug = (q.data?.organization as any)?.portal_slug as string | undefined;
   const orgName = (q.data?.organization as { name?: string | null } | undefined)?.name ?? undefined;
-  const [slug, setSlug] = useState("");
+  // null until touched, so the box shows the stored address from the first
+  // frame the answer is here, rather than blank until an effect copies it
+  // (#945).
+  const [slugEdit, setSlug] = useState<string | null>(null);
   // A business with no address yet (one set up before setup step 1 asked for
   // it, D14) is shown the one its name gives, ready to save, rather than an
   // empty box after `/portal/`. Shown, not saved: Save address saves it.
+  const slug = slugEdit ?? (currentSlug || (orgName ? portalSlugFromName(orgName) : ""));
   const suggested = !currentSlug && !!orgName && slug === portalSlugFromName(orgName);
-  useEffect(() => {
-    if (currentSlug) setSlug(currentSlug);
-    else if (orgName) setSlug((s) => s || portalSlugFromName(orgName));
-  }, [currentSlug, orgName]);
 
   const mut = useMutation({
     mutationFn: () => setFn({ data: { slug } }),
@@ -91,38 +92,46 @@ export function PortalAddressCard() {
           anytime. They'll enter their phone or email and get a one-time code.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex flex-wrap items-center gap-1 text-sm">
-          <span className="text-muted-foreground">{base.replace(/^https?:\/\//, "")}/portal/</span>
-          <Input
-            aria-label="Portal address"
-            value={slug}
-            onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
-            className="h-8 w-48"
-            placeholder="your-company"
-          />
-        </div>
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            disabled={mut.isPending || !slug || slug === currentSlug}
-            onClick={() => mut.mutate()}
-          >
-            {mut.isPending ? "Saving…" : "Save address"}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={suggestMut.isPending}
-            onClick={() => suggestMut.mutate()}
-          >
-            Suggest from name
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {suggested ? "Suggested from your business name. Save it to turn the address on. " : ""}
-          Letters, numbers, and hyphens only. Existing client links keep working automatically.
-        </p>
+      <CardContent>
+        <SettingsLoadGate query={q} what="portal address" fields={1}>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-1 text-sm">
+              <span className="text-muted-foreground">
+                {base.replace(/^https?:\/\//, "")}/portal/
+              </span>
+              <Input
+                aria-label="Portal address"
+                value={slug}
+                onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+                className="h-8 w-48"
+                placeholder="your-company"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                disabled={mut.isPending || !slug || slug === currentSlug}
+                onClick={() => mut.mutate()}
+              >
+                {mut.isPending ? "Saving…" : "Save address"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={suggestMut.isPending}
+                onClick={() => suggestMut.mutate()}
+              >
+                Suggest from name
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {suggested
+                ? "Suggested from your business name. Save it to turn the address on. "
+                : ""}
+              Letters, numbers, and hyphens only. Existing client links keep working automatically.
+            </p>
+          </div>
+        </SettingsLoadGate>
       </CardContent>
     </Card>
   );
@@ -148,9 +157,16 @@ export function BrandingCard() {
   const [allowHold, setAllowHold] = useState(true);
   const [allowFreq, setAllowFreq] = useState(true);
   const [autoApply, setAutoApply] = useState(false);
+  // Every field above starts as a default (a blank name, green, 18 hours, all
+  // switches on), and Save sends all of them. So the form is not drawn until
+  // the effect below has copied the saved row in: before #945 it was drawn
+  // at once, and on a failed load stayed drawn, and typing a name enabled a
+  // Save that wrote the defaults over the logo, phone, email and policy.
+  const [seeded, setSeeded] = useState(false);
 
   useEffect(() => {
     if (!q.data) return;
+    setSeeded(true);
     setOrgName(q.data.name ?? "");
     setBrandColor(q.data.brand_color ?? "#16a34a");
     setLogoUrl(q.data.logo_url ?? "");
@@ -203,123 +219,129 @@ export function BrandingCard() {
           change themselves.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {/* The business name, editable at last. It could previously only be set
+      <CardContent>
+        <SettingsLoadGate
+          query={{ ...q, data: seeded ? q.data : undefined, isError: q.isError && !seeded }}
+          what="portal settings"
+          fields={4}
+        >
+          <div className="space-y-4">
+            {/* The business name, editable at last. It could previously only be set
             at signup, and only on the /get-started path: every other route into
             an organization derived one and left it. It is printed on invoices,
             the portal and outbound email, so a typo here used to need support.
             Full width and first because it is the one field a customer is
             certain to read. */}
-        <div>
-          <Label htmlFor="portal-org-name" className="text-xs">
-            Business name
-          </Label>
-          <Input
-            id="portal-org-name"
-            className="mt-1"
-            value={orgName}
-            onChange={(e) => setOrgName(e.target.value)}
-            placeholder="Acme Pet Waste Removal"
-          />
-          {orgName.trim().length > 0 && !isValidOrgName(orgName) && (
-            <p className="pt-1 text-xs text-destructive">
-              Enter your real business name (not blank or a placeholder like "Test").
-            </p>
-          )}
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="portal-brand-color" className="text-xs">
-              Brand color
-            </Label>
-            <div className="mt-1 flex gap-2">
+            <div>
+              <Label htmlFor="portal-org-name" className="text-xs">
+                Business name
+              </Label>
               <Input
-                id="portal-brand-color"
-                type="color"
-                value={brandColor}
-                onChange={(e) => setBrandColor(e.target.value)}
-                className="h-10 w-14 p-1"
+                id="portal-org-name"
+                className="mt-1"
+                value={orgName}
+                onChange={(e) => setOrgName(e.target.value)}
+                placeholder="Acme Pet Waste Removal"
               />
-              <Input
-                aria-label="Brand color, as a hex code"
-                value={brandColor}
-                onChange={(e) => setBrandColor(e.target.value)}
-                placeholder="#16a34a"
-              />
+              {orgName.trim().length > 0 && !isValidOrgName(orgName) && (
+                <p className="pt-1 text-xs text-destructive">
+                  Enter your real business name (not blank or a placeholder like "Test").
+                </p>
+              )}
             </div>
-          </div>
-          <div>
-            <Label htmlFor="portal-logo-url" className="text-xs">
-              Logo URL
-            </Label>
-            <Input
-              id="portal-logo-url"
-              className="mt-1"
-              value={logoUrl}
-              onChange={(e) => setLogoUrl(e.target.value)}
-              placeholder="https://…/logo.png"
-            />
-          </div>
-          <div>
-            <Label htmlFor="portal-phone" className="text-xs">
-              Office phone (tap-to-call in the portal)
-            </Label>
-            <Input
-              id="portal-phone"
-              className="mt-1"
-              value={contactPhone}
-              onChange={(e) => setContactPhone(e.target.value)}
-              placeholder="+1 555 123 4567"
-            />
-          </div>
-          <div>
-            <Label htmlFor="portal-email" className="text-xs">
-              Office email
-            </Label>
-            <Input
-              id="portal-email"
-              className="mt-1"
-              value={contactEmail}
-              onChange={(e) => setContactEmail(e.target.value)}
-              placeholder="hello@your-company.com"
-            />
-            {/* BUILD-5: this is the reply-to on every email your customers get.
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="portal-brand-color" className="text-xs">
+                  Brand color
+                </Label>
+                <div className="mt-1 flex gap-2">
+                  <Input
+                    id="portal-brand-color"
+                    type="color"
+                    value={brandColor}
+                    onChange={(e) => setBrandColor(e.target.value)}
+                    className="h-10 w-14 p-1"
+                  />
+                  <Input
+                    aria-label="Brand color, as a hex code"
+                    value={brandColor}
+                    onChange={(e) => setBrandColor(e.target.value)}
+                    placeholder="#16a34a"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="portal-logo-url" className="text-xs">
+                  Logo URL
+                </Label>
+                <Input
+                  id="portal-logo-url"
+                  className="mt-1"
+                  value={logoUrl}
+                  onChange={(e) => setLogoUrl(e.target.value)}
+                  placeholder="https://…/logo.png"
+                />
+              </div>
+              <div>
+                <Label htmlFor="portal-phone" className="text-xs">
+                  Office phone (tap-to-call in the portal)
+                </Label>
+                <Input
+                  id="portal-phone"
+                  className="mt-1"
+                  value={contactPhone}
+                  onChange={(e) => setContactPhone(e.target.value)}
+                  placeholder="+1 555 123 4567"
+                />
+              </div>
+              <div>
+                <Label htmlFor="portal-email" className="text-xs">
+                  Office email
+                </Label>
+                <Input
+                  id="portal-email"
+                  className="mt-1"
+                  value={contactEmail}
+                  onChange={(e) => setContactEmail(e.target.value)}
+                  placeholder="hello@your-company.com"
+                />
+                {/* BUILD-5: this is the reply-to on every email your customers get.
                 Without it their replies go to a noreply address nobody reads —
                 and they get no bounce, so they believe they reached you. Said
                 here rather than left as a blank optional field, because the
                 cost of leaving it empty is invisible from this screen. */}
-            {contactEmail.trim() ? (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Replies to invoices and reminders come back to this address.
-              </p>
-            ) : (
-              <div className="mt-1 space-y-1">
-                <p className="text-xs text-amber-700 dark:text-amber-400">
-                  Add one. Invoices and reminders are sent from a no-reply address, so any client
-                  who hits Reply today is writing to nobody.
-                </p>
-                {/* One tap to the address the owner already reads (D14). It
+                {contactEmail.trim() ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Replies to invoices and reminders come back to this address.
+                  </p>
+                ) : (
+                  <div className="mt-1 space-y-1">
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      Add one. Invoices and reminders are sent from a no-reply address, so any
+                      client who hits Reply today is writing to nobody.
+                    </p>
+                    {/* One tap to the address the owner already reads (D14). It
                     fills the field; Save below saves it, like any edit. */}
-                {authEmail && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="max-w-full"
-                    data-use-sign-in-email
-                    onClick={() => setContactEmail(authEmail)}
-                  >
-                    <span className="min-w-0 truncate">Use {authEmail}</span>
-                  </Button>
+                    {authEmail && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="max-w-full"
+                        data-use-sign-in-email
+                        onClick={() => setContactEmail(authEmail)}
+                      >
+                        <span className="min-w-0 truncate">Use {authEmail}</span>
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
-          </div>
-          <div>
-            <Label htmlFor="portal-address" className="text-xs">
-              Business address
-            </Label>
-            {/* Autocomplete over ONE free-text line, which is a deliberate
+              <div>
+                <Label htmlFor="portal-address" className="text-xs">
+                  Business address
+                </Label>
+                {/* Autocomplete over ONE free-text line, which is a deliberate
                 pair of decisions.
                   Autocomplete, because the claim in the note below that
                 nothing geocodes this stopped being true: org.functions.ts
@@ -333,86 +355,92 @@ export function BrandingCard() {
                 tenant types their box number and saves it exactly as today.
                 Splitting into street/city/state would lock them out for a
                 field that is mostly printed in an email footer. */}
-            <AddressAutocomplete
-              id="portal-address"
-              className="mt-1"
-              value={contactAddress}
-              onChangeText={setContactAddress}
-              onResolved={(r) => setContactAddress(r.address.formatted.slice(0, 300))}
-              placeholder="123 Main St, Springfield, IL 62704"
-              maxLength={300}
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              {contactAddress.trim()
-                ? "Shown in the footer of emails to your clients."
-                : "Optional, but it goes in the footer of your client emails, and a service company with an address on it reads as a real local business."}
-            </p>
-          </div>
-          <div>
-            <Label htmlFor="portal-cutoff" className="text-xs">
-              Change cutoff (hours before visit)
-            </Label>
-            <Input
-              id="portal-cutoff"
-              className="mt-1"
-              type="number"
-              min={0}
-              max={168}
-              value={cutoff}
-              onChange={(e) => setCutoff(Math.max(0, Number(e.target.value) || 0))}
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              Below this window clients can no longer self-serve reschedule or skip.
-            </p>
-          </div>
-        </div>
-
-        <div className="border-t pt-4 space-y-3">
-          <p className="text-sm font-medium">Self-serve permissions</p>
-          <div className="flex items-center justify-between">
-            <div className="text-sm">Allow clients to reschedule visits</div>
-            <Switch
-              checked={allowResched}
-              onCheckedChange={setAllowResched}
-              aria-label="Allow clients to reschedule visits"
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="text-sm">Allow clients to request vacation holds</div>
-            <Switch
-              checked={allowHold}
-              onCheckedChange={setAllowHold}
-              aria-label="Allow clients to request vacation holds"
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="text-sm">Allow clients to change plan frequency</div>
-            <Switch
-              checked={allowFreq}
-              onCheckedChange={setAllowFreq}
-              aria-label="Allow clients to change plan frequency"
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm">Auto-apply requested changes</div>
-              <div className="text-xs text-muted-foreground">
-                Off (default): the office reviews every change. On: changes take effect immediately.
+                <AddressAutocomplete
+                  id="portal-address"
+                  className="mt-1"
+                  value={contactAddress}
+                  onChangeText={setContactAddress}
+                  onResolved={(r) => setContactAddress(r.address.formatted.slice(0, 300))}
+                  placeholder="123 Main St, Springfield, IL 62704"
+                  maxLength={300}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {contactAddress.trim()
+                    ? "Shown in the footer of emails to your clients."
+                    : "Optional, but it goes in the footer of your client emails, and a service company with an address on it reads as a real local business."}
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="portal-cutoff" className="text-xs">
+                  Change cutoff (hours before visit)
+                </Label>
+                <Input
+                  id="portal-cutoff"
+                  className="mt-1"
+                  type="number"
+                  min={0}
+                  max={168}
+                  value={cutoff}
+                  onChange={(e) => setCutoff(Math.max(0, Number(e.target.value) || 0))}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Below this window clients can no longer self-serve reschedule or skip.
+                </p>
               </div>
             </div>
-            <Switch
-              checked={autoApply}
-              onCheckedChange={setAutoApply}
-              aria-label="Auto-apply requested changes"
-            />
-          </div>
-        </div>
 
-        <div className="flex justify-end">
-          <Button onClick={() => mut.mutate()} disabled={mut.isPending || !isValidOrgName(orgName)}>
-            {mut.isPending ? "Saving…" : "Save portal settings"}
-          </Button>
-        </div>
+            <div className="border-t pt-4 space-y-3">
+              <p className="text-sm font-medium">Self-serve permissions</p>
+              <div className="flex items-center justify-between">
+                <div className="text-sm">Allow clients to reschedule visits</div>
+                <Switch
+                  checked={allowResched}
+                  onCheckedChange={setAllowResched}
+                  aria-label="Allow clients to reschedule visits"
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="text-sm">Allow clients to request vacation holds</div>
+                <Switch
+                  checked={allowHold}
+                  onCheckedChange={setAllowHold}
+                  aria-label="Allow clients to request vacation holds"
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="text-sm">Allow clients to change plan frequency</div>
+                <Switch
+                  checked={allowFreq}
+                  onCheckedChange={setAllowFreq}
+                  aria-label="Allow clients to change plan frequency"
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm">Auto-apply requested changes</div>
+                  <div className="text-xs text-muted-foreground">
+                    Off (default): the office reviews every change. On: changes take effect
+                    immediately.
+                  </div>
+                </div>
+                <Switch
+                  checked={autoApply}
+                  onCheckedChange={setAutoApply}
+                  aria-label="Auto-apply requested changes"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <Button
+                onClick={() => mut.mutate()}
+                disabled={!seeded || mut.isPending || !isValidOrgName(orgName)}
+              >
+                {mut.isPending ? "Saving…" : "Save portal settings"}
+              </Button>
+            </div>
+          </div>
+        </SettingsLoadGate>
       </CardContent>
     </Card>
   );
