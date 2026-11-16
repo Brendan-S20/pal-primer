@@ -115,6 +115,10 @@ android {
         // FakeReviewManager builds an Intent; on the JVM the stub android.jar
         // returns defaults instead of throwing "not mocked". Unit tests only.
         unitTests.returnDefaultValues = true
+        // Robolectric's MainActivity tests (issue #621) read the merged
+        // manifest's intent filters and the Capacitor assets (plugin list,
+        // config) that `cap sync` writes. Without this they see neither.
+        unitTests.includeAndroidResources = true
     }
     buildTypes {
         debug {
@@ -158,6 +162,9 @@ dependencies {
     // which the JVM's stub android.jar answers with null. One static mock
     // gives it a PendingIntent, so the JVM test needs no emulator or Robolectric.
     testDebugImplementation "org.mockito:mockito-core:$mockitoVersion"
+    // A cold MainActivity on the JVM: a link that launches a killed app has to
+    // reach Capacitor's appUrlOpen intact (issue #621, ColdStartLinkTest).
+    testImplementation "org.robolectric:robolectric:$robolectricVersion"
     androidTestImplementation "com.google.android.play:review:$googleAndroidPlayReviewVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
