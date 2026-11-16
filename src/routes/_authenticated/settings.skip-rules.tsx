@@ -62,7 +62,7 @@ function SkipRulesPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.rules.map((r) => (
+                {(data?.rules ?? []).map((r) => (
                   <RuleRow
                     key={r.code}
                     rule={r}

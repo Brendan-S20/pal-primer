@@ -108,12 +108,12 @@ export function HolidayDatesCard({
           dates were loading and after a failed load, which reads as dates
           that were saved being gone. */}
       <SettingsLoadGate query={q} what="holiday dates" fields={1}>
-        {({ holidays }) =>
-          holidays.length === 0 ? (
+        {(data) =>
+          (data?.holidays ?? []).length === 0 ? (
             <p className="text-sm text-muted-foreground">No holiday dates yet.</p>
           ) : (
             <ul className="divide-y rounded-md border">
-              {holidays.map((h) => (
+              {(data?.holidays ?? []).map((h) => (
                 <li
                   key={h.id}
                   className="flex items-center justify-between gap-3 px-3 py-2 text-sm"

@@ -330,11 +330,11 @@ function PromoSection() {
             onRetry={() => void promosQ.refetch()}
             retrying={promosQ.isFetching}
           />
-        ) : !data.promos.length ? (
+        ) : !data?.promos?.length ? (
           <p className="text-sm text-muted-foreground">No promo codes yet.</p>
         ) : (
           <ul className="divide-y">
-            {data.promos.map((p: any) => (
+            {(data?.promos ?? []).map((p: any) => (
               <li key={p.id} className="flex items-start justify-between gap-3 py-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
@@ -667,11 +667,11 @@ function GiftSection() {
             onRetry={() => void cardsQ.refetch()}
             retrying={cardsQ.isFetching}
           />
-        ) : !data.cards.length ? (
+        ) : !data?.cards?.length ? (
           <p className="text-sm text-muted-foreground">No gift cards yet.</p>
         ) : (
           <ul className="divide-y">
-            {data.cards.map((c: any) => (
+            {(data?.cards ?? []).map((c: any) => (
               <li key={c.id} className="flex items-start justify-between gap-3 py-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">

@@ -105,7 +105,7 @@ function BlackoutsPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.blackouts.map((b: any) => (
+                {(data?.blackouts ?? []).map((b: any) => (
                   <tr key={b.id} className="border-b last:border-0">
                     <td className="px-4 py-2 font-medium">{b.blackout_on}</td>
                     <td className="px-4 py-2 text-muted-foreground">{b.reason ?? "-"}</td>
@@ -116,7 +116,7 @@ function BlackoutsPage() {
                     </td>
                   </tr>
                 ))}
-                {data.blackouts.length === 0 && (
+                {(data?.blackouts ?? []).length === 0 && (
                   <tr>
                     <td colSpan={3} className="px-4 py-6 text-center text-muted-foreground">
                       No blackout dates yet.

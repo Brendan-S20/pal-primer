@@ -20,7 +20,7 @@ export function VaccineSettings() {
   return (
     <SettingsLoadGate query={q} what="grooming settings" fields={3}>
       {(data) =>
-        data.enabled ? (
+        data?.enabled ? (
           <>
             <VaccineSettingsForm
               key={`${data.rule}:${data.required.join(",")}:${data.bufferMin}`}

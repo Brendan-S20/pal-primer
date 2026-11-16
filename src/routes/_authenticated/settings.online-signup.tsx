@@ -321,23 +321,26 @@ function SignupAndQuoteFormSettings() {
           {/* #945: nothing while loading, and a bare message with no retry
               when the form's settings failed to load. */}
           <SettingsLoadGate query={formQ} what="form settings" fields={4}>
-            {(form) => (
-              <>
-                <FormCustomizer config={form.config} instantOn={instantOn} />
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-lg border bg-card p-4">
-                    <div className="text-xs uppercase text-muted-foreground">
-                      Submissions (all time)
+            {(form) =>
+              // Null is an answer (no form row), as it was before the gate.
+              form ? (
+                <>
+                  <FormCustomizer config={form.config} instantOn={instantOn} />
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-lg border bg-card p-4">
+                      <div className="text-xs uppercase text-muted-foreground">
+                        Submissions (all time)
+                      </div>
+                      <div className="mt-1 text-2xl font-semibold">{form.submissionsTotal}</div>
                     </div>
-                    <div className="mt-1 text-2xl font-semibold">{form.submissionsTotal}</div>
+                    <div className="rounded-lg border bg-card p-4">
+                      <div className="text-xs uppercase text-muted-foreground">Last 30 days</div>
+                      <div className="mt-1 text-2xl font-semibold">{form.submissionsLast30}</div>
+                    </div>
                   </div>
-                  <div className="rounded-lg border bg-card p-4">
-                    <div className="text-xs uppercase text-muted-foreground">Last 30 days</div>
-                    <div className="mt-1 text-2xl font-semibold">{form.submissionsLast30}</div>
-                  </div>
-                </div>
-              </>
-            )}
+                </>
+              ) : null
+            }
           </SettingsLoadGate>
         </>
       </SettingsLoadGate>
