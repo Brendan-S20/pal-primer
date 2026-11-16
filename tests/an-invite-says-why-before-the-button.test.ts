@@ -142,6 +142,8 @@ describe("an account in another business is told before it presses Accept (gaps-
       ready: false,
       reason: "other_org",
       current_organization_name: "Owner2 Trial",
+      // #938: the role there, so an owner is not told to "leave it first".
+      current_role: "owner",
     });
   });
 

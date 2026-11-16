@@ -254,7 +254,7 @@ describe("a save that finds the session gone", () => {
     // showed the server's raw message ("Unauthorized: ...") when the session
     // had gone, with no way back to sign in.
     const page = read("src/routes/_authenticated/settings.users.tsx");
-    const start = page.indexOf("function InvitePanel()");
+    const start = page.indexOf("function InvitePanel(");
     const end = page.indexOf("function StaffAddressEditor(");
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
