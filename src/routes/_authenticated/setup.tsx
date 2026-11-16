@@ -15,6 +15,7 @@ import { ServiceLinesChoices } from "@/components/ServiceLinesChoices";
 import { DayEndPanel } from "@/components/SetupDayEndPanel";
 import { WalkPricesForm } from "@/components/SetupWalkPrices";
 import { BusinessSaveButton, SETUP_BUSINESS_FORM_ID } from "@/components/SetupBusinessSave";
+import { businessStepProblem } from "@/lib/setup-business-problem";
 import { useMyRole, usePermissions } from "@/hooks/useMyRole";
 import { useMyProfile } from "@/hooks/useMyProfile";
 import { useFormDraft } from "@/hooks/useFormDraft";
@@ -362,9 +363,13 @@ function PricingPanel({ step, onSaved }: { step: OnboardingStep; onSaved: () => 
 }
 
 const fieldClass = "space-y-1.5";
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ── 1. The business ────────────────────────────────────────────────────────
+
+/** The id of step 1's "what is still missing" message (#942). */
+const BUSINESS_ERROR_ID = "setup-business-error";
+/** A field step 1's message names is outlined in red as well (#942). */
+const INVALID_FIELD = "aria-[invalid=true]:border-destructive";
 
 function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyDone: boolean }) {
   const qc = useQueryClient();
@@ -497,6 +502,34 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
     (lines !== null || mayPreselect) &&
     (linesVal.length !== savedLines.length || linesVal.some((l) => !savedLines.includes(l)));
 
+  // What the step still needs (#942). Save is never disabled for it: pressed,
+  // it says which field in words, beside the form (role=alert) as step 2 does
+  // (#881), and not only in a four-second toast at the top of the screen.
+  // Shown from the first press on and read live after that, so ticking a
+  // service or typing the address takes the message away as it is fixed.
+  const problem = businessStepProblem({
+    lines: linesVal,
+    address: addressVal,
+    workday: workdayWriteProblem(workdayWrite),
+    officeEmail: officeEmailVal,
+  });
+  const [pressed, setPressed] = useState(0);
+  const [saveFailure, setSaveFailure] = useState<string | null>(null);
+  const shownProblem = pressed > 0 ? problem : null;
+  const message = shownProblem?.message ?? saveFailure;
+  const invalid = (field: NonNullable<typeof problem>["field"]) => shownProblem?.field === field;
+  const describe = (field: NonNullable<typeof problem>["field"]) =>
+    invalid(field) ? BUSINESS_ERROR_ID : undefined;
+  // Brought to the middle of the screen on each refused press: it sits at the
+  // end of the form, which on a phone is under the sticky bar Save is in.
+  const messageRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (pressed > 0) messageRef.current?.scrollIntoView({ block: "center" });
+  }, [pressed]);
+  useEffect(() => {
+    if (saveFailure) messageRef.current?.scrollIntoView({ block: "center" });
+  }, [saveFailure]);
+
   // Refreshed on failure too (stepSave): the writes run in turn, so a
   // failure in a later one leaves the earlier ones saved, and Settings must
   // show them.
@@ -552,7 +585,10 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
         setPortalSlugText(null);
         toast.success("Business details saved");
         if (linesChanged) setLines(null);
+        setPressed(0);
+        setSaveFailure(null);
       },
+      onFailed: setSaveFailure,
       onSaved,
     }),
   );
@@ -563,25 +599,16 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
       className="space-y-4"
       onSubmit={(e) => {
         e.preventDefault();
-        if (linesVal.length === 0) {
-          toast.error("Choose the services you offer.");
-          return;
-        }
-        if (!addressVal.trim()) {
-          toast.error("Add your business address. Routes start from it.");
-          return;
-        }
         // Enter in a field submits too; the held button alone does not stop it.
         if (businessSaveBlocked(m.isPending, dispatchQ)) return;
-        const hours = workdayWriteProblem(workdayWrite);
-        if (hours) {
-          toast.error(hours);
+        // Every refusal is said twice: a toast, and beside the form where it
+        // stays until it is fixed (#942, as step 2 does since #881).
+        if (problem) {
+          setPressed((n) => n + 1);
+          toast.error(problem.message);
           return;
         }
-        if (officeEmailVal.trim() && !EMAIL_RE.test(officeEmailVal.trim())) {
-          toast.error("Check the office email. It should look like you@example.com.");
-          return;
-        }
+        setSaveFailure(null);
         m.mutate();
       }}
     >
@@ -590,7 +617,12 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
           in this form. It belongs in this step rather than a seventh one,
           because it changes what the later steps ask: a dog walker's "where
           the day ends" is not a dump site. */}
-      <fieldset className={fieldClass}>
+      <fieldset
+        className={`${fieldClass} ${invalid("services") ? "[&_ul]:border-destructive" : ""}`}
+        data-setup-service-lines
+        aria-invalid={invalid("services") || undefined}
+        aria-describedby={describe("services")}
+      >
         <legend className="text-sm font-medium">Which services do you offer?</legend>
         <p className="pb-1.5 text-xs text-muted-foreground">
           {APP_NAME} shows the tools for the services you run. You can change this later in
@@ -633,6 +665,9 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
           onResolved={(r) => setAddress(r.address.formatted)}
           placeholder="Street, city, state and ZIP"
           maxLength={300}
+          className={INVALID_FIELD}
+          ariaInvalid={invalid("address") || undefined}
+          ariaDescribedBy={describe("address")}
         />
         <p className="text-xs text-muted-foreground">
           Where routes start each day, unless someone has a start address of their own.
@@ -648,6 +683,9 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
           maxLength={255}
           autoComplete="email"
           placeholder="hello@your-company.com"
+          className={INVALID_FIELD}
+          aria-invalid={invalid("officeEmail") || undefined}
+          aria-describedby={describe("officeEmail")}
         />
         <p className="text-xs text-muted-foreground">
           Clients who reply to an invoice or a reminder reach this address. Change it any time in
@@ -703,6 +741,9 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
             <Input
               id="setup-workday-start"
               type="time"
+              className={INVALID_FIELD}
+              aria-invalid={invalid("workday") || undefined}
+              aria-describedby={describe("workday")}
               value={dayStartVal}
               onChange={(e) => setDayStart(e.target.value)}
             />
@@ -712,6 +753,9 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
             <Input
               id="setup-workday-end"
               type="time"
+              className={INVALID_FIELD}
+              aria-invalid={invalid("workday") || undefined}
+              aria-describedby={describe("workday")}
               value={dayEndVal}
               onChange={(e) => setDayEnd(e.target.value)}
             />
@@ -730,7 +774,22 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
       </fieldset>
       {/* Held until the stored hours are read, so the 08:00-17:00 fallback
           shown meanwhile cannot be saved over them (#797 review). */}
-      <BusinessSaveButton saving={m.isPending} dispatch={dispatchQ} />
+      {message && (
+        <p
+          ref={messageRef}
+          id={BUSINESS_ERROR_ID}
+          role="alert"
+          className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"
+          data-setup-error
+        >
+          {message}
+        </p>
+      )}
+      <BusinessSaveButton
+        saving={m.isPending}
+        dispatch={dispatchQ}
+        describedBy={message ? BUSINESS_ERROR_ID : undefined}
+      />
     </form>
   );
 }

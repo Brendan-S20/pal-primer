@@ -11,6 +11,7 @@
 // "A pet-waste page is signposted only to a pet-waste business"); setup asks
 // only when the answer WAS read and is still the untouched default.
 
+import { businessStepProblem } from "@/lib/setup-business-problem";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -61,9 +62,13 @@ describe("setup asks what a new business runs", () => {
       /preselected: preselectedServiceLines\(savedLines, requestedLine, availability\)/,
     );
     expect(setup).toMatch(/const linesVal = lines \?\? startingLines;/);
-    expect(setup).toMatch(
-      /if \(linesVal\.length === 0\) \{\s*toast\.error\("Choose the services you offer\."\)/,
-    );
+    // The refusal is businessStepProblem's (#942), fed the lines shown, and
+    // said beside the form as well as in a toast.
+    expect(setup).toMatch(/businessStepProblem\(\{\s*lines: linesVal,/);
+    expect(setup).toMatch(/if \(problem\) \{[\s\S]{0,120}toast\.error\(problem\.message\)/);
+    expect(
+      businessStepProblem({ lines: [], address: "1 Main St", workday: null, officeEmail: "" }),
+    ).toEqual({ field: "services", message: "Choose the services you offer." });
     expect(setup).toMatch(/if \(linesChanged\) await saveLinesFn/);
   });
 });
