@@ -319,7 +319,11 @@ describe("the office", () => {
       const db = fakeDb(billingTables(role));
       await expect(staffInvoicePdf(db, USER, INVOICE)).rejects.toThrow("Not authorized");
       await expect(staffQuotePdf(db, USER, QUOTE)).rejects.toThrow("Not authorized");
-      expect(db.reads.filter((t) => t !== "user_roles")).toEqual([]);
+      // Resolving the caller reads user_roles and, since #863, the business's
+      // overrides for their role; nothing else is read before the refusal.
+      expect(db.reads.filter((t) => t !== "user_roles" && t !== "role_permission_overrides")).toEqual(
+        [],
+      );
     });
   }
 

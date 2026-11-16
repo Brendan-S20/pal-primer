@@ -5,7 +5,12 @@ import { requirePermission } from "@/lib/authz.server";
 import { LEAD_SOURCE, normalizeFormConfig } from "@/lib/new-customer-form";
 import { DETAIL_ASKS, MAX_EARLIEST_START_DAYS } from "@/lib/booking-details";
 
-const FORM_SOURCES = [LEAD_SOURCE.quoteRequest, LEAD_SOURCE.onlineSignup];
+// A directory booking lands on the same form, so it counts as the form's.
+const FORM_SOURCES = [
+  LEAD_SOURCE.quoteRequest,
+  LEAD_SOURCE.onlineSignup,
+  LEAD_SOURCE.directoryBooking,
+];
 
 const STATUSES = ["new", "contacted", "qualified", "converted", "archived"] as const;
 

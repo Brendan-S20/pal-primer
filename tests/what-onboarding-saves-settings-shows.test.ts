@@ -19,6 +19,8 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- a fake of the supabase-js builder and createServerFn chain */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { directoryLineLabel } from "@/lib/directory";
+import { defaultServiceSeedsFor } from "@/lib/services";
 
 type Row = Record<string, any>;
 
@@ -341,6 +343,44 @@ describe("Setup → Settings", () => {
     expect((await call(getMyOrgFeatures)).serviceLines).toEqual(["pet_waste"]);
   });
 
+  it("keeps one default service after repeated setup saves (#883)", async () => {
+    await call(setServiceLines, { lines: ["pet_waste"] });
+    await call(setServiceLines, { lines: ["pet_waste"] });
+    const services = (await call(listServices, {})).services;
+    expect(services).toHaveLength(1);
+    expect(services[0].name).toBe("Pet waste removal");
+    expect(directoryLineLabel("pet_waste")).toBe("Pet waste removal");
+    expect(defaultServiceSeedsFor(["pet_waste"]).map((s) => s.name)).toEqual([services[0].name]);
+  });
+
+  it.each([true, false])(
+    "preserves a saved Weekly scoop, active=%s, without adding a default (#883)",
+    async (active) => {
+      Object.assign(h.db.services[0], {
+        name: "Weekly scoop",
+        base_price_cents: 3500,
+        extra_pet_cents: 750,
+        active,
+      });
+      const saved = structuredClone(h.db.services);
+      await call(setServiceLines, { lines: ["pet_waste"] });
+      await call(setServiceLines, { lines: ["pet_waste"] });
+      expect(h.db.services).toEqual(saved);
+    },
+  );
+
+  it("seeds one consistently named service when none exists (#883)", async () => {
+    h.db.services = [];
+    await call(setServiceLines, { lines: ["pet_waste"] });
+    await call(setServiceLines, { lines: ["pet_waste"] });
+    expect(h.db.services).toHaveLength(1);
+    expect(h.db.services[0]).toMatchObject({
+      name: "Pet waste removal",
+      service_line: "pet_waste",
+      active: true,
+    });
+  });
+
   it("price step: price per visit → Zones, Standard pricing AND the default service (#766)", async () => {
     await call(createZone, {
       name: "Main service area",
@@ -368,9 +408,13 @@ describe("Setup → Settings", () => {
     h.db.services[0].base_price_cents = 3500;
     await call(adoptSetupAreaPrice, { basePriceCents: 2500, perDogAddlCents: 500 });
     const std = await call(getStandardPricing);
-    // The one blank is filled; the one chosen is kept.
-    expect([std.basePriceCents, std.perDogAddlCents]).toEqual([3000, 500]);
+    // The one blank is filled; the one chosen is kept. Since #860 the
+    // standard price IS the service's (Settings → Services), so what was
+    // chosen there is what every screen reads.
+    expect(std.basePriceCents).toBe(3500);
     expect(h.db.services[0].base_price_cents).toBe(3500);
+    expect(h.db.organizations[0].std_base_price_cents).toBe(3000);
+    expect(h.db.organizations[0].std_per_dog_addl_cents).toBe(500);
   });
 
   it("team step: I run the route → Settings > Users (staff.is_field_tech)", async () => {

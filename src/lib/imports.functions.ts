@@ -1759,7 +1759,13 @@ async function recordCommitFailure(
   supabase: SupabaseClient<Database>,
   batchId: string,
   preview: unknown,
-  counts: { created: number; updated: number; failed: number; skipped: number },
+  counts: {
+    created: number;
+    updated: number;
+    failed: number;
+    skipped: number;
+    warnings?: string[];
+  },
   e: unknown,
 ) {
   const message = (e as Error)?.message || "The import stopped with an error.";
@@ -1891,6 +1897,7 @@ export const commitImport = createServerFn({ method: "POST" })
       failed = 0,
       skipped = previewSkipped;
     const rowErrors = new Map<string, number>();
+    const warnings: string[] = [];
 
     // Whatever stops this commit, the batch says so (#569). It used to stay
     // "Committing" for ever with no error and no way to try again.
@@ -2511,7 +2518,8 @@ export const commitImport = createServerFn({ method: "POST" })
             if (row.action === "create" && row.target_id) {
               const { data: client } = await supabase
                 .from("clients")
-                .select("account_type")
+                .select("account_type, display_name")
+                .eq("organization_id", orgId)
                 .eq("id", row.target_id)
                 .single();
               const { data: prop } = await supabase
@@ -2559,11 +2567,40 @@ export const commitImport = createServerFn({ method: "POST" })
               // run that invoices (run_billing_cycles) reads the client's
               // billing_frequency, so a plan alone would still bill monthly.
               if (m.billing_frequency) {
-                const { error: bfErr } = await supabase
-                  .from("clients")
-                  .update({ billing_frequency: m.billing_frequency })
-                  .eq("id", row.target_id);
-                if (bfErr) console.error("import: billing frequency not set", bfErr.message);
+                const clientLabel = client?.display_name ?? row.target_id;
+                try {
+                  // Billing frequency belongs to the whole client. Undo only
+                  // removes imported plans, so protect any other active plan.
+                  const { data: otherPlan, error: planErr } = await supabase
+                    .from("subscriptions")
+                    .select("id")
+                    .eq("organization_id", orgId)
+                    .eq("client_id", row.target_id)
+                    .eq("status", "active")
+                    .neq("id", ins.id)
+                    .limit(1)
+                    .maybeSingle();
+                  if (planErr)
+                    throw new Error(`Could not check for another active plan: ${planErr.message}`);
+                  if (otherPlan) {
+                    warnings.push(
+                      `Billing frequency was kept for ${clientLabel} because the client has another active plan. Check the client's billing settings.`,
+                    );
+                  } else {
+                    const { error: bfErr } = await supabase
+                      .from("clients")
+                      .update({ billing_frequency: m.billing_frequency })
+                      .eq("organization_id", orgId)
+                      .eq("id", row.target_id);
+                    if (bfErr) throw bfErr;
+                  }
+                } catch (e) {
+                  const reason = (e as Error)?.message ?? String(e);
+                  console.error("import: billing frequency not set", reason);
+                  warnings.push(
+                    `Billing frequency was not changed for ${clientLabel}: ${reason}. Check the client's billing settings.`,
+                  );
+                }
               }
               // What the plan's row said that the plan cannot hold: a file
               // with no frequency column, and the columns no field consumed.
@@ -2633,6 +2670,7 @@ export const commitImport = createServerFn({ method: "POST" })
         ...(zoneLookupFailed ? { zone_lookup_failed: true } : {}),
         // Clients created whose import row could not record them (#617).
         ...(unlinked ? { unlinked } : {}),
+        ...(warnings.length ? { warnings } : {}),
       };
       const nothingWentIn = failed > 0 && !created && !updated;
       const { error: finishError } = await supabase
@@ -2663,7 +2701,7 @@ export const commitImport = createServerFn({ method: "POST" })
         supabase,
         batch.id,
         batch.stats,
-        { created, updated, failed, skipped },
+        { created, updated, failed, skipped, ...(warnings.length ? { warnings } : {}) },
         e,
       );
       throw e;

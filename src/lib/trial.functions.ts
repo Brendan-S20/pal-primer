@@ -29,7 +29,7 @@ export const getTrialState = createServerFn({ method: "GET" })
 export const loadTrialState = createServerOnlyFn(
   async (context: AuthedContext): Promise<TrialView | null> => {
     const { supabase, userId } = context;
-    const { orgId, role } = await resolveCaller(supabase, userId);
+    const { orgId, role, overrides } = await resolveCaller(supabase, userId);
     if (!orgId) return null;
 
     const { data } = await supabase
@@ -58,7 +58,7 @@ export const loadTrialState = createServerOnlyFn(
     return {
       ...state,
       aiAvailable: aiAvailableFor(state),
-      canManageBilling: hasPermission(role, "manage_org_billing"),
+      canManageBilling: hasPermission(role, "manage_org_billing", overrides),
     };
   },
 );

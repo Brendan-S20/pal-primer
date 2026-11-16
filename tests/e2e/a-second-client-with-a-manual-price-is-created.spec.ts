@@ -66,9 +66,12 @@ async function wizardToPlan(page: Page, name: string, price: string) {
     );
   }
 
+  // #860: outside every zone the Plan step offers the standard price. The
+  // seeded org has none, so it says so and asks for a price, which is the
+  // manual-price path this spec is about.
   await expect(
-    page.getByText(/no zone matches zip 48933\. set price manually below\./i),
-    "the no-zone message the tester saw",
+    page.getByText(/no zone matches zip 48933 and there is no standard price yet/i),
+    "the no-zone message",
   ).toBeVisible({ timeout: 20_000 });
   await page.locator("#po").fill(price);
 }

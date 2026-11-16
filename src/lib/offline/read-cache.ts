@@ -28,6 +28,8 @@ import {
 } from "./read-cache-policy";
 import { asLastGoodCopy, hasLastGoodCopy, savedCopiesToKeep } from "./last-good-copy";
 import { clearAllFormDrafts } from "@/lib/form-drafts";
+import { beginSignOut } from "@/lib/pending-deep-link";
+import { signInLanded } from "@/lib/sign-in-handoff";
 
 /** Coalesces the burst of cache events a single page load produces into one
  * write. localStorage writes are synchronous and block the UI thread, which on
@@ -473,6 +475,15 @@ export async function signOutAndClearDevice(): Promise<void> {
   // it drops the queue silently rather than leaving it unreachable. Losing an
   // unsyncable queue is bad; leaving customer photos on a device nobody can
   // clear is worse, and it is the one this used to do.
+  // FIRST, before anything awaits (#785). A sign-out on purpose ends the
+  // last sign-in and whatever page was held to return to. Without this a
+  // sign-out within a minute of signing in was reported on the next /auth as
+  // "your password was accepted, but we couldn't finish signing you in", and
+  // a guard run while the queue below was being cleared could hold the page
+  // being left as the next sign-in's landing. beginSignOut also refuses new
+  // holds until a password is accepted (signedInAgain in routes/auth.tsx).
+  beginSignOut();
+  signInLanded();
   try {
     const { resolveOfflineUserId } = await import("@/lib/offline/action-owner");
     const { clearQueueForUser } = await import("@/lib/offline/queue");

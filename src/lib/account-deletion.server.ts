@@ -40,6 +40,8 @@
 // SMS consent records are copied to their own table first and are never
 // deleted by this job.
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 /** Off until the owner has read a production dry run. */
 export const ACCOUNT_DELETION_ENABLED = false;
 
@@ -50,8 +52,17 @@ export const ACCOUNT_DELETION_ENABLED = false;
  */
 export const ACCOUNT_DELETION_DEPLOYED_ON: string | null = null;
 
-/** Buckets whose objects live under `<organization id>/…`. */
-export const ORG_STORAGE_BUCKETS = ["visit-photos", "waste-receipts", "dna-samples", "expense-receipts"] as const;
+/** Buckets whose objects live under `<organization id>/…`. directory-photos
+ *  (#630, directory v2 step 5b) is here so a deleted business's directory
+ *  photos go with it: the rows cascade with the organization, the files do
+ *  not. */
+export const ORG_STORAGE_BUCKETS = [
+  "visit-photos",
+  "waste-receipts",
+  "dna-samples",
+  "expense-receipts",
+  "directory-photos",
+] as const;
 
 export type DeletionCandidate = {
   organization_id: string;
@@ -93,9 +104,17 @@ function sum(o: Record<string, number> | null | undefined): number {
 }
 
 /** Every object under `<prefix>/` in a bucket, depth first. */
-async function listAll(storage: any, bucket: string, prefix: string, out: string[] = []): Promise<string[]> {
+async function listAll(
+  storage: SupabaseClient["storage"],
+  bucket: string,
+  prefix: string,
+  out: string[] = [],
+): Promise<string[]> {
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await storage.from(bucket).list(prefix, { limit: 1000, offset });
+    // A bucket a migration has not created yet (directory-photos is created by
+    // 20261112110000, applied after the code ships) holds no files to delete.
+    if (error && /bucket not found/i.test(error.message)) return out;
     if (error) throw new Error(`${bucket}/${prefix}: ${error.message}`);
     for (const item of data ?? []) {
       const path = `${prefix}/${item.name}`;
@@ -108,7 +127,7 @@ async function listAll(storage: any, bucket: string, prefix: string, out: string
   return out;
 }
 
-async function deleteOrgFiles(admin: any, orgId: string): Promise<number> {
+async function deleteOrgFiles(admin: SupabaseClient, orgId: string): Promise<number> {
   let removed = 0;
   for (const bucket of ORG_STORAGE_BUCKETS) {
     const paths = await listAll(admin.storage, bucket, orgId);
@@ -122,23 +141,33 @@ async function deleteOrgFiles(admin: any, orgId: string): Promise<number> {
 }
 
 /** Members who will have no organization left once this one is purged. */
-async function membersOnlyHere(admin: any, orgId: string): Promise<string[]> {
-  const { data: here } = await admin.from("user_roles").select("user_id").eq("organization_id", orgId);
+async function membersOnlyHere(admin: SupabaseClient, orgId: string): Promise<string[]> {
+  const { data: here } = await admin
+    .from("user_roles")
+    .select("user_id")
+    .eq("organization_id", orgId);
   const ids = [...new Set(((here ?? []) as Array<{ user_id: string }>).map((r) => r.user_id))];
   const only: string[] = [];
   for (const id of ids) {
-    const { data: all } = await admin.from("user_roles").select("organization_id").eq("user_id", id);
-    if (((all ?? []) as Array<{ organization_id: string }>).every((r) => r.organization_id === orgId)) only.push(id);
+    const { data: all } = await admin
+      .from("user_roles")
+      .select("organization_id")
+      .eq("user_id", id);
+    if (
+      ((all ?? []) as Array<{ organization_id: string }>).every((r) => r.organization_id === orgId)
+    )
+      only.push(id);
   }
   return only;
 }
 
-async function anonymiseIdentities(admin: any, userIds: string[]): Promise<number> {
+async function anonymiseIdentities(admin: SupabaseClient, userIds: string[]): Promise<number> {
   let n = 0;
   for (const id of userIds) {
     await admin.auth.admin.updateUserById(id, {
       email: `deleted-${id}@deleted.invalid`,
-      phone: null,
+      // null clears the number; the SDK's type only admits a string.
+      phone: null as unknown as string,
       user_metadata: {},
       app_metadata: { deleted_at: new Date().toISOString(), deleted_by: "account_deletion_job" },
     });
@@ -153,7 +182,7 @@ export async function runAccountDeletion(
     now?: Date;
     /** Count only, whatever the switches say (the platform preview). */
     forceDryRun?: boolean;
-    admin?: any;
+    admin?: SupabaseClient;
     enabled?: boolean;
     deployedOn?: string | null;
   } = {},
@@ -164,7 +193,9 @@ export async function runAccountDeletion(
   const dryRun = !!opts.forceDryRun || !enabled || !configured;
   const deployedOn = configured ?? now.toISOString().slice(0, 10);
   const admin =
-    opts.admin ?? ((await import("@/integrations/supabase/client.server")).supabaseAdmin as any);
+    opts.admin ??
+    ((await import("@/integrations/supabase/client.server"))
+      .supabaseAdmin as unknown as SupabaseClient);
 
   const { data: rows, error } = await admin.rpc("account_deletion_candidates", {
     _deployed_on: deployedOn,
@@ -209,7 +240,10 @@ export async function runAccountDeletion(
       .is("purged_at", null);
     for (const s of (scheduled ?? []) as Array<{ organization_id: string }>) {
       if (!ids.has(s.organization_id)) {
-        await admin.from("account_deletion_schedule").delete().eq("organization_id", s.organization_id);
+        await admin
+          .from("account_deletion_schedule")
+          .delete()
+          .eq("organization_id", s.organization_id);
       }
     }
   }

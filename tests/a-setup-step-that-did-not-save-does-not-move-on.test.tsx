@@ -273,11 +273,12 @@ describe("each setup save refreshes the key its Settings screen reads", () => {
       "src/components/settings/BusinessDetailsCards.tsx",
       '"waste-facilities"',
     ],
-    ["price", /\["std-pricing"\]/, "src/components/StandardPricingCard.tsx", '"std-pricing"'],
+    // #860: the standard price is read where a zone is priced against it.
+    ["price", /\["std-pricing"\]/, "src/routes/_authenticated/settings.zones.tsx", '"std-pricing"'],
     [
       "price",
       /\["zones"\], \["zone-coverage"\]/,
-      "src/routes/_authenticated/zones.tsx",
+      "src/routes/_authenticated/settings.zones.tsx",
       '"zone-coverage"',
     ],
     [
@@ -322,12 +323,16 @@ describe("each setup save refreshes the key its Settings screen reads", () => {
 });
 
 describe("setup's price per visit is the one price (#766)", () => {
-  it("after the zone, the same price goes to Standard pricing and the default service", () => {
+  // #860 review: the price goes to the default service FIRST, and the zone is
+  // created after it with a price of its own only when the typed price is not
+  // the standard one (setupZoneOverride). Adopting is write-only-if-blank, so
+  // a retry after the zone write failed adopts nothing twice.
+  it("the same price goes to the default service, then the zone is made", () => {
     const save = SETUP.slice(SETUP.indexOf("const createdZone = useRef"));
     const create = save.indexOf("await createFn(");
     const adopt = save.indexOf("await adoptFn({ data: { basePriceCents, perDogAddlCents } })");
-    expect(create).toBeGreaterThan(-1);
-    expect(adopt).toBeGreaterThan(create);
+    expect(adopt).toBeGreaterThan(-1);
+    expect(create).toBeGreaterThan(adopt);
   });
 
   it("a retry after the price write failed does not create a second zone", () => {

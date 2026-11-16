@@ -332,7 +332,33 @@ describe("no trigger function is executable by a signed-in user", () => {
     // to a signed-in tech's own UPDATE of visits.status, so a PATCH cannot do
     // what start_visit refuses. Revoked from PUBLIC, anon and authenticated
     // there.
-    expect(triggerFunctions().size).toBe(110);
+    // 110 -> 112 (#883): retirement of an unused starter after Add service,
+    // and a service-specific edit timestamp that records same-transaction edits.
+    // Both functions revoke EXECUTE from PUBLIC, anon and authenticated.
+    //
+    // 112 -> 113 (20261112010000, an owner sets each role's permissions,
+    // #863): tg_log_role_permission_change writes activity_log for every
+    // change to role_permission_overrides, with the actor. Revoked from
+    // PUBLIC, anon and authenticated there.
+    //
+    // 113 -> 115 (20261112090000, a directory profile says what a business
+    // is and where, #630): directory_profile_areas_guard keeps an area's ZIPs
+    // inside the profile's coverage on any write, and
+    // directory_profile_areas_follow_coverage prunes areas when the coverage
+    // shrinks. Both revoked from PUBLIC, anon and authenticated there.
+    //
+    // 115 -> 116 (20261112100000, a directory listing says which services
+    // book online, #630): organizations_guard_directory_booking refuses a
+    // signed-in write of directory_booking_enabled or booking_policy_text
+    // that does not come through set_directory_booking (the owner's writer).
+    // Revoked from PUBLIC, anon and authenticated there.
+    //
+    // 116 -> 117 (20261112110000, a directory photo is public only after a
+    // moderator approves it, #630): directory_profile_photos_guard holds a
+    // new photo to pending, stamps the attestation, keeps the file and the
+    // business fixed, lets only moderate_directory_photo decide, and stops
+    // at eight. Revoked from PUBLIC, anon and authenticated there.
+    expect(triggerFunctions().size).toBe(117);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {

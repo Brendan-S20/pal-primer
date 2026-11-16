@@ -9,6 +9,8 @@ export type DayVisit = {
   sequence?: number | null;
   status?: string | null;
   walk_group_id?: string | null;
+  /** The day the stop is on; read for the dog cap flag (#731). */
+  scheduled_on?: string | null;
   services?: ServiceRef | ServiceRef[];
   clients?: { display_name?: string | null } | null;
   properties?: {

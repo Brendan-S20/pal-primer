@@ -66,5 +66,18 @@ export const adoptSetupAreaPrice = createServerFn({ method: "POST" })
       .select("id");
     if (svcError) throw new Error(svcError.message);
 
-    return { standardSet, servicePriced: Array.isArray(rows) && rows.length > 0 };
+    // The standard price as it now stands (#860): what a zone with no
+    // override of its own charges. Setup compares the price it was given
+    // against this and gives its first zone an override only if they differ,
+    // so the first area follows Settings → Services instead of freezing a
+    // copy of today's number.
+    const { loadPetWasteStandard } = await import("@/lib/standard-price");
+    const std = await loadPetWasteStandard(db, orgId);
+    return {
+      standardSet,
+      servicePriced: Array.isArray(rows) && rows.length > 0,
+      standardBaseCents: (std?.base_price_cents ?? null) as number | null,
+      standardPerDogCents: (std?.base_price_cents == null ? null : (std.extra_pet_cents ?? 0)) as
+        number | null,
+    };
   });

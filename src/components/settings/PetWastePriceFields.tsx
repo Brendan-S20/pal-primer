@@ -10,8 +10,13 @@
 // field is the SAME setting as Settings → Client portal → Price of an extra
 // visit (the form saves it through setPortalBookingSettings), so the booking
 // link, quotes, the portal and the office's One-off dialog all keep reading
-// one number. Plans stay priced by zone; this shows the lowest zone price
-// and links to Zones & pricing, where the first-cleanup fee lives too.
+// one number.
+//
+// #860 (Brendan, 2026-11-10: "this should be a setting"): a pet-waste
+// service now has a STANDARD PRICE of its own, edited here and nowhere else
+// (services.base_price_cents + extra_pet_cents). A zone may override it, only
+// inside that zone, from Settings → Zones & pricing. Every place that offers a
+// plan price reads it through standard-price.ts.
 
 import { Link } from "@tanstack/react-router";
 import { Input } from "@/components/ui/input";
@@ -24,46 +29,82 @@ import {
 } from "@/lib/services";
 
 export const ONE_TIME_PRICE_INPUT_ID = "service-one-time-price";
+export const STANDARD_PRICE_INPUT_ID = "service-standard-price";
+export const STANDARD_EXTRA_DOG_INPUT_ID = "service-standard-extra-dog";
+export const STANDARD_PRICE_LABEL = "Standard price per visit ($)";
 
-/** What leaving the price blank does, everywhere it is read (#812 review):
- *  the booking link falls back to the zone (one-time-cleanup.ts), the
- *  office's One-off dialog has no price to start from
- *  (booking-price.server.ts), and the portal cannot book an extra visit
- *  without someone looking (portal.functions.ts canAutoBook). */
+/** What leaving the price blank does, everywhere it is read (#812 review,
+ *  #860): the booking link falls back to the standard price or the zone's
+ *  override (public_quote, one-time-cleanup.ts), so does the office's One-off
+ *  dialog (booking-price.server.ts), and the portal cannot book an extra
+ *  visit without someone looking (portal.functions.ts canAutoBook). */
 export const ONE_TIME_BLANK_MEANS =
-  "Left blank, your booking link charges the zone's visit price, the office types a price for each one-off visit, and extra visits clients ask for wait for you to price and book them.";
+  "Left blank, your booking link and the office's one-off visits charge the standard price above (or a zone's own price inside that zone), and extra visits clients ask for wait for you to price and book them.";
 
 export function PetWastePriceFields({
+  standardPrice,
+  extraDog,
+  onStandardPriceChange,
+  onExtraDogChange,
+  zoneOverrides,
   oneTimePrice,
   savedOneTimeCents,
-  zoneFromCents,
   loadError = null,
   onOneTimePriceChange,
 }: {
+  /** The standard price as typed (services.base_price_cents). */
+  standardPrice: string;
+  /** Each extra dog as typed (services.extra_pet_cents). */
+  extraDog: string;
+  onStandardPriceChange: (v: string) => void;
+  onExtraDogChange: (v: string) => void;
+  /** How many switched-on zones override the standard price; null unknown. */
+  zoneOverrides: number | null;
   /** The field's text, or null when it cannot be edited here (the setting
    *  has not loaded, or the caller may not change it): the saved amount is
    *  shown instead, with a link to where it is set. */
   oneTimePrice: string | null;
   savedOneTimeCents: number | null;
-  /** lowestZoneVisitCents over the business's zones; null when none is priced. */
-  zoneFromCents: number | null;
   /** The one-time price could not be read: said, rather than "No price yet". */
   loadError?: string | null;
   onOneTimePriceChange: (v: string) => void;
 }) {
   return (
     <div className="space-y-3 sm:col-span-2" id="service-price-note">
-      <div className="space-y-1">
-        <p className="text-sm font-medium">Repeating plans</p>
-        <p className="text-sm text-muted-foreground" data-testid="pet-waste-zone-price">
-          {zoneFromCents === null
-            ? "Priced by zone. No zone has a price yet."
-            : `Priced by zone, from ${formatServiceMoney(zoneFromCents)} per visit.`}{" "}
-          Set zone prices and the first-cleanup fee in{" "}
-          <Link to="/zones" className="font-medium text-primary underline">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor={STANDARD_PRICE_INPUT_ID}>{STANDARD_PRICE_LABEL}</Label>
+          <Input
+            id={STANDARD_PRICE_INPUT_ID}
+            inputMode="decimal"
+            placeholder="20.00"
+            value={standardPrice}
+            onChange={(e) => onStandardPriceChange(e.target.value)}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor={STANDARD_EXTRA_DOG_INPUT_ID}>Each extra dog, per visit ($)</Label>
+          <Input
+            id={STANDARD_EXTRA_DOG_INPUT_ID}
+            inputMode="decimal"
+            placeholder="0.00"
+            value={extraDog}
+            onChange={(e) => onExtraDogChange(e.target.value)}
+          />
+        </div>
+        <p
+          className="text-xs text-muted-foreground sm:col-span-2"
+          data-testid="pet-waste-zone-price"
+        >
+          What a new plan, a one-off visit and your signup form charge.{" "}
+          {zoneOverrides
+            ? `${zoneOverrides} zone${zoneOverrides === 1 ? " has its" : "s have their"} own price, which applies only inside that zone.`
+            : "A zone can set its own price, which applies only inside that zone."}{" "}
+          Zone prices and the first-cleanup fee are in{" "}
+          <Link to="/settings/zones" className="font-medium text-primary underline">
             Zones &amp; pricing
           </Link>
-          .
+          . Changing this does not change the price of plans you already have.
         </p>
       </div>
 
