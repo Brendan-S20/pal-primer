@@ -95,3 +95,54 @@ final class SignIn: XCTestCase {
         AppDriver.screenshot("signin-03-landed", self)
     }
 }
+
+/// Five cold launches of an app that is already signed in (#726).
+///
+/// Apple's reviewer crashed 1.0 (465) at launch on an iPad Air 11-inch (M4)
+/// while signed in as a demo owner, and every launch check here starts signed
+/// out. scripts/ios-launch-smoke.sh runs this right after SignIn, on the same
+/// simulator, in its opt-in Release run; it sets HS_EXPECT_SIGNED_IN=1 (not a
+/// credential: this class reads none). Anywhere else it skips, because on a
+/// signed-out simulator it would fail by design.
+///
+/// Each launch passes when the process is up in the foreground and the app is
+/// not on the sign-in form: the signed-in chrome ("Search or jump") is the
+/// direct proof, and a launch that lands somewhere without it (a setup step,
+/// say) still passes as long as the email step of /auth is not what it drew.
+final class SignedInColdLaunch: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        continueAfterFailure = false
+    }
+
+    func testASignedInColdLaunchLeavesSignInFiveTimes() throws {
+        guard ProcessInfo.processInfo.environment["HS_EXPECT_SIGNED_IN"] == "1" else {
+            throw XCTSkip("run by scripts/ios-launch-smoke.sh after SignIn, on a signed-in simulator")
+        }
+        let app = AppDriver.app()
+        for attempt in 1...5 {
+            ColdLaunch.relaunch(app)
+            XCTAssertTrue(
+                app.wait(for: .runningForeground, timeout: AppDriver.launchTimeout),
+                "signed-in launch \(attempt) of 5 never reached the foreground"
+            )
+            XCTAssertTrue(
+                SignedInColdLaunch.leftSignIn(app),
+                "signed-in launch \(attempt) of 5: on the sign-in form, so the session did not survive a cold launch"
+            )
+            XCTAssertEqual(
+                app.state, .runningForeground,
+                "signed-in launch \(attempt) of 5: the app stopped running after it drew"
+            )
+            AppDriver.screenshot("signed-in-cold-launch-\(attempt)", self)
+        }
+    }
+
+    private static func leftSignIn(_ app: XCUIApplication) -> Bool {
+        if AppDriver.isSignedIn(app) { return true }
+        let onSignIn = AppDriver.find(app, containing: "you@yourbusiness.com") != nil
+            && AppDriver.find(app, containing: "Continue") != nil
+        return !onSignIn && app.staticTexts.firstMatch.exists
+    }
+}
