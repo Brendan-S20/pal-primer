@@ -125,7 +125,7 @@ describe("setup step 2, from source", () => {
     const submit = panel.slice(panel.indexOf("onSubmit={"), panel.indexOf("m.mutate();"));
     expect(panel).toMatch(/const problem = serviceAreaStepProblem\(/);
     expect(submit).toMatch(
-      /if \(problem\) \{[\s\S]*setPressed\([\s\S]*toast\.error\(problem\.message\)/,
+      /if \(problem\) \{[\s\S]*setPressed\([\s\S]*toast\.error\(problem\.message[,)]/,
     );
     expect(panel).toMatch(/const message = shownProblem\?\.message \?\? failure;/);
     expect(panel).toMatch(/\{message && \(\s*<p\s+ref=\{failureRef\}/);

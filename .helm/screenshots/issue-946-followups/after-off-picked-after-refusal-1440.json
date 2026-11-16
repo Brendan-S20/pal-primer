@@ -6,5 +6,6 @@
   "innerWidth": 1440,
   "barTop": 806,
   "scrollPaddingBottom": "69px",
-  "alertText": null
+  "alertText": null,
+  "toastTexts": []
 }

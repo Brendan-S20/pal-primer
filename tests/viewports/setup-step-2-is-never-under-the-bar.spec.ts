@@ -154,6 +154,24 @@ for (const size of [
       hasTouch: size.touch,
     });
 
+    test("picking Off straight after the refusal takes the alert AND the toast away", async ({
+      page,
+    }) => {
+      await openStep2(page);
+      await page.fill("#setup-zone-price", "20");
+      await page.locator('[data-setup-action="save"]').click();
+      const alert = page.locator("[data-setup-error]");
+      const refusalToast = page.locator("[data-sonner-toast]", { hasText: CHOOSE });
+      await expect(alert).toHaveText(CHOOSE);
+      await expect(refusalToast).toHaveCount(1);
+
+      await page.locator("#setup-first-cleanup-off").click();
+      await expect(alert).toHaveCount(0);
+      // Not left to time out: well inside sonner's four seconds.
+      await expect(refusalToast).toHaveCount(0, { timeout: 1500 });
+      await expect(page.locator("[data-sonner-toast]", { hasText: CHOOSE })).toHaveCount(0);
+    });
+
     test("picking Off clears the first-cleanup refusal; picking Flat names what is left", async ({
       page,
     }) => {
@@ -164,10 +182,16 @@ for (const size of [
       await expect(alert).toHaveText(CHOOSE);
       await expect(alert).toHaveAttribute("role", "alert");
       await expect(page).toHaveURL(/step=zones/);
+      // Said twice: beside Save, and in a toast. Proved present first, so its
+      // absence below means something.
+      const refusalToast = page.locator("[data-sonner-toast]", { hasText: CHOOSE });
+      await expect(refusalToast).toHaveCount(1);
 
       // Flat with no price: still refused, and the sentence says so, live.
+      // The toast named the first-cleanup choice, which is now made: it goes.
       await page.locator("#setup-first-cleanup-flat").click();
       await expect(alert).toHaveText(FLAT_PRICE);
+      await expect(refusalToast).toHaveCount(0);
 
       // Off: nothing left to refuse, so the sentence goes. No second press.
       await page.locator("#setup-first-cleanup-off").click();
@@ -177,6 +201,7 @@ for (const size of [
       );
       await expect(alert).toHaveCount(0);
       await expect(page.locator("[data-setup-first-cleanup-unchosen]")).toHaveCount(0);
+      await expect(refusalToast).toHaveCount(0);
 
       // And a field emptied after a refusal is named again, live.
       await page.fill("#setup-zone-price", "");

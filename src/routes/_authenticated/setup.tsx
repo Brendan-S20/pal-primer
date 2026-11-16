@@ -907,6 +907,9 @@ function PricesPanel({
 /** Step 2's form id, which its Save submits from inside the sticky bar. */
 const SETUP_AREA_FORM_ID = "setup-area";
 
+/** The one toast step 2's refusals use, so it can be taken away once fixed. */
+const SETUP_AREA_REFUSAL_TOAST = "setup-area-refusal";
+
 /** What step 2 keeps on the device while it is typed (#881). */
 type SetupAreaDraft = {
   name: string;
@@ -1142,6 +1145,40 @@ function ServiceAreaPanel({
   const priceCents = priceOk ? Math.round(parseFloat(price) * 100) : null;
   const money = (c: number) => `$${(c / 100).toFixed(2)}`;
 
+  // What the form still needs (null when it can save), and the sentence
+  // beside Save: that, once a press has been refused, else the server's.
+  const problem = serviceAreaStepProblem({
+    price,
+    zip: zipVal,
+    pin,
+    tiered,
+    firstCleanup: firstCleanupVal,
+    firstCleanupPrice,
+    schedulesOk: !!setupMultipliers(storedMults, multDraft),
+  });
+  const shownProblem = pressed > 0 ? problem : null;
+  const message = shownProblem?.message ?? failure;
+
+  // The refusal's toast is the same sentence as the alert, so it goes when
+  // the alert does: once the thing it named is fixed, or something else is
+  // now what is missing (#946 follow-up). One stable id, so a second press
+  // replaces it rather than stacking. A failed SERVER save is toasted by
+  // stepSave with no id, and is not touched here.
+  const toastedProblem = useRef<string | null>(null);
+  const problemMessage = problem?.message ?? null;
+  useEffect(() => {
+    if (toastedProblem.current && toastedProblem.current !== problemMessage) {
+      toast.dismiss(SETUP_AREA_REFUSAL_TOAST);
+      toastedProblem.current = null;
+    }
+  }, [problemMessage]);
+  useEffect(
+    () => () => {
+      if (toastedProblem.current) toast.dismiss(SETUP_AREA_REFUSAL_TOAST);
+    },
+    [],
+  );
+
   if (done && !adding) {
     return (
       <div className="space-y-3">
@@ -1169,20 +1206,6 @@ function ServiceAreaPanel({
     );
   }
 
-  // What the form still needs (null when it can save), and the sentence
-  // beside Save: that, once a press has been refused, else the server's.
-  const problem = serviceAreaStepProblem({
-    price,
-    zip: zipVal,
-    pin,
-    tiered,
-    firstCleanup: firstCleanupVal,
-    firstCleanupPrice,
-    schedulesOk: !!setupMultipliers(storedMults, multDraft),
-  });
-  const shownProblem = pressed > 0 ? problem : null;
-  const message = shownProblem?.message ?? failure;
-
   const saveButton = (
     <Button
       type="submit"
@@ -1207,7 +1230,8 @@ function ServiceAreaPanel({
         if (problem) {
           setFailure(null);
           setPressed((n) => n + 1);
-          toast.error(problem.message);
+          toast.error(problem.message, { id: SETUP_AREA_REFUSAL_TOAST });
+          toastedProblem.current = problem.message;
           return;
         }
         setFailure(null);

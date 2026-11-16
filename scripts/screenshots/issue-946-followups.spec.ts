@@ -108,10 +108,15 @@ for (const size of [
         .waitFor({ state: "detached", timeout: 1500 })
         .catch(() => {});
       await page
+        .locator("[data-sonner-toast]", { hasText: "first cleanup" })
+        .waitFor({ state: "detached", timeout: 1500 })
+        .catch(() => {});
+      await page
         .locator("[data-setup-area-form] [data-setup-first-cleanup]")
         .scrollIntoViewIfNeeded();
       await shoot(page, size.width, "off-picked-after-refusal", {
         alertText: (await page.locator("[data-setup-error]").allTextContents())[0] ?? null,
+        toastTexts: await page.locator("[data-sonner-toast]").allTextContents(),
       });
     });
   });

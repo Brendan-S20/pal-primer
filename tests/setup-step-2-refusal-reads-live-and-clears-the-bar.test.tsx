@@ -87,6 +87,19 @@ describe("step 2's refusal is read live from the form", () => {
     expect(panel).not.toMatch(/setFailure\(message\)/);
     expect(panel).not.toMatch(/\brefuse\(/);
   });
+
+  it("takes the refusal's toast away with it, and leaves a server failure's toast alone", () => {
+    // One stable id, raised only by a refusal...
+    expect(panel).toMatch(/toast\.error\(problem\.message, \{ id: SETUP_AREA_REFUSAL_TOAST \}\)/);
+    expect(panel.match(/toast\.error\(/g)).toHaveLength(1);
+    // ...and dismissed once the problem it named is no longer the problem.
+    expect(panel).toMatch(
+      /toastedProblem\.current !== problemMessage\)[\s\S]{0,80}toast\.dismiss\(SETUP_AREA_REFUSAL_TOAST\)/,
+    );
+    expect(panel).toMatch(/\}, \[problemMessage\]\);/);
+    // Server failures go through stepSave's own toast, which has no such id.
+    expect(panel).toMatch(/onFailed: setFailure/);
+  });
 });
 
 describe("the sticky bar tells the browser what it covers", () => {
