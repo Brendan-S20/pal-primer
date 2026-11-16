@@ -57,7 +57,7 @@ const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Expected a month (YYY
 /** The caller's organization, role, own staff row, and the org's calendar
  *  and rate. The staff row is the one the `own` policy asks about. */
 async function loadCaller(supabase: Db, userId: string) {
-  const { orgId, role } = await resolveCaller(supabase, userId);
+  const { orgId, role, overrides } = await resolveCaller(supabase, userId);
   const [staff, org] = await Promise.all([
     supabase
       .from("staff")
@@ -80,8 +80,8 @@ async function loadCaller(supabase: Db, userId: string) {
   return {
     orgId,
     role,
-    isOffice: hasPermission(role, "view_financials"),
-    canSetRate: hasPermission(role, "manage_settings"),
+    isOffice: hasPermission(role, "view_financials", overrides),
+    canSetRate: hasPermission(role, "manage_settings", overrides),
     myStaff: (staff.data as { id: string; display_name: string } | null) ?? null,
     timezone,
     today: orgToday(timezone),

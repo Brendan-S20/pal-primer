@@ -150,7 +150,9 @@ describe("CI launches the app", () => {
   it("launches on iOS 26.x too, on a phone and an iPad (#620)", () => {
     const script = read("scripts/ios-launch-smoke.sh");
     // The picker adds the newest 26.x runtime's iPhone and iPad.
-    expect(script).toMatch(/r26 = next\(\(r for r in rts if r\["version"\]\.split\("\."\)\[0\] == "26"\)/);
+    expect(script).toMatch(
+      /r26 = next\(\(r for r in rts if r\["version"\]\.split\("\."\)\[0\] == "26"\)/,
+    );
     expect(script).toMatch(/take\(r26, .*phones26/);
     expect(script).toMatch(/take\(r26, .*pads26/);
     // And a run without both fails rather than reading green.
@@ -158,6 +160,27 @@ describe("CI launches the app", () => {
     expect(script).toMatch(/\[ -z "\$\{NO_IOS26:-\}" \] \|\| failed=1/);
     // The same device on two runtimes must not share a result file.
     expect(script).toMatch(/slug=\$\(echo "\$name-iOS-\$runtime_version"/);
+  });
+
+  it("can launch one exact runtime and device by hand, with no fallback (#726)", () => {
+    // Apple's 1.0 (375) review crash was on an iPad Air 11-inch (M3) on
+    // iPadOS 27.2. The automatic picks choose an "iPad (…)" model, so the
+    // reviewer's device is only reachable by naming it.
+    const wf = read(".github/workflows/ios-launch.yml");
+    expect(wf).toMatch(/SMOKE_PIN_RUNTIME: \$\{\{ inputs\.pin_runtime \}\}/);
+    expect(wf).toMatch(/SMOKE_PIN_DEVICE_TYPE: \$\{\{ inputs\.pin_device_type \}\}/);
+    const script = read("scripts/ios-launch-smoke.sh");
+    expect(script).toMatch(
+      /sys\.exit\("pinned runtime " \+ pin_rt \+ " is not installed and available"\)/,
+    );
+    expect(script).toMatch(
+      /sys\.exit\("pinned runtime " \+ pin_rt \+ " does not support " \+ pin_type\)/,
+    );
+    // Pinned output is exactly one device, then the picker stops.
+    const pinned = script.slice(script.indexOf("if pin_rt or pin_type:"));
+    expect(pinned.indexOf("sys.exit(0)")).toBeLessThan(pinned.indexOf("newest = rts[0]"));
+    // The 26.x requirement is waived only for a pinned run.
+    expect(script).toMatch(/if \[ -z "\$PINNED" \] && \{ ! echo "\$IOS26_LINES"/);
   });
 });
 

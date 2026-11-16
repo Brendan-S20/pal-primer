@@ -40,6 +40,13 @@
 #   SMOKE_OUT       where results go (default: ios-launch-smoke/ in the repo)
 #   SMOKE_XCODE     an Xcode.app to use instead of the newest one found
 #   SMOKE_KEEP_SIMS keep the simulators afterwards (default: delete them)
+#   SMOKE_PIN_RUNTIME, SMOKE_PIN_DEVICE_TYPE
+#                   both set: launch ONLY this simulator runtime identifier
+#                   and device type identifier (#726: the iPad Air 11-inch
+#                   (M3) on the general iOS 27.2 runtime Apple reviewed on).
+#                   No fallback: a runtime that is missing, unavailable or
+#                   does not support the type fails the run. The 26.x
+#                   requirement does not apply to a pinned run.
 
 set -euo pipefail
 
@@ -116,7 +123,7 @@ say "- Xcode: \`$(xcodebuild -version | tr '\n' ' ')\` ($XCODE)"
 # carries productFamily) narrowed to the identifiers each runtime supports.
 xcrun simctl list devicetypes -j > "$OUT/devicetypes.json"
 picks=$(xcrun simctl list runtimes -j | python3 -I -c '
-import json, sys
+import json, os, sys
 rts = [r for r in json.load(sys.stdin)["runtimes"]
        if r.get("platform") == "iOS" and r.get("isAvailable")]
 if not rts:
@@ -130,6 +137,20 @@ with open(sys.argv[2], "w") as f:
     for rt in rts:
         for t in types_of(rt):
             f.write(rt["version"] + "\t" + t.get("productFamily", "?") + "\t" + t["name"] + "\t" + t["identifier"] + "\n")
+pin_rt, pin_type = os.environ.get("SMOKE_PIN_RUNTIME", ""), os.environ.get("SMOKE_PIN_DEVICE_TYPE", "")
+if pin_rt or pin_type:
+    if not (pin_rt and pin_type):
+        sys.exit("SMOKE_PIN_RUNTIME and SMOKE_PIN_DEVICE_TYPE must be set together")
+    rt = next((r for r in rts if r["identifier"] == pin_rt), None)
+    if rt is None:
+        sys.exit("pinned runtime " + pin_rt + " is not installed and available")
+    t = next((t for t in types_of(rt) if t["identifier"] == pin_type), None)
+    if t is None:
+        sys.exit("pinned runtime " + pin_rt + " does not support " + pin_type)
+    print("NEWEST\t" + rt["identifier"] + "\t" + rt["version"])
+    print("PINNED\t" + rt["identifier"] + "\t" + rt.get("buildversion", "?"))
+    print(rt["identifier"] + "\t" + rt["version"] + "\t" + t["identifier"] + "\t" + t["name"])
+    sys.exit(0)
 newest = rts[0]
 phones = [t for t in types_of(newest) if t.get("productFamily") == "iPhone"]
 chosen = []
@@ -159,7 +180,9 @@ for rt, t in chosen:
 ' "$OUT/devicetypes.json" "$OUT/device-types.txt")
 RUNTIME=$(echo "$picks" | grep '^NEWEST' | cut -f2)
 IOS_VERSION=$(echo "$picks" | grep '^NEWEST' | cut -f3)
-DEVICE_LINES=$(echo "$picks" | grep -v '^NEWEST' || true)
+DEVICE_LINES=$(echo "$picks" | grep -v '^NEWEST' | grep -v '^PINNED' || true)
+PINNED=$(echo "$picks" | grep '^PINNED' || true)
+[ -z "$PINNED" ] || say "- Pinned: runtime $(echo "$PINNED" | cut -f2) build $(echo "$PINNED" | cut -f3), device type $(echo "$DEVICE_LINES" | cut -f3); nothing else runs and nothing falls back"
 say "- Newest iOS runtime: $IOS_VERSION ($RUNTIME)"
 say "- Devices picked: $(echo "$DEVICE_LINES" | awk -F'\t' 'NF { printf "%s%s on iOS %s", sep, $4, $2; sep=", " }')"
 # device-types.txt is written newest runtime first.
@@ -178,8 +201,8 @@ fi
 # #620's acceptance names iOS 26.x, phone and iPad. A run without both on a
 # 26.x runtime is not a pass.
 IOS26_LINES=$(echo "$DEVICE_LINES" | awk -F'\t' '$2 ~ /^26\./' || true)
-if ! echo "$IOS26_LINES" | cut -f4 | grep -q '^iPhone' \
-   || ! echo "$IOS26_LINES" | cut -f4 | grep -q '^iPad'; then
+if [ -z "$PINNED" ] && { ! echo "$IOS26_LINES" | cut -f4 | grep -q '^iPhone' \
+   || ! echo "$IOS26_LINES" | cut -f4 | grep -q '^iPad'; }; then
   say ""
   say "> **This run did not exercise iOS 26 on both an iPhone and an iPad.** Install an iOS 26.x simulator runtime (Xcode > Settings > Components)."
   echo "::error::No installed iOS 26.x simulator runtime gave both an iPhone and an iPad; #620 needs a launch on each."

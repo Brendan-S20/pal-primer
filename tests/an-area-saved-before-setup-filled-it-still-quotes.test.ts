@@ -434,7 +434,7 @@ describe("fillEmptyZoneZips: the owner's one click on Zones", () => {
   });
 
   it("Zones offers it beside the warning it fixes", () => {
-    const src = read("src/routes/_authenticated/zones.tsx");
+    const src = read("src/routes/_authenticated/settings.zones.tsx");
     expect(src).toMatch(/fillEmptyZoneZips/);
     expect(src).toMatch(/zoneNeedsZipBackfill/);
     expect(src).toMatch(/Fill ZIPs for all/);

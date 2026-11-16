@@ -58,18 +58,52 @@ const MY_PROFILE = {
     display_name: "Wagging Tails Professional Pet Waste Services",
     show_logo: true,
     bio: "Family-owned since 2014. We scoop weekly or twice a week and lock every gate behind us.",
-    coverage_zips: ["48201", "48202", "48203"],
+    coverage_zips: Array.from({ length: 14 }, (_, i) => String(48201 + i)),
     coverage_cities: ["Detroit", "Ferndale"],
     confirmed_at: "2026-11-01T12:00:00Z",
+    // mypets v2 step 5a, at its limits on purpose: a 90-character tagline, a
+    // 40-character highlight and area name, and an area holding every ZIP.
+    tagline:
+      "Weekly and twice-weekly yard cleanups, every gate locked behind us, photo after each visit",
+    highlights: [
+      "Insured and bonded",
+      "The same technician every week, all year",
+      "Photo after each visit",
+      "Pet-safe deodorizer",
+    ],
+    areas: [
+      { name: "Downtown", zips: ["48201", "48202", "48203"] },
+      {
+        name: "North suburbs and the Woodward corridors",
+        zips: Array.from({ length: 14 }, (_, i) => String(48201 + i)),
+      },
+      { name: "Ferndale", zips: ["48210"] },
+    ],
     listed: [{ service_id: "5d000000-0000-4000-8000-000000000001", price_from_cents: 1800 }],
+  },
+  // mypets v2 step 7: the switch on with one gate still missing, so the
+  // "Set up Stripe" action is drawn, and a policy at its 400-character limit.
+  booking: {
+    available: true,
+    enabled: true,
+    policyText: (
+      "Cancel at least 24 hours before a visit for a full refund. Cancellations inside 24 hours are charged for that visit. " +
+      "A visit we cannot make because of a locked gate or an unrestrained dog is charged in full. Prepaid packages are refundable " +
+      "for unused visits within 30 days of purchase, minus card processing fees. Holiday weeks follow the same rules as any week."
+    ).slice(0, 400),
+    publicSignupEnabled: true,
+    chargesEnabled: false,
   },
 };
 
 const SHOTS = process.env.DIRECTORY_SCREENSHOTS;
 
 test.describe.configure({ mode: "parallel" });
+// Screenshots a person will look at are taken at 2x; measuring is not.
+if (SHOTS) test.use({ deviceScaleFactor: 2 });
 
-for (const { w, h, label } of WIDTHS) {
+// 390 as well: the iPhone width the step 5a screenshots are taken at.
+for (const { w, h, label } of [...WIDTHS, { w: 390, h: 844, label: "390 · iPhone" }]) {
   test(`${label}: the directory listing settings fit, keep their controls, clip nothing`, async ({
     page,
     context,
@@ -82,6 +116,20 @@ for (const { w, h, label } of WIDTHS) {
     // state is not what this spec is for).
     await expect(page.getByText("Listed in the directory")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText("Weekly yard cleanup with gate check and photo")).toBeVisible();
+    // The step 5a sections drew from the fixture, not their empty states.
+    await expect(page.getByLabel("Tagline")).toHaveValue(MY_PROFILE.profile.tagline);
+    await expect(page.getByLabel("Area 2 name")).toHaveValue(
+      "North suburbs and the Woodward corridors",
+    );
+    // Step 7's section drew from the fixture too.
+    await expect(page.getByRole("switch", { name: /Show Book online on/ })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await expect(page.getByRole("link", { name: "Set up Stripe" })).toBeVisible();
+    await expect(page.getByLabel("Cancellation and refund policy")).toHaveValue(
+      MY_PROFILE.booking.policyText,
+    );
     await page.waitForTimeout(300);
 
     const overflow = await measurePageOverflow(page);

@@ -11,6 +11,8 @@ import { resolveSupabaseUrl } from "@/lib/supabase-url";
 import { parseFirstCleanupPricing } from "@/lib/first-cleanup";
 import { parseQuoteOptions, signupChargeFromQuote } from "@/lib/signup-charge";
 import { LEAD_SOURCE } from "@/lib/new-customer-form";
+import { DIRECTORY_REF } from "@/lib/directory-site";
+
 import { serviceAreaSummary } from "@/lib/booking-page";
 import {
   DEFAULT_BOOKING_DETAILS,
@@ -63,6 +65,12 @@ import {
   callerAddress,
   screenSubmission,
 } from "@/lib/public-form-guard";
+
+/** Said to a visitor who reached a paid checkout from the directory while
+ *  the business takes only requests there. No dead end: the form still asks
+ *  for a quote. */
+export const DIRECTORY_BOOKING_OFF =
+  "This business takes requests from the directory rather than online payments. Ask for a quote below and they'll get back to you.";
 
 function anon() {
   return createClient<Database>(
@@ -716,6 +724,10 @@ export const signupCheckoutSchema = quoteSchema.extend({
   // tech's phone handed over in walk mode. A label only; nothing is priced,
   // gated or trusted on it.
   channel: z.enum(["page", "door"]).optional(),
+  // Came through the directory's booking hand-off (#630, step 7): the lead
+  // is tagged as a directory booking, and the card is taken only if the
+  // business has turned Book online on for the directory (checked below).
+  ref: z.literal(DIRECTORY_REF).optional(),
   // "Anything else?" from the form (a gate code, the dogs' names). There is
   // nowhere on a signup request for it, so it goes on the lead the signup
   // writes, where the office reads it beside the quote requests' notes.
@@ -881,6 +893,23 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
       }
     }
 
+    // A booking from the directory, BEFORE any money moves (#630, step 7):
+    // only while the owner has "Show Book online" on for the directory. The
+    // hand-off sends a visitor here able to pay only when it is, so this is
+    // the second lock rather than the first; a database without the column,
+    // or a read that fails, is a no, because the safe answer is a quote.
+    if (data.ref === DIRECTORY_REF) {
+      const { data: dirOrg, error: dirErr } = await (supabaseAdmin as any)
+        .from("organizations")
+        .select("directory_booking_enabled")
+        .eq("id", q.organization_id)
+        .maybeSingle();
+      if (dirErr || dirOrg?.directory_booking_enabled !== true) {
+        if (dirErr) console.error("directory booking check failed", q.organization_id, dirErr);
+        throw new Error(DIRECTORY_BOOKING_OFF);
+      }
+    }
+
     // The entitlement gate, BEFORE any money moves.
     //
     // `org_can_add_client` is enforced by `tg_clients_enforce_plan_limit`, a
@@ -956,7 +985,12 @@ export const createSignupPaymentIntent = createServerFn({ method: "POST" })
     // call. Best-effort: a lead that fails to write must not stop a sale.
     const leadId = await recordSignupLead(supabaseAdmin, {
       orgId: q.organization_id,
-      source: data.channel === "door" ? LEAD_SOURCE.doorSignup : LEAD_SOURCE.onlineSignup,
+      source:
+        data.channel === "door"
+          ? LEAD_SOURCE.doorSignup
+          : data.ref === DIRECTORY_REF
+            ? LEAD_SOURCE.directoryBooking
+            : LEAD_SOURCE.onlineSignup,
       name: data.name,
       email: data.email,
       phone: data.phone || null,

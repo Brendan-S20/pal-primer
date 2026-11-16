@@ -64,12 +64,12 @@ export const listDnaMatches = createServerFn({ method: "GET" })
     // scoped to sample LOGGING (createDnaMatch / status moves) only — reading
     // the registry requires the client-directory capability, which techs lack.
     // Enforced here in the server fn, not just by hiding the /dna route.
-    const { orgId, role } = await requirePermission(
+    const { orgId, role, overrides } = await requirePermission(
       context.supabase,
       context.userId,
       "view_client_directory",
     );
-    const canSeeDirectory = hasPermission(role, "view_client_directory");
+    const canSeeDirectory = hasPermission(role, "view_client_directory", overrides);
     let query = context.supabase
       .from("dna_matches")
       .select(
@@ -309,12 +309,12 @@ export const listRegisteredDogs = createServerFn({ method: "GET" })
   .handler(async ({ data: filter, context }) => {
     // H1/I7: cross-client registered-dog list is registry data, not a tech
     // surface — gate the read on the directory capability (techs are rejected).
-    const { orgId, role } = await requirePermission(
+    const { orgId, role, overrides } = await requirePermission(
       context.supabase,
       context.userId,
       "view_client_directory",
     );
-    const canSeeDirectory = hasPermission(role, "view_client_directory");
+    const canSeeDirectory = hasPermission(role, "view_client_directory", overrides);
     let query = context.supabase
       .from("dogs")
       .select(
@@ -353,12 +353,12 @@ export const listAllDogsForDna = createServerFn({ method: "GET" })
   .handler(async ({ data: filter, context }) => {
     // H1/I7: the full cross-client dog roster (registry tab) is not a tech
     // surface — gate on the directory capability (techs are rejected).
-    const { orgId, role } = await requirePermission(
+    const { orgId, role, overrides } = await requirePermission(
       context.supabase,
       context.userId,
       "view_client_directory",
     );
-    const canSeeDirectory = hasPermission(role, "view_client_directory");
+    const canSeeDirectory = hasPermission(role, "view_client_directory", overrides);
     let query = context.supabase
       .from("dogs")
       .select(

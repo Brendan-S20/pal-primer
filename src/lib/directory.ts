@@ -1,6 +1,6 @@
-// HoundStack's own directory of pet pros (#630, phase 1). Not a listing on
-// Angi or anywhere else: every profile is a HoundStack customer that opted in,
-// and shows only what its owner confirmed when they did.
+// HoundStack's own directory of pet pros (#630, phase 1). Every profile is a
+// HoundStack customer that opted in, and shows only what its owner confirmed
+// when they did.
 //
 // Kept pure (no server import) so the pages, the settings screen and the tests
 // can all read it. The database half is
@@ -10,6 +10,8 @@
 // request a quote. Reviews, held for moderation, are in lib/directory-reviews.ts.
 
 import { SERVICE_LINE_LABEL, type ServiceLine } from "@/lib/service-lines";
+import { DIRECTORY_REF } from "@/lib/directory-site";
+import type { PublicBookingMode } from "@/lib/public-booking-mode";
 
 /** The lines a visitor can search for. `other` is accepted by the database
  *  but means nothing to a visitor, so it is never offered as a search. */
@@ -24,7 +26,7 @@ export type DirectorySearchLine = (typeof DIRECTORY_SEARCH_LINES)[number];
 
 /** What a visitor calls each line. Plainer than Settings' labels. */
 export const DIRECTORY_LINE_LABEL: Record<DirectorySearchLine, string> = {
-  pet_waste: "Poop scooping",
+  pet_waste: "Pet waste removal",
   dog_walking: "Dog walking",
   pet_sitting: "Pet sitting",
   mobile_grooming: "Mobile grooming",
@@ -73,9 +75,8 @@ export type DirectoryProfile = {
 /** The sentence every directory page carries (FTC 16 CFR 465.6 territory, and
  *  plain honesty): who is listed and why. Also says what we are not. */
 export const DIRECTORY_DISCLOSURE =
-  "Every business listed here is a HoundStack customer that chose to be listed. " +
-  "Profiles show only what each business confirmed. HoundStack is not affiliated with Angi or any other directory, " +
-  "and businesses do not pay for placement.";
+  "Every pro here runs their business on HoundStack and chose to be listed. " +
+  "Profiles show only what each business confirmed. No paid placement.";
 
 /** A ZIP as the search takes it: five digits, or null. */
 export function cleanZip(raw: unknown): string | null {
@@ -231,3 +232,401 @@ export function directoryQuoteBody(directorySlug: string, f: DirectoryQuoteForm)
 /** How long a second quote from the same email to the same business is the
  *  same quote (merged, not a second lead). */
 export const DIRECTORY_QUOTE_MERGE_HOURS = 24;
+
+// ── Profile content: tagline, highlights, business areas (directory v2 5a) ──
+// The database half is
+// supabase/migrations/20261112090000_a-directory-profile-says-what-a-business-is-and-where.sql;
+// these limits are its CHECKs, so the form can say no before the server does.
+
+export const DIRECTORY_TAGLINE_MAX = 90;
+export const DIRECTORY_HIGHLIGHTS_MAX = 4;
+export const DIRECTORY_HIGHLIGHT_MAX = 40;
+export const DIRECTORY_AREAS_MAX = 8;
+export const DIRECTORY_AREA_NAME_MAX = 40;
+
+/** A named group of the ZIPs a profile already covers. */
+export type DirectoryArea = { name: string; zips: string[] };
+
+/** A listed service's package, as the view shows it: never its id. */
+export type DirectoryPackage = { name: string; sessions_count: number; price_cents: number };
+
+/** One element of directory_public_listings.services: the four keys every
+ *  directory reader shares, plus what 20261112100000 adds (directory v2 step 7). */
+export type DirectoryListedService = DirectoryService & {
+  /** The EFFECTIVE mode: request_only unless the business can sell this
+   *  service online right now (directoryBookingMode below). */
+  booking_mode: PublicBookingMode;
+  /** Opaque, for /d/{slug}/book?service=<key>. Not a service id. */
+  booking_key: string;
+  /** Only when booking_mode is package. */
+  package: DirectoryPackage | null;
+};
+
+/** One approved photo as the view shows it (directory v2 step 5b): a
+ *  HoundStack path, its alt text and its order. Never a storage path, never
+ *  an id, never a credit line. */
+export type DirectoryPhoto = {
+  /** `/d/{slug}/photos/{opaque key}` on HoundStack. */
+  url: string;
+  alt: string;
+  position: number;
+};
+
+/** One row of directory_public_listings: the public profile, plus the three
+ *  columns 20261112090000 adds to the view, the three 20261112100000 adds
+ *  after them, and the one 20261112110000 adds after those. */
+export type DirectoryListing = Omit<DirectoryProfile, "services"> & {
+  services: DirectoryListedService[];
+  tagline: string | null;
+  highlights: string[];
+  areas: DirectoryArea[];
+  /** At least one listed service can be booked online now. */
+  books_online: boolean;
+  /** The owner's own cancellation and refund policy, or null. */
+  booking_policy_text: string | null;
+  /** `/d/{slug}/book` when books_online, else null. */
+  book_path: string | null;
+  /** APPROVED photos only, in order. Empty when there are none. */
+  photos: DirectoryPhoto[];
+};
+
+/**
+ * The allowlist. A public reader keeps these keys and drops everything else,
+ * whatever the database returns; the contract tests hold the view's columns,
+ * the proof's expected keys and these lists to each other. Adding a public
+ * field is a change to this list first.
+ */
+export const PUBLIC_LISTING_FIELDS = [
+  "slug",
+  "display_name",
+  "logo_url",
+  "bio",
+  "service_lines",
+  "coverage_zips",
+  "coverage_cities",
+  "services",
+  "published_at",
+  "tagline",
+  "highlights",
+  "areas",
+  "books_online",
+  "booking_policy_text",
+  "book_path",
+  "photos",
+] as const satisfies readonly (keyof DirectoryListing)[];
+export const PUBLIC_SERVICE_FIELDS = [
+  "label",
+  "service_line",
+  "price_from_cents",
+  "price_unit",
+  "booking_mode",
+  "booking_key",
+  "package",
+] as const satisfies readonly (keyof DirectoryListedService)[];
+export const PUBLIC_PACKAGE_FIELDS = [
+  "name",
+  "sessions_count",
+  "price_cents",
+] as const satisfies readonly (keyof DirectoryPackage)[];
+export const PUBLIC_AREA_FIELDS = [
+  "name",
+  "zips",
+] as const satisfies readonly (keyof DirectoryArea)[];
+export const PUBLIC_PHOTO_FIELDS = [
+  "url",
+  "alt",
+  "position",
+] as const satisfies readonly (keyof DirectoryPhoto)[];
+
+/** Spaces collapsed and trimmed, as set_directory_profile stores text. */
+export function oneLine(s: string): string {
+  return s.replace(/\s+/g, " ").trim();
+}
+
+/** Highlights as the database keeps them: one line each, blanks and repeats
+ *  (any case) dropped, order kept. */
+export function cleanHighlights(raw: readonly string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const r of raw) {
+    const h = oneLine(r);
+    if (!h || seen.has(h.toLowerCase())) continue;
+    seen.add(h.toLowerCase());
+    out.push(h);
+  }
+  return out;
+}
+
+export type DirectoryContentInput = {
+  tagline: string;
+  highlights: readonly string[];
+  areas: readonly DirectoryArea[];
+  /** The profile's coverage: every area ZIP must be one of these. */
+  coverageZips: readonly string[];
+};
+
+/** Problems with the tagline, highlights and areas, worded for the owner.
+ *  `where` says which field, so the form can put each one beside it. Empty
+ *  when the database would accept them. */
+export function directoryContentProblems(
+  v: DirectoryContentInput,
+): Array<{ where: "tagline" | "highlights" | `area-${number}` | "areas"; message: string }> {
+  const out: ReturnType<typeof directoryContentProblems> = [];
+  const tagline = oneLine(v.tagline);
+  if (tagline.length > DIRECTORY_TAGLINE_MAX) {
+    out.push({
+      where: "tagline",
+      message: `Keep the tagline to ${DIRECTORY_TAGLINE_MAX} characters (it is ${tagline.length}).`,
+    });
+  }
+  const highlights = cleanHighlights(v.highlights);
+  if (highlights.length > DIRECTORY_HIGHLIGHTS_MAX) {
+    out.push({
+      where: "highlights",
+      message: `List up to ${DIRECTORY_HIGHLIGHTS_MAX} highlights.`,
+    });
+  }
+  const long = highlights.find((h) => h.length > DIRECTORY_HIGHLIGHT_MAX);
+  if (long) {
+    out.push({
+      where: "highlights",
+      message: `Keep each highlight to ${DIRECTORY_HIGHLIGHT_MAX} characters: "${long.slice(0, 20)}…" is ${long.length}.`,
+    });
+  }
+  if (v.areas.length > DIRECTORY_AREAS_MAX) {
+    out.push({ where: "areas", message: `A profile has at most ${DIRECTORY_AREAS_MAX} areas.` });
+  }
+  const covered = new Set(v.coverageZips);
+  const names = new Set<string>();
+  v.areas.forEach((a, i) => {
+    const where = `area-${i}` as const;
+    const name = oneLine(a.name);
+    if (!name) out.push({ where, message: "Give this area a name." });
+    else if (name.length > DIRECTORY_AREA_NAME_MAX)
+      out.push({
+        where,
+        message: `Keep the area name to ${DIRECTORY_AREA_NAME_MAX} characters (it is ${name.length}).`,
+      });
+    else if (names.has(name.toLowerCase()))
+      out.push({ where, message: `Another area is already called "${name}".` });
+    names.add(name.toLowerCase());
+    if (!a.zips.length) out.push({ where, message: "Pick at least one ZIP code for this area." });
+    const outside = a.zips.filter((z) => !covered.has(z));
+    if (outside.length)
+      out.push({
+        where,
+        message: `Not in the ZIP codes you cover: ${outside.join(", ")}. Add them above, or untick them here.`,
+      });
+  });
+  return out;
+}
+
+// ── Booking exposure (directory v2 step 7) ────────────────────────────────
+// The database half is
+// supabase/migrations/20261112100000_a-directory-listing-says-which-services-book-online.sql.
+
+/** organizations.booking_policy_text's CHECK. */
+export const BOOKING_POLICY_MAX = 400;
+
+/** The policy as set_directory_booking stores it: trimmed, empty is null. */
+export function cleanBookingPolicy(raw: string | null | undefined): string | null {
+  const t = (raw ?? "").trim();
+  return t ? t : null;
+}
+
+/** The business's three gates. Every one has to be on. */
+export type DirectoryBookingGates = {
+  /** organizations.directory_booking_enabled: the owner's directory switch. */
+  directoryBookingEnabled: boolean;
+  /** organizations.public_signup_enabled: "Accept signups online". */
+  publicSignupEnabled: boolean;
+  /** organizations.stripe_connect_charges_enabled, synced from Stripe. */
+  chargesEnabled: boolean;
+};
+
+/** A listed service, as the rules need to see it. */
+export type DirectoryBookingService = {
+  active: boolean;
+  service_line: string;
+  base_price_cents: number | null;
+  /** services.public_booking_mode as stored (NULL or junk reads request_only). */
+  public_booking_mode: unknown;
+  /** The platform lets a visitor book this line (platform_service_lines). */
+  lineBookable: boolean;
+  /** The package public_package_id names, if it is this service's. */
+  pack?: { active: boolean; sessions_count: number; price_cents: number } | null;
+};
+
+/**
+ * The EFFECTIVE booking mode the directory shows for one listed service. The
+ * same rule as the view's CASE in 20261112100000, and the contract test
+ * holds the two to each other:
+ *
+ *   request_only unless the switch, public signup AND Stripe charges are on,
+ *   and the service is active, on a bookable line, priced (or zone-priced
+ *   pet waste), and stored as one_time / recurring, or package with a
+ *   package on sale (sessions and price above zero). A groom is never a
+ *   package. The directory app never decides this itself; it reads it.
+ */
+export function directoryBookingMode(
+  gates: DirectoryBookingGates,
+  s: DirectoryBookingService,
+): PublicBookingMode {
+  if (!(gates.directoryBookingEnabled && gates.publicSignupEnabled && gates.chargesEnabled))
+    return "request_only";
+  if (!s.active || !s.lineBookable) return "request_only";
+  if (!(s.service_line === "pet_waste" || s.base_price_cents != null)) return "request_only";
+  if (s.public_booking_mode === "one_time" || s.public_booking_mode === "recurring")
+    return s.public_booking_mode;
+  if (
+    s.public_booking_mode === "package" &&
+    s.service_line !== "mobile_grooming" &&
+    s.pack &&
+    s.pack.active &&
+    s.pack.sessions_count > 0 &&
+    s.pack.price_cents > 0
+  )
+    return "package";
+  return "request_only";
+}
+
+/** What the server's hand-off lookup (directory_booking_handoff) answers. */
+export type DirectoryHandoff = {
+  signup_slug: string;
+  service_id: string | null;
+  booking_mode: string;
+  books_online: boolean;
+};
+
+/**
+ * Where /d/{directory slug}/book sends a visitor: the business's own booking
+ * link with the service and ZIP filled in and `ref` saying it came from the
+ * directory. `book=1` only when the lookup says this service can be sold now;
+ * without it the booking link asks for a quote and offers no card (the
+ * request path), whatever the business's link would otherwise do.
+ */
+export function directoryBookingHref(h: DirectoryHandoff, zip: string | null): string {
+  const q = new URLSearchParams();
+  if (h.service_id) q.set("service", h.service_id);
+  if (zip) q.set("zip", zip);
+  q.set("ref", DIRECTORY_REF);
+  if (h.books_online && h.service_id && h.booking_mode !== "request_only") q.set("book", "1");
+  return `/signup/${encodeURIComponent(h.signup_slug)}?${q.toString()}`;
+}
+
+/** The booking link's own reading of those params: came from the directory,
+ *  and may it sell. Anything but the exact values reads as no. */
+export function directoryBookingSearch(search: Record<string, unknown>): {
+  fromDirectory: boolean;
+  /** From the directory and not cleared to sell: ask for a quote only. */
+  quoteOnly: boolean;
+  serviceId: string | null;
+  zip: string | null;
+} {
+  const fromDirectory = search.ref === DIRECTORY_REF;
+  const book = search.book === 1 || search.book === "1";
+  const sid = typeof search.service === "string" ? search.service : "";
+  const zip = cleanZip(
+    typeof search.zip === "number" ? String(search.zip).padStart(5, "0") : search.zip,
+  );
+  return {
+    fromDirectory,
+    quoteOnly: fromDirectory && !book,
+    serviceId: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid)
+      ? sid
+      : null,
+    zip,
+  };
+}
+
+// ── Photos and moderation (directory v2 step 5b) ──────────────────────────
+// The database half is
+// supabase/migrations/20261112110000_a-directory-photo-is-public-only-after-a-moderator-approves-it.sql;
+// these limits are its CHECKs and its bucket's, so the form can say no first.
+
+/** The private storage bucket. Nothing in it is public; a visitor gets an
+ *  approved photo only through /d/{slug}/photos/{key}. */
+export const DIRECTORY_PHOTO_BUCKET = "directory-photos";
+/** Pending and approved photos per business. Rejected ones do not count. */
+export const DIRECTORY_PHOTOS_MAX = 8;
+export const DIRECTORY_PHOTO_ALT_MAX = 140;
+/** The bucket's file_size_limit. */
+export const DIRECTORY_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
+/** The bucket's allowed_mime_types, and the extension each is stored as. */
+export const DIRECTORY_PHOTO_TYPES = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+} as const;
+export type DirectoryPhotoType = keyof typeof DIRECTORY_PHOTO_TYPES;
+
+/** The owner's attestation, word for word (brief section 4 item 2). Ticked,
+ *  it is what rights_attested_at records. */
+export const DIRECTORY_PHOTO_ATTESTATION =
+  "I took these or have the rights to use them, and they are not AI-generated";
+
+export const DIRECTORY_PHOTO_STATUSES = ["pending", "approved", "rejected"] as const;
+export type DirectoryPhotoStatus = (typeof DIRECTORY_PHOTO_STATUSES)[number];
+
+/** What an owner reads about each status. Plain words, no dashes. */
+export const DIRECTORY_PHOTO_STATUS_LABEL: Record<DirectoryPhotoStatus, string> = {
+  pending: "Waiting for review",
+  approved: "Approved, shown on your listing",
+  rejected: "Not approved, not shown",
+};
+
+/** Does this photo count toward the eight? Rejected ones do not. */
+export function countsTowardPhotoLimit(status: DirectoryPhotoStatus): boolean {
+  return status !== "rejected";
+}
+
+/** Alt text as the database keeps it: one line, trimmed. */
+export function cleanPhotoAlt(raw: string): string {
+  return oneLine(raw);
+}
+
+/** Problems with one photo's alt text, worded for the owner. */
+export function photoAltProblem(raw: string): string | null {
+  const alt = cleanPhotoAlt(raw);
+  if (!alt) return "Describe the photo for people who cannot see it.";
+  if (alt.length > DIRECTORY_PHOTO_ALT_MAX)
+    return `Keep the description to ${DIRECTORY_PHOTO_ALT_MAX} characters (it is ${alt.length}).`;
+  return null;
+}
+
+/** Problems with a file before it is uploaded. */
+export function photoFileProblem(file: { type: string; size: number }): string | null {
+  if (!(file.type in DIRECTORY_PHOTO_TYPES)) return "Use a JPEG, PNG or WebP photo.";
+  if (file.size > DIRECTORY_PHOTO_MAX_BYTES) return "Use a photo under 5 MB.";
+  return null;
+}
+
+const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+
+/** The object path the database accepts: {organization id}/{uuid}.{ext}. */
+export function directoryPhotoPath(
+  orgId: string,
+  fileId: string,
+  type: DirectoryPhotoType,
+): string {
+  return `${orgId}/${fileId}.${DIRECTORY_PHOTO_TYPES[type]}`;
+}
+
+/** directory_profile_photos_path_check, for one business's folder. */
+export function isDirectoryPhotoPath(path: string, orgId: string): boolean {
+  return (
+    new RegExp(`^${UUID}/${UUID}\\.(jpg|png|webp)$`).test(path) && path.split("/")[0] === orgId
+  );
+}
+
+/** A public photo URL the view can have produced for this listing. */
+export function isDirectoryPhotoUrl(url: string, slug: string): boolean {
+  return (
+    url === `/d/${slug}/photos/${url.split("/").at(-1)}` && /\/photos\/[0-9a-f]{16}$/.test(url)
+  );
+}
+
+/** The photo route's key: 16 hex characters, as the view makes it. */
+export function isDirectoryPhotoKey(key: string): boolean {
+  return /^[0-9a-f]{16}$/.test(key);
+}

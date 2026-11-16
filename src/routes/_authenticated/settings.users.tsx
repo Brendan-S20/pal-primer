@@ -26,7 +26,7 @@ import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { StaffSkills } from "@/components/settings/StaffSkills";
 import { WalkerDogCap } from "@/components/settings/WalkerDogCap";
 import { toast } from "sonner";
-import { useMyRole } from "@/hooks/useMyRole";
+import { useMyRole, usePermissions } from "@/hooks/useMyRole";
 import { useRoleLabel } from "@/components/CommercialOnly";
 import { MapPin, ChevronDown, ChevronRight } from "lucide-react";
 import { titleHead } from "@/lib/page-title";
@@ -107,11 +107,14 @@ function UsersPage() {
   const roleLabel = useRoleLabel();
   const qc = useQueryClient();
   const { role: myRole } = useMyRole();
+  const { can } = usePermissions();
   const canEdit = myRole === "owner";
   // D7 as changed 2026-11-10 (#659): an office manager changes roles and turns
   // people on or off too, but never the owner's row, and offers only the roles
-  // at or below their own. The server and the database refuse the same.
-  const canManageStaff = myRole === "owner" || myRole === "office_manager";
+  // at or below their own. Since #863 that is the manage_users permission as
+  // the owner configured it, so a dispatcher the owner trusts with the team
+  // sees the controls too. The server and the database refuse the same.
+  const canManageStaff = myRole === "owner" || can("manage_users");
   const grantableRoles = ROLES.filter((r) =>
     (ROLES_A_CALLER_MAY_GRANT[myRole ?? ""] ?? []).includes(r),
   );
