@@ -10,8 +10,14 @@
 // for the property's dogs through servicePriceCents. No service named means
 // the business's default, which is pet waste (ensure_default_services).
 //
-// Null when there is no set price: the business never set a one-off price,
-// or the service has none. Somebody who sets prices books that one.
+// #860: a pet-waste one-off with no extra-visit price set is booked at the
+// standard price instead (the service's, from Settings → Services), or at the
+// override of the zone the property is in. The same rule as a new plan
+// (standard-price.ts), for one visit at the property's dogs.
+//
+// Null when there is no set price: no extra-visit price, no standard price
+// and no zone override, or a service with none. Somebody who sets prices
+// books that one.
 
 import { ONE_OFF_PRICE_SETTING, isZonePriced, servicePriceCents } from "@/lib/services";
 
@@ -58,7 +64,11 @@ export async function oneOffGridPriceCents(
       .maybeSingle();
     if (error) throw new Error(error.message);
     const cents = org?.one_off_price_cents as number | null | undefined;
-    return cents == null ? { cents: null, reason: NO_ONE_OFF_PRICE } : { cents, reason: null };
+    if (cents != null) return { cents, reason: null };
+    const standard = await standardOneOffCents(db, input, (service as any)?.id ?? null);
+    return standard == null
+      ? { cents: null, reason: NO_ONE_OFF_PRICE }
+      : { cents: standard, reason: null };
   }
 
   // The same pet count bookOneOffVisit prices with: the property's dogs for
@@ -86,6 +96,48 @@ export async function oneOffGridPriceCents(
   if (error) throw new Error(error.message);
   const cents = servicePriceCents(service as any, { pets: Math.max(1, count ?? 1) });
   return cents == null ? { cents: null, reason: NO_SERVICE_PRICE } : { cents, reason: null };
+}
+
+/** One pet-waste visit at the standard price, or the property's zone override
+ *  (#860), for the property's active dogs. Null when neither is set. */
+async function standardOneOffCents(
+  db: any,
+  input: { orgId: string; propertyId: string },
+  serviceId: string | null,
+): Promise<number | null> {
+  const { loadPetWasteStandard, petWasteVisitRate, rateVisitCents } =
+    await import("@/lib/standard-price");
+  const { data: prop, error: pErr } = await db
+    .from("properties")
+    .select("id, organization_id, zone_id")
+    .eq("id", input.propertyId)
+    .maybeSingle();
+  if (pErr) throw new Error(pErr.message);
+  if (!prop || prop.organization_id !== input.orgId)
+    throw new Error("That property is not in your organization");
+  let zone: { base_price_cents: number | null; per_dog_addl_cents: number | null } | null = null;
+  if (prop.zone_id) {
+    const { data: z, error: zErr } = await db
+      .from("zones")
+      .select("id, organization_id, base_price_cents, per_dog_addl_cents, pricing_mode")
+      .eq("id", prop.zone_id)
+      .maybeSingle();
+    if (zErr) throw new Error(zErr.message);
+    // An area-priced zone has no one-visit figure without the yard's area;
+    // its flat part is not offered as if it were the whole price.
+    if (z && z.organization_id === input.orgId && (z.pricing_mode ?? "flat") === "flat") zone = z;
+  }
+  const rate = petWasteVisitRate(await loadPetWasteStandard(db, input.orgId, serviceId), zone);
+  if (!rate) return null;
+  const { count, error } = await db
+    .from("dogs")
+    .select("id", { count: "exact", head: true })
+    .eq("property_id", input.propertyId)
+    .eq("organization_id", input.orgId)
+    .not("active", "is", false)
+    .eq("species", "dog");
+  if (error) throw new Error(error.message);
+  return rateVisitCents(rate, Math.max(1, count ?? 1));
 }
 
 /** What a booking without manage_pricing is refused with when the price was changed. */

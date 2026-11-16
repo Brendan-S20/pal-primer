@@ -66,8 +66,8 @@ async function directoryReader(supabase: unknown, userId: string) {
     orgId: caller.orgId,
     db: supabaseAdmin as any,
     seesInvoices:
-      hasPermission(caller.role, "manage_client_billing") ||
-      hasPermission(caller.role, "view_financials"),
+      hasPermission(caller.role, "manage_client_billing", caller.overrides) ||
+      hasPermission(caller.role, "view_financials", caller.overrides),
   };
 }
 
@@ -1413,6 +1413,9 @@ const internalQuoteSchema = z.object({
   // dogs (computeCommercialZonePrice). Ignored for residential.
   unitCount: z.coerce.number().int().min(0).max(100_000).optional(),
   stationCount: z.coerce.number().int().min(0).max(200).optional(),
+  // #860: the pet-waste service whose standard price applies outside a zone
+  // override. Only ever looked up among the caller's own business's services.
+  serviceId: z.string().uuid().optional(),
 });
 
 export const getInternalQuote = createServerFn({ method: "POST" })
@@ -1581,14 +1584,14 @@ export const onboardClient = createServerFn({ method: "POST" })
       const caller = await requirePermission(supabase, userId, "booking");
       if (caller.orgId !== orgId) throw new Error("Not authorized");
       const { hasPermission } = await import("@/lib/permissions");
-      if (!hasPermission(caller.role, "manage_pricing")) {
+      if (!hasPermission(caller.role, "manage_pricing", caller.overrides)) {
         const s = data.subscription;
         const { PLAN_CADENCE_IS_BILLING, planSetPriceCents } =
           await import("@/lib/plan-set-price.server");
         const { priceOverrideRefusal } = await import("@/lib/booking-price.server");
         if (
           (s.billingCadence ?? "postpaid") !== "postpaid" &&
-          !hasPermission(caller.role, "manage_client_billing")
+          !hasPermission(caller.role, "manage_client_billing", caller.overrides)
         )
           throw new Error(PLAN_CADENCE_IS_BILLING);
         const isRes = data.accountType === "residential";
@@ -1628,6 +1631,21 @@ export const onboardClient = createServerFn({ method: "POST" })
     }
 
     // 1) client
+    //
+    // "Bill after each visit" is what the form calls a postpaid plan, so the
+    // client is billed that way: billing_frequency 'after_each_visit', which
+    // invoices each visit when it is completed (#859). It defaulted to
+    // 'monthly', so the label's promise waited for the end of the month. The
+    // cadence is the one the plan is written with below: a caller who does
+    // not set prices always writes a postpaid plan.
+    const { billingFrequencyForNewClient } = await import("@/lib/visit-invoicing");
+    const billingFrequency = billingFrequencyForNewClient(
+      data.subscription
+        ? planAtSetPrice
+          ? "postpaid"
+          : (data.subscription.billingCadence ?? "postpaid")
+        : null,
+    );
     const { data: cRow, error: cErr } = await supabase
       .from("clients")
       .insert({
@@ -1636,6 +1654,7 @@ export const onboardClient = createServerFn({ method: "POST" })
         account_type: data.accountType,
         primary_email: data.primaryEmail || null,
         primary_phone: data.primaryPhone || null,
+        ...(billingFrequency ? { billing_frequency: billingFrequency } : {}),
       })
       .select("id, portal_token")
       .single();

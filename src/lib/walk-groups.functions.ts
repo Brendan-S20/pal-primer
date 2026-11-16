@@ -10,6 +10,12 @@ import {
   type WalkGroupSummary,
 } from "@/lib/walk-groups";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  dogCapWarningFromError,
+  withDogCapAck,
+  type DogCapRefused,
+  type OverCapWalk,
+} from "@/lib/dog-cap";
 import type { Database } from "@/integrations/supabase/types";
 
 const daySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -172,17 +178,31 @@ export const createWalkGroup = createServerFn({ method: "POST" })
 export const setWalkGroupMember = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
-    z.object({ visitId: z.string().uuid(), groupId: z.string().uuid().nullable() }).parse(d),
+    z
+      .object({
+        visitId: z.string().uuid(),
+        groupId: z.string().uuid().nullable(),
+        // "Assign anyway" after the dog cap warning (src/lib/dog-cap.ts).
+        overCapAcknowledged: z.boolean().optional(),
+      })
+      .parse(d),
   )
-  .handler(async ({ data, context }) => {
+  .handler(async ({ data, context }): Promise<{ ok: true } | DogCapRefused> => {
     const orgId = await requireWalkGroupOffice(context.supabase, context.userId);
-    const { data: rows, error } = await context.supabase
-      .from("visits")
-      .update({ walk_group_id: data.groupId, sequence: null })
-      .eq("id", data.visitId)
-      .eq("organization_id", orgId)
-      .eq("status", "scheduled")
-      .select("id");
+    const { data: rows, error } = await withDogCapAck(
+      context.supabase
+        .from("visits")
+        .update({ walk_group_id: data.groupId, sequence: null })
+        .eq("id", data.visitId)
+        .eq("organization_id", orgId)
+        .eq("status", "scheduled")
+        .select("id"),
+      data.overCapAcknowledged,
+    );
+    // Over the walker's dog cap and not confirmed: nothing was saved; the
+    // panel shows the warning and asks.
+    const overCap = dogCapWarningFromError(error);
+    if (overCap) return { overCap };
     if (error) throw new Error(error.message);
     if (!rows?.length) throw new Error("That scheduled walk was not found. Refresh the day.");
     return { ok: true };
@@ -191,16 +211,27 @@ export const setWalkGroupMember = createServerFn({ method: "POST" })
 export const setWalkGroupWalker = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
-    z.object({ groupId: z.string().uuid(), walkerId: z.string().uuid().nullable() }).parse(d),
+    z
+      .object({
+        groupId: z.string().uuid(),
+        walkerId: z.string().uuid().nullable(),
+        overCapAcknowledged: z.boolean().optional(),
+      })
+      .parse(d),
   )
-  .handler(async ({ data, context }) => {
+  .handler(async ({ data, context }): Promise<{ ok: true } | DogCapRefused> => {
     const orgId = await requireWalkGroupOffice(context.supabase, context.userId);
-    const { data: rows, error } = await context.supabase
-      .from("walk_groups")
-      .update({ assigned_staff_id: data.walkerId })
-      .eq("id", data.groupId)
-      .eq("organization_id", orgId)
-      .select("id");
+    const { data: rows, error } = await withDogCapAck(
+      context.supabase
+        .from("walk_groups")
+        .update({ assigned_staff_id: data.walkerId })
+        .eq("id", data.groupId)
+        .eq("organization_id", orgId)
+        .select("id"),
+      data.overCapAcknowledged,
+    );
+    const overCap = dogCapWarningFromError(error);
+    if (overCap) return { overCap };
     if (error) throw new Error(error.message);
     if (!rows?.length) throw new Error("That group walk was not found.");
     return { ok: true };
@@ -374,4 +405,28 @@ export const listWalkerDogCaps = createServerFn({ method: "GET" })
       .eq("organization_id", orgId);
     if (error) throw new Error(error.message);
     return { rows: (data ?? []).map((r) => ({ id: r.id, maxDogs: r.max_dogs_per_walk })) };
+  });
+
+/** Walks over their walker's dog cap on `day` (#731, "warn but allow"): the
+ *  board and My Day flag them until they are back under. The office gets the
+ *  whole business; a walker gets only their own (walks_over_dog_cap). */
+export const listWalksOverDogCap = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ day: daySchema }).parse(d))
+  .handler(async ({ data, context }): Promise<{ walks: OverCapWalk[] }> => {
+    const { orgId } = await resolveCaller(context.supabase, context.userId);
+    const { data: rows, error } = await context.supabase.rpc("walks_over_dog_cap", {
+      _org: orgId,
+      _day: data.day,
+    });
+    if (error) throw new Error(error.message);
+    return {
+      walks: (rows ?? []).map((r) => ({
+        walkGroupId: r.walk_group_id,
+        staffId: r.staff_id,
+        visitIds: r.visit_ids ?? [],
+        dogs: r.dogs,
+        cap: r.cap,
+      })),
+    };
   });

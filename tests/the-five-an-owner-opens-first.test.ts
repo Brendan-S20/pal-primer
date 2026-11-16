@@ -56,6 +56,8 @@ describe("the owner's sidebar", () => {
     expect(last.label).toBe("Setup");
     expect(last.items.map((i) => i.url)).toEqual([
       "/zones",
+      // #861: beside Zones, because both answer "what do I charge".
+      "/settings/services",
       "/imports",
       "/settings/users",
       "/settings",

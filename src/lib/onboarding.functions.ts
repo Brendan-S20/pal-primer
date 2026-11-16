@@ -175,7 +175,16 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
           .eq("active", true),
       ])
     : [{ count: 0 }, { count: 0 }];
-  const areaDone = (zones.count ?? 0) > 0;
+  // #861: the pet-waste price is answered by a zone OR by the standard price,
+  // which every quote falls back to when no zone has a price. An owner who
+  // saved $20 read "Next: Your service area and price" for the rest of setup,
+  // because only a zone row counted. Since #860 the standard price is the
+  // default pet-waste service's own price (Settings → Services), the one
+  // setting every reader uses (standard-price.ts), so that is what counts.
+  const { loadPetWasteStandard } = await import("@/lib/standard-price");
+  const standard = petWaste ? await loadPetWasteStandard(supabase, orgId) : null;
+  const standardPriced = (standard?.base_price_cents ?? 0) > 0;
+  const areaDone = (zones.count ?? 0) > 0 || standardPriced;
   const training = runsTraining
     ? { done: (pricedPackages.count ?? 0) > 0 && (skills.count ?? 0) > 0 }
     : undefined;

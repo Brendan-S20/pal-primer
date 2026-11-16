@@ -95,6 +95,10 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   add_support_note: "Added support note",
   delete_support_note: "Deleted support note",
   billing_status_change: "Billing status changed",
+  // #826: written by the Connect webhook, with no actor, when a refund or
+  // dispute fee reversal needs a person to look at it.
+  application_fee_reversal_unreadable: "Fee reversal held back the tap fee (metadata unreadable)",
+  application_fee_reversal_failed: "Fee reversal failed",
   clear_feature_flag: "Cleared feature flag",
   create_announcement: "Created announcement",
   create_invite: "Created invite",

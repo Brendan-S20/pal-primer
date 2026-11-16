@@ -61,6 +61,9 @@ export type PendingAction =
        *  copied by the server. Optional: actions queued before the checklist
        *  existed carry none, and an org with no checklist asks for none. */
       checkedItems?: string[];
+      /** The tech saw the owner's BLOCK warning and chose Continue (#851
+       *  follow-up). Recorded on the timeline; never required. */
+      blockAcknowledged?: boolean;
     } & ActionBase)
   | ({ kind: "skip"; visitId: string; reason: string; code: string } & ActionBase)
   // A walk's report (#410): pee, poo, and the note for the client. Queued

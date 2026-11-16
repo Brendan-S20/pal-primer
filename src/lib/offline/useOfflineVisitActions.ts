@@ -31,6 +31,8 @@ export type CompleteExtra = {
   note?: string;
   noPhotoReason?: string;
   checkedItems?: string[];
+  /** The tech saw the BLOCK warning and chose Continue (#851 follow-up). */
+  blockAcknowledged?: boolean;
 };
 
 export interface OfflineVisitActions {

@@ -1,5 +1,6 @@
 import i18n from "@/lib/i18n";
 import { completeFromOffice, useOfficeCompleteOverride } from "@/components/OfficeCompleteOverride";
+import { useCompletionBlockWarning } from "@/components/CompletionBlockWarning";
 import { warnLessonClashes } from "@/components/training/lessonClashWarning";
 // Visits tab (spec): scheduled window and actual timing are separate,
 // clearly labeled things. Missing timestamps say so instead of blurring
@@ -1063,10 +1064,13 @@ function VisitDetailDrawer({
   const [newStaffId, setNewStaffId] = useState("");
 
   // Moving and reassigning a visit is routes work (#728): manage_schedule,
-  // which a dispatcher holds. Completing and canceling can bill, so they stay
-  // with canCorrect (manage_client_billing). The server asks the same.
+  // which a dispatcher holds. Completing and canceling can bill; since #863
+  // they are close_visits, on for a dispatcher by default and the owner's to
+  // turn off. canCorrect (manage_client_billing) keeps the billing
+  // corrections. The server asks the same of each.
   const { can: canDo } = usePermissions();
   const canSchedule = canDo("manage_schedule");
+  const canClose = canDo("close_visits");
 
   const completeFn = useServerFn(completeVisitFromOffice);
   const rescheduleFn = useServerFn(rescheduleVisitFromOffice);
@@ -1082,7 +1086,7 @@ function VisitDetailDrawer({
   const { data: staffData } = useQuery({
     queryKey: ["org-staff"],
     queryFn: () => listStaffFn(),
-    enabled: (canCorrect || canSchedule) && scheduled,
+    enabled: (canClose || canSchedule) && scheduled,
     staleTime: 60_000,
   });
   const staff = ((staffData as any)?.staff ?? []).filter((s: any) => s.is_field_tech !== false);
@@ -1096,16 +1100,24 @@ function VisitDetailDrawer({
     setNewStaffId("");
     qc.invalidateQueries({ queryKey: ["client-visit-history", clientId] });
     qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
+    // Completing a visit billed after each visit invoices it (#859).
+    qc.invalidateQueries({ queryKey: ["invoices"] });
     onClose();
   };
 
   // No photo or checklist: the office says why, or the visit stays open (#658).
   const { askWhy, dialog: overrideDialog } = useOfficeCompleteOverride();
+  // A client the owner's BLOCK rule holds: say why first, never refuse (#851).
+  const completionBlock = useCompletionBlockWarning();
   const completeMut = useMutation({
     mutationFn: (confirmedEarly: boolean) =>
       completeFromOffice(
-        (overrideReason) => completeFn({ data: { visitId: v.id, confirmedEarly, overrideReason } }),
+        (overrideReason, blockAcknowledged) =>
+          completeFn({
+            data: { visitId: v.id, confirmedEarly, overrideReason, blockAcknowledged },
+          }),
         askWhy,
+        () => completionBlock.check(v.id),
       ),
     onSuccess: (done) => {
       if (!done) return;
@@ -1265,8 +1277,9 @@ function VisitDetailDrawer({
 
         {confirmDialog}
         {overrideDialog}
+        {completionBlock.dialog}
 
-        {((canCorrect && canComplete) || (canSchedule && canReschedule)) && (
+        {((canClose && canComplete) || (canSchedule && canReschedule)) && (
           <div className="space-y-3 rounded-md border bg-muted/20 p-3">
             {missed && neverOnARoute && (
               <p className="text-xs text-muted-foreground">
@@ -1282,7 +1295,7 @@ function VisitDetailDrawer({
               </p>
             )}
             <div className="flex flex-wrap items-center gap-1.5">
-              {canCorrect && canComplete && (
+              {canClose && canComplete && (
                 <Button
                   size="sm"
                   disabled={completeMut.isPending}
@@ -1328,7 +1341,7 @@ function VisitDetailDrawer({
                   Reassign…
                 </Button>
               )}
-              {scheduled && canCorrect && (
+              {scheduled && canClose && (
                 <>
                   <Button
                     size="sm"
@@ -1412,7 +1425,7 @@ function VisitDetailDrawer({
               </form>
             )}
 
-            {action === "cancel" && scheduled && canCorrect && (
+            {action === "cancel" && scheduled && canClose && (
               <form
                 className="space-y-2"
                 onSubmit={(e) => {

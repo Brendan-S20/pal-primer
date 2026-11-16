@@ -24,7 +24,7 @@
 // its reader, and `describeTapToPayError` turns that into a sentence.
 //
 // Deliberately a new file: src/lib/native.ts is not touched by this feature.
-import { hasPermission } from "@/lib/permissions";
+import { holdsPermission, type Permission } from "@/lib/permissions";
 import type { AppRole } from "@/hooks/useMyRole";
 import { radarFeeFromMetadata } from "@/lib/radar-fee";
 
@@ -114,24 +114,34 @@ export async function readChargeMetadata(
 
 /**
  * The part of an application fee a refund or dispute may hand back, given what
- * could be learned about the charge's metadata, or null when that cannot be
- * decided safely and nothing should be reversed. The webhook feeds a number
- * into feeReversalCents exactly as before; null means skip and log.
+ * could be learned about the charge's metadata. The webhook feeds it into
+ * feeReversalCents and sends only the difference from what Stripe has already
+ * returned, exactly as before.
  *
- * Null when the metadata is unreadable. Assuming "no per-tap fee" there would
- * hand a tap's ten cents back on the `application` fee payer, and the platform
- * would pay for the tenant's tap (owner decision, 2026-11-10). Skipping is the
- * safer error: the platform fee is zero today, a redelivery of the event
- * recomputes the target from scratch (the caller sends only the difference
- * from what Stripe has already returned), and the caller logs the charge so
- * the office can reverse by hand. Readable metadata behaves exactly as before.
+ * Readable metadata behaves exactly as before.
+ *
+ * Unreadable metadata (#826) reverses the fee less at most
+ * TAP_TO_PAY_FEE_CENTS. A tap's ten cents may be in the fee and may not, and
+ * assuming "no per-tap fee" would hand it back on the `application` fee payer,
+ * so the platform would pay for the tenant's tap (owner decision, 2026-11-10).
+ * Taking ten cents off covers that case, and otherwise leaves the business
+ * short at most ten cents pro rata. It covers the Radar fee (#825) too: a tap
+ * is `card_present`, which Radar does not screen, so a charge carries the tap
+ * fee or the Radar fee and never both, and RADAR_SCREENING_FEE_CENTS (5) is
+ * below the ten cents held back. It is never a reason to skip: the webhook
+ * answers 2xx, so Stripe does NOT redeliver the event, and a skipped reversal
+ * would stay skipped. The caller files a platform audit row for every
+ * unreadable case so a person can square the ten cents by hand.
  *
  * Deliberately not importing @/lib/platform-fee: this module ships to the
  * app, and the fee term stays off the client
  * (tests/a-pricing-term-that-shipped-to-the-browser.test.ts).
  */
-export function reversibleFeeBaseCents(feeCents: number, read: ChargeMetadataRead): number | null {
-  if (!read.readable) return null;
+export function reversibleFeeBaseCents(feeCents: number, read: ChargeMetadataRead): number {
+  if (!read.readable) {
+    if (!Number.isFinite(feeCents) || feeCents <= 0) return 0;
+    return Math.max(0, feeCents - TAP_TO_PAY_FEE_CENTS);
+  }
   return reversibleApplicationFeeCents(feeCents, read.metadata);
 }
 
@@ -142,6 +152,9 @@ export type TapToPayGateInput = {
   platform: TapToPayPlatform;
   userAgent: string;
   role: AppRole | null | undefined;
+  /** The configured set (#863), from usePermissions().permissions; the
+   *  role's defaults when absent. */
+  permissions?: readonly Permission[] | null;
   cardPaymentsReady: boolean;
   invoiceStatus: string | null | undefined;
   dueCents: number;
@@ -239,7 +252,7 @@ export function tapToPayGate(input: TapToPayGateInput): TapToPayGate {
   // Apple 3.8.1: a person who cannot take the payment is told who can, rather
   // than left wondering why the option is missing. The server refuses them
   // anyway (manage_client_billing on every Tap to Pay call).
-  if (!hasPermission(input.role ?? null, "manage_client_billing")) {
+  if (!holdsPermission(input.role ?? null, "manage_client_billing", input.permissions)) {
     return { show: true, mode: "ask_admin" };
   }
   if (updateIos) return { show: true, mode: "update_ios" };
@@ -252,8 +265,11 @@ export function tapToPayGate(input: TapToPayGateInput): TapToPayGate {
  * billing. An office manager can take taps once the owner has accepted, and
  * is asked to fetch the owner when the terms are still open.
  */
-export function canAcceptTapToPayTerms(role: AppRole | null | undefined): boolean {
-  return hasPermission(role ?? null, "manage_org_billing");
+export function canAcceptTapToPayTerms(
+  role: AppRole | null | undefined,
+  permissions?: readonly Permission[] | null,
+): boolean {
+  return holdsPermission(role ?? null, "manage_org_billing", permissions);
 }
 
 /** Apple's name for the feature, and the button label (5.4). Never with the

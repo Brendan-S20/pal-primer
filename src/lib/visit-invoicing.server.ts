@@ -78,6 +78,17 @@ async function loadVisits(
   return ((data ?? []) as any[]).map(toBillable);
 }
 
+/** One visit as the invoicing rules read it, or null when it is not this
+ *  org's. */
+export async function loadBillableVisit(
+  db: Db,
+  orgId: string,
+  visitId: string,
+): Promise<(BillableVisit & { client_id: string }) | null> {
+  const [v] = await loadVisits(db, orgId, { ids: [visitId] });
+  return v ?? null;
+}
+
 async function loadPendingAddons(
   db: Db,
   orgId: string,

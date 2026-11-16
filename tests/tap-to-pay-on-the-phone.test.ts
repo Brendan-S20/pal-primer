@@ -458,30 +458,28 @@ describe("a refunded or disputed tap never hands the per-tap fee back", () => {
     );
   });
 
-  it("both reversal sites in the webhook use it, and skip when the metadata is unreadable", () => {
+  it("both reversal sites in the webhook use it, and never skip when the metadata is unreadable (#826)", () => {
     const hook = readFileSync("src/routes/api/public/hooks/stripe.ts", "utf8");
     expect(hook.match(/reversibleFeeBaseCents\(/g) ?? []).toHaveLength(2);
-    expect(hook.match(/if \(base === null\) \{\s*console\.error\(/g) ?? []).toHaveLength(2);
+    expect(hook).not.toMatch(/base === null/);
+    expect(hook.match(/"application_fee_reversal_unreadable",/g) ?? []).toHaveLength(2);
     expect(hook.match(/feeReversalCents\(\s*base,/g) ?? []).toHaveLength(2);
     expect(hook).not.toMatch(/feeReversalCents\(\s*Number\(fee/);
     expect(hook).not.toMatch(/reversibleApplicationFeeCents\(/);
   });
 });
 
-describe("a refund whose tap metadata cannot be read hands nothing back", () => {
+describe("a refund whose tap metadata cannot be read holds back at most the per-tap fee (#826)", () => {
   // Full refund of a $40.00 tap under the `application` fee payer: the
   // application fee was 200 (platform) + 10 (tap).
   const tapMeta = { channel: "tap_to_pay", tap_to_pay_fee_cents: "10" };
-  // What both webhook sites do: skip on null, else feeReversalCents(base, ...).
+  // What both webhook sites do: feeReversalCents(base, ...), readable or not.
   const target = (
     fee: number,
     read: Awaited<ReturnType<typeof readChargeMetadata>>,
     charge: number,
     refunded: number,
-  ) => {
-    const base = reversibleFeeBaseCents(fee, read);
-    return base === null ? null : feeReversalCents(base, charge, refunded);
-  };
+  ) => feeReversalCents(reversibleFeeBaseCents(fee, read), charge, refunded);
   const fullRefund = (read: Awaited<ReturnType<typeof readChargeMetadata>>) =>
     target(210, read, 4_000, 4_000);
 
@@ -508,13 +506,15 @@ describe("a refund whose tap metadata cannot be read hands nothing back", () => 
     expect(target(200, viaIntent, 40_000, 10_000)).toBe(feeReversalCents(200, 40_000, 10_000));
   });
 
-  it("the intent read throws: unreadable, and nothing is reversed (the 10 cents is never handed back)", async () => {
+  it("the intent read throws: unreadable, and the fee less the 10 cents is reversed", async () => {
     const readIntent = vi.fn(async () => {
       throw new Error("Stripe unavailable");
     });
     const read = await readChargeMetadata(null, "pi_tap", readIntent);
     expect(read).toEqual({ readable: false, reason: "Stripe unavailable" });
-    expect(fullRefund(read)).toBeNull();
+    expect(fullRefund(read)).toBe(200);
+    // A fee of ten cents or less: nothing comes back.
+    expect(target(10, read, 4_000, 4_000)).toBe(0);
   });
 
   it("no intent id, or no connected account to read it from: also unreadable", async () => {
@@ -524,7 +524,7 @@ describe("a refund whose tap metadata cannot be read hands nothing back", () => 
     });
     const noAccount = await readChargeMetadata(null, "pi_tap", null);
     expect(noAccount).toEqual({ readable: false, reason: "no connected account" });
-    expect(fullRefund(noAccount)).toBeNull();
+    expect(fullRefund(noAccount)).toBe(200);
   });
 });
 

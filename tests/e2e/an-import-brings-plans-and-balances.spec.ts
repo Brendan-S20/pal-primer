@@ -4,8 +4,12 @@
 // properties and dogs, and then had to rebuild every recurring plan by hand
 // and could not carry over what anyone owed (persona review, 2026-09-27).
 // This drives the real import screen against Postgres: a services file makes
-// plans with their price and day and puts visits on the schedule, and a
-// balances file makes open invoices marked as opening balances.
+// plans with their price and day, and a balances file makes open invoices
+// marked as opening balances.
+//
+// Since #857 (the owner's rule, Nov 10 2026) every imported plan starts
+// PAUSED and the import schedules no visits: the owner turns each plan on
+// from the client's page, and its visits are generated then.
 
 import { expect, test } from "@playwright/test";
 
@@ -37,7 +41,7 @@ async function importFile(
   await expect(page.getByText(/Import committed: \d+ created/)).toBeVisible({ timeout: 60_000 });
 }
 
-test("a services file makes plans with visits, and a balances file makes open invoices", async ({
+test("a services file makes paused plans with no visits, and a balances file makes open invoices", async ({
   page,
 }) => {
   test.setTimeout(240_000);
@@ -79,18 +83,30 @@ test("a services file makes plans with visits, and a balances file makes open in
 
     const { data: subs } = await db
       .from("subscriptions")
-      .select("client_id, frequency, price_cents, preferred_weekdays")
+      .select("client_id, frequency, price_cents, preferred_weekdays, status")
       .in("client_id", clientIds)
       .order("price_cents");
     expect(subs).toEqual([
-      { client_id: clientIds[1], frequency: "weekly", price_cents: 2750, preferred_weekdays: [4] },
-      { client_id: clientIds[0], frequency: "biweekly", price_cents: 3200, preferred_weekdays: [2] },
+      {
+        client_id: clientIds[1],
+        frequency: "weekly",
+        price_cents: 2750,
+        preferred_weekdays: [4],
+        status: "paused",
+      },
+      {
+        client_id: clientIds[0],
+        frequency: "biweekly",
+        price_cents: 3200,
+        preferred_weekdays: [2],
+        status: "paused",
+      },
     ]);
     const { count: visits } = await db
       .from("visits")
       .select("id", { count: "exact", head: true })
       .in("client_id", clientIds);
-    expect(visits ?? 0, "visits generated at commit, not tonight").toBeGreaterThan(0);
+    expect(visits ?? 0, "an imported plan is paused: no visits until the owner turns it on").toBe(0);
 
     await importFile(
       page,

@@ -125,10 +125,16 @@ describe("isFirstRun", () => {
 });
 
 describe("firstRunNav", () => {
-  it("leads with Setup, Schedule, Clients and Settings", async () => {
+  it("leads with Setup, Schedule, Clients, Services and Settings", async () => {
     const { firstRunNav, NAV_GROUPS } = await nav();
     const { core } = firstRunNav(NAV_GROUPS, "owner", ALL_ON);
-    expect(core.map((i) => i.url)).toEqual(["/setup", "/routes", "/clients", "/settings"]);
+    expect(core.map((i) => i.url)).toEqual([
+      "/setup",
+      "/routes",
+      "/clients",
+      "/settings/services",
+      "/settings",
+    ]);
   });
 
   it("puts every advanced entry behind the disclosure, not in the first list", async () => {

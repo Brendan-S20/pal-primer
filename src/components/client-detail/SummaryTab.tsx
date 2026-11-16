@@ -2,11 +2,13 @@
 // alerts, visits (next + recent), active services, property snapshot.
 // RIGHT (secondary): notes and the compact communication preview.
 import { useQuery } from "@tanstack/react-query";
+import { zoneOverridesPrice } from "@/lib/standard-price";
 import { TextingNotLiveText } from "@/components/TextingNotLive";
 import { useServerFn } from "@tanstack/react-start";
 import { AlertTriangle, CalendarClock, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatFrequency, isServiceEnded } from "@/lib/subscription-form";
+import { planTitle } from "@/lib/visit-service";
 import { computeZoneVisitPrice } from "@/lib/pricing";
 import { formatDay, formatDateTime, formatPhone } from "@/lib/format";
 import { useOrgToday } from "@/hooks/useOrgToday";
@@ -114,7 +116,9 @@ export function SummaryTab({
   // frequency multipliers (which only raise the reference).
   for (const sub of activeSubs) {
     const zone = zones.find((z: any) => z.id === sub.zone_id);
-    if (!zone || !sub.price_cents) continue;
+    // A zone with no price of its own (#860) has no zone baseline to fall
+    // below; the plan is measured against the standard price elsewhere.
+    if (!zone || !sub.price_cents || !zoneOverridesPrice(zone)) continue;
     // Area charge included (QA round 8): omitting boundaryAreaSqm made the
     // baseline too low for per-acre/per-sqft zones, so underpricing alerts
     // under-fired exactly where the price gap is biggest.
@@ -285,12 +289,20 @@ export function SummaryTab({
             {activeSubs.map((s: any) => {
               const street = properties.find((p: any) => p.id === s.property_id)?.street;
               return (
-                <li key={s.id} className="flex items-center justify-between gap-2">
-                  <span>
-                    {formatFrequency(s)}
-                    {street && <span className="text-muted-foreground"> at {street}</span>}
+                // #862: the row read "Weekly $20.00" and never said WHICH
+                // service. It names the plan the way the Services tab does
+                // (planTitle), with the cadence and street under it.
+                <li key={s.id} className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="break-words font-medium">{planTitle(s.frequency, s.services)}</p>
+                    <p className="break-words text-xs text-muted-foreground">
+                      {formatFrequency(s)}
+                      {street && <> at {street}</>}
+                    </p>
+                  </div>
+                  <span className="shrink-0 whitespace-nowrap font-medium">
+                    ${(s.price_cents / 100).toFixed(2)}
                   </span>
-                  <span className="font-medium">${(s.price_cents / 100).toFixed(2)}</span>
                 </li>
               );
             })}

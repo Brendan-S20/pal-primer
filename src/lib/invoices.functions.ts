@@ -369,6 +369,9 @@ export const invoiceVisit = createServerFn({ method: "POST" })
       .eq("organization_id", orgId)
       .single();
     if (error) throw new Error(error.message);
+    // The same key the invoice made at completion carries (#859), so this
+    // button and a completion still invoicing make one invoice between them.
+    const { nextVisitInvoiceKey } = await import("@/lib/visit-completion-invoice.server");
     const { insertManualInvoice } = await import("@/lib/manual-invoice.server");
     return insertManualInvoice(supabase, {
       orgId,
@@ -378,6 +381,7 @@ export const invoiceVisit = createServerFn({ method: "POST" })
       notes: `Visit on ${v.scheduled_on}`,
       activityLabel: `invoice for the visit on ${v.scheduled_on}`,
       period: { start: v.scheduled_on, end: v.scheduled_on },
+      creationKey: await nextVisitInvoiceKey(supabase, data.visitId),
     });
   });
 

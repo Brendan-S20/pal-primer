@@ -163,7 +163,7 @@ describe("#790: /clients does not show a header its own list contradicts", () =>
 describe("#790: the surfaces are wired to it", () => {
   const src = (p: string) => readFileSync(resolve(__dirname, "..", p), "utf8");
 
-  it("the new-client form and both import commits reset the counts", () => {
+  it("the new-client form, both import commits, and undo reset the counts", () => {
     const form = src("src/routes/_authenticated/clients.new.tsx");
     const onSuccess = form.slice(
       form.indexOf("onSuccess: ({"),
@@ -171,7 +171,9 @@ describe("#790: the surfaces are wired to it", () => {
     );
     expect(onSuccess).toMatch(/afterClientBookChanged\(qc\)/);
     const imports = src("src/routes/_authenticated/imports.$batchId.tsx");
-    expect(imports.match(/afterClientBookChanged\(qc\)/g)?.length ?? 0).toBe(2);
+    // Commit, Try again, and since #857 Undo, which deletes what a commit
+    // added and so moves every client count the other way.
+    expect(imports.match(/afterClientBookChanged\(qc\)/g)?.length ?? 0).toBe(3);
   });
 
   it("/clients hides a summary that lags its rows and refetches it", () => {

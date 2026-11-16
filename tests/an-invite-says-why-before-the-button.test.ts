@@ -220,7 +220,7 @@ describe("Resend keeps the invite alive for its full life and says Resent (gaps-
     expect(failed.message).toContain("did not go out");
     expect(inviteSendToast("created", "a@b.co", false).message).toMatch(/^Invite created/);
     const page = read("src/routes/_authenticated/settings.users.tsx");
-    expect(page).toMatch(/reportSend\(.*, r, "resent"\)/);
+    expect(page).toMatch(/reportSend\(.*, r, "resent"(, id)?\)/);
     expect(page).not.toMatch(/"emailed again"/);
   });
 

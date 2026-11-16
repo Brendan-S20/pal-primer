@@ -2,8 +2,9 @@
 //
 // Visitors: searchDirectory and getDirectoryProfiles read through the two
 // public RPCs with the PUBLISHABLE key, so the database decides what is
-// public (published rows of live businesses, public columns only) and this
-// file cannot widen it.
+// public (published rows of live businesses, public columns only, and for a
+// search, only businesses whose zones do not say "outside") and this file
+// cannot widen it. Neither uses the service role.
 //
 // Owners: getMyDirectoryProfile / saveMyDirectoryProfile. The save asks for an
 // owner here, before any RPC, and set_directory_profile asks again on the
@@ -14,15 +15,32 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { resolveSupabaseUrl } from "@/lib/supabase-url";
 import {
+  DIRECTORY_AREAS_MAX,
+  DIRECTORY_AREA_NAME_MAX,
+  DIRECTORY_HIGHLIGHTS_MAX,
+  DIRECTORY_HIGHLIGHT_MAX,
   DIRECTORY_SEARCH_LINES,
+  DIRECTORY_TAGLINE_MAX,
   MAX_COMPARE,
+  cleanHighlights,
+  directoryContentProblems,
   isDirectorySlug,
+  oneLine,
+  BOOKING_POLICY_MAX,
+  cleanBookingPolicy,
+  type DirectoryArea,
+  type DirectoryListedService,
+  type DirectoryListing,
+  type DirectoryPackage,
+  type DirectoryPhoto,
   type DirectoryProfile,
+  isDirectoryPhotoUrl,
 } from "@/lib/directory";
+import { isPublicBookingMode, type PublicBookingMode } from "@/lib/public-booking-mode";
 
 export const ONLY_AN_OWNER_CHANGES_THE_DIRECTORY =
   "Only an owner can change the directory profile.";
@@ -32,7 +50,7 @@ export const ONLY_AN_OWNER_CHANGES_THE_DIRECTORY =
  *  visitor could read. Untyped on purpose: supabase/types.ts does not know
  *  the directory yet and is not edited by this change (#749, #733, #717,
  *  #716); the shapes are pinned in lib/directory.ts instead. */
-function visitorDb(): any {
+function visitorDb(): SupabaseClient {
   return createClient(resolveSupabaseUrl(), process.env.SUPABASE_PUBLISHABLE_KEY!, {
     auth: { storage: undefined, persistSession: false, autoRefreshToken: false },
   });
@@ -42,10 +60,13 @@ function visitorDb(): any {
  *  RPC might one day add is dropped here rather than passed to a page. */
 export function toDirectoryProfiles(rows: unknown): DirectoryProfile[] {
   if (!Array.isArray(rows)) return [];
-  const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
-  return rows.flatMap((r: any) => {
-    if (!r || typeof r.slug !== "string" || typeof r.display_name !== "string") return [];
-    const services = Array.isArray(r.services) ? r.services : [];
+  const strs = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  const asRow = (v: unknown) => (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  return rows.flatMap((raw: unknown) => {
+    const r = asRow(raw);
+    if (typeof r.slug !== "string" || typeof r.display_name !== "string") return [];
+    const services: unknown[] = Array.isArray(r.services) ? r.services : [];
     return [
       {
         slug: r.slug,
@@ -55,8 +76,9 @@ export function toDirectoryProfiles(rows: unknown): DirectoryProfile[] {
         service_lines: strs(r.service_lines),
         coverage_zips: strs(r.coverage_zips),
         coverage_cities: strs(r.coverage_cities),
-        services: services.flatMap((s: any) =>
-          s && typeof s.label === "string" && typeof s.service_line === "string"
+        services: services.flatMap((raw: unknown) => {
+          const s = asRow(raw);
+          return typeof s.label === "string" && typeof s.service_line === "string"
             ? [
                 {
                   label: s.label,
@@ -66,24 +88,105 @@ export function toDirectoryProfiles(rows: unknown): DirectoryProfile[] {
                   price_unit: typeof s.price_unit === "string" ? s.price_unit : null,
                 },
               ]
-            : [],
-        ),
+            : [];
+        }),
         published_at: typeof r.published_at === "string" ? r.published_at : null,
       },
     ];
   });
 }
 
+/** Rows of directory_public_listings narrowed to PUBLIC_LISTING_FIELDS: the
+ *  profile's own fields as toDirectoryProfiles keeps them, plus tagline,
+ *  highlights and areas (name and ZIPs only), the booking fields and the
+ *  approved photos (url, alt, position). Anything else the view might one
+ *  day carry is dropped here. */
+export function toDirectoryListings(rows: unknown): DirectoryListing[] {
+  if (!Array.isArray(rows)) return [];
+  type Row = Record<string, unknown>;
+  const isRow = (v: unknown): v is Row => !!v && typeof v === "object";
+  const strs = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  const bySlug = new Map<string, Row>();
+  for (const r of rows) if (isRow(r) && typeof r.slug === "string") bySlug.set(r.slug, r);
+  return toDirectoryProfiles(rows).map((p) => {
+    const r = bySlug.get(p.slug) ?? {};
+    const areas: DirectoryArea[] = (Array.isArray(r.areas) ? r.areas : []).flatMap((a: unknown) =>
+      isRow(a) && typeof a.name === "string" ? [{ name: a.name, zips: strs(a.zips) }] : [],
+    );
+    // The services as toDirectoryProfiles kept them, in the same order, each
+    // with the three step-7 keys read from the row it came from. A mode this
+    // reader does not know, or a row from a database the step-7 view has not
+    // reached, reads request_only: the safe answer is always "ask".
+    const rawServices = (Array.isArray(r.services) ? r.services : []).filter(
+      (s: unknown): s is Row =>
+        isRow(s) && typeof s.label === "string" && typeof s.service_line === "string",
+    );
+    const services: DirectoryListedService[] = p.services.map((svc, i) => {
+      const raw = rawServices[i] ?? {};
+      const mode: PublicBookingMode = isPublicBookingMode(raw.booking_mode)
+        ? raw.booking_mode
+        : "request_only";
+      const pk = isRow(raw.package) ? raw.package : null;
+      const pack: DirectoryPackage | null =
+        mode === "package" &&
+        pk &&
+        typeof pk.name === "string" &&
+        typeof pk.sessions_count === "number" &&
+        typeof pk.price_cents === "number"
+          ? { name: pk.name, sessions_count: pk.sessions_count, price_cents: pk.price_cents }
+          : null;
+      return {
+        ...svc,
+        // A package mode with no package to show is not sold here either.
+        booking_mode: mode === "package" && !pack ? "request_only" : mode,
+        booking_key: typeof raw.booking_key === "string" ? raw.booking_key : "",
+        package: pack,
+      };
+    });
+    const booksOnline =
+      r.books_online === true && services.some((s) => s.booking_mode !== "request_only");
+    // Photos (step 5b): url, alt and position only, a url only if it is the
+    // HoundStack path the view makes for THIS listing, and never one without
+    // alt text. A row from before step 5b reads as no photos.
+    const photos: DirectoryPhoto[] = (Array.isArray(r.photos) ? r.photos : [])
+      .flatMap((ph: unknown) =>
+        isRow(ph) &&
+        typeof ph.url === "string" &&
+        isDirectoryPhotoUrl(ph.url, p.slug) &&
+        typeof ph.alt === "string" &&
+        ph.alt.trim() !== "" &&
+        typeof ph.position === "number"
+          ? [{ url: ph.url, alt: ph.alt, position: ph.position }]
+          : [],
+      )
+      .sort((a, b) => a.position - b.position);
+    return {
+      ...p,
+      services,
+      tagline: typeof r.tagline === "string" ? r.tagline : null,
+      highlights: strs(r.highlights),
+      areas,
+      books_online: booksOnline,
+      booking_policy_text: typeof r.booking_policy_text === "string" ? r.booking_policy_text : null,
+      book_path: booksOnline && typeof r.book_path === "string" ? r.book_path : null,
+      photos,
+    };
+  });
+}
+
 /**
  * Search by service and ZIP.
  *
- * The database answers "which published profiles confirmed this ZIP for this
- * line". Then each is checked against the business's CURRENT zones with
- * lib/lead-service-area.server.ts, the same verdict /leads shows the office:
- * a business whose zones now say "outside" for this ZIP is dropped, because
- * listing it would send a visitor a quote form the business will turn down.
- * "unknown" (no zones, a lookup that failed) keeps the listing: the owner
- * confirmed the ZIP, and a false "outside" costs more than a missing one.
+ * One call, with the publishable key and nothing else. The database answers
+ * "which published profiles confirmed this ZIP for this line, and whose zones
+ * do not now say 'outside' for it": since 20261112020000, directory_search
+ * asks directory_zone_verdict (a port of lib/lead-service-area.ts's verdict)
+ * itself, so a business whose CURRENT zones say "outside" is dropped without
+ * the service role ever being used here. "unknown" (no zones, a lookup that
+ * failed) keeps the listing: the owner confirmed the ZIP, and a false
+ * "outside" costs more than a missing one. The standalone directory app (DIRECTORY_BRAND)
+ * makes this same call with the same key.
  */
 export const searchDirectory = createServerFn({ method: "GET" })
   .inputValidator((d) =>
@@ -103,26 +206,7 @@ export const searchDirectory = createServerFn({ method: "GET" })
       _zip: data.zip,
     });
     if (error) throw new Error("The directory is unavailable right now.");
-    const found = toDirectoryProfiles(rows);
-    if (!found.length) return { profiles: found };
-    try {
-      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-      const { leadServiceAreas } = await import("@/lib/lead-service-area.server");
-      const verdicts = await Promise.all(
-        found.map(async (p) => {
-          const { data: orgId } = await (supabaseAdmin as any).rpc("directory_org_for_quote", {
-            _slug: p.slug,
-          });
-          if (typeof orgId !== "string") return "unknown" as const;
-          const [v] = await leadServiceAreas(supabaseAdmin, orgId, [data.zip]);
-          return v;
-        }),
-      );
-      return { profiles: found.filter((_, i) => verdicts[i] !== "outside") };
-    } catch (e) {
-      console.error("directory zone check failed; keeping confirmed ZIPs", e);
-      return { profiles: found };
-    }
+    return { profiles: toDirectoryProfiles(rows) };
   });
 
 /** One profile (the profile page and the quote page) or up to three (compare). */
@@ -180,16 +264,37 @@ export type MyDirectoryProfile = {
     coverage_zips: string[];
     coverage_cities: string[];
     confirmed_at: string | null;
+    tagline: string | null;
+    highlights: string[];
+    areas: DirectoryArea[];
     listed: Array<{ service_id: string; price_from_cents: number | null }>;
   };
+  /** Book online on the directory (step 7): the owner's switch and policy,
+   *  and the two other gates, so the page can say which one is missing. */
+  booking: MyDirectoryBooking;
 };
+
+export type MyDirectoryBooking = {
+  /** False on a database 20261112100000 has not reached: the switch is
+   *  shown off and cannot be turned on yet. */
+  available: boolean;
+  enabled: boolean;
+  policyText: string;
+  publicSignupEnabled: boolean;
+  chargesEnabled: boolean;
+};
+
+/** Postgres / PostgREST for "that column or function is not there yet". */
+function notThereYet(error: { code?: string } | null | undefined): boolean {
+  return ["42703", "PGRST204", "PGRST202", "42883"].includes(error?.code ?? "");
+}
 
 export const getMyDirectoryProfile = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<MyDirectoryProfile> => {
     const { orgId, role } = await caller(context.supabase, context.userId);
-    const sb = context.supabase as any;
-    const [org, services, zones, profile, listed] = await Promise.all([
+    const sb = context.supabase as SupabaseClient;
+    const [org, services, zones, profile, listed, areas, booking] = await Promise.all([
       sb.from("organizations").select("name, logo_url").eq("id", orgId).maybeSingle(),
       sb
         .from("services")
@@ -200,7 +305,7 @@ export const getMyDirectoryProfile = createServerFn({ method: "GET" })
       sb
         .from("directory_profiles")
         .select(
-          "slug, published, display_name, show_logo, bio, coverage_zips, coverage_cities, confirmed_at",
+          "slug, published, display_name, show_logo, bio, coverage_zips, coverage_cities, confirmed_at, tagline, highlights",
         )
         .eq("organization_id", orgId)
         .maybeSingle(),
@@ -209,7 +314,24 @@ export const getMyDirectoryProfile = createServerFn({ method: "GET" })
         .select("service_id, price_from_cents, position")
         .eq("organization_id", orgId)
         .order("position"),
+      sb
+        .from("directory_profile_areas")
+        .select("name, zips, position")
+        .eq("organization_id", orgId)
+        .order("position"),
+      // Its own read, so a database without the step-7 columns costs the
+      // switch and nothing else on the page.
+      sb
+        .from("organizations")
+        .select(
+          "directory_booking_enabled, booking_policy_text, public_signup_enabled, stripe_connect_charges_enabled",
+        )
+        .eq("id", orgId)
+        .maybeSingle(),
     ]);
+    const b = booking.error ? null : booking.data;
+    if (booking.error && !notThereYet(booking.error))
+      console.error("directory booking settings read failed", orgId, booking.error);
     const zoneZips = Array.from(
       new Set(
         ((zones.data ?? []) as Array<{ zip_codes: string[] | null; enabled: boolean | null }>)
@@ -226,12 +348,26 @@ export const getMyDirectoryProfile = createServerFn({ method: "GET" })
       services: (services.data ?? []) as MyDirectoryProfile["services"],
       profile: profile.data
         ? {
-            ...(profile.data as Omit<NonNullable<MyDirectoryProfile["profile"]>, "listed">),
+            ...(profile.data as Omit<
+              NonNullable<MyDirectoryProfile["profile"]>,
+              "listed" | "areas" | "highlights"
+            >),
+            highlights: (profile.data.highlights as string[] | null) ?? [],
+            areas: ((areas.data ?? []) as Array<{ name: string; zips: string[] | null }>).map(
+              (a) => ({ name: a.name, zips: a.zips ?? [] }),
+            ),
             listed: (
               (listed.data ?? []) as Array<{ service_id: string; price_from_cents: number | null }>
             ).map((l) => ({ service_id: l.service_id, price_from_cents: l.price_from_cents })),
           }
         : null,
+      booking: {
+        available: !!b,
+        enabled: b?.directory_booking_enabled === true,
+        policyText: (b?.booking_policy_text as string | null) ?? "",
+        publicSignupEnabled: b?.public_signup_enabled === true,
+        chargesEnabled: b?.stripe_connect_charges_enabled === true,
+      },
     };
   });
 
@@ -263,8 +399,56 @@ export const directoryProfileSchema = z
       )
       .max(50),
     published: z.boolean(),
+    tagline: z.string().transform(oneLine).pipe(z.string().max(DIRECTORY_TAGLINE_MAX)).nullable(),
+    highlights: z
+      .array(z.string().max(500))
+      .max(20)
+      .transform(cleanHighlights)
+      .pipe(z.array(z.string().max(DIRECTORY_HIGHLIGHT_MAX)).max(DIRECTORY_HIGHLIGHTS_MAX)),
+    areas: z
+      .array(
+        z.object({
+          name: z.string().transform(oneLine).pipe(z.string().min(1).max(DIRECTORY_AREA_NAME_MAX)),
+          zips: z
+            .array(
+              z
+                .string()
+                .trim()
+                .regex(/^\d{5}$/),
+            )
+            .min(1)
+            .max(200),
+        }),
+      )
+      .max(DIRECTORY_AREAS_MAX),
+    // Step 7. Optional, and OMITTED MEANS UNCHANGED (#929): a caller that
+    // saves the profile without these two leaves the owner's switch and
+    // policy as they are. Only a value that is sent is written: false turns
+    // the switch off, and null or blank clears the policy.
+    bookOnline: z.boolean().optional(),
+    bookingPolicyText: z
+      .string()
+      .max(4000)
+      .nullable()
+      .optional()
+      .transform((v) => (v === undefined ? undefined : cleanBookingPolicy(v)))
+      .pipe(
+        z
+          .string()
+          .max(BOOKING_POLICY_MAX, `Keep the policy to ${BOOKING_POLICY_MAX} characters.`)
+          .nullable()
+          .optional(),
+      ),
   })
   .superRefine((v, ctx) => {
+    for (const p of directoryContentProblems({
+      tagline: v.tagline ?? "",
+      highlights: v.highlights,
+      areas: v.areas,
+      coverageZips: v.coverageZips,
+    })) {
+      ctx.addIssue({ code: "custom", message: p.message });
+    }
     if (v.published && !v.coverageZips.length) {
       ctx.addIssue({ code: "custom", message: "Add at least one ZIP code before you publish." });
     }
@@ -273,13 +457,88 @@ export const directoryProfileSchema = z
     }
   });
 
+/** The switch and policy as a save asked for them: each one undefined when
+ *  the caller left it out, which means "leave it as it is". */
+export type DirectoryBookingInput = {
+  bookOnline?: boolean;
+  bookingPolicyText?: string | null;
+};
+
+/**
+ * What set_directory_booking is called with, or null when nothing was sent
+ * and nothing is written (#929). The writer takes both values, so a save
+ * that sends only one carries the other through from `current` (what the
+ * organization holds now). A field that was sent always wins, so an
+ * explicit off or an explicit clear is still written.
+ */
+export function directoryBookingWrite(
+  input: DirectoryBookingInput,
+  current: { enabled: boolean; policyText: string | null } | null,
+): { _enabled: boolean; _policy_text: string | null } | null {
+  const sentSwitch = input.bookOnline !== undefined;
+  const sentPolicy = input.bookingPolicyText !== undefined;
+  if (!sentSwitch && !sentPolicy) return null;
+  return {
+    _enabled: sentSwitch ? input.bookOnline! : (current?.enabled ?? false),
+    _policy_text: sentPolicy
+      ? cleanBookingPolicy(input.bookingPolicyText)
+      : cleanBookingPolicy(current?.policyText),
+  };
+}
+
+/** Saves the directory switch and policy, touching neither unless the
+ *  caller sent it (#929). Exported for its test. */
+export async function saveDirectoryBooking(
+  supabase: unknown,
+  orgId: string,
+  input: DirectoryBookingInput,
+): Promise<void> {
+  const sb = supabase as any;
+  const sentSwitch = input.bookOnline !== undefined;
+  const sentPolicy = input.bookingPolicyText !== undefined;
+  if (!sentSwitch && !sentPolicy) return;
+  // Only one was sent: read the other, so the writer puts it back as it was.
+  let current: { enabled: boolean; policyText: string | null } | null = null;
+  if (!sentSwitch || !sentPolicy) {
+    const { data: row, error } = await sb
+      .from("organizations")
+      .select("directory_booking_enabled, booking_policy_text")
+      .eq("id", orgId)
+      .maybeSingle();
+    if (error) {
+      // Not there yet: nothing to keep, and the write below says so.
+      if (!notThereYet(error)) throw new Error(error.message);
+    } else if (!row) {
+      throw new Error("Your profile was saved, but Book online could not be read. Try again.");
+    } else {
+      current = {
+        enabled: row.directory_booking_enabled === true,
+        policyText: (row.booking_policy_text as string | null) ?? null,
+      };
+    }
+  }
+  const write = directoryBookingWrite(input, current)!;
+  const { error: bErr } = await sb.rpc("set_directory_booking", { _org: orgId, ...write });
+  if (bErr) {
+    // On a database the step-7 migration has not reached there is nothing
+    // to save unless the owner asked for something.
+    if (notThereYet(bErr) && !write._enabled && !write._policy_text) return;
+    if (notThereYet(bErr))
+      throw new Error(
+        "Your profile was saved. Book online and the policy can't be saved yet: try again later.",
+      );
+    throw new Error(bErr.message);
+  }
+}
+
 export const saveMyDirectoryProfile = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => directoryProfileSchema.parse(d))
   .handler(async ({ data, context }) => {
     const { orgId, role } = await caller(context.supabase, context.userId);
     if (role !== "owner") throw new Error(ONLY_AN_OWNER_CHANGES_THE_DIRECTORY);
-    const { error } = await (context.supabase as any).rpc("set_directory_profile", {
+    const sb = context.supabase as SupabaseClient;
+    const { error } = await sb.rpc("set_directory_profile", {
       _org: orgId,
       _slug: data.slug,
       _display_name: data.displayName,
@@ -292,6 +551,9 @@ export const saveMyDirectoryProfile = createServerFn({ method: "POST" })
         price_from_cents: s.priceFromCents,
       })),
       _published: data.published,
+      _tagline: data.tagline,
+      _highlights: data.highlights,
+      _areas: data.areas.map((a) => ({ name: a.name, zips: a.zips })),
     });
     if (error) {
       if (/directory_profiles_slug_key|duplicate key/i.test(error.message)) {
@@ -299,5 +561,8 @@ export const saveMyDirectoryProfile = createServerFn({ method: "POST" })
       }
       throw new Error(error.message);
     }
+    // The directory switch and policy (step 7), owner-only in the database
+    // too, and written only when the caller sent them (#929).
+    await saveDirectoryBooking(context.supabase, orgId, data);
     return { ok: true };
   });

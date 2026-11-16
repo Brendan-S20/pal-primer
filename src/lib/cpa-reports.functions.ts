@@ -41,6 +41,7 @@ import { billedDay, invoiceDueCents, outstandingAsOf } from "@/lib/ar";
 import { voidedAfterRefund } from "@/lib/refund-outcome";
 import { fetchAllPages as fetchAll } from "@/lib/supabase-paging.server";
 import type { AppRole } from "@/hooks/useMyRole";
+import type { PermissionOverrides } from "@/lib/permissions";
 import { formatLineItemDescription, invoiceNumberLabel } from "@/lib/invoice-labels";
 import { qboRows, splitForImport, type QboInvoice } from "@/lib/quickbooks-import";
 
@@ -106,6 +107,8 @@ type OrgContext = {
   /** Carried so a report needing a tighter gate than view_financials can be
    *  answered without resolving the caller a second time. */
   role: AppRole;
+  /** The business's overrides for that role (#863), for the same reason. */
+  overrides?: PermissionOverrides;
   name: string;
   timezone: string;
   parentOrganizationId: string | null;
@@ -115,7 +118,7 @@ type OrgContext = {
 };
 
 async function loadOrgContext(supabase: any, userId: string): Promise<OrgContext> {
-  const { orgId, role } = await requirePermission(supabase, userId, "view_financials");
+  const { orgId, role, overrides } = await requirePermission(supabase, userId, "view_financials");
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
   // Service-role, scoped to this one row: the franchise columns are readable
@@ -143,6 +146,7 @@ async function loadOrgContext(supabase: any, userId: string): Promise<OrgContext
   return {
     orgId,
     role,
+    overrides,
     name: org?.name ?? "Your business",
     // Falling back to UTC rather than a guess: a wrong timezone silently files
     // year-end payments in the wrong tax year, and UTC at least fails in a
@@ -1427,7 +1431,8 @@ export const getTaxReportIndex = createServerFn({ method: "GET" })
     // getTaxReport is what says no.
     const { planTierForOrg } = await import("@/lib/entitlements.server");
     const canSeeSettlements =
-      inFranchise && mayViewFranchiseSettlements(ctx.role, await planTierForOrg(ctx.orgId));
+      inFranchise &&
+      mayViewFranchiseSettlements(ctx.role, await planTierForOrg(ctx.orgId), ctx.overrides);
     const audience = routingAudience({
       parentOrganizationId: ctx.parentOrganizationId,
       isFranchiseParent: ctx.isFranchiseParent,
