@@ -8,6 +8,7 @@ import {
   serviceLinesOrDefault,
 } from "@/lib/service-lines";
 import { walksPricedForSetup } from "@/lib/setup-walk-prices";
+import { groomSetupDone, staysSavedForSetup } from "@/lib/setup-line-prices";
 
 export type OnboardingStepId = "business" | "zones" | "clients" | "staff" | "dump_site" | "payouts";
 
@@ -423,19 +424,37 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
     ? (
         await supabase
           .from("services")
-          .select("created_at, updated_at")
+          .select("base_price_cents, created_at, updated_at")
           .eq("organization_id", orgId)
           .eq("service_line", "pet_sitting")
           .eq("active", true)
       ).data
     : null;
+  // #959: the size grid is half of grooming's part. A priced size on an
+  // active grooming service (size rules exist only on grooming services).
+  const pricedSizes = grooming
+    ? (
+        await (supabase as any)
+          .from("service_size_rules")
+          .select("id, services!inner(active)", { count: "exact", head: true })
+          .eq("organization_id", orgId)
+          .eq("services.active", true)
+          .gt("price_cents", 0)
+      ).count
+    : 0;
   // Signup seeds the walks with blank prices. Done means the 30-minute AND
   // the 60-minute walk have one (#769): "some walk has a price" ticked the
   // step for one price on one walk and left the rest "No price yet".
   const walksDone = walksPricedForSetup(walks ?? []);
-  // Signup seeds the stays with starter prices; done means one was saved.
-  const staysDone = (stays ?? []).some((s) => s.updated_at !== s.created_at);
-  const groomDone = !!groomingSetup?.data?.groom_setup_reviewed_at;
+  // Signup seeds the stays with starter prices, so done means EVERY active
+  // stay was saved on purpose (#959), on /setup or in Settings; one saved
+  // stay used to tick the part while the others still quoted the starter.
+  const staysDone = staysSavedForSetup(stays ?? []);
+  // #959: the vaccines and buffer reviewed AND a price in the size grid.
+  const groomDone = groomSetupDone({
+    reviewed: !!groomingSetup?.data?.groom_setup_reviewed_at,
+    pricedSizes: pricedSizes ?? 0,
+  });
 
   const parts: PricePart[] = [];
   // The service area and its per-visit price are asked of a pet-waste
@@ -468,11 +487,10 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
     parts.push({
       id: "stays",
       label: "Sitting",
-      description:
-        "Drop-in, Overnight stay and House sit prices, holiday dates and the deposit refund window.",
+      description: "What a Drop-in, an Overnight stay and a House sit cost.",
       done: staysDone,
       to: "/settings/services",
-      cta: "Review sitting prices",
+      cta: "Price stays",
     });
   }
   if (grooming) {
@@ -482,7 +500,7 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
       description: "The size grid, required vaccines, and setup, cleanup and travel minutes.",
       done: groomDone,
       to: "/settings/services",
-      cta: "Review grooming setup",
+      cta: "Price grooms",
     });
   }
   if (training) {
@@ -519,8 +537,9 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
     Object.assign(zonesStep, {
       label: "Review your grooming prices, vaccines and buffer",
       description:
-        "Review the starter size grid, required vaccines and setup, cleanup and travel minutes in Settings, Services.",
+        "Price the size grid, and review required vaccines and setup, cleanup and travel minutes. New clients are quoted these prices.",
       done: groomDone,
+      to: "/setup",
       cta: "Review grooming setup",
       gate: "/settings/services",
     });
@@ -543,10 +562,10 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
     Object.assign(zonesStep, {
       label: "Price your sitting services",
       description:
-        "Review Drop-in, Overnight stay and House sit prices, holiday dates and the deposit refund window before booking your first stay.",
+        "Set what a Drop-in, an Overnight stay and a House sit cost before booking your first stay. New clients are quoted these prices.",
       done: staysDone,
-      to: "/settings/services",
-      cta: "Review sitting services",
+      to: "/setup",
+      cta: "Price stays",
       gate: "/settings/services",
     });
   } else if (training) {
@@ -560,7 +579,7 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
       description:
         "Price your lesson package, turn it on, and add the skills a trainer scores. New clients are quoted these prices. Your service area is on Zones.",
       done: training.done,
-      to: "/settings/services",
+      to: "/setup",
       cta: "Price lessons",
       gate: "/settings/services",
     });

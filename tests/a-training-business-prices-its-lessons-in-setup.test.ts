@@ -65,10 +65,10 @@ async function priceStep(lines: string[], counts: Counts): Promise<OnboardingSte
 // area left "1 of 6 done" with nothing saying why. A trainer's step is now
 // the lessons alone, on Settings, Services, the way a walker's is the walks.
 describe("the price step at a training business", () => {
-  it("is the lessons, on Settings, Services", async () => {
+  it("is the lessons, priced on /setup (#959)", async () => {
     const step = await priceStep(["training"], {});
     expect(step.label).toBe("Price your lessons");
-    expect(step.to).toBe("/settings/services");
+    expect(step.to).toBe("/setup");
     expect(step.gate).toBe("/settings/services");
     expect(step.cta).toBe("Price lessons");
     expect(step.description).toMatch(/lesson package/);

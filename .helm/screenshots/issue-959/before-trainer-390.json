@@ -1,0 +1,11 @@
+{
+  "phase": "before",
+  "state": "trainer",
+  "width": 390,
+  "scrollWidth": 390,
+  "innerWidth": 390,
+  "settingsButtons": [
+    "Price lessons"
+  ],
+  "forms": []
+}
