@@ -121,8 +121,15 @@ describe("the migration", () => {
     // 20261112110000 (mypets v2 step 5b, photos) is the only file after it,
     // and it replaces the view only to add photos at the end:
     // tests/a-directory-photo-waits-for-a-moderator.test.ts pins that.
+    // #912 was later renamed to 20261116060000 so it sorts after main. It
+    // redefines invoice_paid_cents only and does not touch the directory view.
+    const LATER_AND_UNRELATED = ["20261116060000_succeeded-payments-count-only-what-was-kept.sql"];
+    for (const f of LATER_AND_UNRELATED.filter((f) => files.includes(f))) {
+      expect(read(`supabase/migrations/${f}`)).not.toMatch(/directory/i);
+    }
     expect(
       files
+        .filter((f) => !LATER_AND_UNRELATED.includes(f))
         .map((f) => f.slice(0, 14))
         .filter((s) => s > STAMP)
         .sort(),
