@@ -1174,7 +1174,7 @@ export function DogsSection({
                   value={vetName}
                   maxLength={200}
                   onChange={(e) => setVetName(e.target.value)}
-                  placeholder="Eastside Animal Hospital"
+                  placeholder="e.g. Eastside Animal Hospital"
                 />
               </div>
               <div className="min-w-0">

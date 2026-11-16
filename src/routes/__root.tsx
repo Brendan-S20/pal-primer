@@ -18,7 +18,13 @@ import { ImpersonationBanner } from "../components/ImpersonationBanner";
 import { RouteProgress } from "../components/motion/RouteProgress";
 import i18n from "../lib/i18n";
 import { appOrigin, appUrl } from "@/lib/app-origin";
-import { THEME_BOOT_SCRIPT, applyTheme, followSystemTheme, readThemePref } from "@/lib/theme";
+import {
+  THEME_BOOT_SCRIPT,
+  applyTheme,
+  followSystemTheme,
+  readThemePref,
+  watchDarkTheme,
+} from "@/lib/theme";
 import { RootRecovery } from "@/components/RootRecovery";
 import { markAppMounted } from "@/lib/app-mounted";
 import { captureRecoveryFromUrl } from "@/lib/password-recovery";
@@ -262,8 +268,21 @@ function RootComponent() {
   // the system theme chose: in Android dark mode, white icons on the cream
   // sign-in page. styles.xml now starts with dark icons; this makes the style
   // follow the app's own theme on every surface, signed in or not. No-op on web.
+  // And again whenever the app's theme changes (R2-28), so Dark chosen in
+  // Preferences, or "System" at sunset, does not keep the old icons.
   useEffect(() => {
-    import("../lib/native").then((m) => m.initStatusBar()).catch(() => {});
+    let stop: (() => void) | undefined;
+    let gone = false;
+    import("../lib/native")
+      .then((m) => {
+        void m.initStatusBar().catch(() => {});
+        if (!gone) stop = m.followThemeWithStatusBar(watchDarkTheme);
+      })
+      .catch(() => {});
+    return () => {
+      gone = true;
+      stop?.();
+    };
   }, []);
 
   // While a text field has the on-screen keyboard up: bottom bars step aside

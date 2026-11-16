@@ -93,10 +93,31 @@ export const FIXTURE_TIMEZONE = "America/Chicago";
  *  the host's zone (and its DST changes) cannot reach it.
  *  `tests/the-fixture-today-is-the-orgs-today.test.ts` pins it at the
  *  boundary hours, under several host zones. */
-export const day = (offset: number, now: Date = new Date()) => {
+export const day = (offset: number, now: Date = FIXTURE_NOW) => {
   const [y, m, d] = orgToday(FIXTURE_TIMEZONE, now).split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d + offset)).toISOString().slice(0, 10);
 };
+
+/** The instant this fixture's calendar was built at — read ONCE, when the
+ *  worker first imports this file — and the default `now` for `day()`.
+ *
+ *  ── WHY ONE INSTANT, AND WHY IT IS NOT ENOUGH ON ITS OWN (2026-11-16) ─────
+ *
+ *  Fixing the timezone (above) made TODAY the org's date, but only the org's
+ *  date AT THE MOMENT THE WORKER STARTED. The browser it feeds reads its own
+ *  clock, live, every time a page renders. A worker that imported this file at
+ *  23:58 Chicago and opened /my-schedule at 00:00 served a first row dated
+ *  Sunday to a page whose `useOrgToday()` already said Monday, and the row lost
+ *  its Today badge: #941, on a PR that never touched the page, in a required
+ *  job. Before this was a constant, `day(n)` called inside a stub at request
+ *  time could even disagree with TODAY from the same file.
+ *
+ *  So every date here hangs off this one instant, and a spec that judges
+ *  "today" pins the BROWSER to the same instant's day with
+ *  `pinTheBrowserToTheFixtureDay` (fixtures/fixture-clock.ts). Two clocks that
+ *  agree because they are the same clock, not because the run did not happen
+ *  to cross midnight. */
+export const FIXTURE_NOW = new Date();
 
 export const TODAY = day(0);
 

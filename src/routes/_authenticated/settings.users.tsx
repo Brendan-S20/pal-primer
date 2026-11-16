@@ -646,7 +646,7 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
                 : null,
             );
           }}
-          placeholder="123 Main St, Austin, TX 78701"
+          placeholder="Street, city, state and ZIP"
           disabled={!canEdit}
         />
         {staff.start_latitude != null && (

@@ -78,6 +78,7 @@ export function AddressAutocomplete({
   maxLength,
   className,
   ariaInvalid,
+  ariaDescribedBy,
 }: {
   id?: string;
   value: string;
@@ -91,6 +92,9 @@ export function AddressAutocomplete({
    *  red keeps doing so after it swaps its <Input> for this. */
   className?: string;
   ariaInvalid?: boolean;
+  /** The id of a message about this field, such as a form's "add your
+   *  address" (#942), so a screen reader reads it with the field. */
+  ariaDescribedBy?: string;
 }) {
   const { t } = useTranslation();
   const listId = useId();
@@ -275,6 +279,7 @@ export function AddressAutocomplete({
           disabled={disabled}
           maxLength={maxLength}
           aria-invalid={ariaInvalid}
+          aria-describedby={ariaDescribedBy}
           onChange={(e) => handleInput(e.target.value)}
           onKeyDown={onKeyDown}
           onFocus={() => {

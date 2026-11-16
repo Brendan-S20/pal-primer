@@ -22,6 +22,7 @@ import {
   CONNECT_PANEL_TIMEOUT_MS,
   PAYMENTS_FETCH_TIMEOUT_MS,
   STRIPE_DID_NOT_ANSWER,
+  BALANCE_UNAVAILABLE,
   balanceSummaryState,
   withTimeout,
 } from "@/lib/payments-load";
@@ -30,6 +31,9 @@ const root = join(import.meta.dirname, "..");
 const page = readFileSync(join(root, "src/routes/_authenticated/payments.tsx"), "utf8");
 const card = readFileSync(join(root, "src/components/payments/ConnectCard.tsx"), "utf8");
 const server = readFileSync(join(root, "src/lib/stripe-connect.functions.ts"), "utf8");
+// Moved out of the page and the server function in #922.
+const summary = readFileSync(join(root, "src/components/payments/BalanceSummary.tsx"), "utf8");
+const summaryServer = readFileSync(join(root, "src/lib/stripe-balance-summary.server.ts"), "utf8");
 
 const run = (...events: ConnectCardEvent[]) =>
   events.reduce(connectCardReducer, INITIAL_CONNECT_CARD);
@@ -102,28 +106,34 @@ describe("the balance headline says what happened", () => {
     expect(balanceSummaryState({ isPending: true, isError: false }).kind).toBe("loading");
   });
 
+  // Every error reads BALANCE_UNAVAILABLE since #922. The reason is logged on
+  // the server; what an owner reads never depends on what the error said.
   it("a thrown or timed-out request is a visible error, not nothing", () => {
     const v = balanceSummaryState({
       ...base,
       isError: true,
       error: new Error(STRIPE_DID_NOT_ANSWER),
     });
-    expect(v).toEqual({ kind: "error", message: STRIPE_DID_NOT_ANSWER });
+    expect(v).toEqual({ kind: "error", message: BALANCE_UNAVAILABLE });
   });
 
   it("an error with no message still says something", () => {
     expect(balanceSummaryState({ ...base, isError: true, error: {} })).toEqual({
       kind: "error",
-      message: "Couldn't reach Stripe.",
+      message: BALANCE_UNAVAILABLE,
     });
   });
 
-  it("Stripe answering with an error is shown, where it used to be swallowed", () => {
+  it("Stripe answering with an error is shown, where it used to be swallowed, in our words", () => {
     const v = balanceSummaryState({
       ...base,
-      data: { connected: true, error: "Stripe is not configured on the server" },
+      data: {
+        connected: true,
+        error:
+          "Only Stripe Connect platforms can work with other accounts. If you specified a client_id parameter, make sure it is correct.",
+      },
     });
-    expect(v).toEqual({ kind: "error", message: "Stripe is not configured on the server" });
+    expect(v).toEqual({ kind: "error", message: BALANCE_UNAVAILABLE });
   });
 
   it("no live account draws nothing here: the page already says how to connect", () => {
@@ -145,13 +155,16 @@ describe("the balance headline says what happened", () => {
   });
 
   it("the page wires the query through the deadline and shows the error with a retry", () => {
-    expect(page).toMatch(
+    expect(summary).toMatch(
       /queryKey: \["stripe-balance"\][\s\S]{0,400}withTimeout\([\s\S]{0,120}PAYMENTS_FETCH_TIMEOUT_MS/,
     );
-    expect(page).toMatch(/const view = balanceSummaryState\(q\)/);
-    expect(page).toMatch(/view\.kind === "error"[\s\S]{0,600}Couldn't load your balance/);
+    expect(summary).toMatch(/const view = balanceSummaryState\(q\)/);
+    expect(summary).toMatch(
+      /view\.kind === "error"[\s\S]{0,1200}\{view\.message\}[\s\S]{0,400}Try again/,
+    );
     // The old silent branch.
-    expect(page).not.toMatch(/if \(!d \|\| !d\.connected \|\| d\.error\) return null;/);
+    expect(summary).not.toMatch(/if \(!d \|\| !d\.connected \|\| d\.error\) return null;/);
+    expect(page).toMatch(/<BalanceSummary fetchSummary=\{balanceFn\} \/>/);
   });
 });
 
@@ -173,11 +186,12 @@ describe("the dashboard and the status read have an end too", () => {
   });
 
   it("the server gives each Stripe call a deadline and answers a missing key", () => {
-    const fn = server.slice(server.indexOf("export const getStripeBalanceSummary"));
+    const fn = summaryServer;
     expect(fn).toMatch(/timeout: 10_000/);
     expect(fn).toMatch(/stripe\.balance\.retrieve\(\{\}, opts\)/);
     expect(fn).toMatch(/stripe\.payouts\.list\(\{ limit: 1 \}, opts\)/);
     expect(fn).not.toMatch(/throw new Error\("Stripe is not configured on the server"\)/);
+    expect(server).toMatch(/getStripeBalanceSummary[\s\S]{0,1500}loadBalanceSummary\(orgId/);
   });
 });
 

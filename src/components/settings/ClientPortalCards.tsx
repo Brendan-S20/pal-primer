@@ -361,7 +361,7 @@ export function BrandingCard() {
                   value={contactAddress}
                   onChangeText={setContactAddress}
                   onResolved={(r) => setContactAddress(r.address.formatted.slice(0, 300))}
-                  placeholder="123 Main St, Springfield, IL 62704"
+                  placeholder="Street, city, state and ZIP"
                   maxLength={300}
                 />
                 <p className="mt-1 text-xs text-muted-foreground">

@@ -20,6 +20,12 @@
              initStatusBar() still switches them if the app itself is dark. -->
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:statusBarColor">@color/splashBackground</item>
+        <!-- R2-28: the window behind the WebView, which is what shows behind the
+             clock on Android 15+ until initStatusBar() paints the WebView's
+             parent. DayNight made it black in system dark mode, under the
+             dark icons above: dark on dark after sign-in. The app's own light
+             background instead; the app's dark theme is painted from JS. -->
+        <item name="android:windowBackground">@color/appBackground</item>
     </style>
 
 

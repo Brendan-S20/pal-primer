@@ -62,7 +62,9 @@ function featuresByComponent(): Map<string, Set<string>> {
 function declaredComponents(): Map<string, Set<string> | null> {
   const start = code.indexOf("components: {");
   expect(start).toBeGreaterThan(-1);
-  const block = code.slice(start, code.indexOf("\n    });", start));
+  // `});` when the params were written inline, `};` since #922 named them
+  // (sessionParams) so the create call could carry a `.catch`.
+  const block = code.slice(start, code.indexOf("\n    }", start));
 
   // The two source objects, resolved so a spread can be expanded.
   const objects = new Map<string, Set<string>>();

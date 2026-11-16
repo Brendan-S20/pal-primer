@@ -16,8 +16,16 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = join(import.meta.dirname, "..");
-const page = readFileSync(join(root, "src/routes/_authenticated/payments.tsx"), "utf8");
-const server = readFileSync(join(root, "src/lib/stripe-connect.functions.ts"), "utf8");
+// The balance headline moved into its own files in #922 (the component, and the
+// server half that picks the Connect platform client). Read as one with the
+// page and the server functions, so these assertions follow the code rather
+// than its address.
+const page =
+  readFileSync(join(root, "src/routes/_authenticated/payments.tsx"), "utf8") +
+  readFileSync(join(root, "src/components/payments/BalanceSummary.tsx"), "utf8");
+const server =
+  readFileSync(join(root, "src/lib/stripe-connect.functions.ts"), "utf8") +
+  readFileSync(join(root, "src/lib/stripe-balance-summary.server.ts"), "utf8");
 
 /** The Fees & tips tab's content, passed as the dashboard's settings prop:
  *  the processing-fee card and the tipping switch, and nothing else. */
@@ -86,7 +94,7 @@ describe("the balance headline", () => {
     // options argument, like payouts.list below it.
     // Since #436 the options are one object that also carries a deadline;
     // the account is still in it, and it is still the second argument.
-    expect(server).toMatch(/const opts = \{ stripeAccount: acct,/);
+    expect(server).toMatch(/const opts = \{ stripeAccount: acct\.accountId,/);
     expect(server).toMatch(/balance\.retrieve\(\{\}, opts\)/);
     expect(server).not.toMatch(/balance\.retrieve\(\{ stripeAccount/);
   });
@@ -122,7 +130,8 @@ describe("the balance headline", () => {
     // tests/payments-never-loads-forever.test.tsx has the rest.
     expect(server).toMatch(/return \{ connected: true as const, error:/);
     expect(page).not.toMatch(/if \(!d \|\| !d\.connected \|\| d\.error\) return null/);
-    expect(page).toMatch(/Couldn't load your balance/);
+    // In our words since #922, never Stripe's: tests/stripe-balance-in-plain-words.test.tsx.
+    expect(page).toMatch(/\{view\.message\}/);
   });
 
   it("is gated on the billing permission", () => {

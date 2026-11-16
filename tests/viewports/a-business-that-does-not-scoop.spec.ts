@@ -234,10 +234,13 @@ for (const { w, h, label } of WIDTHS) {
       await expect(alert).toHaveAttribute("role", "alert");
       await expect(alert).toContainText("Add at least one dog's name to continue");
       await expect.poll(() => allText(page)).toContain("Step 3 of 4");
-      await expect(page.getByPlaceholder("Bailey").first()).toHaveAttribute("aria-invalid", "true");
+      await expect(page.getByPlaceholder("e.g. Bailey").first()).toHaveAttribute(
+        "aria-invalid",
+        "true",
+      );
       await measure(page, w, `/clients/new Dogs, none named (dog walking) @${w}px`);
 
-      await page.getByPlaceholder("Bailey").first().fill("Biscuit");
+      await page.getByPlaceholder("e.g. Bailey").first().fill("Biscuit");
       await next.click();
       await expect.poll(() => allText(page)).toContain("Step 4 of 4");
       await expect(page.getByRole("button", { name: "Create client" })).toBeVisible();
@@ -349,7 +352,7 @@ for (const { w, h, label } of WIDTHS) {
     await page.locator("#pc").fill("60640");
     const plan = page.getByRole("button", { name: "Create client" });
     for (let i = 0; i < 4 && !(await plan.isVisible()); i++) {
-      const bailey = page.getByPlaceholder("Bailey").first();
+      const bailey = page.getByPlaceholder("e.g. Bailey").first();
       if (await bailey.isVisible()) await bailey.fill("Rex");
       await next.click();
       await page.waitForTimeout(300);

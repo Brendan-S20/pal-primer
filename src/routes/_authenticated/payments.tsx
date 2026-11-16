@@ -43,10 +43,12 @@ import { titleHead } from "@/lib/page-title";
 import { connectAppearanceFor } from "@/lib/connect-appearance";
 import { isDarkApplied, watchDarkTheme } from "@/lib/theme";
 import { ConnectCard } from "@/components/payments/ConnectCard";
+import { BalanceSummary } from "@/components/payments/BalanceSummary";
+import { useConnectInstance } from "@/lib/use-connect-instance";
 import {
   PAYMENTS_FETCH_TIMEOUT_MS,
   STRIPE_DID_NOT_ANSWER,
-  balanceSummaryState,
+  dashboardErrorMessage,
   withTimeout,
   type BalanceSummaryData,
 } from "@/lib/payments-load";
@@ -737,64 +739,54 @@ function ConnectDashboard({
   // renders at every width.
   const replaced = narrow && chargesEnabled;
   const sessionFn = useServerFn(createStripeAccountSession);
-  const [instance, setInstance] = useState<any>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const balanceFn = useServerFn(getStripeBalanceSummary) as () => Promise<BalanceSummaryData>;
   const [reloadKey, setReloadKey] = useState(0);
 
-  useEffect(() => {
-    if (!measured) return;
-    // NOTHING TO LOAD ON A NARROW SCREEN. The panels this instance exists to
-    // render are replaced by NeedsAWiderScreen there, so creating an account
-    // session and pulling in @stripe/connect-js would be work done for iframes
-    // that never appear, and a failure in it would blank a page whose narrow
-    // content does not depend on Stripe at all. That is not theoretical: it is
-    // exactly what happened while testing the first version of this, and the
-    // dashboard showed "Couldn't load the payment dashboard" over content that
-    // needed no Stripe.
-    // Only when there is a dashboard to skip. Onboarding is the one Connect
-    // surface a phone must keep: it is how an account gets connected at all,
-    // and Stripe designs that flow for mobile. Gating it would strand a tenant
-    // who only has a phone, unable to start taking money with no alternative
-    // in the app. So the instance is still created while `chargesEnabled` is
-    // false, and only skipped once the account is live and the dashboards are
-    // what would have rendered.
-    if (replaced) return;
-    let cancelled = false;
-    setErr(null);
-    setInstance(null);
-    (async () => {
-      try {
-        // Deadlines on both waits (#436): an Account Session that never comes
-        // back held "Loading payment dashboard…" for as long as the tab was
-        // open, and Stripe's own refetch of it is the same call.
-        const first = await withTimeout(
-          sessionFn(),
-          PAYMENTS_FETCH_TIMEOUT_MS,
-          STRIPE_DID_NOT_ANSWER,
-        );
-        if (cancelled) return;
-        const { loadConnectAndInitialize } = await import("@stripe/connect-js");
-        const inst = loadConnectAndInitialize({
-          publishableKey: (first as any).publishableKey,
-          fetchClientSecret: async () => {
-            const r = await withTimeout(
-              sessionFn(),
-              PAYMENTS_FETCH_TIMEOUT_MS,
-              STRIPE_DID_NOT_ANSWER,
-            );
-            return (r as any).clientSecret as string;
-          },
-          appearance: connectAppearance(),
-        });
-        if (!cancelled) setInstance(inst);
-      } catch (e) {
-        if (!cancelled) setErr((e as Error).message);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [reloadKey, measured, replaced]);
+  // NOTHING TO LOAD ON A NARROW SCREEN. The panels this instance exists to
+  // render are replaced by NeedsAWiderScreen there, so creating an account
+  // session and pulling in @stripe/connect-js would be work done for iframes
+  // that never appear, and a failure in it would blank a page whose narrow
+  // content does not depend on Stripe at all. That is not theoretical: it is
+  // exactly what happened while testing the first version of this, and the
+  // dashboard showed "Couldn't load the payment dashboard" over content that
+  // needed no Stripe.
+  // Only when there is a dashboard to skip. Onboarding is the one Connect
+  // surface a phone must keep: it is how an account gets connected at all,
+  // and Stripe designs that flow for mobile. Gating it would strand a tenant
+  // who only has a phone, unable to start taking money with no alternative
+  // in the app. So the instance is still created while `chargesEnabled` is
+  // false, and only skipped once the account is live and the dashboards are
+  // what would have rendered.
+  //
+  // ONE instance per mount (#922): useConnectInstance never initialises a
+  // second connect-js while the first is alive, and logs it out on unmount.
+  const { instance, error: err } = useConnectInstance<any>({
+    enabled: measured && !replaced,
+    reloadKey,
+    create: async () => {
+      // Deadlines on both waits (#436): an Account Session that never comes
+      // back held "Loading payment dashboard…" for as long as the tab was
+      // open, and Stripe's own refetch of it is the same call.
+      const first = await withTimeout(
+        sessionFn(),
+        PAYMENTS_FETCH_TIMEOUT_MS,
+        STRIPE_DID_NOT_ANSWER,
+      );
+      const { loadConnectAndInitialize } = await import("@stripe/connect-js");
+      return loadConnectAndInitialize({
+        publishableKey: (first as any).publishableKey,
+        fetchClientSecret: async () => {
+          const r = await withTimeout(
+            sessionFn(),
+            PAYMENTS_FETCH_TIMEOUT_MS,
+            STRIPE_DID_NOT_ANSWER,
+          );
+          return (r as any).clientSecret as string;
+        },
+        appearance: connectAppearance(),
+      });
+    },
+  });
 
   // The theme can change under an open page (Preferences, or a phone on
   // "System" going dark). The iframes cannot see our CSS, so tell Stripe.
@@ -812,7 +804,7 @@ function ConnectDashboard({
   if (err && !replaced)
     return (
       <div className="rounded-lg border bg-card p-4">
-        <p className="text-sm text-destructive">Couldn't load the payment dashboard: {err}</p>
+        <p className="text-sm text-destructive">{dashboardErrorMessage(err)}</p>
         <Button
           variant="outline"
           size="sm"
@@ -875,7 +867,7 @@ function ConnectDashboard({
             </TabsList>
 
             <TabsContent value="money" className="mt-4 space-y-4">
-              <BalanceSummary />
+              <BalanceSummary fetchSummary={balanceFn} />
               {narrow ? (
                 <NeedsAWiderScreen what="Balance" />
               ) : (
@@ -939,109 +931,4 @@ function maskAccountId(id: string | null | undefined): string {
   if (!id) return "connected";
   const tail = id.slice(-4);
   return `acct_…${tail}`;
-}
-
-/**
- * The headline the Money tab exists to give: how much is available now, how
- * much is still clearing, and when the last payout lands.
- *
- * Rendered above the embedded components rather than instead of them. They own
- * the detail — per-currency breakdown, the payout history, changing the
- * schedule — but each is an iframe that fetches on its own, so the one number
- * an owner opens this page for arrived last and moved the layout when it did.
- */
-function BalanceSummary() {
-  const fn = useServerFn(getStripeBalanceSummary);
-  const q = useQuery({
-    queryKey: ["stripe-balance"],
-    // A deadline, and one retry rather than React Query's three with backoff:
-    // "Loading balance…" is never the last thing this card says (#436).
-    queryFn: () =>
-      withTimeout(
-        fn() as Promise<BalanceSummaryData>,
-        PAYMENTS_FETCH_TIMEOUT_MS,
-        STRIPE_DID_NOT_ANSWER,
-      ),
-    retry: 1,
-  });
-  const d = q.data as any;
-  const view = balanceSummaryState(q);
-
-  if (view.kind === "loading") {
-    return (
-      <div className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
-        Loading balance…
-      </div>
-    );
-  }
-  // Said, not swallowed. This used to return null on an error, reasoning that
-  // the embedded panels below were the real view. Below 1024px there are no
-  // panels below, and when connect-js is what failed there are none at any
-  // width, so the tab was blank with no reason given (#436). Muted rather
-  // than red: it is one figure we could not fetch, not money gone wrong.
-  if (view.kind === "error") {
-    return (
-      <div role="alert" className="rounded-lg border bg-card p-4 text-sm">
-        <p className="text-muted-foreground">Couldn't load your balance. {view.message}</p>
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-3"
-          onClick={() => q.refetch()}
-          disabled={q.isFetching}
-        >
-          {q.isFetching ? "Retrying…" : "Try again"}
-        </Button>
-      </div>
-    );
-  }
-  if (view.kind === "not-connected") return null;
-
-  const fmt = (amount: number, currency: string) =>
-    new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currency.toUpperCase(),
-    }).format(amount / 100);
-
-  const avail: Array<{ amount: number; currency: string }> = d.available ?? [];
-  const pending: Array<{ amount: number; currency: string }> = d.pending ?? [];
-
-  return (
-    <div className="grid gap-3 rounded-lg border bg-card p-4 sm:grid-cols-3">
-      <div>
-        <div className="text-2xs uppercase tracking-wide text-muted-foreground">Available now</div>
-        <div className="text-xl font-semibold">
-          {avail.length ? avail.map((b) => fmt(b.amount, b.currency)).join(" · ") : "—"}
-        </div>
-      </div>
-      <div>
-        <div className="text-2xs uppercase tracking-wide text-muted-foreground">Still clearing</div>
-        {/* Kept separate from "available" rather than summed. A single total
-            overstates what can actually be drawn today, which is the number
-            somebody opens this page to find. */}
-        <div className="text-xl font-semibold text-muted-foreground">
-          {pending.length ? pending.map((b) => fmt(b.amount, b.currency)).join(" · ") : "—"}
-        </div>
-      </div>
-      <div>
-        <div className="text-2xs uppercase tracking-wide text-muted-foreground">Latest payout</div>
-        {d.lastPayout ? (
-          <div className="text-sm">
-            <span className="font-semibold">{fmt(d.lastPayout.amount, d.lastPayout.currency)}</span>
-            <span className="ml-1.5 text-muted-foreground">{d.lastPayout.status}</span>
-            {d.lastPayout.arrivalDate && (
-              // "Expected" because arrival_date is Stripe's estimate, not a
-              // commitment from the bank. Presenting it flat would make us
-              // answerable for a date we do not control.
-              <div className="text-2xs text-muted-foreground">
-                Expected {formatDay(new Date(d.lastPayout.arrivalDate).toISOString())}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="text-sm text-muted-foreground">None yet</div>
-        )}
-      </div>
-    </div>
-  );
 }

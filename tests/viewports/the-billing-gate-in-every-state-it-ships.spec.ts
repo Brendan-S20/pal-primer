@@ -309,7 +309,11 @@ async function openConnectedPayments(
  *  the Payouts card. Either proves it took the Stripe path rather than the
  *  replacement. "Balance" is not used as the tell: BalanceSummary, which is
  *  ours, draws "Loading balance" on both branches. */
-const TOOK_THE_STRIPE_PATH = /payment dashboard|(Loading|Couldn't load) payouts/i;
+// "Stripe dashboard right now" is DASHBOARD_UNAVAILABLE, the error card's
+// wording since #922 (it used to prefix Stripe's text with "Couldn't load the
+// payment dashboard:").
+const TOOK_THE_STRIPE_PATH =
+  /payment dashboard|Stripe dashboard right now|(Loading|Couldn't load) payouts/i;
 
 test.describe("a phone, 390px with touch", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
@@ -403,7 +407,8 @@ test.describe("Stripe that never answers, 1280px", () => {
     // for the loading text going away.
     await expect
       .poll(text, { timeout: 80_000, intervals: [2_000] })
-      .toContain("Couldn't load your balance");
+      // Our sentence since #922, never Stripe's.
+      .toContain("We can't show your Stripe balance right now");
     await expect
       .poll(text, { timeout: 30_000, intervals: [2_000] })
       .toMatch(/Couldn't load (payouts|balance\.)/);

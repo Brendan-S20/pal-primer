@@ -1,0 +1,19 @@
+{
+  "phase": "before",
+  "state": "client-contact",
+  "width": 390,
+  "scrollWidth": 390,
+  "innerWidth": 390,
+  "fields": [
+    {
+      "placeholder": "Jane Doe",
+      "autocomplete": null,
+      "value": ""
+    },
+    {
+      "placeholder": "(555) 123-4567",
+      "autocomplete": null,
+      "value": ""
+    }
+  ]
+}
