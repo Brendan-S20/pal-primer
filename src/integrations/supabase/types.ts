@@ -7453,6 +7453,41 @@ export type Database = {
         }
         Relationships: []
       }
+      role_permission_overrides: {
+        Row: {
+          allowed: boolean
+          organization_id: string
+          permission: string
+          role: Database["public"]["Enums"]["app_role"]
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          allowed: boolean
+          organization_id: string
+          permission: string
+          role: Database["public"]["Enums"]["app_role"]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          allowed?: boolean
+          organization_id?: string
+          permission?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_permission_overrides_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       staff: {
         Row: {
           active: boolean
@@ -7841,6 +7876,7 @@ export type Database = {
           client_id: string
           client_package_id: string | null
           created_at: string
+          created_by: string | null
           dog_count: number | null
           earliest_time: string | null
           end_notes: string | null
@@ -7856,6 +7892,8 @@ export type Database = {
           id: string
           interval_days: number | null
           interval_weeks: number | null
+          last_changed_at: string | null
+          last_changed_by: string | null
           latest_time: string | null
           organization_id: string
           paused_at: string | null
@@ -7884,6 +7922,7 @@ export type Database = {
           client_id: string
           client_package_id?: string | null
           created_at?: string
+          created_by?: string | null
           dog_count?: number | null
           earliest_time?: string | null
           end_notes?: string | null
@@ -7899,6 +7938,8 @@ export type Database = {
           id?: string
           interval_days?: number | null
           interval_weeks?: number | null
+          last_changed_at?: string | null
+          last_changed_by?: string | null
           latest_time?: string | null
           organization_id: string
           paused_at?: string | null
@@ -7927,6 +7968,7 @@ export type Database = {
           client_id?: string
           client_package_id?: string | null
           created_at?: string
+          created_by?: string | null
           dog_count?: number | null
           earliest_time?: string | null
           end_notes?: string | null
@@ -7942,6 +7984,8 @@ export type Database = {
           id?: string
           interval_days?: number | null
           interval_weeks?: number | null
+          last_changed_at?: string | null
+          last_changed_by?: string | null
           latest_time?: string | null
           organization_id?: string
           paused_at?: string | null
@@ -9315,7 +9359,7 @@ export type Database = {
           account_type: Database["public"]["Enums"]["account_type"] | null
           area_max_charge_cents: number | null
           area_min_charge_cents: number
-          base_price_cents: number
+          base_price_cents: number | null
           boundary: Json | null
           center_latitude: number | null
           center_longitude: number | null
@@ -9333,7 +9377,7 @@ export type Database = {
           longitude: number | null
           name: string
           organization_id: string
-          per_dog_addl_cents: number
+          per_dog_addl_cents: number | null
           postal_prefix: string | null
           price_note: string | null
           price_per_acre_cents: number
@@ -9347,7 +9391,7 @@ export type Database = {
           account_type?: Database["public"]["Enums"]["account_type"] | null
           area_max_charge_cents?: number | null
           area_min_charge_cents?: number
-          base_price_cents?: number
+          base_price_cents?: number | null
           boundary?: Json | null
           center_latitude?: number | null
           center_longitude?: number | null
@@ -9365,7 +9409,7 @@ export type Database = {
           longitude?: number | null
           name: string
           organization_id: string
-          per_dog_addl_cents?: number
+          per_dog_addl_cents?: number | null
           postal_prefix?: string | null
           price_note?: string | null
           price_per_acre_cents?: number
@@ -9379,7 +9423,7 @@ export type Database = {
           account_type?: Database["public"]["Enums"]["account_type"] | null
           area_max_charge_cents?: number | null
           area_min_charge_cents?: number
-          base_price_cents?: number
+          base_price_cents?: number | null
           boundary?: Json | null
           center_latitude?: number | null
           center_longitude?: number | null
@@ -9397,7 +9441,7 @@ export type Database = {
           longitude?: number | null
           name?: string
           organization_id?: string
-          per_dog_addl_cents?: number
+          per_dog_addl_cents?: number | null
           postal_prefix?: string | null
           price_note?: string | null
           price_per_acre_cents?: number

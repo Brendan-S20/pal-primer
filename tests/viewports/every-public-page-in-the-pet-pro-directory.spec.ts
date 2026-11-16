@@ -184,7 +184,7 @@ async function openAndSettle(page: Page, path: string, marker: string) {
   ).toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.locator("[data-directory-disclosure]")).toContainText("HoundStack customer");
+  await expect(page.locator("[data-directory-disclosure]")).toContainText("No paid placement");
   await page.evaluate(() => document.fonts?.ready).catch(() => {});
   await page.waitForTimeout(150);
 }

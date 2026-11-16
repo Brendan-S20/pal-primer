@@ -46,12 +46,13 @@ describe("a zone's per-visit price", () => {
     );
     expect(drawer).toMatch(/\{showResidential && showVisitPricing && \(/);
     // Hidden, the loaded values still go back on save.
+    // Blank is "no override" since #860, so it goes back as null.
     expect(drawer).toMatch(
-      /basePriceCents: Math\.round\(\(parseFloat\(basePrice\) \|\| 0\) \* 100\)/,
+      /basePriceCents: basePrice\.trim\(\) \? Math\.round\(\(parseFloat\(basePrice\) \|\| 0\) \* 100\) : null/,
     );
-    const page = read("src/routes/_authenticated/zones.tsx");
+    const page = read("src/routes/_authenticated/settings.zones.tsx");
     expect(page).toMatch(/const showsVisitPrice = showsZoneVisitPrice\(lines, zone\);/);
-    expect(page).toMatch(/\{showsVisitPrice && \(/);
+    expect(page).toMatch(/\{showsVisitPrice &&/);
   });
 });
 

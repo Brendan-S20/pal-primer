@@ -28,7 +28,13 @@ for (const width of [390, 768, 1280]) {
     });
     await page.goto("/settings/services");
     const list = page.getByTestId("services-list");
-    await expect(list.getByText("Pet waste removal", { exact: true })).toBeVisible({
+    // The row's NAME, not its line badge: since #883 the pet_waste line is
+    // also called "Pet waste removal", so every pet-waste row's badge reads
+    // the same words as the starter's name.
+    const starter = list.locator(":scope > li span.font-medium", {
+      hasText: /^Pet waste removal$/,
+    });
+    await expect(starter).toBeVisible({
       timeout: 120_000,
     });
     for (const name of ["Weekly scoop", "One-time cleanup"]) {
@@ -38,7 +44,7 @@ for (const width of [390, 768, 1280]) {
       await dialog.getByRole("button", { name: "Add service", exact: true }).click();
       await expect(dialog).toBeHidden();
       await expect(list.getByText(name, { exact: true })).toBeVisible();
-      await expect(list.getByText("Pet waste removal", { exact: true })).toHaveCount(0);
+      await expect(starter).toHaveCount(0);
     }
     await expect(list.locator(":scope > li")).toHaveCount(2);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(

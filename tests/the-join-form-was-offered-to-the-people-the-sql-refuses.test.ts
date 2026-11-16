@@ -83,7 +83,7 @@ describe("joining is owner-only on this side too", () => {
 
 describe("the page does not offer what the server will refuse", () => {
   it("asks the server whether THIS caller can join", () => {
-    expect(fns).toMatch(/canJoin: hasPermission\(role, "manage_franchise"\)/);
+    expect(fns).toMatch(/canJoin: hasPermission\(role, "manage_franchise", overrides\)/);
   });
 
   it("gates the form on that answer", () => {

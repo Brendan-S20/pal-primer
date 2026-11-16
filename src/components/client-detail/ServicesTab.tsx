@@ -33,6 +33,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { DateField, TimeField } from "@/components/fields";
 import { formatDay, formatWindow } from "@/lib/format";
 import { useOrgToday } from "@/hooks/useOrgToday";
+import { usePermissions } from "@/hooks/useMyRole";
+import { PlanAtSetPriceDrawer } from "@/components/client-detail/PlanAtSetPriceDrawer";
 import { MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
 import { TrainingPackagesSection } from "@/components/clients/TrainingPackagesSection";
 import {
@@ -45,7 +47,6 @@ import {
   getStandardPricing,
 } from "@/lib/subscriptions.functions";
 import {
-  computeZoneVisitPrice,
   computeCommercialZonePrice,
   zoneHasCommercialPricing,
 } from "@/lib/pricing";
@@ -100,6 +101,7 @@ import { walkWindowsProblem, type WalkWindow } from "@/lib/subscription-form";
 import { isDog } from "@/lib/pets";
 import { formatMultiplier, perVisitMultiplier } from "@/lib/frequency-multipliers";
 import { StaysSection } from "@/components/client-detail/StaysSection";
+import { petWasteZoneVisitPrice, zoneOverridesPrice } from "@/lib/standard-price";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -162,6 +164,12 @@ export function ServicesTab({
   const [drawerSub, setDrawerSub] = useState<any | null | "new">(null);
   const [endingSub, setEndingSub] = useState<any | null>(null);
   const [detailSub, setDetailSub] = useState<any | null>(null);
+  // Adding, pausing, resuming and ending a plan is manage_plans (#728): a
+  // dispatcher holds it and adds a plan at the set price only (no price box).
+  // Editing a plan, deleting one and anything priced stay canManagePricing.
+  const { can } = usePermissions();
+  const canManagePlans = canManagePricing || can("manage_plans");
+  const [addingAtSetPrice, setAddingAtSetPrice] = useState(false);
 
   // Consume the ?editService deep link once the subscription list contains
   // the id (the drawer needs the full row). An unknown id is never consumed.
@@ -596,7 +604,7 @@ export function ServicesTab({
                         Edit
                       </Button>
                     )}
-                    {canManagePricing && !ended && s.status === "active" && (
+                    {canManagePlans && !ended && s.status === "active" && (
                       <Button
                         size="sm"
                         variant="outline"
@@ -606,7 +614,7 @@ export function ServicesTab({
                         <Pause className="mr-1 h-3.5 w-3.5 shrink-0" /> Pause
                       </Button>
                     )}
-                    {canManagePricing && paused && (
+                    {canManagePlans && paused && (
                       <Button
                         size="sm"
                         variant="outline"
@@ -619,7 +627,7 @@ export function ServicesTab({
                     {/* End service is a button with its name on it, beside
                         Pause: it used to be reachable only through an
                         unlabeled "…" (R2-46, waste-r2-11). */}
-                    {canManagePricing && showEnd && (
+                    {canManagePlans && showEnd && (
                       <Button size="sm" variant="outline" onClick={() => setEndingSub(s)}>
                         <Square className="mr-1 h-3.5 w-3.5 shrink-0" /> End service…
                       </Button>
@@ -677,8 +685,11 @@ export function ServicesTab({
         <h2 className="text-sm font-medium text-muted-foreground">
           {liveSubs.length} service{liveSubs.length === 1 ? "" : "s"}
         </h2>
-        {properties.length > 0 && canManagePricing && (
-          <Button size="sm" onClick={() => setDrawerSub("new")}>
+        {properties.length > 0 && canManagePlans && (
+          <Button
+            size="sm"
+            onClick={() => (canManagePricing ? setDrawerSub("new") : setAddingAtSetPrice(true))}
+          >
             <Plus className="mr-1 h-4 w-4 shrink-0" /> Add Service
           </Button>
         )}
@@ -743,6 +754,18 @@ export function ServicesTab({
           qc.invalidateQueries({ queryKey: ["quotes"] });
         }}
       />
+
+      {!canManagePricing && canManagePlans && (
+        <PlanAtSetPriceDrawer
+          open={addingAtSetPrice}
+          onClose={() => setAddingAtSetPrice(false)}
+          clientId={clientId}
+          client={client}
+          properties={properties}
+          dogs={dogs}
+          onSaved={invalidate}
+        />
+      )}
 
       <EndServiceDialog
         subscription={endingSub}
@@ -1417,47 +1440,60 @@ function ServiceDrawer({
   // zone price from the Zones page config, so show every component.
   const extraDogs = Math.max(0, dogsForPricing - 1);
   // Standard pricing is per-dog residential math — hidden for commercial.
-  const stdParts =
-    accountType === "residential" && std?.basePriceCents != null
+  // #860: the standard price is the pet-waste SERVICE's own (Settings →
+  // Services): the chosen one's, or the business's default when none is
+  // chosen (getStandardPricing). Same rule as internal-quote.server.ts.
+  const stdSource =
+    chosenService?.service_line === "pet_waste"
       ? {
-          base: std.basePriceCents,
-          dogAdj: extraDogs * (std.perDogAddlCents ?? 0),
-          perDog: std.perDogAddlCents ?? 0,
+          basePriceCents: chosenService.base_price_cents,
+          perDogAddlCents: chosenService.extra_pet_cents ?? 0,
+        }
+      : (std ?? null);
+  const stdParts =
+    accountType === "residential" && stdSource?.basePriceCents != null
+      ? {
+          base: stdSource.basePriceCents,
+          dogAdj: extraDogs * (stdSource.perDogAddlCents ?? 0),
+          perDog: stdSource.perDogAddlCents ?? 0,
         }
       : null;
   const standardCents = stdParts
     ? Math.round((stdParts.base + stdParts.dogAdj) * freqMultiplier)
     : null;
+  // The zone prices the plan when it overrides the standard price or charges
+  // by yard size (#860 review). Either way the number comes from the one
+  // residential zone price the wizard and quotes also use: the override or
+  // the standard price as the base, plus the area charge. A flat zone with
+  // no override charges the standard price shown above.
+  const zonePrices =
+    !!pricingZone &&
+    (zoneOverridesPrice(pricingZone) || (pricingZone.pricing_mode ?? "flat") !== "flat");
   const zonePrice =
-    accountType === "residential" && pricingZone
-      ? computeZoneVisitPrice(
-          {
-            base_price_cents: pricingZone.base_price_cents,
-            per_dog_addl_cents: pricingZone.per_dog_addl_cents,
-            pricing_mode: (pricingZone.pricing_mode ?? "flat") as "flat" | "per_sqft" | "per_acre",
-            price_per_sqft_cents: Number(pricingZone.price_per_sqft_cents ?? 0),
-            price_per_acre_cents: pricingZone.price_per_acre_cents,
-            area_min_charge_cents: pricingZone.area_min_charge_cents,
-            area_max_charge_cents: pricingZone.area_max_charge_cents,
-          },
+    accountType === "residential" && zonePrices
+      ? petWasteZoneVisitPrice(
+          stdSource
+            ? {
+                base_price_cents: stdSource.basePriceCents ?? null,
+                extra_pet_cents: stdSource.perDogAddlCents ?? 0,
+              }
+            : null,
+          pricingZone,
           {
             dogCount: dogsForPricing,
             boundaryAreaSqm: selectedProperty?.boundary_area_sqm
               ? Number(selectedProperty.boundary_area_sqm)
               : null,
-          multiplier: freqMultiplier,
-        },
-      )
-    : null;
+            multiplier: freqMultiplier,
+          },
+        )
+      : null;
   const zoneParts = zonePrice
     ? {
-        base: pricingZone.base_price_cents ?? 0,
-        perDog: pricingZone.per_dog_addl_cents ?? 0,
-        dogAdj: extraDogs * (pricingZone.per_dog_addl_cents ?? 0),
-        areaCharge:
-          zonePrice.perVisitCents -
-          (pricingZone.base_price_cents ?? 0) -
-          extraDogs * (pricingZone.per_dog_addl_cents ?? 0),
+        base: zonePrice.baseCents,
+        perDog: zonePrice.perDogCents,
+        dogAdj: extraDogs * zonePrice.perDogCents,
+        areaCharge: zonePrice.areaCents,
         perVisit: zonePrice.perVisitCents,
       }
     : null;
@@ -1530,6 +1566,26 @@ function ServiceDrawer({
       : null;
   const bigDeviation = deviationPct != null && Math.abs(deviationPct) >= 50;
   const referenceName = zoneCents != null ? `${pricingZone?.name} zone` : "standard";
+
+  // #860: a NEW pet-waste plan starts at the price that applies here, the
+  // zone's override inside a zone that has one and the standard price
+  // otherwise, rather than an empty box beside a "Use standard" button.
+  // Once, and only into an empty box: a price somebody typed, or a quote's,
+  // is never replaced. An existing plan keeps its saved price.
+  const prefilledPrice = useRef(false);
+  const offeredCents = zoneCents ?? standardCents;
+  const petWastePlan = !chosenService || chosenService.service_line === "pet_waste";
+  useEffect(() => {
+    if (!open) {
+      prefilledPrice.current = false;
+      return;
+    }
+    if (subscription || prefilledPrice.current || !petWastePlan || offeredCents == null) return;
+    prefilledPrice.current = true;
+    setForm((f) =>
+      f.priceDollars.trim() === "" ? { ...f, priceDollars: (offeredCents / 100).toFixed(2) } : f,
+    );
+  }, [open, subscription, petWastePlan, offeredCents]);
 
   const saveMut = useMutation({
     mutationFn: () => {

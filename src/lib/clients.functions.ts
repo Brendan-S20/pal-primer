@@ -66,8 +66,8 @@ async function directoryReader(supabase: unknown, userId: string) {
     orgId: caller.orgId,
     db: supabaseAdmin as any,
     seesInvoices:
-      hasPermission(caller.role, "manage_client_billing") ||
-      hasPermission(caller.role, "view_financials"),
+      hasPermission(caller.role, "manage_client_billing", caller.overrides) ||
+      hasPermission(caller.role, "view_financials", caller.overrides),
   };
 }
 
@@ -1413,6 +1413,9 @@ const internalQuoteSchema = z.object({
   // dogs (computeCommercialZonePrice). Ignored for residential.
   unitCount: z.coerce.number().int().min(0).max(100_000).optional(),
   stationCount: z.coerce.number().int().min(0).max(200).optional(),
+  // #860: the pet-waste service whose standard price applies outside a zone
+  // override. Only ever looked up among the caller's own business's services.
+  serviceId: z.string().uuid().optional(),
 });
 
 export const getInternalQuote = createServerFn({ method: "POST" })
@@ -1581,14 +1584,14 @@ export const onboardClient = createServerFn({ method: "POST" })
       const caller = await requirePermission(supabase, userId, "booking");
       if (caller.orgId !== orgId) throw new Error("Not authorized");
       const { hasPermission } = await import("@/lib/permissions");
-      if (!hasPermission(caller.role, "manage_pricing")) {
+      if (!hasPermission(caller.role, "manage_pricing", caller.overrides)) {
         const s = data.subscription;
         const { PLAN_CADENCE_IS_BILLING, planSetPriceCents } =
           await import("@/lib/plan-set-price.server");
         const { priceOverrideRefusal } = await import("@/lib/booking-price.server");
         if (
           (s.billingCadence ?? "postpaid") !== "postpaid" &&
-          !hasPermission(caller.role, "manage_client_billing")
+          !hasPermission(caller.role, "manage_client_billing", caller.overrides)
         )
           throw new Error(PLAN_CADENCE_IS_BILLING);
         const isRes = data.accountType === "residential";

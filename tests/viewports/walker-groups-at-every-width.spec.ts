@@ -355,6 +355,11 @@ for (const width of WIDTHS) {
       const dialog = page.getByRole("alertdialog");
       await expect(dialog).toContainText("This walk will have 3 dogs; the cap is 2.");
       await expect(dialog).toContainText(`${SAMANTHA.display_name} walks up to 2 dogs at a time.`);
+      // Measure the dialog where it comes to rest, not partway through its
+      // zoom-in-95: its 44px buttons read 43.1px at scale 0.98 (run 43320304654).
+      await dialog.evaluate((el) =>
+        Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)),
+      );
       await expectLaidOut(page, `${width} cap warning`);
       // Cancel changes nothing: the group still has nobody, and says so.
       await dialog.getByRole("button", { name: "Cancel" }).click();

@@ -202,10 +202,12 @@ describe("the plan's Service picker", () => {
       /serviceId: effectiveServiceId\(form\.serviceId, orgServices, pickerLines\) \?\? undefined/,
     );
     const fns = read("src/lib/subscriptions.functions.ts");
-    expect(fns.match(/serviceId: z\.string\(\)\.uuid\(\)\.optional\(\)/g)).toHaveLength(2);
+    // Create, update, and (#728) the set-price lookup a dispatcher's Add plan
+    // form asks; the set-price create writes the service like the other two.
+    expect(fns.match(/serviceId: z\.string\(\)\.uuid\(\)\.optional\(\)/g)).toHaveLength(3);
     expect(
       fns.match(/\.\.\.\(data\.serviceId \? \{ service_id: data\.serviceId \} : \{\}\)/g),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
     expect(fns).toMatch(/service_id, services\(name, service_line(, default_duration_min)?\)/);
   });
 });
