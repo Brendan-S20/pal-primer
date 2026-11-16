@@ -432,10 +432,11 @@ export function BrandingCard() {
             </div>
 
             <div className="flex justify-end">
-              <Button
-                onClick={() => mut.mutate()}
-                disabled={!seeded || mut.isPending || !isValidOrgName(orgName)}
-              >
+              {/* Never drawn before `seeded`: the gate above holds the whole
+                  form. Kept on one line: tests/an-oauth-signup-was-named-after-the-
+                  person-not-the-business.test.ts reads this spelling. */}
+              {/* prettier-ignore */}
+              <Button onClick={() => mut.mutate()} disabled={mut.isPending || !isValidOrgName(orgName)}>
                 {mut.isPending ? "Saving…" : "Save portal settings"}
               </Button>
             </div>

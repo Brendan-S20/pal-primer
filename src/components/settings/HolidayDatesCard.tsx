@@ -57,8 +57,8 @@ export function HolidayDatesCard({
         {sitting && (
           <p className="text-sm text-muted-foreground">
             Sitting visits on these dates are charged the service's holiday surcharge. You stay
-            open: no sitting visit is skipped or moved. For an overnight, the night that starts on
-            the date counts. The night of Dec 24 starts on the 24th.
+            open: no sitting visit is skipped or moved. For an overnight,
+            the night that starts on the date counts. The night of Dec 24 starts on the 24th.
           </p>
         )}
         {training && (
