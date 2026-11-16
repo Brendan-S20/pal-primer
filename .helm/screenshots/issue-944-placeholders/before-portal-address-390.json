@@ -1,0 +1,14 @@
+{
+  "phase": "before",
+  "state": "portal-address",
+  "width": 390,
+  "scrollWidth": 390,
+  "innerWidth": 390,
+  "fields": [
+    {
+      "placeholder": "123 Main St, Springfield, IL 62704",
+      "autocomplete": "off",
+      "value": ""
+    }
+  ]
+}

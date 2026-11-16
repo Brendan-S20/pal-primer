@@ -1,0 +1,14 @@
+{
+  "phase": "after",
+  "state": "team-route-start",
+  "width": 390,
+  "scrollWidth": 390,
+  "innerWidth": 390,
+  "fields": [
+    {
+      "placeholder": "Street, city, state and ZIP",
+      "autocomplete": "off",
+      "value": ""
+    }
+  ]
+}

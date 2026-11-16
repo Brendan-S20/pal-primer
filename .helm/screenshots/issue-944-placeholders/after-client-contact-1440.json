@@ -1,0 +1,19 @@
+{
+  "phase": "after",
+  "state": "client-contact",
+  "width": 1440,
+  "scrollWidth": 1440,
+  "innerWidth": 1440,
+  "fields": [
+    {
+      "placeholder": "e.g. Jane Doe",
+      "autocomplete": null,
+      "value": ""
+    },
+    {
+      "placeholder": "e.g. (555) 123-4567",
+      "autocomplete": null,
+      "value": ""
+    }
+  ]
+}

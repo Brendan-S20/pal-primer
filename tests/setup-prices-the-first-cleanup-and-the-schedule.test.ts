@@ -101,9 +101,12 @@ describe("setup step 2 writes the same fields Zones and Business defaults read",
   const setup = read("src/routes/_authenticated/setup.tsx");
 
   it("asks for the first cleanup, with Off as an explicit choice", () => {
-    expect(setup).toMatch(/id="setup-first-cleanup-off"/);
-    expect(setup).toMatch(/id="setup-first-cleanup-flat"/);
-    expect(setup).toMatch(/id="setup-zone-first-cleanup"/);
+    // Drawn by SetupFirstCleanupChoice since #946, which marks it Required.
+    expect(setup).toMatch(/<SetupFirstCleanupChoice\b/);
+    const choice = read("src/components/SetupFirstCleanupChoice.tsx");
+    expect(choice).toMatch(/id="setup-first-cleanup-off"/);
+    expect(choice).toMatch(/id="setup-first-cleanup-flat"/);
+    expect(choice).toMatch(/id="setup-zone-first-cleanup"/);
   });
 
   it("asks for at least weekly and every-2-weeks", () => {

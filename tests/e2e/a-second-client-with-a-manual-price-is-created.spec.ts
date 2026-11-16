@@ -56,8 +56,17 @@ async function wizardToPlan(page: Page, name: string, price: string) {
   // time, because the next step's controls are not there until it has.
   for (let i = 0; i < 4; i++) {
     if (await page.getByRole("button", { name: /^create client$/i }).isVisible()) break;
-    const dogName = page.getByPlaceholder("Bailey").first();
-    if (await dogName.isVisible()) await dogName.fill("Testdog2");
+    const dogName = page.getByPlaceholder("e.g. Bailey").first();
+    if (await dogName.isVisible()) {
+      // #944: an emptied breed stays empty through a blur, and is saved as
+      // no breed (asserted on the row below), never the example's "Lab mix".
+      const breed = page.getByPlaceholder("e.g. Lab mix").first();
+      await breed.fill("Lab mix");
+      await breed.fill("");
+      await breed.blur();
+      await expect(breed, "a cleared breed stays cleared").toHaveValue("");
+      await dogName.fill("Testdog2");
+    }
     const stepBefore = await page.locator("[aria-current='step']").getAttribute("aria-label");
     await next(page);
     await expect(page.locator("[aria-current='step']")).not.toHaveAttribute(
@@ -137,6 +146,20 @@ test("a second client at a manual $20, on a ZIP with no zone, is created", async
       subs.map((s) => s.price_cents),
       "the plan at the typed price",
     ).toEqual([2000]);
+
+    // #944: the dog is saved with the name typed and no breed.
+    const db = serviceDb();
+    const { data: props } = await db.from("properties").select("id").eq("client_id", rows[0].id);
+    const { data: dogs } = await db
+      .from("dogs")
+      .select("name, breed")
+      .in(
+        "property_id",
+        (props ?? []).map((p) => p.id),
+      );
+    expect(dogs ?? [], "one dog, named as typed, with no breed").toEqual([
+      { name: "Testdog2", breed: null },
+    ]);
     expect(pageErrors, "nothing thrown in the page").toEqual([]);
   } finally {
     await removeClientsNamed(name);

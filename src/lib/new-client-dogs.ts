@@ -39,3 +39,20 @@ export function needsANamedDogMessage(pets = false): string {
 /** What the server says when a residential client arrives with no dog. */
 export const SERVER_NEEDS_A_NAMED_DOG =
   "A residential client needs at least one named dog. Add the dog on the Dogs step and try again.";
+
+/** The hints in the Dogs step's Name and Breed boxes (#944). Always marked as
+ *  an example: a bare "Bailey" in muted grey read as a dog already on file. */
+export const DOG_NAME_PLACEHOLDER = "e.g. Bailey";
+export const DOG_BREED_PLACEHOLDER = "e.g. Lab mix";
+
+/** A breed as the wizard sends it: what was typed, trimmed, or nothing. An
+ *  emptied box is no breed, never a remembered or example one (#944). */
+export function newClientDogBreed(breed: string | null | undefined): string | undefined {
+  const b = (breed ?? "").trim();
+  return b.length > 0 ? b : undefined;
+}
+
+/** A breed as onboardClient stores it in `dogs.breed`: null when none. */
+export function storedDogBreed(breed: string | null | undefined): string | null {
+  return newClientDogBreed(breed) ?? null;
+}

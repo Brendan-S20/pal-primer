@@ -1,5 +1,10 @@
 import { PetSizeFields } from "@/components/client-detail/PetSizeFields";
+import { DogNameAndBreedFields } from "@/components/DogNameAndBreedFields";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import {
+  CREATE_CLIENT_PRICE_HINT_COPY,
+  createClientPriceHint,
+} from "@/lib/create-client-price-hint";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { lookupAddressPoint } from "@/lib/geocode.functions";
@@ -81,7 +86,7 @@ import { afterClientBookChanged } from "@/lib/client-book-queries";
 import { DraftRestoredNotice } from "@/components/DraftRestoredNotice";
 import { newClientDraftForm } from "@/lib/form-drafts";
 import { normalizeNewClientDraft, type NewClientDraft } from "@/lib/new-client-draft";
-import { needsANamedDog } from "@/lib/new-client-dogs";
+import { needsANamedDog, newClientDogBreed } from "@/lib/new-client-dogs";
 import { NeedsANamedDogAlert } from "@/components/NeedsANamedDogAlert";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -838,6 +843,10 @@ function NewClientWizardForm({
     return null;
   })();
   const needsPrice = !planSkipped && priceCents == null;
+  // A quote on its way is not a missing price (#946): "Set a price per visit
+  // first." waits until the quote has answered with none.
+  const priceLoading = !planSkipped && !walkLike && quoteQ.isFetching;
+  const priceHint = createClientPriceHint({ needsPrice, priceLoading });
 
   // ── The first cleanup ────────────────────────────────────────────────────
   // Offered when the owner prices one, to someone who may bill, and not when
@@ -1015,7 +1024,7 @@ function NewClientWizardForm({
           dogs: validDogs.length
             ? validDogs.map((d) => ({
                 name: (d.name ?? "").trim(),
-                breed: d.breed || undefined,
+                breed: newClientDogBreed(d.breed),
                 weightClass: d.weightClass || undefined,
                 ...(grooming
                   ? {
@@ -1358,7 +1367,7 @@ function NewClientWizardForm({
                 required
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                placeholder={accountType === "commercial" ? "Oakwood HOA" : "Jane Doe"}
+                placeholder={accountType === "commercial" ? "e.g. Oakwood HOA" : "e.g. Jane Doe"}
               />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -1377,7 +1386,7 @@ function NewClientWizardForm({
                   id="ph"
                   value={primaryPhone}
                   onChange={(e) => setPrimaryPhone(e.target.value)}
-                  placeholder="(555) 123-4567"
+                  placeholder="e.g. (555) 123-4567"
                 />
               </div>
             </div>
@@ -1682,34 +1691,19 @@ function NewClientWizardForm({
             {dogs.map((d, i) => (
               <div key={i} className="rounded-md border bg-muted/10 p-3">
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1">
-                    <Label className="text-xs">Name</Label>
-                    <Input
-                      value={d.name}
-                      aria-invalid={attempted && needsDog && i === 0 ? true : undefined}
-                      aria-describedby={
-                        attempted && needsDog && i === 0 ? "needs-a-named-dog" : undefined
-                      }
-                      onChange={(e) => {
-                        const next = [...dogs];
-                        next[i] = { ...next[i], name: e.target.value };
-                        setDogs(next);
-                      }}
-                      placeholder="Bailey"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Breed</Label>
-                    <Input
-                      value={d.breed}
-                      onChange={(e) => {
-                        const next = [...dogs];
-                        next[i] = { ...next[i], breed: e.target.value };
-                        setDogs(next);
-                      }}
-                      placeholder="Lab mix"
-                    />
-                  </div>
+                  <DogNameAndBreedFields
+                    name={d.name}
+                    breed={d.breed}
+                    aria-invalid={attempted && needsDog && i === 0 ? true : undefined}
+                    aria-describedby={
+                      attempted && needsDog && i === 0 ? "needs-a-named-dog" : undefined
+                    }
+                    onChange={(patch) => {
+                      const next = [...dogs];
+                      next[i] = { ...next[i], ...patch };
+                      setDogs(next);
+                    }}
+                  />
                   <PetSizeFields
                     size={d.weightClass}
                     coatType={d.coatType ?? ""}
@@ -2224,8 +2218,14 @@ function NewClientWizardForm({
                     ? "Create and book groom"
                     : "Create client"}
               </Button>
-              {needsPrice && (
-                <p className="text-xs text-muted-foreground">Set a price per visit first.</p>
+              {priceHint && (
+                <p
+                  className="text-xs text-muted-foreground"
+                  data-create-client-price-hint={priceHint}
+                  aria-live="polite"
+                >
+                  {CREATE_CLIENT_PRICE_HINT_COPY[priceHint]}
+                </p>
               )}
               {!needsPrice && needsDays && (
                 <p className="text-xs text-muted-foreground">Choose at least one day first.</p>
