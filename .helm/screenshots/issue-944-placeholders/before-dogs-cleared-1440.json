@@ -1,0 +1,19 @@
+{
+  "phase": "before",
+  "state": "dogs-cleared",
+  "width": 1440,
+  "scrollWidth": 1440,
+  "innerWidth": 1440,
+  "fields": [
+    {
+      "placeholder": "Bailey",
+      "autocomplete": null,
+      "value": ""
+    },
+    {
+      "placeholder": "Lab mix",
+      "autocomplete": null,
+      "value": ""
+    }
+  ]
+}

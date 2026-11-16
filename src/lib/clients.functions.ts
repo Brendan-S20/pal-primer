@@ -5,7 +5,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
 import { buildClientNamePatch } from "@/lib/client-name";
-import { needsANamedDog, SERVER_NEEDS_A_NAMED_DOG } from "@/lib/new-client-dogs";
+import { needsANamedDog, SERVER_NEEDS_A_NAMED_DOG, storedDogBreed } from "@/lib/new-client-dogs";
 
 /**
  * Whether a new client is sent the welcome email: only when the person
@@ -1791,7 +1791,7 @@ export const onboardClient = createServerFn({ method: "POST" })
         organization_id: orgId,
         property_id: propertyId,
         name: d.name,
-        breed: d.breed || null,
+        breed: storedDogBreed(d.breed),
         weight_class: d.weightClass || null,
         coat_type: d.coatType ?? null,
         weight_lb: d.weightLb ?? null,

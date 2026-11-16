@@ -492,7 +492,7 @@ export function PropertyDrawer({
                   value={form.keyLocation}
                   maxLength={200}
                   onChange={(e) => set("keyLocation", e.target.value)}
-                  placeholder="Under the blue pot by the back door"
+                  placeholder="e.g. under the blue pot by the back door"
                 />
               </div>
               <div className="min-w-0 sm:col-span-2">
@@ -505,7 +505,7 @@ export function PropertyDrawer({
                   maxLength={ALARM_NOTES_MAX}
                   autoComplete="off"
                   onChange={(e) => set("alarmNotes", e.target.value)}
-                  placeholder="Panel by the garage door, code 2580"
+                  placeholder="e.g. panel by the garage door"
                 />
               </div>
               <label className="flex items-center gap-2 text-sm touch:min-h-11">
@@ -526,7 +526,7 @@ export function PropertyDrawer({
                     value={form.keyTag}
                     maxLength={KEY_TAG_MAX}
                     onChange={(e) => set("keyTag", e.target.value)}
-                    placeholder="K-12"
+                    placeholder="e.g. K-12"
                   />
                 </div>
               )}

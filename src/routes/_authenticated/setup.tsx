@@ -631,7 +631,7 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
           value={addressVal}
           onChangeText={setAddress}
           onResolved={(r) => setAddress(r.address.formatted)}
-          placeholder="123 Main St, Austin, TX 78701"
+          placeholder="Street, city, state and ZIP"
           maxLength={300}
         />
         <p className="text-xs text-muted-foreground">
