@@ -5,9 +5,8 @@
 //     error logger plugins, and sandbox detection (port/host/strictPort).
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import path from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { createRequire } from "node:module";
 import { loadEnv, type Connect, type Plugin } from "vite";
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 import { VitePWA } from "vite-plugin-pwa";
@@ -348,34 +347,63 @@ function sentryRelease(): string {
 }
 const SENTRY_RELEASE = sentryRelease();
 
-// ── WHICH `entities` THE ALIASES BELOW POINT AT ──
+// ── EACH IMPORTER GETS THE `entities` IT DEPENDS ON ──
 //
-// htmlparser2 and dom-serializer need entities 4.x: they import
-// `entities/lib/decode.js` and `entities/lib/encode.js`, which only 4.x has
-// (and 4.x does not list encode.js in its exports, hence the aliases).
-// happy-dom (#810) brought in entities 7, which has neither file. Which copy
-// sits at the top of node_modules depends on the installer: npm keeps 4.5.0
-// there and nests 7.0.1 under happy-dom, while bun hoists 7.0.1 and nests
-// 4.5.0 under htmlparser2 and dom-serializer. So the aliases cannot point at
-// the top-level `node_modules/entities`. Under bun (the Lovable publish path)
-// that failed with "Could not load node_modules/entities/lib/decode.js".
-// Resolve `entities` from htmlparser2's own location instead, which gives the
-// copy it actually uses under either layout. Neither package exports
-// ./package.json, so resolve the entry file and walk up to the package root.
-function packageRootOf(resolvedFile: string, name: string): string {
-  let dir = path.dirname(resolvedFile);
-  while (!(path.basename(dir) === name && existsSync(path.join(dir, "package.json")))) {
+// Three majors of `entities` are in the tree at once, and their subpaths are
+// not interchangeable:
+//   - htmlparser2 8 / dom-serializer 2 / @react-email/render want 4.x and
+//     import `entities/lib/decode.js` (4.x does not export lib/encode.js,
+//     which is why these used to be aliases rather than plain imports);
+//   - happy-dom (#810) and the htmlparser2 10 that react-email 6.11 brings
+//     in (#816) want 7.x and import `entities/decode` / `entities/escape`,
+//     which 4.x does not have.
+// Which copy sits at the top of node_modules depends on the installer: npm
+// keeps 4.5.0 there, bun (the Lovable publish path) hoists 7.0.1 and nests
+// 4.5.0. A single global alias can only point at one of them, and each time
+// it was pointed somewhere new the other half of the tree broke under bun:
+// first "Could not load node_modules/entities/lib/decode.js" (#815), then
+// "Could not load .../htmlparser2/node_modules/entities/decode" (#897).
+//
+// So there is no alias. This resolver finds the `entities` package the
+// IMPORTER would get from Node's own lookup (the nearest node_modules/entities
+// above it), and only for a pre-5 copy rewrites `entities` and
+// `entities/lib/*` onto that copy's files, as the alias used to. A 5+ copy has
+// a working exports map and is left to Vite's normal resolution.
+function nearestPackageDir(fromFile: string, name: string): string | null {
+  let dir = path.dirname(fromFile);
+  for (;;) {
+    const candidate = path.join(dir, "node_modules", name);
+    if (existsSync(path.join(candidate, "package.json"))) return candidate;
     const parent = path.dirname(dir);
-    if (parent === dir) throw new Error(`no ${name} package above ${resolvedFile}`);
+    if (parent === dir) return null;
     dir = parent;
   }
-  return dir;
 }
-const requireFromHere = createRequire(import.meta.url);
-const ENTITIES_4_DIR = packageRootOf(
-  createRequire(requireFromHere.resolve("htmlparser2")).resolve("entities"),
-  "entities",
-);
+const entitiesForItsImporter: Plugin = {
+  name: "houndstack:entities-for-its-importer",
+  enforce: "pre",
+  async resolveId(source, importer, options) {
+    if (source !== "entities" && !source.startsWith("entities/")) return null;
+    if (!importer || importer.startsWith("\0")) return null;
+    const importerFile = importer.split("?")[0];
+    const root = nearestPackageDir(
+      path.isAbsolute(importerFile) ? importerFile : path.resolve(importerFile),
+      "entities",
+    );
+    if (!root) return null;
+    const { version } = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as {
+      version: string;
+    };
+    if (Number.parseInt(version, 10) >= 5) return null;
+    if (source === "entities") {
+      return this.resolve(root, importer, { ...options, skipSelf: true });
+    }
+    if (source.startsWith("entities/lib/")) {
+      return path.join(root, source.slice("entities/".length));
+    }
+    return null;
+  },
+};
 
 export default defineConfig({
   tanstackStart: {
@@ -643,12 +671,10 @@ export default defineConfig({
               ),
             }
           : {}),
-        "entities/lib/decode.js": path.join(ENTITIES_4_DIR, "lib/decode.js"),
-        "entities/lib/encode.js": path.join(ENTITIES_4_DIR, "lib/encode.js"),
-        entities: ENTITIES_4_DIR,
       },
     },
     plugins: [
+      entitiesForItsImporter,
       preflightToTheRoute,
       // ── THE ALIAS BELOW WAS DEAD, AND THE BINARY SHIPPED THE REAL ONE ──
       //

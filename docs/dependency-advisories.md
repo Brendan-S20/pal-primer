@@ -4,11 +4,11 @@ Refs [#816](https://github.com/Brendan-S20/pal-primer/issues/816).
 
 ## Audit snapshot and scope
 
-Audited on November 11, 2026 with Node 24.19.0 / npm 11.9.0 after the targeted `react-email` 6.6.5 → 6.11.10 update and `npm ci`, based on `main` at `ec78b176bc86577b5800b1f28fef779525ad2f71`. Reproduce with `npm ci` followed by `npm audit --json`. No `npm audit fix` was run.
+Re-audited on November 16, 2026 with Node 22.23.4 / npm 10.9.9 after merging `main` at `ae7c959198b5773b0aea5b138555d588add1580d` into this branch, on the tree this PR ships: the targeted `react-email` 6.6.5 → 6.11.10 pin, `npm ci`, then `npm audit --json`. Reproduce the same way. No `npm audit fix` was run. The first snapshot (November 11, Node 24.19.0 / npm 11.9.0, `main` at `ec78b176bc86577b5800b1f28fef779525ad2f71`) gave the same counts and the same package list; nothing merged from `main` between the two changed a dependency, and every installed version below was re-checked against `node_modules`.
 
 `npm audit` exits 1: **39 package findings: 1 critical, 17 high, 15 moderate, 6 low**. These are npm package-level counts, including inherited findings, not distinct advisories or proven reachable vulnerabilities. Every high/critical package finding is recorded below, with every high/critical advisory URL, installed location/version, exposure rationale, and future upgrade disposition. Inherited findings explicitly point to their underlying advisory. These are documented exceptions for review, not fixes or an assertion of zero risk.
 
-Only react-email and its required dependency subtree change. Both npm and Bun lockfiles are synchronized with the exact direct pin. This snapshot describes the npm-installed tree; Bun’s independently resolved tree differs, and `bun audit` was not run. Moderate/low findings are outside this exception inventory.
+Only react-email and its required dependency subtree change. react-email 6.11.10 brings in htmlparser2 10, which needs `entities` 7 (`entities/decode`) while htmlparser2 8 / dom-serializer still need `entities` 4 (`entities/lib/decode.js`); `vite.config.ts` therefore resolves `entities` per importer instead of aliasing it to one copy, so `bun run build` (the Lovable publish path) can load both. Neither `entities` copy has an npm finding. Both npm and Bun lockfiles are synchronized with the exact direct pin. This snapshot describes the npm-installed tree; Bun’s independently resolved tree differs, and `bun audit` was not run. Moderate/low findings are outside this exception inventory.
 
 ## Runtime acceptance checks from #816
 
