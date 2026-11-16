@@ -18,7 +18,11 @@ function native(): TapToPayEducationPlugin {
   return plugin;
 }
 
-/** True when Apple's own "how to tap" guide can be shown on this phone. */
+/**
+ * True when Apple's own "how to tap" guide can be shown on this phone. The
+ * native answer is final: the plugin says false on an iPad (#726), where Tap
+ * to Pay on iPhone does not exist, and nothing here overrides it.
+ */
 export async function appleEducationAvailable(): Promise<boolean> {
   try {
     if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "ios") return false;

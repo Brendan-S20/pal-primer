@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CAPACITOR_DEBUG</key>
+	<string>$(CAPACITOR_DEBUG)</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>HoundStack</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>HSTapToPayEntitled</key>
+	<string>$(HS_TAP_TO_PAY_ENTITLED)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>HoundStack does not use Bluetooth itself. The Stripe card payment software inside the app can connect to a Stripe card reader over Bluetooth; taking a payment by tapping a card on this phone does not need it.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>HoundStack shows your position on the route map so you can see where you are relative to the next stop. If your business turns on live tracking, your location is sent to HoundStack while you are driving to a customer, from the on-my-way message until you start the visit, so the customer sees roughly where you are and your office knows if you will be late. When you take a card payment by tapping it on your phone, Stripe also checks the phone's location, as card networks require, to protect the payment against fraud. Location is used only while the app is open.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>HoundStack uses your location only while the app is open: to show where you are on your route and, if your business turns on live tracking, to send your location while you drive to a customer so they see roughly where you are and your office knows if you will be late. HoundStack never asks for location in the background or when the app is closed.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>HoundStack needs access to your photos so you can attach an existing picture to a visit, a client property, or a DNA sample.</string>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>Default Configuration</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>arm64</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>consulting.thenorth.houndstack</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>consulting.thenorth.houndstack</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
