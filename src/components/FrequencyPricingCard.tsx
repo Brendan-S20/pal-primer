@@ -15,6 +15,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { SettingsLoadGate } from "@/components/settings/SettingsLoadGate";
 import { toast } from "sonner";
 import { getStandardPricing, updateFrequencyMultipliers } from "@/lib/subscriptions.functions";
 import {
@@ -61,7 +62,8 @@ export function FrequencyPricingCard() {
   const qc = useQueryClient();
   const getFn = useServerFn(getStandardPricing);
   const updateFn = useServerFn(updateFrequencyMultipliers);
-  const { data } = useQuery({ queryKey: ["std-pricing"], queryFn: () => getFn() });
+  const q = useQuery({ queryKey: ["std-pricing"], queryFn: () => getFn() });
+  const data = q.data;
   const [draft, setDraft] = useState<Partial<Draft>>({});
 
   const value = (f: MultiplierFrequency) =>
@@ -90,79 +92,87 @@ export function FrequencyPricingCard() {
         covers both visits in the week, so 1.8 makes each visit 0.9 of a weekly visit. Quotes and
         your signup page use these. Plans you already sold keep their price.
       </p>
-      <form
-        className="mt-4 space-y-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (invalid.length === 0) mut.mutate();
-        }}
-      >
-        {MULTIPLIER_FREQUENCIES.map((f) => {
-          const n = parsed[f];
-          const visits = VISITS_PER_CYCLE[f];
-          const perVisit = n == null ? null : n / visits;
-          return (
-            <div
-              key={f}
-              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t pt-3 first:border-t-0 first:pt-0"
-            >
-              <div className="min-w-0 flex-1 basis-48">
-                <Label htmlFor={`freq-mult-${f}`} className="text-sm">
-                  {ROWS[f].label}
-                </Label>
-                <p className="text-xs text-muted-foreground">{ROWS[f].hint}</p>
-              </div>
-              <div className="flex shrink-0 items-center gap-3">
-                <div className="flex items-center gap-1">
-                  <span className="text-sm text-muted-foreground">x</span>
-                  <Input
-                    id={`freq-mult-${f}`}
-                    type="number"
-                    inputMode="decimal"
-                    min={MIN_MULTIPLIER}
-                    max={MAX_MULTIPLIER}
-                    step="0.05"
-                    className="w-24"
-                    aria-invalid={n == null}
-                    value={value(f)}
-                    onChange={(e) => setDraft((d) => ({ ...d, [f]: e.target.value }))}
-                  />
-                </div>
-                <div className="w-36 text-xs text-muted-foreground">
-                  {perVisit == null ? (
-                    <span className="text-destructive">
-                      Between {MIN_MULTIPLIER} and {MAX_MULTIPLIER}
-                    </span>
-                  ) : base != null ? (
-                    <>
-                      {money(Math.round(base * perVisit))} a visit
-                      {visits > 1 && (
-                        <span className="block">{money(Math.round(base * n!))} a week</span>
-                      )}
-                    </>
-                  ) : (
-                    <>x{formatMultiplier(perVisit)} per visit</>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
-          <p className="min-w-0 flex-1 basis-48 text-xs text-muted-foreground">
-            {base != null
-              ? `Examples use your standard price of ${money(base)} for one dog.`
-              : "Set a standard price above to see examples in dollars."}
-          </p>
-          <Button
-            type="submit"
-            size="sm"
-            disabled={mut.isPending || invalid.length > 0 || Object.keys(draft).length === 0}
+      {/* Before #945 the four boxes showed the built-in defaults while the
+          stored numbers loaded (and for good when the load failed), and
+          editing one enabled a Save that sent all four, writing the defaults
+          over the other three. */}
+      <div className="mt-4">
+        <SettingsLoadGate query={q} what="schedule pricing" fields={4}>
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (invalid.length === 0) mut.mutate();
+            }}
           >
-            {mut.isPending ? "Saving…" : "Save"}
-          </Button>
-        </div>
-      </form>
+            {MULTIPLIER_FREQUENCIES.map((f) => {
+              const n = parsed[f];
+              const visits = VISITS_PER_CYCLE[f];
+              const perVisit = n == null ? null : n / visits;
+              return (
+                <div
+                  key={f}
+                  className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t pt-3 first:border-t-0 first:pt-0"
+                >
+                  <div className="min-w-0 flex-1 basis-48">
+                    <Label htmlFor={`freq-mult-${f}`} className="text-sm">
+                      {ROWS[f].label}
+                    </Label>
+                    <p className="text-xs text-muted-foreground">{ROWS[f].hint}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm text-muted-foreground">x</span>
+                      <Input
+                        id={`freq-mult-${f}`}
+                        type="number"
+                        inputMode="decimal"
+                        min={MIN_MULTIPLIER}
+                        max={MAX_MULTIPLIER}
+                        step="0.05"
+                        className="w-24"
+                        aria-invalid={n == null}
+                        value={value(f)}
+                        onChange={(e) => setDraft((d) => ({ ...d, [f]: e.target.value }))}
+                      />
+                    </div>
+                    <div className="w-36 text-xs text-muted-foreground">
+                      {perVisit == null ? (
+                        <span className="text-destructive">
+                          Between {MIN_MULTIPLIER} and {MAX_MULTIPLIER}
+                        </span>
+                      ) : base != null ? (
+                        <>
+                          {money(Math.round(base * perVisit))} a visit
+                          {visits > 1 && (
+                            <span className="block">{money(Math.round(base * n!))} a week</span>
+                          )}
+                        </>
+                      ) : (
+                        <>x{formatMultiplier(perVisit)} per visit</>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
+              <p className="min-w-0 flex-1 basis-48 text-xs text-muted-foreground">
+                {base != null
+                  ? `Examples use your standard price of ${money(base)} for one dog.`
+                  : "Set a standard price above to see examples in dollars."}
+              </p>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={mut.isPending || invalid.length > 0 || Object.keys(draft).length === 0}
+              >
+                {mut.isPending ? "Saving…" : "Save"}
+              </Button>
+            </div>
+          </form>
+        </SettingsLoadGate>
+      </div>
     </Card>
   );
 }

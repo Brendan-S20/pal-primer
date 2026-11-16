@@ -17,6 +17,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AI_FEATURES } from "@/lib/ai-usage";
 import { ANY_AI_FEATURE_LIVE } from "@/lib/ai-launch";
 import { titleHead } from "@/lib/page-title";
+import { SettingsLoadError } from "@/components/settings/SettingsLoadGate";
 
 // IMP-9: this page used to ask the customer for an Anthropic or OpenAI API key
 // and tell them "You're billed by them directly." BYOK is retired — AI runs on
@@ -85,6 +86,10 @@ function AiSettings() {
         </div>
       ) : q.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : q.isError && !q.data ? (
+        // A failed read used to fall through to the last branch below, which
+        // told the owner AI was down and to contact support (#945).
+        <SettingsLoadError what="AI settings" onRetry={() => q.refetch()} retrying={q.isFetching} />
       ) : (
         <>
           <div className="rounded-lg border bg-card p-4 text-sm">
@@ -197,6 +202,14 @@ function AiUsageMeter() {
   });
 
   if (u.isLoading) return <p className="text-xs text-muted-foreground">Loading usage…</p>;
+  // The ceiling below is a saved value with a Save button. A failed read
+  // used to say only "could not be read just now", with no way to ask again
+  // short of reloading the page (#945).
+  if (u.isError && !u.data) {
+    return (
+      <SettingsLoadError what="AI usage" onRetry={() => u.refetch()} retrying={u.isFetching} />
+    );
+  }
   if (!u.data?.available) {
     // Honest about the gap rather than rendering a zero, which is the rule this
     // page followed before the meter existed and still follows.

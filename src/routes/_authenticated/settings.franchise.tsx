@@ -19,6 +19,7 @@ import {
 import { FranchiseAdjustmentTrail } from "@/components/FranchiseAdjustmentTrail";
 import { FranchiseSettlementStatements } from "@/components/FranchiseSettlementStatements";
 import { pageTitle } from "@/lib/page-title";
+import { SettingsLoadError } from "@/components/settings/SettingsLoadGate";
 
 // BUILD-6 — the CHILD's side, and deliberately in Settings rather than on
 // /franchise.
@@ -81,6 +82,15 @@ function FranchiseSettings() {
 
       {q.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : q.isError && !m ? (
+        // A failed read used to fall through to the join section below with
+        // no membership, which told an owner that only an owner could join,
+        // and a location that it was in no franchise (#945).
+        <SettingsLoadError
+          what="franchise membership"
+          onRetry={() => q.refetch()}
+          retrying={q.isFetching}
+        />
       ) : m?.isChild ? (
         <Card>
           <CardHeader className="pb-2">
@@ -171,7 +181,7 @@ function FranchiseSettings() {
           being shown an empty page: a blank space where a colleague's screen
           has a card is a support call, and "ask an owner" is the actual
           answer. */}
-      {q.isLoading || m?.isChild ? null : m?.isParent ? (
+      {!m || m.isChild ? null : m?.isParent ? (
         <Card>
           <CardContent className="p-(--card-pad) text-sm">
             <p className="font-medium">This organization is a franchise parent.</p>
