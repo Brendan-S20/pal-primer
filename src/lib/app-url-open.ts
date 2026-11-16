@@ -38,14 +38,30 @@ const subscribers: Record<AppUrlKind, Set<Listener>> = {
   path: new Set(),
   other: new Set(),
 };
-const kept: Record<AppUrlKind, string | null> = { path: null, other: null };
+/** How long a URL nobody has subscribed for is worth keeping. The same ten
+ *  minutes lib/pending-deep-link.ts gives a held link (DEEP_LINK_TTL_MS;
+ *  tests/a-link-that-opened-a-killed-app-lands-where-it-points.test.ts pins
+ *  the two together): a link waiting here is a held link that has not been
+ *  sorted to its holder yet, and must not outlive one. */
+export const WAITING_URL_TTL_MS = 10 * 60_000;
+
+const kept: Record<AppUrlKind, { value: string; at: number } | null> = { path: null, other: null };
+
+/** The kept URL of this kind, cleared, or null when there is none or it is
+ *  older than WAITING_URL_TTL_MS. */
+function takeKept(kind: AppUrlKind, now: number): string | null {
+  const k = kept[kind];
+  kept[kind] = null;
+  if (!k || now - k.at > WAITING_URL_TTL_MS) return null;
+  return k.value;
+}
 let attached: Promise<void> | null = null;
 
 /** Hand a URL to every subscriber of its kind, or keep it for the first. */
-export function dispatchAppUrl(kind: AppUrlKind, value: string): void {
+export function dispatchAppUrl(kind: AppUrlKind, value: string, now = Date.now()): void {
   const subs = subscribers[kind];
   if (subs.size === 0) {
-    kept[kind] = value;
+    kept[kind] = { value, at: now };
     return;
   }
   for (const fn of [...subs]) fn(value);
@@ -55,10 +71,8 @@ export function dispatchAppUrl(kind: AppUrlKind, value: string): void {
  *  it at the moment it lands: on a cold start the launch link is usually
  *  already here, sorted, while the root is still importing its way to
  *  subscribing, and landing on My Day first would be the bug again. */
-export function takeWaitingAppUrl(kind: AppUrlKind): string | null {
-  const value = kept[kind];
-  kept[kind] = null;
-  return value;
+export function takeWaitingAppUrl(kind: AppUrlKind, now = Date.now()): string | null {
+  return takeKept(kind, now);
 }
 
 /**
@@ -125,8 +139,7 @@ export async function onAppUrl(kind: AppUrlKind, fn: Listener): Promise<() => vo
   const { Capacitor } = await import("@capacitor/core");
   if (!Capacitor.isNativePlatform()) return () => {};
   subscribers[kind].add(fn);
-  const waiting = kept[kind];
-  kept[kind] = null;
+  const waiting = takeKept(kind, Date.now());
   if (waiting !== null) fn(waiting);
   await attachOnce();
   return () => {

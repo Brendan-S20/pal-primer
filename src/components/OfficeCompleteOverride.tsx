@@ -15,6 +15,12 @@
 //
 // Saying why is the override: it is recorded on the visit and on the
 // client's timeline. Cancelling leaves the visit as it was.
+//
+// It is asked only when the business requires the proof: with Require a
+// completion photo off and no required checklist item, office_complete_visit
+// does not refuse, and the office's Complete is one confirmation (#915). A
+// new business that only walks, sits, grooms or trains starts with the photo
+// rule off; one that scoops keeps it on (lib/new-business-defaults.ts).
 import { useCallback, useId, useRef, useState } from "react";
 import {
   AlertDialog,
@@ -81,19 +87,27 @@ export function useOfficeCompleteOverride() {
     <AlertDialog open={missing != null} onOpenChange={(o) => !o && settle(null)}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Complete without the tech&apos;s proof?</AlertDialogTitle>
+          {/* Says what is missing, that the business's own setting is why
+              it is asked, and where that setting lives: "Complete without
+              the tech's proof?" read as a failed complete to an owner who
+              had never seen the setting (#915). */}
+          <AlertDialogTitle>Complete without the required proof?</AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-2 text-sm text-muted-foreground">
-              <p className="break-words">{missing}</p>
+              <p className="break-words font-medium text-foreground">{missing}</p>
               <p>
-                A tech can&apos;t complete it like this. If you know the work was done, say why and
-                it is recorded on the visit and the client&apos;s timeline.
+                Your business requires this before a visit is completed. If the work was done, say
+                why: it is recorded on the visit and the client&apos;s timeline.
+              </p>
+              <p>
+                To stop asking, change <span className="font-medium">Finishing a visit</span> in
+                Settings &rarr; Business defaults.
               </p>
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="space-y-2">
-          <Label htmlFor={fieldId}>Why</Label>
+          <Label htmlFor={fieldId}>Why is it missing?</Label>
           <Textarea
             id={fieldId}
             value={reason}
@@ -110,7 +124,7 @@ export function useOfficeCompleteOverride() {
         <AlertDialogFooter>
           <AlertDialogCancel onClick={() => settle(null)}>Cancel</AlertDialogCancel>
           <Button disabled={!trimmed} onClick={() => settle(trimmed)}>
-            Complete anyway
+            Complete with this reason
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

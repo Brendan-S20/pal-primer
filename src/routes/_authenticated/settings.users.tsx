@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { lookupAddressPoint } from "@/lib/geocode.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   listOrgUsers,
   changeUserRole,
@@ -45,6 +45,7 @@ import {
 } from "@/lib/signed-out";
 import { invalidateOnboardingStatus } from "@/hooks/useOnboardingStatus";
 import { prefetchUsersPage } from "@/lib/settings-prefetch";
+import { leftLabel, type LeftTeammate } from "@/lib/team-left";
 
 const USERS_PAGE = "/settings/users";
 type AddressDraft = { start: string; end: string };
@@ -129,6 +130,22 @@ function UsersPage() {
   const staffById = new Map<string, any>((staffData?.staff ?? []).map((s: any) => [s.id, s]));
 
   const signedOut = useSignedOutToast();
+
+  // #938: who left, and whether an invitation back is already out.
+  const leftUsers: LeftTeammate[] = (data as { left?: LeftTeammate[] } | undefined)?.left ?? [];
+  const invitesFn = useServerFn(listOrgInvites);
+  const invitesQ = useQuery({
+    queryKey: ["org-invites"],
+    queryFn: () => invitesFn(),
+    enabled: canEdit && leftUsers.length > 0,
+  });
+  type InviteRow = { email: string; status: string };
+  const pendingFor = (email: string | null) =>
+    !!email &&
+    ((invitesQ.data as { invites?: InviteRow[] } | undefined)?.invites ?? []).some(
+      (i) => i.status === "pending" && i.email.toLowerCase() === email.toLowerCase(),
+    );
+  const [prefill, setPrefill] = useState<InvitePrefill | null>(null);
 
   const changeRole = useMutation({
     mutationFn: (v: { userId: string; role: any }) => changeFn({ data: v }),
@@ -348,7 +365,61 @@ function UsersPage() {
                       </Fragment>
                     );
                   })}
-                  {(data?.users ?? []).length === 0 && (
+                  {/* People who left (#938): chose "Leave and start my own"
+                      after being turned off. Their membership is gone, so
+                      list_org_users no longer returns them; their staff row
+                      and its history stay, and an invitation back turns that
+                      same row on again. Listed rather than vanishing, with
+                      the date, and the way back is one tap. */}
+                  {leftUsers.map((u) => {
+                    const invited = pendingFor(u.email);
+                    return (
+                      <tr
+                        key={`left-${u.user_id}`}
+                        data-left-teammate={u.user_id}
+                        className="text-muted-foreground max-md:flex max-md:flex-wrap max-md:items-center max-md:gap-x-2 max-md:gap-y-2 max-md:py-3"
+                      >
+                        <td className="py-3 max-md:hidden" />
+                        <td className="py-3 font-medium max-md:min-w-0 max-md:flex-1 max-md:py-0">
+                          {u.display_name ?? "-"}
+                        </td>
+                        <td className="py-3 max-md:basis-full max-md:break-all max-md:py-0">
+                          {u.email ?? "-"}
+                        </td>
+                        <td className="py-3 max-md:py-0">
+                          {u.role ? <Badge variant="secondary">{roleLabel(u.role)}</Badge> : null}
+                        </td>
+                        <td className="py-3 max-md:py-0">
+                          <Badge variant="outline" className="whitespace-nowrap">
+                            {leftLabel(u.left_at)}
+                          </Badge>
+                          {invited && (
+                            <Badge variant="outline" className="ml-1.5 border-sky-400 text-sky-700">
+                              Invited back
+                            </Badge>
+                          )}
+                        </td>
+                        <td className="py-3 text-right max-md:basis-full max-md:py-0 max-md:text-left">
+                          {canEdit && u.email && !invited && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                setPrefill({
+                                  email: u.email as string,
+                                  role: u.role,
+                                  at: Date.now(),
+                                })
+                              }
+                            >
+                              Invite again
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {(data?.users ?? []).length === 0 && leftUsers.length === 0 && (
                     <tr>
                       <td colSpan={6} className="py-6 text-center text-muted-foreground">
                         No team members yet.
@@ -362,14 +433,20 @@ function UsersPage() {
         </CardContent>
       </Card>
 
-      {canEdit && <InvitePanel />}
+      {canEdit && <InvitePanel prefill={prefill} />}
     </div>
   );
 }
 
 // Finding #40: real invite flow — email + pre-assigned role, pending list with
 // revoke, and auto-assignment on the invitee's first sign-in.
-function InvitePanel() {
+/** "Invite again" on a teammate who left (#938) fills the invite form with
+ *  their address and former role. Sending stays the owner's tap: the form is
+ *  where the replace question, the team-size cap and the link all already
+ *  live. `at` makes a second tap on the same person fill the form again. */
+type InvitePrefill = { email: string; role: string | null; at: number };
+
+function InvitePanel({ prefill }: { prefill?: InvitePrefill | null }) {
   const roleLabel = useRoleLabel();
   const qc = useQueryClient();
   const signedOut = useSignedOutToast();
@@ -382,6 +459,17 @@ function InvitePanel() {
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
   // The invite just sent, with its link, kept on the form (#775).
   const [sent, setSent] = useState<SentInvite | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!prefill) return;
+    setEmail(prefill.email);
+    if ((INVITE_ROLES as readonly string[]).includes(prefill.role ?? "")) {
+      setRole(prefill.role as (typeof INVITE_ROLES)[number]);
+    }
+    formRef.current?.scrollIntoView({ block: "center" });
+    emailRef.current?.focus({ preventScroll: true });
+  }, [prefill]);
 
   const invitesQ = useQuery({ queryKey: ["org-invites"], queryFn: () => listFn() });
   const invites: any[] = (invitesQ.data as any)?.invites ?? [];
@@ -473,12 +561,20 @@ function InvitePanel() {
       <CardContent className="space-y-4">
         {confirmDialog}
         <form
+          ref={formRef}
           className="flex flex-wrap items-end gap-2"
           onSubmit={(e) => { e.preventDefault(); if (email.trim()) createMut.mutate(); }}
         >
           <div className="min-w-56 flex-1">
             <Label className="text-xs">Email</Label>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="teammate@example.com" required />
+            <Input
+              ref={emailRef}
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="teammate@example.com"
+              required
+            />
           </div>
           <div>
             <Label className="text-xs">Role</Label>

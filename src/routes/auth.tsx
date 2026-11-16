@@ -40,7 +40,7 @@ import { rememberLandingPath, readLandingPath } from "@/lib/offline/read-cache";
 import { lookupLandingPath as lookupLandingPathFrom } from "@/lib/landing-path";
 import { pageTitle } from "@/lib/page-title";
 import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
-import { signedInAgain, takeLinkForLanding } from "@/lib/pending-deep-link";
+import { roleLandingStillOurs, signedInAgain, takeLinkForLanding } from "@/lib/pending-deep-link";
 import {
   clearRecoveryPending,
   passwordResetRedirectHere,
@@ -121,7 +121,10 @@ function AuthPage() {
   const land = (to: string) => {
     const link = takeLinkForLanding();
     if (link) router.history.push(link);
-    else navigate({ to });
+    // A link that needed no session (an invitation) may already have moved
+    // the router while this page was still asking who is signed in. The role
+    // landing must not replace it (lib/pending-deep-link.ts, #621).
+    else if (roleLandingStillOurs(router.latestLocation.pathname)) navigate({ to });
   };
   const queryClient = useQueryClient();
 
