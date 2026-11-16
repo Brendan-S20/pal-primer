@@ -14,6 +14,7 @@ import { useServiceLines } from "@/components/CommercialOnly";
 import { ServiceLinesChoices } from "@/components/ServiceLinesChoices";
 import { DayEndPanel } from "@/components/SetupDayEndPanel";
 import { WalkPricesForm } from "@/components/SetupWalkPrices";
+import { SetupFirstCleanupChoice } from "@/components/SetupFirstCleanupChoice";
 import { BusinessSaveButton, SETUP_BUSINESS_FORM_ID } from "@/components/SetupBusinessSave";
 import { useMyRole, usePermissions } from "@/hooks/useMyRole";
 import { useMyProfile } from "@/hooks/useMyProfile";
@@ -65,6 +66,13 @@ import {
 import { useServiceLineAvailability } from "@/hooks/useServiceLineAvailability";
 import { getDispatchSettings, updateDispatchSettings } from "@/lib/visits.functions";
 import { createZone, geocodePostal } from "@/lib/zones.functions";
+import {
+  setupAreaCenter,
+  setupAreaCenterProblem,
+  setupAreaZipValue,
+  zip5,
+  zipFromAddress,
+} from "@/lib/setup-area-center";
 import { setupZoneOverride } from "@/lib/standard-price";
 import { getFirstCleanupPricing, setFirstCleanupPricing } from "@/lib/first-cleanup.functions";
 import { getStandardPricing, updateFrequencyMultipliers } from "@/lib/subscriptions.functions";
@@ -850,6 +858,8 @@ type SetupAreaDraft = {
   name: string;
   miles: number;
   zip: string;
+  /** The owner changed the ZIP: it no longer follows the business address. */
+  zipEdited?: boolean;
   price: string;
   extraDog: string;
   firstCleanup: SetupFirstCleanup | null;
@@ -889,6 +899,8 @@ function ServiceAreaPanel({
   const [name, setName] = useState("Main service area");
   const [miles, setMiles] = useState<number>(15);
   const [zip, setZip] = useState("");
+  // Until the owner touches it, the ZIP follows the business address (#946).
+  const [zipEdited, setZipEdited] = useState(false);
   const [price, setPrice] = useState("");
   const [extraDog, setExtraDog] = useState("");
 
@@ -937,13 +949,25 @@ function ServiceAreaPanel({
   // mechanism as step 1's draft; cleared once the area is saved.
   const draft = useFormDraft<SetupAreaDraft>({
     form: "setup-area",
-    value: { name, miles, zip, price, extraDog, firstCleanup, firstCleanupPrice, multDraft },
+    value: {
+      name,
+      miles,
+      zip,
+      zipEdited,
+      price,
+      extraDog,
+      firstCleanup,
+      firstCleanupPrice,
+      multDraft,
+    },
     restore: (d) => {
       if (!d || typeof d !== "object") return false;
       if (typeof d.name === "string") setName(d.name);
       if (typeof d.miles === "number" && (MILES as readonly number[]).includes(d.miles))
         setMiles(d.miles);
       if (typeof d.zip === "string") setZip(d.zip);
+      if (typeof d.zipEdited === "boolean") setZipEdited(d.zipEdited);
+      else if (typeof d.zip === "string" && d.zip !== "") setZipEdited(true);
       if (typeof d.price === "string") setPrice(d.price);
       if (typeof d.extraDog === "string") setExtraDog(d.extraDog);
       if (d.firstCleanup === "off" || d.firstCleanup === "flat") setFirstCleanup(d.firstCleanup);
@@ -954,6 +978,7 @@ function ServiceAreaPanel({
       setName("Main service area");
       setMiles(15);
       setZip("");
+      setZipEdited(false);
       setPrice("");
       setExtraDog("");
       setFirstCleanup(null);
@@ -964,6 +989,13 @@ function ServiceAreaPanel({
 
   const b = brandingQ.data;
   const pinned = b?.latitude != null && b?.longitude != null;
+  const pin = pinned ? { lat: Number(b!.latitude), lng: Number(b!.longitude) } : null;
+  const businessZip = zipFromAddress(b?.contact_address);
+  const zipVal = setupAreaZipValue({
+    typed: zip,
+    edited: zipEdited,
+    businessAddress: b?.contact_address,
+  });
 
   const m = useMutation(
     stepSave({
@@ -997,13 +1029,17 @@ function ServiceAreaPanel({
           { baseCents: adopted.standardBaseCents, perDogCents: adopted.standardPerDogCents },
         );
         if (!createdZone.current) {
-          let center = pinned ? { lat: Number(b!.latitude), lng: Number(b!.longitude) } : null;
-          if (!center) {
-            const r = await postalFn({ data: { postalCode: zip.trim() } });
-            if (!r.point)
-              throw new Error("We could not find that ZIP code. Check it and try again.");
-            center = { lat: r.point.latitude, lng: r.point.longitude };
-          }
+          // The ZIP field's middle, or the business's own pin when the ZIP
+          // is the business's own (#946).
+          const center = await setupAreaCenter({
+            zip: zipVal,
+            businessAddress: b?.contact_address,
+            pin,
+            geocode: async (postalCode) => {
+              const r = await postalFn({ data: { postalCode } });
+              return r.point ? { lat: r.point.latitude, lng: r.point.longitude } : null;
+            },
+          });
           const zone = await createFn({
             data: {
               name: name.trim(),
@@ -1098,9 +1134,8 @@ function ServiceAreaPanel({
         e.preventDefault();
         if (m.isPending) return;
         if (!priceOk) return refuse("Enter what you charge per visit.");
-        if (!pinned && zip.trim().length < 5) {
-          return refuse("Enter the ZIP code at the middle of the area you serve.");
-        }
+        const centerProblem = setupAreaCenterProblem({ zip: zipVal, pin });
+        if (centerProblem) return refuse(centerProblem);
         if (!tiered && !firstCleanupVal) {
           return refuse("Choose whether new clients pay for a first cleanup.");
         }
@@ -1128,26 +1163,35 @@ function ServiceAreaPanel({
           maxLength={120}
         />
       </div>
-      {pinned ? (
-        <p className="text-sm">
-          Centered on your business address,{" "}
-          <span className="text-muted-foreground">
-            <bdi>{b?.contact_address}</bdi>
-          </span>
+      <div className={fieldClass} data-setup-area-zip>
+        <Label htmlFor="setup-zone-zip">ZIP code at the middle of your area</Label>
+        <Input
+          id="setup-zone-zip"
+          className="max-w-40"
+          inputMode="numeric"
+          value={zipVal}
+          onChange={(e) => {
+            setZipEdited(true);
+            setZip(e.target.value);
+          }}
+          maxLength={10}
+          autoComplete="postal-code"
+          aria-describedby="setup-zone-zip-hint"
+        />
+        <p id="setup-zone-zip-hint" className="text-xs text-muted-foreground">
+          {pinned && (!zip5(zipVal) || zip5(zipVal) === businessZip) ? (
+            <>
+              Centered on your business address,{" "}
+              <bdi className="break-words">{b?.contact_address}</bdi>. Change the ZIP to center it
+              somewhere else.
+            </>
+          ) : businessZip && zip5(zipVal) === businessZip ? (
+            "From your business address. Change it to center the area somewhere else."
+          ) : (
+            "The area is a circle around this ZIP. The ZIPs inside it are listed for you."
+          )}
         </p>
-      ) : (
-        <div className={fieldClass}>
-          <Label htmlFor="setup-zone-zip">ZIP code at the middle of your area</Label>
-          <Input
-            id="setup-zone-zip"
-            inputMode="numeric"
-            value={zip}
-            onChange={(e) => setZip(e.target.value)}
-            maxLength={10}
-            autoComplete="postal-code"
-          />
-        </div>
-      )}
+      </div>
       <fieldset className={fieldClass}>
         <legend className="text-sm font-medium">How far you drive</legend>
         <div className="flex flex-wrap gap-2 pt-1.5">
@@ -1191,60 +1235,13 @@ function ServiceAreaPanel({
           />
         </div>
       </div>
-      <fieldset className={fieldClass} data-setup-first-cleanup>
-        <legend className="text-sm font-medium">First cleanup</legend>
-        <p className="text-xs text-muted-foreground">
-          What a new client pays once, for the first visit, when the yard has built up.
-        </p>
-        {tiered ? (
-          <p className="pt-1 text-sm">
-            Priced by when the yard was last cleaned, set on{" "}
-            <Link to="/zones" className="underline">
-              Zones
-            </Link>
-            .
-          </p>
-        ) : (
-          <>
-            <div className="flex flex-wrap gap-2 pt-1.5">
-              <Button
-                id="setup-first-cleanup-off"
-                type="button"
-                size="sm"
-                variant={firstCleanupVal === "off" ? "default" : "outline"}
-                aria-pressed={firstCleanupVal === "off"}
-                onClick={() => setFirstCleanup("off")}
-              >
-                Off, no first-cleanup charge
-              </Button>
-              <Button
-                id="setup-first-cleanup-flat"
-                type="button"
-                size="sm"
-                variant={firstCleanupVal === "flat" ? "default" : "outline"}
-                aria-pressed={firstCleanupVal === "flat"}
-                onClick={() => setFirstCleanup("flat")}
-              >
-                Charge a flat price
-              </Button>
-            </div>
-            {firstCleanupVal === "flat" && (
-              <div className={`${fieldClass} pt-2`}>
-                <Label htmlFor="setup-zone-first-cleanup">First cleanup price ($)</Label>
-                <Input
-                  id="setup-zone-first-cleanup"
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  step="0.01"
-                  value={firstCleanupPrice}
-                  onChange={(e) => setFirstCleanupPrice(e.target.value)}
-                />
-              </div>
-            )}
-          </>
-        )}
-      </fieldset>
+      <SetupFirstCleanupChoice
+        tiered={tiered}
+        value={firstCleanupVal}
+        onChange={setFirstCleanup}
+        price={firstCleanupPrice}
+        onPriceChange={setFirstCleanupPrice}
+      />
       <fieldset className={fieldClass} data-setup-schedule-prices>
         <legend className="text-sm font-medium">Price by schedule</legend>
         <p className="text-xs text-muted-foreground">
