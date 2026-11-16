@@ -228,7 +228,13 @@ describe("the domain (mypets.services: registered, attached after merge)", () =>
       for (const f of readdirSync(dir)) {
         const p = join(dir, f);
         if (statSync(p).isDirectory()) walk(p);
-        else if (/\.(ts|tsx|css|html|json)$/.test(f) && /mypets/i.test(readFileSync(p, "utf8"))) {
+        // The DOMAIN, not the word: #939 added MYPETS_REVALIDATE_SECRET and
+        // lib/mypets-revalidate.server.ts, which name the site but build its
+        // URL from DIRECTORY_BRAND rather than writing the domain again.
+        else if (
+          /\.(ts|tsx|css|html|json)$/.test(f) &&
+          /mypets\.services/i.test(readFileSync(p, "utf8"))
+        ) {
           hits.push(p.slice(ROOT.length + 1).replace(/\\/g, "/"));
         }
       }

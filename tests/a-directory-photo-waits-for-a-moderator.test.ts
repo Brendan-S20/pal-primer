@@ -622,7 +622,9 @@ describe("the photo URL", () => {
     expect(serve).toMatch(/rpc\("directory_photo_object"/);
     expect(serve).toMatch(/\.download\(path\)/);
     expect(serve).not.toMatch(/createSignedUrl|status: 30[12]|Location/);
-    expect(serve).toMatch(/"Cache-Control": `public, max-age=\$\{PUBLIC_PHOTO_MAX_AGE\}`/);
+    expect(serve).toMatch(
+      /"Cache-Control": `public, max-age=\$\{PUBLIC_PHOTO_MAX_AGE\}, s-maxage=\$\{PUBLIC_PHOTO_MAX_AGE\}`/,
+    );
   });
 });
 
