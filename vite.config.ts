@@ -674,8 +674,8 @@ export default defineConfig({
       },
     },
     plugins: [
-      entitiesForItsImporter,
       preflightToTheRoute,
+      entitiesForItsImporter,
       // ── THE ALIAS BELOW WAS DEAD, AND THE BINARY SHIPPED THE REAL ONE ──
       //
       // `resolve.alias` carried a NATIVE_BUILD entry mapping
