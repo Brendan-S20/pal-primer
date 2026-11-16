@@ -34,7 +34,15 @@
 import { afterAll, describe, expect, it } from "vitest";
 
 import { orgToday } from "@/lib/org-day";
-import { day, FIXTURE_TIMEZONE, ORGANIZATION } from "./viewports/fixtures/dataset";
+import {
+  day,
+  FIXTURE_NOW,
+  FIXTURE_TIMEZONE,
+  ORGANIZATION,
+  TODAY,
+} from "./viewports/fixtures/dataset";
+import { FIXTURE_NOON, orgInstant } from "./viewports/fixtures/fixture-clock";
+import { BASE_STUBS, myUpcomingDays } from "./viewports/fixtures/stub-backend";
 
 const ORIGINAL_TZ = process.env.TZ;
 afterAll(() => {
@@ -53,10 +61,7 @@ function dayAsItShipped(offset: number, now: Date) {
 /** Every half hour across two days that straddle a US date change, from
  *  2026-10-08T00:00Z: covers midnight Eastern (04:00Z), midnight Chicago
  *  (05:00Z) and midnight UTC, each twice. */
-const INSTANTS = Array.from(
-  { length: 96 },
-  (_, i) => new Date(Date.UTC(2026, 9, 8, 0, 30 * i)),
-);
+const INSTANTS = Array.from({ length: 96 }, (_, i) => new Date(Date.UTC(2026, 9, 8, 0, 30 * i)));
 
 /** Where the runners are (Eastern), where a cloud runner is (UTC), the org's
  *  own zone, and two far enough away to be wrong for most of the day. */
@@ -67,8 +72,11 @@ function asHost(tz: string) {
   // Prove the assignment took: a walk under a zone Node ignored would pass
   // without having tested anything.
   const probe = new Date(Date.UTC(2026, 0, 15, 12));
-  const expected = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hourCycle: "h23" })
-    .format(probe);
+  const expected = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hour: "numeric",
+    hourCycle: "h23",
+  }).format(probe);
   expect(probe.getHours(), `process.env.TZ=${tz} did not reach Date`).toBe(Number(expected) % 24);
 }
 
@@ -82,7 +90,8 @@ describe("the viewport fixture's today", () => {
     it(`is the org's today at every half hour, on a runner in ${tz}`, () => {
       asHost(tz);
       const wrong = INSTANTS.filter((now) => day(0, now) !== orgToday(FIXTURE_TIMEZONE, now)).map(
-        (now) => `${now.toISOString()}: fixture ${day(0, now)}, org ${orgToday(FIXTURE_TIMEZONE, now)}`,
+        (now) =>
+          `${now.toISOString()}: fixture ${day(0, now)}, org ${orgToday(FIXTURE_TIMEZONE, now)}`,
       );
       expect(wrong).toEqual([]);
     });
@@ -115,4 +124,45 @@ describe("the viewport fixture's today", () => {
       "2026-10-09T04:30:00.000Z",
     ]);
   });
+
+  // ── ONE INSTANT, NOT TWO (#941, 2026-11-16) ───────────────────────────────
+  //
+  // The zone was right and the run still crossed midnight: the fixture read
+  // the clock when the worker imported it, the browser read it at render.
+  // These pin the fixture's half of the fix; the browser's half is
+  // the-technician-who-could-not-see-thursday.spec.ts, at 11:59 PM and
+  // 12:01 AM Chicago.
+
+  it("dates every row from one instant, read once, so a stub answering later cannot drift", () => {
+    expect(day(0)).toBe(TODAY);
+    expect(TODAY).toBe(orgToday(FIXTURE_TIMEZONE, FIXTURE_NOW));
+    // A stub called at request time used to call day(1) on THAT clock.
+    expect(day(1)).toBe(day(1, FIXTURE_NOW));
+    expect((BASE_STUBS.getMyUpcomingDays as { days: { date: string }[] }).days[0].date).toBe(TODAY);
+  });
+
+  it("pins the browser to noon on the fixture's day, twelve hours from either midnight", () => {
+    expect(orgToday(FIXTURE_TIMEZONE, FIXTURE_NOON)).toBe(TODAY);
+    expect(FIXTURE_NOON.getTime()).toBe(orgInstant(TODAY, "12:00").getTime());
+  });
+
+  for (const tz of HOST_ZONES) {
+    it(`builds the schedule's first day as the org's today at that instant, on a runner in ${tz}`, () => {
+      asHost(tz);
+      const wrong = INSTANTS.filter(
+        (now) => myUpcomingDays(now).days[0].date !== orgToday(FIXTURE_TIMEZONE, now),
+      ).map((now) => now.toISOString());
+      expect(wrong).toEqual([]);
+      // And the two pins the browser spec stands on, either side of midnight.
+      const before = orgInstant("2026-11-15", "23:59");
+      const after = orgInstant("2026-11-16", "00:01");
+      expect(myUpcomingDays(before).days[0].date).toBe("2026-11-15");
+      expect(myUpcomingDays(after).days[0].date).toBe("2026-11-16");
+      expect(myUpcomingDays(after).days.map((d) => d.date)).toEqual([
+        "2026-11-16",
+        "2026-11-17",
+        "2026-11-19",
+      ]);
+    });
+  }
 });

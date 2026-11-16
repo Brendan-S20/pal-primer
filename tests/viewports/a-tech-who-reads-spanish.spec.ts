@@ -40,6 +40,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { installSignedInSession } from "./fixtures/session";
 import { installStubBackend } from "./fixtures/stub-backend";
+import { pinTheBrowserToTheFixtureDay } from "./fixtures/fixture-clock";
 import { FIRST_PAINT_MS } from "./fixtures/first-paint";
 import {
   measurePageOverflow,
@@ -175,6 +176,12 @@ for (const width of [360, 768]) {
   });
 
   test(`My schedule in Spanish fits at ${width}px`, async ({ page }) => {
+    // The /\bhoy\b/ below is the fixture's today agreeing with the page's, the
+    // same comparison #941 found timing itself across midnight in
+    // the-technician-who-could-not-see-thursday. Same fix: the browser reads
+    // the instant the fixture was built from, not whatever the clock says by
+    // the time this test reaches the page.
+    await pinTheBrowserToTheFixtureDay(page);
     await openInSpanish(page, width, "/my-schedule", "Mi calendario", "Grosse Pointe Woods");
     // The list's accessible name follows the language too.
     await expect(page.locator('ul[aria-label="Tus próximos días"]')).toBeVisible();
