@@ -279,7 +279,11 @@ describe("a business without pet waste is asked where its day ends", () => {
     expect(business.indexOf("<ServiceLinesChoices")).toBeLessThan(
       business.indexOf('htmlFor="setup-name"'),
     );
-    expect(business).toMatch(/saveLinesFn\(\{ data: \{ lines: linesVal \} \}\)/);
+    // atSetup (#915): the lines picked here also pick a new business's
+    // completion-photo default.
+    expect(business).toMatch(
+      /saveLinesFn\(\{ data: \{ lines: linesVal, atSetup: !alreadyDone \} \}\)/,
+    );
     expect(codeOnly(read("src/routes/_authenticated/settings.business.tsx"))).toMatch(
       /<ServiceLinesChoices/,
     );

@@ -180,6 +180,7 @@ function InvitePage() {
                       session.email,
                       blocked.current_organization_name,
                       q.data.organization_name,
+                      blocked.current_role,
                     )}
                   </div>
                   <Button

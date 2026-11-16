@@ -17,4 +17,6 @@ ext {
     // debug-only FakeReviewManager path (issue #521) uses the same one.
     googleAndroidPlayReviewVersion = '2.0.2'
     mockitoVersion = '5.20.0'
+    // JVM tests that start the real MainActivity (issue #621, cold-start links).
+    robolectricVersion = '4.16'
 }
