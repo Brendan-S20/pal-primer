@@ -26,23 +26,9 @@
 //     a zone's base_price_cents is an OVERRIDE, and setup's first area gets
 //     none when the typed price is the standard that results, so it is NULL.
 //
-// ── WHY THE ZONE ASSERTION READS THE SOURCE ───────────────────────────────
-//
-// The model lands with #870, which makes zones.base_price_cents nullable and
-// teaches setup to send no override (setupZoneOverride in
-// src/lib/standard-price.ts). Before it, the column is NOT NULL and setup
-// sends the typed price, so the same Save stores 2000 on the zone. The
-// assertion keys on whether setupZoneOverride exists in this checkout: with
-// it, NULL and nothing else; without it, 2000 and nothing else. Either way
-// the service holds the price. Once #870 is on main the first branch is the
-// only one that runs, and this block can be reduced to it.
-//
 // And when it fails, it says why: every server-function response and every
 // console error of the run is printed with the failure, because "nothing
 // happened" is exactly the report this spec exists to turn into a cause.
-
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
@@ -54,19 +40,11 @@ import { signIn, waitForHydration } from "./sign-in";
 const SUPABASE_URL = process.env.SUPABASE_URL ?? "http://127.0.0.1:54421";
 const ANON = process.env.SUPABASE_PUBLISHABLE_KEY ?? "";
 
-/** Whether this checkout has the shared price model, in which setup's first
- *  area carries no price of its own (#870). See the header. */
-// Playwright runs from the repo root (tests/e2e/run.sh cds there first).
-const STANDARD_PRICE = join(process.cwd(), "src", "lib", "standard-price.ts");
-const ZONE_PRICE_IS_AN_OVERRIDE =
-  existsSync(STANDARD_PRICE) &&
-  readFileSync(STANDARD_PRICE, "utf8").includes("export function setupZoneOverride");
-
 test.beforeEach(async ({ context }) => {
   await pointTheBrowserAtTheLocalDatabase(context, { url: SUPABASE_URL, anonKey: ANON });
 });
 
-test("a new business saves its service area and price once, and the zone exists at that price", async ({
+test("a new business saves its service area and price once: one zone, the price on the service", async ({
   page,
 }) => {
   test.setTimeout(240_000);
@@ -196,14 +174,11 @@ test("a new business saves its service area and price once, and the zone exists 
       initial_cleanup_cents: 0,
       geo_match_mode: "radius",
     });
-    if (ZONE_PRICE_IS_AN_OVERRIDE) {
-      expect(
-        zones![0].base_price_cents,
-        "the first area follows the standard price: no override of its own (#870)",
-      ).toBeNull();
-    } else {
-      expect(zones![0].base_price_cents, "before #870 the zone carries the price").toBe(2000);
-    }
+    expect(
+      zones![0].base_price_cents,
+      "the first area follows the standard price: no override of its own (#870)",
+    ).toBeNull();
+    expect(zones![0].per_dog_addl_cents, "and no extra-dog override either").toBeNull();
 
     // The standard price lives on the pet-waste service.
     const { data: svc, error: svcReadErr } = await db
