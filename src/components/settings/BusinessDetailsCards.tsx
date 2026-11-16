@@ -161,7 +161,7 @@ export function BusinessDetailsCard({ canEdit }: { canEdit: boolean }) {
                 value={address}
                 onChangeText={setAddress}
                 onResolved={(r) => setAddress(r.address.formatted)}
-                placeholder="123 Main St, Austin, TX 78701"
+                placeholder="Street, city, state and ZIP"
                 maxLength={300}
                 disabled={!canEdit || !q.data}
               />

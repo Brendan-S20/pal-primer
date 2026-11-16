@@ -1,0 +1,14 @@
+{
+  "phase": "before",
+  "state": "team-route-start",
+  "width": 1440,
+  "scrollWidth": 1440,
+  "innerWidth": 1440,
+  "fields": [
+    {
+      "placeholder": "123 Main St, Austin, TX 78701",
+      "autocomplete": "off",
+      "value": ""
+    }
+  ]
+}

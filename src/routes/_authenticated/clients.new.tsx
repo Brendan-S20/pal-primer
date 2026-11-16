@@ -1,4 +1,5 @@
 import { PetSizeFields } from "@/components/client-detail/PetSizeFields";
+import { DogNameAndBreedFields } from "@/components/DogNameAndBreedFields";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -81,7 +82,7 @@ import { afterClientBookChanged } from "@/lib/client-book-queries";
 import { DraftRestoredNotice } from "@/components/DraftRestoredNotice";
 import { newClientDraftForm } from "@/lib/form-drafts";
 import { normalizeNewClientDraft, type NewClientDraft } from "@/lib/new-client-draft";
-import { needsANamedDog } from "@/lib/new-client-dogs";
+import { needsANamedDog, newClientDogBreed } from "@/lib/new-client-dogs";
 import { NeedsANamedDogAlert } from "@/components/NeedsANamedDogAlert";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -1015,7 +1016,7 @@ function NewClientWizardForm({
           dogs: validDogs.length
             ? validDogs.map((d) => ({
                 name: (d.name ?? "").trim(),
-                breed: d.breed || undefined,
+                breed: newClientDogBreed(d.breed),
                 weightClass: d.weightClass || undefined,
                 ...(grooming
                   ? {
@@ -1358,7 +1359,7 @@ function NewClientWizardForm({
                 required
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                placeholder={accountType === "commercial" ? "Oakwood HOA" : "Jane Doe"}
+                placeholder={accountType === "commercial" ? "e.g. Oakwood HOA" : "e.g. Jane Doe"}
               />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -1377,7 +1378,7 @@ function NewClientWizardForm({
                   id="ph"
                   value={primaryPhone}
                   onChange={(e) => setPrimaryPhone(e.target.value)}
-                  placeholder="(555) 123-4567"
+                  placeholder="e.g. (555) 123-4567"
                 />
               </div>
             </div>
@@ -1682,34 +1683,19 @@ function NewClientWizardForm({
             {dogs.map((d, i) => (
               <div key={i} className="rounded-md border bg-muted/10 p-3">
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1">
-                    <Label className="text-xs">Name</Label>
-                    <Input
-                      value={d.name}
-                      aria-invalid={attempted && needsDog && i === 0 ? true : undefined}
-                      aria-describedby={
-                        attempted && needsDog && i === 0 ? "needs-a-named-dog" : undefined
-                      }
-                      onChange={(e) => {
-                        const next = [...dogs];
-                        next[i] = { ...next[i], name: e.target.value };
-                        setDogs(next);
-                      }}
-                      placeholder="Bailey"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Breed</Label>
-                    <Input
-                      value={d.breed}
-                      onChange={(e) => {
-                        const next = [...dogs];
-                        next[i] = { ...next[i], breed: e.target.value };
-                        setDogs(next);
-                      }}
-                      placeholder="Lab mix"
-                    />
-                  </div>
+                  <DogNameAndBreedFields
+                    name={d.name}
+                    breed={d.breed}
+                    aria-invalid={attempted && needsDog && i === 0 ? true : undefined}
+                    aria-describedby={
+                      attempted && needsDog && i === 0 ? "needs-a-named-dog" : undefined
+                    }
+                    onChange={(patch) => {
+                      const next = [...dogs];
+                      next[i] = { ...next[i], ...patch };
+                      setDogs(next);
+                    }}
+                  />
                   <PetSizeFields
                     size={d.weightClass}
                     coatType={d.coatType ?? ""}

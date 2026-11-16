@@ -367,7 +367,7 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
             id="station-label"
             value={draft.label}
             onChange={(e) => setDraft({ ...draft, label: e.target.value })}
-            placeholder="Building A, north lot"
+            placeholder="e.g. Building A, north lot"
             required
             aria-invalid={showLabelError}
             aria-describedby={showLabelError ? "station-label-error" : undefined}
@@ -419,7 +419,7 @@ export function StationsPanel({ clientId, properties }: { clientId: string; prop
             id="station-notes"
             value={draft.notes}
             onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
-            placeholder="Near mail kiosk"
+            placeholder="e.g. near the mail kiosk"
           />
         </div>
         <div className="sm:col-span-6">
