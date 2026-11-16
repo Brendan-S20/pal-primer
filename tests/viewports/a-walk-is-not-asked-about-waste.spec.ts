@@ -153,13 +153,11 @@ for (const { w, h } of WIDTHS) {
       await page.getByRole("button", { name: "Edit checklist" }).click({ timeout: 45_000 });
 
       await expect(page.getByRole("heading", { name: "Every visit" })).toBeVisible();
-      await expect(
-        page.getByRole("heading", { name: "Pet waste removal (scooping)" }),
-      ).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Pet waste removal" })).toBeVisible();
       await expect(page.getByRole("heading", { name: "Dog walking" })).toBeVisible();
       await expect(page.getByText("Asked on dog walking visits only.")).toBeVisible();
       await expect(page.getByRole("combobox", { name: `Which visits ask ${WASTE}` })).toHaveText(
-        "Pet waste removal (scooping)",
+        "Pet waste removal",
       );
       await expect(page.getByRole("textbox", { name: "Checklist item 1" })).toHaveValue(EVERY);
       // Nothing about waste is on every visit, so nothing to call out.

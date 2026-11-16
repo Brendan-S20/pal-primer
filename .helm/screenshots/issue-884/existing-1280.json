@@ -1,0 +1,26 @@
+{
+  "width": 1280,
+  "scenario": "existing",
+  "viewport": {
+    "width": 1280,
+    "height": 1000
+  },
+  "geocoderCalls": 0,
+  "expectedCenter": {
+    "lat": 42.33,
+    "lng": -83.05
+  },
+  "tileUrls": [
+    "https://b.tile.openstreetmap.org/12/1102/1515.png",
+    "https://c.tile.openstreetmap.org/12/1103/1515.png",
+    "https://a.tile.openstreetmap.org/13/2205/3030.png",
+    "https://b.tile.openstreetmap.org/13/2206/3030.png",
+    "https://b.tile.openstreetmap.org/13/2205/3031.png",
+    "https://c.tile.openstreetmap.org/13/2206/3031.png",
+    "https://c.tile.openstreetmap.org/13/2204/3030.png",
+    "https://c.tile.openstreetmap.org/13/2207/3030.png",
+    "https://a.tile.openstreetmap.org/13/2204/3031.png",
+    "https://a.tile.openstreetmap.org/13/2207/3031.png"
+  ],
+  "note": "Signed-in fixture data. Basemap uses explicitly labelled offline coordinate-grid test tiles; external street imagery is blocked."
+}

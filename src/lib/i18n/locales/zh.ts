@@ -151,7 +151,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     visits: "下次服务安排好后会显示在这里。",
     cards: "我们接受信用卡和借记卡。您的卡片信息不会经过我们的服务器。",
     pay: "付款经过安全处理。接受银行卡。",
-    texts: "短信功能即将推出。在此之前，这些更新将通过电子邮件发送。",
+    texts: "此处尚未开通短信。在此之前，这些更新将通过电子邮件发送。",
     cardPayments: "通过银行卡收款，直接存入您的银行账户。",
     held: "已加入您的套餐，但尚未推出，因此目前无法使用。您可以随时移除。",
     soon: "即将推出",
@@ -168,7 +168,7 @@ const zh: TranslationsWithPlurals<"other"> = {
       "创始客户优惠：前 {{spots}} 个付费账户在持续订阅期间享受套餐价格 {{percent}}% 的折扣。额外人员及附加功能按原价收费。结账时使用代码 {{code}}。",
     remaining: "剩余 {{left}} 个，共 {{spots}} 个。",
     help0:
-      "客户使用电子邮件发送的一次性验证码登录。短信验证码即将推出。如果客户无法收到验证码，员工可从[客户](/clients)详情页通过电话告知验证码。",
+      "客户使用电子邮件发送的一次性验证码登录。为您的企业开通短信后，验证码也可以通过短信发送。如果客户无法收到验证码，员工可从[客户](/clients)详情页通过电话告知验证码。",
     help1:
       "即将推出：营销帖子及 [AI 接待员](article:platform-addons)，用于回复客户短信和来电。目前均未启用。",
     help2:
@@ -503,6 +503,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     length: "遛狗 {{minutes}} 分钟",
     minutesOut: "已出门 {{minutes}} 分钟",
     groupWalk: "集体遛狗",
+    overDogCap: "超过遛狗上限：{{dogs}} 只狗，上限是 {{cap}} 只",
     pickupOrder: "接狗顺序",
     thisStop: "本站",
     wayIn: "如何进门",
@@ -1278,6 +1279,12 @@ const zh: TranslationsWithPlurals<"other"> = {
     checkAgain: "重新检查",
     couldNotCheck: "暂时无法检查，请稍后再试。",
     stillOff: "仍处于关闭状态。请让负责人重新启用你。",
+    startOwn: "创建我自己的商家",
+    startOwnExplain: "这会让你永久离开<business/>，之后你可以用这个邮箱创建自己的商家或加入其他商家。他们的记录仍归他们所有。以后想回来，需要他们重新邀请你。",
+    startOwnConfirm: "离开并创建我自己的",
+    startOwnCancel: "继续等待",
+    startOwnBusy: "正在离开…",
+    startOwnFailed: "暂时无法完成，请稍后再试。",
   },
   staySummary: {
     title: "寄养总结",

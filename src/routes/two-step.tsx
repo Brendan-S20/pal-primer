@@ -23,6 +23,7 @@ import {
   type SecondStepFactor,
 } from "@/lib/mfa";
 import { pageTitle } from "@/lib/page-title";
+import { signInLanded } from "@/lib/sign-in-handoff";
 
 export const Route = createFileRoute("/two-step")({
   ssr: false,
@@ -115,6 +116,8 @@ function TwoStepPage() {
   };
 
   const signOut = async () => {
+    // The sign-in that brought them here is over on purpose (#785).
+    signInLanded();
     await supabase.auth.signOut();
     window.location.href = "/auth";
   };

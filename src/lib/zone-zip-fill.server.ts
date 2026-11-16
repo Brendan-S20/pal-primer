@@ -3,9 +3,9 @@
 //
 // Three callers, one lookup:
 //   * zipsInZoneShape, the Zones drawer's "Fill ZIPs from the area";
-//   * createZone with `fillZipsFromShape`, which Setup step 2 asks for, so the
-//     area an owner makes during setup lists its ZIPs like one drawn on Zones
-//     (onboarding audit 2026-11-09, D1);
+//   * createZone and updateZone, which fill every drawn area on save (#858;
+//     before that only Setup step 2 asked, with `fillZipsFromShape`, after the
+//     onboarding audit of 2026-11-09, D1);
 //   * internalQuote, which places a ZIP at its Census center when the address
 //     has no pin, so a drawn zone that lists no ZIPs still quotes an address
 //     inside it.
@@ -15,6 +15,7 @@
 
 import {
   classifyZipCentroids,
+  fillForSave,
   MAX_CANDIDATES,
   searchBox,
   type ZipCentroid,
@@ -82,4 +83,22 @@ export async function zipsInsideShape(
     candidatesCapped: found.capped,
     tooLarge: false,
   };
+}
+
+export type ZoneSaveFill =
+  | { status: "ok"; zips: string[]; centerOnly: boolean; capped: boolean }
+  | { status: "incomplete" }
+  | { status: "too_large" };
+
+/** What a save lists for a drawn area (#858): the ZIPs inside its shape, or
+ *  the one its middle sits in when none is. Throws when the lookup fails;
+ *  the save then goes through without a fill and marks it pending. */
+export async function zipsForZoneSave(
+  db: any,
+  orgId: string,
+  shape: ZoneShapeInput,
+): Promise<ZoneSaveFill> {
+  const found = await zipCentroidsForShape(db, orgId, shape);
+  if (found.status !== "ok") return found;
+  return { status: "ok", ...fillForSave(shape, found.centroids), capped: found.capped };
 }

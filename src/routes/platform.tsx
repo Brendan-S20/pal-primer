@@ -18,6 +18,7 @@ import {
   Users,
   Inbox,
   MessageSquareQuote,
+  Images,
   Megaphone,
   TrendingUp,
   Activity,
@@ -70,6 +71,12 @@ const NAV = [
         to: "/platform/directory-reviews" as const,
         label: "Directory reviews",
         icon: MessageSquareQuote,
+      },
+      // Directory photos (#630, directory v2 step 5b): the same model.
+      {
+        to: "/platform/directory-photos" as const,
+        label: "Directory photos",
+        icon: Images,
       },
       { to: "/platform/signals" as const, label: "Franchise signals", icon: Radar },
     ],

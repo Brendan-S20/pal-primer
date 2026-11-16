@@ -8,7 +8,7 @@ import { visitEta } from "@/lib/visit-eta";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import {
   listVisitsForDay,
   listStaff,
@@ -64,6 +64,15 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { useDogCapWarning } from "@/components/DogCapWarning";
+import { listWalksOverDogCap } from "@/lib/walk-groups.functions";
+import {
+  dogCapSentence,
+  isDogCapRefused,
+  overCapByVisit,
+  type DogCapWarning,
+  type OverCapWalk,
+} from "@/lib/dog-cap";
 import { formatDay } from "@/lib/format";
 import {
   DndContext,
@@ -409,6 +418,18 @@ function RoutesPage() {
   const listS = useServerFn(listStaff);
   const setRouting = useServerFn(setStaffRouting);
   const reassign = useServerFn(reassignVisit);
+  // Over a walker's dog cap: warn, then allow (#731). Drag, bulk assign and
+  // Cover all ask through the same dialog.
+  const dogCap = useDogCapWarning();
+  const listOverCap = useServerFn(listWalksOverDogCap);
+  const overCapQuery = useQuery({
+    queryKey: ["visits", day, "over-dog-cap"],
+    queryFn: () => listOverCap({ data: { day } }),
+  });
+  const overCap = useMemo(
+    () => overCapByVisit(overCapQuery.data?.walks ?? []),
+    [overCapQuery.data],
+  );
 
   const reorder = useServerFn(reorderRoute);
   // Office action, not the my-day tech flow: completeVisitFromOffice checks
@@ -740,8 +761,15 @@ function RoutesPage() {
 
   const bulkAssignMut = useMutation({
     mutationFn: (staffId: string | null) =>
-      bulkAssignFn({ data: { visitIds: [...selected], staffId } }),
+      dogCap.run((overCapAcknowledged) =>
+        bulkAssignFn({ data: { visitIds: [...selected], staffId, overCapAcknowledged } }),
+      ),
     onSuccess: (r: any, staffId) => {
+      // Cancelled at the dog cap warning: nothing moved, the selection stays.
+      if (r === null || isDogCapRefused(r)) {
+        toast("Nothing was assigned.");
+        return;
+      }
       toast.success(
         staffId
           ? `Assigned ${r.moved} visit${r.moved === 1 ? "" : "s"}`
@@ -797,17 +825,36 @@ function RoutesPage() {
   const coverMoveTotal =
     (coverQuery.data?.total ?? 0) + (coverLater ? (coverQuery.data?.laterTotal ?? 0) : 0);
   const redistributeMut = useMutation({
-    mutationFn: () =>
-      redistributeFn({
-        data: {
-          staffId: coverFor!.id,
-          from: coverWindow?.from,
-          to: coverWindow?.to,
-          includeLater: coverLater,
-        },
-      }),
+    mutationFn: async () => {
+      const send = (overCapAcknowledged: boolean) =>
+        redistributeFn({
+          data: {
+            staffId: coverFor!.id,
+            from: coverWindow?.from,
+            to: coverWindow?.to,
+            includeLater: coverLater,
+            overCapAcknowledged,
+          },
+        }) as Promise<CoverAnswer>;
+      const first = await send(false);
+      const movedFirst = Number(first.moved ?? 0);
+      if (!isDogCapRefused(first)) return first;
+      // Some work fits nobody's dog cap (#731): the same warning as a drag.
+      // Assign anyway moves the rest over the cap, recorded; Cancel leaves it
+      // with this tech. Anything that did fit has already moved.
+      if (await dogCap.ask(first.overCap, first.overCapVisits)) {
+        const second = await send(true);
+        return { ...second, moved: movedFirst + Number(second.moved ?? 0) };
+      }
+      return { ...first, overCapCancelled: true };
+    },
     onSuccess: (r: any) => {
-      if (r.left > 0) {
+      if (r.overCapCancelled) {
+        toast.warning(
+          `Moved ${r.moved}. Left ${r.overCapVisits} with ${coverFor!.name}, because ${r.overCapVisits === 1 ? "it" : "they"} would put a walk over its dog cap: ${dogCapSentence(r.overCap)}`,
+          { duration: 9000 },
+        );
+      } else if (r.left > 0) {
         toast.warning(
           `Moved ${r.moved}. Left ${r.left} with ${coverFor!.name}, because nobody else could take ${r.left === 1 ? "it" : "them"}: another tech already has a groom at that time, or is off that day. ${(r.leftAppointments ?? []).map((v: { client: string; day: string; startTime: string | null }) => `${v.client}, ${v.day} ${v.startTime ?? ""}`).join("; ")}`,
           { duration: 9000 },
@@ -975,13 +1022,25 @@ function RoutesPage() {
     setLocalColumns(next);
 
     try {
-      const r = await reassign({
-        data: { visitId: moved.id, staffId: toCol === UNASSIGNED ? null : toCol },
-      });
-      if (r.clash) toast.warning(r.clash);
-      warnLessonClashes(r);
-      if (toCol !== UNASSIGNED) await persistColumn(toCol, next[toCol]);
-      if (fromCol !== UNASSIGNED) await persistColumn(fromCol, next[fromCol]);
+      const r = await dogCap.run((overCapAcknowledged) =>
+        reassign({
+          data: {
+            visitId: moved.id,
+            staffId: toCol === UNASSIGNED ? null : toCol,
+            overCapAcknowledged,
+          },
+        }),
+      );
+      if (r === null || isDogCapRefused(r)) {
+        // Cancelled at the dog cap warning: nothing was saved, so the card
+        // goes back where it was.
+        setLocalColumns(null);
+      } else {
+        if (r.clash) toast.warning(r.clash);
+        warnLessonClashes(r);
+        if (toCol !== UNASSIGNED) await persistColumn(toCol, next[toCol]);
+        if (fromCol !== UNASSIGNED) await persistColumn(fromCol, next[fromCol]);
+      }
     } catch (err) {
       // Drop the optimistic move. Without this the reassign fails, a toast
       // appears, and the card STAYS in the lane it never reached — so the
@@ -1025,10 +1084,11 @@ function RoutesPage() {
   const moreLanesToTheEnd = useMoreToTheEnd(laneRow, laneRowShape);
 
   return (
-    <>
+    <OverCapContext.Provider value={overCap}>
       {moveDialog}
       {overrideDialog}
       {completionBlock.dialog}
+      {dogCap.dialog}
       {visitsData?.clash && (
         <p
           role="alert"
@@ -1136,11 +1196,12 @@ function RoutesPage() {
               </Button>
             </div>
           </div>
-          {/* A-P2-10: completing a visit from the office is an owner or office
-              manager action (office_complete_visit refuses a dispatcher), so
-              only they are told this page marks visits complete. */}
+          {/* A-P2-10: completing a visit from the office takes close_visits
+              (#863: owner, office manager and dispatcher by default, and the
+              owner's to change), so only those who hold it are told this page
+              marks visits complete. */}
           <p className="text-sm text-muted-foreground">
-            {role === "owner" || role === "office_manager"
+            {canDo("close_visits")
               ? "Dispatch, route, map, and mark visits complete, all in one view."
               : "Dispatch, route and map visits, all in one view."}
           </p>
@@ -2058,7 +2119,7 @@ function RoutesPage() {
         visitId={detailVisitId}
         onOpenChange={(o) => !o && setDetailVisitId(null)}
       />
-    </>
+    </OverCapContext.Provider>
   );
 }
 
@@ -2484,6 +2545,20 @@ function directionsUrl(p: any): string | null {
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(parts)}&travelmode=driving`;
 }
 
+/** What Cover answers, as far as the board reads it (#731 adds the cap). */
+type CoverAnswer = {
+  moved?: number;
+  left?: number;
+  leftAppointments?: Array<{ client: string; day: string; startTime: string | null }>;
+  overCap?: DogCapWarning;
+  overCapVisits?: number;
+  overCapCancelled?: boolean;
+};
+
+/** Visits on a walk over its walker's dog cap, for the card flags (#731).
+ *  Provided by the board; empty anywhere else. */
+const OverCapContext = createContext<Map<string, OverCapWalk>>(new Map());
+
 function VisitCardView({
   visit,
   seq,
@@ -2514,6 +2589,7 @@ function VisitCardView({
 }) {
   const tz = useOrgTimezone();
   const distanceUnit = useDistanceUnit();
+  const overCapWalk = useContext(OverCapContext).get(visit.id);
   const p = visit.properties;
   const dirUrl = directionsUrl(p);
   const canComplete =
@@ -2664,6 +2740,18 @@ function VisitCardView({
             {visit.window_violated && (
               <Badge variant="destructive" className="h-4 px-1 text-3xs">
                 Late
+              </Badge>
+            )}
+            {/* Confirmed over the walker's dog cap: flagged until it is back
+                under (#731). */}
+            {overCapWalk && (
+              <Badge
+                variant="destructive"
+                className="h-4 px-1 text-3xs"
+                title={dogCapSentence(overCapWalk)}
+                data-testid="over-dog-cap"
+              >
+                {overCapWalk.dogs}/{overCapWalk.cap} dogs
               </Badge>
             )}
           </div>

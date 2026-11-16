@@ -1,5 +1,5 @@
 // #861 (onboarding QA, 2026-11-10): an owner saved a $20 standard price on
-// Settings, Business defaults, added services, a client and a completed
+// Settings, Business defaults (since #860, Settings → Services), added services, a client and a completed
 // visit, and the Guided setup banner still read "Next: Your service area and
 // price" on every page. The price step was done only when a ZONE row existed
 // (`areaDone = zones.count > 0`), so the price every quote falls back to when
@@ -48,14 +48,24 @@ function context(lines: string[], counts: Counts, stdBasePriceCents: number | nu
         if (table === "user_roles") return { data: { organization_id: "org-a" } };
         if (table === "organizations") {
           if (cols === "service_lines") return { data: { service_lines: lines } };
-          if (cols.includes("contact_address")) {
-            // Whatever the step reads the price from, it must be on the
-            // organization row; answer every column the read asks for.
-            return {
-              data: { contact_address: "1 Main St", std_base_price_cents: stdBasePriceCents },
-            };
-          }
+          if (cols.includes("contact_address")) return { data: { contact_address: "1 Main St" } };
           return { data: {} };
+        }
+        // #860: the standard price is the default pet-waste service's own
+        // price (Settings → Services), read through loadPetWasteStandard.
+        if (table === "services" && cols.includes("base_price_cents")) {
+          return {
+            data: [
+              {
+                id: "svc-1",
+                name: "Pet waste removal",
+                service_line: "pet_waste",
+                active: true,
+                base_price_cents: stdBasePriceCents,
+                extra_pet_cents: 0,
+              },
+            ],
+          };
         }
         return { count: counts[table] ?? 0, data: [] };
       };
@@ -109,12 +119,15 @@ describe("a saved standard price finishes the setup price step", () => {
     expect(area.done).toBe(true);
   });
 
+  // #860: the standard price is saved on Settings → Services (the Business
+  // defaults card that used to hold it is gone), and that page's save
+  // refreshes the checklist.
   it("saving the standard price refreshes the checklist", () => {
-    const card = readFileSync(
-      join(__dirname, "..", "src/components/StandardPricingCard.tsx"),
+    const page = readFileSync(
+      join(__dirname, "..", "src/routes/_authenticated/settings.services.tsx"),
       "utf8",
     );
-    expect(card).toMatch(/invalidateQueries\(\{ queryKey: \["onboarding-status"\] \}\)/);
+    expect(page).toMatch(/invalidateQueries\(\{ queryKey: \["onboarding-status"\] \}\)/);
   });
 });
 

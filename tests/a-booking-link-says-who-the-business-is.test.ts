@@ -107,7 +107,7 @@ describe("contact details under the headline (#526)", () => {
     const page = read("src/routes/_authenticated/settings.online-signup.tsx");
     expect(page).toContain("What the page says about you");
     expect(page).toMatch(/to="\/settings\/client-portal"/);
-    expect(page).toMatch(/to="\/zones"/);
+    expect(page).toMatch(/to="\/settings\/zones"/);
   });
 });
 

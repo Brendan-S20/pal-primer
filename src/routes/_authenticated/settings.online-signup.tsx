@@ -386,7 +386,7 @@ function WhatThePageShows({
           Edit phone and email
         </Link>
         <Link
-          to="/zones"
+          to="/settings/zones"
           className="inline-flex items-center text-primary underline touch:min-h-11"
         >
           Edit service areas

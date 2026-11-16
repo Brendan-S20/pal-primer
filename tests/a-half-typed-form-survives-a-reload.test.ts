@@ -146,7 +146,8 @@ describe("never a secret or a card", () => {
 
   it("the wizard does not hand its gate code to the draft at all", () => {
     const src = read("src/routes/_authenticated/clients.new.tsx");
-    const block = src.slice(src.indexOf("useFormDraft({"), src.indexOf("reset: onDiscarded"));
+    // The kept value is built as `draftValue` just above the hook (#784).
+    const block = src.slice(src.indexOf("const draftValue"), src.indexOf("reset: onDiscarded"));
     expect(block).not.toMatch(/gateCode/);
     expect(block).toMatch(/\bstep,/);
     expect(block).toMatch(/setStep\(d\.step\)/);

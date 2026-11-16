@@ -175,7 +175,11 @@ describe("Preferences is this device; Business defaults is the business", () => 
     expect(read("src/routes/_authenticated/settings.scheduling.tsx")).toMatch(
       /to="\/settings\/business"[\s\S]{0,80}Settings → Business defaults/,
     );
-    expect(read("src/routes/_authenticated/zones.tsx")).toMatch(/to="\/settings\/business"/);
+    // Zones & pricing pointed here for the standard price until #860 moved
+    // that price onto each service: it now points at Settings → Services.
+    expect(read("src/routes/_authenticated/settings.zones.tsx")).toMatch(
+      /to="\/settings\/services"/,
+    );
     expect(read("src/lib/help-content.ts")).toMatch(
       /\[Business defaults\]\(\/settings\/business\) under \*\*Re-clean guarantee\*\*/,
     );

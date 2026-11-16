@@ -44,7 +44,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     ],
     steps: [
       "Your business details: the address your routes start from, and the time zone that decides what counts as today.",
-      "Your service area and price: where you work and what you charge per visit. New clients in the area are quoted that price. Draw more areas later in [Zones](/zones); see [Zones: what they are](article:zones).",
+      "Your service area and price: where you work and what you charge per visit. New clients in the area are quoted that price. Draw more areas later in [Zones](/settings/zones); see [Zones: what they are](article:zones).",
       "Your first client: one at a time from [Clients](/clients), or everything at once with [Import](article:import-clients).",
       "Who runs the route: say that you do, or invite a tech in [Users & roles](/settings/users). See [What each role can see and do](article:roles).",
       "Where the day ends: your dump site, so routes finish there instead of wherever the last stop happens to be.",
@@ -79,8 +79,9 @@ export const HELP_ARTICLES: HelpArticle[] = [
     title: "What each role can see and do",
     section: "Getting started",
     body: [
-      "**Owner:** everything, including billing and payouts. **Office manager:** day-to-day operations (clients, invoices, routes, settings) but not the business's own subscription billing. **Dispatcher:** the schedule, routes, weather, clients, and messages. A dispatcher books one-off visits and grooms at the prices the business has set; only an owner or office manager can change a price. A dispatcher can add a client and start their plan at the set price, move a visit to another day or another technician, and text a client. Completing or canceling a visit from the office, invoices and payments, prices, settings, and who has access stay with the owner and office manager. **Technician:** [My Day](article:my-day), the [waste log](article:waste-log), and field tools.",
+      "**Owner:** everything, including billing and payouts. **Office manager:** day-to-day operations (clients, invoices, routes, settings) but not the business's own subscription billing. **Dispatcher:** the schedule, routes, weather, clients, and messages. A dispatcher books one-off visits and grooms at the prices the business has set; only an owner or office manager can change a price. A dispatcher can add a client and start their plan at the set price, move a visit to another day or another technician, complete a visit for a technician or cancel one, and text a client. Invoices and payments, prepaid plans, prices, settings, and who has access stay with the owner and office manager. **Technician:** [My Day](article:my-day), the [waste log](article:waste-log), and field tools.",
       "If someone can't see a page you expect them to, their role is usually why. Roles are set in [Users & roles](/settings/users).",
+      "Those are the defaults. The owner can turn any of them on or off for office managers, dispatchers and technicians in [Roles & permissions](/settings/roles); a few things, like the business's own plan and payouts, always stay with the owner.",
     ],
     appLink: { to: "/settings/users", label: "Open Users & roles" },
     related: ["users-roles", "my-day"],
@@ -113,7 +114,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Zones drive almost everything geographic: [routes](article:routes-planning) are planned per zone, the [weather forecast](article:weather) in the header covers each zone, and reports can break revenue down by zone. Give each zone coordinates (or a postal prefix) so maps and forecasts work.",
       "Rule of thumb: one zone per area a tech can comfortably cover in a day.",
     ],
-    appLink: { to: "/zones", label: "Open Zones" },
+    appLink: { to: "/settings/zones", label: "Open Zones" },
     related: ["routes-planning", "weather", "first-30-minutes"],
   },
   {
@@ -230,7 +231,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     section: "Client-facing",
     body: [
       "Every client gets a private portal link where they can see upcoming visits, pay invoices, save a card, put service on hold, and refer neighbors.",
-      "Clients sign in with a one-time code sent by email. Codes by text are coming soon. If a client can't get their code, staff can read one to them over the phone from the client's detail page in [Clients](/clients).",
+      "Clients sign in with a one-time code sent by email. Once texting is set up for your business, codes can go by text too. If a client can't get their code, staff can read one to them over the phone from the client's detail page in [Clients](/clients).",
       "The portal carries your branding: set your logo and brand color in [Client portal](/settings/client-portal).",
     ],
     related: ["lead-form", "getting-paid", "credit-balance", "reclean-requests"],
