@@ -55,6 +55,8 @@
 // for an action that will never apply, and the tech drives away believing the
 // visit is recorded. Only transport failures and timeouts fall through.
 
+import { recordRequestOutcome } from "@/lib/offline/last-request";
+
 /** How long a field action may wait before it is treated as unreachable.
  *
  *  Eight seconds is a compromise between two bad outcomes. Too short and a
@@ -110,6 +112,16 @@ export function isTransportFailure(e: unknown): boolean {
   return /failed to fetch|networkerror|load failed|network request failed|timeout|abort/i.test(msg);
 }
 
+/** Tell the connection line what happened (R2-53). Never allowed to fail
+ *  the action it is reporting on. */
+function notifyOutcome(o: "ok" | "failed"): void {
+  try {
+    recordRequestOutcome(o);
+  } catch {
+    /* an indicator must never fail an action */
+  }
+}
+
 export type RunOrQueueOptions = {
   /** `navigator.onLine`. False is trustworthy; true is a guess. */
   online: boolean;
@@ -138,10 +150,15 @@ export async function runOrQueue<T = unknown>(
   if (o.online) {
     try {
       const result = await withDeadline(o.send(), o.deadlineMs ?? ACTION_DEADLINE_MS, o.label);
+      notifyOutcome("ok");
       return { queued: false, result };
     } catch (e) {
       // A server rejection is the tech's answer, not a network condition.
-      if (!isTransportFailure(e)) throw e;
+      if (!isTransportFailure(e)) {
+        notifyOutcome("ok");
+        throw e;
+      }
+      notifyOutcome("failed");
       console.warn(`[offline] ${o.label} unreachable, queueing`, e);
     }
   }

@@ -1,5 +1,5 @@
 // Runtime helpers that gracefully no-op on web and use Capacitor natively.
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import { FCM_CONFIGURED } from "@/lib/native-build";
 
 export const isNative = () => Capacitor.isNativePlatform();
@@ -18,14 +18,59 @@ export async function hapticSuccess() {
   await Haptics.notification({ type: NotificationType.Success });
 }
 
+/**
+ * A photo from the camera OR the library, on a native build (R2-36).
+ *
+ * This was `CameraSource.Camera`, so the completion photo could only be taken
+ * there and then. A tech who had already photographed the gate on the phone's
+ * own camera (in the rain, before the gloves came off), or whose camera app
+ * had just crashed, had no way to attach it. `Prompt` is the plugin's own
+ * native sheet: "Take photo" / "Choose from library" / Cancel.
+ *
+ * Neither choice needs a new permission. iOS already declares
+ * NSPhotoLibraryUsageDescription; on Android the library half is the system
+ * photo picker (PickVisualMedia in the plugin's LegacyCameraFlow), which hands
+ * back one image with a read grant, so the manifest's removal of
+ * READ_MEDIA_IMAGES (tests/a-photo-pick-does-not-need-the-gallery.test.ts)
+ * still holds.
+ *
+ * The sheet is native, so lib/i18n cannot reach it: its four labels are passed
+ * in, translated, or the plugin draws English ("From Photos", "Take Picture")
+ * to a tech who chose Español.
+ *
+ * A Cancel on the sheet rejects exactly like a cancelled camera ("User
+ * cancelled photos app"), which every caller already treats as a no.
+ */
+export async function photoPromptLabels(): Promise<{
+  promptLabelHeader: string;
+  promptLabelPhoto: string;
+  promptLabelPicture: string;
+  promptLabelCancel: string;
+}> {
+  const { default: i18n } = await import("@/lib/i18n");
+  return {
+    promptLabelHeader: i18n.t("photo.pickerHeader"),
+    promptLabelPhoto: i18n.t("photo.pickerLibrary"),
+    promptLabelPicture: i18n.t("photo.take"),
+    promptLabelCancel: i18n.t("common.cancel"),
+  };
+}
+
 export async function takePhotoNative(): Promise<Blob | null> {
   if (!isNative()) return null;
   const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
+  let labels: Partial<Awaited<ReturnType<typeof photoPromptLabels>>> = {};
+  try {
+    labels = await photoPromptLabels();
+  } catch {
+    // English from the plugin is better than no photo.
+  }
   const photo = await Camera.getPhoto({
     quality: 80,
     resultType: CameraResultType.Uri,
-    source: CameraSource.Camera,
+    source: CameraSource.Prompt,
     correctOrientation: true,
+    ...labels,
   });
   if (!photo.webPath) return null;
   const res = await fetch(photo.webPath);
@@ -510,23 +555,120 @@ export async function hideSplashScreen() {
   }
 }
 
+/**
+ * What sits under the clock, and which icons go on it (R2-28).
+ *
+ * Capacitor names a style after the CONTENT: Style.Light is dark icons for a
+ * light surface, Style.Dark is light icons for a dark one. The band colours
+ * are the app's own `--background` in styles.css (white, and the `.dark`
+ * slate), because on Android 15+ that band IS what the person sees behind
+ * the clock: either the page, drawn under the bar, or the WebView's parent,
+ * which Capacitor pads by the bar's height when it does not pass the inset
+ * through. Pure, so the contrast can be asserted without a device.
+ */
+export function statusBarChrome(dark: boolean): {
+  style: "DARK" | "LIGHT";
+  band: string;
+  icons: string;
+} {
+  return dark
+    ? { style: "DARK", band: "#020617", icons: "#FFFFFF" }
+    : { style: "LIGHT", band: "#FFFFFF", icons: "#000000" };
+}
+
+/**
+ * The app's own native bridge, registered in MainActivity (Android only):
+ * the two things no installed plugin can do. See
+ * android/app/src/main/java/consulting/thenorth/houndstack/HoundStackNativePlugin.java.
+ */
+interface HoundStackNativePlugin {
+  setSystemBarBackground(opts: { color: string }): Promise<void>;
+  openAppSettings(): Promise<void>;
+}
+let houndStackNative: HoundStackNativePlugin | null = null;
+function nativeBridge(): HoundStackNativePlugin {
+  if (!houndStackNative) {
+    houndStackNative = registerPlugin<HoundStackNativePlugin>("HoundStackNative");
+  }
+  return houndStackNative;
+}
+
+/**
+ * Status-bar icons and the band behind them, from the theme the APP is in.
+ *
+ * R2-28 (Pixel, Android 16, system dark mode): after sign-in the clock was
+ * dark icons on a dark band. The app was light (DEFAULT_THEME, lib/theme.ts),
+ * so it asked for dark icons, correctly; the band was wrong. Under edge-to-
+ * edge (targetSdk 35+) `StatusBar.setBackgroundColor` is a no-op — the plugin
+ * checks and skips it — and what shows behind the bar is the WebView's parent,
+ * which is transparent, so the window's DayNight background shows through:
+ * black in system dark mode, whatever theme the app chose. Capacitor's
+ * SystemBars also re-applies that background on every configuration change.
+ *
+ * So the band is now painted on the WebView's parent by our own bridge, which
+ * SystemBars does not touch, and styles.xml starts the window light rather
+ * than DayNight for the frames before this runs. Pre-15 devices still take
+ * setBackgroundColor, which works there.
+ */
 export async function initStatusBar() {
   if (!isNative()) return;
   const { StatusBar, Style } = await import("@capacitor/status-bar");
-  // Match the rendered app theme, not the (dark) splash. The staff app ships
-  // light-themed — dark mode is opt-in via a `.dark` root class — so pick the
-  // icon style from the actual document state: Style.Light = dark icons for a
-  // light background; Style.Dark = light icons for a dark background.
   const dark =
     typeof document !== "undefined" && document.documentElement.classList.contains("dark");
-  await StatusBar.setStyle({ style: dark ? Style.Dark : Style.Light });
+  const chrome = statusBarChrome(dark);
+  await StatusBar.setStyle({ style: chrome.style === "DARK" ? Style.Dark : Style.Light });
   if (platform() === "android") {
     try {
-      await StatusBar.setBackgroundColor({ color: dark ? "#0F172A" : "#FFFFFF" });
+      await nativeBridge().setSystemBarBackground({ color: chrome.band });
+    } catch {
+      // An older binary without the bridge: cosmetic only, never fatal.
+    }
+    try {
+      await StatusBar.setBackgroundColor({ color: chrome.band });
     } catch {
       // Overlay mode / older WebView — cosmetic only, never fatal.
     }
   }
+}
+
+/**
+ * Re-run initStatusBar whenever the app's theme changes (Settings →
+ * Preferences, or "System" following the phone at sunset). It used to be set
+ * once at boot, so switching to Dark left dark icons on a dark page until the
+ * next launch. Returns the unsubscribe; a no-op on web.
+ */
+export function followThemeWithStatusBar(
+  watch: (onChange: (dark: boolean) => void) => () => void,
+): () => void {
+  if (!isNative()) return () => {};
+  return watch(() => {
+    void initStatusBar().catch(() => {});
+  });
+}
+
+/**
+ * Open this app's page in the system Settings app, where Location (and
+ * Notifications, and Camera) are switches. iOS through `app-settings:` (see
+ * openAppNotificationSettings for why that works); Android through the bridge
+ * above, which starts ACTION_APPLICATION_DETAILS_SETTINGS for this package —
+ * there is no URL Android's WebView can navigate to that does it. Returns
+ * whether it tried.
+ */
+export async function openAppSettings(): Promise<boolean> {
+  if (!isNative()) return false;
+  if (platform() === "ios") {
+    window.location.href = "app-settings:";
+    return true;
+  }
+  if (platform() === "android") {
+    try {
+      await nativeBridge().openAppSettings();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
 }
 
 // ── THE ANDROID BACK BUTTON ──────────────────────────────────────────────
