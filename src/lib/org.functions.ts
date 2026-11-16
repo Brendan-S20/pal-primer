@@ -149,7 +149,22 @@ export const bootstrapOrganization = createServerFn({ method: "POST" })
     if (orgId && data.serviceLine && !member?.length) {
       try {
         const { startNewOrgOnRequestedLine } = await import("@/lib/org-features.functions");
-        await startNewOrgOnRequestedLine(supabase, orgId as string, data.serviceLine);
+        const lines = await startNewOrgOnRequestedLine(supabase, orgId as string, data.serviceLine);
+        // A business that came for walking, sitting, grooming or training
+        // starts without the completion-photo rule; a scooper keeps it (#915,
+        // lib/new-business-defaults.ts). Only when the line was applied: the
+        // business still runs {pet_waste} otherwise, whose default is on.
+        if (lines) {
+          const { DEFAULT_SERVICE_LINES } = await import("@/lib/service-lines");
+          const { followNewBusinessPhotoDefault } =
+            await import("@/lib/new-business-defaults.server");
+          await followNewBusinessPhotoDefault(
+            supabase,
+            orgId as string,
+            DEFAULT_SERVICE_LINES,
+            lines,
+          );
+        }
       } catch (e) {
         console.error("requested service line not applied (continuing without it)", e);
       }

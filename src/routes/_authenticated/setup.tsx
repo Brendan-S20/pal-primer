@@ -462,7 +462,8 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
   // 08:00-17:00 for a new business) and saved with the step, so the hours
   // every arrival window is computed from are hours the owner has seen.
   const dispatch = dispatchQ.data?.settings as
-    { workday_start?: string | null; workday_end?: string | null } | undefined;
+    | { workday_start?: string | null; workday_end?: string | null }
+    | undefined;
   const dayStartVal =
     dayStart ?? workdayField(dispatch?.workday_start, SETUP_WORKDAY_DEFAULTS.start);
   const dayEndVal = dayEnd ?? workdayField(dispatch?.workday_end, SETUP_WORKDAY_DEFAULTS.end);
@@ -507,7 +508,9 @@ function BusinessPanel({ onSaved, alreadyDone }: { onSaved: () => void; alreadyD
         // First, because it decides what the later steps ask: a business that
         // does not run pet waste is asked where its day ends, not for a dump
         // site.
-        if (linesChanged) await saveLinesFn({ data: { lines: linesVal } });
+        // atSetup: the lines a new business picks here also pick its
+        // completion-photo default (#915); the server re-checks it is new.
+        if (linesChanged) await saveLinesFn({ data: { lines: linesVal, atSetup: !alreadyDone } });
         // The country, when the address says it plainly ("TX 78701" is US) and
         // nobody has chosen one yet: it decides miles or km on the board
         // (#496). A choice made in Settings > Business is never overwritten.
@@ -1370,7 +1373,8 @@ function StaffPanel({ onSaved }: { onSaved: () => void }) {
   const [email, setEmail] = useState("");
 
   const mine = (staffQ.data?.staff ?? []).find((s: any) => s.id === me?.id) as
-    { id: string; is_field_tech: boolean | null } | undefined;
+    | { id: string; is_field_tech: boolean | null }
+    | undefined;
   const iRunRoutes = !!mine?.is_field_tech;
 
   const selfMut = useMutation(
