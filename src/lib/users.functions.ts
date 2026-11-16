@@ -52,10 +52,9 @@ async function listLeftTeammates(
   members: Array<{ user_id: string | null }>,
 ): Promise<import("@/lib/team-left").LeftTeammate[]> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  // The generated types do not carry staff.email; the columns read are
-  // spelled out below and typed by LeftStaffRow / LeftEvent.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const admin = supabaseAdmin as any;
+  // Untyped client: the generated types do not carry staff.email. The
+  // columns read are spelled out below and typed by LeftStaffRow / LeftEvent.
+  const admin = supabaseAdmin as unknown as import("@supabase/supabase-js").SupabaseClient;
   const { data: staff, error: staffErr } = await admin
     .from("staff")
     .select("id, user_id, display_name, email, role, active, created_at")
