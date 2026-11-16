@@ -393,7 +393,30 @@ describe("moving a visit to another day (visit drawer)", () => {
     expect(state.rpcs).toEqual([]);
   });
 
-  it("completing and canceling, which can bill, still refuse a dispatcher", async () => {
+  it("completing and canceling ask for close_visits, which a dispatcher holds by default (#863) and a technician does not", async () => {
+    // Brendan, 2026-11-12: a dispatcher completes a visit for a tech and
+    // cancels one. The gate is close_visits, its own permission, so the
+    // dispatcher gets neither invoices nor prepaid with it.
+    const src = read("src/lib/visits.functions.ts");
+    expect(
+      src.match(/loadVisitForOfficeAction\(supabase, userId, data\.visitId, "close_visits"\)/g),
+    ).toHaveLength(2);
+    const outcome = (p: Promise<unknown>) => p.then(() => "ok", (e: Error) => e.message);
+    expect(
+      await outcome(
+        (completeVisitFromOffice as any)({
+          data: { visitId: "11111111-1111-4111-8111-111111111111", confirmedEarly: true },
+        }),
+      ),
+    ).not.toBe("Not authorized");
+    expect(
+      await outcome(
+        (cancelVisitFromOffice as any)({
+          data: { visitId: "11111111-1111-4111-8111-111111111111", reason: "rain" },
+        }),
+      ),
+    ).not.toBe("Not authorized");
+    state.role = "tech";
     await expect(
       (completeVisitFromOffice as any)({
         data: { visitId: "11111111-1111-4111-8111-111111111111", confirmedEarly: true },
@@ -404,7 +427,6 @@ describe("moving a visit to another day (visit drawer)", () => {
         data: { visitId: "11111111-1111-4111-8111-111111111111", reason: "rain" },
       }),
     ).rejects.toThrow("Not authorized");
-    expect(state.rpcs).toEqual([]);
   });
 });
 
@@ -438,21 +460,22 @@ describe("texting a client", () => {
 // ── The screens say what the server allows ─────────────────────────────────
 
 describe("the screens and the help text", () => {
-  it("the routes drawer offers Move to a dispatcher, and Complete/Cancel only to billing roles", () => {
+  it("the routes drawer offers Move on manage_schedule, and Complete/Cancel on close_visits (#863)", () => {
     const src = read("src/components/VisitDetailDrawer.tsx");
     expect(src).toContain('const canMoveDay = can("manage_schedule");');
     expect(src).toMatch(/\{canMoveDay && \(\s*<form/);
-    expect(src).toContain('const canActFromOffice = can("manage_client_billing");');
+    expect(src).toContain('const canActFromOffice = can("close_visits");');
   });
 
-  it("the client's Visits tab offers Reschedule and Reassign on manage_schedule, Cancel on billing", () => {
+  it("the client's Visits tab offers Reschedule and Reassign on manage_schedule, Complete and Cancel on close_visits", () => {
     const src = read("src/components/client-detail/VisitsTab.tsx");
     expect(src).toContain('const canSchedule = canDo("manage_schedule");');
+    expect(src).toContain('const canClose = canDo("close_visits");');
     expect(src).toMatch(/\{canSchedule && canReschedule && \(/);
     expect(src).toMatch(/\{scheduled && canSchedule && \(/);
-    expect(src).toMatch(/\{scheduled && canCorrect && \(/);
-    expect(src).toMatch(/action === "cancel" && scheduled && canCorrect/);
-    expect(src).toMatch(/\{canCorrect && canComplete && \(/);
+    expect(src).toMatch(/\{scheduled && canClose && \(/);
+    expect(src).toMatch(/action === "cancel" && scheduled && canClose/);
+    expect(src).toMatch(/\{canClose && canComplete && \(/);
   });
 
   it("the wizard shows a dispatcher the set price and no box to change it", () => {
@@ -465,11 +488,13 @@ describe("the screens and the help text", () => {
   it("the Roles help page says what a dispatcher can do now, and what stays with the owner", () => {
     const help = read("src/lib/help-content.ts");
     expect(help).toContain("**Dispatcher:** the schedule, routes, weather, clients, and messages.");
+    // #863 (Brendan, 2026-11-12): completing and canceling are a dispatcher's
+    // by default now; prepaid, invoices and payments are not.
     expect(help).toContain(
-      "A dispatcher can add a client and start their plan at the set price, move a visit to another day or another technician, and text a client.",
+      "A dispatcher can add a client and start their plan at the set price, move a visit to another day or another technician, complete a visit for a technician or cancel one, and text a client.",
     );
     expect(help).toContain(
-      "Completing or canceling a visit from the office, invoices and payments, prices, settings, and who has access stay with the owner and office manager.",
+      "Invoices and payments, prepaid plans, prices, settings, and who has access stay with the owner and office manager.",
     );
   });
 

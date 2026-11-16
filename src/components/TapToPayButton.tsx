@@ -101,7 +101,7 @@ export function TapToPayButton({
   invoiceLabel?: string | null;
   onPaid: () => void;
 }) {
-  const { role } = usePermissions();
+  const { role, permissions } = usePermissions();
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [error, setError] = useState<string | null>(null);
   const [businessName, setBusinessName] = useState("");
@@ -115,6 +115,7 @@ export function TapToPayButton({
     platform,
     userAgent,
     role,
+    permissions,
     cardPaymentsReady,
     invoiceStatus,
     dueCents,
@@ -159,7 +160,7 @@ export function TapToPayButton({
       // sheet is never raised for them.
       ({ termsLinked } = await connectTapToPayReader(prep, {
         platform,
-        allowTerms: canAcceptTapToPayTerms(role),
+        allowTerms: canAcceptTapToPayTerms(role, permissions),
       }));
       const { StripeTerminal } = await ensureTerminal(prep.isTest);
 

@@ -18,6 +18,7 @@ import { bookingPageHead, telHref, unavailablePageHead } from "@/lib/booking-pag
 import { appOrigin } from "@/lib/app-origin";
 import { customerTitle } from "@/lib/page-title";
 import { SIGNUP_FORM_STALE_MS, SignupFlow } from "@/components/signup/SignupFlow";
+import { directoryBookingSearch } from "@/lib/directory";
 
 // A business's one public form: price the yard, then start service or ask for
 // a quote. /lead/{slug}, the hosted lead form that used to be a second page
@@ -32,6 +33,13 @@ import { SIGNUP_FORM_STALE_MS, SignupFlow } from "@/components/signup/SignupFlow
 // The search params are passed through untouched (zone, ref, utm_*, embed and
 // whatever a tenant's site appends) so a redirect from the old address, or a
 // link the tenant built, keeps everything it carried.
+//
+// Four of them are read (#630, step 7), and only as the directory's hand-off
+// (/d/{slug}/book) writes them: `ref` naming the directory, `service` (an id
+// this business lists), `zip`, and `book=1`. A visitor from the directory
+// starts on that service and ZIP, and without `book=1` gets the quote request
+// and no card, whatever this link would otherwise sell. A visit without the
+// directory's ref is the page it always was.
 
 export const Route = createFileRoute("/signup/$slug")({
   validateSearch: (s: Record<string, unknown>) => s,
@@ -146,7 +154,8 @@ function SignupPage() {
   if (formQ.error || !formQ.data) return <Unavailable compact={embedded} />;
 
   const org = formQ.data;
-  const copy = formCopy(org.form, org.instantStart);
+  const fromDirectory = directoryBookingSearch(search as Record<string, unknown>);
+  const copy = formCopy(org.form, org.instantStart && !fromDirectory.quoteOnly);
   const servicesLine = bookingServicesLine((org.services ?? []).map((s) => s.service_line));
   const services = org.services ?? [];
   const line = pickedLine ?? bookingLine(services, quotedPublicService(services, ""), org.lines);
@@ -189,7 +198,15 @@ function SignupPage() {
           <BusinessFacts contact={org.contact} serviceArea={org.serviceArea} />
         </div>
 
-        <SignupFlow slug={slug} variant="page" onLineChange={setPickedLine} />
+        <SignupFlow
+          slug={slug}
+          variant="page"
+          onLineChange={setPickedLine}
+          prefill={fromDirectory.zip ? { postal_code: fromDirectory.zip } : undefined}
+          initialServiceId={fromDirectory.serviceId}
+          fromDirectory={fromDirectory.fromDirectory}
+          quoteOnly={fromDirectory.quoteOnly}
+        />
       </section>
     </TenantSignupShell>
   );

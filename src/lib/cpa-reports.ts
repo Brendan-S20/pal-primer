@@ -43,7 +43,7 @@
 
 import type { AppRole } from "@/hooks/useMyRole";
 import { hasEntitlement, type PlanTier } from "@/lib/entitlements";
-import { hasPermission } from "@/lib/permissions";
+import { hasPermission, type PermissionOverrides } from "@/lib/permissions";
 
 export type ReportBasis = "cash" | "accrual" | "none";
 
@@ -434,7 +434,10 @@ export function salesTaxByMonth(
   netTaxCollectedCents: number;
   taxedPaymentCount: number;
 }> {
-  const by = new Map<string, { billed: number; collected: number; refunded: number; count: number }>();
+  const by = new Map<
+    string,
+    { billed: number; collected: number; refunded: number; count: number }
+  >();
   for (const m of months) by.set(m, { billed: 0, collected: 0, refunded: 0, count: 0 });
   const at = (m: string) => {
     let b = by.get(m);
@@ -519,7 +522,6 @@ export function reducesIncome(kind: string): boolean {
  *
  *  en-CA formats as YYYY-MM-DD, which is the shape every date column here uses. */
 export { orgLocalDay } from "@/lib/org-day";
-
 
 /** "2026-03-14" → "2026-03". */
 export function monthKey(day: string): string {
@@ -650,8 +652,15 @@ export function settlementOverlapsPeriod(
 export function mayViewFranchiseSettlements(
   role: AppRole | null | undefined,
   tier: PlanTier,
+  // The business's overrides for the caller's role (#863). manage_franchise
+  // is owner-only whatever is stored, so this changes no answer; it is here
+  // so the helper reads the configured set like every other gate.
+  overrides?: PermissionOverrides | null,
 ): boolean {
-  return hasPermission(role, "manage_franchise") && hasEntitlement(tier, "franchise_structure");
+  return (
+    hasPermission(role, "manage_franchise", overrides) &&
+    hasEntitlement(tier, "franchise_structure")
+  );
 }
 
 /** A filename an accountant can find again in six months without opening it. */

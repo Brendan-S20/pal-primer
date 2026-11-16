@@ -147,7 +147,7 @@ const es: Translations = {
       "Aceptamos tarjetas de crédito y débito. Los datos de tu tarjeta nunca pasan por nuestros servidores.",
     pay: "Los pagos se procesan de forma segura. Se aceptan tarjetas.",
     texts:
-      "Los mensajes de texto estarán disponibles próximamente. Hasta entonces, recibirás estas novedades por correo electrónico.",
+      "Los mensajes de texto aún no están activados aquí. Hasta entonces, recibirás estas novedades por correo electrónico.",
     cardPayments: "Recibe pagos con tarjeta directamente en tu cuenta bancaria.",
     held: "Está en tu plan, pero aún no se ha lanzado y no tiene efecto en tu cuenta. Puedes quitarlo cuando quieras.",
     soon: "Próximamente",
@@ -165,7 +165,7 @@ const es: Translations = {
       "Clientes fundadores: las primeras {{spots}} cuentas de pago reciben un {{percent}}% de descuento en su plan mientras mantengan la suscripción. Las personas adicionales y los complementos se cobran al precio normal. Usa el código {{code}} al pagar.",
     remaining: "Quedan {{left}} de {{spots}}.",
     help0:
-      "Los clientes inician sesión con un código de un solo uso enviado por correo electrónico. Los códigos por texto estarán disponibles próximamente. Si un cliente no recibe su código, el personal puede leérselo por teléfono desde su página de detalle en [Clientes](/clients).",
+      "Los clientes inician sesión con un código de un solo uso enviado por correo electrónico. Cuando los mensajes de texto estén configurados para tu negocio, los códigos también podrán enviarse por texto. Si un cliente no recibe su código, el personal puede leérselo por teléfono desde su página de detalle en [Clientes](/clients).",
     help1:
       "Próximamente: publicaciones de marketing y [recepción con IA](article:platform-addons), que responderá mensajes y llamadas de clientes. Ninguna está activada todavía.",
     help2:

@@ -780,8 +780,12 @@ function NewClientWizardForm({
       latitude: geo?.lat,
       longitude: geo?.lng,
       ...(commercial ? { unitCount: unitsN, stationCount: stationsN } : {}),
+      // #860: the pet-waste service's own standard price, where no zone
+      // overrides it. Nothing chosen: the business's default pet-waste service.
+      ...(chosenService?.service_line === "pet_waste" ? { serviceId: chosenService.id } : {}),
     }),
     [
+      chosenService,
       postalCode,
       accountType,
       dogCount,
@@ -1038,7 +1042,7 @@ function NewClientWizardForm({
                 serviceId: chosenService?.id,
                 dogCount: accountType === "residential" ? dogCount : undefined,
                 unitCount: accountType === "commercial" ? unitsN : undefined,
-                zoneId: zoneQuote ? (zoneQuote.zoneId as string) : undefined,
+                zoneId: (zoneQuote?.zoneId as string | null | undefined) ?? undefined,
                 billingCadence: billsClients ? billingCadence : "postpaid",
               },
           officeNote: (officeNote ?? "").trim() || undefined,
@@ -1991,8 +1995,8 @@ function NewClientWizardForm({
                           !("quote" in (quoteQ.data as any)) && (
                             <div className="text-sm text-amber-800 dark:text-amber-300">
                               {setsPrices
-                                ? `No zone matches ZIP ${postalCode}. Set price manually below.`
-                                : `No zone matches ZIP ${postalCode}, so there is no set price.`}
+                                ? `No zone matches ZIP ${postalCode} and there is no standard price yet. Set one in Settings → Services, or type a price below.`
+                                : `No zone matches ZIP ${postalCode} and there is no standard price yet, so there is no set price.`}
                             </div>
                           )}
                         {walkLike && serviceCents == null && (
@@ -2011,7 +2015,20 @@ function NewClientWizardForm({
                             </div>
                           )}
                       </div>
-                      {zoneQuote && <Badge variant="secondary">Zone: {zoneQuote.zoneName}</Badge>}
+                      {/* #860: which setting the price came from. A zone's own
+                          price only applies inside it; anywhere else it is the
+                          standard price from Settings → Services. */}
+                      {zoneQuote?.priceSource === "standard" ? (
+                        <Badge variant="secondary">
+                          {zoneQuote.zoneName
+                            ? `Standard price · ${zoneQuote.zoneName}`
+                            : "Standard price"}
+                        </Badge>
+                      ) : (
+                        zoneQuote?.zoneName && (
+                          <Badge variant="secondary">Zone: {zoneQuote.zoneName}</Badge>
+                        )
+                      )}
                       {walkLike && serviceCents != null && (
                         <Badge variant="secondary">From the {chosenService!.name} price</Badge>
                       )}

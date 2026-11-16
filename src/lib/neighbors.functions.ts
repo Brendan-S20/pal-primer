@@ -34,7 +34,7 @@ async function resolveSeederOrgId(
   clientId: string,
 ): Promise<string> {
   const caller = await resolveCaller(supabase, userId);
-  if (hasPermission(caller.role, "view_client_directory")) return caller.orgId;
+  if (hasPermission(caller.role, "view_client_directory", caller.overrides)) return caller.orgId;
 
   const { data: staffRow } = await supabase
     .from("staff")
@@ -69,7 +69,7 @@ export const listCanvassSeedClients = createServerFn({ method: "GET" })
     const { supabase, userId } = context;
     const caller = await resolveCaller(supabase, userId);
 
-    if (hasPermission(caller.role, "view_client_directory")) {
+    if (hasPermission(caller.role, "view_client_directory", caller.overrides)) {
       const { data, error } = await supabase
         .from("clients")
         .select("id, display_name")
@@ -126,8 +126,8 @@ export type NeighborLead = {
 export const listNeighborLeads = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { orgId, role } = await resolveCaller(context.supabase, context.userId);
-    const canSeeDirectory = hasPermission(role, "view_client_directory");
+    const { orgId, role, overrides } = await resolveCaller(context.supabase, context.userId);
+    const canSeeDirectory = hasPermission(role, "view_client_directory", overrides);
     const { data, error } = await context.supabase
       .from("neighbor_leads")
       .select(

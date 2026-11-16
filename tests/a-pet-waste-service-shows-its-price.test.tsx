@@ -31,6 +31,7 @@ import {
   ONE_OFF_PRICE_SETTING_PATH,
   ONE_TIME_CLEANUP_PRICE_LABEL,
   lowestZoneVisitCents,
+  oneTimeCleanupListLine,
   oneTimeCleanupPriceUpdate,
   petWasteOneTimeSave,
   petWastePriceLabel,
@@ -40,6 +41,7 @@ import {
   ONE_TIME_BLANK_MEANS,
   ONE_TIME_PRICE_INPUT_ID,
   PetWastePriceFields,
+  STANDARD_PRICE_INPUT_ID,
 } from "@/components/settings/PetWastePriceFields";
 import {
   ONE_TIME_PRICE_LOAD_ERROR,
@@ -56,9 +58,13 @@ const page = () => read("src/routes/_authenticated/settings.services.tsx");
 const fields = (props: Partial<Parameters<typeof PetWastePriceFields>[0]> = {}) =>
   renderToStaticMarkup(
     createElement(PetWastePriceFields, {
+      standardPrice: "",
+      extraDog: "",
+      onStandardPriceChange: () => {},
+      onExtraDogChange: () => {},
+      zoneOverrides: null,
       oneTimePrice: "",
       savedOneTimeCents: null,
-      zoneFromCents: null,
       onOneTimePriceChange: () => {},
       ...props,
     }),
@@ -74,12 +80,16 @@ describe("the Add / Edit service form for pet waste has a price control (#788)",
     expect(html).not.toMatch(/not priced here/i);
   });
 
-  it("shows the zone price as a figure and links to Zones & pricing, first cleanup included", () => {
-    const html = fields({ zoneFromCents: 2500 });
-    expect(html).toContain("from $25.00 per visit");
-    expect(html).toContain('href="/zones"');
+  it("edits the standard price, and links to Zones & pricing for overrides (#860)", () => {
+    const html = fields({ standardPrice: "20.00", extraDog: "5.00", zoneOverrides: 2 });
+    expect(html).toContain(`id="${STANDARD_PRICE_INPUT_ID}"`);
+    expect(html).toContain('value="20.00"');
+    expect(html).toContain('value="5.00"');
+    expect(html).toContain("2 zones have their own price, which applies only inside that zone.");
+    expect(html).toContain('href="/settings/zones"');
     expect(html).toMatch(/first-cleanup fee/);
-    expect(fields({ zoneFromCents: null })).toContain("No zone has a price yet.");
+    expect(html).toMatch(/does not change the price of plans you already have/);
+    expect(fields({ zoneOverrides: 0 })).toContain("A zone can set its own price");
   });
 
   it("names the Client portal field it shares, and links to it", () => {
@@ -117,8 +127,8 @@ describe("saving persists the amount the list shows (#788)", () => {
   it("and the list then reads that amount", () => {
     const saved = petWasteOneTimeSave("pet_waste", "75", setting);
     if (!saved || "problem" in saved) throw new Error("expected a write");
-    expect(petWastePriceLabel({ zoneFromCents: 2500, oneTimeCents: saved.data.priceCents })).toBe(
-      "Plans from $25.00 per visit, by zone · One-time cleanup $75.00",
+    expect(oneTimeCleanupListLine(saved.data.priceCents)).toBe(
+      "One-time cleanup (any pet waste service): $75.00",
     );
     // The booking link and quotes price a one-time cleanup from the same number.
     expect(
@@ -175,21 +185,37 @@ describe("saving persists the amount the list shows (#788)", () => {
 });
 
 describe("the Services list shows a real amount for pet waste (#788)", () => {
-  it("both amounts once set", () => {
-    expect(petWastePriceLabel({ zoneFromCents: 2500, oneTimeCents: 7500 })).toBe(
-      "Plans from $25.00 per visit, by zone · One-time cleanup $75.00",
+  // #860: each row shows ITS standard price; "no zone price yet" was shown
+  // after the owner had saved $20, because the $20 was not the zone's.
+  it("each pet-waste row shows its own standard price", () => {
+    expect(petWastePriceLabel({ standardCents: 2000, perDogCents: 500, zoneOverrides: 0 })).toBe(
+      "Standard price $20.00 per visit + $5.00 per extra dog",
+    );
+    expect(petWastePriceLabel({ standardCents: 2000, perDogCents: 0, zoneOverrides: 1 })).toBe(
+      "Standard price $20.00 per visit · 1 zone with its own price",
     );
   });
 
   it("says what is missing rather than a bare 'Priced by your zones'", () => {
-    const label = petWastePriceLabel({ zoneFromCents: null, oneTimeCents: null });
-    expect(label).toBe("Plans: no zone price yet · One-time cleanup: no price yet");
-    expect(label).not.toBe("Priced by your zones");
+    const label = petWastePriceLabel({ standardCents: null, perDogCents: 0, zoneOverrides: 0 });
+    expect(label).toBe("Standard price: not set yet");
+    expect(label).not.toMatch(/no zone price yet/);
   });
 
-  it("the list uses it for pet waste once the two settings have loaded", () => {
+  it("says the one-time cleanup once, above the list, not on every row", () => {
+    expect(oneTimeCleanupListLine(null)).toBe(
+      "One-time cleanup (any pet waste service): no price yet",
+    );
+    for (const z of [0, 2])
+      expect(
+        petWastePriceLabel({ standardCents: 2000, perDogCents: 0, zoneOverrides: z }),
+      ).not.toMatch(/One-time cleanup/);
+    expect(page()).toContain("{oneTimeCleanupListLine(portalQ.data.priceCents)}");
+  });
+
+  it("the list uses it for pet waste", () => {
     expect(page()).toMatch(
-      /s\.service_line === "pet_waste" && portalQ\.data && zonesQ\.data\s*\?\s*petWastePriceLabel/,
+      /s\.service_line === "pet_waste"\s*\?\s*petWastePriceLabel\(\{\s*standardCents: s\.base_price_cents/,
     );
     expect(page()).toContain("{priceLabelOf(s)}");
     // Every other line keeps its own price, unchanged.
@@ -355,8 +381,11 @@ describe("a price that fails to save does not make a second service (#812 review
 
 describe("the copy says what a blank one-time price does, everywhere it is read (#812 review)", () => {
   it("names the booking link, the office's one-off and the portal's extra visits", () => {
-    expect(ONE_TIME_BLANK_MEANS).toMatch(/booking link charges the zone's visit price/);
-    expect(ONE_TIME_BLANK_MEANS).toMatch(/office types a price for each one-off visit/);
+    // #860: blank falls back to the standard price (or a zone's own), on the
+    // booking link and for the office's one-off alike.
+    expect(ONE_TIME_BLANK_MEANS).toMatch(
+      /booking link and the office's one-off visits charge the standard price/,
+    );
     expect(ONE_TIME_BLANK_MEANS).toMatch(/wait for you to price and book them/);
     const html = fields();
     expect(html).toContain(ONE_TIME_BLANK_MEANS.replace(/'/g, "&#x27;"));

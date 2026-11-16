@@ -26,7 +26,7 @@ for (const w of [360, 1280]) {
     await installSignedInSession(context);
     await installStubBackend(context);
     await page.setViewportSize({ width: w, height: 900 });
-    await page.goto("/zones");
+    await page.goto("/settings/zones");
 
     // ── WHY THIS WAIT, AND WHY IT IS NOT A RETRY ──────────────────────────
     //
@@ -193,7 +193,7 @@ async function openEightZones(page: import("@playwright/test").Page, w: number) 
   await installSignedInSession(page.context());
   await installStubBackend(page.context(), { overrides: { listZones: EIGHT_ZONES } });
   await page.setViewportSize({ width: w, height: 900 });
-  await page.goto("/zones");
+  await page.goto("/settings/zones");
   await page.waitForLoadState("networkidle").catch(() => {});
   // Proof the fixture reached the page, not the one-zone default.
   await expect(page.getByRole("heading", { name: LONG })).toBeVisible({ timeout: 15000 });
@@ -240,7 +240,7 @@ for (const w of [360, 768, 1280, 1920]) {
     await expect(southgate.getByText("Michigan", { exact: true })).toBeVisible();
     await expect(southgate).toContainText("is not a US 5-digit ZIP and matches no address.");
     await expect(
-      page.getByText("48229 is also in Ecorse circle, which wins on priority."),
+      page.getByText("48229 is also in Ecorse circle, which ranks higher and wins."),
     ).toBeVisible();
     await expect(
       page.getByText("No ZIPs listed, so the signup page and lead form can't quote this area."),

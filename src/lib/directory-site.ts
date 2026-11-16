@@ -35,3 +35,12 @@ export function directoryOrigin(): string {
   }
   return appOrigin();
 }
+
+/**
+ * The `ref` the directory app adds to a booking hand-off (#630, step 7):
+ * /d/{directory slug}/book sends a visitor on to the business's own
+ * /signup/{slug}?...&ref=<this>, and a lead or a signup started with it is
+ * tagged as a directory booking (LEAD_SOURCE.directoryBooking). The brand's
+ * first label, derived rather than spelled, so the name stays written once.
+ */
+export const DIRECTORY_REF = DIRECTORY_BRAND.split(".")[0];

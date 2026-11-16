@@ -47,7 +47,8 @@ import {
   durationRequired,
   formatServiceMoney,
   isBookableServiceLine,
-  lowestZoneVisitCents,
+  oneTimeCleanupListLine,
+  zoneOverrideCount,
   petWasteOneTimeSave,
   parseDollarsToCents,
   petWastePriceLabel,
@@ -287,16 +288,22 @@ function ServicesPage() {
         : null,
     [portal],
   );
-  const zoneFromCents = lowestZoneVisitCents(zonesQ.data?.zones);
+  const zoneOverrides = zonesQ.data ? zoneOverrideCount(zonesQ.data.zones) : null;
   // A form opened before the setting arrived (a business with no pet-waste
   // service yet, choosing Pet waste removal) gets the field once it does.
   useEffect(() => {
     if (form && form.oneTimePrice === null && oneTime?.canEdit)
       setForm({ ...form, oneTimePrice: oneTimeInput(oneTime) });
   }, [form, oneTime]);
+  // #860: each pet-waste row shows ITS standard price. The one-time cleanup is
+  // one setting for the business and is said once, above the list.
   const priceLabelOf = (s: Service) =>
-    s.service_line === "pet_waste" && portalQ.data && zonesQ.data
-      ? petWastePriceLabel({ zoneFromCents, oneTimeCents: portalQ.data.priceCents })
+    s.service_line === "pet_waste"
+      ? petWastePriceLabel({
+          standardCents: s.base_price_cents,
+          perDogCents: s.extra_pet_cents,
+          zoneOverrides: zoneOverrides ?? 0,
+        })
       : servicePriceLabel(s);
 
   // The setup checklist's price step is done from this page (R2-47): a walk
@@ -380,74 +387,84 @@ function ServicesPage() {
             {withArticle(serviceNamePlaceholder(defaultServiceLine(lines)))}.
           </p>
         ) : (
-          <ul className="divide-y" data-testid="services-list">
-            {services.map((s) => {
-              const duration = serviceDurationLabel(s.default_duration_min);
-              return (
-                <li
-                  key={s.id}
-                  className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-5"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="min-w-0 truncate text-sm font-medium">{s.name}</span>
-                      <Badge variant="secondary" className="shrink-0">
-                        {serviceLineLabel(s.service_line)}
-                      </Badge>
-                      {availability && !isBookableServiceLine(s.service_line, availability) && (
-                        <ComingSoonBadge />
-                      )}
-                      {!s.active && (
-                        <Badge variant="outline" className="shrink-0">
-                          Inactive
+          <>
+            {services.some((s) => s.service_line === "pet_waste") && portalQ.data && (
+              <p
+                className="border-b px-4 py-2 text-xs text-muted-foreground sm:px-5"
+                data-testid="one-time-cleanup-line"
+              >
+                {oneTimeCleanupListLine(portalQ.data.priceCents)}
+              </p>
+            )}
+            <ul className="divide-y" data-testid="services-list">
+              {services.map((s) => {
+                const duration = serviceDurationLabel(s.default_duration_min);
+                return (
+                  <li
+                    key={s.id}
+                    className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-5"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="min-w-0 truncate text-sm font-medium">{s.name}</span>
+                        <Badge variant="secondary" className="shrink-0">
+                          {serviceLineLabel(s.service_line)}
                         </Badge>
-                      )}
+                        {availability && !isBookableServiceLine(s.service_line, availability) && (
+                          <ComingSoonBadge />
+                        )}
+                        {!s.active && (
+                          <Badge variant="outline" className="shrink-0">
+                            Inactive
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="mt-0.5 text-xs text-muted-foreground">
+                        {priceLabelOf(s)}
+                        {duration ? ` · usually ${duration}` : ""}
+                        {s.public_booking_mode !== undefined &&
+                          ` · Booking link: ${
+                            PUBLIC_BOOKING_MODE_COPY[
+                              isPublicBookingMode(s.public_booking_mode)
+                                ? s.public_booking_mode
+                                : "request_only"
+                            ].label
+                          }`}
+                        {s.service_line === "dog_walking" && s.max_dogs != null && (
+                          <p>Group walk, up to {s.max_dogs} dogs</p>
+                        )}
+                      </div>
                     </div>
-                    <div className="mt-0.5 text-xs text-muted-foreground">
-                      {priceLabelOf(s)}
-                      {duration ? ` · usually ${duration}` : ""}
-                      {s.public_booking_mode !== undefined &&
-                        ` · Booking link: ${
-                          PUBLIC_BOOKING_MODE_COPY[
-                            isPublicBookingMode(s.public_booking_mode)
-                              ? s.public_booking_mode
-                              : "request_only"
-                          ].label
-                        }`}
-                      {s.service_line === "dog_walking" && s.max_dogs != null && (
-                        <p>Group walk, up to {s.max_dogs} dogs</p>
-                      )}
-                    </div>
-                  </div>
-                  {canEdit && (
-                    <div className="flex shrink-0 flex-wrap gap-2">
-                      {s.service_line === "mobile_grooming" && (
-                        <Button
-                          className="min-h-11"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setSizeService(s)}
-                        >
-                          Prices by size
+                    {canEdit && (
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                        {s.service_line === "mobile_grooming" && (
+                          <Button
+                            className="min-h-11"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setSizeService(s)}
+                          >
+                            Prices by size
+                          </Button>
+                        )}
+                        <Button size="sm" variant="outline" onClick={() => open(s)}>
+                          Edit
                         </Button>
-                      )}
-                      <Button size="sm" variant="outline" onClick={() => open(s)}>
-                        Edit
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={toggle.isPending}
-                        onClick={() => toggle.mutate(s)}
-                      >
-                        {s.active ? "Deactivate" : "Reactivate"}
-                      </Button>
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={toggle.isPending}
+                          onClick={() => toggle.mutate(s)}
+                        >
+                          {s.active ? "Deactivate" : "Reactivate"}
+                        </Button>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </>
         )}
       </section>
 
@@ -493,7 +510,7 @@ function ServicesPage() {
               }}
               lines={lines}
               oneTime={oneTime}
-              zoneFromCents={zoneFromCents}
+              zoneOverrides={zoneOverrides}
               oneTimeLoadError={portalQ.isError ? ONE_TIME_PRICE_LOAD_ERROR : null}
               error={formError}
               saving={save.isPending}
@@ -511,7 +528,7 @@ function ServiceForm({
   setForm,
   lines,
   oneTime,
-  zoneFromCents,
+  zoneOverrides,
   oneTimeLoadError,
   error,
   saving,
@@ -521,7 +538,7 @@ function ServiceForm({
   setForm: (f: FormState) => void;
   lines: readonly ServiceLine[];
   oneTime: OneTimeSetting;
-  zoneFromCents: number | null;
+  zoneOverrides: number | null;
   oneTimeLoadError: string | null;
   error: string | null;
   saving: boolean;
@@ -635,16 +652,19 @@ function ServiceForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         {petWaste ? (
-          // A pet-waste service's own price is not read (#641): a plan is
-          // priced by its zone, a one-time cleanup by the owner's extra-visit
-          // price. Both amounts are shown, and the one-time one is edited
-          // here (#788). Whatever base price an older form saved is left as
-          // it was and sent back unchanged.
+          // #860: a pet-waste service's own price IS its standard price,
+          // the one setting every plan, one-off and signup quote reads; a
+          // zone may override it inside that zone. The one-time cleanup price
+          // (#788) is edited here too.
           <PetWastePriceFields
+            standardPrice={form.price}
+            extraDog={form.extraPet}
+            onStandardPriceChange={(v) => setForm({ ...form, price: v })}
+            onExtraDogChange={(v) => setForm({ ...form, extraPet: v })}
+            zoneOverrides={zoneOverrides}
             oneTimePrice={form.oneTimePrice}
             savedOneTimeCents={oneTime?.priceCents ?? null}
             loadError={oneTimeLoadError}
-            zoneFromCents={zoneFromCents}
             onOneTimePriceChange={(v) => setForm({ ...form, oneTimePrice: v })}
           />
         ) : (

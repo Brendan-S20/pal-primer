@@ -33,12 +33,12 @@
 
 import {
   computeCommercialZonePrice,
-  computeZoneVisitPrice,
   zoneHasCommercialPricing,
   type CommercialZonePricingFields,
   type ZonePricingFields,
 } from "./pricing";
 import { matchZone, type ZoneMatchFields } from "./zone-match";
+import { petWasteZoneVisitPrice } from "./standard-price";
 import {
   VISITS_PER_CYCLE,
   cycleMultiplier,
@@ -188,21 +188,21 @@ export function zoneChoice(
   }
 
   const dogs = Math.max(1, Math.min(20, Math.round(subject.dogCount ?? 1)));
-  const r = computeZoneVisitPrice(
-    {
-      base_price_cents: zone.base_price_cents ?? 0,
-      per_dog_addl_cents: zone.per_dog_addl_cents ?? 0,
-      pricing_mode: zone.pricing_mode ?? "flat",
-      price_per_sqft_cents: Number(zone.price_per_sqft_cents ?? 0),
-      price_per_acre_cents: zone.price_per_acre_cents ?? 0,
-      area_min_charge_cents: zone.area_min_charge_cents ?? 0,
-      area_max_charge_cents: zone.area_max_charge_cents ?? null,
-    },
+  // The one residential zone price (#860 review), shared with the wizard and
+  // the plan form: the zone's override, else the standard price, plus the
+  // zone's area charge. An area-priced zone with no override used to be
+  // quoted here at $0 base + area.
+  const r = petWasteZoneVisitPrice(
+    standard
+      ? { base_price_cents: standard.basePriceCents, extra_pet_cents: standard.perDogAddlCents }
+      : null,
+    zone,
     { dogCount: dogs, boundaryAreaSqm: subject.boundaryAreaSqm ?? null, multiplier: mult },
   );
+  if (!r) return null;
   const areaPriced = (zone.pricing_mode ?? "flat") !== "flat";
-  const extra = Math.max(0, dogs - 1) * (zone.per_dog_addl_cents ?? 0);
-  const area = r.perVisitCents - (zone.base_price_cents ?? 0) - extra;
+  const extra = Math.max(0, dogs - 1) * r.perDogCents;
+  const area = r.areaCents;
   return {
     id: `zone:${zone.id}`,
     source: "zone",
@@ -215,7 +215,7 @@ export function zoneChoice(
     priceCents: r.recurringCents,
     description: `${VISIT_WORDS[frequency]}, ${dogsWord(dogs)}`,
     breakdown:
-      `${money(zone.base_price_cents ?? 0)} base` +
+      `${money(r.baseCents)} ${r.source === "standard" ? "standard price" : "base"}` +
       (area > 0
         ? ` + ${money(area)} yard size${r.areaCapped ? " (at the zone's maximum)" : ""}`
         : "") +

@@ -12,11 +12,12 @@
  *     says so and offers the skip. The owner gets the override box and
  *     prepaid, as before.
  *   * The client's Visits tab drawer. Reschedule and Reassign are on screen
- *     and send their calls. Mark completed and Cancel visit (which can bill)
+ *     and send their calls. Mark completed and Cancel visit are theirs too
+ *     since #863 (Brendan, 2026-11-12: close_visits, on by default); what
+ *     stays off is the price box and Prepaid.
  *     are not.
  *   * /routes, the visit drawer. "Move to another day" is on screen and sends
- *     rescheduleVisitFromOffice. Complete is not, and the drawer explains why.
- *     The owner gets Complete.
+ *     rescheduleVisitFromOffice, and Complete is offered (#863).
  *   * /messages. A dispatcher opens a conversation and can send a text.
  *     There are no invoice or pricing links in their navigation.
  *
@@ -347,7 +348,7 @@ for (const { w, h, label } of WIDTHS) {
       await measure(page, w, `/clients/new Plan, no set price (dispatcher) @${w}px`);
     });
 
-    test(`the client's visit drawer: Reschedule and Reassign, no Complete or Cancel @${w}px`, async ({
+    test(`the client's visit drawer: Reschedule, Reassign, Mark completed and Cancel visit @${w}px`, async ({
       page,
     }) => {
       test.setTimeout(180_000);
@@ -356,8 +357,9 @@ for (const { w, h, label } of WIDTHS) {
       const drawer = page.getByRole("dialog").first();
       await expect(drawer.getByRole("button", { name: "Reschedule…" })).toBeVisible();
       await expect(drawer.getByRole("button", { name: "Reassign…" })).toBeVisible();
-      await expect(drawer.getByRole("button", { name: "Mark completed" })).toHaveCount(0);
-      await expect(drawer.getByRole("button", { name: /Cancel visit/ })).toHaveCount(0);
+      // #863: close_visits is a dispatcher's by default.
+      await expect(drawer.getByRole("button", { name: "Mark completed" })).toBeVisible();
+      await expect(drawer.getByRole("button", { name: /Cancel visit/ })).toBeVisible();
       await measure(page, w, `client visit drawer (dispatcher) @${w}px`);
 
       // Reschedule works: it sends the move.
@@ -375,7 +377,7 @@ for (const { w, h, label } of WIDTHS) {
       expect(calls.map((c) => c.name)).not.toContain("cancelVisitFromOffice");
     });
 
-    test(`/routes visit drawer: Move to another day, Complete explained @${w}px`, async ({
+    test(`/routes visit drawer: Move to another day, and Complete @${w}px`, async ({
       page,
     }) => {
       test.setTimeout(180_000);
@@ -386,10 +388,12 @@ for (const { w, h, label } of WIDTHS) {
       await stop.locator("visible=true").first().click();
       const drawer = page.getByRole("dialog").first();
       await expect(drawer.getByLabel("Move to another day")).toBeVisible({ timeout: 30_000 });
+      // #863: close_visits is a dispatcher's by default, so Complete is
+      // offered and the explanation for a role without it is not drawn.
       await expect(
         drawer.getByText("Completing or canceling a visit is an office action."),
-      ).toBeVisible();
-      await expect(drawer.getByRole("button", { name: "Complete", exact: true })).toHaveCount(0);
+      ).toHaveCount(0);
+      await expect(drawer.getByRole("button", { name: "Complete", exact: true })).toBeVisible();
       await measure(page, w, `/routes visit drawer (dispatcher) @${w}px`);
 
       await drawer.getByLabel("Move to another day").fill(NEXT_WEEK);

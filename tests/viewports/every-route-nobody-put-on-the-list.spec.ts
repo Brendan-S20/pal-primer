@@ -73,6 +73,8 @@ const REDIRECTS = new Set([
   "billing",
   // Forwards to settings/online-signup since the two public forms became one.
   "settings/lead-form",
+  // Forwards to settings/zones since Zones & pricing moved inside Settings (#864).
+  "zones",
 ]);
 
 /**
@@ -85,7 +87,8 @@ const SWEPT = new Set([
   "clients",
   "invoices",
   "my-day",
-  "zones",
+  // The signed-in sweep measures Zones & pricing at its own path (#864).
+  "settings/zones",
   "notifications",
   "profile",
   "routes",

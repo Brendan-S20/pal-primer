@@ -50,7 +50,9 @@ function client(opts: {
 }) {
   return {
     from: (table: string) => {
-      expect(table).toBe("user_roles");
+      // user_roles, and since #863 the business's overrides for the caller's
+      // role (read after the turned-off check, and never for an owner).
+      expect(["user_roles", "role_permission_overrides"]).toContain(table);
       return {
         select: () => ({
           eq: () => ({

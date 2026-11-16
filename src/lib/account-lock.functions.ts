@@ -18,7 +18,7 @@ export const loadAccountLock = createServerOnlyFn(
     if (!orgId || !lock.locked) return { ...lock, canChoosePlan: true };
     const { resolveCaller } = await import("@/lib/authz.server");
     const { hasPermission } = await import("@/lib/permissions");
-    const { role } = await resolveCaller(context.supabase, context.userId);
-    return { ...lock, canChoosePlan: hasPermission(role, "manage_org_billing") };
+    const { role, overrides } = await resolveCaller(context.supabase, context.userId);
+    return { ...lock, canChoosePlan: hasPermission(role, "manage_org_billing", overrides) };
   },
 );

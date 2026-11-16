@@ -21,7 +21,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/format";
-import { importStatusLabel } from "@/lib/import-status";
+import { importErrorsTile, importStatusLabel, type ImportErrorsTile } from "@/lib/import-status";
 import { titleHead } from "@/lib/page-title";
 import { useOrgTimezone } from "@/hooks/useOrgToday";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
@@ -86,6 +86,10 @@ function BatchDetail() {
   const { batch, rows } = data;
   const blocked = data.commitBlock?.reason ?? commitRefusal(batch);
   const stats = (batch.stats ?? {}) as Record<string, number>;
+  const savedWarnings = (batch.stats as { warnings?: unknown } | null)?.warnings;
+  const warnings = Array.isArray(savedWarnings)
+    ? savedWarnings.filter((warning): warning is string => typeof warning === "string")
+    : [];
   const planOrBalance = batch.entity === "services" || batch.entity === "balances";
   const shown = filter === "all" ? rows : rows.filter((r: any) => r.action === filter);
 
@@ -170,9 +174,19 @@ function BatchDetail() {
   return (
     <>
       {confirmDialog}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* #925: below md the page's first row reserves the sticky top bar's
+          full height (3.5rem, with the shell's own 1rem top padding), so
+          "All imports" is clear of the bar at rest even where the bar sits
+          over the column, not only when something scrolls the link into view. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 max-md:pt-10">
         <div className="min-w-0 flex-1">
-          <Link to="/imports" className="text-sm text-muted-foreground hover:underline">
+          {/* #925: a 44px target on touch, and when anything scrolls it into
+              view (focus, a scroll to the top of the page) it stops clear of
+              the sticky top bar and any banner above it, not under them. */}
+          <Link
+            to="/imports"
+            className="inline-flex scroll-mt-[calc(var(--hs-banner-h,0px)+env(safe-area-inset-top)+4rem)] items-center text-sm text-muted-foreground hover:underline touch:min-h-11"
+          >
             ← All imports
           </Link>
           <h1 className="break-words text-2xl font-semibold">
@@ -191,8 +205,23 @@ function BatchDetail() {
         <StatCard label="Create" value={stats.create ?? 0} tone="emerald" />
         <StatCard label="Update" value={stats.update ?? 0} tone="blue" />
         <StatCard label="Skip" value={stats.skip ?? 0} />
-        <StatCard label="Errors" value={stats.errors ?? 0} tone="red" />
+        <ErrorsStatCard tile={importErrorsTile(blocked ?? batch.status, stats)} />
       </div>
+
+      {warnings.length > 0 && (
+        <div
+          role="alert"
+          aria-label="Import warnings"
+          className="space-y-2 rounded border border-amber-500/30 bg-amber-500/5 p-4 text-sm"
+        >
+          <p className="font-medium">Check these import warnings</p>
+          <ul className="list-disc space-y-1 break-words ps-5">
+            {warnings.map((warning, index) => (
+              <li key={index}>{warning}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {blocked === "failed" && (
         <div
@@ -525,6 +554,28 @@ function ImportStatusBadge({ status }: { status: string }) {
     <Badge variant={status === "cancelled" ? "outline" : "secondary"} className={cls[status] ?? ""}>
       {importStatusLabel(status)}
     </Badge>
+  );
+}
+
+/** #926: the Errors tile on a failed import counts the rows that failed, or
+ *  says the import stopped. It never shows a clean 0 for a stopped import. */
+function ErrorsStatCard({ tile }: { tile: ImportErrorsTile }) {
+  return (
+    <div className="rounded-lg border bg-card p-4" data-stat="errors">
+      <div className="text-xs uppercase text-muted-foreground">Errors</div>
+      {/* A word, not a number: in five columns from sm to lg the tile is
+          72px wide inside, too narrow for "Stopped" at the number's size. */}
+      <div
+        className={`mt-1 font-semibold text-red-600 dark:text-red-400 ${
+          tile.kind === "stopped" ? "text-2xl sm:text-base lg:text-2xl" : "text-2xl"
+        }`}
+      >
+        {tile.kind === "stopped" ? "Stopped" : tile.count}
+      </div>
+      {tile.kind === "stopped" && (
+        <p className="mt-1 text-xs text-muted-foreground">No row was refused. See why below.</p>
+      )}
+    </div>
   );
 }
 

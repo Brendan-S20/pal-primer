@@ -14,10 +14,10 @@ export const getDashboardSummary = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    const { orgId, role } = await resolveCaller(supabase, userId);
+    const { orgId, role, overrides } = await resolveCaller(supabase, userId);
     // Financial KPIs are scoped server-side: roles without view_financials
     // (e.g. dispatcher) get null for these fields, and the queries never run.
-    const canViewFinancials = hasPermission(role, "view_financials");
+    const canViewFinancials = hasPermission(role, "view_financials", overrides);
     const emptyRes = { data: [] as any[], error: null as any };
 
     // #786: only TWO of the reads below depend on the org's time zone (today's

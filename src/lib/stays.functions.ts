@@ -188,8 +188,8 @@ export const createStay = createServerFn({ method: "POST" })
   .inputValidator((d) => createStaySchema.parse(d))
   .handler(async ({ data, context }) => {
     const supabase = context.supabase as SupabaseClient<Database>;
-    const { orgId, role } = await requirePermission(supabase, context.userId, "booking");
-    const canSetPrices = hasPermission(role, "manage_pricing");
+    const { orgId, role, overrides } = await requirePermission(supabase, context.userId, "booking");
+    const canSetPrices = hasPermission(role, "manage_pricing", overrides);
     const refusal = stayPriceRefusal(canSetPrices, data);
     if (refusal) throw new Error(refusal);
 

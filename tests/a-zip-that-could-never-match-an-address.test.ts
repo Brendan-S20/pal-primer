@@ -267,7 +267,7 @@ describe("and the list you never open still tells you", () => {
   // The drawer refuses it on save now. But a zone nobody edits is a zone that
   // never gets asked, and /zones is where you go to see what a zone covers —
   // so the card has to distinguish a chip that matches from one that cannot.
-  const zones = () => codeOnly(read("src/routes/_authenticated/zones.tsx"));
+  const zones = () => codeOnly(read("src/routes/_authenticated/settings.zones.tsx"));
 
   it("renders an unmatched ZIP as broken rather than as an ordinary chip", () => {
     // The variant is the assertion: `secondary` for every chip is precisely

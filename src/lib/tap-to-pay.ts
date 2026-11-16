@@ -24,7 +24,7 @@
 // its reader, and `describeTapToPayError` turns that into a sentence.
 //
 // Deliberately a new file: src/lib/native.ts is not touched by this feature.
-import { hasPermission } from "@/lib/permissions";
+import { holdsPermission, type Permission } from "@/lib/permissions";
 import type { AppRole } from "@/hooks/useMyRole";
 import { radarFeeFromMetadata } from "@/lib/radar-fee";
 
@@ -152,6 +152,9 @@ export type TapToPayGateInput = {
   platform: TapToPayPlatform;
   userAgent: string;
   role: AppRole | null | undefined;
+  /** The configured set (#863), from usePermissions().permissions; the
+   *  role's defaults when absent. */
+  permissions?: readonly Permission[] | null;
   cardPaymentsReady: boolean;
   invoiceStatus: string | null | undefined;
   dueCents: number;
@@ -249,7 +252,7 @@ export function tapToPayGate(input: TapToPayGateInput): TapToPayGate {
   // Apple 3.8.1: a person who cannot take the payment is told who can, rather
   // than left wondering why the option is missing. The server refuses them
   // anyway (manage_client_billing on every Tap to Pay call).
-  if (!hasPermission(input.role ?? null, "manage_client_billing")) {
+  if (!holdsPermission(input.role ?? null, "manage_client_billing", input.permissions)) {
     return { show: true, mode: "ask_admin" };
   }
   if (updateIos) return { show: true, mode: "update_ios" };
@@ -262,8 +265,11 @@ export function tapToPayGate(input: TapToPayGateInput): TapToPayGate {
  * billing. An office manager can take taps once the owner has accepted, and
  * is asked to fetch the owner when the terms are still open.
  */
-export function canAcceptTapToPayTerms(role: AppRole | null | undefined): boolean {
-  return hasPermission(role ?? null, "manage_org_billing");
+export function canAcceptTapToPayTerms(
+  role: AppRole | null | undefined,
+  permissions?: readonly Permission[] | null,
+): boolean {
+  return holdsPermission(role ?? null, "manage_org_billing", permissions);
 }
 
 /** Apple's name for the feature, and the button label (5.4). Never with the

@@ -241,10 +241,15 @@ describe("the set price of a one-off", () => {
   });
 
   it("is nothing, with the reason, when the business never set one", async () => {
-    expect(await price({ organizations: { one_off_price_cents: null } })).toEqual({
-      cents: null,
-      reason: NO_ONE_OFF_PRICE,
-    });
+    // #860: with no extra-visit price the standard price is asked for next;
+    // this business has none, and the property is in no zone.
+    const prop = { id: PROPERTY, organization_id: "org-1", zone_id: null };
+    expect(await price({ organizations: { one_off_price_cents: null }, properties: prop })).toEqual(
+      {
+        cents: null,
+        reason: NO_ONE_OFF_PRICE,
+      },
+    );
   });
 
   it("is the service's own price for the property's dogs otherwise", async () => {
