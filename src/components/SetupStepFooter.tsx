@@ -87,12 +87,13 @@ export function SetupStepFooter({
       className="sticky bottom-0 -mx-4 mt-5 flex flex-wrap items-center gap-2 rounded-b-lg border-t bg-card px-4 py-3 max-md:bottom-[calc(var(--tab-bar-h)+env(safe-area-inset-bottom))] md:-mx-5 md:px-5"
     >
       {!isFirst && (
-        <Button variant="outline" onClick={onBack} data-setup-action="back">
+        <Button type="button" variant="outline" onClick={onBack} data-setup-action="back">
           Back
         </Button>
       )}
       {done ? (
         <Button
+          type="button"
           className="ms-auto"
           variant={hasPrimary ? "outline" : "default"}
           onClick={onForward}
@@ -102,6 +103,7 @@ export function SetupStepFooter({
         </Button>
       ) : (
         <Button
+          type="button"
           className="ms-auto"
           variant="ghost"
           onClick={onForward}
