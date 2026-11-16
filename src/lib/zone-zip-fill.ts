@@ -451,6 +451,12 @@ export type FillView = {
   tooLarge: boolean;
   /** An existing zone's area, looked up on open and not applied. */
   baseline: boolean;
+  /** A new zone's fill found nothing inside and added the ZIP its middle
+   *  sits in, as the save does (#858, #914). */
+  centerZip?: string | null;
+  /** A new zone's fill added the business's own ZIP: the business's address
+   *  is inside the shape and its ZIP's center is not (#914). */
+  businessZip?: string | null;
 };
 
 export const IDLE_FILL: FillView = {
@@ -463,6 +469,8 @@ export const IDLE_FILL: FillView = {
   candidatesCapped: false,
   tooLarge: false,
   baseline: false,
+  centerZip: null,
+  businessZip: null,
 };
 
 /** One plain sentence (or two) about what the last fill did. */
@@ -474,7 +482,20 @@ export function fillStatusText(fill: FillView, areaWord: string): string {
   if (fill.tooLarge) {
     return "This area is too large to list ZIPs for. Draw a smaller one, or type the ZIPs.";
   }
+  const center = fill.centerZip ?? null;
+  const business = fill.businessZip ?? null;
   if (fill.insideTotal === 0) {
+    // Said as it is: what was added and why, rather than "add one below"
+    // over a list that already holds it (#914).
+    if (center && business) {
+      return `No ZIP has its center inside ${areaWord}, so ${center}, the ZIP at its middle, and ${business}, your business's ZIP, were added.`;
+    }
+    if (business) {
+      return `No ZIP has its center inside ${areaWord}, so your business's ZIP, ${business}, was added. Make it bigger to add more.`;
+    }
+    if (center) {
+      return `No ZIP has its center inside ${areaWord}, so the ZIP at its middle, ${center}, was added. Make it bigger to add more.`;
+    }
     return `No ZIP has its center inside ${areaWord}. Make it bigger, or add a nearby ZIP below.`;
   }
   const parts: string[] = [];
@@ -483,11 +504,15 @@ export function fillStatusText(fill: FillView, areaWord: string): string {
       `${fill.insideTotal} ${fill.insideTotal === 1 ? "ZIP has its" : "ZIPs have their"} center inside ${areaWord}.`,
     );
   } else {
+    const insideAdded = Math.max(0, fill.added - (business ? 1 : 0));
     parts.push(
-      fill.added > 0
-        ? `Added ${fill.added} ${fill.added === 1 ? "ZIP" : "ZIPs"} with a center inside ${areaWord}.`
+      insideAdded > 0
+        ? `Added ${insideAdded} ${insideAdded === 1 ? "ZIP" : "ZIPs"} with a center inside ${areaWord}.`
         : `The ZIPs inside ${areaWord} are already on the list.`,
     );
+    if (business) {
+      parts.push(`Your business's ZIP, ${business}, was added too: the business is inside it.`);
+    }
     if (fill.removed > 0) {
       parts.push(
         `Removed ${fill.removed} that only the old area held. ZIPs you typed are never removed.`,

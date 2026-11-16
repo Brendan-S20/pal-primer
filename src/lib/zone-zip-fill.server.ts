@@ -16,6 +16,7 @@
 import {
   classifyZipCentroids,
   fillForSave,
+  nearestZipToMiddle,
   MAX_CANDIDATES,
   searchBox,
   type ZipCentroid,
@@ -60,7 +61,14 @@ export async function zipCentroidsForShape(
   return { status: "ok", centroids, capped: centroids.length >= MAX_CANDIDATES };
 }
 
-export type ShapeZipFill = ZipClassification & { candidatesCapped: boolean; tooLarge: boolean };
+export type ShapeZipFill = ZipClassification & {
+  candidatesCapped: boolean;
+  tooLarge: boolean;
+  /** Nothing inside: the ZIP the shape's middle sits in, which is what a save
+   *  would list (fillForSave). Lets the drawer show that chip before Save
+   *  rather than say "add one below" (#914). Null when anything is inside. */
+  centerZip: string | null;
+};
 
 /** Which ZIPs a shape holds: what "Fill ZIPs from the area" adds. */
 export async function zipsInsideShape(
@@ -76,12 +84,15 @@ export async function zipsInsideShape(
       edge: [],
       candidatesCapped: false,
       tooLarge: found.status === "too_large",
+      centerZip: null,
     };
   }
+  const classified = classifyZipCentroids(shape, found.centroids);
   return {
-    ...classifyZipCentroids(shape, found.centroids),
+    ...classified,
     candidatesCapped: found.capped,
     tooLarge: false,
+    centerZip: classified.insideTotal === 0 ? nearestZipToMiddle(shape, found.centroids) : null,
   };
 }
 
