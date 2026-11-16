@@ -1467,6 +1467,19 @@ export const BASE_STUBS: Record<string, Stub> = {
       is_field_tech: s.is_field_tech,
       last_sign_in_at: new Date(Date.now() - i * 864e5).toISOString(),
     })),
+    // #938: somebody who was turned off and chose "Leave and start my own".
+    // A long name and a long address, because the row is a new shape on the
+    // page and a tidy one would measure nothing.
+    left: [
+      {
+        user_id: "77777777-0000-4000-8000-900000000001",
+        staff_id: "88888888-0000-4000-8000-900000000001",
+        display_name: "Bartholomew Okonkwo-Lindqvist",
+        email: "bartholomew.okonkwo-lindqvist@whitfield-ramirez-yard-services.example.com",
+        role: "tech",
+        left_at: "2026-11-12T16:20:00Z",
+      },
+    ],
     rows: [],
     seats: { used: 7, included: 10 },
   },

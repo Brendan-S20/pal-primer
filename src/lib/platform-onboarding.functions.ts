@@ -284,7 +284,14 @@ async function inviterName(
 
 export type InviteReadiness =
   | { ready: true }
-  | { ready: false; reason: "other_org"; current_organization_name: string | null };
+  | {
+      ready: false;
+      reason: "other_org";
+      current_organization_name: string | null;
+      /** The account's role there. "owner" (#938: a teammate who left and
+       *  started their own business) cannot "leave it first". */
+      current_role: string | null;
+    };
 
 /** Whether the signed-in account can accept this teammate invitation, asked
  *  BEFORE the page says "ready to accept". accept_org_invite_for_current_user
@@ -305,12 +312,14 @@ export const checkInviteReadiness = createServerFn({ method: "POST" })
     if (!inv?.organization_id) return { ready: true };
     const { data: roles, error } = await admin
       .from("user_roles")
-      .select("organization_id")
+      .select("organization_id, role")
       .eq("user_id", context.userId);
     if (error) throw new Error(error.message);
-    const orgs = ((roles ?? []) as { organization_id: string | null }[])
-      .map((r) => r.organization_id)
-      .filter((o): o is string => !!o);
+    type Membership = { organization_id: string | null; role: string | null };
+    const memberships = ((roles ?? []) as Membership[]).filter(
+      (r): r is { organization_id: string; role: string | null } => !!r.organization_id,
+    );
+    const orgs = memberships.map((r) => r.organization_id);
     // Already in the inviting business: accepting just marks the invite used.
     if (orgs.length === 0 || orgs.includes(inv.organization_id)) return { ready: true };
     const { data: org } = await admin
@@ -322,6 +331,7 @@ export const checkInviteReadiness = createServerFn({ method: "POST" })
       ready: false,
       reason: "other_org",
       current_organization_name: (org?.name as string | undefined) ?? null,
+      current_role: memberships[0]?.role ?? null,
     };
   });
 

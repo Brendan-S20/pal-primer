@@ -8,7 +8,7 @@
 //
 // Since #658 the office's Complete asks what the tech's asks: the seeded
 // business requires a completion photo and today's visits have none, so the
-// click opens "Complete without the tech's proof?". Saying why is the
+// click opens "Complete without the required proof?". Saying why is the
 // override; it is recorded on the visit and on the client's timeline, and
 // only then does the toast fire.
 
@@ -84,14 +84,14 @@ test("Complete on a board card flips the visit in Postgres and logs the action",
 
   // The #658 gate: no photo, so the office has to say why.
   const ask = page.getByRole("alertdialog");
-  await expect(ask.getByText("Complete without the tech's proof?")).toBeVisible({
+  await expect(ask.getByText("Complete without the required proof?")).toBeVisible({
     timeout: 20_000,
   });
   const missingPhoto = (await ask.textContent())?.includes("no completion photo") ?? false;
-  const completeAnyway = ask.getByRole("button", { name: "Complete anyway" });
+  const completeAnyway = ask.getByRole("button", { name: "Complete with this reason" });
   await expect(completeAnyway).toBeDisabled();
   const why = `Client confirmed by phone (e2e ${Date.now()})`;
-  await ask.getByLabel("Why").fill(why);
+  await ask.getByLabel("Why is it missing?").fill(why);
   await expect(completeAnyway).toBeEnabled();
   await completeAnyway.click();
   await expect(ask).toBeHidden({ timeout: 20_000 });
