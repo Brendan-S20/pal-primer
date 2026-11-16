@@ -244,7 +244,10 @@ export const createStripeAccountSession = createServerFn({ method: "POST" })
       capture_payments: false,
     } as const;
 
-    const session = await stripe.accountSessions.create({
+    // Stripe's refusal is logged here and replaced with our own sentence, so
+    // the page never prints Stripe's developer-facing text to an owner (#922).
+    const { DASHBOARD_UNAVAILABLE } = await import("@/lib/payments-load");
+    const sessionParams = {
       account: acct.accountId,
       components: {
         account_onboarding: { enabled: true, features: { ...accountFeatures } },
@@ -266,7 +269,28 @@ export const createStripeAccountSession = createServerFn({ method: "POST" })
         // has exactly one home, and it is not this product.
         documents: { enabled: true },
       },
-    });
+    };
+    const session = await stripe.accountSessions
+      .create(sessionParams)
+      .catch(
+        (e: {
+          type?: string;
+          code?: string;
+          statusCode?: number;
+          requestId?: string;
+          message?: string;
+        }) => {
+          console.error("[stripe-account-session] Stripe refused the Account Session", {
+            orgId,
+            type: e?.type ?? null,
+            code: e?.code ?? null,
+            statusCode: e?.statusCode ?? null,
+            requestId: e?.requestId ?? null,
+            message: e?.message ?? String(e),
+          });
+          throw new Error(DASHBOARD_UNAVAILABLE);
+        },
+      );
     return { clientSecret: session.client_secret, publishableKey: connectPublishableKey() };
   });
 
@@ -389,64 +413,16 @@ export const getStripeBalanceSummary = createServerFn({ method: "GET" })
       "manage_org_billing",
     );
 
-    const { data: org } = await (context.supabase.from("organizations") as any)
-      .select("stripe_connect_account_id, stripe_connect_charges_enabled")
-      .eq("id", orgId)
-      .maybeSingle();
-
-    const acct = org?.stripe_connect_account_id;
-    if (!acct || !org?.stripe_connect_charges_enabled) return { connected: false as const };
-
-    const secret = process.env.STRIPE_SECRET_KEY;
-    // Answered rather than thrown, so the page says it instead of retrying a
-    // misconfiguration (#436).
-    if (!secret)
-      return { connected: true as const, error: "Stripe is not configured on the server" };
-    const { makeStripe } = await import("@/lib/stripe-client.server");
-    const stripe = await makeStripe(secret);
-    // A deadline per request (#436). The SDK's default is 80s with retries,
-    // which is a "Loading balance…" nobody waits out. 10s and one retry is the
-    // outer bound; the page has its own deadline on top of this.
-    const opts = { stripeAccount: acct, timeout: 10_000, maxNetworkRetries: 1 };
-
-    try {
-      const [balance, payouts] = await Promise.all([
-        stripe.balance.retrieve({}, opts),
-        stripe.payouts.list({ limit: 1 }, opts),
-      ]);
-
-      // Summed per currency, not flattened to one number. A connected account
-      // can hold several, and adding cents across currencies would produce a
-      // figure that is wrong in every one of them.
-      const sum = (rows: Array<{ amount: number; currency: string }>) => {
-        const m = new Map<string, number>();
-        for (const r of rows) m.set(r.currency, (m.get(r.currency) ?? 0) + r.amount);
-        return [...m.entries()].map(([currency, amount]) => ({ currency, amount }));
-      };
-
-      const next = payouts.data[0];
-      return {
-        connected: true as const,
-        // "available" is what can be paid out now; "pending" is still clearing.
-        // Showing only the total would overstate what the owner can actually
-        // draw today, which is the number they came to find.
-        available: sum(balance.available ?? []),
-        pending: sum(balance.pending ?? []),
-        lastPayout: next
-          ? {
-              amount: next.amount,
-              currency: next.currency,
-              status: next.status,
-              // `arrival_date` is seconds, and it is an ESTIMATE from Stripe —
-              // labelled as such in the UI rather than presented as a promise.
-              arrivalDate: next.arrival_date ? next.arrival_date * 1000 : null,
-            }
-          : null,
-      };
-    } catch (e: any) {
-      // A balance we cannot fetch must not take the tab down. It is returned,
-      // not thrown, and the page shows it with a retry beside the embedded
-      // components, which may still work (#436).
-      return { connected: true as const, error: e?.message ?? "Could not load balance" };
-    }
+    // The Connect PLATFORM client, not STRIPE_SECRET_KEY (#922). That key is
+    // HoundStack's own SaaS-billing account, which does not own the tenant's
+    // connected account, and Stripe refused every read with "Only Stripe
+    // Connect platforms can work with other accounts." The whole of the reason,
+    // and the error path, is in stripe-balance-summary.server.ts.
+    const { resolveOrgStripeAccount, connectStripe } = await import("@/lib/stripe-connect.server");
+    const { loadBalanceSummary } = await import("@/lib/stripe-balance-summary.server");
+    type Deps = Parameters<typeof loadBalanceSummary>[1];
+    return await loadBalanceSummary(orgId, {
+      resolveAccount: resolveOrgStripeAccount,
+      connectStripe: connectStripe as unknown as Deps["connectStripe"],
+    });
   });
