@@ -685,6 +685,7 @@ const es: Translations = {
     reason: "Motivo",
     detailsPlaceholder: "Detalles (qué pasó, fotos, etc.)",
     confirm: "Confirmar omisión",
+    detailsRequired: "Escribe qué pasó para confirmar la omisión.",
     billingNote: "La oficina decide cómo se cobra cada motivo de omisión.",
   },
   groomSkipReason: {

@@ -730,6 +730,7 @@ const ar: TranslationsWithPlurals<PluralCategory> = {
     reason: "السبب",
     detailsPlaceholder: "التفاصيل (ماذا حدث، صور، إلخ)",
     confirm: "تأكيد التخطي",
+    detailsRequired: "اكتب ما حدث لتأكيد التخطي.",
     billingNote: "يحدد المكتب قواعد الفوترة لكل سبب تخطٍّ.",
   },
   groomSkipReason: {

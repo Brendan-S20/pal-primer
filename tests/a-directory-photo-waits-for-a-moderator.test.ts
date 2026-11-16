@@ -117,8 +117,15 @@ describe("the migration", () => {
     // Main's newest before it is 20261112100000 (step 7, #928); the open PRs
     // checked when this was written hold 20261112080000 (#912) and lower.
     expect(STAMP > "20261112100000").toBe(true);
+    // #912 was later renamed to 20261116060000 so it sorts after main. It
+    // redefines invoice_paid_cents only and does not touch the directory view.
+    const LATER_AND_UNRELATED = ["20261116060000_succeeded-payments-count-only-what-was-kept.sql"];
+    for (const f of LATER_AND_UNRELATED.filter((f) => files.includes(f))) {
+      expect(read(`supabase/migrations/${f}`)).not.toMatch(/directory/i);
+    }
     expect(
       files
+        .filter((f) => !LATER_AND_UNRELATED.includes(f))
         .map((f) => f.slice(0, 14))
         .sort()
         .at(-1),
@@ -622,7 +629,9 @@ describe("the photo URL", () => {
     expect(serve).toMatch(/rpc\("directory_photo_object"/);
     expect(serve).toMatch(/\.download\(path\)/);
     expect(serve).not.toMatch(/createSignedUrl|status: 30[12]|Location/);
-    expect(serve).toMatch(/"Cache-Control": `public, max-age=\$\{PUBLIC_PHOTO_MAX_AGE\}`/);
+    expect(serve).toMatch(
+      /"Cache-Control": `public, max-age=\$\{PUBLIC_PHOTO_MAX_AGE\}, s-maxage=\$\{PUBLIC_PHOTO_MAX_AGE\}`/,
+    );
   });
 });
 
