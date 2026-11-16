@@ -51,7 +51,7 @@ describe("step 1's Save waits for the stored hours", () => {
   it("is the button BusinessPanel draws, fed its dispatch query, and Enter is held too", () => {
     const src = readFileSync(join(ROOT, "src/routes/_authenticated/setup.tsx"), "utf8");
     const panel = src.slice(src.indexOf("function BusinessPanel("), src.indexOf("const MILES ="));
-    expect(panel).toMatch(/<BusinessSaveButton saving=\{m\.isPending\} dispatch=\{dispatchQ\} \/>/);
+    expect(panel).toMatch(/<BusinessSaveButton\s+saving=\{m\.isPending\}\s+dispatch=\{dispatchQ\}/);
     expect(panel).toMatch(/if \(businessSaveBlocked\(m\.isPending, dispatchQ\)\) return;/);
     // And the save itself still sends an untyped hour only once it was read.
     expect(panel).toMatch(/loaded: dispatchQ\.isSuccess,/);
