@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CalendarFeedCard } from "@/components/CalendarFeedCard";
 import { titleHead } from "@/lib/page-title";
+import { SettingsLoadError, SettingsLoadingFields } from "@/components/settings/SettingsLoadGate";
 
 export const Route = createFileRoute("/_authenticated/settings/scheduling")({
   head: () => titleHead("Scheduling", "Settings"),
@@ -39,7 +40,7 @@ function SchedulingSettings() {
   const updSettings = useServerFn(updateDispatchSettings);
   const qc = useQueryClient();
 
-  const { data, error } = useQuery({
+  const { data, isError, isFetching, refetch } = useQuery({
     queryKey: ["dispatch-settings"],
     queryFn: () => getSettings(),
   });
@@ -116,15 +117,22 @@ function SchedulingSettings() {
   // yet edits against — but it may only reach the inputs once the query has
   // said that empty is what there is. (This gate sits after the hooks above
   // because an early return between hooks breaks React's rules of hooks.)
-  if (error) {
-    return (
-      <p className="text-sm text-destructive">
-        Scheduling settings could not be loaded: {(error as Error).message}
-      </p>
-    );
-  }
+  //
+  // #945: the gate used to be `if (error)` before `if (!data)`, so a failed
+  // background refetch threw away a form that was showing stored values, and a
+  // failed first load printed the message with no way to ask again short of
+  // reloading the page. Now the form stays while values are held, and only a
+  // load with nothing held shows the error, with Try again.
   if (!data) {
-    return <p className="text-sm text-muted-foreground">Loading scheduling settings…</p>;
+    return isError ? (
+      <SettingsLoadError
+        what="scheduling settings"
+        onRetry={() => refetch()}
+        retrying={isFetching}
+      />
+    ) : (
+      <SettingsLoadingFields what="scheduling settings" fields={4} />
+    );
   }
 
   return (
@@ -372,8 +380,7 @@ function SchedulingSettings() {
             DEFAULT_TIMEZONE}
         </p>
         <p className="mt-1 text-2xs text-muted-foreground">
-          Arrival windows and what counts as &ldquo;today&rdquo; follow this time zone. Change it
-          in{" "}
+          Arrival windows and what counts as &ldquo;today&rdquo; follow this time zone. Change it in{" "}
           <Link to="/settings/business" className="underline underline-offset-2">
             Settings → Business defaults
           </Link>

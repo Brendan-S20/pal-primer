@@ -3,6 +3,7 @@ import { lookupAddressPoint } from "@/lib/geocode.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Fragment, useEffect, useRef, useState } from "react";
+import { SettingsLoadError } from "@/components/settings/SettingsLoadGate";
 import {
   listOrgUsers,
   changeUserRole,
@@ -125,7 +126,8 @@ function UsersPage() {
   const activeFn = useServerFn(setStaffActive);
   const addrFn = useServerFn(listStaffAddresses);
 
-  const { data, isLoading } = useQuery({ queryKey: ["org-users"], queryFn: () => listFn() });
+  const usersQ = useQuery({ queryKey: ["org-users"], queryFn: () => listFn() });
+  const { data } = usersQ;
   const { data: staffData } = useQuery({ queryKey: ["staff-addresses"], queryFn: () => addrFn() });
   const staffById = new Map<string, any>((staffData?.staff ?? []).map((s: any) => [s.id, s]));
 
@@ -237,8 +239,19 @@ function UsersPage() {
           <CardTitle>Team</CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
+          {/* A failed load used to draw the empty table and "No team members
+              yet.", which reads as a team that has been deleted (#945). The
+              role pickers in it save on change, so they wait for the list. */}
+          {!data ? (
+            usersQ.isError ? (
+              <SettingsLoadError
+                what="team"
+                onRetry={() => usersQ.refetch()}
+                retrying={usersQ.isFetching}
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            )
           ) : (
             // Below md each row is a block, not a table row: the role picker
             // and Deactivate were in columns four to six of a 540px table, so

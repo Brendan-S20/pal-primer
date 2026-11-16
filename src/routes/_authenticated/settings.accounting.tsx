@@ -19,6 +19,7 @@ import { usePermissions } from "@/hooks/useMyRole";
 import { formatDateTime } from "@/lib/format";
 import { qboConnectionParts } from "@/lib/qbo-connection-label";
 import { pageTitle } from "@/lib/page-title";
+import { SettingsLoadError } from "@/components/settings/SettingsLoadGate";
 
 // QuickBooks Online sync (Xero was dropped on 2026-10-09).
 //
@@ -70,16 +71,16 @@ function AccountingSettings() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [banner, setBanner] = useState<Banner | null>(null);
-  const [serviceItem, setServiceItem] = useState("");
-  const [taxItem, setTaxItem] = useState("");
-  const [deposit, setDeposit] = useState("");
-
-  useEffect(() => {
-    if (!conn) return;
-    setServiceItem(conn.service_item_id ?? "");
-    setTaxItem(conn.sales_tax_item_id ?? "");
-    setDeposit(conn.deposit_account_id ?? "");
-  }, [conn?.service_item_id, conn?.sales_tax_item_id, conn?.deposit_account_id]);
+  // null until touched: each select shows what is stored from the first frame
+  // the form is drawn. Before #945 they started blank and an effect copied the
+  // saved choices in afterwards, so for that frame the form showed nothing
+  // chosen and its Save would have cleared all three.
+  const [serviceItemEdit, setServiceItem] = useState<string | null>(null);
+  const [taxItemEdit, setTaxItem] = useState<string | null>(null);
+  const [depositEdit, setDeposit] = useState<string | null>(null);
+  const serviceItem = serviceItemEdit ?? conn?.service_item_id ?? "";
+  const taxItem = taxItemEdit ?? conn?.sales_tax_item_id ?? "";
+  const deposit = depositEdit ?? conn?.deposit_account_id ?? "";
 
   async function connect() {
     setBusy(true);
@@ -158,6 +159,9 @@ function AccountingSettings() {
         },
       });
       await status.refetch();
+      setServiceItem(null);
+      setTaxItem(null);
+      setDeposit(null);
       setMsg("Saved.");
     } catch (err: any) {
       setMsg(err?.message ?? "Couldn't save.");
@@ -250,6 +254,14 @@ function AccountingSettings() {
           </div>
         ) : status.isLoading || roleLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : status.isError && !status.data ? (
+          // A failed read used to fall through to "Connect to QuickBooks", as
+          // if a connected company were not connected (#945).
+          <SettingsLoadError
+            what="QuickBooks connection"
+            onRetry={() => status.refetch()}
+            retrying={status.isFetching}
+          />
         ) : status.data && !status.data.configured ? (
           <p className="text-sm text-muted-foreground">
             QuickBooks isn't set up on this server yet. Contact support at {SUPPORT_EMAIL}.

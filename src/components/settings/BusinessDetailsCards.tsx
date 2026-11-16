@@ -25,6 +25,7 @@ import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { getOrgBranding, updateOrgBranding } from "@/lib/org.functions";
 import { listFacilities } from "@/lib/stations.functions";
 import { isValidOrgName } from "@/lib/dna-linkage";
+import { SettingsLoadGate } from "@/components/settings/SettingsLoadGate";
 
 export function BusinessDetailsCard({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
@@ -97,11 +98,9 @@ export function BusinessDetailsCard({ canEdit }: { canEdit: boolean }) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {q.isError ? (
-          <p className="text-sm text-destructive">
-            We could not load your business details. Reload the page to try again.
-          </p>
-        ) : (
+        {/* No field until the saved values are here (#945): a blank name
+            box while the query was in flight read as lost data. */}
+        <SettingsLoadGate query={q} what="business details" fields={3}>
           <form
             className="space-y-4"
             onSubmit={(e) => {
@@ -175,7 +174,7 @@ export function BusinessDetailsCard({ canEdit }: { canEdit: boolean }) {
               </Button>
             )}
           </form>
-        )}
+        </SettingsLoadGate>
       </CardContent>
     </Card>
   );

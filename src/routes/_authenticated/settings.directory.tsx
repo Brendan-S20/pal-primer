@@ -36,6 +36,7 @@ import {
 } from "@/lib/directory";
 import { DIRECTORY_BRAND } from "@/lib/directory-site";
 import { DirectoryPhotosSettings } from "@/components/directory/DirectoryPhotosSettings";
+import { SettingsLoadError, SettingsLoadingFields } from "@/components/settings/SettingsLoadGate";
 
 // Settings → Directory listing (#630, phase 1). The owner's opt-in to
 // HoundStack's own directory: off by default, and nothing is public until
@@ -91,7 +92,7 @@ function DirectorySettings() {
   const qc = useQueryClient();
   const getFn = useServerFn(getMyDirectoryProfile);
   const saveFn = useServerFn(saveMyDirectoryProfile);
-  const { data, isLoading, error } = useQuery({
+  const q = useQuery({
     queryKey: ["my-directory-profile"],
     queryFn: () => getFn({}),
   });
@@ -110,6 +111,11 @@ function DirectorySettings() {
   const [areas, setAreas] = useState<DirectoryArea[]>([]);
   const [bookOnline, setBookOnline] = useState(false);
   const [bookingPolicy, setBookingPolicy] = useState("");
+  // Set once the effect below has copied the saved listing in. The fields
+  // start blank and are filled one frame after the data arrives, so the data
+  // alone is not enough to draw the form on (#945).
+  const [seeded, setSeeded] = useState(false);
+  const { data } = q;
 
   useEffect(() => {
     if (!data) return;
@@ -139,6 +145,7 @@ function DirectorySettings() {
     setAreas((p?.areas ?? []).map((a) => ({ name: a.name, zips: [...a.zips] })));
     setBookOnline(!!data.booking?.enabled);
     setBookingPolicy(data.booking?.policyText ?? "");
+    setSeeded(true);
   }, [data]);
 
   const zipList = useMemo(() => splitList(zips), [zips]);
@@ -195,8 +202,20 @@ function DirectorySettings() {
     onSettled: () => qc.invalidateQueries({ queryKey: ["my-directory-profile"] }),
   });
 
-  if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
-  if (error || !data) return <p>Couldn't load your directory listing. Try again in a moment.</p>;
+  // Before #945 a failed load said "Try again in a moment" with nothing to
+  // press, and the first frame with data drew every field blank (the name,
+  // the web address, the ZIPs) before the effect above filled them in.
+  if (!data || !seeded) {
+    return q.isError && !data ? (
+      <SettingsLoadError
+        what="directory listing"
+        onRetry={() => void q.refetch()}
+        retrying={q.isFetching}
+      />
+    ) : (
+      <SettingsLoadingFields what="directory listing" fields={4} />
+    );
+  }
   const canEdit = data.canEdit;
   const profileUrl = `/pros/${encodeURIComponent(data.profile?.slug ?? "")}`;
   const publishProblem = !slugOk

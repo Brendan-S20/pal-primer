@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { SettingsLoadGate } from "@/components/settings/SettingsLoadGate";
 import { getVaccineStartRule, setVaccineStartRule } from "@/lib/pet-safety.functions";
 import type { VaccineStartRule } from "@/lib/pet-safety";
 import { formatDateTime } from "@/lib/format";
@@ -23,16 +24,21 @@ const RULE_LABELS: Record<VaccineStartRule, string> = {
 export function VaccineStartRuleSettings() {
   const get = useServerFn(getVaccineStartRule);
   const q = useQuery({ queryKey: ["vaccine-start-rule"], queryFn: () => get() });
-  if (q.isLoading) return null;
-  if (q.error)
+  // Before #945 a load drew nothing and a failure drew the raw error with no
+  // way to ask again, so the owner could not tell an unset rule from one that
+  // had not arrived. The form itself was already seeded from the saved rule.
+  if (q.data) {
     return (
-      <p role="alert" className="text-sm text-destructive">
-        {q.error.message}
-      </p>
+      <Form key={`${q.data.rule}:${q.data.setAt}`} initial={q.data} refresh={() => q.refetch()} />
     );
-  if (!q.data) return null;
+  }
   return (
-    <Form key={`${q.data.rule}:${q.data.setAt}`} initial={q.data} refresh={() => q.refetch()} />
+    <div className="space-y-3 rounded-lg border bg-card p-4">
+      <h3 className="font-semibold">Vaccines at Start</h3>
+      <SettingsLoadGate query={q} what="vaccine rule at Start" fields={1}>
+        {null}
+      </SettingsLoadGate>
+    </div>
   );
 }
 

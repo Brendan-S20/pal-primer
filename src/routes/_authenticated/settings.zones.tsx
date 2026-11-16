@@ -75,6 +75,7 @@ import { ZoneEnabledSwitch } from "@/components/ZoneEnabledSwitch";
 import { ZoneRankingPanel, ZipFillPendingNote } from "@/components/ZoneRanking";
 import { offZoneNotice } from "@/lib/zone-enabled";
 import { FirstCleanupPricingCard } from "@/components/FirstCleanupPricingCard";
+import { SettingsLoadGate } from "@/components/settings/SettingsLoadGate";
 import { useServiceLines } from "@/components/CommercialOnly";
 import { showsZoneVisitPrice } from "@/lib/service-lines";
 import { getFirstCleanupPricing } from "@/lib/first-cleanup.functions";
@@ -112,7 +113,8 @@ function ZonesPage() {
   const del = useServerFn(deleteZone);
   const qc = useQueryClient();
   const { confirm, dialog: bulkDialog } = useConfirmDialog();
-  const { data } = useQuery({ queryKey: ["zones"], queryFn: () => list() });
+  const zonesQ = useQuery({ queryKey: ["zones"], queryFn: () => list() });
+  const { data } = zonesQ;
   // Recomputed from the matcher, not read from properties.zone_id -- that
   // column is the thing that goes stale. See src/lib/zone-coverage.ts.
   const { data: coverage } = useQuery({
@@ -572,6 +574,14 @@ function ZonesPage() {
                 Clear search and filters
               </Button>
             </Card>
+          )}
+          {/* Before #945 a load that had not answered, or had failed, drew an
+              empty list with nothing beneath it: no "Loading", no error, and
+              no way to ask again, so saved zones read as none. */}
+          {data === undefined && (
+            <SettingsLoadGate query={zonesQ} what="zones" fields={2}>
+              {null}
+            </SettingsLoadGate>
           )}
           {data && zones.length === 0 && (
             <Card className="p-10 text-center text-muted-foreground">

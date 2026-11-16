@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
+import { SettingsLoadGate } from "@/components/settings/SettingsLoadGate";
 import { toast } from "sonner";
 import { getSignupSettings, setSignupSettings } from "@/lib/signup.functions";
 import { getLeadFormConfig, setLeadFormConfig } from "@/lib/leads.functions";
@@ -20,7 +21,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  DEFAULT_BOOKING_DETAILS,
   MAX_EARLIEST_START_DAYS,
   type BookingDetailsConfig,
   type DetailAsk,
@@ -89,10 +89,11 @@ function SignupAndQuoteFormSettings() {
   const cfg = q.data;
   const formQ = useQuery({ queryKey: ["lead-form-config"], queryFn: () => formFn() });
 
-  const [slug, setSlug] = useState("");
-  useEffect(() => {
-    setSlug(cfg?.signupSlug ?? "");
-  }, [cfg?.signupSlug]);
+  // What has been typed over the saved address; null means untouched, so the
+  // field shows the saved one from its first frame instead of a blank that
+  // an effect filled in afterwards (#945).
+  const [slugEdit, setSlug] = useState<string | null>(null);
+  const slug = slugEdit ?? cfg?.signupSlug ?? "";
 
   const save = useMutation({
     mutationFn: (patch: { publicSignupEnabled?: boolean; signupSlug?: string }) =>
@@ -137,9 +138,10 @@ function SignupAndQuoteFormSettings() {
         </p>
       </div>
 
-      {q.isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : (
+      {/* #945: this waited on `isLoading` only, so a failed load drew the
+          whole page as a business with signup off and no address, with the
+          switch and Save live to write that over what was stored. */}
+      <SettingsLoadGate query={q} what="signup settings" fields={3}>
         <>
           <div className="rounded-lg border bg-card p-4">
             <div className="flex items-start justify-between gap-4">
@@ -275,7 +277,12 @@ function SignupAndQuoteFormSettings() {
               e.preventDefault();
               save.mutate(
                 { signupSlug: slug.trim() },
-                { onSuccess: () => toast.success("Web address saved") },
+                {
+                  onSuccess: () => {
+                    toast.success("Web address saved");
+                    setSlug(null);
+                  },
+                },
               );
             }}
           >
@@ -311,27 +318,32 @@ function SignupAndQuoteFormSettings() {
             </p>
           </form>
 
-          {formQ.data ? (
-            <>
-              <FormCustomizer config={formQ.data.config} instantOn={instantOn} />
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-lg border bg-card p-4">
-                  <div className="text-xs uppercase text-muted-foreground">
-                    Submissions (all time)
+          {/* #945: nothing while loading, and a bare message with no retry
+              when the form's settings failed to load. */}
+          <SettingsLoadGate query={formQ} what="form settings" fields={4}>
+            {(form) =>
+              // Null is an answer (no form row), as it was before the gate.
+              form ? (
+                <>
+                  <FormCustomizer config={form.config} instantOn={instantOn} />
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-lg border bg-card p-4">
+                      <div className="text-xs uppercase text-muted-foreground">
+                        Submissions (all time)
+                      </div>
+                      <div className="mt-1 text-2xl font-semibold">{form.submissionsTotal}</div>
+                    </div>
+                    <div className="rounded-lg border bg-card p-4">
+                      <div className="text-xs uppercase text-muted-foreground">Last 30 days</div>
+                      <div className="mt-1 text-2xl font-semibold">{form.submissionsLast30}</div>
+                    </div>
                   </div>
-                  <div className="mt-1 text-2xl font-semibold">{formQ.data.submissionsTotal}</div>
-                </div>
-                <div className="rounded-lg border bg-card p-4">
-                  <div className="text-xs uppercase text-muted-foreground">Last 30 days</div>
-                  <div className="mt-1 text-2xl font-semibold">{formQ.data.submissionsLast30}</div>
-                </div>
-              </div>
-            </>
-          ) : formQ.error ? (
-            <p className="text-sm text-destructive">{(formQ.error as Error).message}</p>
-          ) : null}
+                </>
+              ) : null
+            }
+          </SettingsLoadGate>
         </>
-      )}
+      </SettingsLoadGate>
     </div>
   );
 }
@@ -429,21 +441,19 @@ const ASK_LABEL: Record<DetailAsk, string> = {
 function FormCustomizer({ config: raw, instantOn }: { config: unknown; instantOn: boolean }) {
   const qc = useQueryClient();
   const saveFn = useServerFn(setLeadFormConfig);
-  const [headline, setHeadline] = useState("");
-  const [intro, setIntro] = useState("");
-  const [confirmation, setConfirmation] = useState("");
-  const [brandColor, setBrandColor] = useState("");
-  const [logoUrl, setLogoUrl] = useState("");
-  const [fields, setFields] = useState<FormFields>({
-    phone: true,
-    location: true,
-    dogCount: true,
-    message: true,
-  });
-  const [details, setDetails] = useState<BookingDetailsConfig>(DEFAULT_BOOKING_DETAILS);
-  const [earliestDays, setEarliestDays] = useState(
-    String(DEFAULT_BOOKING_DETAILS.earliestStartDays),
-  );
+  // Seeded from the saved config on the first frame (#945). These started as
+  // blanks and defaults that the effect below replaced a render later, so for
+  // that render the form showed an empty headline and every field on, with
+  // Save live.
+  const [initial] = useState(() => normalizeFormConfig(raw));
+  const [headline, setHeadline] = useState(initial.headline);
+  const [intro, setIntro] = useState(initial.intro);
+  const [confirmation, setConfirmation] = useState(initial.confirmation);
+  const [brandColor, setBrandColor] = useState(initial.brandColor ?? "");
+  const [logoUrl, setLogoUrl] = useState(initial.logoUrl ?? "");
+  const [fields, setFields] = useState<FormFields>(initial.fields);
+  const [details, setDetails] = useState<BookingDetailsConfig>(initial.details);
+  const [earliestDays, setEarliestDays] = useState(String(initial.details.earliestStartDays));
 
   // The fixture and a business that never saved the form both send null;
   // normalizeFormConfig is the one reading of it the public page uses too.

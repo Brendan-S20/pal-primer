@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { titleHead } from "@/lib/page-title";
+import { SettingsLoadGate } from "@/components/settings/SettingsLoadGate";
 import { addOnExampleFor } from "@/lib/service-lines";
 import { useServiceLines } from "@/components/CommercialOnly";
 
@@ -40,12 +41,12 @@ function AddonsCatalog() {
   const qc = useQueryClient();
   const list = useServerFn(listAddonServices);
   const upsert = useServerFn(upsertAddonService);
-  const { data } = useQuery({
+  const q = useQuery({
     queryKey: ["addon-services", "all"],
     queryFn: () => list({ data: { includeInactive: true } }),
   });
 
-  const services: any[] = data?.services ?? [];
+  const services: any[] = q.data?.services ?? [];
   // The placeholder is an example of an add-on for what this business runs:
   // "Extra visit" for pet waste (A-P2-6, #370); something a walker or
   // a groomer would sell otherwise (LINE_SEEDS).
@@ -162,7 +163,11 @@ function AddonsCatalog() {
               value={draft.default_frequency}
               onChange={(e) => setDraft({ ...draft, default_frequency: e.target.value })}
             >
-              {FREQS.map((f) => <option key={f} value={f}>{addonFrequencyLabel(f)}</option>)}
+              {FREQS.map((f) => (
+                <option key={f} value={f}>
+                  {addonFrequencyLabel(f)}
+                </option>
+              ))}
             </select>
           </div>
           <AddonGroomFields
@@ -181,63 +186,74 @@ function AddonsCatalog() {
 
       <section className="rounded-lg border bg-card p-5">
         <h2 className="text-sm font-medium">Catalog</h2>
-        {services.length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">No services yet.</p>
-        ) : (
-          <ul className="mt-3 divide-y">
-            {services.map((s) => (
-              <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
-                <div>
-                  <div className="text-sm font-medium">
-                    {s.name}
-                    {!s.active && <Badge variant="outline" className="ml-2">Inactive</Badge>}
-                    <Badge variant="secondary" className="ml-2 text-3xs">
-                      {ADDON_KIND_LABEL[s.kind] ?? s.kind}
-                    </Badge>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {s.kind === "recurring" && s.default_frequency
-                      ? ` · ${addonFrequencyLabel(s.default_frequency)}`
-                      : ""}
-                  </div>
-                  {s.description && (
-                    <div className="text-xs text-muted-foreground">{s.description}</div>
-                  )}
-                </div>
-                {grooming && (
-                  <CatalogGroomFields
-                    key={`${s.id}-${s.duration_min}-${s.service_line}`}
-                    service={s}
-                    saving={upsertMut.isPending}
-                    onSave={(patch) => upsertMut.mutate({ ...s, ...patch })}
-                  />
-                )}
-                <div className="flex flex-wrap items-center gap-3">
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    className="h-8 w-24"
-                    defaultValue={(s.unit_price_cents / 100).toFixed(2)}
-                    onBlur={(e) => {
-                      const cents = Math.round(parseFloat(e.target.value || "0") * 100);
-                      if (cents !== s.unit_price_cents) {
-                        upsertMut.mutate({ ...s, unit_price_cents: cents });
-                      }
-                    }}
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => upsertMut.mutate({ ...s, active: !s.active })}
-                  >
-                    {s.active ? "Deactivate" : "Activate"}
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+        {/* Before #945 "No services yet." was what the catalog said while it
+            loaded and after a failed load, which reads as add-ons the
+            business sells being gone. */}
+        <div className="mt-3">
+          <SettingsLoadGate query={q} what="add-on services" fields={2}>
+            {services.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No services yet.</p>
+            ) : (
+              <ul className="divide-y">
+                {services.map((s) => (
+                  <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
+                    <div>
+                      <div className="text-sm font-medium">
+                        {s.name}
+                        {!s.active && (
+                          <Badge variant="outline" className="ml-2">
+                            Inactive
+                          </Badge>
+                        )}
+                        <Badge variant="secondary" className="ml-2 text-3xs">
+                          {ADDON_KIND_LABEL[s.kind] ?? s.kind}
+                        </Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {s.kind === "recurring" && s.default_frequency
+                          ? ` · ${addonFrequencyLabel(s.default_frequency)}`
+                          : ""}
+                      </div>
+                      {s.description && (
+                        <div className="text-xs text-muted-foreground">{s.description}</div>
+                      )}
+                    </div>
+                    {grooming && (
+                      <CatalogGroomFields
+                        key={`${s.id}-${s.duration_min}-${s.service_line}`}
+                        service={s}
+                        saving={upsertMut.isPending}
+                        onSave={(patch) => upsertMut.mutate({ ...s, ...patch })}
+                      />
+                    )}
+                    <div className="flex flex-wrap items-center gap-3">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="h-8 w-24"
+                        defaultValue={(s.unit_price_cents / 100).toFixed(2)}
+                        onBlur={(e) => {
+                          const cents = Math.round(parseFloat(e.target.value || "0") * 100);
+                          if (cents !== s.unit_price_cents) {
+                            upsertMut.mutate({ ...s, unit_price_cents: cents });
+                          }
+                        }}
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => upsertMut.mutate({ ...s, active: !s.active })}
+                      >
+                        {s.active ? "Deactivate" : "Activate"}
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </SettingsLoadGate>
+        </div>
       </section>
     </div>
   );

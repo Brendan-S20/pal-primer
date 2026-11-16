@@ -6,7 +6,7 @@
 // screens are; the catch-up copy is translated (staySummary.* in en, es, ar,
 // zh) because Product asked for it in all four.
 
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { SettingsLoadGate } from "@/components/settings/SettingsLoadGate";
 import { usePermissions } from "@/hooks/useMyRole";
 import {
   canSetStaySummaryCatchUp,
@@ -27,11 +28,12 @@ export function StayDepositCard({ canEdit }: { canEdit: boolean }) {
   const qc = useQueryClient();
   const get = useServerFn(getStayDepositRule);
   const set = useServerFn(setStayDepositRule);
-  const { data } = useQuery({ queryKey: ["stay-deposit-rule"], queryFn: () => get() });
-  const [days, setDays] = useState("");
-  useEffect(() => {
-    if (data) setDays(String(data.refundDays));
-  }, [data]);
+  const q = useQuery({ queryKey: ["stay-deposit-rule"], queryFn: () => get() });
+  const data = q.data;
+  // Seeded from the saved rule on its first frame, not copied in by an effect
+  // after a blank one (#945). Edits are null until the owner types.
+  const [daysEdit, setDays] = useState<string | null>(null);
+  const days = daysEdit ?? (data ? String(data.refundDays) : "");
   const n = Number(days);
   const invalid = days.trim() === "" || !Number.isInteger(n) || n < 0 || n > 365;
 
@@ -39,6 +41,7 @@ export function StayDepositCard({ canEdit }: { canEdit: boolean }) {
     mutationFn: () => set({ data: { refundDays: n } }),
     onSuccess: () => {
       toast.success("Deposit rule saved");
+      setDays(null);
       qc.invalidateQueries({ queryKey: ["stay-deposit-rule"] });
       qc.invalidateQueries({ queryKey: ["stays"] });
     },
@@ -55,38 +58,44 @@ export function StayDepositCard({ canEdit }: { canEdit: boolean }) {
           0 refunds up to the first day.
         </p>
       </div>
-      <form
-        className="flex flex-wrap items-end gap-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!invalid) save.mutate();
-        }}
-      >
-        <div className="min-w-0">
-          <Label htmlFor="stay-deposit-days">Refundable until (days before the stay)</Label>
-          <Input
-            id="stay-deposit-days"
-            className="w-32"
-            type="number"
-            inputMode="numeric"
-            min={0}
-            max={365}
-            step={1}
-            value={days}
-            disabled={!canEdit || !data}
-            onChange={(e) => setDays(e.target.value)}
-          />
-        </div>
-        {canEdit && (
-          <Button type="submit" disabled={invalid || save.isPending}>
-            {save.isPending ? "Saving…" : "Save"}
-          </Button>
-        )}
-        {invalid && data && (
-          <p className="basis-full text-xs text-destructive">Enter a whole number from 0 to 365.</p>
-        )}
-      </form>
-      <StaySummaryCatchUp catchUp={data?.summaryCatchUp} />
+      {/* Before #945 the days field was drawn empty while the rule loaded and
+          stayed empty, with no way to ask again, when the load failed. */}
+      <SettingsLoadGate query={q} what="deposit rule" fields={2}>
+        <form
+          className="flex flex-wrap items-end gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!invalid) save.mutate();
+          }}
+        >
+          <div className="min-w-0">
+            <Label htmlFor="stay-deposit-days">Refundable until (days before the stay)</Label>
+            <Input
+              id="stay-deposit-days"
+              className="w-32"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={365}
+              step={1}
+              value={days}
+              disabled={!canEdit}
+              onChange={(e) => setDays(e.target.value)}
+            />
+          </div>
+          {canEdit && (
+            <Button type="submit" disabled={invalid || save.isPending}>
+              {save.isPending ? "Saving…" : "Save"}
+            </Button>
+          )}
+          {invalid && (
+            <p className="basis-full text-xs text-destructive">
+              Enter a whole number from 0 to 365.
+            </p>
+          )}
+        </form>
+        <StaySummaryCatchUp catchUp={data?.summaryCatchUp} />
+      </SettingsLoadGate>
     </section>
   );
 }
