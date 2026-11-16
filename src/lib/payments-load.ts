@@ -77,6 +77,41 @@ export function connectCardReducer(s: ConnectCardState, e: ConnectCardEvent): Co
   }
 }
 
+/** What an owner reads when the balance headline could not be fetched, for
+ *  ANY reason (#922). Stripe's own error text never reaches the page: it is
+ *  written for the platform's developers ("Only Stripe Connect platforms can
+ *  work with other accounts. If you specified a client_id parameter…"), it
+ *  links to a Dashboard the owner cannot open, and it alarmed people about
+ *  money that was fine. The second sentence is the fact they need: this is
+ *  one figure we could not draw, not a problem with getting paid. The real
+ *  reason is logged on the server by getStripeBalanceSummary. */
+export const BALANCE_UNAVAILABLE =
+  "We can't show your Stripe balance right now. Payments and payouts aren't affected.";
+
+/** The same promise for the embedded dashboard: what an owner reads when the
+ *  Account Session could not be created. Stripe's reason is logged on the
+ *  server by createStripeAccountSession. */
+export const DASHBOARD_UNAVAILABLE =
+  "We can't show your Stripe dashboard right now. Payments and payouts aren't affected.";
+
+/** Our own sentences that may reach the dashboard's error card as they are:
+ *  each says what to do, and none of them is Stripe's text. */
+const OWN_DASHBOARD_MESSAGES = [
+  STRIPE_DID_NOT_ANSWER,
+  DASHBOARD_UNAVAILABLE,
+  "Verify your email address to unlock payments",
+  "Connect a Stripe account first",
+  "Stripe Connect is not configured",
+];
+
+/** What the dashboard's error card says for `err`. Anything that is not one
+ *  of our own sentences (Stripe's text, a TypeError from a malformed answer)
+ *  becomes DASHBOARD_UNAVAILABLE (#922). */
+export function dashboardErrorMessage(err: string | null | undefined): string {
+  if (err && OWN_DASHBOARD_MESSAGES.some((m) => err.startsWith(m))) return err;
+  return DASHBOARD_UNAVAILABLE;
+}
+
 export type BalanceSummaryData =
   | { connected: false }
   | {
@@ -94,7 +129,9 @@ export type BalanceSummaryData =
  *
  *   loading        a request is in flight (and has a deadline: see above)
  *   error          the request failed, timed out, or Stripe answered with an
- *                  error. Visible, with a retry. Never silent.
+ *                  error. Visible, with a retry. Never silent. The message is
+ *                  always BALANCE_UNAVAILABLE, never the error's own text
+ *                  (#922): a thrown error here can carry Stripe's wording.
  *   not-connected  no live Stripe account, so there is no balance to show.
  *                  The page around it already says how to connect.
  *   ready          a balance, including a new account's $0.00.
@@ -109,13 +146,10 @@ export function balanceSummaryState(q: {
   | { kind: "error"; message: string }
   | { kind: "not-connected" }
   | { kind: "ready" } {
-  if (q.isError) {
-    const msg = q.error instanceof Error && q.error.message ? q.error.message : null;
-    return { kind: "error", message: msg ?? "Couldn't reach Stripe." };
-  }
+  if (q.isError) return { kind: "error", message: BALANCE_UNAVAILABLE };
   if (q.isPending) return { kind: "loading" };
   const d = q.data;
   if (!d || !d.connected) return { kind: "not-connected" };
-  if (d.error) return { kind: "error", message: d.error };
+  if (d.error) return { kind: "error", message: BALANCE_UNAVAILABLE };
   return { kind: "ready" };
 }

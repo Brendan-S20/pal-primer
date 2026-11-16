@@ -94,7 +94,9 @@ describe("the Stripe dashboards on /payments are gated on width", () => {
     // The session is skipped only once the account is live AND the screen is
     // narrow; before that, onboarding needs it at every width.
     expect(dash).toContain("const replaced = narrow && chargesEnabled;");
-    expect(dash).toContain("if (replaced) return;");
+    // Since #922 the effect lives in useConnectInstance; the gate is its
+    // `enabled`, which is false only for a live account on a narrow screen.
+    expect(dash).toContain("enabled: measured && !replaced,");
   });
 
   it("the replacement says the view needs a wider screen, not a computer", () => {
