@@ -114,9 +114,17 @@ describe("a saved standard price finishes the setup price step", () => {
   });
 
   it("finishes the pet-waste part of a multi-line business's price step too", async () => {
-    const { steps } = await status(["pet_waste", "dog_walking"], {}, 2000);
+    const { steps } = await status(["pet_waste", "dog_walking"], { zones: 1 }, 2000);
     const area = steps.find((s) => s.id === "zones")!.parts!.find((p) => p.id === "area")!;
     expect(area.done).toBe(true);
+  });
+
+  // #958: a price is not an area. A walk is quoted by public_quote only for a
+  // ZIP a zone lists, so a business that also walks needs the zone itself.
+  it("does not finish it on a price alone when the business also walks", async () => {
+    const { steps } = await status(["pet_waste", "dog_walking"], {}, 2000);
+    const area = steps.find((s) => s.id === "zones")!.parts!.find((p) => p.id === "area")!;
+    expect(area.done).toBe(false);
   });
 
   // #860: the standard price is saved on Settings → Services (the Business

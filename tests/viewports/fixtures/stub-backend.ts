@@ -138,17 +138,41 @@ const DAY_END_WORDING_BOTH = {
   description: `${DAY_END_WORDING.description} Pet waste routes can end at a dump site instead.`,
 };
 
+/** The service area a business that does not scoop is asked for on /setup
+ *  (#958), as the server words it: where, and no price. Open. */
+export const SERVICE_AREA_PART = {
+  id: "area",
+  label: "Your service area",
+  description:
+    "Where you work. Clients inside it can book online; anyone outside it is told you don't serve their area yet.",
+  done: false,
+  to: "/zones",
+  cta: "Set service area",
+};
+
 /** The price step a walking business is asked on /setup (#769), as the
- *  server words it: the walks priced in place, open. A walker alone gets the
- *  one-line step; a business that also scoops gets a part per line. */
+ *  server words it: the walks priced in place, open. A walker alone keeps
+ *  the one-line step's wording, with its service area as a part beside the
+ *  walks (#958); a business that also scoops gets a part per line. */
 const WALK_PRICE_STEP = {
   label: "Price your walks",
   description:
-    "Set what a 30-minute walk and a 60-minute walk cost, and a drop-in if you offer one. New clients are quoted these prices. Your service area is on Zones.",
+    "Set what a 30-minute walk and a 60-minute walk cost, and a drop-in if you offer one. New clients are quoted these prices. Clients book inside the service area you set here.",
   done: false,
   to: "/setup",
   cta: "Price walks",
   gate: "/settings/services",
+  parts: [
+    SERVICE_AREA_PART,
+    {
+      id: "walks",
+      label: "Walks",
+      description: "What a 30-minute walk and a 60-minute walk cost.",
+      done: false,
+      to: "/settings/services",
+      cta: "Price walks",
+    },
+  ],
 };
 const MIXED_PRICE_STEP = {
   label: "Price your services",
