@@ -14,6 +14,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
+import { SettingsLoadGate } from "@/components/settings/SettingsLoadGate";
 import { Label } from "@/components/ui/label";
 import { listServices } from "@/lib/services.functions";
 import { listStaffServices, setStaffServices } from "@/lib/staff-services.functions";
@@ -55,30 +56,36 @@ export function StaffSkills({ staffId, canEdit }: { staffId: string; canEdit: bo
         Nothing ticked means any service. Auto-routing only gives a visit to someone who can do it,
         and names any visit nobody picked can take.
       </p>
-      <div className="grid gap-1 sm:grid-cols-2">
-        {services.map((s) => {
-          const on = mine.has(s.id);
-          return (
-            <label
-              key={s.id}
-              className={`flex items-center gap-2 rounded-md px-1 text-sm touch:min-h-11 ${save.isPending ? "opacity-60" : ""}`}
-            >
-              <input
-                type="checkbox"
-                checked={on}
-                disabled={!canEdit || save.isPending || skillsQ.isLoading}
-                onChange={(e) => {
-                  const next = new Set(mine);
-                  if (e.target.checked) next.add(s.id);
-                  else next.delete(s.id);
-                  save.mutate([...next]);
-                }}
-              />
-              <span className="min-w-0 truncate">{s.name}</span>
-            </label>
-          );
-        })}
-      </div>
+      {/* Before #945 the tickboxes were drawn while this person's skills were
+          still loading, all unticked, which reads as "any service". On a
+          failed load they were also enabled, and one tick saved that single
+          service as the whole list over whatever was stored. */}
+      <SettingsLoadGate query={skillsQ} what="services for this person" fields={1}>
+        <div className="grid gap-1 sm:grid-cols-2">
+          {services.map((s) => {
+            const on = mine.has(s.id);
+            return (
+              <label
+                key={s.id}
+                className={`flex items-center gap-2 rounded-md px-1 text-sm touch:min-h-11 ${save.isPending ? "opacity-60" : ""}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={on}
+                  disabled={!canEdit || save.isPending}
+                  onChange={(e) => {
+                    const next = new Set(mine);
+                    if (e.target.checked) next.add(s.id);
+                    else next.delete(s.id);
+                    save.mutate([...next]);
+                  }}
+                />
+                <span className="min-w-0 truncate">{s.name}</span>
+              </label>
+            );
+          })}
+        </div>
+      </SettingsLoadGate>
     </div>
   );
 }

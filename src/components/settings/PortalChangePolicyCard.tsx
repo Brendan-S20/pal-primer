@@ -8,9 +8,10 @@
 // Laid out as one stacked block per service line rather than a table, so it
 // reflows at 320px instead of scrolling sideways, and every input is a full
 // touch target.
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { SettingsLoadGate } from "@/components/settings/SettingsLoadGate";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -67,31 +68,31 @@ export function PortalChangePolicyCard() {
   const setFn = useServerFn(setPortalChangeSettings);
   const q = useQuery({ queryKey: ["portal-change-settings"], queryFn: () => getFn() });
 
-  const [policy, setPolicy] = useState<PortalChangePolicy>("instant");
-  const [autocharge, setAutocharge] = useState(false);
+  // Edits only; what is not edited is read from the saved row. Before #945
+  // these started as "instant", off and no rules, and an effect copied the
+  // saved settings in a frame later, so the first frame of the form showed
+  // defaults and its Save would have written them.
+  const [policyEdit, setPolicy] = useState<PortalChangePolicy | null>(null);
+  const [autochargeEdit, setAutocharge] = useState<boolean | null>(null);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const policy = policyEdit ?? q.data?.policy ?? "instant";
+  const autocharge = autochargeEdit ?? q.data?.autocharge ?? false;
 
   const lines = useMemo<ServiceLine[]>(() => {
     const runs = serviceLinesOrDefault(q.data?.serviceLines ?? null);
     return OFFERED_SERVICE_LINES.filter((l) => runs.includes(l));
   }, [q.data?.serviceLines]);
 
-  useEffect(() => {
-    if (!q.data) return;
-    setPolicy(q.data.policy);
-    setAutocharge(q.data.autocharge);
-    const next: Record<string, Draft> = {};
-    for (const l of lines) next[l] = toDraft(q.data.rules.find((r) => r.service_line === l));
-    setDrafts(next);
-  }, [q.data, lines]);
+  const rules = q.data?.rules;
+  const draftFor = (line: string): Draft =>
+    drafts[line] ?? toDraft(rules?.find((r) => r.service_line === line));
 
   const canEdit = !!q.data?.canEdit;
 
   const parsed = useMemo(() => {
-    const rules: PortalChangeRule[] = [];
+    const out: PortalChangeRule[] = [];
     for (const l of lines) {
-      const d = drafts[l];
-      if (!d) continue;
+      const d = drafts[l] ?? toDraft(rules?.find((r) => r.service_line === l));
       const cutoff = hours(d.cutoff);
       const window = hours(d.window);
       const resched = dollarsToCents(d.reschedFee);
@@ -102,7 +103,7 @@ export function PortalChangePolicyCard() {
       if (resched > 100_000 || cancel > 100_000) {
         return { error: "A fee can be at most $1,000.00." } as const;
       }
-      rules.push({
+      out.push({
         service_line: l,
         cutoff_hours: cutoff,
         late_window_hours: window,
@@ -110,23 +111,26 @@ export function PortalChangePolicyCard() {
         late_cancel_fee_cents: cancel,
       });
     }
-    return { rules } as const;
-  }, [drafts, lines]);
+    return { rules: out } as const;
+  }, [drafts, lines, rules]);
 
   const mut = useMutation({
     mutationFn: () => {
       if ("error" in parsed) throw new Error(parsed.error);
       return setFn({ data: { policy, autocharge, rules: parsed.rules } });
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success("Portal change rules saved");
-      qc.invalidateQueries({ queryKey: ["portal-change-settings"] });
+      await qc.invalidateQueries({ queryKey: ["portal-change-settings"] });
+      setPolicy(null);
+      setAutocharge(null);
+      setDrafts({});
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const set = (line: string, k: keyof Draft, v: string) =>
-    setDrafts((d) => ({ ...d, [line]: { ...(d[line] ?? toDraft(undefined)), [k]: v } }));
+    setDrafts((d) => ({ ...d, [line]: { ...(d[line] ?? draftFor(line)), [k]: v } }));
 
   return (
     <Card>
@@ -139,11 +143,8 @@ export function PortalChangePolicyCard() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        {q.isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : q.isError ? (
-          <p className="text-sm text-destructive">{(q.error as Error).message}</p>
-        ) : (
+        {/* A failed load used to print the error with no way to try again. */}
+        <SettingsLoadGate query={q} what="portal change rules" fields={3}>
           <>
             {!canEdit && (
               <p className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
@@ -188,7 +189,7 @@ export function PortalChangePolicyCard() {
                 </p>
               </div>
               {lines.map((l) => {
-                const d = drafts[l] ?? toDraft(undefined);
+                const d = draftFor(l);
                 return (
                   <fieldset
                     key={l}
@@ -282,7 +283,7 @@ export function PortalChangePolicyCard() {
               </div>
             )}
           </>
-        )}
+        </SettingsLoadGate>
       </CardContent>
     </Card>
   );

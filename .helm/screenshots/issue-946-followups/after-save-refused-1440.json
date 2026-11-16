@@ -1,0 +1,13 @@
+{
+  "phase": "after",
+  "state": "save-refused",
+  "width": 1440,
+  "scrollWidth": 1440,
+  "innerWidth": 1440,
+  "barTop": 806,
+  "scrollPaddingBottom": "69px",
+  "alert": {
+    "top": 740,
+    "bottom": 786
+  }
+}

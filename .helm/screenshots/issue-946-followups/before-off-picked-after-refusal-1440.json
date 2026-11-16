@@ -1,0 +1,13 @@
+{
+  "phase": "before",
+  "state": "off-picked-after-refusal",
+  "width": 1440,
+  "scrollWidth": 1440,
+  "innerWidth": 1440,
+  "barTop": 806,
+  "scrollPaddingBottom": null,
+  "alertText": "Choose whether new clients pay for a first cleanup.",
+  "toastTexts": [
+    "Choose whether new clients pay for a first cleanup."
+  ]
+}

@@ -31,6 +31,7 @@ import { formatDay } from "@/lib/format";
 import { getMyOrg } from "@/lib/org.functions";
 import { ClientSearchPicker, type PickedClient } from "@/components/ClientSearchPicker";
 import { titleHead } from "@/lib/page-title";
+import { SettingsLoadError } from "@/components/settings/SettingsLoadGate";
 
 export const Route = createFileRoute("/_authenticated/settings/promotions")({
   head: () => titleHead("Promotions", "Settings"),
@@ -50,8 +51,7 @@ function printGiftCard(card: any, orgName: string) {
     toast.error("Pop-up blocked. Allow pop-ups for this site to print");
     return;
   }
-  const esc = (s: string) =>
-    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const amount = fmtMoney(card.initial_balance_cents);
   const expires = card.expires_at ? `Expires ${formatDay(card.expires_at)}` : "";
   w.document.write(`<!doctype html><html><head><title>Gift card ${esc(card.code)}</title>
@@ -124,7 +124,8 @@ function PromoSection() {
   const listFn = useServerFn(listPromoCodes);
   const saveFn = useServerFn(upsertPromoCode);
   const delFn = useServerFn(deletePromoCode);
-  const { data, isLoading } = useQuery({ queryKey: ["promo-codes"], queryFn: () => listFn() });
+  const promosQ = useQuery({ queryKey: ["promo-codes"], queryFn: () => listFn() });
+  const { data, isLoading } = promosQ;
 
   // Percent codes work now (migration 20260807030000): redemption resolves the
   // percentage against the customer's per-visit plan price and credits the
@@ -213,7 +214,9 @@ function PromoSection() {
                 value={form.discountType}
                 onValueChange={(v: any) => setForm({ ...form, discountType: v })}
               >
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="fixed">Fixed amount</SelectItem>
                   <SelectItem value="percent">Percentage</SelectItem>
@@ -230,9 +233,7 @@ function PromoSection() {
                     max={100}
                     step="0.5"
                     value={form.discountPercent}
-                    onChange={(e) =>
-                      setForm({ ...form, discountPercent: Number(e.target.value) })
-                    }
+                    onChange={(e) => setForm({ ...form, discountPercent: Number(e.target.value) })}
                   />
                 </>
               ) : (
@@ -259,7 +260,9 @@ function PromoSection() {
                 value={form.appliesTo}
                 onValueChange={(v: any) => setForm({ ...form, appliesTo: v })}
               >
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="first_visit">New client</SelectItem>
                   <SelectItem value="one_time">One-off credit</SelectItem>
@@ -272,9 +275,9 @@ function PromoSection() {
           <p className="text-xs text-muted-foreground">
             {form.discountType === "percent" ? (
               <>
-                Redeeming takes {form.discountPercent || 0}% off one visit at the client's own
-                plan price and adds that as account credit, once. A client with no active plan is
-                told the code needs one, because there is nothing to take a percentage of.
+                Redeeming takes {form.discountPercent || 0}% off one visit at the client's own plan
+                price and adds that as account credit, once. A client with no active plan is told
+                the code needs one, because there is nothing to take a percentage of.
               </>
             ) : (
               <>
@@ -309,10 +312,7 @@ function PromoSection() {
               />
             </div>
           </div>
-          <Button
-            onClick={() => save.mutate(form)}
-            disabled={!form.code || save.isPending}
-          >
+          <Button onClick={() => save.mutate(form)} disabled={!form.code || save.isPending}>
             {save.isPending ? "Saving…" : "Create promo"}
           </Button>
         </div>
@@ -322,11 +322,19 @@ function PromoSection() {
         <h3 className="mb-3 text-sm font-semibold">Existing promos</h3>
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : !data?.promos.length ? (
+        ) : data === undefined ? (
+          // Before #945 a failed load fell through to "No promo codes yet.",
+          // which reads as live codes having been deleted.
+          <SettingsLoadError
+            what="promo codes"
+            onRetry={() => void promosQ.refetch()}
+            retrying={promosQ.isFetching}
+          />
+        ) : !data?.promos?.length ? (
           <p className="text-sm text-muted-foreground">No promo codes yet.</p>
         ) : (
           <ul className="divide-y">
-            {data.promos.map((p: any) => (
+            {(data?.promos ?? []).map((p: any) => (
               <li key={p.id} className="flex items-start justify-between gap-3 py-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
@@ -347,7 +355,11 @@ function PromoSection() {
                       ? `${Number(p.discount_percent)}% off one visit`
                       : fmtMoney(p.discount_value_cents ?? 0) + " credit"}
                     {" · "}
-                    {p.applies_to === "recurring" ? "Recurring" : p.applies_to === "first_visit" ? "First visit" : "One-time"}
+                    {p.applies_to === "recurring"
+                      ? "Recurring"
+                      : p.applies_to === "first_visit"
+                        ? "First visit"
+                        : "One-time"}
                     {" · "}
                     used {p.redemption_count}
                     {p.max_redemptions ? ` / ${p.max_redemptions}` : ""}
@@ -403,11 +415,12 @@ function PromoSection() {
 function GiftCardHistory({ card }: { card: any }) {
   const [open, setOpen] = useState(false);
   const listFn = useServerFn(listGiftCardRedemptions);
-  const { data, isLoading } = useQuery({
+  const historyQ = useQuery({
     queryKey: ["gift-card-redemptions", card.id],
     queryFn: () => listFn({ data: { giftCardId: card.id } }),
     enabled: open,
   });
+  const { data, isLoading } = historyQ;
   const spent = (card.initial_balance_cents ?? 0) - (card.remaining_balance_cents ?? 0);
   // A void wipes remaining_balance_cents to 0, so "spent" on a voided card is
   // mostly the write-off, not redemptions. Offer the history anyway — that is
@@ -434,6 +447,13 @@ function GiftCardHistory({ card }: { card: any }) {
         <div className="mt-1 space-y-0.5 border-l pl-2">
           {isLoading ? (
             <p className="text-2xs text-muted-foreground">Loading…</p>
+          ) : data === undefined ? (
+            // A failed load used to say "No redemptions recorded" (#945).
+            <SettingsLoadError
+              what="redemptions"
+              onRetry={() => void historyQ.refetch()}
+              retrying={historyQ.isFetching}
+            />
           ) : rows.length === 0 ? (
             <p className="text-2xs text-muted-foreground">
               No redemptions recorded
@@ -465,7 +485,8 @@ function GiftSection() {
   const voidFn = useServerFn(voidGiftCard);
   const redeemFn = useServerFn(redeemGiftCard);
   const orgFn = useServerFn(getMyOrg);
-  const { data, isLoading } = useQuery({ queryKey: ["gift-cards"], queryFn: () => listFn() });
+  const cardsQ = useQuery({ queryKey: ["gift-cards"], queryFn: () => listFn() });
+  const { data, isLoading } = cardsQ;
   const orgQ = useQuery({ queryKey: ["my-org"], queryFn: () => orgFn(), staleTime: 60_000 });
   const orgName: string = orgQ.data?.organization?.name ?? "Gift card";
   // The same picker as the New-invoice dialog: a redemption credits a
@@ -638,11 +659,19 @@ function GiftSection() {
         <h3 className="mb-3 text-sm font-semibold">Gift cards</h3>
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : !data?.cards.length ? (
+        ) : data === undefined ? (
+          // Before #945 a failed load fell through to "No gift cards yet.",
+          // which reads as cards customers are holding having vanished.
+          <SettingsLoadError
+            what="gift cards"
+            onRetry={() => void cardsQ.refetch()}
+            retrying={cardsQ.isFetching}
+          />
+        ) : !data?.cards?.length ? (
           <p className="text-sm text-muted-foreground">No gift cards yet.</p>
         ) : (
           <ul className="divide-y">
-            {data.cards.map((c: any) => (
+            {(data?.cards ?? []).map((c: any) => (
               <li key={c.id} className="flex items-start justify-between gap-3 py-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
@@ -667,8 +696,8 @@ function GiftSection() {
                       <>Voided, no longer redeemable ({fmtMoney(c.initial_balance_cents)} card)</>
                     ) : (
                       <>
-                        {fmtMoney(c.remaining_balance_cents)} of{" "}
-                        {fmtMoney(c.initial_balance_cents)} remaining
+                        {fmtMoney(c.remaining_balance_cents)} of {fmtMoney(c.initial_balance_cents)}{" "}
+                        remaining
                       </>
                     )}
                     {c.recipient_name ? ` · for ${c.recipient_name}` : ""}

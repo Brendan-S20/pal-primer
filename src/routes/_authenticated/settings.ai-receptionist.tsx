@@ -14,6 +14,7 @@ import { formatDateTime, formatPhone } from "@/lib/format";
 import { RECEPTIONIST_LAUNCHED } from "@/lib/receptionist-launch";
 import { titleHead } from "@/lib/page-title";
 import { ComingSoonBadge } from "@/components/ComingSoonBadge";
+import { SettingsLoadGate } from "@/components/settings/SettingsLoadGate";
 
 export const Route = createFileRoute("/_authenticated/settings/ai-receptionist")({
   head: () => titleHead("AI receptionist", "Settings"),
@@ -33,14 +34,20 @@ function Page() {
   const saveFn = useServerFn(updateAiReceptionistSettings);
   const logsFn = useServerFn(listAiReceptionistLogs);
 
-  const { data, isLoading } = useQuery({ queryKey: ["ai-recep"], queryFn: () => getFn({}) });
-  const { data: logs } = useQuery({ queryKey: ["ai-recep-logs"], queryFn: () => logsFn({}) });
+  const q = useQuery({ queryKey: ["ai-recep"], queryFn: () => getFn({}) });
+  const data = q.data;
+  const logsQ = useQuery({ queryKey: ["ai-recep-logs"], queryFn: () => logsFn({}) });
+  const logs = logsQ.data;
 
   const [enabled, setEnabled] = useState(false);
   const [faq, setFaq] = useState("");
   const [persona, setPersona] = useState(() => copy(DEFAULT_PERSONA));
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [voiceGreeting, setVoiceGreeting] = useState("");
+  // Set once the effect below has copied the saved settings in. Five fields
+  // are seeded that way, so the form is gated on this rather than on the
+  // query alone, which has data one render before the fields do (#945).
+  const [seeded, setSeeded] = useState(false);
 
   useEffect(() => {
     if (!data) return;
@@ -49,6 +56,7 @@ function Page() {
     setPersona(data.ai_receptionist_persona ?? copy(DEFAULT_PERSONA));
     setVoiceEnabled(!!(data as any).ai_voice_enabled);
     setVoiceGreeting((data as any).ai_voice_greeting ?? "");
+    setSeeded(true);
   }, [data, copy]);
 
   const save = useMutation({
@@ -69,8 +77,6 @@ function Page() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
-
   return (
     <div className="space-y-6">
       <div>
@@ -87,127 +93,148 @@ function Page() {
         </p>
       </div>
 
-      <div className="space-y-4 rounded-lg border bg-card p-4">
-        <label className="flex items-center gap-3 text-sm font-medium">
-          <input
-            type="checkbox"
-            checked={enabled}
-            disabled={!RECEPTIONIST_LAUNCHED}
-            onChange={(e) => setEnabled(e.target.checked)}
-            className="h-4 w-4"
-          />
-          Enable AI receptionist on this org's SMS number
-        </label>
-        {/* Until launch the add-on cannot be bought (addon-launch.ts), so
-            this must not send anyone to Billing to buy it. */}
-        <p className="text-xs text-muted-foreground">
-          {RECEPTIONIST_LAUNCHED ? (
-            <>
-              The AI Receptionist is a plan add-on. If it isn't on your plan yet, add it in{" "}
-              <Link to="/settings/billing" className="underline">
-                Settings → Plan &amp; billing
-              </Link>{" "}
-              first; you can draft the persona and FAQ below either way.
-            </>
-          ) : (
-            copy(
-              "Coming soon. It can be added to your plan once it launches. You can draft the persona and FAQ below now.",
-            )
-          )}
-        </p>
-
-        <label className="block space-y-1 text-sm">
-          <span className="font-medium">Persona / system instructions</span>
-          <textarea
-            value={persona}
-            onChange={(e) => setPersona(e.target.value)}
-            rows={5}
-            className="block w-full rounded border bg-background px-3 py-2 text-sm"
-          />
-        </label>
-
-        <label className="block space-y-1 text-sm">
-          <span className="font-medium">FAQ knowledge base</span>
-          <textarea
-            value={faq}
-            onChange={(e) => setFaq(e.target.value)}
-            rows={12}
-            placeholder="Q: Do you service my area?&#10;A: We service all zip codes 606xx…&#10;&#10;Q: What if my dog is home?&#10;A: We can work around most dogs but ask that aggressive dogs be indoors…"
-            className="block w-full rounded border bg-background px-3 py-2 text-sm font-mono"
-          />
-          <span className="text-xs text-muted-foreground">
-            Freeform text. The AI reads all of it when asked a question it can't quote a price for.
-          </span>
-        </label>
-
-        <div className="border-t pt-4">
+      {/* #945: the page waited on `isLoading` only, so a failed load drew
+          this form with an empty FAQ, the default persona and a live Save,
+          and saving it wiped the FAQ the business had written. */}
+      <SettingsLoadGate
+        query={{ ...q, data: seeded ? q.data : undefined, isError: q.isError && !seeded }}
+        what="AI receptionist settings"
+        fields={4}
+      >
+        <div className="space-y-4 rounded-lg border bg-card p-4">
           <label className="flex items-center gap-3 text-sm font-medium">
             <input
               type="checkbox"
-              checked={voiceEnabled}
+              checked={enabled}
               disabled={!RECEPTIONIST_LAUNCHED}
-              onChange={(e) => setVoiceEnabled(e.target.checked)}
+              onChange={(e) => setEnabled(e.target.checked)}
               className="h-4 w-4"
             />
-            Enable AI voice receptionist on inbound calls
+            Enable AI receptionist on this org's SMS number
           </label>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {RECEPTIONIST_LAUNCHED
-              ? "Answers calls using your persona, FAQ and prices. If it can't help, it asks the caller to leave a voicemail."
-              : copy(
-                  "When it launches, it will use the same persona and FAQ as texts. The caller's words are transcribed and the reply is read back to them. If it can't help, the caller is asked to leave a voicemail.",
-                )}
+          {/* Until launch the add-on cannot be bought (addon-launch.ts), so
+            this must not send anyone to Billing to buy it. */}
+          <p className="text-xs text-muted-foreground">
+            {RECEPTIONIST_LAUNCHED ? (
+              <>
+                The AI Receptionist is a plan add-on. If it isn't on your plan yet, add it in{" "}
+                <Link to="/settings/billing" className="underline">
+                  Settings → Plan &amp; billing
+                </Link>{" "}
+                first; you can draft the persona and FAQ below either way.
+              </>
+            ) : (
+              copy(
+                "Coming soon. It can be added to your plan once it launches. You can draft the persona and FAQ below now.",
+              )
+            )}
           </p>
-          <label className="mt-3 block space-y-1 text-sm">
-            <span className="font-medium">Greeting (spoken first)</span>
-            <input
-              value={voiceGreeting}
-              onChange={(e) => setVoiceGreeting(e.target.value)}
-              placeholder="Hi, thanks for calling Acme. How can I help?"
+
+          <label className="block space-y-1 text-sm">
+            <span className="font-medium">Persona / system instructions</span>
+            <textarea
+              value={persona}
+              onChange={(e) => setPersona(e.target.value)}
+              rows={5}
               className="block w-full rounded border bg-background px-3 py-2 text-sm"
             />
           </label>
-        </div>
 
-        <Button onClick={() => save.mutate()} disabled={save.isPending}>
-          Save
-        </Button>
-      </div>
+          <label className="block space-y-1 text-sm">
+            <span className="font-medium">FAQ knowledge base</span>
+            <textarea
+              value={faq}
+              onChange={(e) => setFaq(e.target.value)}
+              rows={12}
+              placeholder="Q: Do you service my area?&#10;A: We service all zip codes 606xx…&#10;&#10;Q: What if my dog is home?&#10;A: We can work around most dogs but ask that aggressive dogs be indoors…"
+              className="block w-full rounded border bg-background px-3 py-2 text-sm font-mono"
+            />
+            <span className="text-xs text-muted-foreground">
+              Freeform text. The AI reads all of it when asked a question it can't quote a price
+              for.
+            </span>
+          </label>
+
+          <div className="border-t pt-4">
+            <label className="flex items-center gap-3 text-sm font-medium">
+              <input
+                type="checkbox"
+                checked={voiceEnabled}
+                disabled={!RECEPTIONIST_LAUNCHED}
+                onChange={(e) => setVoiceEnabled(e.target.checked)}
+                className="h-4 w-4"
+              />
+              Enable AI voice receptionist on inbound calls
+            </label>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {RECEPTIONIST_LAUNCHED
+                ? "Answers calls using your persona, FAQ and prices. If it can't help, it asks the caller to leave a voicemail."
+                : copy(
+                    "When it launches, it will use the same persona and FAQ as texts. The caller's words are transcribed and the reply is read back to them. If it can't help, the caller is asked to leave a voicemail.",
+                  )}
+            </p>
+            <label className="mt-3 block space-y-1 text-sm">
+              <span className="font-medium">Greeting (spoken first)</span>
+              <input
+                value={voiceGreeting}
+                onChange={(e) => setVoiceGreeting(e.target.value)}
+                placeholder="Hi, thanks for calling Acme. How can I help?"
+                className="block w-full rounded border bg-background px-3 py-2 text-sm"
+              />
+            </label>
+          </div>
+
+          <Button onClick={() => save.mutate()} disabled={!seeded || save.isPending}>
+            Save
+          </Button>
+        </div>
+      </SettingsLoadGate>
 
       <section>
         <h2 className="mb-2 text-lg font-medium">Recent AI conversations</h2>
-        {!logs?.logs.length ? (
-          <p className="text-sm text-muted-foreground">No AI replies yet.</p>
-        ) : (
-          <div className="space-y-3">
-            {logs.logs.map((l: any) => (
-              <div key={l.id} className="rounded-lg border bg-card p-3 text-sm">
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>
-                    <span className={`mr-2 rounded px-1.5 py-0.5 text-3xs font-medium uppercase ${l.channel === "voice" ? "bg-blue-100 text-blue-800" : "bg-muted"}`}>
-                      {l.channel ?? "sms"}
+        {/* #945: "No AI replies yet" was also what loading and a failed load
+            said, which reads as a receptionist that never answered. */}
+        <SettingsLoadGate query={logsQ} what="AI conversations" fields={2}>
+          {!logs?.logs.length ? (
+            <p className="text-sm text-muted-foreground">No AI replies yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {logs.logs.map((l: any) => (
+                <div key={l.id} className="rounded-lg border bg-card p-3 text-sm">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>
+                      <span
+                        className={`mr-2 rounded px-1.5 py-0.5 text-3xs font-medium uppercase ${l.channel === "voice" ? "bg-blue-100 text-blue-800" : "bg-muted"}`}
+                      >
+                        {l.channel ?? "sms"}
+                      </span>
+                      {formatDateTime(l.created_at)} · {formatPhone(l.from_number)}
+                      {l.channel === "voice" && l.turn != null ? ` · turn ${l.turn}` : ""}
                     </span>
-                    {formatDateTime(l.created_at)} · {formatPhone(l.from_number)}
-                    {l.channel === "voice" && l.turn != null ? ` · turn ${l.turn}` : ""}
-                  </span>
-                  <span>
-                    {l.latency_ms}ms
-                    {l.escalated ? " · escalated" : ""}
-                    {l.error ? " · error" : ""}
-                  </span>
-                </div>
-                <div className="mt-1"><strong>Them:</strong> {l.user_text}</div>
-                <div><strong>AI:</strong> {l.reply_text ?? <em className="text-muted-foreground">(no reply)</em>}</div>
-                {Array.isArray(l.tool_calls) && l.tool_calls.length > 0 && (
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    tools: {l.tool_calls.map((t: any) => t.name).join(", ")}
+                    <span>
+                      {l.latency_ms}ms
+                      {l.escalated ? " · escalated" : ""}
+                      {l.error ? " · error" : ""}
+                    </span>
                   </div>
-                )}
-                {l.error && <div className="mt-1 text-xs text-destructive">{l.error}</div>}
-              </div>
-            ))}
-          </div>
-        )}
+                  <div className="mt-1">
+                    <strong>Them:</strong> {l.user_text}
+                  </div>
+                  <div>
+                    <strong>AI:</strong>{" "}
+                    {l.reply_text ?? <em className="text-muted-foreground">(no reply)</em>}
+                  </div>
+                  {Array.isArray(l.tool_calls) && l.tool_calls.length > 0 && (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      tools: {l.tool_calls.map((t: any) => t.name).join(", ")}
+                    </div>
+                  )}
+                  {l.error && <div className="mt-1 text-xs text-destructive">{l.error}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+        </SettingsLoadGate>
       </section>
     </div>
   );

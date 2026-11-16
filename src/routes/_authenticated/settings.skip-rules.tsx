@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { HelpTip } from "@/components/HelpTip";
 import { titleHead } from "@/lib/page-title";
+import { SettingsLoadGate } from "@/components/settings/SettingsLoadGate";
 
 export const Route = createFileRoute("/_authenticated/settings/skip-rules")({
   head: () => titleHead("Skip rules", "Settings"),
@@ -18,7 +19,7 @@ function SkipRulesPage() {
   const qc = useQueryClient();
   const listFn = useServerFn(listSkipRules);
   const upsertFn = useServerFn(upsertSkipRule);
-  const { data, isLoading } = useQuery({
+  const q = useQuery({
     queryKey: ["skip-rules"],
     queryFn: () => listFn(),
   });
@@ -33,8 +34,6 @@ function SkipRulesPage() {
     onError: (e) => toast.error((e as Error).message),
   });
 
-  if (isLoading) return <p className="text-muted-foreground">Loading…</p>;
-
   return (
     <div className="space-y-6">
       <div>
@@ -47,27 +46,34 @@ function SkipRulesPage() {
         </p>
       </div>
 
-      <div className="relative overflow-x-auto rounded-lg border bg-card">
-        <table className="w-full text-sm min-w-[480px]">
-          <thead className="border-b bg-muted/40 text-left">
-            <tr>
-              <th className="px-4 py-2">Reason</th>
-              <th className="px-4 py-2 w-40">Billable %</th>
-              <th className="px-4 py-2 w-24"></th>
-              <th className="px-4 py-2 w-24"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {(data?.rules ?? []).map((r) => (
-              <RuleRow
-                key={r.code}
-                rule={r}
-                onSave={(pct) => upsert.mutate({ code: r.code, billablePct: pct })}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {/* Before #945 a failed load fell through to an empty table: no rules,
+          no error, no way to ask again. The rows were already seeded from the
+          saved percentages, since they mount only with the data. */}
+      <SettingsLoadGate query={q} what="skip billing rules" fields={3}>
+        {(data) => (
+          <div className="relative overflow-x-auto rounded-lg border bg-card">
+            <table className="w-full text-sm min-w-[480px]">
+              <thead className="border-b bg-muted/40 text-left">
+                <tr>
+                  <th className="px-4 py-2">Reason</th>
+                  <th className="px-4 py-2 w-40">Billable %</th>
+                  <th className="px-4 py-2 w-24"></th>
+                  <th className="px-4 py-2 w-24"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {(data?.rules ?? []).map((r) => (
+                  <RuleRow
+                    key={r.code}
+                    rule={r}
+                    onSave={(pct) => upsert.mutate({ code: r.code, billablePct: pct })}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SettingsLoadGate>
     </div>
   );
 }
