@@ -27,6 +27,14 @@ import { ZoneCoverageMap, type CoverageValue } from "@/components/ZoneCoverageMa
 import { Badge } from "@/components/ui/badge";
 import { getStandardPricing } from "@/lib/subscriptions.functions";
 import { standardPriceLine } from "@/lib/standard-price";
+import {
+  newZonePriceDefault,
+  newZoneZips,
+  withCreatedZone,
+  type BusinessPlace,
+  type ZonesListData,
+} from "@/lib/new-zone-defaults";
+import { useSetupAreaPriceDraft } from "@/hooks/useSetupAreaPriceDraft";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -271,6 +279,8 @@ export function ZoneDrawer({
 }) {
   const isNew = !zone;
   const getCenter = useServerFn(getNewZoneCenter);
+  // getNewZoneCenter's answer is the business's point and, with it, the
+  // business's ZIP (#914).
   const { data: openingCenter } = useQuery({
     queryKey: ["new-zone-center"],
     queryFn: () => getCenter(),
@@ -344,6 +354,24 @@ export function ZoneDrawer({
     staleTime: 60_000,
   });
   const std = stdQ.data;
+
+  // No standard price yet, and the price the owner typed into setup's
+  // service-area step is still in its draft on this device (the step's save
+  // failed, #881): a new zone starts with that number rather than nothing
+  // (#914). With a standard price the field stays blank and shows it.
+  const setupDraft = useSetupAreaPriceDraft(isNew);
+  const [priceFromSetup, setPriceFromSetup] = useState<string | null>(null);
+  const priceSeeded = useRef(false);
+  useEffect(() => {
+    if (!isNew || priceSeeded.current || !stdQ.isSuccess || setupDraft === undefined) return;
+    priceSeeded.current = true;
+    const d = newZonePriceDefault(stdQ.data?.basePriceCents ?? null, setupDraft);
+    if (d.source !== "setup") return;
+    // Not marked dirty: a default, not an edit. Typed over already: theirs.
+    setBasePrice((cur) => (cur.trim() ? cur : d.basePrice));
+    setPerDog((cur) => (cur.trim() ? cur : d.perDog));
+    setPriceFromSetup(d.basePrice);
+  }, [isNew, stdQ.isSuccess, stdQ.data, setupDraft]);
 
   // An existing zone that uses a note or a non-default type shows them;
   // anything else starts with them folded away. (The zone's rank in the
@@ -488,6 +516,17 @@ export function ZoneDrawer({
   // stood when the lookup started -- the owner may have typed in between.
   const zipStateRef = useRef(zipState);
   zipStateRef.current = zipState;
+  // Where the business is, for a new zone's fill: a circle that holds the
+  // business's address lists the business's ZIP (#914).
+  const businessRef = useRef<BusinessPlace>(null);
+  businessRef.current =
+    isNew && openingCenter && (openingCenter as { zip?: string | null }).zip
+      ? {
+          lat: openingCenter.lat,
+          lng: openingCenter.lng,
+          zip: (openingCenter as { zip?: string | null }).zip ?? null,
+        }
+      : null;
   const [fill, setFill] = useState<FillView>(IDLE_FILL);
   const initialKey = useMemo(() => shapeKey(initialCoverage), [initialCoverage]);
   const baselinePending = useRef(!isNew && initialKey != null);
@@ -529,7 +568,19 @@ export function ZoneDrawer({
           } as any,
         });
         if (mine !== seq.current) return;
-        const inside: string[] = res?.inside ?? [];
+        let inside: string[] = res?.inside ?? [];
+        // A new zone's fill also takes what the save would list when nothing
+        // is inside (the ZIP at the middle, #858) and the business's own ZIP
+        // when the business is inside the shape (#914), so the owner sees
+        // them before Save instead of being told to type one.
+        let centerZip: string | null = null;
+        let businessZip: string | null = null;
+        if (isNew && !isBaseline) {
+          const extra = newZoneZips(coverage, inside, res?.centerZip, businessRef.current);
+          inside = extra.zips;
+          centerZip = extra.centerZip;
+          businessZip = extra.businessZip;
+        }
         // Computed from the state as it stands, then set, so the counts shown
         // are the counts applied.
         let next = zipStateRef.current;
@@ -553,6 +604,10 @@ export function ZoneDrawer({
           next = r.state;
           added = r.added.length;
           removed = r.removed.length;
+          // Said only when it went on the list: a chip the owner removed
+          // stays removed, and is not then announced as added.
+          if (centerZip && !r.added.includes(centerZip)) centerZip = null;
+          if (businessZip && !r.added.includes(businessZip)) businessZip = null;
         }
         setZipState(next);
         if (added || removed) setDirty(true);
@@ -566,6 +621,8 @@ export function ZoneDrawer({
           candidatesCapped: !!res?.candidatesCapped,
           tooLarge: !!res?.tooLarge,
           baseline: isBaseline && !added,
+          centerZip,
+          businessZip,
         });
       } catch {
         if (mine !== seq.current) return;
@@ -656,7 +713,16 @@ export function ZoneDrawer({
       toast.success(
         reassignedToastMsg(isNew ? "Zone created" : "Zone saved", res?.propertiesUpdated),
       );
+      // The new zone is in the list as the drawer closes (#914). Marking the
+      // list stale alone left the old answer on screen until listZones came
+      // back, and for good if that refetch failed. The refetch still runs and
+      // replaces this row with the server's.
+      if (isNew && res?.zone) {
+        qc.setQueryData<ZonesListData>(["zones"], (old) => withCreatedZone(old, res.zone));
+      }
       qc.invalidateQueries({ queryKey: ["zones"] });
+      // The page's coverage banner and map counts move with a new zone too.
+      qc.invalidateQueries({ queryKey: ["zone-coverage"] });
       // A pet-waste business's setup price step is a zone (R2-47).
       qc.invalidateQueries({ queryKey: ["onboarding-status"] });
       setDirty(false);
@@ -903,6 +969,12 @@ export function ZoneDrawer({
                   {basePrice.trim()
                     ? "This price applies only inside this zone."
                     : "Blank: this zone charges the standard price."}
+                  {priceFromSetup != null && basePrice === priceFromSetup && (
+                    <span data-testid="zone-price-from-setup">
+                      {" "}
+                      Filled in from the price you entered in setup.
+                    </span>
+                  )}
                 </p>
               </div>
               <div className="space-y-2">

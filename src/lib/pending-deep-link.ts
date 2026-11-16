@@ -138,6 +138,9 @@ export function takeLinkForLanding(now = Date.now()): string | null {
 export function forgetDeepLink(): void {
   held = null;
   landed = false;
+  // And one still waiting to be sorted to the root (lib/app-url-open.ts):
+  // it is the same tap, and belongs to the same person.
+  takeWaitingAppUrl("path");
 }
 
 /** Pages a link may open without anyone signed in. Each handles a missing
@@ -156,6 +159,26 @@ export function needsSession(path: string): boolean {
 /** The screens a launch passes through before it knows who is signed in. A
  *  link that needs a session waits on these for /auth to deliver it. */
 const LANDING_PATHS = ["/", "/auth"];
+
+/**
+ * May /auth still send a signed-in person to their ROLE landing? Only while
+ * the app is on a landing screen.
+ *
+ * /auth works out who is signed in over two or three round trips (identity,
+ * bootstrap, landing path). A link that needs no session, an invitation, is
+ * pushed by the root as soon as the router is idle and does not wait for
+ * that. Until #621's second pass, /auth then finished its round trips and
+ * navigated to the role landing anyway: the push had moved the router to
+ * /invite/<token>, but on a cold start the invite page's code is still
+ * loading from the bundle, /auth is still mounted, its effect is not yet
+ * cancelled, and its navigate() replaced the pending invitation with My Day.
+ * So /auth reads where the router is GOING (router.latestLocation, which a
+ * push moves at once) and stands aside if a link has already taken it
+ * somewhere else.
+ */
+export function roleLandingStillOurs(pathname: string): boolean {
+  return LANDING_PATHS.includes(pathname) || pathname.startsWith("/auth/");
+}
 
 export interface DeepLinkEnv {
   /** The router's current pathname. */

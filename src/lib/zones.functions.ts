@@ -469,44 +469,56 @@ export const createZone = createServerFn({ method: "POST" })
       normalizeZips(data.zipCodes),
       normalizeZips(data.zipCodesRemoved),
     );
+    // An area that holds the business's own address lists the business's ZIP
+    // (#914), whether or not that ZIP's Census center is inside it -- here as
+    // well as in the drawer, so it holds when Create beats the drawer's lookup.
+    const businessZip = await businessZipBestEffort(
+      supabase,
+      orgId,
+      data,
+      fill.zipCodes,
+      normalizeZips(data.zipCodesRemoved),
+    );
+    if (businessZip) fill.zipCodes = [...fill.zipCodes, businessZip];
     // A new area goes to the bottom of the ranking (#858) unless the caller
     // placed it. The business's areas are read for their priorities only.
     const priority =
       data.priority !== undefined ? data.priority : await bottomPriority(supabase, orgId);
+    const insertRow = {
+      organization_id: orgId,
+      priority,
+      name: data.name,
+      zip_codes: fill.zipCodes,
+      zip_fill_pending_since: fill.pending ? new Date().toISOString() : null,
+      postal_prefix: data.postalPrefix || null,
+      account_type: data.accountType ?? null,
+      price_note: data.priceNote || null,
+      latitude: data.latitude ?? null,
+      longitude: data.longitude ?? null,
+      // No price given: no override, the zone charges the standard price
+      // (#860). It used to be $25 + $5, a number nobody chose.
+      base_price_cents: data.basePriceCents ?? null,
+      per_dog_addl_cents: data.basePriceCents == null ? null : (data.perDogAddlCents ?? 0),
+      initial_cleanup_cents: data.initialCleanupCents ?? 0,
+      pricing_mode: data.pricingMode ?? "flat",
+      price_per_sqft_cents: data.pricePerSqftCents ?? 0,
+      price_per_acre_cents: data.pricePerAcreCents ?? 0,
+      area_min_charge_cents: data.areaMinChargeCents ?? 0,
+      area_max_charge_cents: data.areaMaxChargeCents ?? null,
+      commercial_base_cents: data.commercialBaseCents ?? null,
+      commercial_per_unit_cents: data.commercialPerUnitCents ?? null,
+      commercial_per_acre_cents: data.commercialPerAcreCents ?? null,
+      commercial_per_station_cents: data.commercialPerStationCents ?? null,
+      geo_match_mode: data.geoMatchMode ?? "zip",
+      boundary: (data.boundary as any) ?? null,
+      center_latitude: data.centerLatitude ?? null,
+      center_longitude: data.centerLongitude ?? null,
+      radius_meters: data.radiusMeters ?? null,
+      drive_time_minutes: data.driveTimeMinutes ?? null,
+    };
     const { data: row, error } = await (supabase as any)
       .from("zones")
-      .insert({
-        organization_id: orgId,
-        priority,
-        name: data.name,
-        zip_codes: fill.zipCodes,
-        zip_fill_pending_since: fill.pending ? new Date().toISOString() : null,
-        postal_prefix: data.postalPrefix || null,
-        account_type: data.accountType ?? null,
-        price_note: data.priceNote || null,
-        latitude: data.latitude ?? null,
-        longitude: data.longitude ?? null,
-        // No price given: no override, the zone charges the standard price
-        // (#860). It used to be $25 + $5, a number nobody chose.
-        base_price_cents: data.basePriceCents ?? null,
-        per_dog_addl_cents: data.basePriceCents == null ? null : (data.perDogAddlCents ?? 0),
-        initial_cleanup_cents: data.initialCleanupCents ?? 0,
-        pricing_mode: data.pricingMode ?? "flat",
-        price_per_sqft_cents: data.pricePerSqftCents ?? 0,
-        price_per_acre_cents: data.pricePerAcreCents ?? 0,
-        area_min_charge_cents: data.areaMinChargeCents ?? 0,
-        area_max_charge_cents: data.areaMaxChargeCents ?? null,
-        commercial_base_cents: data.commercialBaseCents ?? null,
-        commercial_per_unit_cents: data.commercialPerUnitCents ?? null,
-        commercial_per_acre_cents: data.commercialPerAcreCents ?? null,
-        commercial_per_station_cents: data.commercialPerStationCents ?? null,
-        geo_match_mode: data.geoMatchMode ?? "zip",
-        boundary: (data.boundary as any) ?? null,
-        center_latitude: data.centerLatitude ?? null,
-        center_longitude: data.centerLongitude ?? null,
-        radius_meters: data.radiusMeters ?? null,
-        drive_time_minutes: data.driveTimeMinutes ?? null,
-      })
+      .insert(insertRow)
       .select("id")
       .single();
     if (error) throw new Error(error.message);
@@ -515,12 +527,61 @@ export const createZone = createServerFn({ method: "POST" })
     const propertiesUpdated = await redetectBestEffort(supabase, orgId, userId);
     return {
       id: row.id as string,
+      // The row as the Zones list draws it, so the drawer can put it in the
+      // list the moment Create succeeds rather than after a refetch (#914).
+      // What was written, plus the id; it has no clients yet.
+      zone: { ...insertRow, id: row.id as string, enabled: true, active_clients: 0 },
       propertiesUpdated,
       zipsFilled: fill.added,
       zipFillPending: fill.pending,
       zipAtCenterOnly: fill.centerOnly,
+      businessZipAdded: businessZip,
     };
   });
+
+/**
+ * The business's ZIP, when a new drawn area holds the business's stored
+ * location and does not list that ZIP yet (#914). Null otherwise: a ZIP-only
+ * area, a business with no stored point (no geocoding here: a save is not a
+ * reason for a paid lookup) or no ZIP in its address, a ZIP the owner
+ * removed, or a read that failed -- this never fails a save.
+ */
+async function businessZipBestEffort(
+  supabase: any,
+  orgId: string,
+  d: FillShape,
+  zipCodes: string[],
+  removed: string[],
+): Promise<string | null> {
+  if (!d.geoMatchMode || d.geoMatchMode === "zip") return null;
+  try {
+    const { data: org, error } = await supabase
+      .from("organizations")
+      .select("contact_address, latitude, longitude")
+      .eq("id", orgId)
+      .maybeSingle();
+    if (error || !org) return null;
+    const lat = Number(org.latitude);
+    const lng = Number(org.longitude);
+    if (org.latitude == null || org.longitude == null) return null;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    const { businessZipFromAddress, newZoneZips } = await import("@/lib/new-zone-defaults");
+    const zip = businessZipFromAddress(org.contact_address);
+    if (!zip || zipCodes.includes(zip) || removed.includes(zip)) return null;
+    const shape = {
+      mode: d.geoMatchMode,
+      polygon: d.boundary ?? null,
+      centerLat: d.centerLatitude ?? null,
+      centerLng: d.centerLongitude ?? null,
+      radiusMeters: d.radiusMeters ?? null,
+      driveTimeMinutes: d.driveTimeMinutes ?? null,
+    };
+    return newZoneZips(shape, zipCodes, null, { lat, lng, zip }).businessZip;
+  } catch (e) {
+    console.error(`[zones] business ZIP check failed for org ${orgId}:`, e);
+    return null;
+  }
+}
 
 type FillShape = {
   geoMatchMode?: string;
@@ -604,7 +665,11 @@ async function bottomPriority(supabase: any, orgId: string): Promise<number> {
   const placed = placeAtBottom(zones);
   if (placed.renumber) {
     // The whole business, densely, in one statement (reorder_zones).
-    await writeRanking(supabase, orgId, rankedZones(zones).map((z) => z.id));
+    await writeRanking(
+      supabase,
+      orgId,
+      rankedZones(zones).map((z) => z.id),
+    );
   }
   return placed.priority;
 }
@@ -904,7 +969,8 @@ export const deleteZone = createServerFn({ method: "POST" })
     return { ok: true, propertiesUpdated };
   });
 
-/** Viewport for an unplaced new zone; scoped to the caller's organization. */
+/** Viewport for an unplaced new zone, and the business's ZIP at that point;
+ *  scoped to the caller's organization. */
 export const getNewZoneCenter = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -918,5 +984,9 @@ export const getNewZoneCenter = createServerFn({ method: "GET" })
     if (error) throw new Error(error.message);
     const { newZoneCenter } = await import("@/lib/new-zone-center");
     const { geocodeAddress } = await import("@/lib/geocode.server");
-    return newZoneCenter(org, (address) => geocodeAddress({ street: address }));
+    const { businessZipFromAddress } = await import("@/lib/new-zone-defaults");
+    const center = await newZoneCenter(org, (address) => geocodeAddress({ street: address }));
+    // The business's own ZIP rides along with its point (#914): a new circle
+    // that holds the business lists it even when its Census center is outside.
+    return center ? { ...center, zip: businessZipFromAddress(org.contact_address) } : null;
   });

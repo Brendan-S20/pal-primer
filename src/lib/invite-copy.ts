@@ -66,10 +66,19 @@ export function otherOrgReason(
   email: string | null | undefined,
   currentOrgName: string | null | undefined,
   invitingOrgName: string | null | undefined,
+  currentRole?: string | null,
 ): string {
   const account = email ? `${email} already belongs to` : "This account already belongs to";
   const current = currentOrgName?.trim() || "another business";
   const inviting = invitingOrgName?.trim() || "this business";
+  // #938: somebody who left a business and started their own is its OWNER,
+  // and an owner cannot leave the business they run, so "leave it first" is
+  // advice they cannot follow. Say what is true, and that their own business
+  // is untouched: nothing is accepted, moved or deleted.
+  if (currentRole === "owner") {
+    const owns = email ? `${email} runs` : "This account runs";
+    return `${owns} ${current}, and an account can belong to one business, so it can't join ${inviting} as well. Nothing in ${current} has changed. To join ${inviting}, ask them to send the invitation to a different email address.`;
+  }
   return `${account} ${current}, and an account can belong to one business. To join ${inviting}, ask them to send the invitation to a different email address, or leave ${current} first.`;
 }
 
