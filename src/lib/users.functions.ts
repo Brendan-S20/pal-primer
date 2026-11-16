@@ -31,8 +31,58 @@ export const listOrgUsers = createServerFn({ method: "GET" })
     const orgId = await resolveOrgId(context.supabase, context.userId);
     const { data, error } = await context.supabase.rpc("list_org_users", { _org_id: orgId });
     if (error) throw new Error(error.message);
-    return { users: data ?? [] };
+    const users = (data ?? []) as Array<{ user_id: string | null }>;
+    return { users: data ?? [], left: await listLeftTeammates(orgId, users) };
   });
+
+/**
+ * The people who left this business (#938). list_org_users starts from
+ * user_roles, and leaving deletes exactly that row, so without this a person
+ * who chose "Leave and start my own" vanished from the Team list.
+ *
+ * Read with the service role, scoped to `orgId`, and only after
+ * list_org_users answered — which is the owner-or-office-manager check. The
+ * service role is needed for the date: activity_log is readable under the
+ * client-directory permission, which an owner can take away from an office
+ * manager (#863) without meaning "and hide who left the team". Only the
+ * columns drawn on the page are read.
+ */
+async function listLeftTeammates(
+  orgId: string,
+  members: Array<{ user_id: string | null }>,
+): Promise<import("@/lib/team-left").LeftTeammate[]> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  // The generated types do not carry staff.email; the columns read are
+  // spelled out below and typed by LeftStaffRow / LeftEvent.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const admin = supabaseAdmin as any;
+  const { data: staff, error: staffErr } = await admin
+    .from("staff")
+    .select("id, user_id, display_name, email, role, active, created_at")
+    .eq("organization_id", orgId)
+    .not("user_id", "is", null);
+  if (staffErr) throw new Error(staffErr.message);
+  const { leftTeammates } = await import("@/lib/team-left");
+  const candidates = leftTeammates({
+    memberUserIds: members.map((m) => m.user_id),
+    staff: staff ?? [],
+    leftEvents: [],
+  });
+  if (candidates.length === 0) return [];
+  const { data: events, error: evErr } = await admin
+    .from("activity_log")
+    .select("created_at, meta")
+    .eq("organization_id", orgId)
+    .eq("kind", "staff.left")
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (evErr) throw new Error(evErr.message);
+  return leftTeammates({
+    memberUserIds: members.map((m) => m.user_id),
+    staff: staff ?? [],
+    leftEvents: events ?? [],
+  });
+}
 
 /**
  * D7 (#659). Decided by Brendan 2026-11-02 as owner-only, and changed by him
