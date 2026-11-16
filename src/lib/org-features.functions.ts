@@ -316,6 +316,11 @@ export const setServiceLines = createServerFn({ method: "POST" })
           .array(z.enum(SERVICE_LINES as unknown as [ServiceLine, ...ServiceLine[]]))
           .min(1)
           .max(SERVICE_LINES.length),
+        /** Sent by step 1 of /setup while that step is not done (#915): the
+         *  lines just chosen also choose a new business's completion-photo
+         *  default. The server re-checks that the business really is new
+         *  (lib/new-business-defaults.server.ts); Settings never sends it. */
+        atSetup: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -342,6 +347,24 @@ export const setServiceLines = createServerFn({ method: "POST" })
     if (adding) throw new Error(adding);
     const { updateOwnOrg } = await import("@/lib/org-write.server");
     await updateOwnOrg(context.supabase, orgId, { service_lines: data.lines });
+    // A walking, sitting, grooming or training business being set up starts
+    // without the completion-photo rule; one that scoops keeps it (#915).
+    // Never at the cost of the lines just saved: a failure leaves the
+    // setting as it was, which Settings -> Business defaults still changes.
+    if (data.atSetup) {
+      try {
+        const { followNewBusinessPhotoDefault } =
+          await import("@/lib/new-business-defaults.server");
+        await followNewBusinessPhotoDefault(
+          context.supabase,
+          orgId,
+          serviceLinesOrDefault(org?.service_lines),
+          data.lines,
+        );
+      } catch (e) {
+        console.error("completion-photo default not applied (continuing without it)", e);
+      }
+    }
     await ensureDefaultServicesForLines(context.supabase, orgId, data.lines);
     if (data.lines.includes("training")) {
       await seedTrainingPackage(context.supabase, orgId);
