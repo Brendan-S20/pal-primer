@@ -47,6 +47,39 @@
 #                   No fallback: a runtime that is missing, unavailable or
 #                   does not support the type fails the run. The 26.x
 #                   requirement does not apply to a pinned run.
+#   SMOKE_RELEASE_SIGNED_IN
+#                   1: the opt-in Release, signed-in run (#726), which
+#                   ios-launch.yml starts only from workflow_dispatch with
+#                   release_signed_in. Unset, which every other run is,
+#                   changes nothing below. See "RELEASE, SIGNED IN".
+#
+# ── RELEASE, SIGNED IN (#726) ─────────────────────────────────────────────
+#
+# Apple rejected 1.0 (465) for a launch crash on an iPad Air 11-inch (M4),
+# iPadOS 27.2.1, signed in as a demo owner. Every run above is a Debug build
+# and signed out. With SMOKE_RELEASE_SIGNED_IN=1 this script instead:
+#   - pins the simulator to iOS 27.2 and the iPad Air 11-inch (M4) unless
+#     SMOKE_PIN_RUNTIME/SMOKE_PIN_DEVICE_TYPE name another pair (the same pin
+#     logic, so no fallback to any other device);
+#   - builds the App target in the RELEASE configuration, as Xcode Cloud
+#     does, for the simulator with CODE_SIGNING_ALLOWED=NO;
+#   - runs ColdLaunchWarmUp and ColdLaunch as usual (five cold launches to
+#     the sign-in form);
+#   - then, only when HS_EMAIL and HS_PASSWORD are both in this process's
+#     environment (the self-hosted runner's own; nothing in the workflow sets
+#     them), runs SignIn and then SignedInColdLaunch (five signed-in cold
+#     relaunches) on the same simulator, handing the two values to the test
+#     runner as TEST_RUNNER_HS_EMAIL/TEST_RUNNER_HS_PASSWORD through the
+#     environment, never on a command line. Without them that half is
+#     skipped and the run still passes on the cold launches;
+#   - keeps the log of HoundStack, WebContent and ReportCrash for the last
+#     20 minutes, and any crash report, as the normal run does.
+# XCTest logs every typeText, so the SignIn log holds the address and the
+# password in clear. On the way out (trap EXIT) every log, text file and
+# crash report under SMOKE_OUT loses any line containing either value, read
+# from the environment here and never printed; and the signed-in result
+# bundles and the signed-in screenshot, which cannot be scrubbed line by
+# line, are written outside the uploaded paths and deleted.
 
 set -euo pipefail
 
@@ -55,6 +88,52 @@ OUT="${SMOKE_OUT:-$ROOT/ios-launch-smoke}"
 DD="$OUT/DerivedData"
 mkdir -p "$OUT"
 SUMMARY="$OUT/summary.md"
+RELEASE_SIGNED_IN=""
+[ "${SMOKE_RELEASE_SIGNED_IN:-}" != "1" ] || RELEASE_SIGNED_IN=1
+if [ -n "$RELEASE_SIGNED_IN" ]; then
+  # Its own summary, appended to summary.md at the end: summary.md already
+  # holds the run before this one, and the job summary already showed it.
+  SUMMARY="$OUT/summary-release-signed-in.md"
+  # The reviewer's device (#726), through the same pin logic as a pinned run.
+  if [ -z "${SMOKE_PIN_RUNTIME:-}" ] && [ -z "${SMOKE_PIN_DEVICE_TYPE:-}" ]; then
+    export SMOKE_PIN_RUNTIME="com.apple.CoreSimulator.SimRuntime.iOS-27-2"
+    export SMOKE_PIN_DEVICE_TYPE="com.apple.CoreSimulator.SimDeviceType.iPad-Air-11-inch-M4"
+  fi
+  # Result bundles and screenshots from a signed-in run: never uploaded.
+  PRIVATE="$OUT/DerivedData/signed-in-private"
+  mkdir -p "$PRIVATE"
+  # Drops every line holding HS_EMAIL or HS_PASSWORD from the files named.
+  # The values are read from the environment inside python and never echoed.
+  redact() {
+    [ "$#" -gt 0 ] || return 0
+    python3 -I -c '
+import os, sys
+needles = [v for v in (os.environ.get("HS_PASSWORD", ""), os.environ.get("HS_EMAIL", "")) if v]
+if not needles:
+    sys.exit(0)
+for path in sys.argv[1:]:
+    try:
+        with open(path, "rb") as f:
+            lines = f.read().split(b"\n")
+    except OSError:
+        continue
+    raw = [n.encode() for n in needles]
+    kept = [l for l in lines if not any(n in l for n in raw)]
+    if len(kept) != len(lines):
+        with open(path, "wb") as f:
+            f.write(b"\n".join(kept))
+' "$@" || true
+  }
+  scrub_out() {
+    local files=()
+    while IFS= read -r -d '' f; do files+=("$f"); done < <(
+      find "$OUT" -path "$OUT/DerivedData" -prune -o -type f \
+        \( -name '*.log' -o -name '*.txt' -o -name '*.md' -o -name '*.ips' \) -print0 2>/dev/null)
+    [ "${#files[@]}" -eq 0 ] || redact "${files[@]}"
+    rm -rf "$PRIVATE"
+  }
+  trap scrub_out EXIT
+fi
 : > "$SUMMARY"
 
 say() { echo "$*" | tee -a "$SUMMARY"; }
@@ -94,7 +173,11 @@ if [ -z "$XCODE" ]; then
 fi
 export DEVELOPER_DIR="$XCODE/Contents/Developer"
 
-say "## iOS launch smoke"
+if [ -n "$RELEASE_SIGNED_IN" ]; then
+  say "## iOS launch smoke: Release, signed in (#726)"
+else
+  say "## iOS launch smoke"
+fi
 say ""
 say "- Xcode: \`$(xcodebuild -version | tr '\n' ' ')\` ($XCODE)"
 
@@ -225,13 +308,24 @@ fi
 # about why. The scene adoption this guards is the same in both
 # configurations. Built for the generic simulator so one build installs on
 # every device below.
-echo "--- building the app"
+#
+# The Release, signed-in run builds Release instead (#726): that is the
+# configuration Xcode Cloud archives and Apple reviewed.
+CONFIG=Debug
+APP_DD="$DD/app"
+BUILD_LOG="$OUT/build-app.log"
+if [ -n "$RELEASE_SIGNED_IN" ]; then
+  CONFIG=Release
+  APP_DD="$DD/app-release"
+  BUILD_LOG="$OUT/build-app-release.log"
+fi
+echo "--- building the app ($CONFIG)"
 xcodebuild -project "$ROOT/ios/App/App.xcodeproj" -scheme App \
-  -configuration Debug -sdk iphonesimulator \
+  -configuration "$CONFIG" -sdk iphonesimulator \
   -destination 'generic/platform=iOS Simulator' \
-  -derivedDataPath "$DD/app" CODE_SIGNING_ALLOWED=NO build \
-  > "$OUT/build-app.log" 2>&1 || { tail -80 "$OUT/build-app.log"; echo "::error::app build failed"; exit 1; }
-APP=$(find "$DD/app/Build/Products/Debug-iphonesimulator" -maxdepth 1 -name '*.app' | head -1)
+  -derivedDataPath "$APP_DD" CODE_SIGNING_ALLOWED=NO build \
+  > "$BUILD_LOG" 2>&1 || { tail -80 "$BUILD_LOG"; echo "::error::app build failed"; exit 1; }
+APP=$(find "$APP_DD/Build/Products/$CONFIG-iphonesimulator" -maxdepth 1 -name '*.app' | head -1)
 [ -n "$APP" ] || { echo "::error::no .app in the build products"; exit 1; }
 
 echo "--- building the UI tests"
@@ -243,8 +337,13 @@ xcodebuild build-for-testing -project "$ROOT/ios/UITests/UITests.xcodeproj" \
 
 # ── 4. Each device ─────────────────────────────────────────────────────────
 say ""
-say "| Device | iOS | Result |"
-say "|---|---|---|"
+if [ -n "$RELEASE_SIGNED_IN" ]; then
+  say "| Device | iOS | Result | Signed in |"
+  say "|---|---|---|---|"
+else
+  say "| Device | iOS | Result |"
+  say "|---|---|---|"
+fi
 failed=0
 marker="$OUT/.started"
 touch "$marker"
@@ -322,7 +421,7 @@ run_class() {  # $1 class, $2 result name
   xcodebuild test-without-building \
       -project "$ROOT/ios/UITests/UITests.xcodeproj" -scheme HoundStackUITests \
       -destination "id=$udid" -derivedDataPath "$DD/tests" \
-      -resultBundlePath "$OUT/$slug-$2.xcresult" \
+      -resultBundlePath "${result_dir:-$OUT}/$slug-$2.xcresult" \
       -only-testing:"HoundStackUITests/$1" \
       CODE_SIGNING_ALLOWED=NO > "$OUT/$slug-$2.log" 2>&1 < /dev/null &
   local test_pid=$!
@@ -338,6 +437,8 @@ run_class() {  # $1 class, $2 result name
   local status=0
   wait "$test_pid" || status=1
   kill "$sampler_pid" 2>/dev/null || true
+  # Before attempt_class tails it: the SignIn log has the typed values.
+  [ -z "$RELEASE_SIGNED_IN" ] || redact "$OUT/$slug-$2.log"
   return "$status"
 }
 
@@ -376,8 +477,14 @@ while IFS=$'\t' read -r runtime runtime_version type name <&3; do
   [ -n "$type" ] || continue
   # The runtime is in the name: the same device can run on 27 and on 26.
   slug=$(echo "$name-iOS-$runtime_version" | tr -c 'A-Za-z0-9\n' '-')
+  sim_name="HS launch smoke $name iOS $runtime_version"
+  # Not the Debug run's files or simulator: the same device ran there.
+  if [ -n "$RELEASE_SIGNED_IN" ]; then
+    slug="$slug-Release"
+    sim_name="$sim_name Release"
+  fi
   echo "--- $name (iOS $runtime_version)"
-  udid=$(xcrun simctl create "HS launch smoke $name iOS $runtime_version" "$type" "$runtime")
+  udid=$(xcrun simctl create "$sim_name" "$type" "$runtime")
   xcrun simctl boot "$udid"
   xcrun simctl bootstatus "$udid" -b > /dev/null
   xcrun simctl install "$udid" "$APP"
@@ -394,28 +501,76 @@ while IFS=$'\t' read -r runtime runtime_version type name <&3; do
     result="FAILED"
   fi
   [ -z "$retried" ] || [ "$result" != "passed" ] || result="passed (retried after the simulator, not the app, failed:$retried)"
+
+  # The signed-in half of the Release run (#726). The values go to the test
+  # runner through the environment only for these two classes; they are
+  # never on a command line and never printed.
+  signed_in=""
+  shot="$OUT/$slug.png"
+  if [ -n "$RELEASE_SIGNED_IN" ]; then
+    if [ -z "${HS_EMAIL:-}" ] || [ -z "${HS_PASSWORD:-}" ]; then
+      signed_in="signed-in: skipped"
+      say_later "signed-in launch skipped: HS_EMAIL/HS_PASSWORD not set on the runner"
+    elif [ "${result#passed}" = "$result" ]; then
+      signed_in="signed-in: not run (the signed-out launches failed)"
+    else
+      shot="$PRIVATE/$slug.png"
+      export TEST_RUNNER_HS_EMAIL="$HS_EMAIL" TEST_RUNNER_HS_PASSWORD="$HS_PASSWORD"
+      export TEST_RUNNER_HS_EXPECT_SIGNED_IN=1
+      result_dir="$PRIVATE"
+      if ! attempt_class SignIn signin; then
+        signed_in="signed-in: FAILED (SignIn)"
+      elif ! attempt_class SignedInColdLaunch signed-in-launches; then
+        signed_in="signed-in: FAILED (5 signed-in cold launches)"
+      else
+        signed_in="signed-in: passed"
+      fi
+      result_dir=""
+      unset TEST_RUNNER_HS_EMAIL TEST_RUNNER_HS_PASSWORD TEST_RUNNER_HS_EXPECT_SIGNED_IN
+      case "$signed_in" in *FAILED*) failed=1 ;; esac
+    fi
+  fi
   # The cold-link test tolerates XCTest's own open-URL timeout and then
   # still needs the app on sign-in (ColdLaunch.swift, openLink). Say so,
   # so that a pass with it reads differently from a clean one.
   if [ "${result#passed}" != "$result" ] && grep -qs "Timed out while opening the default app for a URL" "$OUT/$slug"-launches*.log; then
     result="$result (XCTest's link open timed out; the app still reached sign-in)"
   fi
+  [ -z "$RELEASE_SIGNED_IN" ] || result="Release cold: $result"
 
-  xcrun simctl io "$udid" screenshot "$OUT/$slug.png" > /dev/null 2>&1 || true
+  xcrun simctl io "$udid" screenshot "$shot" > /dev/null 2>&1 || true
   # What the app, its web view and WebKit's processes said, for a launch
   # that reached a window and painted nothing.
-  xcrun simctl spawn "$udid" log show --last 30m --style compact --info --debug \
-    --predicate 'process == "HoundStack" OR process BEGINSWITH "com.apple.WebKit"' \
-    > "$OUT/$slug.oslog.txt" 2>&1 < /dev/null || true
+  if [ -n "$RELEASE_SIGNED_IN" ]; then
+    # #726: the app, the web content process, and the crash reporter.
+    xcrun simctl spawn "$udid" log show --last 20m --style compact --info --debug \
+      --predicate 'process == "HoundStack" OR process BEGINSWITH "com.apple.WebKit.WebContent" OR process == "ReportCrash"' \
+      > "$OUT/$slug.oslog.txt" 2>&1 < /dev/null || true
+    redact "$OUT/$slug.oslog.txt"
+  else
+    xcrun simctl spawn "$udid" log show --last 30m --style compact --info --debug \
+      --predicate 'process == "HoundStack" OR process BEGINSWITH "com.apple.WebKit"' \
+      > "$OUT/$slug.oslog.txt" 2>&1 < /dev/null || true
+  fi
   if [ -z "${SMOKE_KEEP_SIMS:-}" ]; then
     xcrun simctl shutdown "$udid" > /dev/null 2>&1 || true
     xcrun simctl delete "$udid" > /dev/null 2>&1 || true
   fi
 
-  case "$result" in passed*) ;; *) failed=1 ;; esac
-  say "| $name | $runtime_version | $result |"
+  case "${result#Release cold: }" in passed*) ;; *) failed=1 ;; esac
+  if [ -n "$RELEASE_SIGNED_IN" ]; then
+    say "| $name | $runtime_version | $result | $signed_in |"
+  else
+    say "| $name | $runtime_version | $result |"
+  fi
 done 3< <(echo "$DEVICE_LINES")
 
+if [ -n "$RELEASE_SIGNED_IN" ] && [ -n "$notes" ]; then
+  # The skip line, and any simulator retries, go out as they are.
+  say ""
+  printf '%s' "$notes" | while IFS= read -r line; do say "$line"; done
+  notes=""
+fi
 if [ -n "$notes" ]; then
   say ""
   say "**Launches the simulator failed, not the app** (either no HoundStack process from the launch request to the timeout, or the app served its page and WebKit had not committed it when XCTest gave up; no page script ran in either; the simulator was rebooted and the class retried, at most twice; a page that committed and then drew nothing, and a process that started and then hung before serving its page, are never retried):"
@@ -432,6 +587,7 @@ if [ -n "$crashes" ]; then
   failed=1
   mkdir -p "$OUT/crashes"
   echo "$crashes" | while read -r f; do cp "$f" "$OUT/crashes/"; done
+  [ -z "$RELEASE_SIGNED_IN" ] || redact "$OUT"/crashes/*
   say ""
   say "**Crash reports from this run:**"
   echo "$crashes" | while read -r f; do say "- $(basename "$f")"; done
@@ -445,4 +601,7 @@ fi
 [ -z "${OLD_RUNTIME:-}" ] || failed=1
 
 [ -z "${GITHUB_STEP_SUMMARY:-}" ] || cat "$SUMMARY" >> "$GITHUB_STEP_SUMMARY"
+if [ -n "$RELEASE_SIGNED_IN" ]; then
+  { echo ""; cat "$SUMMARY"; } >> "$OUT/summary.md"
+fi
 exit "$failed"
