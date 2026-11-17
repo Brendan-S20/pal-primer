@@ -224,6 +224,35 @@ describe("the cold-link test judges the app, not XCTest's open call", () => {
     expect(test).toMatch(/assertOnSignIn\(app, "after a cold link"\)/);
   });
 
+  // #962: on iPad (A16), iOS 27.2, the link brought the app up and active in
+  // 4 s and XCTest's foreground wait never saw it, because nothing had
+  // attached XCTest to a process SpringBoard started. activate() attaches;
+  // the script then proves the link, not activate(), started the app.
+  it("attaches XCTest to the process the link started before judging it", () => {
+    const test = swift.slice(
+      swift.indexOf("func testALinkThatLaunchesTheAppLandsOnSignIn()"),
+      swift.indexOf("func testALinkWhileRunningKeepsTheAppUp()"),
+    );
+    const open = test.indexOf("openLink()");
+    const attach = test.indexOf("app.activate()");
+    expect(attach).toBeGreaterThan(open);
+    expect(attach).toBeLessThan(test.indexOf("wait(for: .runningForeground"));
+    // Not launch(): that terminates first, which would end the very process
+    // the link started and turn this into a plain cold launch.
+    expect(test).not.toMatch(/\.launch\(\)/);
+  });
+
+  it("fails the device when the cold link never reached the app", () => {
+    const script = read("scripts/ios-launch-smoke.sh");
+    const fn = script.slice(script.indexOf("cold_link_reached_the_app() {"));
+    expect(fn).toMatch(/eventMessage CONTAINS "scene-create: UIOpenURLAction"/);
+    // Captured, not `| grep -q`, which pipefail can fail with SIGPIPE.
+    expect(fn.slice(0, fn.indexOf("\n}\n"))).not.toMatch(/\|\s*grep -q/);
+    expect(script).toMatch(
+      /elif ! attempt_class ColdLaunch launches; then\s*result="FAILED"\s*elif ! cold_link_reached_the_app "\$udid"; then\s*result="FAILED \(the cold link never reached the app/,
+    );
+  });
+
   it("is named in the summary when it happened", () => {
     const script = read("scripts/ios-launch-smoke.sh");
     expect(script).toMatch(

@@ -40,6 +40,8 @@ import {
   type AccessMethod,
 } from "@/lib/walk-access";
 import { propertyHazardsFor } from "@/lib/new-client-plan";
+import { boundaryCopy } from "@/lib/property-boundary-copy";
+import { runsPetWaste } from "@/lib/service-lines";
 
 
 export function PropertyDrawer({
@@ -119,6 +121,8 @@ export function PropertyDrawer({
   // Van hookups (#412): a grooming business sees them, and its saves send
   // them. Any other business sees the drawer as before and leaves them alone.
   const groomHookups = linesKnown && serviceLines.includes("mobile_grooming");
+  // Yard words only for a business that scoops (#768); see property-boundary-copy.
+  const copy = boundaryCopy(runsPetWaste(serviceLines));
   // listPropertiesForClient says whether property_access_codes returned this
   // row. When it did not, the code fields open blank over stored values.
   const codesNotLoaded = !!property && property.access_codes_loaded === false;
@@ -289,7 +293,7 @@ export function PropertyDrawer({
       open={open}
       onClose={onClose}
       title={property ? "Edit property" : "Add property"}
-      description="The service zone is detected automatically from the address. Draw the boundary on the map to set yard size and estimated time."
+      description={copy.drawerDescription}
       size="lg"
       dirty={dirty || boundaryDirty || overridesDirty}
     >
@@ -354,7 +358,7 @@ export function PropertyDrawer({
             )}
             {form.addressSource === "matched" && (
               <span className="text-xs text-muted-foreground">
-                Map pin placed automatically. Draw the boundary below to set yard size.
+                {copy.matchedPinHint}
               </span>
             )}
           </div>
@@ -432,7 +436,7 @@ export function PropertyDrawer({
               id="pd-access-notes"
               rows={2}
               maxLength={ACCESS_NOTES_MAX}
-              placeholder="How to get into the yard, e.g. side gate on the left"
+              placeholder={copy.accessNotesPlaceholder}
               value={form.accessNotes}
               onChange={(e) => set("accessNotes", e.target.value)}
               className="min-h-11 w-full rounded-md border bg-background px-3 py-2 text-sm"
@@ -562,7 +566,7 @@ export function PropertyDrawer({
               </div>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Separate entries with commas. Waste stations are managed in the Services tab.
+              {copy.stationsHint}
             </p>
             <div className="mt-3 border-t pt-3">
               <label className="flex items-center gap-2 text-sm touch:min-h-11">
@@ -665,7 +669,12 @@ export function PropertyDrawer({
         </div>
 
         {property ? (
-          <BoundarySection property={property} onBoundaryChange={setEditedBoundary} />
+          <BoundarySection
+            property={property}
+            onBoundaryChange={setEditedBoundary}
+            help={copy.editSectionHelp}
+            areaNoun={copy.areaNoun}
+          />
         ) : (
           <NewBoundarySection
             street={form.street}
@@ -677,6 +686,8 @@ export function PropertyDrawer({
             onLocate={(p) => setForm((f) => ({ ...f, latitude: p.latitude, longitude: p.longitude }))}
             pendingBoundary={pendingBoundary}
             onBoundary={setPendingBoundary}
+            help={copy.newSectionHelp}
+            areaNoun={copy.areaNoun}
           />
         )}
 
@@ -715,7 +726,11 @@ function NewBoundarySection({
   onLocate,
   pendingBoundary,
   onBoundary,
+  help,
+  areaNoun,
 }: {
+  help: string;
+  areaNoun: "yard" | "property";
   street: string;
   city: string;
   region: string;
@@ -746,8 +761,7 @@ function NewBoundarySection({
     <div className="rounded-md border bg-muted/20 p-3">
       <SectionLabel>Service boundary</SectionLabel>
       <p className="mt-1 text-xs text-muted-foreground">
-        Outline the serviced yard now; it saves with the property. Yard size and estimated time
-        are derived from it automatically.
+        {help}
       </p>
       {!hasPoint ? (
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -774,6 +788,7 @@ function NewBoundarySection({
             initial={pendingBoundary}
             hideSave
             onChange={onBoundary}
+            areaNoun={areaNoun}
             areaSqm={null}
             height={340}
           />
@@ -796,7 +811,11 @@ function NewBoundarySection({
 function BoundarySection({
   property,
   onBoundaryChange,
+  help,
+  areaNoun,
 }: {
+  help: string;
+  areaNoun: "yard" | "property";
   property: any;
   onBoundaryChange: (polygon: PolygonGeoJSON | null) => void;
 }) {
@@ -809,8 +828,7 @@ function BoundarySection({
     <div className="rounded-md border bg-muted/20 p-3">
       <SectionLabel>Service boundary</SectionLabel>
       <p className="mt-1 text-xs text-muted-foreground">
-        Outline the serviced yard; it saves with your changes. Yard size and estimated time are
-        derived from it automatically.
+        {help}
       </p>
       <div className="mt-2">
         <BoundarySketch
@@ -818,6 +836,7 @@ function BoundarySection({
           initial={(property.boundary as PolygonGeoJSON) ?? null}
           hideSave
           onChange={onBoundaryChange}
+          areaNoun={areaNoun}
           areaSqm={property.boundary_area_sqm ? Number(property.boundary_area_sqm) : null}
           height={340}
         />

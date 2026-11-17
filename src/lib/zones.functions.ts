@@ -2,13 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission, resolveCaller } from "@/lib/authz.server";
-import {
-  fullOrder,
-  MIN_PRIORITY,
-  placeAtBottom,
-  prioritiesForOrder,
-  rankedZones,
-} from "@/lib/zone-ranking";
+import { fullOrder, placeAtBottom, prioritiesForOrder, rankedZones } from "@/lib/zone-ranking";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   return (await resolveCaller(supabase, userId)).orgId;
@@ -398,11 +392,11 @@ const zoneWriteSchema = z.object({
   commercialPerUnitCents: z.number().int().min(0).optional().nullable(),
   commercialPerAcreCents: z.number().int().min(0).optional().nullable(),
   commercialPerStationCents: z.number().int().min(0).optional().nullable(),
-  // Overlap tie-breaker: higher priority wins among zones matching at the
-  // same specificity level (see src/lib/zone-match.ts). Since #858 it is the
-  // business's RANKING, written by reorderZones; a create that does not say
-  // goes to the bottom, and the drawer no longer sends one.
-  priority: z.number().int().min(MIN_PRIORITY).max(999).optional(),
+  // No `priority` (#927). It is the business's RANKING (#858), the overlap
+  // tie-breaker in src/lib/zone-match.ts, and reorderZones (one
+  // reorder_zones statement) is its only writer. A create always goes to the
+  // bottom; an update never moves an area. A client that still sends one has
+  // it stripped by this schema, like any other key it does not list.
   // Chips the owner removed while editing (#858): the save-time fill does
   // not put them back. "Any ZIPs the owner added or removed by hand stay as
   // they are."
@@ -480,10 +474,10 @@ export const createZone = createServerFn({ method: "POST" })
       normalizeZips(data.zipCodesRemoved),
     );
     if (businessZip) fill.zipCodes = [...fill.zipCodes, businessZip];
-    // A new area goes to the bottom of the ranking (#858) unless the caller
-    // placed it. The business's areas are read for their priorities only.
-    const priority =
-      data.priority !== undefined ? data.priority : await bottomPriority(supabase, orgId);
+    // A new area always goes to the bottom of the ranking (#858, #927); only
+    // reorderZones moves it from there. The business's areas are read for
+    // their priorities only.
+    const priority = await bottomPriority(supabase, orgId);
     const insertRow = {
       organization_id: orgId,
       priority,
@@ -861,7 +855,6 @@ export const updateZone = createServerFn({ method: "POST" })
       patch.commercial_per_acre_cents = data.commercialPerAcreCents;
     if (data.commercialPerStationCents !== undefined)
       patch.commercial_per_station_cents = data.commercialPerStationCents;
-    if (data.priority !== undefined) patch.priority = data.priority;
     if (data.geoMatchMode !== undefined) patch.geo_match_mode = data.geoMatchMode;
     if (data.boundary !== undefined) patch.boundary = data.boundary as any;
     if (data.centerLatitude !== undefined) patch.center_latitude = data.centerLatitude;
@@ -876,7 +869,8 @@ export const updateZone = createServerFn({ method: "POST" })
       .eq("organization_id", orgId);
     if (error) throw new Error(error.message);
 
-    // Changed coverage/priority can re-assign existing properties.
+    // Changed coverage can re-assign existing properties. (Priority is not
+    // written here: reorderZones is its only writer, #927.)
     const propertiesUpdated = await redetectBestEffort(supabase, orgId, userId);
     return { ok: true, propertiesUpdated, zipFillPending, zipAtCenterOnly };
   });

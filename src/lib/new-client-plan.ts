@@ -109,6 +109,13 @@ export const PROPERTY_HAZARDS = [
 
 export type PropertyHazardKey = (typeof PROPERTY_HAZARDS)[number][0];
 
+/** A yard flag that is already ticked still shows off a pet-waste path, in
+ *  the words the visit drawer uses for a walk (#560, #768) -- no yard in them. */
+const ANY_DOOR_HAZARD_LABELS: Partial<Record<PropertyHazardKey, string>> = {
+  doNotEnterIfDogOut: "Do not approach an unsecured pet",
+  dogInYardDuringService: "Pet may be loose at arrival",
+};
+
 export function propertyHazardsFor(
   lines: readonly ServiceLine[],
   ticked: Partial<Record<PropertyHazardKey, boolean>> = {},
@@ -118,6 +125,6 @@ export function propertyHazardsFor(
 ): { key: PropertyHazardKey; label: string }[] {
   const petWaste = runsPetWaste(lines) && (planLine == null || planLine === "pet_waste");
   return PROPERTY_HAZARDS.filter(([key, , yardOnly]) => petWaste || !yardOnly || ticked[key]).map(
-    ([key, label]) => ({ key, label }),
+    ([key, label]) => ({ key, label: petWaste ? label : (ANY_DOOR_HAZARD_LABELS[key] ?? label) }),
   );
 }
