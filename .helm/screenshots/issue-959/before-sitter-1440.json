@@ -1,0 +1,11 @@
+{
+  "phase": "before",
+  "state": "sitter",
+  "width": 1440,
+  "scrollWidth": 1440,
+  "innerWidth": 1440,
+  "settingsButtons": [
+    "Review sitting services"
+  ],
+  "forms": []
+}

@@ -8,6 +8,7 @@ import {
   serviceLinesOrDefault,
 } from "@/lib/service-lines";
 import { walksPricedForSetup } from "@/lib/setup-walk-prices";
+import { groomSetupDone, staysSavedForSetup } from "@/lib/setup-line-prices";
 
 export type OnboardingStepId = "business" | "zones" | "clients" | "staff" | "dump_site" | "payouts";
 
@@ -423,35 +424,73 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
     ? (
         await supabase
           .from("services")
-          .select("created_at, updated_at")
+          .select("base_price_cents, created_at, updated_at")
           .eq("organization_id", orgId)
           .eq("service_line", "pet_sitting")
           .eq("active", true)
       ).data
     : null;
+  // #959: the size grid is half of grooming's part. A priced size on an
+  // active grooming service (size rules exist only on grooming services).
+  const pricedSizes = grooming
+    ? (
+        await (supabase as any)
+          .from("service_size_rules")
+          .select("id, services!inner(active)", { count: "exact", head: true })
+          .eq("organization_id", orgId)
+          .eq("services.active", true)
+          .gt("price_cents", 0)
+      ).count
+    : 0;
   // Signup seeds the walks with blank prices. Done means the 30-minute AND
   // the 60-minute walk have one (#769): "some walk has a price" ticked the
   // step for one price on one walk and left the rest "No price yet".
   const walksDone = walksPricedForSetup(walks ?? []);
-  // Signup seeds the stays with starter prices; done means one was saved.
-  const staysDone = (stays ?? []).some((s) => s.updated_at !== s.created_at);
-  const groomDone = !!groomingSetup?.data?.groom_setup_reviewed_at;
+  // Signup seeds the stays with starter prices, so done means EVERY active
+  // stay was saved on purpose (#959), on /setup or in Settings; one saved
+  // stay used to tick the part while the others still quoted the starter.
+  const staysDone = staysSavedForSetup(stays ?? []);
+  // #959: the vaccines and buffer reviewed AND a price in the size grid.
+  const groomDone = groomSetupDone({
+    reviewed: !!groomingSetup?.data?.groom_setup_reviewed_at,
+    pricedSizes: pricedSizes ?? 0,
+  });
 
   const parts: PricePart[] = [];
-  // The service area and its per-visit price are asked of a pet-waste
-  // business only: its plans are quoted from it. A lesson is priced by its
-  // package (R2-47): "How far you drive / Price per visit / Each extra dog"
-  // asked a trainer for a number no lesson reads, and the step stayed open
-  // after it was saved. A trainer's area is still on Zones.
-  if (petWaste) {
+  // #958: a walk, a stay, a groom or a lesson is priced by its own service,
+  // but public_quote still answers only for a ZIP some zone lists, and says
+  // nothing at all for one no zone does: the public booking link, the
+  // receptionist and the directory's Book online read that as out of area.
+  // So a business that runs any of those lines needs a zone, not merely a
+  // standard price, and setup asks for one.
+  const zoneSaved = (zones.count ?? 0) > 0;
+  const needsArea = runsAreaBookedLine(orgLines);
+  // The pet-waste area form, with its per-visit price, is asked of a
+  // pet-waste business: its plans are quoted from it. It makes a zone, so
+  // at a business that also walks, sits, grooms or trains it is that
+  // business's area too, and it is done only once a zone exists.
+  if (petWaste || needsArea) {
     parts.push({
       id: "area",
-      label: "Pet waste service area",
-      description:
-        "Where you work and what you charge per visit. New pet waste clients in the area are quoted this price.",
-      done: areaDone,
+      ...(petWaste
+        ? {
+            label: "Pet waste service area",
+            description: needsArea
+              ? "Where you work and what you charge per visit. New pet waste clients in the area are quoted this price, and your other services are booked in the same area."
+              : "Where you work and what you charge per visit. New pet waste clients in the area are quoted this price.",
+            done: areaDone && (!needsArea || zoneSaved),
+            cta: "Set area price",
+          }
+        : {
+            // No price on it (R2-47): "Price per visit / Each extra dog /
+            // First cleanup" asked a trainer for numbers no lesson reads.
+            label: "Your service area",
+            description:
+              "Where you work. Clients inside it can book online; anyone outside it is told you don't serve their area yet.",
+            done: zoneSaved,
+            cta: "Set service area",
+          }),
       to: "/zones",
-      cta: "Set area price",
     });
   }
   if (orgLines.includes("dog_walking")) {
@@ -468,11 +507,10 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
     parts.push({
       id: "stays",
       label: "Sitting",
-      description:
-        "Drop-in, Overnight stay and House sit prices, holiday dates and the deposit refund window.",
+      description: "What a Drop-in, an Overnight stay and a House sit cost.",
       done: staysDone,
       to: "/settings/services",
-      cta: "Review sitting prices",
+      cta: "Price stays",
     });
   }
   if (grooming) {
@@ -482,7 +520,7 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
       description: "The size grid, required vaccines, and setup, cleanup and travel minutes.",
       done: groomDone,
       to: "/settings/services",
-      cta: "Review grooming setup",
+      cta: "Price grooms",
     });
   }
   if (training) {
@@ -499,7 +537,11 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
   const zonesStep = steps.find((step) => step.id === "zones")!;
 
   if (linesRun.length > 1) {
-    const names = parts.map((p) => PART_NOUN[p.id](petWaste));
+    // Without pet waste the area has no price (#958), so it is named apart
+    // from the things that do.
+    const names = parts
+      .filter((p) => petWaste || p.id !== "area")
+      .map((p) => PART_NOUN[p.id](petWaste));
     const list =
       names.length > 1
         ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`
@@ -508,19 +550,23 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
     delete zonesStep.alt;
     Object.assign(zonesStep, {
       label: "Price your services",
-      description: `You run ${linesRun.length} services. Set a price for each: ${list}. New clients are quoted these prices.`,
+      description: `You run ${linesRun.length} services. ${petWaste ? "Set a price for each" : "Set your service area, and a price for each"}: ${list}. New clients are quoted these prices.`,
       done: parts.every((p) => p.done),
       to: "/setup",
       cta: "Set your prices",
-      gate: parts.some((p) => p.id === "area") ? "/zones" : "/settings/services",
+      // The pet-waste area (owner, office manager, dispatcher), otherwise
+      // the prices (owner, office manager). A walker's area part (#958) does
+      // not widen it: whoever prices a walk can save a zone.
+      gate: petWaste ? "/zones" : "/settings/services",
       parts,
     });
   } else if (grooming) {
     Object.assign(zonesStep, {
       label: "Review your grooming prices, vaccines and buffer",
       description:
-        "Review the starter size grid, required vaccines and setup, cleanup and travel minutes in Settings, Services.",
+        "Price the size grid, and review required vaccines and setup, cleanup and travel minutes. New clients are quoted these prices.",
       done: groomDone,
+      to: "/setup",
       cta: "Review grooming setup",
       gate: "/settings/services",
     });
@@ -543,10 +589,10 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
     Object.assign(zonesStep, {
       label: "Price your sitting services",
       description:
-        "Review Drop-in, Overnight stay and House sit prices, holiday dates and the deposit refund window before booking your first stay.",
+        "Set what a Drop-in, an Overnight stay and a House sit cost before booking your first stay. New clients are quoted these prices.",
       done: staysDone,
-      to: "/settings/services",
-      cta: "Review sitting services",
+      to: "/setup",
+      cta: "Price stays",
       gate: "/settings/services",
     });
   } else if (training) {
@@ -560,9 +606,27 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
       description:
         "Price your lesson package, turn it on, and add the skills a trainer scores. New clients are quoted these prices. Your service area is on Zones.",
       done: training.done,
-      to: "/settings/services",
+      to: "/setup",
       cta: "Price lessons",
       gate: "/settings/services",
+    });
+  }
+
+  // #958: a business with one line other than pet waste keeps its line's
+  // step, and gains the area as a part of it, asked on /setup like the
+  // walks (#769). Its wording used to end "Your service area is on Zones":
+  // a link nobody had to follow, so setup finished with no area and every
+  // client out of it.
+  if (linesRun.length === 1 && !petWaste && needsArea) {
+    delete zonesStep.alt;
+    Object.assign(zonesStep, {
+      description:
+        zonesStep.description.replace(/ ?Your service area is on Zones\./, "") +
+        " Clients book inside the service area you set here.",
+      done: parts.every((p) => p.done),
+      to: "/setup",
+      // The area first, then the line: the order /setup draws them.
+      parts,
     });
   }
 
@@ -575,6 +639,20 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
     emailVerified: Boolean(o.email_verified_at),
   };
 });
+
+/** The lines a client books by ZIP through public_quote without a zone
+ *  price of their own (#958): each is priced by its service, and still
+ *  needs a zone that lists the client's ZIP to be quoted at all. */
+export const AREA_BOOKED_LINES = [
+  "dog_walking",
+  "pet_sitting",
+  "mobile_grooming",
+  "training",
+] as const;
+
+export function runsAreaBookedLine(lines: readonly string[]): boolean {
+  return AREA_BOOKED_LINES.some((l) => lines.includes(l));
+}
 
 export const dismissOnboarding = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

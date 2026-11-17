@@ -215,7 +215,9 @@ const WALKER: ServiceLine[] = ["dog_walking"];
 const MIXED: ServiceLine[] = ["pet_waste", "dog_walking"];
 
 for (const [who, lines, counts, saveLabel] of [
-  ["a walker-only business", WALKER, {}, undefined],
+  // #958: a walker's area is its own part of the step; saved here, so what
+  // is measured is the walks.
+  ["a walker-only business", WALKER, { zones: 1 }, undefined],
   ["a business that scoops and walks", MIXED, { zones: 1 }, "Save walk prices"],
 ] as const) {
   describe(`#769 ${who}`, () => {
@@ -320,12 +322,12 @@ describe("#769 a drop-in priced too is quoted, and a drop-in price can be cleare
     await type(DROP_IN, "18");
     await save();
     expect(world.services.find((s) => s.id === DROP_IN)!.base_price_cents).toBe(1800);
-    expect((await priceStep(WALKER)).done).toBe(true);
+    expect((await priceStep(WALKER, { zones: 1 })).done).toBe(true);
 
     await type(DROP_IN, "");
     await save();
     expect(world.services.find((s) => s.id === DROP_IN)!.base_price_cents).toBeNull();
-    expect((await priceStep(WALKER)).done).toBe(true);
+    expect((await priceStep(WALKER, { zones: 1 })).done).toBe(true);
   });
 
   it("a failed write is said and does not move the step on", async () => {

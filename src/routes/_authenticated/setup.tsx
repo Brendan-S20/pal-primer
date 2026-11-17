@@ -14,6 +14,8 @@ import { useServiceLines } from "@/components/CommercialOnly";
 import { ServiceLinesChoices } from "@/components/ServiceLinesChoices";
 import { DayEndPanel } from "@/components/SetupDayEndPanel";
 import { WalkPricesForm } from "@/components/SetupWalkPrices";
+import { GroomSetupForm, StayPricesForm, TrainingSetupForm } from "@/components/SetupLinePrices";
+import { ServiceAreaOnlyForm } from "@/components/SetupServiceArea";
 import { SetupFirstCleanupChoice } from "@/components/SetupFirstCleanupChoice";
 import { BusinessSaveButton, SETUP_BUSINESS_FORM_ID } from "@/components/SetupBusinessSave";
 import { businessStepProblem } from "@/lib/setup-business-problem";
@@ -356,14 +358,18 @@ function PricingPanel({ step, onSaved }: { step: OnboardingStep; onSaved: () => 
   // sent to (#769).
   if (!petWaste && lines.includes("dog_walking") && !lines.includes("mobile_grooming"))
     return <WalkPricesForm done={step.done} onSaved={onSaved} />;
-  return lines.includes("mobile_grooming") ? (
-    <Button asChild className="min-h-11">
-      <Link to="/settings/services">Review grooming prices, vaccines and buffer</Link>
-    </Button>
-  ) : (
-    <ServiceAreaPanel step={step} onSaved={onSaved} />
-  );
+  // And a groomer, a sitter or a trainer prices theirs here too (#959).
+  if (lines.includes("mobile_grooming"))
+    return <GroomSetupForm done={step.done} onSaved={onSaved} />;
+  if (!petWaste && lines.includes("pet_sitting"))
+    return <StayPricesForm done={step.done} onSaved={onSaved} />;
+  if (!petWaste && lines.includes("training"))
+    return <TrainingSetupForm done={step.done} onSaved={onSaved} />;
+  return <ServiceAreaPanel step={step} onSaved={onSaved} />;
 }
+
+/** The parts of a multi-line price step asked on /setup itself (#769, #959). */
+const INLINE_PARTS: readonly PricePart["id"][] = ["area", "walks", "stays", "grooms", "lessons"];
 
 const fieldClass = "space-y-1.5";
 
@@ -822,10 +828,15 @@ function PricesPanel({
 }) {
   const area = parts.find((p) => p.id === "area");
   const walks = parts.find((p) => p.id === "walks");
-  // Parts finished on Settings, Services: everything but the two asked here.
-  const linked = parts.filter((p) => p.id !== "area" && p.id !== "walks");
+  const stays = parts.find((p) => p.id === "stays");
+  const grooms = parts.find((p) => p.id === "grooms");
+  const lessons = parts.find((p) => p.id === "lessons");
+  // Parts finished on Settings, Services: none since #959, kept for a part
+  // added later that is not asked here.
+  const linked = parts.filter((p) => !INLINE_PARTS.includes(p.id));
   const openBesides = (id: PricePart["id"]) => parts.some((p) => p.id !== id && !p.done);
   const qc = useQueryClient();
+  const { petWaste } = useServiceLines();
   // Saving the area or the walks finishes one part, not the step. Refresh the
   // parts and stay here while the others are still open; move on only once
   // the server says every part is done.
@@ -858,7 +869,7 @@ function PricesPanel({
                 <p className="text-sm text-muted-foreground">{part.description}</p>
               </div>
             </div>
-            {part.id !== "area" && part.id !== "walks" && (
+            {!INLINE_PARTS.includes(part.id) && (
               <Button
                 asChild
                 size="sm"
@@ -895,11 +906,53 @@ function PricesPanel({
       {area && (
         <div className="space-y-3" data-setup-price-form="area">
           <h3 className="text-sm font-medium">{area.label}</h3>
-          <ServiceAreaPanel
-            step={{ ...step, done: area.done }}
+          {petWaste ? (
+            <ServiceAreaPanel
+              step={{ ...step, done: area.done }}
+              onSaved={partSaved}
+              saveLabel={openBesides("area") ? "Save area" : undefined}
+              inBar={false}
+            />
+          ) : (
+            // Walking, sitting, grooming, training: where, with no price
+            // (#958). public_quote needs a zone for every line it books.
+            <ServiceAreaOnlyForm
+              done={area.done}
+              onSaved={partSaved}
+              saveLabel={openBesides("area") ? "Save area" : undefined}
+            />
+          )}
+        </div>
+      )}
+      {/* Stays, grooms and lessons, the same way (#959), after the area
+          (#958): where first, then what each costs. */}
+      {stays && (
+        <div className="space-y-3" data-setup-price-form="stays">
+          <h3 className="text-sm font-medium">{stays.label}</h3>
+          <StayPricesForm
+            done={stays.done}
             onSaved={partSaved}
-            saveLabel={openBesides("area") ? "Save area" : undefined}
-            inBar={false}
+            saveLabel={openBesides("stays") ? "Save stay prices" : undefined}
+          />
+        </div>
+      )}
+      {grooms && (
+        <div className="space-y-3" data-setup-price-form="grooms">
+          <h3 className="text-sm font-medium">{grooms.label}</h3>
+          <GroomSetupForm
+            done={grooms.done}
+            onSaved={partSaved}
+            saveLabel={openBesides("grooms") ? "Save grooming setup" : undefined}
+          />
+        </div>
+      )}
+      {lessons && (
+        <div className="space-y-3" data-setup-price-form="lessons">
+          <h3 className="text-sm font-medium">{lessons.label}</h3>
+          <TrainingSetupForm
+            done={lessons.done}
+            onSaved={partSaved}
+            saveLabel={openBesides("lessons") ? "Save lessons" : undefined}
           />
         </div>
       )}

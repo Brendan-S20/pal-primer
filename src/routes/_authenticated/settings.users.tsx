@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
+import { ROUTE_START_BLANK_HINT } from "@/lib/route-endpoints";
 import { StaffSkills } from "@/components/settings/StaffSkills";
 import { RouteEndLabelText } from "@/components/settings/RouteEndLabel";
 import { WalkerDogCap } from "@/components/settings/WalkerDogCap";
@@ -719,7 +720,7 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
   };
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <div className="space-y-1.5">
         <Label className="text-xs flex items-center gap-1">
           <MapPin className="h-3 w-3 shrink-0" /> Route start (home, shop, or depot)
@@ -743,7 +744,7 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
                 : null,
             );
           }}
-          placeholder="Street, city, state and ZIP"
+          placeholder={ROUTE_START_BLANK_HINT}
           disabled={!canEdit}
         />
         {staff.start_latitude != null && (

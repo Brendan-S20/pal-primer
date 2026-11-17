@@ -59,7 +59,9 @@ describe("Continue setup (#772)", () => {
 describe("Price walks (#772)", () => {
   it("the setup page draws the walk price form for the walks part, not a link", () => {
     const src = read("src/routes/_authenticated/setup.tsx");
-    expect(src).toMatch(/part\.id !== "area" && part\.id !== "walks" && \(/);
+    expect(src).toMatch(/\{!INLINE_PARTS\.includes\(part\.id\) && \(/);
+    // #959: the walks are one of the parts asked on /setup, not a link.
+    expect(src).toMatch(/INLINE_PARTS[^=]*= \[[^\]]*"walks"/);
     expect(src).toMatch(/data-setup-price-form="walks"/);
   });
 });

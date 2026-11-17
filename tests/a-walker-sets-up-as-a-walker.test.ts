@@ -360,7 +360,9 @@ describe("#769 the walks are priced in setup, and both lengths have to be", () =
       page.indexOf("function PricesPanel("),
       page.indexOf("function ServiceAreaPanel("),
     );
-    expect(prices).toMatch(/part\.id !== "area" && part\.id !== "walks" && \(/);
+    expect(prices).toMatch(/\{!INLINE_PARTS\.includes\(part\.id\) && \(/);
+    // #959: the walks are one of the parts asked on /setup, not a link.
+    expect(page).toMatch(/INLINE_PARTS[^=]*= \[[^\]]*"walks"/);
     expect(prices).toMatch(/<WalkPricesForm/);
   });
 

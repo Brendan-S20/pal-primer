@@ -657,7 +657,9 @@ for (const { w, h, label } of WIDTHS.filter((s) => s.w === 360 || s.w === 1280))
   });
 
   for (const [who, lines, next] of [
-    ["a walker-only business", DOG_WALKING, "clients"],
+    // #958: a walker's step has its service area beside the walks, so it
+    // stays while the area is open, as a mixed business's always has.
+    ["a walker-only business", DOG_WALKING, "zones"],
     ["a business that scoops and walks", MIXED, "zones"],
   ] as const) {
     test(`#769 ${who} cannot finish prices with one walk, and finishes with both on /setup @${w}px`, async ({
@@ -690,8 +692,8 @@ for (const { w, h, label } of WIDTHS.filter((s) => s.w === 360 || s.w === 1280))
       await expect(page.getByText("Walk prices saved")).toHaveCount(0);
       await expect(page.locator('[data-setup-step="zones"]')).toBeVisible();
 
-      // Both, the drop-in blank: saved, and still on /setup. A walker alone
-      // moves to the next step; a mixed business stays while the area is open.
+      // Both, the drop-in blank: saved, and still on /setup, staying on the
+      // price step while its area is open.
       await walk30.fill("25");
       await expect(form)
         .toHaveJSProperty("validity.valid", true)

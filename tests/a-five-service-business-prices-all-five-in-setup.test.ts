@@ -54,7 +54,9 @@ function context(lines: string[], w: World) {
           return { data: [{ base_price_cents: w.walkPriceCents ?? 0 }] };
         if (table === "services" && eqs.service_line === "pet_sitting")
           return {
-            data: [{ created_at: "a", updated_at: w.staySaved ? "b" : "a" }],
+            data: [
+              { base_price_cents: 2500, created_at: "a", updated_at: w.staySaved ? "b" : "a" },
+            ],
           };
         return { count: w.counts?.[table] ?? 0 };
       };
@@ -95,7 +97,7 @@ describe("the price step at a business with all five lines", () => {
 
   it("is done only when every part is", async () => {
     const all = {
-      counts: { zones: 1, service_packages: 1, training_skills: 3 },
+      counts: { zones: 1, service_packages: 1, training_skills: 3, service_size_rules: 1 },
       walkPriceCents: 2500,
       staySaved: true,
       groomReviewed: true,
@@ -106,6 +108,8 @@ describe("the price step at a business with all five lines", () => {
       { ...all, walkPriceCents: 0 },
       { ...all, staySaved: false },
       { ...all, groomReviewed: false },
+      // #959: reviewed, but nothing in the size grid priced.
+      { ...all, counts: { ...all.counts, service_size_rules: 0 } },
       { ...all, counts: { ...all.counts, training_skills: 0 } },
     ]) {
       expect((await priceStep(ALL_FIVE, missing)).done).toBe(false);
@@ -113,7 +117,11 @@ describe("the price step at a business with all five lines", () => {
   });
 
   it("marks each part by its own test", async () => {
-    const step = await priceStep(ALL_FIVE, { walkPriceCents: 2500, groomReviewed: true });
+    const step = await priceStep(ALL_FIVE, {
+      walkPriceCents: 2500,
+      groomReviewed: true,
+      counts: { service_size_rules: 1 },
+    });
     const done = Object.fromEntries(step.parts!.map((p) => [p.id, p.done]));
     expect(done).toEqual({ area: false, walks: true, stays: false, grooms: true, lessons: false });
   });
@@ -160,27 +168,39 @@ describe("saving the area on a step with parts", () => {
 });
 
 describe("two lines without pet waste or training", () => {
-  it("asks for walks and stays and no service area", async () => {
+  // #958: no pet waste is no reason to skip the area. public_quote answers
+  // a walk or a stay only for a ZIP some zone lists.
+  it("asks for the service area, walks and stays", async () => {
     const step = await priceStep(["dog_walking", "pet_sitting"]);
-    expect(step.parts?.map((p) => p.id)).toEqual(["walks", "stays"]);
-    expect(step.description).toMatch(/walks and stays/);
+    expect(step.parts?.map((p) => p.id)).toEqual(["area", "walks", "stays"]);
+    expect(step.description).toMatch(
+      /Set your service area, and a price for each: walks and stays/,
+    );
     expect(step.gate).toBe("/settings/services");
   });
 });
 
 describe("a business with one line keeps the step for that line", () => {
   it.each([
-    [["pet_waste"], "Your service area and price", "/setup"],
-    // #769: priced on /setup itself, not a link out to Settings.
-    [["dog_walking"], "Price your walks", "/setup"],
-    [["pet_sitting"], "Price your sitting services", "/settings/services"],
-    [["mobile_grooming"], "Review your grooming prices, vaccines and buffer", "/setup"],
+    [["pet_waste"], "Your service area and price", "/setup", undefined],
+    // #769: priced on /setup itself, not a link out to Settings. #958: with
+    // the service area asked beside it.
+    [["dog_walking"], "Price your walks", "/setup", ["area", "walks"]],
+    // #959: priced on /setup, like the walks.
+    [["pet_sitting"], "Price your sitting services", "/setup", ["area", "stays"]],
+    [
+      ["mobile_grooming"],
+      "Review your grooming prices, vaccines and buffer",
+      "/setup",
+      ["area", "grooms"],
+    ],
     // R2-47: a trainer's step is the lessons, not the pet-waste area form.
-    [["training"], "Price your lessons", "/settings/services"],
-  ])("%j", async (lines, label, to) => {
+    [["training"], "Price your lessons", "/setup", ["area", "lessons"]],
+  ])("%j", async (lines, label, to, parts) => {
     const step = await priceStep(lines);
     expect(step.label).toBe(label);
     expect(step.to).toBe(to);
-    expect(step.parts).toBeUndefined();
+    expect(step.parts?.map((p) => p.id)).toEqual(parts);
+    expect(step.description).not.toMatch(/service area is on Zones/);
   });
 });

@@ -1,0 +1,13 @@
+{
+  "phase": "after",
+  "state": "sitter",
+  "width": 1440,
+  "scrollWidth": 1440,
+  "innerWidth": 1440,
+  "settingsButtons": [
+    "Settings, Services"
+  ],
+  "forms": [
+    "data-setup-stay-prices"
+  ]
+}

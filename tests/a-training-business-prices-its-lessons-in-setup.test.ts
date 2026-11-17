@@ -65,16 +65,23 @@ async function priceStep(lines: string[], counts: Counts): Promise<OnboardingSte
 // area left "1 of 6 done" with nothing saying why. A trainer's step is now
 // the lessons alone, on Settings, Services, the way a walker's is the walks.
 describe("the price step at a training business", () => {
-  it("is the lessons, on Settings, Services", async () => {
+  it("is the lessons, priced on /setup beside the service area (#958, #959)", async () => {
     const step = await priceStep(["training"], {});
     expect(step.label).toBe("Price your lessons");
-    expect(step.to).toBe("/settings/services");
+    // #958: the area is asked on /setup, so the step opens there. #959: the
+    // lessons are priced there too, inline (INLINE_PARTS in setup.tsx); the
+    // part's `to` still names Settings, Services, which /setup no longer
+    // draws as a button for it.
+    expect(step.to).toBe("/setup");
     expect(step.gate).toBe("/settings/services");
     expect(step.cta).toBe("Price lessons");
     expect(step.description).toMatch(/lesson package/);
     expect(step.description).not.toMatch(/per visit/);
     expect(step.alt).toBeUndefined();
-    expect(step.parts).toBeUndefined();
+    expect(step.parts?.map((p) => [p.id, p.to])).toEqual([
+      ["area", "/zones"],
+      ["lessons", "/settings/services"],
+    ]);
   });
 
   it("stays open until the lesson package is priced and a skill exists, area or not", async () => {
@@ -82,14 +89,19 @@ describe("the price step at a training business", () => {
     expect((await priceStep(["training"], { service_packages: 1 })).done).toBe(false);
   });
 
-  it("is done when a priced package and a skill exist, with no area asked for", async () => {
-    const step = await priceStep(["training"], { service_packages: 1, training_skills: 5 });
+  it("is done when a priced package, a skill and a service area exist (#958)", async () => {
+    const priced = { service_packages: 1, training_skills: 5 };
+    expect((await priceStep(["training"], priced)).done).toBe(false);
+    const step = await priceStep(["training"], { ...priced, zones: 1 });
     expect(step.done).toBe(true);
+    // The area asks for no price: "per visit" is a number no lesson reads.
+    const area = step.parts!.find((p) => p.id === "area")!;
+    expect(area.description).not.toMatch(/per visit|price/i);
   });
 
-  it("with another line, asks no area unless the business scoops", async () => {
+  it("with another line, asks for the area whether or not the business scoops (#958)", async () => {
     const walkTrain = await priceStep(["dog_walking", "training"], {});
-    expect(walkTrain.parts?.map((p) => p.id)).toEqual(["walks", "lessons"]);
+    expect(walkTrain.parts?.map((p) => p.id)).toEqual(["area", "walks", "lessons"]);
     const wasteTrain = await priceStep(["pet_waste", "training"], {});
     expect(wasteTrain.parts?.map((p) => p.id)).toEqual(["area", "lessons"]);
   });
