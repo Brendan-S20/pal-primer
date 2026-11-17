@@ -25,6 +25,16 @@ import {
   UNDER_REVIEW_LINE,
 } from "@/lib/texting-registration";
 import { getOrgTwilioSettings } from "@/lib/twilio-settings.functions";
+import { getTextingHostedSite } from "@/lib/texting-hosted-site.functions";
+import {
+  HOSTED_SITE_HOST,
+  hostedSiteBlocker,
+  ownSiteFields,
+  siteChoiceFor,
+  siteFields,
+  type HostedSite,
+  type SiteChoice,
+} from "@/lib/texting-hosted-site";
 import { useMyRole } from "@/hooks/useMyRole";
 import { titleHead } from "@/lib/page-title";
 import { formatDateTime, formatDay } from "@/lib/format";
@@ -128,6 +138,9 @@ function TextingSettings() {
     },
   });
   const { role } = useMyRole();
+  // #969: the business's own mypets page, filed by default.
+  const hostedFn = useServerFn(getTextingHostedSite);
+  const hostedQ = useQuery({ queryKey: ["texting-hosted-site"], queryFn: () => hostedFn() });
 
   const reg = q.data?.registration ?? null;
   const status = (reg?.status as RegistrationStatus | undefined) ?? null;
@@ -178,6 +191,7 @@ function TextingSettings() {
               status={status}
               isOwner={role === "owner"}
               needsAddon={needsAddon}
+              hosted={hostedQ.data ?? null}
             />
           ) : (
             reg && <FiledDetails reg={reg} />
@@ -325,14 +339,20 @@ function RegistrationForm({
   status,
   isOwner,
   needsAddon,
+  hosted,
 }: {
   initial: Form;
   status: RegistrationStatus | null;
   isOwner: boolean;
   needsAddon: boolean;
+  hosted: HostedSite | null;
 }) {
   const qc = useQueryClient();
-  const [form, setForm] = useState<Form>(initial);
+  // #969: start on the hosted page unless a website of the owner's own was
+  // saved. The typed fields hold only the owner's own website.
+  const [site, setSite] = useState<SiteChoice>(() => siteChoiceFor(initial));
+  const [form, setForm] = useState<Form>(() => ({ ...initial, ...ownSiteFields(initial) }));
+  const filed = siteFields(form, site, hosted);
   const [ein, setEin] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -340,7 +360,8 @@ function RegistrationForm({
   const submitFn = useServerFn(submitTextingRegistration);
 
   const save = useMutation({
-    mutationFn: () => saveFn({ data: { ...form, business_type: form.business_type || undefined } }),
+    mutationFn: () =>
+      saveFn({ data: { ...filed, business_type: filed.business_type || undefined } }),
     onSuccess: () => {
       toast.success("Details saved");
       qc.invalidateQueries({ queryKey: ["texting-registration"] });
@@ -350,14 +371,16 @@ function RegistrationForm({
 
   const submit = useMutation({
     mutationFn: async () => {
-      const details = registrationDetailsSchema.safeParse(form);
+      const details = registrationDetailsSchema.safeParse(filed);
       const einCheck = einSchema.safeParse(ein);
+      const blocker = site === "hosted" ? hostedSiteBlocker(hosted) : null;
       const found = {
         ...(details.success ? {} : issuesByField(details.error)),
+        ...(blocker ? { website_url: blocker } : {}),
         ...(einCheck.success ? {} : { ein: einCheck.error.issues[0]?.message ?? "Enter the EIN" }),
       };
       setErrors(found);
-      if (!details.success || !einCheck.success) {
+      if (!details.success || !einCheck.success || blocker) {
         throw new Error("Some details need fixing. They are marked below.");
       }
       return submitFn({ data: { details: details.data, ein: einCheck.data } });
@@ -496,36 +519,56 @@ function RegistrationForm({
 
       <Section
         title="Website and contact"
-        hint="Carriers check that your Privacy Policy and Terms are separate pages on your own website, and that the email is on the same domain."
+        hint={
+          site === "hosted"
+            ? `Carriers need a website with a Privacy Policy and Terms. Your free ${HOSTED_SITE_HOST} page has both.`
+            : "Carriers check that your Privacy Policy and Terms are separate pages on your own website, and that the email is on the same domain."
+        }
       >
-        <Field id="website_url" label="Website" error={errors.website_url} wide>
-          <Input
-            id="website_url"
-            type="url"
-            value={form.website_url}
-            onChange={(e) => set("website_url", e.target.value)}
-            placeholder="https://yourbusiness.com"
-          />
-        </Field>
-        <Field id="privacy_url" label="Privacy Policy page" error={errors.privacy_url}>
-          <Input
-            id="privacy_url"
-            type="url"
-            value={form.privacy_url}
-            onChange={(e) => set("privacy_url", e.target.value)}
-            placeholder="https://yourbusiness.com/privacy"
-          />
-        </Field>
-        <Field id="terms_url" label="Terms page" error={errors.terms_url}>
-          <Input
-            id="terms_url"
-            type="url"
-            value={form.terms_url}
-            onChange={(e) => set("terms_url", e.target.value)}
-            placeholder="https://yourbusiness.com/terms"
-          />
-        </Field>
-        <Field id="business_email" label="Business email" error={errors.business_email}>
+        <SiteChoicePicker value={site} onChange={setSite} />
+        {site === "hosted" ? (
+          <HostedSitePanel hosted={hosted} errors={errors} />
+        ) : (
+          <>
+            <Field id="website_url" label="Website" error={errors.website_url} wide>
+              <Input
+                id="website_url"
+                type="url"
+                value={form.website_url}
+                onChange={(e) => set("website_url", e.target.value)}
+                placeholder="https://yourbusiness.com"
+              />
+            </Field>
+            <Field id="privacy_url" label="Privacy Policy page" error={errors.privacy_url}>
+              <Input
+                id="privacy_url"
+                type="url"
+                value={form.privacy_url}
+                onChange={(e) => set("privacy_url", e.target.value)}
+                placeholder="https://yourbusiness.com/privacy"
+              />
+            </Field>
+            <Field id="terms_url" label="Terms page" error={errors.terms_url}>
+              <Input
+                id="terms_url"
+                type="url"
+                value={form.terms_url}
+                onChange={(e) => set("terms_url", e.target.value)}
+                placeholder="https://yourbusiness.com/terms"
+              />
+            </Field>
+          </>
+        )}
+        <Field
+          id="business_email"
+          label="Business email"
+          error={errors.business_email}
+          hint={
+            site === "hosted"
+              ? "Any email you check works, Gmail included."
+              : "On your website's domain."
+          }
+        >
           <Input
             id="business_email"
             type="email"
@@ -625,6 +668,114 @@ function RegistrationForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+/** #969: which website the registration files. The hosted page first, and
+ *  preselected; the owner's own website is the option. */
+function SiteChoicePicker({
+  value,
+  onChange,
+}: {
+  value: SiteChoice;
+  onChange: (v: SiteChoice) => void;
+}) {
+  const choices: Array<[SiteChoice, string, string]> = [
+    [
+      "hosted",
+      `Use my free ${HOSTED_SITE_HOST} page`,
+      "We file your listing with its own Privacy Policy and Terms pages. Nothing to build.",
+    ],
+    [
+      "own",
+      "I have my own website",
+      "It needs a Privacy Policy and Terms on its own domain, and an email on that domain.",
+    ],
+  ];
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Website for texting"
+      className="grid gap-2 sm:col-span-2"
+      data-testid="texting-site-choice"
+    >
+      {choices.map(([v, label, detail]) => (
+        <label
+          key={v}
+          className={`flex min-h-11 cursor-pointer items-start gap-3 rounded-md border p-3 text-sm ${
+            value === v ? "border-primary bg-primary/5" : "bg-background"
+          }`}
+        >
+          <input
+            type="radio"
+            name="texting-site"
+            value={v}
+            checked={value === v}
+            onChange={() => onChange(v)}
+            className="mt-0.5 h-4 w-4 shrink-0"
+          />
+          <span className="min-w-0">
+            <span className="block font-medium">{label}</span>
+            <span className="mt-0.5 block text-xs text-muted-foreground">{detail}</span>
+          </span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
+/** #969: the three hosted URLs the filing will use, or what is missing. */
+function HostedSitePanel({
+  hosted,
+  errors,
+}: {
+  hosted: HostedSite | null;
+  errors: Record<string, string>;
+}) {
+  const blocker = hostedSiteBlocker(hosted);
+  const urls = hosted?.slug
+    ? siteFields({ website_url: "", privacy_url: "", terms_url: "" }, "hosted", hosted)
+    : null;
+  const fieldError = errors.website_url || errors.privacy_url || errors.terms_url;
+  return (
+    <div className="min-w-0 space-y-2 text-xs sm:col-span-2" data-testid="texting-hosted-site">
+      {urls && (
+        <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-[auto_1fr]">
+          {(
+            [
+              ["Website", urls.website_url],
+              ["Privacy Policy", urls.privacy_url],
+              ["Terms", urls.terms_url],
+            ] as const
+          ).map(([k, v]) => (
+            <div key={k} className="contents">
+              <dt className="text-muted-foreground">{k}</dt>
+              <dd className="min-w-0 break-all font-mono">{v}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {blocker ? (
+        <p className="flex items-start gap-2 text-amber-700 dark:text-amber-500">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span className="min-w-0">
+            {blocker}{" "}
+            <Link to="/settings/directory" className="underline">
+              Open Directory
+            </Link>
+          </span>
+        </p>
+      ) : (
+        <p className="text-muted-foreground">
+          These pages are public, with no sign-in, so carriers can open them.
+        </p>
+      )}
+      {fieldError && fieldError !== blocker && (
+        <p className="text-destructive" role="alert">
+          {fieldError}
+        </p>
+      )}
+    </div>
   );
 }
 

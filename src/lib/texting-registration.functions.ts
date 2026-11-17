@@ -177,6 +177,10 @@ export const submitTextingRegistration = createServerFn({ method: "POST" })
     // that actually decides, atomically, who submits.
     const { status, updatedAt } = await currentStatus(orgId);
     if (!canSubmit(status, updatedAt)) throw new Error("This registration is already with Twilio.");
+    // #969: a hosted filing must name this business's own published page.
+    const { hostedSiteRefusal } = await import("@/lib/texting-hosted-site.server");
+    const refusal = await hostedSiteRefusal(orgId, data.details);
+    if (refusal) throw new Error(refusal);
     const { submitTextingRegistration: submit } = await import("@/lib/twilio-provisioning.server");
     // The EIN is passed through to Twilio and dropped; see the module header.
     return submit({ orgId, userId: context.userId, details: data.details, ein: data.ein });
