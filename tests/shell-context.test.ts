@@ -18,6 +18,9 @@ const loaders = vi.hoisted(() => ({
   notifications: vi.fn(),
   routingRuns: vi.fn(),
   clock: vi.fn(),
+  texting: vi.fn(),
+  role: vi.fn(),
+  share: vi.fn(),
   getSession: vi.fn(),
 }));
 
@@ -49,6 +52,9 @@ vi.mock("@/lib/platform.functions", () => ({ loadPlatformContext: loaders.platfo
 vi.mock("@/lib/notifications-center.functions", () => ({ loadMyNotifications: loaders.notifications }));
 vi.mock("@/lib/routing-runs.functions", () => ({ loadMyRoutingRuns: loaders.routingRuns }));
 vi.mock("@/lib/time-clock.functions", () => ({ loadMyClock: loaders.clock }));
+vi.mock("@/lib/client-texting.functions", () => ({ loadClientTextingAvailability: loaders.texting }));
+vi.mock("@/lib/authz.server", () => ({ callerRoleOrNull: loaders.role }));
+vi.mock("@/lib/caller-lookup.server", () => ({ shareCallerLookups: loaders.share }));
 vi.mock("@/components/TimeClock", () => ({ MY_CLOCK_QUERY_KEY: ["my-day", "clock"] }));
 vi.mock("@/hooks/useRoutingRuns", () => ({ ROUTING_RUNS_KEY: ["routing-runs", "mine"] }));
 
@@ -70,6 +76,7 @@ beforeEach(() => {
   resetShellContextForTests();
   vi.resetAllMocks();
   loaders.org.mockResolvedValue(org);
+  loaders.role.mockResolvedValue("owner");
   loaders.lock.mockResolvedValue(lock);
   for (const name of partNames) loaders[name].mockResolvedValue({ part: name });
   loaders.getSession.mockResolvedValue({ data: { session: null } });
@@ -237,9 +244,28 @@ describe("loadShellPartsForCaller", () => {
   });
 
   it("answers nothing without an organization", async () => {
-    loaders.org.mockResolvedValue({ organization: null, accessTurnedOff: null });
+    loaders.role.mockResolvedValue(null);
     expect(await loadShellPartsForCaller(context)).toEqual({});
     for (const name of partNames) expect(loaders[name]).not.toHaveBeenCalled();
+  });
+
+  // #900: the parts share one caller lookup, and the role comes from that
+  // lookup alone, not from the whole of getMyOrg (which reads the business's
+  // row as well).
+  it("shares the caller lookups of this request and reads only the role", async () => {
+    await loadShellPartsForCaller(context);
+    expect(loaders.share).toHaveBeenCalledWith(context.supabase);
+    expect(loaders.role).toHaveBeenCalledWith(context.supabase, "user-1");
+    expect(loaders.share.mock.invocationCallOrder[0]).toBeLessThan(
+      loaders.role.mock.invocationCallOrder[0],
+    );
+    expect(loaders.org).not.toHaveBeenCalled();
+  });
+
+  it("answers the sidebar's texting question with the parts", async () => {
+    const parts = await loadShellPartsForCaller(context);
+    expect(loaders.texting).toHaveBeenCalledWith(context);
+    expect(parts.texting).toEqual({ part: "texting" });
   });
 
   it("leaves a failed part out and keeps the successful parts", async () => {
@@ -252,7 +278,7 @@ describe("loadShellPartsForCaller", () => {
   });
 
   it("does not ask for trial, billingBanner or routingRuns for a tech", async () => {
-    loaders.org.mockResolvedValue({ organization: { id: "org-1", role: "tech" } });
+    loaders.role.mockResolvedValue("tech");
     const parts = await loadShellPartsForCaller(context);
     for (const name of ["trial", "billingBanner", "routingRuns"] as const) {
       expect(loaders[name]).not.toHaveBeenCalled();

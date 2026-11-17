@@ -554,7 +554,7 @@ export const listClientsSummary = createServerFn({ method: "GET" })
       db: supabase,
       seesInvoices,
     } = await directoryReader(context.supabase, context.userId);
-    const { fetchAllPagesConcurrently } = await import("@/lib/supabase-paging.server");
+    const { fetchAllPagesCounted } = await import("@/lib/supabase-paging.server");
     const { outstandingByClient } = await import("@/lib/ar");
     const today = rosterToday();
     const head = async (status: z.infer<typeof clientsPageSchema>["status"]) => {
@@ -574,21 +574,22 @@ export const listClientsSummary = createServerFn({ method: "GET" })
       head("no_plan"),
       !seesInvoices
         ? Promise.resolve([] as any[])
-        : fetchAllPagesConcurrently<any>((a, b) =>
+        : fetchAllPagesCounted<any>((a, b, counted) =>
             supabase
               .from("invoices")
               .select(
                 "client_id, total_cents, credit_applied_cents, amount_paid_cents, deposit_for_invoice_id, status",
+                counted ? { count: "exact" } : undefined,
               )
               .eq("organization_id", orgId)
               .eq("status", "open")
               .order("id")
               .range(a, b),
           ),
-      fetchAllPagesConcurrently<{ tags: string[] | null }>((a, b) =>
+      fetchAllPagesCounted<{ tags: string[] | null }>((a, b, counted) =>
         supabase
           .from("clients")
-          .select("tags")
+          .select("tags", counted ? { count: "exact" } : undefined)
           .eq("organization_id", orgId)
           .filter("tags", "neq", "{}")
           // The list's own order, so a tag is spelled as the list first shows it.
