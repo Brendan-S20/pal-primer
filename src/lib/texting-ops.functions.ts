@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { RegistrationStatus } from "@/lib/texting-registration";
 import { QUEUE_STATUSES, sortTextingQueue } from "@/lib/texting-rejection";
+import { canSubmit } from "@/lib/texting-registration";
 
 // site-r2-05: the admin/ops half of "Under review". A business that has
 // added Managed texting and submitted its details waits here until a
@@ -53,9 +54,11 @@ export const listTextingReviews = createServerFn({ method: "GET" })
     const { data, error } = await db
       .from("org_texting_registrations")
       .select(
-        "organization_id, status, legal_name, phone_number, submitted_at, approved_at, ops_approved_at, last_error, rejection_reason, rejection_code, resubmit_deadline",
+        "organization_id, status, legal_name, phone_number, submitted_at, approved_at, ops_approved_at, last_error, rejection_reason, rejection_code, resubmit_deadline, updated_at",
       )
-      .in("status", [...QUEUE_STATUSES])
+      // #972 review: "submitting" too, for a submit that died partway. Only
+      // one past STALE_SUBMIT_MS is kept (below): a live one is still running.
+      .in("status", [...QUEUE_STATUSES, "submitting"])
       .order("submitted_at", { ascending: true });
     if (error) throw new Error(error.message);
     const ids = (data ?? []).map((r: any) => r.organization_id);
@@ -66,22 +69,31 @@ export const listTextingReviews = createServerFn({ method: "GET" })
     ]);
     const sending = new Set((live ?? []).map((r: any) => r.organization_id));
     const names = new Map((orgs ?? []).map((o: any) => [o.id, o.name as string]));
+    // Scrubbed again on the way out (#972 review): a reason or error saved
+    // before scrub knew Twilio SIDs may still carry one.
+    const { scrub } = await import("@/lib/twilio-provisioning.server");
+    const clean = (v: string | null | undefined) => (v ? scrub(String(v)) : null);
     return {
       rows: sortTextingQueue(
         (data ?? [])
           // Already sending: no longer under review, nothing to do here.
           .filter((r: any) => !sending.has(r.organization_id))
+          // A submit still running is nobody's to act on yet; one that died
+          // partway is shown as stopped, as the owner's screen shows it.
+          .filter((r: any) => r.status !== "submitting" || canSubmit("submitting", r.updated_at))
           .map((r: any): TextingReviewRow => ({
             organizationId: r.organization_id,
             businessName: names.get(r.organization_id) ?? r.legal_name ?? r.organization_id,
             legalName: r.legal_name ?? null,
-            status: r.status,
+            status: r.status === "submitting" ? "failed" : r.status,
             phoneNumber: r.phone_number ?? null,
             submittedAt: r.submitted_at ?? null,
             approvedAt: r.approved_at ?? null,
             opsApprovedAt: r.ops_approved_at ?? null,
-            lastError: r.last_error ?? null,
-            rejectionReason: r.rejection_reason ?? null,
+            lastError:
+              clean(r.last_error) ??
+              (r.status === "submitting" ? "Setup stopped before it finished." : null),
+            rejectionReason: clean(r.rejection_reason),
             rejectionCode: r.rejection_code ?? null,
             resubmitDeadline: r.resubmit_deadline ?? null,
           })),

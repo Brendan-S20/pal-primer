@@ -276,7 +276,12 @@ function TextingReviewQueue() {
                   )}
                 </div>
                 {fix ? (
-                  <span className="shrink-0 text-xs text-muted-foreground">Waiting on the owner</span>
+                  // A rejection is the owner's to fix. A stop can be ours (no
+                  // numbers, a Twilio outage, setup not configured), so the
+                  // error decides who acts (#972 review).
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {r.status === "rejected" ? "Waiting on the owner" : "Setup stopped: check the error"}
+                  </span>
                 ) : (
                 <Button
                   size="sm"
