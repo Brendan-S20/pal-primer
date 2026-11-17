@@ -28,10 +28,10 @@ const codeOnly = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/
 describe("the address Business settings keeps, in the parts a filing wants", () => {
   it.each([
     [
-      "18000 West Eight Mile Road, Suite 2400, Southfield, MI 48075, USA",
-      ["18000 West Eight Mile Road", "Suite 2400", "Southfield", "MI", "48075"],
+      "4200 Packard Street, Suite 2400, Ann Arbor, MI 48108, USA",
+      ["4200 Packard Street", "Suite 2400", "Ann Arbor", "MI", "48108"],
     ],
-    ["100 Woodward Ave, Detroit, MI 48226", ["100 Woodward Ave", "", "Detroit", "MI", "48226"]],
+    ["100 Main St, Ann Arbor, MI 48104", ["100 Main St", "", "Ann Arbor", "MI", "48104"]],
     ["12 Elm St, Austin, Texas 78701", ["12 Elm St", "", "Austin", "TX", "78701"]],
     ["12 Elm St, Austin, tx, 78701-1234", ["12 Elm St", "", "Austin", "TX", "78701-1234"]],
     ["5 Oak Ln\nPortland, OR 97201\nUnited States", ["5 Oak Ln", "", "Portland", "OR", "97201"]],
@@ -55,20 +55,24 @@ describe("the address Business settings keeps, in the parts a filing wants", () 
   });
 
   it("files a prefilled address that passes the form's own check", () => {
-    const parts = splitUsAddress("100 Woodward Ave, Detroit, MI 48226");
+    const parts = splitUsAddress("100 Main St, Ann Arbor, MI 48104");
     const r = registrationDetailsSchema.safeParse({
-      legal_name: "Detroit Doo LLC",
+      legal_name: "QA Test 970 LLC",
       business_type: "llc",
       ...parts,
-      website_url: "https://detroitdoo.com",
-      privacy_url: "https://detroitdoo.com/privacy",
-      terms_url: "https://detroitdoo.com/terms",
-      business_email: "devin@detroitdoo.com",
+      website_url: "https://qa-test-970.example.com",
+      privacy_url: "https://qa-test-970.example.com/privacy",
+      terms_url: "https://qa-test-970.example.com/terms",
+      business_email: "devin@qa-test-970.example.com",
       business_phone: "313-555-0100",
       contacts: [
         ownerContact({
           ...NO_PREFILL,
-          owner: { name: "Devin Doe", email: "devin@detroitdoo.com", phone: "313-555-0101" },
+          owner: {
+            name: "Devin Doe",
+            email: "devin@qa-test-970.example.com",
+            phone: "313-555-0101",
+          },
         }),
       ],
     });
@@ -78,9 +82,9 @@ describe("the address Business settings keeps, in the parts a filing wants", () 
 
 describe("the owner as authorized contact 1", () => {
   it("splits the name, and keeps a double-barrelled surname whole", () => {
-    expect(splitName("Devin Abernathy-Kowalczyk")).toEqual({
-      first_name: "Devin",
-      last_name: "Abernathy-Kowalczyk",
+    expect(splitName("Avery Testington-Abernathy")).toEqual({
+      first_name: "Avery",
+      last_name: "Testington-Abernathy",
     });
     expect(splitName("Mary Ann van der Berg")).toEqual({
       first_name: "Mary",
@@ -94,13 +98,13 @@ describe("the owner as authorized contact 1", () => {
     expect(
       ownerContact({
         ...NO_PREFILL,
-        owner: { name: "Devin Doe", email: "devin@detroitdoo.com", phone: "" },
+        owner: { name: "Devin Doe", email: "devin@qa-test-970.example.com", phone: "" },
       }),
     ).toEqual({
       first_name: "Devin",
       last_name: "Doe",
       title: "Owner",
-      email: "devin@detroitdoo.com",
+      email: "devin@qa-test-970.example.com",
       phone: "",
     });
     // Nothing known about the owner: nothing typed for them, title included.

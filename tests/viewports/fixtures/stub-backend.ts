@@ -1114,14 +1114,14 @@ export const BASE_STUBS: Record<string, Stub> = {
     // Unused while a registration is saved; texting-setup-opens-filled-in
     // answers registration: null to draw it, at full awkward length.
     suggestions: {
-      businessName: "Detroit Doo Disposal and Yard Sanitation Services",
-      email: "office@greatermetropolitandetroitdoodisposal.com",
-      phone: "(313) 555-0100",
-      address: "18000 West Eight Mile Road, Building C, Suite 2400, Southfield, MI 48075, USA",
+      businessName: "QA TEST 970 Pet Waste, Walks and Yard Sanitation Co",
+      email: "office@qa-test-970-pet-waste-and-yard-sanitation.example.com",
+      phone: "(734) 555-0100",
+      address: "4200 Packard Street, Building C, Suite 2400, Ann Arbor, MI 48108, USA",
       owner: {
-        name: "Devin Abernathy-Kowalczyk",
-        email: "devin@greatermetropolitandetroitdoodisposal.com",
-        phone: "(313) 555-0101",
+        name: "Avery Testington-Abernathy",
+        email: "avery@qa-test-970-pet-waste-and-yard-sanitation.example.com",
+        phone: "(734) 555-0101",
       },
     },
   },

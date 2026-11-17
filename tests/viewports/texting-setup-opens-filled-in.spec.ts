@@ -10,7 +10,7 @@
  * drew the thing.
  *
  *   - /settings/sms with nothing saved: the form, prefilled at full awkward
- *     length (a 49-character DBA, a four-part address), the legal name empty,
+ *     length (a 51-character DBA, a four-part address), the legal name empty,
  *     the second contact marked optional.
  *   - /setup?step=texting, for a scooping, walking, sitting, grooming,
  *     training and mixed business: the seventh step and its link.
@@ -90,21 +90,21 @@ for (const width of WIDTHS) {
       await page.goto("/settings/sms", { waitUntil: "domcontentloaded" });
       await expect(page.getByTestId("texting-status")).toBeVisible({ timeout: 45_000 });
       await expect(page.locator("#dba")).toHaveValue(
-        "Detroit Doo Disposal and Yard Sanitation Services",
+        "QA TEST 970 Pet Waste, Walks and Yard Sanitation Co",
       );
       await expect(page.locator("#legal_name")).toHaveValue("");
-      await expect(page.locator("#street")).toHaveValue("18000 West Eight Mile Road");
+      await expect(page.locator("#street")).toHaveValue("4200 Packard Street");
       await expect(page.locator("#street2")).toHaveValue("Building C, Suite 2400");
-      await expect(page.locator("#city")).toHaveValue("Southfield");
+      await expect(page.locator("#city")).toHaveValue("Ann Arbor");
       await expect(page.locator("#region")).toHaveValue("MI");
-      await expect(page.locator("#postal_code")).toHaveValue("48075");
+      await expect(page.locator("#postal_code")).toHaveValue("48108");
       await expect(page.locator("#business_email")).toHaveValue(
-        "office@greatermetropolitandetroitdoodisposal.com",
+        "office@qa-test-970-pet-waste-and-yard-sanitation.example.com",
       );
-      await expect(page.locator("#c0-first")).toHaveValue("Devin");
-      await expect(page.locator("#c0-last")).toHaveValue("Abernathy-Kowalczyk");
+      await expect(page.locator("#c0-first")).toHaveValue("Avery");
+      await expect(page.locator("#c0-last")).toHaveValue("Testington-Abernathy");
       await expect(page.locator("#c0-email")).toHaveValue(
-        "devin@greatermetropolitandetroitdoodisposal.com",
+        "avery@qa-test-970-pet-waste-and-yard-sanitation.example.com",
       );
       await expect(page.locator("#c1-first")).toHaveValue("");
       await expect(page.getByText("Second authorized contact (optional)")).toBeVisible();
