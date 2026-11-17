@@ -28,7 +28,7 @@ import { StaffSkills } from "@/components/settings/StaffSkills";
 import { WalkerDogCap } from "@/components/settings/WalkerDogCap";
 import { toast } from "sonner";
 import { useMyRole, usePermissions } from "@/hooks/useMyRole";
-import { useRoleLabel } from "@/components/CommercialOnly";
+import { useRoleLabel, useServiceLines } from "@/components/CommercialOnly";
 import { MapPin, ChevronDown, ChevronRight } from "lucide-react";
 import { titleHead } from "@/lib/page-title";
 import { inviteFormHelp, inviteSendToast, replaceInviteQuestion } from "@/lib/invite-copy";
@@ -672,6 +672,10 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
   const [startPin, setStartPin] = useState<{ lat: number; lng: number } | null>(null);
   const [endPin, setEndPin] = useState<{ lat: number; lng: number } | null>(null);
   const [saving, setSaving] = useState(false);
+  // A dump site is a pet-waste route's end (#768): a business that walks,
+  // sits, grooms or trains is not offered a landfill. Until the lines are
+  // known, the fail-open is pet waste, as everywhere else.
+  const { petWaste: endsAtDumpSite } = useServiceLines();
 
   const routingMut = useMutation({
     mutationFn: (v: { staffId: string; isFieldTech?: boolean; routingAvailable?: boolean }) =>
@@ -753,7 +757,8 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
       </div>
       <div className="space-y-1.5">
         <Label className="text-xs flex items-center gap-1">
-          <MapPin className="h-3 w-3 shrink-0" /> Route end (dump, home, shop)
+          <MapPin className="h-3 w-3 shrink-0" />{" "}
+          {endsAtDumpSite ? "Route end (dump, home, shop)" : "Route end (home, shop)"}
         </Label>
         <AddressAutocomplete
           value={end}
@@ -769,7 +774,7 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
                 : null,
             );
           }}
-          placeholder="Landfill or home address"
+          placeholder={endsAtDumpSite ? "Landfill or home address" : "Home or shop address"}
           disabled={!canEdit}
         />
         {staff.end_latitude != null && (
@@ -798,7 +803,7 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
             <span className="font-medium">Runs routes</span>
             <span className="block text-xs text-muted-foreground">
               Gets a lane on the dispatch board and can be assigned visits. Tick it for an owner or
-              office manager who also runs a truck; untick it for a tech who has moved inside.
+              office manager who also runs routes; untick it for a tech who has moved inside.
             </span>
           </span>
         </label>

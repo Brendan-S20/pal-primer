@@ -165,7 +165,7 @@ export function BusinessDetailsCard({ canEdit }: { canEdit: boolean }) {
                 disabled={!canEdit || !q.data}
               />
               <p className="text-xs text-muted-foreground">
-                Where your trucks start the day, unless a tech has a start address of their own.
+                Where routes start each day, unless someone has a start address of their own.
               </p>
             </div>
             {canEdit && (

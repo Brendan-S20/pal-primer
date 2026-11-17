@@ -47,7 +47,7 @@ export function ServiceLinesChoices({
   const availability = useServiceLineAvailability();
   return (
     <>
-      <ul className="divide-y rounded-md border">
+      <ul className="divide-y rounded-md border" data-service-line-choices>
         {OFFERED_SERVICE_LINES.map((line) => {
           const checked = lines.includes(line);
           const known = availability !== null;
