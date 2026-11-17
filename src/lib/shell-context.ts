@@ -38,6 +38,7 @@ export const SHELL_PART_KEYS: { [K in keyof Required<ShellParts>]: readonly unkn
   notifications: ["notifications"],
   routingRuns: ROUTING_RUNS_KEY,
   clock: MY_CLOCK_QUERY_KEY,
+  texting: ["client-texting"],
 };
 
 let seededFor: string | null = null;
