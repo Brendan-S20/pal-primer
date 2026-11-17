@@ -1,0 +1,13 @@
+{
+  "phase": "before",
+  "state": "sits-grooms-trains",
+  "width": 1440,
+  "scrollWidth": 1440,
+  "innerWidth": 1440,
+  "settingsButtons": [
+    "Review sitting prices",
+    "Review grooming setup",
+    "Price lessons"
+  ],
+  "forms": []
+}

@@ -1,0 +1,17 @@
+{
+  "phase": "after",
+  "state": "sits-grooms-trains",
+  "width": 1440,
+  "scrollWidth": 1440,
+  "innerWidth": 1440,
+  "settingsButtons": [
+    "Settings, Services",
+    "Settings, Services",
+    "Settings, Services"
+  ],
+  "forms": [
+    "data-setup-stay-prices",
+    "data-setup-groom",
+    "data-setup-training"
+  ]
+}

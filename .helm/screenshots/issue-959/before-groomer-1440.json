@@ -1,0 +1,11 @@
+{
+  "phase": "before",
+  "state": "groomer",
+  "width": 1440,
+  "scrollWidth": 1440,
+  "innerWidth": 1440,
+  "settingsButtons": [
+    "Review grooming prices, vaccines and buffer"
+  ],
+  "forms": []
+}

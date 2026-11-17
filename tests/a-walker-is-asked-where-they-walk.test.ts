@@ -101,7 +101,13 @@ function statusDb(lines: string[], w: World) {
             })),
           };
         if (table === "services" && eqs.service_line === "pet_sitting")
-          return { data: [{ created_at: "a", updated_at: w.staySaved ? "b" : "a" }] };
+          // #959: a stay counts as saved when it is priced AND written since
+          // it was created.
+          return {
+            data: [
+              { base_price_cents: 2500, created_at: "a", updated_at: w.staySaved ? "b" : "a" },
+            ],
+          };
         if (table === "services" && eqs.service_line === "pet_waste")
           return {
             data:
@@ -119,6 +125,8 @@ function statusDb(lines: string[], w: World) {
                   ],
           };
         if (table === "zones") return { count: w.zones ?? 0 };
+        // #959: grooming is done with the review AND a priced size.
+        if (table === "service_size_rules") return { count: w.groomReviewed ? 1 : 0 };
         if (table === "service_packages" || table === "training_skills")
           return { count: w.lessonsPriced ? 1 : 0 };
         return { count: 0, data: [] };

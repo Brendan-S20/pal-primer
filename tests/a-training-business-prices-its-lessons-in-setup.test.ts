@@ -65,11 +65,13 @@ async function priceStep(lines: string[], counts: Counts): Promise<OnboardingSte
 // area left "1 of 6 done" with nothing saying why. A trainer's step is now
 // the lessons alone, on Settings, Services, the way a walker's is the walks.
 describe("the price step at a training business", () => {
-  it("is the lessons, priced on Settings, Services, beside the service area (#958)", async () => {
+  it("is the lessons, priced on /setup beside the service area (#958, #959)", async () => {
     const step = await priceStep(["training"], {});
     expect(step.label).toBe("Price your lessons");
-    // #958: the area is asked on /setup, so the step opens there; the
-    // lessons part still links to Settings, Services.
+    // #958: the area is asked on /setup, so the step opens there. #959: the
+    // lessons are priced there too, inline (INLINE_PARTS in setup.tsx); the
+    // part's `to` still names Settings, Services, which /setup no longer
+    // draws as a button for it.
     expect(step.to).toBe("/setup");
     expect(step.gate).toBe("/settings/services");
     expect(step.cta).toBe("Price lessons");

@@ -54,7 +54,9 @@ function context(lines: string[], w: World) {
           return { data: [{ base_price_cents: w.walkPriceCents ?? 0 }] };
         if (table === "services" && eqs.service_line === "pet_sitting")
           return {
-            data: [{ created_at: "a", updated_at: w.staySaved ? "b" : "a" }],
+            data: [
+              { base_price_cents: 2500, created_at: "a", updated_at: w.staySaved ? "b" : "a" },
+            ],
           };
         return { count: w.counts?.[table] ?? 0 };
       };
@@ -95,7 +97,7 @@ describe("the price step at a business with all five lines", () => {
 
   it("is done only when every part is", async () => {
     const all = {
-      counts: { zones: 1, service_packages: 1, training_skills: 3 },
+      counts: { zones: 1, service_packages: 1, training_skills: 3, service_size_rules: 1 },
       walkPriceCents: 2500,
       staySaved: true,
       groomReviewed: true,
@@ -106,6 +108,8 @@ describe("the price step at a business with all five lines", () => {
       { ...all, walkPriceCents: 0 },
       { ...all, staySaved: false },
       { ...all, groomReviewed: false },
+      // #959: reviewed, but nothing in the size grid priced.
+      { ...all, counts: { ...all.counts, service_size_rules: 0 } },
       { ...all, counts: { ...all.counts, training_skills: 0 } },
     ]) {
       expect((await priceStep(ALL_FIVE, missing)).done).toBe(false);
@@ -113,7 +117,11 @@ describe("the price step at a business with all five lines", () => {
   });
 
   it("marks each part by its own test", async () => {
-    const step = await priceStep(ALL_FIVE, { walkPriceCents: 2500, groomReviewed: true });
+    const step = await priceStep(ALL_FIVE, {
+      walkPriceCents: 2500,
+      groomReviewed: true,
+      counts: { service_size_rules: 1 },
+    });
     const done = Object.fromEntries(step.parts!.map((p) => [p.id, p.done]));
     expect(done).toEqual({ area: false, walks: true, stays: false, grooms: true, lessons: false });
   });
@@ -178,6 +186,7 @@ describe("a business with one line keeps the step for that line", () => {
     // #769: priced on /setup itself, not a link out to Settings. #958: with
     // the service area asked beside it.
     [["dog_walking"], "Price your walks", "/setup", ["area", "walks"]],
+    // #959: priced on /setup, like the walks.
     [["pet_sitting"], "Price your sitting services", "/setup", ["area", "stays"]],
     [
       ["mobile_grooming"],
