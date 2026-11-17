@@ -11,6 +11,7 @@ import { BoundarySketch, formatArea, type PolygonGeoJSON } from "@/components/Bo
 import { YARD_SIZE_LABELS, type YardSizeCategory } from "@/lib/yard-size";
 import { humanizeEnum } from "@/lib/humanize";
 import { titleHead } from "@/lib/page-title";
+import { useServiceLines } from "@/components/CommercialOnly";
 
 export const Route = createFileRoute("/_authenticated/properties/$propertyId/boundary")({
   head: () => titleHead("Property boundary"),
@@ -26,6 +27,8 @@ function BoundaryPage() {
   const get = useServerFn(getPropertyBoundary);
   const save = useServerFn(updatePropertyBoundary);
   const [justSaved, setJustSaved] = useState(false);
+  // Yard words only for a business that scoops (#768).
+  const { petWaste } = useServiceLines();
 
   const { data, isLoading } = useQuery({
     queryKey: ["property-boundary", propertyId],
@@ -83,7 +86,7 @@ function BoundaryPage() {
             <p className="text-sm text-muted-foreground">
               {addressLine || "No address on file"}
               {/* BUG-4: rendered the raw enum ("xlarge yard"). */}
-              {p.yard_size
+              {p.yard_size && petWaste
                 ? ` · ${YARD_SIZE_LABELS[p.yard_size as YardSizeCategory] ?? humanizeEnum(p.yard_size)} yard`
                 : ""}
               {p.boundary_area_sqm != null && ` · ${formatArea(Number(p.boundary_area_sqm))} saved`}
@@ -123,6 +126,7 @@ function BoundaryPage() {
             saving={saveMut.isPending}
             onSave={(poly) => saveMut.mutate(poly)}
             height={520}
+            areaNoun={petWaste ? "yard" : "property"}
           />
         </Card>
       )}

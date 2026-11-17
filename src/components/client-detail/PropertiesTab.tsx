@@ -11,6 +11,7 @@ import {
   type PetHandling,
 } from "@/components/client-detail/PetHandlingFields";
 import { useServiceLines } from "@/components/CommercialOnly";
+import { boundaryCopy } from "@/lib/property-boundary-copy";
 import type { CoatType } from "@/lib/groom";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -86,6 +87,14 @@ const HAZARD_LABELS: Array<[string, string]> = [
   ["sharp_objects", "Sharp objects"],
   ["slippery_surfaces", "Slippery surfaces"],
 ];
+
+/** The two yard flags in words without a yard in them, for a business that
+ *  does not scoop (#768) -- the same words the visit drawer uses for a walk
+ *  (#560). A flag is never hidden: one already ticked still shows. */
+const ANY_DOOR_HAZARD_LABELS: Record<string, string> = {
+  do_not_enter_if_dog_out: "Do not approach an unsecured pet",
+  dog_in_yard_during_service: "Pet may be loose at arrival",
+};
 
 export const COMMON_BREEDS = [
   "Mixed breed",
@@ -372,7 +381,14 @@ function PropertyCard({
   const activeDogs = dogs.filter((d: any) => d.active !== false && isDog(d));
   // A stay's plans (#411) are not the property's routine service.
   const activeSubs = subscriptions.filter((s: any) => s.status === "active" && !s.stay_id);
-  const hazards = HAZARD_LABELS.filter(([k]) => p[k]);
+  const { petWaste: businessScoops } = useServiceLines();
+  const copy = boundaryCopy(businessScoops);
+  const hazards = HAZARD_LABELS.filter(([k]) => p[k]).map(
+    ([k, label]): [string, string] => [
+      k,
+      businessScoops ? label : (ANY_DOOR_HAZARD_LABELS[k] ?? label),
+    ],
+  );
 
   const zoneName = (id: string | null | undefined) =>
     zones.find((z: any) => z.id === id)?.name ?? null;
@@ -561,7 +577,7 @@ function PropertyCard({
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     {yardCat && (
                       <span>
-                        Yard size:{" "}
+                        {copy.sizeLabel}:{" "}
                         <span className="font-medium text-foreground">
                           {YARD_SIZE_LABELS[yardCat]}
                         </span>{" "}
@@ -574,7 +590,7 @@ function PropertyCard({
                 <div className="flex h-[220px] flex-col items-center justify-center rounded-md border border-dashed text-center text-sm text-muted-foreground">
                   <span>No boundary drawn yet.</span>
                   <span className="mt-1 text-xs">
-                    Yard size and estimated time come from the boundary.
+                    {copy.emptyHint}
                   </span>
                   {/* The only way out of the empty state, and it was a 20px
                       line of text -- half Apple's floor. `touch:` rather than

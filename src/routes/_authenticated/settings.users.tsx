@@ -26,6 +26,11 @@ import { Label } from "@/components/ui/label";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { ROUTE_START_BLANK_HINT } from "@/lib/route-endpoints";
 import { StaffSkills } from "@/components/settings/StaffSkills";
+import {
+  RouteEndLabelText,
+  RouteStartLabelText,
+  useRouteEndPlaceholder,
+} from "@/components/settings/RouteEndLabel";
 import { WalkerDogCap } from "@/components/settings/WalkerDogCap";
 import { toast } from "sonner";
 import { useMyRole, usePermissions } from "@/hooks/useMyRole";
@@ -661,6 +666,8 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
   const saveFn = useServerFn(setStaffAddresses);
   const routingFn = useServerFn(setStaffRouting);
   const signedOut = useSignedOutToast();
+  // What an empty route end does, for a business with no dump site (#768).
+  const endPlaceholder = useRouteEndPlaceholder("Landfill or home address");
   // What was typed before a save found the session gone (R2-19), if any.
   const [kept] = useState(() => readDraft<AddressDraft>(addressDraftKey(staff.id)));
   const [start, setStart] = useState(kept?.start ?? staff.start_address ?? "");
@@ -722,7 +729,7 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <div className="space-y-1.5">
         <Label className="text-xs flex items-center gap-1">
-          <MapPin className="h-3 w-3 shrink-0" /> Route start (home, shop, or depot)
+          <MapPin className="h-3 w-3 shrink-0" /> <RouteStartLabelText />
         </Label>
         {/* A route endpoint is a home, shop or depot, not a customer address —
             but it is in the same town as the customers, so the workspace bias
@@ -754,7 +761,7 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
       </div>
       <div className="space-y-1.5">
         <Label className="text-xs flex items-center gap-1">
-          <MapPin className="h-3 w-3 shrink-0" /> Route end (dump, home, shop)
+          <MapPin className="h-3 w-3 shrink-0" /> <RouteEndLabelText />
         </Label>
         <AddressAutocomplete
           value={end}
@@ -770,7 +777,7 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
                 : null,
             );
           }}
-          placeholder="Landfill or home address"
+          placeholder={endPlaceholder}
           disabled={!canEdit}
         />
         {staff.end_latitude != null && (
@@ -799,7 +806,7 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
             <span className="font-medium">Runs routes</span>
             <span className="block text-xs text-muted-foreground">
               Gets a lane on the dispatch board and can be assigned visits. Tick it for an owner or
-              office manager who also runs a truck; untick it for a tech who has moved inside.
+              office manager who also runs routes; untick it for a tech who has moved inside.
             </span>
           </span>
         </label>
