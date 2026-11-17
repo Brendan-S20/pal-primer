@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { boundaryCopy } from "@/lib/property-boundary-copy";
 import { propertyHazardsFor } from "@/lib/new-client-plan";
+import { ROUTE_END_BLANK_HINT } from "@/lib/route-endpoints";
 
 /**
  * #768, the walker-only half, in seconds and with no browser. The browser half
@@ -62,11 +63,30 @@ describe("copy every business reads is not a scooper's", () => {
   it("Settings → Users offers a dump site only to a pet-waste business", () => {
     const src = read("src/routes/_authenticated/settings.users.tsx");
     expect(src).toMatch(/<RouteEndLabelText \/>/);
-    expect(read("src/components/settings/RouteEndLabel.tsx")).toMatch(
-      /petWaste \? "Route end \(dump, home, shop\)" : "Route end \(home, shop\)"/,
+    expect(src).toMatch(/useRouteEndPlaceholder\("Landfill or home address"\)/);
+    expect(src).toMatch(/placeholder=\{endPlaceholder\}/);
+    const label = read("src/components/settings/RouteEndLabel.tsx");
+    expect(label).toMatch(
+      /petWaste \? "Route end \(dump, home, shop\)" : "Route end \(home or shop\)"/,
     );
-    // The route start / end PLACEHOLDERS are #965's (#943), not this file's.
+    expect(label).toMatch(/petWaste \? petWastePlaceholder : ROUTE_END_BLANK_HINT/);
     expect(src).not.toMatch(/also runs a truck/);
+  });
+
+  it("the board's routing dialog tells a non-scooper what an empty end does", () => {
+    const src = read("src/components/routes/StaffRoutingDialog.tsx");
+    expect(src).toMatch(/useRouteEndPlaceholder\("Dump, home, or shop"\)/);
+    expect(src).toMatch(/placeholder=\{endPlaceholder\}/);
+  });
+
+  it("an empty route end with no dump site ends at the last visit, and says so", () => {
+    // staff_end_point: own end, then the nearest dump site, then nothing;
+    // route-inputs.ts adds an end node only when one came back.
+    expect(ROUTE_END_BLANK_HINT).toBe("Leave blank to end at the last visit");
+    expect(ROUTE_END_BLANK_HINT).not.toMatch(SCOOPER_WORDS);
+    const inputs = read("src/lib/route-inputs.ts");
+    expect(inputs).toMatch(/let end = located\(t\.end_lat, t\.end_lon\);/);
+    expect(inputs).toMatch(/if \(t\.end\) \{\n\s+e = nodeCoords\.length;/);
   });
 
   it("Edit client's lead-source example is not a truck wrap", () => {

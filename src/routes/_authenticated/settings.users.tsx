@@ -26,7 +26,7 @@ import { Label } from "@/components/ui/label";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { ROUTE_START_BLANK_HINT } from "@/lib/route-endpoints";
 import { StaffSkills } from "@/components/settings/StaffSkills";
-import { RouteEndLabelText } from "@/components/settings/RouteEndLabel";
+import { RouteEndLabelText, useRouteEndPlaceholder } from "@/components/settings/RouteEndLabel";
 import { WalkerDogCap } from "@/components/settings/WalkerDogCap";
 import { toast } from "sonner";
 import { useMyRole, usePermissions } from "@/hooks/useMyRole";
@@ -662,6 +662,8 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
   const saveFn = useServerFn(setStaffAddresses);
   const routingFn = useServerFn(setStaffRouting);
   const signedOut = useSignedOutToast();
+  // What an empty route end does, for a business with no dump site (#768).
+  const endPlaceholder = useRouteEndPlaceholder("Landfill or home address");
   // What was typed before a save found the session gone (R2-19), if any.
   const [kept] = useState(() => readDraft<AddressDraft>(addressDraftKey(staff.id)));
   const [start, setStart] = useState(kept?.start ?? staff.start_address ?? "");
@@ -771,7 +773,7 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
                 : null,
             );
           }}
-          placeholder="Landfill or home address"
+          placeholder={endPlaceholder}
           disabled={!canEdit}
         />
         {staff.end_latitude != null && (

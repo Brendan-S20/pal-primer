@@ -31,6 +31,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { ROUTE_START_BLANK_HINT } from "@/lib/route-endpoints";
+import { useRouteEndPlaceholder } from "@/components/settings/RouteEndLabel";
 import {
   addTimeOff,
   listTimeOff,
@@ -92,6 +93,9 @@ export function StaffRoutingDialog({
   const [startPin, setStartPin] = useState<{ lat: number; lng: number } | null>(null);
   const [endPin, setEndPin] = useState<{ lat: number; lng: number } | null>(null);
   const [savingAddr, setSavingAddr] = useState(false);
+  // A dump site only for a business that scoops; any other is told what an
+  // empty end does (#768).
+  const endPlaceholder = useRouteEndPlaceholder("Dump, home, or shop");
 
   const timeOffQ = useQuery({
     queryKey: ["time-off", staff?.id],
@@ -337,7 +341,7 @@ export function StaffRoutingDialog({
                       : null,
                   );
                 }}
-                placeholder="Dump, home, or shop"
+                placeholder={endPlaceholder}
               />
               {staff.end_latitude != null && end === staff.end_address && (
                 <p className="text-3xs text-muted-foreground">

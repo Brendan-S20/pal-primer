@@ -109,19 +109,12 @@ async function readable(page: Page): Promise<string> {
   }, fx.ORG_NAME);
 }
 
-/** Not this file's to fix. The Route start / Route end PLACEHOLDERS on
- *  Settings → Users are rewritten by #965 (#943: a placeholder that reads as
- *  a saved value), which gives a business that does not scoop "Leave blank to
- *  end at the last stop". Until it lands, main's end placeholder still says
- *  landfill. Delete this entry once #965 is on main. */
-const OWNED_BY_965 = new Set(["Landfill or home address"]);
-
 async function scooperWordsOn(page: Page): Promise<string[]> {
   const text = await readable(page);
   return text
     .split("\n")
     .map((l) => l.trim())
-    .filter((l) => SCOOPER_WORDS.test(l) && !OWNED_BY_965.has(l));
+    .filter((l) => SCOOPER_WORDS.test(l));
 }
 
 async function healthy(page: Page, w: number, where: string) {
@@ -161,6 +154,9 @@ type Surface = {
   walker?: RegExp;
   /** The walker wording is the walker's alone: the control must not draw it. */
   walkerOnly?: boolean;
+  /** A field placeholder each business must see (the walker's is its alone). */
+  walkerPlaceholder?: string;
+  petWastePlaceholder?: string;
 };
 
 const heading = (name: string | RegExp) => async (page: Page) => {
@@ -217,9 +213,13 @@ const SURFACES: Surface[] = [
         await expect(label).toBeVisible({ timeout: 1_000 });
       }).toPass({ timeout: 30_000 });
     },
-    walker: /Route end \(home, shop\)/,
+    walker: /Route end \(home or shop\)/,
     walkerOnly: true,
     petWaste: /Route end \(dump, home, shop\)/,
+    // An empty route end with no dump site ends at the last visit
+    // (staff_end_point, route-inputs.ts); a scooper keeps its landfill hint.
+    walkerPlaceholder: "Leave blank to end at the last visit",
+    petWastePlaceholder: "Landfill or home address",
   },
   {
     name: "/clients/new",
@@ -299,6 +299,11 @@ for (const { w, h, label } of SIZES) {
         if (s.walker) {
           await expect(page.getByText(s.walker).locator("visible=true").first()).toBeVisible();
         }
+        if (s.walkerPlaceholder) {
+          await expect(
+            page.getByPlaceholder(s.walkerPlaceholder, { exact: true }).first(),
+          ).toBeVisible();
+        }
         await healthy(page, w, `${s.name} (dog walking) @${w}px`);
         await noScooperWords(page, `${s.name} (dog walking) @${w}px`);
       });
@@ -317,6 +322,14 @@ for (const { w, h, label } of SIZES) {
         await expect(page.getByText(s.petWaste!).locator("visible=true").first()).toBeVisible();
         if (s.walker && s.walkerOnly) {
           await expect(page.getByText(s.walker)).toHaveCount(0);
+        }
+        if (s.petWastePlaceholder) {
+          await expect(
+            page.getByPlaceholder(s.petWastePlaceholder, { exact: true }).first(),
+          ).toBeVisible();
+        }
+        if (s.walkerPlaceholder) {
+          await expect(page.getByPlaceholder(s.walkerPlaceholder, { exact: true })).toHaveCount(0);
         }
       });
     }
