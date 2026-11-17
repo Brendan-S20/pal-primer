@@ -101,6 +101,12 @@ export const registrationDetailsSchema = z
     /** #968: false for an owner with no EIN, filed as a sole proprietor in
      *  their own name with no registration number. Absent means yes. */
     has_ein: z.boolean().default(true),
+    /** #968 review: the business type the owner had chosen before answering
+     *  No. An LLC, corporation, partnership or nonprofit there means the
+     *  business has an EIN, whatever No set the type to, so it is refused. */
+    picked_business_type: z
+      .enum(Object.keys(BUSINESS_TYPES) as [BusinessType, ...BusinessType[]])
+      .optional(),
     dba: z.string().trim().max(200).optional().or(z.literal("")),
     street: z.string().trim().min(3, "Street address is required").max(200),
     street2: z.string().trim().max(200).optional().or(z.literal("")),
@@ -126,6 +132,12 @@ export const registrationDetailsSchema = z
     if (d.has_ein === false) {
       if (d.business_type !== "sole_proprietor") {
         ctx.addIssue({ code: "custom", path: ["business_type"], message: NO_EIN_NOT_SOLE_PROP });
+      }
+      if (d.picked_business_type && d.picked_business_type !== "sole_proprietor") {
+        // Twilio rejects this filing (30915: "Sole Proprietor classification
+        // is invalid - business is a registered legal entity"), and the
+        // switch guard would then lock the registration to the no-EIN path.
+        ctx.addIssue({ code: "custom", path: ["has_ein"], message: NO_EIN_NOT_SOLE_PROP });
       }
       const owner = soleProprietorLegalName(d.contacts[0]);
       if (!owner || normalName(d.legal_name) !== normalName(owner)) {

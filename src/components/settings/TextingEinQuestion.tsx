@@ -1,4 +1,5 @@
 import { AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 /**
  * #968: "Do you have an EIN from the IRS?" at the top of Settings → Texting.
@@ -19,11 +20,15 @@ export function TextingEinQuestion({
   hasEin,
   onChange,
   pickedEntity,
+  onPickedByMistake,
 }: {
   hasEin: boolean;
   onChange: (hasEin: boolean) => void;
   /** The business type chosen before No, when it was not sole proprietor. */
   pickedEntity: string | null;
+  /** #968 review: "I picked that by mistake": the owner is a sole proprietor
+   *  after all, which clears the block. */
+  onPickedByMistake?: () => void;
 }) {
   const option = (value: boolean, label: string) => (
     <label className="flex min-h-10 min-w-0 cursor-pointer items-center gap-2 rounded-md border bg-background px-3 text-sm touch:min-h-11 has-[:checked]:border-primary">
@@ -64,13 +69,35 @@ export function TextingEinQuestion({
             corporation or partnership, choose Yes and enter the number from your IRS letter.
           </p>
           {pickedEntity && (
-            <p className="flex items-start gap-1.5 text-destructive">
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              <span className="min-w-0">
-                You chose {pickedEntity} as your business type. That kind of business has an EIN:
-                choose Yes.
-              </span>
-            </p>
+            // #968 review: a block, not advice. Submit stays off and the
+            // server refuses it until the owner chooses Yes or says the type
+            // was a mistake: Twilio rejects an LLC filed as a sole proprietor
+            // (30915), and the filing would then be locked to the no-EIN path.
+            <div
+              className="space-y-2 rounded-md border border-destructive/40 p-3"
+              role="alert"
+              data-testid="texting-no-ein-entity-block"
+            >
+              <p className="flex items-start gap-1.5 text-destructive">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span className="min-w-0">
+                  You chose {pickedEntity} as your business type. That kind of business has an EIN,
+                  so it cannot be filed without one: choose Yes and enter the number from your IRS
+                  letter.
+                </span>
+              </p>
+              {onPickedByMistake && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-auto min-h-9 whitespace-normal text-start touch:min-h-11"
+                  onClick={onPickedByMistake}
+                >
+                  I picked {pickedEntity} by mistake. I&apos;m a sole proprietor
+                </Button>
+              )}
+            </div>
           )}
         </div>
       )}
