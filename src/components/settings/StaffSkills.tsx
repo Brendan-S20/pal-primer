@@ -61,7 +61,7 @@ export function StaffSkills({ staffId, canEdit }: { staffId: string; canEdit: bo
           failed load they were also enabled, and one tick saved that single
           service as the whole list over whatever was stored. */}
       <SettingsLoadGate query={skillsQ} what="services for this person" fields={1}>
-        <div className="grid gap-1 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
           {services.map((s) => {
             const on = mine.has(s.id);
             return (

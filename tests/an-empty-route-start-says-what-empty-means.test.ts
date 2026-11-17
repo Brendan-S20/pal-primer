@@ -17,7 +17,7 @@ const EDITORS = [
 
 describe("an empty route start says what empty means", () => {
   it("the hint names the fallback", () => {
-    expect(ROUTE_START_BLANK_HINT).toBe("Leave blank to start from the business address");
+    expect(ROUTE_START_BLANK_HINT).toBe("Leave blank for business address");
   });
 
   it("the hint cannot be read as an address", () => {
