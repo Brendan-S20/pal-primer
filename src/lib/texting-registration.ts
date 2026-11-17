@@ -115,9 +115,27 @@ export const registrationDetailsSchema = z
     terms_url: httpsUrl,
     business_email: z.string().trim().email("Enter an email address").max(255),
     business_phone: phone,
+    /** #968: false for an owner with no EIN, filed as a sole proprietor in
+     *  their own name with no registration number. Absent means yes. */
+    has_ein: z.boolean().default(true),
     contacts: z.array(contactSchema).length(2, "Add two authorized contacts"),
   })
   .superRefine((d, ctx) => {
+    // #968: no EIN is the sole proprietor path, and nothing else. An LLC,
+    // a corporation, a partnership and a nonprofit always have an EIN.
+    if (d.has_ein === false) {
+      if (d.business_type !== "sole_proprietor") {
+        ctx.addIssue({ code: "custom", path: ["business_type"], message: NO_EIN_NOT_SOLE_PROP });
+      }
+      const owner = soleProprietorLegalName(d.contacts[0]);
+      if (!owner || normalName(d.legal_name) !== normalName(owner)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["legal_name"],
+          message: "Without an EIN, the legal name is your own first and last name",
+        });
+      }
+    }
     const site = domainOf(d.website_url);
     // Twilio rejects a verification whose policy pages live somewhere other
     // than the business's own site, and needs Privacy and Terms on separate
@@ -147,6 +165,49 @@ export const registrationDetailsSchema = z
     }
   });
 export type RegistrationDetails = z.infer<typeof registrationDetailsSchema>;
+
+// ── No EIN (#968) ─────────────────────────────────────────────────────────
+//
+// Twilio files a US business with no EIN as a toll-free SOLE_PROPRIETOR with
+// no registration number, authority or country (registration is "required
+// for all business types except SOLE_PROPRIETOR", Toll-Free Verification
+// API; error 30527). The legal name is then the owner's own name: a sole
+// proprietor with no EIN has no other legal name, and a DBA is not one.
+// Twilio: "all US LLCs have an EIN and are therefore ineligible" for sole
+// proprietor registration, so an LLC is steered to the EIN path.
+
+export const NO_EIN_NOT_SOLE_PROP =
+  "Without an EIN you are filed as a sole proprietor. An LLC, corporation, partnership or nonprofit always has an EIN: choose Yes and use the number on your IRS letter.";
+
+/** The legal name a sole proprietor without an EIN is filed under: contact
+ *  1's first and last name, which is the owner. */
+export function soleProprietorLegalName(
+  c: { first_name?: string | null; last_name?: string | null } | undefined,
+): string {
+  return [c?.first_name, c?.last_name]
+    .map((s) => (s ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+function normalName(s: string): string {
+  return s.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+/** What Settings submits: the details, and the EIN only when there is one. */
+export const submitInputSchema = z
+  .object({ details: registrationDetailsSchema, ein: z.string().optional() })
+  .superRefine((v, ctx) => {
+    if (v.details.has_ein === false) return;
+    const r = einSchema.safeParse(v.ein ?? "");
+    if (!r.success) {
+      ctx.addIssue({ code: "custom", path: ["ein"], message: r.error.issues[0]?.message ?? "Enter the EIN" });
+    }
+  })
+  .transform((v) => ({
+    details: v.details,
+    ein: v.details.has_ein === false ? null : (v.ein ?? "").trim(),
+  }));
 
 /** Nine digits, with or without the dash. Never stored; never logged. */
 export const einSchema = z

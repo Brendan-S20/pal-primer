@@ -835,3 +835,141 @@ describe("the locked wording", () => {
     );
   });
 });
+
+// ── #968: a sole proprietor without an EIN ─────────────────────────────────
+//
+// Twilio files a US business with no EIN as a toll-free SOLE_PROPRIETOR with
+// no registration number, authority or country (Toll-Free Verification API:
+// registration "Required for all business types except SOLE_PROPRIETOR";
+// error 30527), in the owner's own name, on a Starter customer profile (the
+// secondary profile's business information carries a registration number).
+// With an EIN, nothing changes.
+describe("#968: no EIN, filed as a sole proprietor", () => {
+  const NO_EIN = {
+    ...DETAILS,
+    has_ein: false,
+    business_type: "sole_proprietor" as const,
+    legal_name: "Devin Doe",
+  };
+  const submitNoEin = () =>
+    prov.submitTextingRegistration({
+      orgId: "org-1",
+      userId: "owner-1",
+      details: tr.registrationDetailsSchema.parse(NO_EIN),
+      ein: null,
+    });
+  const tfvBody = () => calls.find((c) => c.url.endsWith("/Tollfree/Verifications"))!.body;
+
+  it("files SOLE_PROPRIETOR with no registration number, authority or country", async () => {
+    expect(await submitNoEin()).toEqual({ status: "submitted" });
+    const b = tfvBody();
+    expect(b.get("BusinessType")).toBe("SOLE_PROPRIETOR");
+    for (const k of [
+      "BusinessRegistrationNumber",
+      "BusinessRegistrationAuthority",
+      "BusinessRegistrationCountry",
+    ]) {
+      expect(b.has(k), `${k} must be left out, not sent empty`).toBe(false);
+    }
+    // Trust Hub's word is never sent on the TFV field.
+    expect([...b.values()].join("\n")).not.toMatch(/Sole Proprietorship/);
+  });
+
+  it("files it in the owner's own first and last name, with the trading name as DBA", async () => {
+    await submitNoEin();
+    expect(tfvBody().get("BusinessName")).toBe("Devin Doe");
+    expect(tfvBody().get("DoingBusinessAs")).toBe("Detroit Doo");
+    expect(reg).toMatchObject({ legal_name: "Devin Doe", ein_last4: null });
+  });
+
+  it("builds a Starter customer profile: the owner, the address, the primary profile", async () => {
+    await submitNoEin();
+    const profile = calls.find((c) => c.url.endsWith("/v1/CustomerProfiles"))!;
+    expect(profile.body.get("PolicySid")).toBe("RN806dd6cd175f314e1f96a9727ee271f4");
+    expect(prov.STARTER_PROFILE_POLICY_SID).toBe("RN806dd6cd175f314e1f96a9727ee271f4");
+    const endUsers = calls.filter((c) => c.url.endsWith("/v1/EndUsers"));
+    expect(endUsers.map((c) => c.body.get("Type"))).toEqual([
+      "starter_customer_profile_information",
+    ]);
+    expect(JSON.parse(endUsers[0].body.get("Attributes")!)).toEqual({
+      first_name: "Devin",
+      last_name: "Doe",
+      email: "devin@detroitdoo.com",
+      phone_number: "+13135550101",
+    });
+    const doc = calls.find((c) => c.url.endsWith("/v1/SupportingDocuments"))!;
+    expect(doc.body.get("Type")).toBe("customer_profile_address");
+    expect(JSON.parse(doc.body.get("Attributes")!)).toEqual({ address_sids: "AD1" });
+    const assigned = calls
+      .filter((c) => c.url.endsWith("/EntityAssignments"))
+      .map((c) => c.body.get("ObjectSid"));
+    expect(assigned).toEqual(["IT_starter_customer_profile_information", "RD1", "BUprimary"]);
+    const evaluation = calls.find((c) => c.url.endsWith("/Evaluations"))!;
+    expect(evaluation.body.get("PolicySid")).toBe(prov.STARTER_PROFILE_POLICY_SID);
+    expect(tfvBody().get("CustomerProfileSid")).toBe("BU1");
+    // No secondary-profile business information, and no one-time passcode.
+    const all = calls.map((c) => `${c.url} ${c.body.toString()}`).join("\n");
+    expect(all).not.toMatch(/customer_profile_business_information|business_registration/);
+    expect(all).not.toMatch(/otp|one.?time|verification_code/i);
+  });
+
+  it("with an EIN, the same body as before: type, number, authority and country", async () => {
+    await submit();
+    const b = tfvBody();
+    expect(b.get("BusinessType")).toBe("PRIVATE_PROFIT");
+    expect(b.get("BusinessRegistrationNumber")).toBe("381234567");
+    expect(b.get("BusinessRegistrationAuthority")).toBe("EIN");
+    expect(b.get("BusinessRegistrationCountry")).toBe("US");
+    expect(b.get("BusinessName")).toBe("Detroit Doo Disposal LLC");
+    const profile = calls.find((c) => c.url.endsWith("/v1/CustomerProfiles"))!;
+    expect(profile.body.get("PolicySid")).toBe(prov.SECONDARY_PROFILE_POLICY_SID);
+    expect(reg!.ein_last4).toBe("4567");
+    // And never the whole EIN, anywhere but Twilio.
+    expect(JSON.stringify(writes)).not.toMatch(/381234567|38-1234567/);
+  });
+
+  it("a sole proprietor WITH an EIN still files the number", () => {
+    const d = tr.registrationDetailsSchema.parse({ ...NO_EIN, has_ein: true });
+    expect(prov.registrationFields(d, EIN)).toEqual({
+      BusinessType: "SOLE_PROPRIETOR",
+      BusinessRegistrationNumber: "381234567",
+      BusinessRegistrationAuthority: "EIN",
+      BusinessRegistrationCountry: "US",
+    });
+  });
+
+  it("refuses an LLC, or any type but sole proprietor, without an EIN", () => {
+    for (const business_type of ["llc", "corporation", "partnership", "nonprofit"]) {
+      const r = tr.registrationDetailsSchema.safeParse({ ...NO_EIN, business_type });
+      expect(r.success).toBe(false);
+      expect(r.error!.issues.map((i) => i.message)).toContain(tr.NO_EIN_NOT_SOLE_PROP);
+    }
+  });
+
+  it("refuses a legal name that is not the owner's own, such as the DBA", () => {
+    const r = tr.registrationDetailsSchema.safeParse({ ...NO_EIN, legal_name: "Detroit Doo" });
+    expect(r.success).toBe(false);
+    expect(
+      tr.registrationDetailsSchema.safeParse({ ...NO_EIN, legal_name: "  devin   DOE " }).success,
+    ).toBe(true);
+  });
+
+  it("Settings' submit needs the EIN only when the owner has one", () => {
+    expect(tr.submitInputSchema.safeParse({ details: DETAILS }).success).toBe(false);
+    expect(tr.submitInputSchema.parse({ details: DETAILS, ein: EIN }).ein).toBe(EIN);
+    const none = tr.submitInputSchema.parse({ details: NO_EIN, ein: "99-9999999" });
+    // An EIN typed before choosing No is dropped, never sent.
+    expect(none.ein).toBeNull();
+    expect(none.details.has_ein).toBe(false);
+    // Absent means yes, so every existing caller files exactly as before.
+    expect(tr.registrationDetailsSchema.parse(DETAILS).has_ein).toBe(true);
+  });
+
+  it("cannot switch answers under a business profile that already exists", async () => {
+    await submit();
+    reg!.status = "rejected";
+    const r = await submitNoEin();
+    expect(r.error).toMatch(/filed with an EIN/);
+    expect(reg!.status).toBe("rejected");
+  });
+});

@@ -19,6 +19,7 @@ import {
   describeStatus,
   einSchema,
   registrationDetailsSchema,
+  soleProprietorLegalName,
   type BusinessType,
   type RegistrationStatus,
   UNDER_REVIEW_LABEL,
@@ -28,6 +29,7 @@ import { getOrgTwilioSettings } from "@/lib/twilio-settings.functions";
 import { useMyRole } from "@/hooks/useMyRole";
 import { titleHead } from "@/lib/page-title";
 import { formatDateTime, formatDay } from "@/lib/format";
+import { TextingEinQuestion } from "@/components/settings/TextingEinQuestion";
 import { SettingsLoadGate } from "@/components/settings/SettingsLoadGate";
 
 // Settings → Texting (#538, BUILD-3).
@@ -75,6 +77,8 @@ type Form = {
   business_email: string;
   business_phone: string;
   contacts: [Contact, Contact];
+  /** #968: false for a sole proprietor with no EIN. */
+  has_ein?: boolean;
 };
 
 const NO_SUGGESTIONS = { businessName: "", email: "", phone: "" };
@@ -290,7 +294,14 @@ function FiledDetails({ reg }: { reg: Record<string, any> }) {
   const rows: Array<[string, string | null]> = [
     ["Legal name", reg.legal_name],
     ["Doing business as", reg.dba],
-    ["EIN", reg.ein_last4 ? `ending in ${reg.ein_last4}` : null],
+    [
+      "EIN",
+      reg.ein_last4
+        ? `ending in ${reg.ein_last4}`
+        : reg.business_type === "sole_proprietor"
+          ? "None, filed as a sole proprietor"
+          : null,
+    ],
     ["Website", reg.website_url],
     ["Number", reg.phone_number],
   ];
@@ -309,6 +320,20 @@ function FiledDetails({ reg }: { reg: Record<string, any> }) {
       </dl>
     </div>
   );
+}
+
+/** #968: a filing that went in without an EIN reopens (after a rejection or
+ *  a stop) with No still chosen: a sole proprietor filed in contact 1's
+ *  name. A draft starts at Yes; nothing stored says otherwise. */
+function withEinAnswer(f: Form, status: RegistrationStatus | null): Form {
+  const filed = status !== null && status !== "draft";
+  const ownName = soleProprietorLegalName(f.contacts[0]);
+  const noEin =
+    filed &&
+    f.business_type === "sole_proprietor" &&
+    ownName !== "" &&
+    f.legal_name.trim().toLowerCase() === ownName.toLowerCase();
+  return { ...f, has_ein: !noEin };
 }
 
 function issuesByField(err: { issues: Array<{ path: PropertyKey[]; message: string }> }) {
@@ -332,7 +357,37 @@ function RegistrationForm({
   needsAddon: boolean;
 }) {
   const qc = useQueryClient();
-  const [form, setForm] = useState<Form>(initial);
+  const [form, setForm] = useState<Form>(() => withEinAnswer(initial, status));
+  // #968: the business type picked before "No", kept so it comes back on Yes
+  // and so the owner is told an LLC has an EIN rather than silently changed.
+  const [beforeNoEin, setBeforeNoEin] = useState<{
+    type: BusinessType | "";
+    legalName: string;
+  } | null>(null);
+  const noEin = form.has_ein === false;
+  const answerEin = (has: boolean) => {
+    if (has === !noEin) return;
+    if (has) {
+      // Back to what was typed before No. The owner's own name is not kept
+      // as a legal name: with an EIN it is the one on the IRS letter.
+      const before = beforeNoEin;
+      setBeforeNoEin(null);
+      setForm((f) => ({
+        ...f,
+        has_ein: true,
+        business_type: before?.type || f.business_type,
+        legal_name: before?.legalName ?? "",
+      }));
+      return;
+    }
+    setBeforeNoEin({ type: form.business_type, legalName: form.legal_name });
+    setForm((f) => ({
+      ...f,
+      has_ein: false,
+      business_type: "sole_proprietor",
+      legal_name: soleProprietorLegalName(f.contacts[0]),
+    }));
+  };
   const [ein, setEin] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -352,15 +407,18 @@ function RegistrationForm({
     mutationFn: async () => {
       const details = registrationDetailsSchema.safeParse(form);
       const einCheck = einSchema.safeParse(ein);
+      const einOk = noEin || einCheck.success;
       const found = {
         ...(details.success ? {} : issuesByField(details.error)),
-        ...(einCheck.success ? {} : { ein: einCheck.error.issues[0]?.message ?? "Enter the EIN" }),
+        ...(einOk ? {} : { ein: einCheck.error?.issues[0]?.message ?? "Enter the EIN" }),
       };
       setErrors(found);
-      if (!details.success || !einCheck.success) {
+      if (!details.success || !einOk) {
         throw new Error("Some details need fixing. They are marked below.");
       }
-      return submitFn({ data: { details: details.data, ein: einCheck.data } });
+      return submitFn({
+        data: { details: details.data, ein: noEin ? undefined : einCheck.data },
+      });
     },
     onSuccess: (r) => {
       setEin("");
@@ -376,6 +434,10 @@ function RegistrationForm({
     setForm((f) => {
       const contacts = [...f.contacts] as [Contact, Contact];
       contacts[i] = { ...contacts[i], [k]: v };
+      // #968: without an EIN the legal name IS contact 1's name.
+      if (f.has_ein === false && i === 0) {
+        return { ...f, contacts, legal_name: soleProprietorLegalName(contacts[0]) };
+      }
       return { ...f, contacts };
     });
 
@@ -395,16 +457,36 @@ function RegistrationForm({
       }}
       noValidate
     >
+      <TextingEinQuestion
+        hasEin={!noEin}
+        onChange={answerEin}
+        pickedEntity={
+          beforeNoEin?.type && beforeNoEin.type !== "sole_proprietor"
+            ? BUSINESS_TYPES[beforeNoEin.type].label
+            : null
+        }
+      />
+
       <Section
         title="Your business"
-        hint="Enter these exactly as they appear on your IRS EIN letter. Carriers reject a registration whose name does not match."
+        hint={
+          noEin
+            ? "Filed in your own name as a sole proprietor. Your trading name goes under Doing business as."
+            : "Enter these exactly as they appear on your IRS EIN letter. Carriers reject a registration whose name does not match."
+        }
       >
-        <Field id="legal_name" label="Legal business name" error={errors.legal_name}>
+        <Field
+          id="legal_name"
+          label={noEin ? "Legal name (your first and last name)" : "Legal business name"}
+          error={errors.legal_name}
+          hint={noEin ? "From Authorized contact below." : undefined}
+        >
           <Input
             id="legal_name"
             value={form.legal_name}
             onChange={(e) => set("legal_name", e.target.value)}
             autoComplete="organization"
+            readOnly={noEin}
           />
         </Field>
         <Field id="dba" label="Doing business as (optional)" error={errors.dba}>
@@ -416,6 +498,7 @@ function RegistrationForm({
             className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm touch:min-h-11"
             value={form.business_type}
             onChange={(e) => set("business_type", e.target.value as BusinessType)}
+            disabled={noEin}
           >
             <option value="">Choose one</option>
             {types.map(([value, t]) => (
@@ -425,6 +508,7 @@ function RegistrationForm({
             ))}
           </select>
         </Field>
+        {!noEin && (
         <Field
           id="ein"
           label="EIN"
@@ -444,6 +528,7 @@ function RegistrationForm({
             placeholder="12-3456789"
           />
         </Field>
+        )}
       </Section>
 
       <Section title="Address" hint="The business address on file with the IRS.">

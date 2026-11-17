@@ -74,6 +74,14 @@ const MESSAGING = "https://messaging.twilio.com/v1";
 /** Twilio's policy for a secondary customer profile (ISV). */
 export const SECONDARY_PROFILE_POLICY_SID = "RNdfbf3fae0e1107f8aded0e7cead80bf5";
 
+/** #968: Twilio's policy for a Starter customer profile, "the static Trust
+ *  Hub policy identifier for Starter profiles" (ISV sole proprietor
+ *  onboarding). The secondary profile's business information carries a
+ *  registration number; an owner with no EIN has none, so their profile is a
+ *  Starter profile: the owner's name, email and mobile, the address, and the
+ *  ISV's primary profile. */
+export const STARTER_PROFILE_POLICY_SID = "RN806dd6cd175f314e1f96a9727ee271f4";
+
 /** Where each bought number sends incoming texts: the one inbound hook. */
 export function inboundSmsUrl(): string {
   return appUrl("/api/public/hooks/twilio");
@@ -190,6 +198,35 @@ export function businessInformationAttributes(d: RegistrationDetails, ein: strin
   };
 }
 
+/** #968: the TFV's business type and registration. With an EIN, exactly as
+ *  before. Without one, SOLE_PROPRIETOR (Twilio's TFV enum; "Sole
+ *  Proprietorship" is Trust Hub's word and never sent here) and no
+ *  registration number, authority or country: registration is "required for
+ *  all business types except SOLE_PROPRIETOR". The keys are left out, not
+ *  sent empty. */
+export function registrationFields(d: RegistrationDetails, ein: string | null) {
+  if (d.has_ein === false || !ein) {
+    return { BusinessType: BUSINESS_TYPES.sole_proprietor.tollFree };
+  }
+  return {
+    BusinessType: BUSINESS_TYPES[d.business_type].tollFree,
+    BusinessRegistrationNumber: einDigits(ein),
+    BusinessRegistrationAuthority: "EIN",
+    BusinessRegistrationCountry: "US",
+  };
+}
+
+/** #968: the Starter profile's one end user, the owner. */
+export function starterProfileAttributes(d: RegistrationDetails) {
+  const c = d.contacts[0];
+  return {
+    first_name: c.first_name,
+    last_name: c.last_name,
+    email: c.email,
+    phone_number: toE164(c.phone),
+  };
+}
+
 export function representativeAttributes(c: RegistrationDetails["contacts"][number]) {
   return {
     first_name: c.first_name,
@@ -205,7 +242,8 @@ export function representativeAttributes(c: RegistrationDetails["contacts"][numb
  *  ACCOUNT_NOTIFICATIONS and CUSTOMER_CARE, as Product locked. */
 export function tollFreeVerificationForm(p: {
   details: RegistrationDetails;
-  ein: string;
+  /** Null for a sole proprietor with no EIN (#968). */
+  ein: string | null;
   phoneNumberSid: string;
   customerProfileSid: string | null;
   orgId: string;
@@ -230,10 +268,7 @@ export function tollFreeVerificationForm(p: {
     BusinessContactLastName: contact.last_name,
     BusinessContactEmail: contact.email,
     BusinessContactPhone: toE164(contact.phone),
-    BusinessType: BUSINESS_TYPES[d.business_type].tollFree,
-    BusinessRegistrationNumber: einDigits(p.ein),
-    BusinessRegistrationAuthority: "EIN",
-    BusinessRegistrationCountry: "US",
+    ...registrationFields(d, p.ein),
     PrivacyPolicyUrl: d.privacy_url,
     TermsAndConditionsUrl: d.terms_url,
     NotificationEmail: p.notificationEmail,
@@ -327,10 +362,29 @@ export async function submitTextingRegistration(p: {
   orgId: string;
   userId: string;
   details: RegistrationDetails;
-  ein: string;
+  /** Null for a sole proprietor with no EIN (#968). */
+  ein: string | null;
 }): Promise<{ status: RegistrationStatus; error?: string }> {
   const { orgId, details, ein } = p;
   const db = await admin();
+
+  // #968: a business profile is filed one way or the other, a Starter
+  // profile without an EIN and a secondary profile with one, and the SIDs
+  // saved below resume whichever was started. So the answer cannot change
+  // under a profile that already exists: a row with a profile and no EIN
+  // digits was filed without one (ein_last4 is written by every submit).
+  const prior = await loadRow(orgId);
+  if (prior?.customer_profile_sid) {
+    const filedWithoutEin = !prior.ein_last4;
+    if (filedWithoutEin !== (ein === null)) {
+      return {
+        status: prior.status ?? "draft",
+        error: filedWithoutEin
+          ? "This registration was filed without an EIN. To file it with one now, contact us and we will start it again."
+          : "This registration was filed with an EIN, so it has to be resubmitted with it.",
+      };
+    }
+  }
 
   // ── Claim the submit, atomically ───────────────────────────────────────
   //
@@ -352,7 +406,7 @@ export async function submitTextingRegistration(p: {
     .from("org_texting_registrations")
     .update({
       ...detailsColumns(details),
-      ein_last4: einDigits(ein).slice(-4),
+      ein_last4: ein ? einDigits(ein).slice(-4) : null,
       number_type: "toll_free",
       status: "submitting",
       last_error: null,
@@ -518,9 +572,10 @@ async function ensureBusinessProfile(
   orgId: string,
   reg: any,
   d: RegistrationDetails,
-  ein: string,
+  ein: string | null,
   resubmitting: boolean,
 ): Promise<any> {
+  if (d.has_ein === false || !ein) return ensureStarterProfile(parent, orgId, reg, d, resubmitting);
   const primary = process.env.TWILIO_PRIMARY_CUSTOMER_PROFILE_SID;
   if (!primary) {
     throw new TwilioSetupError(
@@ -653,6 +708,134 @@ async function ensureBusinessProfile(
     Status: "pending-review",
   }).catch((e: TwilioSetupError) => {
     // Already in review (a resumed submit): fine, carry on to the number.
+    if (e.status === 400) return { status: next.customer_profile_status };
+    throw e;
+  });
+  next.customer_profile_status = submitted?.status ?? "pending-review";
+  await save(orgId, { customer_profile_status: next.customer_profile_status });
+  return next;
+}
+
+/**
+ * #968: the business profile for a sole proprietor with no EIN. Twilio's
+ * Starter customer profile (ISV sole proprietor onboarding, steps 1.2-1.8):
+ *
+ *   CustomerProfiles      PolicySid STARTER_PROFILE_POLICY_SID
+ *   EndUsers              Type starter_customer_profile_information,
+ *                         Attributes { first_name, last_name, email,
+ *                         phone_number }: the owner, contact 1
+ *   Addresses             the business address (US only, as Twilio requires)
+ *   SupportingDocuments   Type customer_profile_address, { address_sids }
+ *   EntityAssignments     the end user, the address document, and the
+ *                         parent's primary customer profile
+ *   Evaluations           the same policy; "compliant" or it stops here
+ *   status pending-review
+ *
+ * No EIN is in any of it. Each SID is saved as it is returned, in the same
+ * columns the secondary profile uses (the owner's end user in
+ * business_end_user_sid), so a failed submit resumes rather than repeats.
+ * No one-time passcode: that belongs to 10DLC sole proprietor brands (#973),
+ * and toll-free verification does not ask for one.
+ */
+async function ensureStarterProfile(
+  parent: Auth,
+  orgId: string,
+  reg: any,
+  d: RegistrationDetails,
+  resubmitting: boolean,
+): Promise<any> {
+  const primary = process.env.TWILIO_PRIMARY_CUSTOMER_PROFILE_SID;
+  if (!primary) {
+    throw new TwilioSetupError(
+      "Texting setup is not configured on our side yet. We have been told; please try again later.",
+    );
+  }
+  const owner = `${d.contacts[0].first_name} ${d.contacts[0].last_name}`.trim();
+  const addressForm = {
+    CustomerName: owner,
+    Street: d.street,
+    StreetSecondary: d.street2 || undefined,
+    City: d.city,
+    Region: d.region.toUpperCase(),
+    PostalCode: d.postal_code,
+    IsoCountry: "US",
+    FriendlyName: owner.slice(0, 64),
+  };
+  const next = { ...reg };
+  const acct = encodeURIComponent(parent.accountSid);
+
+  if (!next.address_sid) {
+    const a = await twilio(parent, "POST", `${API}/Accounts/${acct}/Addresses.json`, addressForm);
+    next.address_sid = a.sid;
+    await save(orgId, { address_sid: a.sid });
+  } else if (resubmitting) {
+    await twilio(
+      parent,
+      "POST",
+      `${API}/Accounts/${acct}/Addresses/${encodeURIComponent(next.address_sid)}.json`,
+      addressForm,
+    );
+  }
+
+  const info = JSON.stringify(starterProfileAttributes(d));
+  if (!next.business_end_user_sid) {
+    const u = await twilio(parent, "POST", `${TRUST_HUB}/EndUsers`, {
+      FriendlyName: `${owner} starter profile`.slice(0, 64),
+      Type: "starter_customer_profile_information",
+      Attributes: info,
+    });
+    next.business_end_user_sid = u.sid;
+    await save(orgId, { business_end_user_sid: u.sid });
+  } else if (resubmitting) {
+    await twilio(
+      parent,
+      "POST",
+      `${TRUST_HUB}/EndUsers/${encodeURIComponent(next.business_end_user_sid)}`,
+      { Attributes: info },
+    );
+  }
+
+  if (!next.address_document_sid) {
+    const doc = await twilio(parent, "POST", `${TRUST_HUB}/SupportingDocuments`, {
+      FriendlyName: `${owner} address`.slice(0, 64),
+      Type: "customer_profile_address",
+      Attributes: JSON.stringify({ address_sids: next.address_sid }),
+    });
+    next.address_document_sid = doc.sid;
+    await save(orgId, { address_document_sid: doc.sid });
+  }
+
+  if (!next.customer_profile_sid) {
+    const profile = await twilio(parent, "POST", `${TRUST_HUB}/CustomerProfiles`, {
+      FriendlyName: `${owner} (HoundStack ${orgId})`.slice(0, 64),
+      Email: process.env.TWILIO_COMPLIANCE_EMAIL || d.business_email,
+      PolicySid: STARTER_PROFILE_POLICY_SID,
+    });
+    next.customer_profile_sid = profile.sid;
+    await save(orgId, {
+      customer_profile_sid: profile.sid,
+      customer_profile_status: profile.status ?? "draft",
+    });
+    const bu = encodeURIComponent(profile.sid);
+    for (const objectSid of [next.business_end_user_sid, next.address_document_sid, primary]) {
+      await twilio(parent, "POST", `${TRUST_HUB}/CustomerProfiles/${bu}/EntityAssignments`, {
+        ObjectSid: objectSid,
+      });
+    }
+  }
+
+  const bu = encodeURIComponent(next.customer_profile_sid);
+  const evaluation = await twilio(parent, "POST", `${TRUST_HUB}/CustomerProfiles/${bu}/Evaluations`, {
+    PolicySid: STARTER_PROFILE_POLICY_SID,
+  });
+  if (evaluation?.status && evaluation.status !== "compliant") {
+    throw new TwilioSetupError(
+      `Twilio found something missing in the business profile: ${evaluationProblems(evaluation)}`,
+    );
+  }
+  const submitted = await twilio(parent, "POST", `${TRUST_HUB}/CustomerProfiles/${bu}`, {
+    Status: "pending-review",
+  }).catch((e: TwilioSetupError) => {
     if (e.status === 400) return { status: next.customer_profile_status };
     throw e;
   });
