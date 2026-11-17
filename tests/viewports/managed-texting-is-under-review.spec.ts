@@ -203,8 +203,8 @@ for (const width of WIDTHS) {
             rows: [
               {
                 organizationId: "0f000000-0000-4000-8000-0000000000b1",
-                businessName: "Whitfield-Ramirez Pet Waste Services of Detroit",
-                legalName: "Greater Metropolitan Detroit Doo Disposal LLC",
+                businessName: "QA TEST 972 Pet Waste Services of Washtenaw County",
+                legalName: "QA Test 972 Greater Washtenaw Yard Sanitation LLC",
                 status: "rejected",
                 phoneNumber: "+18445550123",
                 submittedAt: "2026-11-08T15:00:00Z",
@@ -218,8 +218,8 @@ for (const width of WIDTHS) {
               },
               {
                 organizationId: "0f000000-0000-4000-8000-0000000000b2",
-                businessName: "Pawsitively Spotless Walks, Sits and Grooming of Ann Arbor",
-                legalName: "Pawsitively Spotless Holdings LLC",
+                businessName: "QA TEST 972 Walks, Sits and Grooming of Ann Arbor",
+                legalName: "QA Test 972 Holdings LLC",
                 status: "failed",
                 phoneNumber: null,
                 submittedAt: "2026-11-09T15:00:00Z",
@@ -233,8 +233,8 @@ for (const width of WIDTHS) {
               },
               {
                 organizationId: "0f000000-0000-4000-8000-0000000000a1",
-                businessName: "Detroit Doo",
-                legalName: "Detroit Doo LLC",
+                businessName: "QA TEST 972",
+                legalName: "QA Test 972 LLC",
                 status: "in_review",
                 phoneNumber: "+18445550124",
                 submittedAt: "2026-11-10T15:00:00Z",
