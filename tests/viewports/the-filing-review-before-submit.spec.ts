@@ -4,7 +4,7 @@
  *
  * The stub's resting registration is a rejection with the form open again,
  * and its getTextingFilingContext is a mixed business at full length (a
- * 49-character name, all five lines, portal and booking links with no space
+ * 51-character name, all five lines, portal and booking links with no space
  * to wrap on). That is the longest review there is, so it is measured as it
  * rests, and proved on screen by its own words first: every rule below
  * passes on a page that never drew it.
@@ -56,7 +56,7 @@ for (const width of WIDTHS) {
       ).toBeVisible();
       await expect(review.locator("li")).toHaveCount(3);
       await expect(
-        review.getByText(/View and pay: https:\/\/app\.houndstack\.com\/portal\/detroit-doo/),
+        review.getByText(/View and pay: https:\/\/app\.houndstack\.com\/portal\/qa-test-971/),
       ).toBeVisible();
       await expect(review.getByText(/Clients imported from a spreadsheet/)).toBeVisible();
       // Above the button that files it.

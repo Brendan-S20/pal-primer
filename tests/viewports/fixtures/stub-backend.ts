@@ -1064,10 +1064,10 @@ export const BASE_STUBS: Record<string, Stub> = {
   // Submit button on Settings > Texting. A mixed business at full length, so
   // the review draws every line's words and its longest samples.
   getTextingFilingContext: {
-    businessName: "Detroit Doo Disposal and Yard Sanitation Services",
+    businessName: "QA TEST 971 Pet Waste, Walks and Yard Sanitation Co",
     lines: ["pet_waste", "dog_walking", "pet_sitting", "mobile_grooming", "training"],
-    portalUrl: "https://app.houndstack.com/portal/detroit-doo-disposal-and-yard-sanitation",
-    bookingUrl: "https://app.houndstack.com/signup/detroit-doo-disposal-and-yard-sanitation",
+    portalUrl: "https://app.houndstack.com/portal/qa-test-971-pet-waste-walks-and-yard-sanitation-co",
+    bookingUrl: "https://app.houndstack.com/signup/qa-test-971-pet-waste-walks-and-yard-sanitation-co",
   },
 
   // Settings > Texting (#538), in the state with the most on screen: a
