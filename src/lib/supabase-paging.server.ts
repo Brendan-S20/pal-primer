@@ -81,6 +81,49 @@ export async function fetchAllPagesConcurrently<T>(
 }
 
 /**
+ * fetchAllPagesConcurrently, for a read that can say how many rows it has.
+ *
+ * The first page is asked with `count: "exact"` (build's third argument says
+ * when), so what follows is exactly the pages that count says are left, not
+ * a wave of four of which three come back empty. /clients' 1,007 open
+ * invoices were five requests (one page, then four at once for one short
+ * page and three empty ones); they are two (#900). A business under a
+ * thousand rows still makes exactly one.
+ *
+ * The count only decides how many pages to ask for at once, never when to
+ * stop: as in fetchAllPages, only a short page ends the read. So a row added
+ * after the count is still read, at the price of one more request when the
+ * last page came back full.
+ */
+export async function fetchAllPagesCounted<T>(
+  build: (from: number, to: number, counted: boolean) => any,
+  pagesAtOnce = 4,
+): Promise<T[]> {
+  const first = await build(0, PAGE - 1, true);
+  if (first.error) throw new Error(first.error.message);
+  const out: T[] = [...((first.data ?? []) as T[])];
+  if (out.length < PAGE) return out;
+  const total: number | null = typeof first.count === "number" ? first.count : null;
+  for (let page = 1; ; ) {
+    const left = total === null ? pagesAtOnce : Math.ceil((total - page * PAGE) / PAGE);
+    const ask = Math.max(1, Math.min(pagesAtOnce, left));
+    const wave = await Promise.all(
+      Array.from({ length: ask }, (_, k) => {
+        const from = (page + k) * PAGE;
+        return build(from, from + PAGE - 1, false);
+      }),
+    );
+    for (const { data, error } of wave) {
+      if (error) throw new Error(error.message);
+      const batch = (data ?? []) as T[];
+      out.push(...batch);
+      if (batch.length < PAGE) return out;
+    }
+    page += ask;
+  }
+}
+
+/**
  * How many uuids one GET may carry in an `.in()` filter.
  *
  * A uuid is 36 characters and PostgREST separates them with commas, so 40 of
