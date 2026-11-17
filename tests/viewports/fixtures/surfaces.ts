@@ -1,4 +1,4 @@
-import type { Locator, Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import {
   CAMPAIGN_DRAFT_ID,
   CAMPAIGN_DRAFT_SUBJECT,
@@ -71,6 +71,27 @@ export type Surface = {
 
 const CLIENT_DETAIL = `/clients/${CLIENT_ID}`;
 const TENANT_DETAIL = `/platform/tenants/${ORG_ID}`;
+
+/**
+ * The More sheet (MobileTabBar) open and finished sliding in: Radix's
+ * `data-state="open"` on the dialog, then every finite animation on it and
+ * inside it settled. #962: the time clock row lives in this sheet, and the
+ * step after the More tap asked for it while the sheet was still on its way
+ * up. Infinite animations (a skeleton's pulse) are left out because they
+ * never finish; the sheet's own slide-in is finite.
+ */
+async function moreSheetSettled(p: Page) {
+  const sheet = p.getByRole("dialog", { name: "More" });
+  await expect(sheet).toHaveAttribute("data-state", "open");
+  await sheet.evaluate((el) =>
+    Promise.all(
+      el
+        .getAnimations({ subtree: true })
+        .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
+        .map((a) => a.finished.catch(() => undefined)),
+    ),
+  );
+}
 
 export const SURFACES: Surface[] = [
   {
@@ -577,7 +598,10 @@ export const SURFACES: Surface[] = [
     expectsData: "Anastasia Vandermolen-Whitaker",
     open: async (p) => {
       const more = p.locator('[data-tour="more"]');
-      if (await more.isVisible()) await more.click();
+      if (await more.isVisible()) {
+        await more.click();
+        await moreSheetSettled(p);
+      }
       await p.locator("[data-time-clock-row]").filter({ visible: true }).first().click();
     },
     opened: (p) => p.getByRole("dialog", { name: "Time clock" }),
