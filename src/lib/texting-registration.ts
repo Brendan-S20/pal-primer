@@ -99,6 +99,9 @@ export const registrationDetailsSchema = z
       .min(2, "Enter the legal name exactly as on the EIN letter")
       .max(200),
     business_type: z.enum(Object.keys(BUSINESS_TYPES) as [BusinessType, ...BusinessType[]]),
+    /** #968: false for an owner with no EIN, filed as a sole proprietor in
+     *  their own name with no registration number. Absent means yes. */
+    has_ein: z.boolean().default(true),
     dba: z.string().trim().max(200).optional().or(z.literal("")),
     street: z.string().trim().min(3, "Street address is required").max(200),
     street2: z.string().trim().max(200).optional().or(z.literal("")),
@@ -116,9 +119,6 @@ export const registrationDetailsSchema = z
     terms_url: httpsUrl,
     business_email: z.string().trim().email("Enter an email address").max(255),
     business_phone: phone,
-    /** #968: false for an owner with no EIN, filed as a sole proprietor in
-     *  their own name with no registration number. Absent means yes. */
-    has_ein: z.boolean().default(true),
     contacts: z.array(contactSchema).length(2, "Add two authorized contacts"),
   })
   .superRefine((d, ctx) => {
