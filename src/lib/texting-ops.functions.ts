@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { RegistrationStatus } from "@/lib/texting-registration";
+import { QUEUE_STATUSES, sortTextingQueue } from "@/lib/texting-rejection";
 
 // site-r2-05: the admin/ops half of "Under review". A business that has
 // added Managed texting and submitted its details waits here until a
@@ -10,8 +11,14 @@ import type { RegistrationStatus } from "@/lib/texting-registration";
 // (lib/managed-texting `shouldActivate`, lib/twilio-provisioning.server
 // `opsActivateTexting`).
 //
+// #972: rejected and stopped (failed) filings are in the queue too, with
+// Twilio's reason, the resubmit-by date and the last error, sorted by that
+// deadline first. They left the queue on rejection and lived only in an
+// email to admins, so a fix could miss Twilio's seven-day window.
+//
 // Platform admins only, checked against is_platform_admin like every other
-// /platform function. Never returns a SID, a token or an EIN.
+// /platform function. Never returns a SID, a token or an EIN: the reason and
+// the error are stored scrubbed (twilio-provisioning.server `scrub`).
 
 async function assertPlatformAdmin(supabase: any, userId: string) {
   const { data, error } = await supabase.rpc("is_platform_admin", { _user_id: userId });
@@ -29,6 +36,12 @@ export type TextingReviewRow = {
   approvedAt: string | null;
   opsApprovedAt: string | null;
   lastError: string | null;
+  /** Twilio's rejection reason, as Twilio worded it (scrubbed). */
+  rejectionReason: string | null;
+  /** Twilio's error code for the rejection, e.g. "30493". */
+  rejectionCode: string | null;
+  /** Twilio's edit_expiration: resubmit by then to keep priority review. */
+  resubmitDeadline: string | null;
 };
 
 export const listTextingReviews = createServerFn({ method: "GET" })
@@ -40,9 +53,9 @@ export const listTextingReviews = createServerFn({ method: "GET" })
     const { data, error } = await db
       .from("org_texting_registrations")
       .select(
-        "organization_id, status, legal_name, phone_number, submitted_at, approved_at, ops_approved_at, last_error",
+        "organization_id, status, legal_name, phone_number, submitted_at, approved_at, ops_approved_at, last_error, rejection_reason, rejection_code, resubmit_deadline",
       )
-      .in("status", ["submitted", "in_review", "approved"])
+      .in("status", [...QUEUE_STATUSES])
       .order("submitted_at", { ascending: true });
     if (error) throw new Error(error.message);
     const ids = (data ?? []).map((r: any) => r.organization_id);
@@ -54,11 +67,11 @@ export const listTextingReviews = createServerFn({ method: "GET" })
     const sending = new Set((live ?? []).map((r: any) => r.organization_id));
     const names = new Map((orgs ?? []).map((o: any) => [o.id, o.name as string]));
     return {
-      rows: (data ?? [])
-        // Already sending: no longer under review, nothing to do here.
-        .filter((r: any) => !sending.has(r.organization_id))
-        .map(
-          (r: any): TextingReviewRow => ({
+      rows: sortTextingQueue(
+        (data ?? [])
+          // Already sending: no longer under review, nothing to do here.
+          .filter((r: any) => !sending.has(r.organization_id))
+          .map((r: any): TextingReviewRow => ({
             organizationId: r.organization_id,
             businessName: names.get(r.organization_id) ?? r.legal_name ?? r.organization_id,
             legalName: r.legal_name ?? null,
@@ -68,8 +81,11 @@ export const listTextingReviews = createServerFn({ method: "GET" })
             approvedAt: r.approved_at ?? null,
             opsApprovedAt: r.ops_approved_at ?? null,
             lastError: r.last_error ?? null,
-          }),
-        ),
+            rejectionReason: r.rejection_reason ?? null,
+            rejectionCode: r.rejection_code ?? null,
+            resubmitDeadline: r.resubmit_deadline ?? null,
+          })),
+      ),
     };
   });
 

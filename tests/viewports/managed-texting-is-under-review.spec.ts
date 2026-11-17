@@ -17,6 +17,9 @@
  *   - Messages: the header and the disabled New message, Under review.
  *   - /platform/addons: the admin queue with one business waiting and its
  *     Activate button, a 46-character name and a long legal name.
+ *   - #972: the same queue with a rejected and a stopped filing ahead of it,
+ *     with Twilio's reason, the resubmit-by date and the last error; and
+ *     Settings → Texting's plain-words advice under a 30493 rejection.
  */
 import { test, expect, type Page } from "@playwright/test";
 import { installSignedInSession } from "./fixtures/session";
@@ -186,6 +189,113 @@ for (const width of WIDTHS) {
       await expect(queue.getByText("Carrier approved. Ready to activate.")).toBeVisible();
       await expect(queue.getByRole("button", { name: "Activate" })).toBeEnabled();
       await measure(page, "platform-texting-queue", width);
+    });
+
+    test("/platform/addons: rejected and stopped filings, deadline first (#972)", async ({
+      page,
+      context,
+    }) => {
+      await installSignedInSession(context);
+      await installStubBackend(context, {
+        overrides: {
+          listPlatformAddonsAdmin: { rows: [] },
+          listTextingReviews: {
+            rows: [
+              {
+                organizationId: "0f000000-0000-4000-8000-0000000000b1",
+                businessName: "Whitfield-Ramirez Pet Waste Services of Detroit",
+                legalName: "Greater Metropolitan Detroit Doo Disposal LLC",
+                status: "rejected",
+                phoneNumber: "+18445550123",
+                submittedAt: "2026-11-08T15:00:00Z",
+                approvedAt: null,
+                opsApprovedAt: null,
+                lastError: null,
+                rejectionReason:
+                  "Terms of Service URL is missing, unreachable, or lacking the required consumer protection and SMS disclosures (message rates, frequency and opt-out).",
+                rejectionCode: "30493",
+                resubmitDeadline: "2026-11-24T00:00:00Z",
+              },
+              {
+                organizationId: "0f000000-0000-4000-8000-0000000000b2",
+                businessName: "Pawsitively Spotless Walks, Sits and Grooming of Ann Arbor",
+                legalName: "Pawsitively Spotless Holdings LLC",
+                status: "failed",
+                phoneNumber: null,
+                submittedAt: "2026-11-09T15:00:00Z",
+                approvedAt: null,
+                opsApprovedAt: null,
+                lastError:
+                  "Twilio found something missing in the business profile: Business Registration Number, Website URL",
+                rejectionReason: null,
+                rejectionCode: null,
+                resubmitDeadline: null,
+              },
+              {
+                organizationId: "0f000000-0000-4000-8000-0000000000a1",
+                businessName: "Detroit Doo",
+                legalName: "Detroit Doo LLC",
+                status: "in_review",
+                phoneNumber: "+18445550124",
+                submittedAt: "2026-11-10T15:00:00Z",
+                approvedAt: null,
+                opsApprovedAt: null,
+                lastError: null,
+                rejectionReason: null,
+                rejectionCode: null,
+                resubmitDeadline: null,
+              },
+            ],
+          },
+        },
+      });
+      await page.goto("/platform/addons", { waitUntil: "domcontentloaded" });
+      const queue = page.getByTestId("texting-review-queue");
+      await expect(queue).toBeVisible({ timeout: 45_000 });
+      const rejected = queue.locator('li[data-status="rejected"]');
+      await expect(
+        rejected.getByText(/Your Terms page is missing what carriers look for/),
+      ).toBeVisible();
+      await expect(rejected.getByTestId("texting-resubmit-by")).toBeVisible();
+      await expect(rejected.getByText(/^Twilio: Terms of Service URL/)).toBeVisible();
+      await expect(rejected.getByText("Waiting on the owner")).toBeVisible();
+      const failed = queue.locator('li[data-status="failed"]');
+      await expect(failed.getByText(/^Last error: Twilio found something missing/)).toBeVisible();
+      await expect(failed.getByRole("button")).toHaveCount(0);
+      await expect(
+        queue.locator('li[data-status="in_review"]').getByRole("button", { name: "Activate" }),
+      ).toBeEnabled();
+      await measure(page, "platform-texting-queue-rejected", width);
+    });
+
+    test("Settings → Texting: a 30493 rejection says what to fix (#972)", async ({
+      page,
+      context,
+    }) => {
+      await installSignedInSession(context);
+      await installStubBackend(context, {
+        overrides: {
+          getTextingRegistration: {
+            ...(BASE_STUBS.getTextingRegistration as any),
+            registration: {
+              ...REJECTED,
+              rejection_code: "30493",
+              rejection_reason:
+                "Terms of Service URL is missing, unreachable, or lacking the required consumer protection and SMS disclosures (message rates, frequency and opt-out).",
+            },
+            live: false,
+            subscribed: true,
+          },
+        },
+      });
+      await page.goto("/settings/sms", { waitUntil: "domcontentloaded" });
+      const advice = page.getByTestId("texting-rejection-advice");
+      await expect(advice).toBeVisible({ timeout: 45_000 });
+      await expect(advice.getByText(/What to fix: Your Terms page is missing/)).toBeVisible();
+      await expect(
+        page.getByTestId("texting-status").getByText(/Terms of Service URL is missing/),
+      ).toBeVisible();
+      await measure(page, "settings-sms-rejection-advice", width);
     });
   });
 }
