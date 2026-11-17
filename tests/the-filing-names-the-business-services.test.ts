@@ -18,11 +18,11 @@ const root = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
 
 const BASE = {
-  businessName: "Detroit Doo",
-  portalUrl: "https://app.houndstack.com/portal/detroit-doo",
-  bookingUrl: "https://app.houndstack.com/signup/detroit-doo",
-  supportEmail: "devin@detroitdoo.com",
-  websiteUrl: "https://detroitdoo.com",
+  businessName: "QA Test 971",
+  portalUrl: "https://app.houndstack.com/portal/qa-test-971",
+  bookingUrl: "https://app.houndstack.com/signup/qa-test-971",
+  supportEmail: "devin@example.com",
+  websiteUrl: "https://example.com",
 };
 const copyFor = (lines: string[]) => filingCopy({ ...BASE, lines });
 
@@ -32,24 +32,24 @@ describe("each line's filing, word for word", () => {
   it("a scooping business", () => {
     const c = copyFor(["pet_waste"]);
     expect(c.useCaseSummary).toBe(
-      "Detroit Doo is a local pet care business that provides yard cleanups. It texts its own clients, who have opted in, about their yard cleanups: reminders, on-the-way notices, visit updates and reports, their invoices and payments with a link to the business's client portal, sign-in codes for that portal, and replies to their questions. No marketing.",
+      "QA Test 971 is a local pet care business that provides yard cleanups. It texts its own clients, who have opted in, about their yard cleanups: reminders, on-the-way notices, visit updates and reports, their invoices and payments with a link to the business's client portal, sign-in codes for that portal, and replies to their questions. No marketing.",
     );
     expect(c.samples).toEqual([
-      "Detroit Doo: Reminder, your yard cleanup is scheduled for [day, date] at [time]. Reply STOP to opt out.",
-      "Detroit Doo: [Tech name] is on the way for your yard cleanup, arriving about [time]. Reply STOP to opt out.",
-      "Detroit Doo: Your invoice for [amount] is ready. View and pay: https://app.houndstack.com/portal/detroit-doo/[link] Reply STOP to opt out.",
+      "QA Test 971: Reminder, your yard cleanup is scheduled for [day, date] at [time]. Reply STOP to opt out.",
+      "QA Test 971: [Tech name] is on the way for your yard cleanup, arriving about [time]. Reply STOP to opt out.",
+      "QA Test 971: Your invoice for [amount] is ready. View and pay: https://app.houndstack.com/portal/qa-test-971/[link] Reply STOP to opt out.",
     ]);
   });
 
   it("a walking business", () => {
     const c = copyFor(["dog_walking"]);
     expect(c.useCaseSummary).toMatch(
-      /^Detroit Doo is a local pet care business that provides walks\./,
+      /^QA Test 971 is a local pet care business that provides walks\./,
     );
     expect(c.samples).toEqual([
-      "Detroit Doo: Reminder, your walk is scheduled for [day, date] at [time]. Reply STOP to opt out.",
-      "Detroit Doo: [Walker name] finished [pet name]'s walk at [time]. See the walk report: https://app.houndstack.com/portal/detroit-doo/[link] Reply STOP to opt out.",
-      "Detroit Doo: Your invoice for [amount] is ready. View and pay: https://app.houndstack.com/portal/detroit-doo/[link] Reply STOP to opt out.",
+      "QA Test 971: Reminder, your walk is scheduled for [day, date] at [time]. Reply STOP to opt out.",
+      "QA Test 971: [Walker name] finished [pet name]'s walk at [time]. See the walk report: https://app.houndstack.com/portal/qa-test-971/[link] Reply STOP to opt out.",
+      "QA Test 971: Your invoice for [amount] is ready. View and pay: https://app.houndstack.com/portal/qa-test-971/[link] Reply STOP to opt out.",
     ]);
   });
 
@@ -57,9 +57,9 @@ describe("each line's filing, word for word", () => {
     const c = copyFor(["pet_sitting"]);
     expect(c.useCaseSummary).toMatch(/provides pet sits\. .* about their pet sits:/);
     expect(c.samples).toEqual([
-      "Detroit Doo: Reminder, your pet sit is scheduled for [day, date] at [time]. Reply STOP to opt out.",
-      "Detroit Doo: [Sitter name] checked in on [pet name] at [time]. See the visit report: https://app.houndstack.com/portal/detroit-doo/[link] Reply STOP to opt out.",
-      "Detroit Doo: Your invoice for [amount] is ready. View and pay: https://app.houndstack.com/portal/detroit-doo/[link] Reply STOP to opt out.",
+      "QA Test 971: Reminder, your pet sit is scheduled for [day, date] at [time]. Reply STOP to opt out.",
+      "QA Test 971: [Sitter name] checked in on [pet name] at [time]. See the visit report: https://app.houndstack.com/portal/qa-test-971/[link] Reply STOP to opt out.",
+      "QA Test 971: Your invoice for [amount] is ready. View and pay: https://app.houndstack.com/portal/qa-test-971/[link] Reply STOP to opt out.",
     ]);
   });
 
@@ -67,9 +67,9 @@ describe("each line's filing, word for word", () => {
     const c = copyFor(["mobile_grooming"]);
     expect(c.useCaseSummary).toMatch(/provides grooming appointments\./);
     expect(c.samples).toEqual([
-      "Detroit Doo: Reminder, your grooming appointment is scheduled for [day, date] at [time]. Reply STOP to opt out.",
-      "Detroit Doo: [Groomer name] is on the way for [pet name]'s grooming appointment, arriving about [time]. Reply STOP to opt out.",
-      "Detroit Doo: Your invoice for [amount] is ready. View and pay: https://app.houndstack.com/portal/detroit-doo/[link] Reply STOP to opt out.",
+      "QA Test 971: Reminder, your grooming appointment is scheduled for [day, date] at [time]. Reply STOP to opt out.",
+      "QA Test 971: [Groomer name] is on the way for [pet name]'s grooming appointment, arriving about [time]. Reply STOP to opt out.",
+      "QA Test 971: Your invoice for [amount] is ready. View and pay: https://app.houndstack.com/portal/qa-test-971/[link] Reply STOP to opt out.",
     ]);
   });
 
@@ -77,21 +77,21 @@ describe("each line's filing, word for word", () => {
     const c = copyFor(["training"]);
     expect(c.useCaseSummary).toMatch(/provides training sessions\./);
     expect(c.samples).toEqual([
-      "Detroit Doo: Reminder, your training session is scheduled for [day, date] at [time]. Reply STOP to opt out.",
-      "Detroit Doo: [Trainer name] finished [pet name]'s training session. See the session notes: https://app.houndstack.com/portal/detroit-doo/[link] Reply STOP to opt out.",
-      "Detroit Doo: Your invoice for [amount] is ready. View and pay: https://app.houndstack.com/portal/detroit-doo/[link] Reply STOP to opt out.",
+      "QA Test 971: Reminder, your training session is scheduled for [day, date] at [time]. Reply STOP to opt out.",
+      "QA Test 971: [Trainer name] finished [pet name]'s training session. See the session notes: https://app.houndstack.com/portal/qa-test-971/[link] Reply STOP to opt out.",
+      "QA Test 971: Your invoice for [amount] is ready. View and pay: https://app.houndstack.com/portal/qa-test-971/[link] Reply STOP to opt out.",
     ]);
   });
 
   it("a business that runs all five", () => {
     const c = copyFor(ALL);
     expect(c.useCaseSummary).toBe(
-      "Detroit Doo is a local pet care business that provides yard cleanups, walks, pet sits, grooming appointments and training sessions. It texts its own clients, who have opted in, about their yard cleanups, walks, pet sits, grooming appointments and training sessions: reminders, on-the-way notices, visit updates and reports, their invoices and payments with a link to the business's client portal, sign-in codes for that portal, and replies to their questions. No marketing.",
+      "QA Test 971 is a local pet care business that provides yard cleanups, walks, pet sits, grooming appointments and training sessions. It texts its own clients, who have opted in, about their yard cleanups, walks, pet sits, grooming appointments and training sessions: reminders, on-the-way notices, visit updates and reports, their invoices and payments with a link to the business's client portal, sign-in codes for that portal, and replies to their questions. No marketing.",
     );
     expect(c.samples).toEqual([
-      "Detroit Doo: Reminder, your [yard cleanup / walk / pet sit / grooming appointment / training session] is scheduled for [day, date] at [time]. Reply STOP to opt out.",
-      "Detroit Doo: [Staff name] is on the way for your [service], arriving about [time]. Reply STOP to opt out.",
-      "Detroit Doo: Your invoice for [amount] is ready. View and pay: https://app.houndstack.com/portal/detroit-doo/[link] Reply STOP to opt out.",
+      "QA Test 971: Reminder, your [yard cleanup / walk / pet sit / grooming appointment / training session] is scheduled for [day, date] at [time]. Reply STOP to opt out.",
+      "QA Test 971: [Staff name] is on the way for your [service], arriving about [time]. Reply STOP to opt out.",
+      "QA Test 971: Your invoice for [amount] is ready. View and pay: https://app.houndstack.com/portal/qa-test-971/[link] Reply STOP to opt out.",
     ]);
   });
 
@@ -119,7 +119,7 @@ describe("rules every filing keeps", () => {
       expect(c.samples.length).toBeGreaterThanOrEqual(2);
       expect(c.samples.length).toBeLessThanOrEqual(3);
       for (const s of c.samples) {
-        expect(s.startsWith("Detroit Doo: ")).toBe(true);
+        expect(s.startsWith("QA Test 971: ")).toBe(true);
         expect(s.endsWith(STOP_LINE)).toBe(true);
         // Variables in [brackets]; no made-up client name standing in for one.
         expect(s).toMatch(/\[[a-z ,/]+\]/i);
@@ -134,8 +134,8 @@ describe("rules every filing keeps", () => {
 
   it("the opt-in covers the portal, the booking link and a verbal yes, and imported clients", () => {
     const d = copyFor(["pet_waste"]).optInDescription;
-    expect(d).toContain("client portal (sign-in at https://app.houndstack.com/portal/detroit-doo)");
-    expect(d).toContain("public booking page (https://app.houndstack.com/signup/detroit-doo)");
+    expect(d).toContain("client portal (sign-in at https://app.houndstack.com/portal/qa-test-971)");
+    expect(d).toContain("public booking page (https://app.houndstack.com/signup/qa-test-971)");
     expect(d).toMatch(
       /telling the business's staff yes in person or on the phone, which staff record/,
     );
@@ -168,32 +168,32 @@ describe("rules every filing keeps", () => {
 
 describe("the filing sends the words the owner reviewed", () => {
   const details = registrationDetailsSchema.parse({
-    legal_name: "Detroit Doo LLC",
+    legal_name: "QA Test 971 LLC",
     business_type: "llc",
-    dba: "Detroit Doo",
-    street: "100 Woodward Ave",
+    dba: "QA Test 971",
+    street: "100 Main St",
     street2: "",
-    city: "Detroit",
+    city: "Ann Arbor",
     region: "MI",
-    postal_code: "48226",
-    website_url: "https://detroitdoo.com",
-    privacy_url: "https://detroitdoo.com/privacy",
-    terms_url: "https://detroitdoo.com/terms",
-    business_email: "devin@detroitdoo.com",
+    postal_code: "48104",
+    website_url: "https://example.com",
+    privacy_url: "https://example.com/privacy",
+    terms_url: "https://example.com/terms",
+    business_email: "devin@example.com",
     business_phone: "(313) 555-0100",
     contacts: [
       {
         first_name: "Devin",
         last_name: "Doe",
         title: "Owner",
-        email: "devin@detroitdoo.com",
+        email: "devin@example.com",
         phone: "313-555-0101",
       },
       {
         first_name: "Sam",
         last_name: "Roe",
         title: "Manager",
-        email: "sam@detroitdoo.com",
+        email: "sam@example.com",
         phone: "313-555-0102",
       },
     ],
@@ -209,7 +209,7 @@ describe("the filing sends the words the owner reviewed", () => {
       orgId: "org-1",
       businessName: BASE.businessName,
       bookingUrl: BASE.bookingUrl,
-      notificationEmail: "devin@detroitdoo.com",
+      notificationEmail: "devin@example.com",
       lines: flat,
       portalUrl: BASE.portalUrl,
     });
