@@ -628,10 +628,18 @@ export const setStaffAddresses = createServerFn({ method: "POST" })
       .update(patch as any)
       .eq("id", data.staffId)
       .eq("organization_id", orgId)
-      .select("id");
+      .select("id, start_address, end_address");
     if (error) throw new Error(error.message);
     refuseUnwrittenStaff(rows);
-    return { ok: true };
+    // What the row now holds, so the page's "saved" toast describes the
+    // stored value rather than the typed one (#943): an emptied route start
+    // is reported as "no route start", not as a generic success.
+    const row = (rows as Array<{ start_address: string | null; end_address: string | null }>)[0];
+    return {
+      ok: true,
+      startAddress: row.start_address ?? null,
+      endAddress: row.end_address ?? null,
+    };
   });
 
 // ── Time off ──────────────────────────────────────────────────────────────
