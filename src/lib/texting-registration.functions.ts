@@ -4,8 +4,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import {
   canSubmit,
-  einSchema,
-  registrationDetailsSchema,
+  submitInputSchema,
   STALE_SUBMIT_MS,
   type RegistrationStatus,
 } from "@/lib/texting-registration";
@@ -159,7 +158,8 @@ export const saveTextingDraft = createServerFn({ method: "POST" })
 
 export const submitTextingRegistration = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ details: registrationDetailsSchema, ein: einSchema }).parse(d))
+  // #968: the EIN is required unless the owner said they have none.
+  .inputValidator((d) => submitInputSchema.parse(d))
   .handler(async ({ data, context }) => {
     // Only the owner files a legal registration in the business's name.
     const { orgId, role } = await requirePermission(
@@ -183,6 +183,7 @@ export const submitTextingRegistration = createServerFn({ method: "POST" })
     if (refusal) throw new Error(refusal);
     const { submitTextingRegistration: submit } = await import("@/lib/twilio-provisioning.server");
     // The EIN is passed through to Twilio and dropped; see the module header.
+    // Null for a sole proprietor with no EIN (#968).
     return submit({ orgId, userId: context.userId, details: data.details, ein: data.ein });
   });
 
