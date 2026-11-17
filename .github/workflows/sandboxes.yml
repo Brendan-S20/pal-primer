@@ -1304,6 +1304,12 @@ jobs:
       - name: Measure the one-off cases
         run: npm run test:viewports:cases
 
+      # Settings > Users & roles, the open teammate panel at phone widths
+      # (#965). Its own script rather than another name on the cases line,
+      # which several open branches edit at once.
+      - name: Measure the open teammate panel on a phone
+        run: npm run test:viewports:team
+
       # Its own name: two jobs in one run cannot upload the same artifact.
       - name: Keep what failed
         if: failure() || cancelled()

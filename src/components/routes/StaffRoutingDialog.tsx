@@ -30,6 +30,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
+import { ROUTE_START_BLANK_HINT } from "@/lib/route-endpoints";
 import {
   addTimeOff,
   listTimeOff,
@@ -311,7 +312,7 @@ export function StaffRoutingDialog({
                       : null,
                   );
                 }}
-                placeholder="Home, shop, or depot"
+                placeholder={ROUTE_START_BLANK_HINT}
               />
               {staff.start_latitude != null && start === staff.start_address && (
                 <p className="text-3xs text-muted-foreground">
