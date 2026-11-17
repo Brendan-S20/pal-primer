@@ -983,6 +983,40 @@ describe("#968: no EIN, filed as a sole proprietor", () => {
     }
   });
 
+  it("refuses an entity type picked before No, even though No set sole proprietor (#968 review)", () => {
+    // The UI sets the type to sole proprietor on No, so the type alone would
+    // pass. The type chosen before No travels with the filing and decides.
+    for (const picked of ["llc", "corporation", "partnership", "nonprofit"]) {
+      const r = tr.registrationDetailsSchema.safeParse({ ...NO_EIN, picked_business_type: picked });
+      expect(r.success, picked).toBe(false);
+      expect(r.error!.issues.map((i) => i.message)).toContain(tr.NO_EIN_NOT_SOLE_PROP);
+      // And Settings' submit, which the server runs, refuses it the same way.
+      expect(
+        tr.submitInputSchema.safeParse({ details: { ...NO_EIN, picked_business_type: picked } })
+          .success,
+      ).toBe(false);
+    }
+    // Cleared ("I picked that by mistake") or never an entity: files.
+    for (const picked of [undefined, "sole_proprietor"]) {
+      expect(
+        tr.registrationDetailsSchema.safeParse({ ...NO_EIN, picked_business_type: picked }).success,
+      ).toBe(true);
+    }
+    // With an EIN the earlier choice means nothing: it is the type filed.
+    expect(
+      tr.registrationDetailsSchema.safeParse({ ...QA, picked_business_type: "llc" }).success,
+    ).toBe(true);
+  });
+
+  it("Settings keeps Submit off while an entity type is picked without an EIN", () => {
+    const page = read("src/routes/_authenticated/settings.sms.tsx");
+    expect(page).toMatch(/disabled=\{busy \|\| !isOwner \|\| needsAddon \|\| entityWithoutEin\}/);
+    expect(page).toMatch(
+      /picked_business_type: picked && picked !== "sole_proprietor" \? picked : undefined/,
+    );
+    expect(read("src/components/settings/TextingEinQuestion.tsx")).toMatch(/by mistake/);
+  });
+
   it("refuses a legal name that is not the owner's own, such as the DBA", () => {
     const r = tr.registrationDetailsSchema.safeParse({ ...NO_EIN, legal_name: "QA TEST 968" });
     expect(r.success).toBe(false);

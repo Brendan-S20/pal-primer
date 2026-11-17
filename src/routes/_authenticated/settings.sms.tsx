@@ -90,6 +90,9 @@ type Form = {
   contacts: [Contact, Contact];
   /** #968: false for a sole proprietor with no EIN. */
   has_ein?: boolean;
+  /** #968 review: the type chosen before No, when it was an entity. Sent
+   *  with the filing so the server refuses it too. */
+  picked_business_type?: BusinessType;
 };
 
 const NO_SUGGESTIONS = { businessName: "", email: "", phone: "" };
@@ -392,6 +395,15 @@ function RegistrationForm({
     legalName: string;
   } | null>(null);
   const noEin = form.has_ein === false;
+  // #968 review: an entity type chosen before No is not advice, it is a
+  // block. Submit is off and the server refuses it, until the owner goes
+  // back to Yes or says the type was a mistake.
+  const entityWithoutEin =
+    noEin && !!form.picked_business_type && form.picked_business_type !== "sole_proprietor";
+  const pickedByMistake = () => {
+    setBeforeNoEin((b) => (b ? { ...b, type: "sole_proprietor" } : b));
+    setForm((f) => ({ ...f, picked_business_type: undefined }));
+  };
   const answerEin = (has: boolean) => {
     if (has === !noEin) return;
     if (has) {
@@ -404,15 +416,18 @@ function RegistrationForm({
         has_ein: true,
         business_type: before?.type || f.business_type,
         legal_name: before?.legalName ?? "",
+        picked_business_type: undefined,
       }));
       return;
     }
     setBeforeNoEin({ type: form.business_type, legalName: form.legal_name });
+    const picked = form.business_type;
     setForm((f) => ({
       ...f,
       has_ein: false,
       business_type: "sole_proprietor",
       legal_name: soleProprietorLegalName(f.contacts[0]),
+      picked_business_type: picked && picked !== "sole_proprietor" ? picked : undefined,
     }));
   };
   const filed = siteFields(form, site, hosted);
@@ -492,10 +507,11 @@ function RegistrationForm({
         hasEin={!noEin}
         onChange={answerEin}
         pickedEntity={
-          beforeNoEin?.type && beforeNoEin.type !== "sole_proprietor"
-            ? BUSINESS_TYPES[beforeNoEin.type].label
+          entityWithoutEin && form.picked_business_type
+            ? BUSINESS_TYPES[form.picked_business_type].label
             : null
         }
+        onPickedByMistake={pickedByMistake}
       />
 
       <Section
@@ -562,7 +578,14 @@ function RegistrationForm({
         )}
       </Section>
 
-      <Section title="Address" hint="The business address on file with the IRS.">
+      <Section
+        title="Address"
+        hint={
+          noEin
+            ? "Your business address. Your home address is fine if you work from home."
+            : "The business address on file with the IRS."
+        }
+      >
         <Field id="street" label="Street address" error={errors.street} wide>
           <Input
             id="street"
@@ -754,7 +777,7 @@ function RegistrationForm({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <Button type="submit" disabled={busy || !isOwner || needsAddon}>
+        <Button type="submit" disabled={busy || !isOwner || needsAddon || entityWithoutEin}>
           {submit.isPending
             ? "Submitting…"
             : resubmitting

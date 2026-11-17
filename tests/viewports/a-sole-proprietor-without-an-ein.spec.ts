@@ -7,8 +7,8 @@
  * answers No as an owner would, then proves the No branch on screen by what
  * only it draws: the EIN field gone, the business type fixed to sole
  * proprietor, the legal name read-only and equal to contact 1's name, and
- * the LLC warning. A second case picks LLC first, then No, and must be told
- * an LLC has an EIN. Every rule below passes on a page that never drew the
+ * the LLC warning. A second case picks LLC first, then No, and must be
+ * blocked: Submit off until Yes, or "I picked LLC by mistake". Every rule below passes on a page that never drew the
  * branch, so the branch is proved first.
  *
  * At 390 and 1440 (the widths #968 names) and the four CLAUDE.md asks for.
@@ -86,23 +86,32 @@ for (const width of WIDTHS) {
       await measure(page, "settings-sms-no-ein", width);
     });
 
-    test("Settings → Texting: an LLC that answers No is told it has an EIN", async ({
+    test("Settings → Texting: an LLC that answers No is blocked until it says otherwise", async ({
       page,
       context,
     }) => {
       await open(page, context);
+      const submit = page.getByRole("button", { name: "Submit to carriers" });
       await page.locator("#business_type").selectOption("llc");
       await page.getByLabel("No, I'm a sole proprietor without one").check();
-      await expect(
-        page.getByText(
-          "You chose LLC as your business type. That kind of business has an EIN: choose Yes.",
-        ),
-      ).toBeVisible();
+      const block = page.getByTestId("texting-no-ein-entity-block");
+      await expect(block).toBeVisible();
+      await expect(block.getByText(/You chose LLC as your business type/)).toBeVisible();
+      // #968 review: a block, not advice. Submit is off while it shows.
+      await expect(submit).toBeDisabled();
       await measure(page, "settings-sms-no-ein-llc", width);
-      // Yes puts the LLC back, and the EIN field.
+      // Yes puts the LLC back, and the EIN field, and lifts the block.
       await page.getByLabel("Yes, the business has an EIN").check();
       await expect(page.locator("#business_type")).toHaveValue("llc");
       await expect(page.locator("#ein")).toBeVisible();
+      await expect(submit).toBeEnabled();
+      // Or: No again, then "I picked LLC by mistake" clears it.
+      await page.getByLabel("No, I'm a sole proprietor without one").check();
+      await expect(submit).toBeDisabled();
+      await block.getByRole("button", { name: /I picked LLC by mistake/ }).click();
+      await expect(block).toHaveCount(0);
+      await expect(page.locator("#business_type")).toHaveValue("sole_proprietor");
+      await expect(submit).toBeEnabled();
     });
   });
 }
