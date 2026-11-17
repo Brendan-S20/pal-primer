@@ -83,8 +83,7 @@ const ZONE_1 = "00000000-0000-4000-8000-000000000001";
 function fakeDb(opts: { zones?: Record<string, any>[]; rpcFails?: boolean } = {}) {
   const rows: Record<string, any>[] = (opts.zones ?? []).map((z) => ({ ...z }));
   const inserted: Record<string, any>[] = [];
-  const updates: Array<{ id: string | null; org: string | null; patch: Record<string, any> }> =
-    [];
+  const updates: Array<{ id: string | null; org: string | null; patch: Record<string, any> }> = [];
   const rpcCalls: Array<{ name: string; args: any }> = [];
   const result = (data: unknown) => ({ data, error: null });
   const db = {
@@ -299,7 +298,12 @@ describe("a drawn area lists its ZIPs the moment it is saved", () => {
     expect(zips).toHaveLength(1);
     expect(zips[0]).toBe(
       nearestZipToMiddle(
-        { mode: "radius", centerLat: LONELY_MILE.lat, centerLng: LONELY_MILE.lng, radiusMeters: ONE_MILE_M },
+        {
+          mode: "radius",
+          centerLat: LONELY_MILE.lat,
+          centerLng: LONELY_MILE.lng,
+          radiusMeters: ONE_MILE_M,
+        },
         CENSUS,
       ),
     );
@@ -368,16 +372,27 @@ describe("a lookup that fails saves the area and marks the fill pending", () => 
     const { ZIP_FILL_RETRY_MS, zipFillRetryDue } = await import("@/lib/zones.functions");
     const justTried = new Date(Date.now() - 60_000).toISOString();
     state.db = fakeDb({
-      zones: [savedZone({ zip_fill_pending_since: "2026-11-11T20:00:00Z", zip_fill_last_tried_at: justTried })],
+      zones: [
+        savedZone({
+          zip_fill_pending_since: "2026-11-11T20:00:00Z",
+          zip_fill_last_tried_at: justTried,
+        }),
+      ],
     });
     await listZones();
     expect(state.db.rpcCalls).toHaveLength(0);
     expect(state.db.updates).toHaveLength(0);
     // And one tried longer ago than the window is due again.
     const longAgo = new Date(Date.now() - ZIP_FILL_RETRY_MS - 1000).toISOString();
-    expect(zipFillRetryDue({ zip_fill_pending_since: "x", zip_fill_last_tried_at: longAgo })).toBe(true);
-    expect(zipFillRetryDue({ zip_fill_pending_since: "x", zip_fill_last_tried_at: justTried })).toBe(false);
-    expect(zipFillRetryDue({ zip_fill_pending_since: null, zip_fill_last_tried_at: null })).toBe(false);
+    expect(zipFillRetryDue({ zip_fill_pending_since: "x", zip_fill_last_tried_at: longAgo })).toBe(
+      true,
+    );
+    expect(
+      zipFillRetryDue({ zip_fill_pending_since: "x", zip_fill_last_tried_at: justTried }),
+    ).toBe(false);
+    expect(zipFillRetryDue({ zip_fill_pending_since: null, zip_fill_last_tried_at: null })).toBe(
+      false,
+    );
     expect(ZIP_FILL_RETRY_MS).toBe(10 * 60 * 1000);
   });
 
@@ -488,10 +503,23 @@ describe("a new area goes to the bottom of the ranking", () => {
     expect(state.db.inserted[0].priority).toBe(-1);
   });
 
-  it("a caller that places the area is honoured (setup's first area, an import)", async () => {
-    state.db = fakeDb({ zones: [savedZone({ id: "a", priority: 3 })] });
+  // #927: reorder_zones is the only writer of zones.priority. A client that
+  // still sends one is not placed by it: the schema strips the key and the
+  // area lands at the bottom like any other.
+  it("a priority the client sends is ignored: the area still lands at the bottom", async () => {
+    state.db = fakeDb({
+      zones: [savedZone({ id: "a", priority: 3 }), savedZone({ id: "b", priority: 1 })],
+    });
     await createZone({ data: drawnCircle({ priority: 7 }) } as any);
-    expect(state.db.inserted[0].priority).toBe(7);
+    expect(state.db.inserted[0].priority).toBe(0);
+    // Not even a renumber: the sent value moved nobody.
+    expect(state.db.rpcCalls.filter((c: any) => c.name === "reorder_zones")).toEqual([]);
+  });
+
+  it("a priority out of the old range is not an error either, and still lands at the bottom", async () => {
+    state.db = fakeDb({ zones: [savedZone({ id: "a", priority: 0 })] });
+    await createZone({ data: drawnCircle({ priority: 5000 }) } as any);
+    expect(state.db.inserted[0].priority).toBe(-1);
   });
 
   it("at the floor, the business is renumbered first, in one statement, and the new area goes under it", async () => {
@@ -505,6 +533,70 @@ describe("a new area goes to the bottom of the ranking", () => {
     ]);
     expect(state.db.rows.find((r: any) => r.id === "a").priority).toBe(2);
     expect(state.db.rows.find((r: any) => r.id === "b").priority).toBe(1);
+  });
+});
+
+describe("only reorder_zones writes the ranking (#927)", () => {
+  const A = "00000000-0000-4000-8000-00000000000a";
+  const B = "00000000-0000-4000-8000-00000000000b";
+  const C = "00000000-0000-4000-8000-00000000000c";
+  const three = () =>
+    fakeDb({
+      zones: [
+        savedZone({ id: A, name: "Top", priority: 3, zip_codes: ["48226"] }),
+        savedZone({ id: B, name: "Middle", priority: 2, zip_codes: ["48201"] }),
+        savedZone({ id: C, name: "Bottom", priority: 1, zip_codes: ["48207"] }),
+      ],
+    });
+  const ranks = () => state.db.rows.map((r: any) => [r.id, r.priority]);
+
+  it("an update that sends a priority never writes one", async () => {
+    state.db = three();
+    await updateZone({ data: { id: C, name: "Renamed", priority: 99 } } as any);
+    const u = state.db.updates.find((x: any) => x.id === C);
+    expect(u.patch.name).toBe("Renamed");
+    expect(u.patch).not.toHaveProperty("priority");
+    expect(ranks()).toEqual([
+      [A, 3],
+      [B, 2],
+      [C, 1],
+    ]);
+  });
+
+  it("an update that sends ONLY a priority changes nobody's rank", async () => {
+    state.db = three();
+    await updateZone({ data: { id: A, priority: -5 } } as any);
+    for (const u of state.db.updates) expect(u.patch).not.toHaveProperty("priority");
+    expect(ranks()).toEqual([
+      [A, 3],
+      [B, 2],
+      [C, 1],
+    ]);
+    expect(state.db.rpcCalls.filter((c: any) => c.name === "reorder_zones")).toEqual([]);
+  });
+
+  it("reorderZones still reorders, through reorder_zones, in one statement", async () => {
+    const { reorderZones } = await import("@/lib/zones.functions");
+    state.db = three();
+    const out = await reorderZones({ data: { ids: [C, A, B] } } as any);
+    expect(out.order).toEqual([C, A, B]);
+    expect(state.db.rpcCalls.filter((c: any) => c.name === "reorder_zones")).toEqual([
+      { name: "reorder_zones", args: { _org_id: "org-1", _ids: [C, A, B] } },
+    ]);
+    expect(ranks()).toEqual([
+      [A, 2],
+      [B, 1],
+      [C, 3],
+    ]);
+    // No direct UPDATE of priority alongside it.
+    for (const u of state.db.updates) expect(u.patch).not.toHaveProperty("priority");
+  });
+
+  it("the server function's source writes priority only through bottomPriority and reorder_zones", () => {
+    const src = read("src/lib/zones.functions.ts");
+    expect(src).not.toMatch(/data\.priority/);
+    expect(src).not.toMatch(/patch\.priority/);
+    expect(src).not.toMatch(/^\s*priority:\s*z\./m);
   });
 });
 
