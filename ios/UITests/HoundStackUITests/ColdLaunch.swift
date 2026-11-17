@@ -89,6 +89,24 @@ final class ColdLaunch: XCTestCase {
 
         // Cold: the URL is in the scene's connection options.
         openLink()
+        // Attach XCTest to the process the link started, then judge it.
+        //
+        // Measured on the CI Mac (df972507, #962, iPad (A16), iOS 27.2): the
+        // link spawned HoundStack at 18:51:28, scene-create carried the
+        // UIOpenURLAction, and UIKit had the app fully active at 18:51:32.
+        // XCTest's runningForeground wait still ran out 92 s later. The app
+        // was started by SpringBoard, not by XCTest, so no automation session
+        // existed for it: the XCTest agent inside the app logged "test daemon
+        // not ready" at launch and got its availability notification only at
+        // 18:53:49, the moment the NEXT test set one up. On the iPhone that
+        // notification happened to come 2 s after the spawn, so the same wait
+        // passed; nothing guaranteed it. activate() is XCTest's own way to
+        // attach to a running app: it brings it forward without terminating
+        // it. It would also launch an app that was not running, which would
+        // pass a link that never reached the app, so
+        // scripts/ios-launch-smoke.sh separately requires the scene-create
+        // UIOpenURLAction in the simulator's log for this class.
+        app.activate()
         XCTAssertTrue(
             app.wait(for: .runningForeground, timeout: AppDriver.launchTimeout),
             "a link did not bring the app up from cold"
