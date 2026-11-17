@@ -393,6 +393,24 @@ never_started() {  # $1 xcodebuild log, $2 udid
   node "$ROOT/scripts/ios-launch-never-started.mjs" "$1" "$1.processes.txt"
 }
 
+# The cold link reached the app (#962). ColdLaunch.swift attaches XCTest to
+# the process a link started with activate(), because XCTest does not reliably
+# notice an app SpringBoard launched (iPad (A16), iOS 27.2, df972507: up 4 s
+# after the link, never seen by the runningForeground wait). activate() would
+# also LAUNCH an app the link never reached, so this asks the process log: the
+# link's own process takes the URL in scene-create, and nothing else in
+# ColdLaunch opens a URL from cold. One such line per device on all four
+# simulators of run 43978183939.
+# Captured, not piped to grep -q: under pipefail an early grep exit can fail
+# the pipeline with SIGPIPE on a log that DID have the line.
+cold_link_reached_the_app() {  # $1 udid
+  local said
+  said=$(xcrun simctl spawn "$1" log show --last 30m --style compact --info \
+    --predicate 'process == "HoundStack" AND eventMessage CONTAINS "scene-create: UIOpenURLAction"' \
+    2>/dev/null < /dev/null) || return 1
+  [[ "$said" == *"scene-create: UIOpenURLAction"* ]]
+}
+
 # Stop the app before a test class starts, with simctl, and wait until
 # launchd no longer lists it.
 #
@@ -499,6 +517,8 @@ while IFS=$'\t' read -r runtime runtime_version type name <&3; do
     result="FAILED (warm-up: never reached sign-in)"
   elif ! attempt_class ColdLaunch launches; then
     result="FAILED"
+  elif ! cold_link_reached_the_app "$udid"; then
+    result="FAILED (the cold link never reached the app: no UIOpenURLAction in scene-create)"
   fi
   [ -z "$retried" ] || [ "$result" != "passed" ] || result="passed (retried after the simulator, not the app, failed:$retried)"
 

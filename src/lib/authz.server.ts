@@ -5,6 +5,7 @@ import {
   type Permission,
   type PermissionOverrides,
 } from "@/lib/permissions";
+import { sharedLookup } from "@/lib/caller-lookup.server";
 
 export type CallerContext = {
   orgId: string;
@@ -137,6 +138,46 @@ export async function accessTurnedOff(
 }
 
 /**
+ * The caller's user_roles row and the businesses that turned them off, read
+ * together: the second costs no extra round trip. Shared within a request
+ * whose handler opted in (src/lib/caller-lookup.server.ts, #900), so a dozen
+ * loaders in one request ask the database once.
+ */
+function readRoleAndAccess(
+  db: AuthzQueryClient,
+  userId: string,
+): Promise<{
+  data: { organization_id?: unknown; role?: unknown } | null;
+  off: Awaited<ReturnType<typeof accessTurnedOff>>;
+}> {
+  return sharedLookup(db, `caller:${userId}`, async () => {
+    const [{ data, error }, off] = await Promise.all([
+      db.from("user_roles").select("organization_id, role").eq("user_id", userId).maybeSingle(),
+      accessTurnedOff(db),
+    ]);
+    // Thrown here rather than returned, so a failed read is not the answer
+    // the rest of the request is given: sharedLookup forgets a rejection.
+    if (error) throw new Error(error.message);
+    return { data, off };
+  });
+}
+
+/**
+ * The caller's role, or null when they belong to no business or the one they
+ * belong to turned them off: the role getMyOrg's answer carries, without
+ * reading the business's row. For getShellParts, which needs only the role to
+ * decide what to ask (#900).
+ */
+export async function callerRoleOrNull(supabase: unknown, userId: string): Promise<string | null> {
+  const { data, off } = await readRoleAndAccess(supabase as AuthzQueryClient, userId);
+  const orgId = data?.organization_id;
+  const role = data?.role;
+  if (typeof orgId !== "string" || typeof role !== "string") return null;
+  if (off.some((o) => o.organizationId === orgId)) return null;
+  return role;
+}
+
+/**
  * Resolve the caller's org membership from user_roles.
  * Throws if the user belongs to no organization.
  *
@@ -177,12 +218,7 @@ export async function resolveCaller(
   const { assertImpersonationSessionActive } = await import("@/lib/impersonation-session.server");
   await assertImpersonationSessionActive();
 
-  // Both reads at once: the second costs no extra round trip.
-  const [{ data, error }, off] = await Promise.all([
-    db.from("user_roles").select("organization_id, role").eq("user_id", userId).maybeSingle(),
-    accessTurnedOff(db),
-  ]);
-  if (error) throw new Error(error.message);
+  const { data, off } = await readRoleAndAccess(db, userId);
   if (!data) throw new Error("No organization for user");
 
   // Narrow explicitly instead of asserting. A row that reached here without a
@@ -204,7 +240,9 @@ export async function resolveCaller(
   // What the owner changed for this role (#863). An owner is never asked
   // about: they hold everything, so there is nothing to read.
   if (role === "owner") return { orgId, role };
-  const overrides = await readPermissionOverrides(db, orgId, role as AppRole);
+  const overrides = await sharedLookup(supabase, `overrides:${orgId}:${role}`, () =>
+    readPermissionOverrides(db, orgId, role as AppRole),
+  );
   // The key is there only when the owner changed something, so a caller with
   // the defaults is the same two-field answer this function always gave.
   if (!Object.keys(overrides).length) return { orgId, role: role as AppRole };
