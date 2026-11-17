@@ -364,14 +364,20 @@ describe("1. one submit, no console work", () => {
     expect(tfv.body.get("CustomerProfileSid")).toBe("BU1");
     expect(tfv.body.get("PrivacyPolicyUrl")).toBe("https://detroitdoo.com/privacy");
     expect(tfv.body.get("TermsAndConditionsUrl")).toBe("https://detroitdoo.com/terms");
-    // Not HoundStack's name anywhere a reviewer reads as the brand.
+    // Not HoundStack's name anywhere a reviewer reads as the brand. #971:
+    // the samples now carry the portal link real texts carry, whose host is
+    // HoundStack's, and carriers want the real link in a sample; so a link is
+    // set aside before the check, and the words around it still may not say
+    // HoundStack.
+    const words = (v: string | null) => (v ?? "").replace(/https:\/\/\S+/g, "");
     for (const k of [
       "BusinessName",
       "DoingBusinessAs",
       "BusinessWebsite",
       "ProductionMessageSample",
+      "UseCaseSummary",
     ]) {
-      expect(tfv.body.get(k) ?? "").not.toMatch(/houndstack/i);
+      expect(words(tfv.body.get(k))).not.toMatch(/houndstack/i);
     }
     expect(tfv.body.get("ProductionMessageSample")).toMatch(/^Detroit Doo: /);
     expect(tfv.body.get("OptInConfirmationMessage")).toMatch(/^Detroit Doo: /);
