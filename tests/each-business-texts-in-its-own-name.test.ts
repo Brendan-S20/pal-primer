@@ -302,6 +302,40 @@ async function submit() {
   });
 }
 
+describe("#970: one authorized contact is enough, and a second is still filed", () => {
+  const repTypes = () =>
+    calls
+      .filter((c) => c.url.endsWith("/v1/EndUsers"))
+      .map((c) => c.body.get("Type"))
+      .filter((t) => String(t).startsWith("authorized_representative"));
+
+  it("files one representative when the owner gives one", async () => {
+    const r = await prov.submitTextingRegistration({
+      orgId: "org-1",
+      userId: "owner-1",
+      details: tr.registrationDetailsSchema.parse({ ...DETAILS, contacts: [DETAILS.contacts[0]] }),
+      ein: EIN,
+    });
+    expect(r).toEqual({ status: "submitted" });
+    expect(repTypes()).toEqual(["authorized_representative_1"]);
+  });
+
+  it("files both when a second is given", async () => {
+    await submit();
+    expect(repTypes()).toEqual(["authorized_representative_1", "authorized_representative_2"]);
+  });
+
+  it("refuses none, and a third", () => {
+    expect(tr.registrationDetailsSchema.safeParse({ ...DETAILS, contacts: [] }).success).toBe(
+      false,
+    );
+    const three = [...DETAILS.contacts, DETAILS.contacts[0]];
+    expect(tr.registrationDetailsSchema.safeParse({ ...DETAILS, contacts: three }).success).toBe(
+      false,
+    );
+  });
+});
+
 describe("1. one submit, no console work", () => {
   it("creates the subaccount, the business profile, a toll-free number and its verification", async () => {
     const r = await submit();
@@ -759,8 +793,9 @@ describe("the owner's form is checked before anything goes to Twilio", () => {
     expect(parse({ business_email: "detroitdoo@gmail.com" }).success).toBe(false);
   });
 
-  it("wants two authorized contacts", () => {
-    expect(parse({ contacts: [DETAILS.contacts[0]] as any }).success).toBe(false);
+  it("wants at least one authorized contact (#970: the second is optional)", () => {
+    expect(parse({ contacts: [] as any }).success).toBe(false);
+    expect(parse({ contacts: [DETAILS.contacts[0]] as any }).success).toBe(true);
   });
 
   it("takes an EIN with or without the dash, and nothing else", () => {

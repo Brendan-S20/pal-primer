@@ -115,7 +115,12 @@ export const registrationDetailsSchema = z
     terms_url: httpsUrl,
     business_email: z.string().trim().email("Enter an email address").max(255),
     business_phone: phone,
-    contacts: z.array(contactSchema).length(2, "Add two authorized contacts"),
+    // #970: Twilio needs one authorized representative; a second is
+    // optional, and filed when the owner gives one.
+    contacts: z
+      .array(contactSchema)
+      .min(1, "Add an authorized contact")
+      .max(2, "Two authorized contacts at most"),
   })
   .superRefine((d, ctx) => {
     const site = domainOf(d.website_url);

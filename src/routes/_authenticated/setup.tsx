@@ -348,6 +348,8 @@ function StepPanel({ step, onSaved }: { step: OnboardingStep; onSaved: () => voi
       return <EndOfDayPanel done={step.done} onSaved={onSaved} />;
     case "payouts":
       return <PayoutsPanel />;
+    case "texting":
+      return <TextingPanel done={step.done} />;
   }
 }
 
@@ -1735,6 +1737,24 @@ function DumpSitePanel({ done, onSaved }: { done: boolean; onSaved: () => void }
 }
 
 // ── 6. Payouts ─────────────────────────────────────────────────────────────
+
+/** #970: offered only to an owner holding Managed texting. The filing is
+ *  long and asks for the EIN letter, so it is done on its own page rather
+ *  than squeezed in here; this says what it is and opens it. */
+function TextingPanel({ done }: { done: boolean }) {
+  return (
+    <div className="space-y-3">
+      <p className="text-sm">
+        {done
+          ? "Your texting details are filed. Settings, Texting shows where the review stands."
+          : "Carriers register your number in your business's legal name, so they ask for it exactly as it is on your EIN letter, plus your website's Privacy Policy and Terms pages. Your business details and your name are filled in for you."}
+      </p>
+      <Button asChild variant={done ? "outline" : "default"} data-setup-action="texting">
+        <Link to="/settings/sms">{done ? "Open Texting" : "Set up texting"}</Link>
+      </Button>
+    </div>
+  );
+}
 
 function PayoutsPanel() {
   const statusFn = useServerFn(getStripeConnectStatus);
