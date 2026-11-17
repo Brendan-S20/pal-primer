@@ -35,6 +35,7 @@ import type { loadPlatformContext } from "@/lib/platform.functions";
 import type { loadMyNotifications } from "@/lib/notifications-center.functions";
 import type { loadMyRoutingRuns } from "@/lib/routing-runs.functions";
 import type { loadMyClock } from "@/lib/time-clock.functions";
+import type { loadClientTextingAvailability } from "@/lib/client-texting.functions";
 
 type Answer<F extends (...args: any[]) => any> = Awaited<ReturnType<F>>;
 
@@ -52,6 +53,7 @@ export type ShellParts = {
   notifications?: Answer<typeof loadMyNotifications>;
   routingRuns?: Answer<typeof loadMyRoutingRuns>;
   clock?: Answer<typeof loadMyClock>;
+  texting?: Answer<typeof loadClientTextingAvailability>;
 };
 
 export type ShellAnswer = {
@@ -96,8 +98,16 @@ export const loadShellContext = createServerOnlyFn(
 
 export const loadShellPartsForCaller = createServerOnlyFn(
   async (context: AuthedContext & { claims?: unknown }): Promise<ShellParts> => {
-    const { loadMyOrg } = await import("@/lib/org.functions");
-    const role = (await loadMyOrg(context)).organization?.role;
+    const [{ shareCallerLookups }, { callerRoleOrNull }] = await Promise.all([
+      import("@/lib/caller-lookup.server"),
+      import("@/lib/authz.server"),
+    ]);
+    // Every part below that checks the caller asks the same question of the
+    // same client in this one request: share the answer (#900). Before, the
+    // role came from the whole of getMyOrg (the role, then the business's
+    // row), and then each part asked for the role again, two requests apiece.
+    shareCallerLookups(context.supabase);
+    const role = await callerRoleOrNull(context.supabase, context.userId);
     if (!role) return {};
     return loadShellParts(context, role);
   },
@@ -120,6 +130,7 @@ const loadShellParts = createServerOnlyFn(
       { loadMyNotifications },
       { loadMyRoutingRuns },
       { loadMyClock },
+      { loadClientTextingAvailability },
     ] = await Promise.all([
       import("@/hooks/useMyRole"),
       import("@/lib/permissions"),
@@ -135,6 +146,7 @@ const loadShellParts = createServerOnlyFn(
       import("@/lib/notifications-center.functions"),
       import("@/lib/routing-runs.functions"),
       import("@/lib/time-clock.functions"),
+      import("@/lib/client-texting.functions"),
     ]);
     const appRole = role as Parameters<typeof canAccess>[0];
     // SetupGuideBanner only asks while the guide is open, which is decided on
@@ -169,6 +181,8 @@ const loadShellParts = createServerOnlyFn(
         ? () => loadMyRoutingRuns(context, { watching: false, also: [] })
         : null,
       clock: () => loadMyClock(context.supabase, context.userId),
+      // useClientTexting: the sidebar asks on every page, for every role.
+      texting: () => loadClientTextingAvailability(context),
     };
 
     // Parts that are not back within the budget are left out, like a failed

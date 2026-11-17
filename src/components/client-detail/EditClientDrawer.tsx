@@ -309,7 +309,7 @@ export function EditClientDrawer({
               id="ec-ref"
               value={form.referralSource}
               onChange={(e) => set("referralSource", e.target.value)}
-              placeholder="Google, neighbor, truck wrap"
+              placeholder="Google, neighbor, flyer"
             />
           </div>
         </div>

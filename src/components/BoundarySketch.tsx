@@ -35,6 +35,7 @@ export function BoundarySketch({
   saving,
   areaSqm,
   height = 460,
+  areaNoun = "yard",
   onDirtyChange,
 }: {
   center: { lat: number; lng: number } | null;
@@ -49,6 +50,9 @@ export function BoundarySketch({
   saving?: boolean;
   areaSqm?: number | null;
   height?: number;
+  /** What the outline goes around, in the help line: "yard" for a pet-waste
+   *  business, "property" for one that does not scoop (#768). */
+  areaNoun?: "yard" | "property";
   /** Reports in-progress (unsaved) sketch edits so hosts can guard closes. */
   onDirtyChange?: (dirty: boolean) => void;
 }) {
@@ -225,7 +229,7 @@ export function BoundarySketch({
         className="isolate z-0 rounded-lg border overflow-hidden"
       />
       <p className="text-xs text-muted-foreground">
-        In <b>Draw</b> mode: click to add points around the yard. Drag any point to adjust; click a point to remove it. Switch to <b>View</b> to pan without adding.
+        In <b>Draw</b> mode: click to add points around the {areaNoun}. Drag any point to adjust; click a point to remove it. Switch to <b>View</b> to pan without adding.
       </p>
     </div>
   );
