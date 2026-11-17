@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMyRole, canAccess, type AppRole } from "@/hooks/useMyRole";
 import { getPlatformContext } from "@/lib/platform.functions";
 import { getFranchiseContext } from "@/lib/franchise.functions";
+import { isPlanUpgradeRequiredError } from "@/lib/entitlements";
 import { getReviewQueueCount } from "@/lib/review-queue.functions";
 import { useOnboardingStatus } from "@/hooks/useOnboardingStatus";
 import { SETUP_PATH, promptsSetup, stepsFor, useSetupGuide } from "@/lib/setup-guide";
@@ -402,12 +403,25 @@ export function useNavVisibility(): NavVisibility {
   const { petWaste, lines, known } = useServiceLines();
   const training = known && lines.includes("training");
   const ctxFn = useServerFn(getFranchiseContext);
+  const queryClient = useQueryClient();
   // Same key the /franchise page uses, so the two share one fetch rather than
   // asking the same question twice on every navigation.
   const ctx = useQuery({
     queryKey: ["franchise", "ctx"],
     queryFn: () => ctxFn(),
     staleTime: 60_000,
+    // #900: a business not on the franchise plan, or a role without
+    // manage_franchise, is refused this on every attempt, and each attempt
+    // resolved the caller again: three retries on every cold load for an
+    // answer that cannot change between them. Those two refusals are not
+    // retried; anything else keeps the app's own retry rule.
+    retry: (count, error) => {
+      if (isPlanUpgradeRequiredError(error) || error?.message === "Not authorized") return false;
+      const retry = queryClient.getDefaultOptions().queries?.retry ?? 3;
+      if (typeof retry === "function") return retry(count, error);
+      if (typeof retry === "number") return count < retry;
+      return retry;
+    },
   });
   // Fails CLOSED, unlike useCommercialAccounts, and the difference is
   // deliberate. There, falling open shows a slightly busier sidebar to an org
