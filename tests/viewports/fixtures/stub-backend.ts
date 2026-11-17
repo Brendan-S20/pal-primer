@@ -1110,7 +1110,20 @@ export const BASE_STUBS: Record<string, Stub> = {
       status_changed_at: "2026-10-29T13:50:00Z",
     },
     live: false,
-    suggestions: { businessName: "Detroit Doo", email: "", phone: "" },
+    // #970: what a new form starts from (Business settings and the owner).
+    // Unused while a registration is saved; texting-setup-opens-filled-in
+    // answers registration: null to draw it, at full awkward length.
+    suggestions: {
+      businessName: "Detroit Doo Disposal and Yard Sanitation Services",
+      email: "office@greatermetropolitandetroitdoodisposal.com",
+      phone: "(313) 555-0100",
+      address: "18000 West Eight Mile Road, Building C, Suite 2400, Southfield, MI 48075, USA",
+      owner: {
+        name: "Devin Abernathy-Kowalczyk",
+        email: "devin@greatermetropolitandetroitdoodisposal.com",
+        phone: "(313) 555-0101",
+      },
+    },
   },
   // The client page's consent panel (#538): the business's own wording, with
   // policy pages long enough to wrap.

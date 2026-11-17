@@ -35,6 +35,15 @@ export async function orgHoldsManagedTexting(orgId: string): Promise<boolean> {
 
 /** One business's texting state, as every screen shows it. */
 export async function managedTextingStateFor(orgId: string): Promise<ManagedTextingState> {
+  return (await managedTextingFactsFor(orgId)).state;
+}
+
+/** The state, and whether the add-on is held: the onboarding checklist's
+ *  "Text your clients" step is offered on the second and done on the first
+ *  (#970). */
+export async function managedTextingFactsFor(
+  orgId: string,
+): Promise<{ subscribed: boolean; state: ManagedTextingState }> {
   const db = await admin();
   const { orgCanTextClients } = await import("@/lib/twilio-credentials.server");
   const [live, subscribed, { data: reg }] = await Promise.all([
@@ -46,10 +55,13 @@ export async function managedTextingStateFor(orgId: string): Promise<ManagedText
       .eq("organization_id", orgId)
       .maybeSingle(),
   ]);
-  return managedTextingState({
-    live,
+  return {
     subscribed,
-    registrationStatus: (reg?.status as RegistrationStatus | undefined) ?? null,
-    registrationUpdatedAt: (reg?.updated_at as string | undefined) ?? null,
-  });
+    state: managedTextingState({
+      live,
+      subscribed,
+      registrationStatus: (reg?.status as RegistrationStatus | undefined) ?? null,
+      registrationUpdatedAt: (reg?.updated_at as string | undefined) ?? null,
+    }),
+  };
 }
