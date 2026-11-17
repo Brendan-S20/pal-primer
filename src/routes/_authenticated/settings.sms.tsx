@@ -36,6 +36,13 @@ import {
   type HostedSite,
   type SiteChoice,
 } from "@/lib/texting-hosted-site";
+import {
+  NO_PREFILL,
+  contactsToFile,
+  ownerContact,
+  splitUsAddress,
+  type TextingPrefill,
+} from "@/lib/texting-prefill";
 import { useMyRole } from "@/hooks/useMyRole";
 import { titleHead } from "@/lib/page-title";
 import { formatDateTime, formatDay } from "@/lib/format";
@@ -88,8 +95,6 @@ type Form = {
   contacts: [Contact, Contact];
 };
 
-const NO_SUGGESTIONS = { businessName: "", email: "", phone: "" };
-
 const emptyContact = (): Contact => ({
   first_name: "",
   last_name: "",
@@ -98,16 +103,30 @@ const emptyContact = (): Contact => ({
   phone: "",
 });
 
-function formFrom(
-  reg: Record<string, any> | null,
-  s: { businessName: string; email: string; phone: string },
-): Form {
+/** The form as it opens. A saved draft is the owner's own and wins; with
+ *  nothing saved, it starts from Business settings and the owner (#970).
+ *  The legal name is never prefilled (lib/texting-prefill). */
+function formFrom(reg: Record<string, any> | null, s: TextingPrefill): Form {
   const c = Array.isArray(reg?.contacts) ? reg!.contacts : [];
   const contact = (i: number): Contact => ({ ...emptyContact(), ...(c[i] ?? {}) });
+  if (!reg) {
+    return {
+      legal_name: "",
+      business_type: "",
+      dba: s.businessName,
+      ...splitUsAddress(s.address),
+      website_url: "",
+      privacy_url: "",
+      terms_url: "",
+      business_email: s.email,
+      business_phone: s.phone,
+      contacts: [ownerContact(s), emptyContact()],
+    };
+  }
   return {
     legal_name: reg?.legal_name ?? "",
     business_type: (reg?.business_type as BusinessType) ?? "",
-    dba: reg?.dba ?? (reg ? "" : s.businessName),
+    dba: reg?.dba ?? "",
     street: reg?.street ?? "",
     street2: reg?.street2 ?? "",
     city: reg?.city ?? "",
@@ -116,8 +135,8 @@ function formFrom(
     website_url: reg?.website_url ?? "",
     privacy_url: reg?.privacy_url ?? "",
     terms_url: reg?.terms_url ?? "",
-    business_email: reg?.business_email ?? (reg ? "" : s.email),
-    business_phone: reg?.business_phone ?? (reg ? "" : s.phone),
+    business_email: reg?.business_email ?? "",
+    business_phone: reg?.business_phone ?? "",
     contacts: [contact(0), contact(1)],
   };
 }
@@ -191,7 +210,7 @@ function TextingSettings() {
           {canSubmit(status, reg?.updated_at ?? null) ? (
             <RegistrationForm
               key={status ?? "new"}
-              initial={formFrom(reg, q.data?.suggestions ?? NO_SUGGESTIONS)}
+              initial={formFrom(reg, q.data?.suggestions ?? NO_PREFILL)}
               status={status}
               isOwner={role === "owner"}
               needsAddon={needsAddon}
@@ -376,7 +395,12 @@ function RegistrationForm({
 
   const submit = useMutation({
     mutationFn: async () => {
-      const details = registrationDetailsSchema.safeParse(filed);
+      // #970: one contact is required; the second is filed only when
+      // something was typed in it.
+      const details = registrationDetailsSchema.safeParse({
+        ...filed,
+        contacts: contactsToFile(form.contacts),
+      });
       const einCheck = einSchema.safeParse(ein);
       const blocker = site === "hosted" ? hostedSiteBlocker(hosted) : null;
       const found = {
@@ -596,11 +620,11 @@ function RegistrationForm({
       {([0, 1] as const).map((i) => (
         <Section
           key={i}
-          title={`Authorized contact ${i + 1}`}
+          title={i === 0 ? "Authorized contact" : "Second authorized contact (optional)"}
           hint={
             i === 0
               ? "Someone carriers can reach about this registration, usually you."
-              : "A second person at the business."
+              : "Only if someone else at the business should be on file too. Leave it empty to file one contact."
           }
         >
           <Field id={`c${i}-first`} label="First name" error={errors[`contacts.${i}.first_name`]}>

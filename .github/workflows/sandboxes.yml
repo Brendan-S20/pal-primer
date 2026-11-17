@@ -1321,6 +1321,11 @@ jobs:
       # script for the same reason as the teammate panel's.
       - name: Measure a walker-only business finishing setup
         run: npm run test:viewports:walker-setup
+      # Settings > Texting opening filled in, and the onboarding step for an
+      # owner holding Managed texting (#970). Its own script, like the team
+      # panel, so it does not edit the cases line.
+      - name: Measure the texting setup
+        run: npm run test:viewports:texting-setup
 
       # Its own name: two jobs in one run cannot upload the same artifact.
       - name: Keep what failed
