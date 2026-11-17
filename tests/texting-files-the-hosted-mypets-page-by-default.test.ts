@@ -26,6 +26,7 @@ import {
 } from "@/lib/texting-hosted-site";
 import { hostedSiteRefusal } from "@/lib/texting-hosted-site.server";
 import { registrationDetailsSchema } from "@/lib/texting-registration";
+import { HOSTED_POLICIES_LINE } from "@/lib/texting-hosted-site";
 
 const root = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
@@ -251,12 +252,21 @@ describe("the server files only the business's own published page", () => {
 });
 
 describe("Settings > Texting", () => {
+  it("says the exact line before Submit on the hosted path", () => {
+    expect(HOSTED_POLICIES_LINE).toBe(
+      "These pages are your business's Privacy Policy and Terms. Read them before you submit.",
+    );
+  });
+
   const page = read("src/routes/_authenticated/settings.sms.tsx");
 
   it("starts on the hosted page and offers the owner's own website as the option", () => {
     expect(page).toContain("useState<SiteChoice>(() => siteChoiceFor(initial))");
     expect(page).toContain("I have my own website");
     expect(page).toContain("Use my free ${HOSTED_SITE_HOST} page");
+    // #969 review: the owner reads the pages before filing them.
+    expect(page).toContain('target="_blank"');
+    expect(page).toContain("{HOSTED_POLICIES_LINE}");
     // What is saved and submitted is the chosen site's URLs.
     expect(page).toContain("registrationDetailsSchema.safeParse(filed)");
     expect(page).toContain("saveFn({ data: { ...filed,");

@@ -27,6 +27,7 @@ import {
 import { getOrgTwilioSettings } from "@/lib/twilio-settings.functions";
 import { getTextingHostedSite } from "@/lib/texting-hosted-site.functions";
 import {
+  HOSTED_POLICIES_LINE,
   HOSTED_SITE_HOST,
   hostedSiteBlocker,
   ownSiteFields,
@@ -653,6 +654,11 @@ function RegistrationForm({
             Only the owner can submit. You can save the details for them.
           </p>
         )}
+        {site === "hosted" && (
+          <p className="font-medium text-foreground" data-testid="texting-read-policies">
+            {HOSTED_POLICIES_LINE}
+          </p>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -750,7 +756,18 @@ function HostedSitePanel({
           ).map(([k, v]) => (
             <div key={k} className="contents">
               <dt className="text-muted-foreground">{k}</dt>
-              <dd className="min-w-0 break-all font-mono">{v}</dd>
+              <dd className="min-w-0 break-all font-mono">
+                {/* #969 review: the owner reads the policy that speaks for
+                    their business, so each address opens in a new tab. */}
+                <a
+                  href={v}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary underline underline-offset-2"
+                >
+                  {v}
+                </a>
+              </dd>
             </div>
           ))}
         </dl>

@@ -27,6 +27,11 @@ export type SiteChoice = "hosted" | "own";
  *  this one host: carriers check the policy pages sit with the website. */
 export const HOSTED_SITE_HOST = DIRECTORY_BRAND;
 
+/** Said before Submit on the hosted path (#969 review): the owner is the
+ *  sender, and these pages make promises in the business's own name. */
+export const HOSTED_POLICIES_LINE =
+  "These pages are your business's Privacy Policy and Terms. Read them before you submit.";
+
 /** The slug pattern the directory (and mypets) accepts. */
 const SLUG = /^[a-z0-9-]{1,80}$/;
 
@@ -149,4 +154,53 @@ export function siteFields<
     ? hostedSiteUrls(hosted.slug)
     : { website_url: "", privacy_url: "", terms_url: "" };
   return { ...form, ...urls };
+}
+
+// ── Settings > Directory lock (#969 review, must-fix 1) ────────────────────
+//
+// Once a registration names the hosted page, the filed Website, Privacy and
+// Terms (and the links in every stored client consent) are that listing's
+// /{slug}, /{slug}/privacy and /{slug}/terms. Changing the slug or
+// unpublishing would turn all three into 404s, and Twilio requires them to
+// stay publicly reachable and to match what clients saw at opt-in. So while
+// such a registration is anything but not started or rejected, Settings >
+// Directory keeps the page address and keeps the listing published.
+
+/** Registration statuses that lock the hosted page: everything except
+ *  rejected (a refiling picks up the page as it is then). No row is "not
+ *  started" and does not lock. */
+export const DIRECTORY_LOCK_STATUSES = [
+  "draft",
+  "submitting",
+  "submitted",
+  "in_review",
+  "approved",
+  "failed",
+] as const;
+
+/** What Settings > Directory says while the page is locked. */
+export const DIRECTORY_LOCKED_BY_TEXTING =
+  "Your texting registration uses this page, so its web address can't change and it stays listed. Your Privacy Policy and Terms for texting live at this address.";
+
+export type DirectoryLock = { slug: string } | null;
+
+/** The slug the registration locks, or null when nothing is locked. */
+export function directoryLockFrom(
+  reg: { status?: string | null; website_url?: string | null } | null | undefined,
+): DirectoryLock {
+  if (!reg?.status) return null;
+  if (!(DIRECTORY_LOCK_STATUSES as readonly string[]).includes(reg.status)) return null;
+  const slug = hostedSlugOf(reg.website_url);
+  return slug ? { slug } : null;
+}
+
+/** Why this directory save must be refused, or null. */
+export function directoryChangeRefusal(
+  lock: DirectoryLock,
+  next: { slug: string; published: boolean },
+): string | null {
+  if (!lock) return null;
+  if (next.slug.trim().toLowerCase() !== lock.slug || !next.published)
+    return DIRECTORY_LOCKED_BY_TEXTING;
+  return null;
 }

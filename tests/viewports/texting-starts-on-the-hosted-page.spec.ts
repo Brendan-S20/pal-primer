@@ -8,12 +8,17 @@
  *     URLs shown, own-website inputs absent, Gmail email hint;
  *   - the same, switched to "I have my own website": today's three inputs;
  *   - new registration, no listing yet: hosted preselected, the plain
- *     "set up your page first" line with a link to Directory.
+ *     "set up your page first" line with a link to Directory;
+ *   - (review) the hosted addresses are links that open in a new tab, and
+ *     the "Read them before you submit" line sits above Submit;
+ *   - (review) Settings > Directory while a hosted registration is filed:
+ *     the address is read-only, the listing switch is held, and the reason
+ *     is said.
  *
  * Run with `npm run test:viewports:texting-hosted`. SHOTS_DIR=<dir> also
  * writes 390x844 and 1440x900 screenshots there (never committed).
  */
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { installSignedInSession } from "./fixtures/session";
@@ -45,7 +50,7 @@ const HOSTED = {
   },
 };
 const NEW_REGISTRATION = {
-  ...(BASE_STUBS.getTextingRegistration as any),
+  ...(BASE_STUBS.getTextingRegistration as Record<string, unknown>),
   registration: null,
   live: false,
   subscribed: true,
@@ -73,7 +78,7 @@ async function shot(page: Page, name: string, width: number) {
   await page.screenshot({ path: join(dir, `${name}-${width}.png`), fullPage: true });
 }
 
-async function open(page: Page, context: any, hosted: unknown) {
+async function open(page: Page, context: BrowserContext, hosted: unknown) {
   await installSignedInSession(context);
   await installStubBackend(context, {
     overrides: { getTextingRegistration: NEW_REGISTRATION, getTextingHostedSite: hosted },
@@ -98,6 +103,14 @@ for (const { width, height } of SIZES) {
       for (const url of Object.values(HOSTED.urls)) {
         await expect(panel.getByText(url, { exact: true })).toBeVisible();
       }
+      for (const url of [HOSTED.urls.privacy_url, HOSTED.urls.terms_url]) {
+        const link = panel.getByRole("link", { name: url, exact: true });
+        await expect(link).toHaveAttribute("href", url);
+        await expect(link).toHaveAttribute("target", "_blank");
+      }
+      await expect(page.getByTestId("texting-read-policies")).toHaveText(
+        "These pages are your business's Privacy Policy and Terms. Read them before you submit.",
+      );
       await expect(page.locator("#website_url")).toHaveCount(0);
       await expect(page.getByText("Any email you check works, Gmail included.")).toBeVisible();
       await page.getByTestId("texting-site-choice").scrollIntoViewIfNeeded();
@@ -130,6 +143,73 @@ for (const { width, height } of SIZES) {
       await expect(panel.getByRole("link", { name: "Open Directory" })).toBeVisible();
       await measure(page, "settings-sms-no-listing", width);
       await shot(page, "settings-sms-no-listing", width);
+    });
+  });
+}
+
+/** A TEST business's listing, published, for Settings > Directory. */
+const QA_DIRECTORY = {
+  canEdit: true,
+  orgName: "QA TEST 969 Walks",
+  hasLogo: false,
+  zoneZips: ["48236", "48230"],
+  services: [
+    {
+      id: "96900000-0000-4000-8000-000000000001",
+      name: "TEST small-group walk",
+      service_line: "dog_walking",
+      price_unit: "visit",
+      base_price_cents: 2400,
+      active: true,
+    },
+  ],
+  profile: {
+    slug: SLUG,
+    published: true,
+    display_name: "QA TEST 969 Walks",
+    show_logo: false,
+    bio: "TEST listing used to check the texting lock.",
+    coverage_zips: ["48236", "48230"],
+    coverage_cities: ["Grosse Pointe"],
+    confirmed_at: "2026-11-17T12:00:00Z",
+    tagline: "TEST listing",
+    highlights: [],
+    areas: [],
+    listed: [{ service_id: "96900000-0000-4000-8000-000000000001", price_from_cents: 2400 }],
+  },
+  booking: {
+    available: true,
+    enabled: false,
+    policyText: "",
+    publicSignupEnabled: true,
+    chargesEnabled: false,
+  },
+};
+
+for (const { width, height } of SIZES) {
+  test.describe(`Settings > Directory while texting files the page at ${width}px`, () => {
+    test.use({ viewport: { width, height }, isMobile: width < 768, deviceScaleFactor: 1 });
+
+    test("the address is read-only, the switch is held, and the reason is said", async ({
+      page,
+      context,
+    }) => {
+      await installSignedInSession(context);
+      await installStubBackend(context, {
+        overrides: { getMyDirectoryProfile: QA_DIRECTORY, getDirectoryTextingLock: { slug: SLUG } },
+      });
+      await page.goto("/settings/directory", { waitUntil: "domcontentloaded" });
+      await expect(page.getByText("Listed in the directory")).toBeVisible({ timeout: 45_000 });
+      await expect(page.getByTestId("directory-texting-lock")).toContainText(
+        "Your texting registration uses this page",
+      );
+      await expect(page.locator("#dir-slug")).toHaveAttribute("readonly", "");
+      await expect(page.locator("#dir-slug")).toHaveValue(SLUG);
+      await expect(
+        page.getByRole("switch", { name: "List my business in the directory" }),
+      ).toBeDisabled();
+      await measure(page, "settings-directory-texting-lock", width);
+      await shot(page, "settings-directory-texting-lock", width);
     });
   });
 }

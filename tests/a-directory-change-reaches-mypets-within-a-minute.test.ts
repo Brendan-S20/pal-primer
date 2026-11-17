@@ -149,6 +149,9 @@ function sentBodies() {
 }
 
 async function save(before: Row | null, published: boolean, extra: Partial<typeof PROFILE> = {}) {
+  // #969: the save reads the texting registration (service role) to keep a
+  // filed hosted page in place. None here: texting not started.
+  h.admin = fakeDb({ org_texting_registrations: null });
   const sb = fakeDb({ directory_profiles: before });
   const r = await saveMyDirectoryProfile({
     data: { ...PROFILE, ...extra, published },

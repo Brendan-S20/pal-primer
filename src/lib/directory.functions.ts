@@ -548,6 +548,15 @@ export const saveMyDirectoryProfile = createServerFn({ method: "POST" })
       .eq("organization_id", orgId)
       .maybeSingle();
     const was = before.error ? null : (before.data as { slug: string; published: boolean } | null);
+    // #969: a texting registration that files this page keeps its address
+    // and keeps it listed (lib/texting-hosted-site). Checked before any write.
+    const { directoryLockFor } = await import("@/lib/texting-hosted-site.server");
+    const { directoryChangeRefusal } = await import("@/lib/texting-hosted-site");
+    const locked = directoryChangeRefusal(await directoryLockFor(orgId), {
+      slug: data.slug,
+      published: data.published,
+    });
+    if (locked) throw new Error(locked);
     const { error } = await sb.rpc("set_directory_profile", {
       _org: orgId,
       _slug: data.slug,

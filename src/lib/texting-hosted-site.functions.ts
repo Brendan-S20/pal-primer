@@ -22,3 +22,14 @@ export const getTextingHostedSite = createServerFn({ method: "GET" })
       return { ...site, urls: site.slug ? hostedSiteUrls(site.slug) : null };
     },
   );
+
+// #969 review, must-fix 1: whether Settings > Directory must keep the page
+// address and keep the listing published, because the texting registration
+// files that page.
+export const getDirectoryTextingLock = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<{ slug: string } | null> => {
+    const { orgId } = await requirePermission(context.supabase, context.userId, "manage_settings");
+    const { directoryLockFor } = await import("@/lib/texting-hosted-site.server");
+    return directoryLockFor(orgId);
+  });
