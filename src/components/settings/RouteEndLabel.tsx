@@ -11,6 +11,13 @@ export function RouteEndLabelText() {
   return <>{petWaste ? "Route end (dump, home, shop)" : "Route end (home or shop)"}</>;
 }
 
+/** The Route start field's label, on the same switch: "depot" is a truck
+ *  fleet's word (#768), so only a pet-waste business is offered one. */
+export function RouteStartLabelText() {
+  const { petWaste } = useServiceLines();
+  return <>{petWaste ? "Route start (home, shop, or depot)" : "Route start (home or shop)"}</>;
+}
+
 /** The Route end box's placeholder. A business that scoops keeps the one it
  *  had (`petWastePlaceholder`); any other is told what an EMPTY box does,
  *  which for a business with no dump site is end at the last visit

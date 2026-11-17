@@ -26,7 +26,11 @@ import { Label } from "@/components/ui/label";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import { ROUTE_START_BLANK_HINT } from "@/lib/route-endpoints";
 import { StaffSkills } from "@/components/settings/StaffSkills";
-import { RouteEndLabelText, useRouteEndPlaceholder } from "@/components/settings/RouteEndLabel";
+import {
+  RouteEndLabelText,
+  RouteStartLabelText,
+  useRouteEndPlaceholder,
+} from "@/components/settings/RouteEndLabel";
 import { WalkerDogCap } from "@/components/settings/WalkerDogCap";
 import { toast } from "sonner";
 import { useMyRole, usePermissions } from "@/hooks/useMyRole";
@@ -725,7 +729,7 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <div className="space-y-1.5">
         <Label className="text-xs flex items-center gap-1">
-          <MapPin className="h-3 w-3 shrink-0" /> Route start (home, shop, or depot)
+          <MapPin className="h-3 w-3 shrink-0" /> <RouteStartLabelText />
         </Label>
         {/* A route endpoint is a home, shop or depot, not a customer address —
             but it is in the same town as the customers, so the workspace bias

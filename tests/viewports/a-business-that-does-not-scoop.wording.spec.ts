@@ -52,7 +52,7 @@ const PET_WASTE = ["pet_waste"];
 
 /** The words #768 is about. `\byards?\b` so a dog named "…Of-The-Backyard"
  *  in the fixture is not the app talking. */
-const SCOOPER_WORDS = /\btrucks?\b|\bdump\b|dump site|landfill|\byards?\b|scoop|unload|crew/i;
+const SCOOPER_WORDS = /\btrucks?\b|\bdump\b|dump site|landfill|\byards?\b|scoop|unload|crew|depot/i;
 
 /** A property with the two yard flags ticked, so the Properties card has to
  *  say them in some words. */
@@ -154,6 +154,9 @@ type Surface = {
   walker?: RegExp;
   /** The walker wording is the walker's alone: the control must not draw it. */
   walkerOnly?: boolean;
+  /** More wording each business must see, on the same surface. */
+  walkerAlso?: RegExp;
+  petWasteAlso?: RegExp;
   /** A field placeholder each business must see (the walker's is its alone). */
   walkerPlaceholder?: string;
   petWastePlaceholder?: string;
@@ -216,6 +219,10 @@ const SURFACES: Surface[] = [
     walker: /Route end \(home or shop\)/,
     walkerOnly: true,
     petWaste: /Route end \(dump, home, shop\)/,
+    // "depot" is in SCOOPER_WORDS, so the walker's Route start is checked by
+    // the scan; a pet-waste business keeps its depot.
+    walkerAlso: /Route start \(home or shop\)/,
+    petWasteAlso: /Route start \(home, shop, or depot\)/,
     // An empty route end with no dump site ends at the last visit
     // (staff_end_point, route-inputs.ts); a scooper keeps its landfill hint.
     walkerPlaceholder: "Leave blank to end at the last visit",
@@ -304,6 +311,9 @@ for (const { w, h, label } of SIZES) {
             page.getByPlaceholder(s.walkerPlaceholder, { exact: true }).first(),
           ).toBeVisible();
         }
+        if (s.walkerAlso) {
+          await expect(page.getByText(s.walkerAlso).locator("visible=true").first()).toBeVisible();
+        }
         await healthy(page, w, `${s.name} (dog walking) @${w}px`);
         await noScooperWords(page, `${s.name} (dog walking) @${w}px`);
       });
@@ -323,6 +333,12 @@ for (const { w, h, label } of SIZES) {
         if (s.walker && s.walkerOnly) {
           await expect(page.getByText(s.walker)).toHaveCount(0);
         }
+        if (s.petWasteAlso) {
+          await expect(
+            page.getByText(s.petWasteAlso).locator("visible=true").first(),
+          ).toBeVisible();
+        }
+        if (s.walkerAlso) await expect(page.getByText(s.walkerAlso)).toHaveCount(0);
         if (s.petWastePlaceholder) {
           await expect(
             page.getByPlaceholder(s.petWastePlaceholder, { exact: true }).first(),

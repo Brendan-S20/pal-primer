@@ -12,7 +12,7 @@ import { ROUTE_END_BLANK_HINT } from "@/lib/route-endpoints";
  * decide the words, so the next copy edit fails here first.
  */
 
-const SCOOPER_WORDS = /\btrucks?\b|\bdump\b|landfill|\byards?\b|scoop|unload|crew/i;
+const SCOOPER_WORDS = /\btrucks?\b|\bdump\b|landfill|\byards?\b|scoop|unload|crew|depot/i;
 const read = (rel: string) => readFileSync(join(__dirname, "..", rel), "utf8");
 
 describe("a property's boundary, worded by what the business runs", () => {
@@ -63,6 +63,8 @@ describe("copy every business reads is not a scooper's", () => {
   it("Settings → Users offers a dump site only to a pet-waste business", () => {
     const src = read("src/routes/_authenticated/settings.users.tsx");
     expect(src).toMatch(/<RouteEndLabelText \/>/);
+    expect(src).toMatch(/<RouteStartLabelText \/>/);
+    expect(src).not.toMatch(/Route start \(home, shop, or depot\)/);
     expect(src).toMatch(/useRouteEndPlaceholder\("Landfill or home address"\)/);
     expect(src).toMatch(/placeholder=\{endPlaceholder\}/);
     const label = read("src/components/settings/RouteEndLabel.tsx");
@@ -70,6 +72,9 @@ describe("copy every business reads is not a scooper's", () => {
       /petWaste \? "Route end \(dump, home, shop\)" : "Route end \(home or shop\)"/,
     );
     expect(label).toMatch(/petWaste \? petWastePlaceholder : ROUTE_END_BLANK_HINT/);
+    expect(label).toMatch(
+      /petWaste \? "Route start \(home, shop, or depot\)" : "Route start \(home or shop\)"/,
+    );
     expect(src).not.toMatch(/also runs a truck/);
   });
 
