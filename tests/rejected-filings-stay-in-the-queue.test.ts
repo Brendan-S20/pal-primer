@@ -85,10 +85,45 @@ const REGS = [
     submitted_at: "2026-11-05T10:00:00Z",
     approved_at: null,
     ops_approved_at: null,
-    last_error: "Twilio has no toll-free numbers available right now. Try again later.",
+    // #972 review: Twilio's errors name resources by SID, and a scrub that
+    // did not know SIDs passed these straight through.
+    last_error:
+      "Twilio said: Bundle BU" +
+      "a".repeat(32) +
+      " is not compliant for /Accounts/AC" +
+      "b".repeat(32) +
+      ". Twilio has no toll-free numbers available right now. Try again later.",
     rejection_reason: null,
     rejection_code: null,
     resubmit_deadline: null,
+  },
+  {
+    organization_id: "org-stuck",
+    status: "submitting",
+    legal_name: "Stuck LLC",
+    phone_number: null,
+    submitted_at: null,
+    approved_at: null,
+    ops_approved_at: null,
+    last_error: null,
+    rejection_reason: null,
+    rejection_code: null,
+    resubmit_deadline: null,
+    updated_at: "2026-11-01T10:00:00Z",
+  },
+  {
+    organization_id: "org-running",
+    status: "submitting",
+    legal_name: "Running LLC",
+    phone_number: null,
+    submitted_at: null,
+    approved_at: null,
+    ops_approved_at: null,
+    last_error: null,
+    rejection_reason: null,
+    rejection_code: null,
+    resubmit_deadline: null,
+    updated_at: new Date().toISOString(),
   },
 ];
 let statusFilter: string[] = [];
@@ -131,22 +166,41 @@ describe("the admin queue", () => {
   it("lists rejected and failed filings as well as those under review", async () => {
     const { rows } = await list();
     expect(statusFilter.sort()).toEqual(
-      ["approved", "failed", "in_review", "rejected", "submitted"].sort(),
+      ["approved", "failed", "in_review", "rejected", "submitted", "submitting"].sort(),
     );
     expect(rows.map((r) => r.organizationId).sort()).toEqual(
-      ["org-failed", "org-late", "org-review", "org-soon"].sort(),
+      ["org-failed", "org-late", "org-review", "org-soon", "org-stuck"].sort(),
     );
   });
 
-  it("sorts by the resubmit deadline first, soonest first, then by submitted", async () => {
+  it("lists rejected and stopped first, soonest deadline first, then by submitted", async () => {
     const { rows } = await list();
     expect(rows.map((r) => r.organizationId)).toEqual([
+      // Waiting on someone to fix it: deadlines first, soonest first...
       "org-soon",
       "org-late",
-      // No deadline: oldest submitted first, as the queue always was.
-      "org-review",
+      // ...then the stopped ones, which have no deadline, by submitted.
       "org-failed",
+      "org-stuck",
+      // Then what is with the carrier.
+      "org-review",
     ]);
+  });
+
+  it("shows a submit that died partway as stopped, and leaves a running one out", async () => {
+    const { rows } = await list();
+    expect(rows.find((r) => r.organizationId === "org-stuck")).toMatchObject({
+      status: "failed",
+      lastError: "Setup stopped before it finished.",
+    });
+    expect(rows.map((r) => r.organizationId)).not.toContain("org-running");
+  });
+
+  it("scrubs a Twilio SID out of the last error, even one saved before scrub knew SIDs", async () => {
+    const { rows } = await list();
+    const err = rows.find((r) => r.organizationId === "org-failed").lastError as string;
+    expect(err).not.toMatch(/BU[0-9a-f]{32}|AC[0-9a-f]{32}/);
+    expect(err).toContain("Bundle [id] is not compliant for /Accounts/[id]");
   });
 
   it("carries the business name, legal name, reason, code, deadline and last error", async () => {
@@ -183,8 +237,14 @@ describe("the admin queue", () => {
     expect(needsOwnerFix("failed")).toBe(true);
     expect(needsOwnerFix("in_review")).toBe(false);
     const page = read("src/routes/platform.addons.tsx");
-    expect(page).toMatch(
-      /\{fix \? \(\s*<span[^>]*>Waiting on the owner<\/span>\s*\) : \(\s*<Button/,
+    // No Activate for a row waiting on a fix. A rejection waits on the
+    // owner; a stop says to read the error, because it can be ours.
+    const fixBranch = page.slice(
+      page.indexOf("{fix ? ("),
+      page.indexOf("<Button", page.indexOf("{fix ? (")),
+    );
+    expect(fixBranch).toMatch(
+      /r\.status === "rejected" \? "Waiting on the owner" : "Setup stopped: check the error"/,
     );
     expect(page).toMatch(/Resubmit by \{formatDay\(r\.resubmitDeadline\)\}/);
     expect(page).toMatch(/Twilio: \{r\.rejectionReason\}/);
@@ -195,13 +255,22 @@ describe("the admin queue", () => {
 describe("sortTextingQueue", () => {
   it("puts every row with a deadline ahead of every row without, and keeps ties stable by submit", () => {
     const rows = [
-      { id: "a", resubmitDeadline: null, submittedAt: "2026-11-01" },
-      { id: "b", resubmitDeadline: "2026-11-30", submittedAt: "2026-11-02" },
-      { id: "c", resubmitDeadline: "2026-11-20", submittedAt: "2026-11-03" },
-      { id: "d", resubmitDeadline: null, submittedAt: "2026-10-01" },
-      { id: "e", resubmitDeadline: null, submittedAt: null },
+      { id: "a", status: "rejected", resubmitDeadline: null, submittedAt: "2026-11-01" },
+      { id: "b", status: "rejected", resubmitDeadline: "2026-11-30", submittedAt: "2026-11-02" },
+      { id: "c", status: "rejected", resubmitDeadline: "2026-11-20", submittedAt: "2026-11-03" },
+      { id: "d", status: "rejected", resubmitDeadline: null, submittedAt: "2026-10-01" },
+      { id: "e", status: "rejected", resubmitDeadline: null, submittedAt: null },
     ];
     expect(sortTextingQueue(rows).map((r) => r.id)).toEqual(["c", "b", "d", "a", "e"]);
+  });
+
+  it("puts a stopped row with no deadline ahead of anything with the carrier", () => {
+    const rows = [
+      { id: "review", status: "in_review", resubmitDeadline: null, submittedAt: "2026-10-01" },
+      { id: "stopped", status: "failed", resubmitDeadline: null, submittedAt: "2026-11-09" },
+      { id: "rejected", status: "rejected", resubmitDeadline: "2026-11-30", submittedAt: null },
+    ];
+    expect(sortTextingQueue(rows).map((r) => r.id)).toEqual(["rejected", "stopped", "review"]);
   });
 });
 

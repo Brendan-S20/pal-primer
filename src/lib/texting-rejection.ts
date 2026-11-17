@@ -88,18 +88,23 @@ export function rejectionAdvice(
 export const ADVISED_CODES = ["30482", "30483", "30493", "30507", "30527"] as const;
 
 type Sortable = {
+  status: RegistrationStatus | string;
   resubmitDeadline: string | null;
   submittedAt: string | null;
 };
 
 /**
- * Rows with a resubmit deadline first, soonest first (those are the ones a
- * day's delay can lose), then the rest by when they were submitted, oldest
- * first, as the queue was before.
+ * Rejected and stopped filings first (#972 review: the queue says so, and a
+ * stopped row has no deadline to sort it up), then within each group the
+ * soonest resubmit deadline first (the ones a day's delay can lose), then by
+ * when they were submitted, oldest first, as the queue was before.
  */
 export function sortTextingQueue<T extends Sortable>(rows: readonly T[]): T[] {
   const t = (iso: string | null) => (iso ? new Date(iso).getTime() : Number.POSITIVE_INFINITY);
   return [...rows].sort((a, b) => {
+    const fa = needsOwnerFix(a.status) ? 0 : 1;
+    const fb = needsOwnerFix(b.status) ? 0 : 1;
+    if (fa !== fb) return fa - fb;
     const da = t(a.resubmitDeadline);
     const db = t(b.resubmitDeadline);
     if (da !== db) return da - db;

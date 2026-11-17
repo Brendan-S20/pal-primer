@@ -262,6 +262,7 @@ for (const width of WIDTHS) {
       const failed = queue.locator('li[data-status="failed"]');
       await expect(failed.getByText(/^Last error: Twilio found something missing/)).toBeVisible();
       await expect(failed.getByRole("button")).toHaveCount(0);
+      await expect(failed.getByText("Setup stopped: check the error")).toBeVisible();
       await expect(
         queue.locator('li[data-status="in_review"]').getByRole("button", { name: "Activate" }),
       ).toBeEnabled();
