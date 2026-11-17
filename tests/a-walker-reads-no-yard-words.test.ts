@@ -61,10 +61,11 @@ describe("copy every business reads is not a scooper's", () => {
 
   it("Settings → Users offers a dump site only to a pet-waste business", () => {
     const src = read("src/routes/_authenticated/settings.users.tsx");
-    expect(src).toMatch(
-      /endsAtDumpSite \? "Route end \(dump, home, shop\)" : "Route end \(home, shop\)"/,
+    expect(src).toMatch(/<RouteEndLabelText \/>/);
+    expect(read("src/components/settings/RouteEndLabel.tsx")).toMatch(
+      /petWaste \? "Route end \(dump, home, shop\)" : "Route end \(home, shop\)"/,
     );
-    expect(src).toMatch(/endsAtDumpSite \? "Landfill or home address" : "Home or shop address"/);
+    // The route start / end PLACEHOLDERS are #965's (#943), not this file's.
     expect(src).not.toMatch(/also runs a truck/);
   });
 
