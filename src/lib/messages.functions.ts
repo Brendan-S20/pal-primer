@@ -234,10 +234,11 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
     // around; "yard cleanup" survived only in this one switch. A customer who
     // skipped a visit in the portal and then got a text about a cleanup had to
     // work out for themselves that it was the same appointment.
+    // The words live in lib/client-sms-templates, where the texting filing's
+    // samples are built from too (#971 review).
+    const { visitCompleteText, visitReminderText } = await import("@/lib/client-sms-templates");
     const body =
-      data.kind === "reminder"
-        ? `Hi ${name}, this is a reminder your visit is scheduled for ${day}. Reply STOP to opt out.`
-        : `Hi ${name}, your visit is complete for ${day}. Thanks! Reply STOP to opt out.`;
+      data.kind === "reminder" ? visitReminderText({ name, day }) : visitCompleteText({ name, day });
 
     // Reuse sendSmsToClient path by inlining its logic isn't trivial; call directly.
     const { data: client, error: cErr } = await supabase

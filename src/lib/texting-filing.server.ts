@@ -10,13 +10,19 @@ export type FilingContext = {
   lines: string[];
   portalUrl: string;
   bookingUrl: string | null;
+  /** The link a review request carries, when the business has set one. */
+  googleReviewUrl: string | null;
 };
 
 export async function filingContextFor(orgId: string): Promise<FilingContext> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const db = supabaseAdmin as any;
   const [{ data: org }, { data: lines }] = await Promise.all([
-    db.from("organizations").select("name, slug, portal_slug").eq("id", orgId).maybeSingle(),
+    db
+      .from("organizations")
+      .select("name, slug, portal_slug, google_review_url")
+      .eq("id", orgId)
+      .maybeSingle(),
     // Its own read, like onboarding's: a database without the column fails
     // this alone and falls open to pet waste.
     db.from("organizations").select("service_lines").eq("id", orgId).maybeSingle(),
@@ -27,5 +33,6 @@ export async function filingContextFor(orgId: string): Promise<FilingContext> {
     lines: [...serviceLinesOrDefault(lines?.service_lines)],
     portalUrl: appUrl(portalSlug ? `/portal/${portalSlug}` : "/portal"),
     bookingUrl: org?.slug ? appUrl(`/signup/${org.slug}`) : null,
+    googleReviewUrl: (org?.google_review_url as string | null) ?? null,
   };
 }

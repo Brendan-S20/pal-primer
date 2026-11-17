@@ -22,6 +22,9 @@
 // spreadsheet has no consent row and is not texted (client_may_be_texted).
 
 import { optInConfirmationText } from "@/lib/client-sms-consent";
+import { pastDueInvoiceText, reviewAskText, STOP_LINE } from "@/lib/client-sms-templates";
+import { onMyWayText, walkOnMyWayText } from "@/lib/on-my-way";
+import { brandedBody } from "@/lib/sms-brand";
 import { SERVICE_LINES, type ServiceLine } from "@/lib/service-lines";
 
 /** What a client books, by line: plural for the summary, singular for a
@@ -35,7 +38,17 @@ export const LINE_WORDS: Record<ServiceLine, { many: string; one: string }> = {
   other: { many: "pet care visits", one: "visit" },
 };
 
-export const STOP_LINE = "Reply STOP to opt out.";
+export { STOP_LINE };
+
+/** The app's origin, from the portal link the filing already has: the
+ *  live-map link is on the same host (lib/live-tracking). */
+function originOf(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return url.replace(/\/portal.*$/, "");
+  }
+}
 
 export type FilingCopyInput = {
   /** The name every text starts with (organizations.name). */
@@ -50,16 +63,24 @@ export type FilingCopyInput = {
   supportEmail: string;
   /** The business's website, the opt-in page of last resort. */
   websiteUrl: string;
+  /** organizations.google_review_url: the link a review request carries. */
+  googleReviewUrl?: string | null;
 };
 
 export type FilingCopy = {
   useCaseSummary: string;
-  /** Two or three, each starting with the business name and ending STOP. */
+  /** Three, each a real text (on the way, past due, review request) with
+   *  [bracketed] values, starting with the business name and ending STOP. */
   samples: string[];
   /** What Twilio's single ProductionMessageSample field carries: every sample. */
   productionMessageSample: string;
   /** Every opt-in method, for the filing's AdditionalInformation. */
   optInDescription: string;
+  /** optInDescription in its three parts, for the owner's review to show as
+   *  a list: the sentence before the ways, the ways, the sentences after. */
+  optInIntro: string;
+  optInMethods: string[];
+  optInOutro: string;
   /** Twilio's OptInType: the portal and the booking link are web forms; the
    *  verbal yes is described in optInDescription. */
   optInType: "WEB_FORM";
@@ -84,48 +105,67 @@ export function listOf(words: readonly string[]): string {
   return `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
 }
 
-/** The second sample: the text a client gets on the day, in the line's words.
- *  A business with more than one line gets the on-the-way notice, which every
- *  line sends. */
-function dayOfSample(name: string, lines: ServiceLine[], portal: string): string {
-  if (lines.length > 1) {
-    return `${name}: [Staff name] is on the way for your [service], arriving about [time]. ${STOP_LINE}`;
-  }
-  switch (lines[0]) {
-    case "pet_waste":
-      return `${name}: [Tech name] is on the way for your yard cleanup, arriving about [time]. ${STOP_LINE}`;
-    case "dog_walking":
-      return `${name}: [Walker name] finished [pet name]'s walk at [time]. See the walk report: ${portal}/[link] ${STOP_LINE}`;
-    case "pet_sitting":
-      return `${name}: [Sitter name] checked in on [pet name] at [time]. See the visit report: ${portal}/[link] ${STOP_LINE}`;
-    case "mobile_grooming":
-      return `${name}: [Groomer name] is on the way for [pet name]'s grooming appointment, arriving about [time]. ${STOP_LINE}`;
-    case "training":
-      return `${name}: [Trainer name] finished [pet name]'s training session. See the session notes: ${portal}/[link] ${STOP_LINE}`;
-    default:
-      return `${name}: [Staff name] is on the way, arriving about [time]. ${STOP_LINE}`;
-  }
+/** The client portal's link in a sample: what a real text carries after
+ *  the portal's sign-in page, the client's own token in [brackets]. */
+const linkIn = (base: string) => `${base}/[link]`;
+
+/** The on-my-way text this business's clients get, from the real builders
+ *  (lib/on-my-way), with the live-map link a business with live tracking
+ *  sends (#971 review: "any link sent in real texts appears in a sample").
+ *  A yard visit asks Dogs inside? ENT / DNE; a walk names the dogs; a sit, a
+ *  groom or a lesson asks for a reply. A pet-waste business, mixed or not,
+ *  files the yard's, because that is its two-way text. */
+function onMyWaySample(name: string, lines: ServiceLine[], origin: string): string {
+  const common = {
+    customerName: "[client name]",
+    orgName: name,
+    techName: "[staff name]",
+    eta: "between [time] and [time]",
+    trackUrl: `${origin}/track/[link]`,
+  };
+  if (lines.includes("pet_waste")) return brandedBody(name, onMyWayText({ ...common, yard: true }));
+  if (lines.length === 1 && lines[0] === "dog_walking")
+    return brandedBody(name, walkOnMyWayText({ ...common, dogs: "[dog names]" }));
+  return brandedBody(name, onMyWayText({ ...common, yard: false }));
 }
 
 export function filingCopy(i: FilingCopyInput): FilingCopy {
   const name = i.businessName.trim();
   const lines = filingLines(i.lines);
   const many = listOf(lines.map((l) => LINE_WORDS[l].many));
-  const one = lines.map((l) => LINE_WORDS[l].one).join(" / ");
   const portal = i.portalUrl.replace(/\/+$/, "");
+  const origin = originOf(portal);
 
+  // Only what the business's number actually sends (#971 review): the
+  // walk, sit and lesson reports go by email and push, and no "invoice
+  // ready" text exists, so neither is claimed.
   const useCaseSummary =
     `${name} is a local pet care business that provides ${many}. It texts its own clients, ` +
-    `who have opted in, about their ${many}: reminders, on-the-way notices, ` +
-    `visit updates and reports, their invoices and payments with a link to the business's ` +
-    `client portal, sign-in codes for that portal, and replies to their questions. No marketing.`;
+    `who have opted in: visit reminders; on-the-way notices, with a live map link when live ` +
+    `tracking is on${lines.includes("pet_waste") ? " and, for yard visits, a reply to say whether dogs are inside" : ""}; ` +
+    `visit-complete confirmations; a request for a review after a completed visit, with a link ` +
+    `to the business's Google review page; past-due invoice reminders and declined-card ` +
+    `notices, with a link to the business's client portal; sign-in codes for that portal; and ` +
+    `replies to their questions. No marketing.`;
 
-  const reminder =
-    lines.length > 1
-      ? `${name}: Reminder, your [${one}] is scheduled for [day, date] at [time]. ${STOP_LINE}`
-      : `${name}: Reminder, your ${one} is scheduled for [day, date] at [time]. ${STOP_LINE}`;
-  const invoice = `${name}: Your invoice for [amount] is ready. View and pay: ${portal}/[link] ${STOP_LINE}`;
-  const samples = [reminder, dayOfSample(name, lines, portal), invoice];
+  // Built from the texts themselves (lib/on-my-way, lib/client-sms-templates)
+  // and started with the name the way every sender does (brandedBody).
+  const samples = [
+    onMyWaySample(name, lines, origin),
+    brandedBody(
+      name,
+      pastDueInvoiceText({ name: "[client name]", amount: "[amount]", link: linkIn(portal) }),
+    ),
+    brandedBody(
+      name,
+      reviewAskText({
+        template: null,
+        orgName: name,
+        firstName: "[first name]",
+        link: i.googleReviewUrl?.trim() || "[Google review link]",
+      }),
+    ),
+  ];
 
   const methods = [
     `(1) in the business's client portal (sign-in at ${portal}), by switching on texts on their Account page, beside the consent wording`,
@@ -134,20 +174,26 @@ export function filingCopy(i: FilingCopyInput): FilingCopy {
       : `(2) on the business's public booking page, by ticking an unchecked box to receive texts when they book`,
     `(3) by telling the business's staff yes in person or on the phone, which staff record in the business's account with the date and the exact wording read to the client`,
   ];
-  const optInDescription =
+  const optInMethods = methods.map((m) => m.replace(/^\(\d\) /, ""));
+  const optInIntro =
     `Clients agree to texts from ${name} in one of three ways, each showing or reading the ` +
     `business's name, the message types (appointments, visit updates and billing), "Message ` +
     `frequency varies", "Msg & data rates may apply", STOP and HELP, and links to the ` +
-    `business's Terms and Privacy Policy before they agree: ${methods.join("; ")}. ` +
+    `business's Terms and Privacy Policy before they agree`;
+  const optInOutro =
     `Consent is optional and not a condition of purchase, and the exact wording each client ` +
     `agreed to is stored with the date. Clients imported from a spreadsheet or another system ` +
     `are not texted until they agree in one of these ways.`;
+  const optInDescription = `${optInIntro}: ${methods.join("; ")}. ${optInOutro}`;
 
   return {
     useCaseSummary,
     samples,
     productionMessageSample: samples.join("\n"),
     optInDescription,
+    optInIntro,
+    optInMethods,
+    optInOutro,
     optInType: "WEB_FORM",
     optInImageUrls: [i.bookingUrl || i.websiteUrl],
     optInConfirmationMessage: optInConfirmationText(name),
