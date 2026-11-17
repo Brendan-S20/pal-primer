@@ -24,16 +24,12 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
+import { ROUTE_START_BLANK_HINT } from "@/lib/route-endpoints";
 import { StaffSkills } from "@/components/settings/StaffSkills";
 import { WalkerDogCap } from "@/components/settings/WalkerDogCap";
 import { toast } from "sonner";
 import { useMyRole, usePermissions } from "@/hooks/useMyRole";
-import { useRoleLabel, useServiceLines } from "@/components/CommercialOnly";
-import {
-  ROUTE_START_BLANK_HINT,
-  routeEndBlankHint,
-  routeEndpointsSavedMessage,
-} from "@/lib/route-endpoints";
+import { useRoleLabel } from "@/components/CommercialOnly";
 import { MapPin, ChevronDown, ChevronRight } from "lucide-react";
 import { titleHead } from "@/lib/page-title";
 import { inviteFormHelp, inviteSendToast, replaceInviteQuestion } from "@/lib/invite-copy";
@@ -665,7 +661,6 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
   const saveFn = useServerFn(setStaffAddresses);
   const routingFn = useServerFn(setStaffRouting);
   const signedOut = useSignedOutToast();
-  const { petWaste } = useServiceLines();
   // What was typed before a save found the session gone (R2-19), if any.
   const [kept] = useState(() => readDraft<AddressDraft>(addressDraftKey(staff.id)));
   const [start, setStart] = useState(kept?.start ?? staff.start_address ?? "");
@@ -701,7 +696,7 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
           (start.trim() && start !== staff.start_address ? geocode(start) : Promise.resolve(null)),
         endPin ?? (end.trim() && end !== staff.end_address ? geocode(end) : Promise.resolve(null)),
       ]);
-      const stored = await saveFn({
+      await saveFn({
         data: {
           staffId: staff.id,
           startAddress: start.trim() || null,
@@ -713,7 +708,7 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
         },
       });
       forgetDraft(addressDraftKey(staff.id));
-      toast.success(routeEndpointsSavedMessage(stored, petWaste));
+      toast.success("Route endpoints saved");
       qc.invalidateQueries({ queryKey: ["staff-addresses"] });
     } catch (e: any) {
       if (isSignedOutError(e)) keepDraft(addressDraftKey(staff.id), { start, end });
@@ -751,10 +746,7 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
           placeholder={ROUTE_START_BLANK_HINT}
           disabled={!canEdit}
         />
-        {/* Only while the box still shows the stored address: a pin under a
-            box that has just been emptied describes a value that will not be
-            there after Save (#943). Same rule as StaffRoutingDialog. */}
-        {staff.start_latitude != null && start === staff.start_address && (
+        {staff.start_latitude != null && (
           <p className="text-3xs text-muted-foreground">
             Pinned: {Number(staff.start_latitude).toFixed(4)}, {Number(staff.start_longitude).toFixed(4)}
           </p>
@@ -778,10 +770,10 @@ function StaffAddressEditor({ staff, canEdit }: { staff: any; canEdit: boolean }
                 : null,
             );
           }}
-          placeholder={routeEndBlankHint(petWaste)}
+          placeholder="Landfill or home address"
           disabled={!canEdit}
         />
-        {staff.end_latitude != null && end === staff.end_address && (
+        {staff.end_latitude != null && (
           <p className="text-3xs text-muted-foreground">
             Pinned: {Number(staff.end_latitude).toFixed(4)}, {Number(staff.end_longitude).toFixed(4)}
           </p>

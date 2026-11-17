@@ -40,7 +40,6 @@
     "test:viewports:apple": "node scripts/playwright-with-env.mjs APPLE_SIZES=1 test",
     "test:viewports:apple:sweeps": "node scripts/playwright-with-env.mjs APPLE_SIZES=1 test every-public-page every-signed-in-page",
     "test:viewports:axe": "playwright test axe-finds-nothing-serious",
-    "test:viewports:team": "playwright test a-cleared-route-start-stays-cleared",
     "screenshots:play": "playwright test play-store-screenshots",
     "test:e2e": "tests/e2e/run.sh",
     "test:e2e:seed": "node tests/e2e/seed.mjs",

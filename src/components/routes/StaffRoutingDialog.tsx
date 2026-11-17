@@ -30,12 +30,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
-import { useServiceLines } from "@/components/CommercialOnly";
-import {
-  ROUTE_START_BLANK_HINT,
-  routeEndBlankHint,
-  routeEndpointsSavedMessage,
-} from "@/lib/route-endpoints";
+import { ROUTE_START_BLANK_HINT } from "@/lib/route-endpoints";
 import {
   addTimeOff,
   listTimeOff,
@@ -84,7 +79,6 @@ export function StaffRoutingDialog({
   const removeFn = useServerFn(removeTimeOff);
   const previewFn = useServerFn(previewTimeOff);
   const addrFn = useServerFn(setStaffAddresses);
-  const { petWaste } = useServiceLines();
 
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -166,7 +160,7 @@ export function StaffRoutingDialog({
           (start.trim() && start !== staff.start_address ? geocode(start) : Promise.resolve(null)),
         endPin ?? (end.trim() && end !== staff.end_address ? geocode(end) : Promise.resolve(null)),
       ]);
-      const stored = await addrFn({
+      await addrFn({
         data: {
           staffId: staff.id,
           startAddress: start.trim() || null,
@@ -182,9 +176,7 @@ export function StaffRoutingDialog({
       // Naming the consequence rather than saying "Saved": the optimizer
       // measures every leg from the start address, so changing it changes
       // every ETA on that lane the next time it runs.
-      toast.success(
-        `${routeEndpointsSavedMessage(stored, petWaste)} Re-optimize to update their ETAs.`,
-      );
+      toast.success("Route endpoints saved. Re-optimize to update their ETAs.");
       qc.invalidateQueries({ queryKey: ["staff"] });
       qc.invalidateQueries({ queryKey: ["staff-addresses"] });
     } catch (e: any) {
@@ -345,7 +337,7 @@ export function StaffRoutingDialog({
                       : null,
                   );
                 }}
-                placeholder={routeEndBlankHint(petWaste)}
+                placeholder="Dump, home, or shop"
               />
               {staff.end_latitude != null && end === staff.end_address && (
                 <p className="text-3xs text-muted-foreground">

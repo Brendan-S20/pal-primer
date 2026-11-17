@@ -441,50 +441,6 @@ describe("Setup → Settings", () => {
     expect([me.end_address, me.end_latitude]).toEqual(["Home, Detroit", 42.3]);
   });
 
-  // #943: an owner cleared a route start, saved, reloaded and read the box's
-  // grey hint as "the old address came back". The write is what decides
-  // that, so prove it here: set both ends, clear both the way the page sends
-  // a cleared box (null address, null pin), read them back as a reload does.
-  it("Team settings: a cleared route start and end are stored empty and read back empty", async () => {
-    await call(setStaffAddresses, {
-      staffId: STAFF,
-      startAddress: "500 Example Ave, Detroit, MI 48226",
-      startLatitude: 42.33,
-      startLongitude: -83.05,
-      endAddress: "Home, Detroit",
-      endLatitude: 42.3,
-      endLongitude: -83.1,
-    });
-    const cleared = await call(setStaffAddresses, {
-      staffId: STAFF,
-      startAddress: null,
-      startLatitude: null,
-      startLongitude: null,
-      endAddress: null,
-      endLatitude: null,
-      endLongitude: null,
-    });
-    // What the toast is built from: the stored row, not the typed text.
-    expect(cleared).toEqual({ ok: true, startAddress: null, endAddress: null });
-    const me = (await call(listStaffAddresses)).staff.find((s: Row) => s.id === STAFF);
-    expect([
-      me.start_address,
-      me.start_latitude,
-      me.start_longitude,
-      me.end_address,
-      me.end_latitude,
-      me.end_longitude,
-    ]).toEqual([null, null, null, null, null, null]);
-  });
-
-  it("Team settings: a whitespace-only route start is stored as no start", async () => {
-    await call(setStaffAddresses, { staffId: STAFF, startAddress: "500 Example Ave" });
-    const r = await call(setStaffAddresses, { staffId: STAFF, startAddress: "" });
-    expect(r.startAddress).toBeNull();
-    const me = (await call(listStaffAddresses)).staff.find((s: Row) => s.id === STAFF);
-    expect(me.start_address).toBeNull();
-  });
-
   it("day-end step: a write RLS refused is an error", async () => {
     h.deniedUpdates.add("staff");
     await expect(

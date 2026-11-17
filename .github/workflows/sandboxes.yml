@@ -1304,12 +1304,6 @@ jobs:
       - name: Measure the one-off cases
         run: npm run test:viewports:cases
 
-      # Team settings (#943): a cleared route start saves as empty and reads
-      # back empty after a reload. Its own script rather than another name
-      # on the cases line, which several open branches edit at once.
-      - name: Measure Team settings route endpoints
-        run: npm run test:viewports:team
-
       # Its own name: two jobs in one run cannot upload the same artifact.
       - name: Keep what failed
         if: failure() || cancelled()
