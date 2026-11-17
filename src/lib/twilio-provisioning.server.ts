@@ -220,6 +220,8 @@ export function tollFreeVerificationForm(p: {
   lines: readonly string[];
   /** The client portal's sign-in page for this business. */
   portalUrl: string;
+  /** organizations.google_review_url, for the review-request sample. */
+  googleReviewUrl?: string | null;
 }) {
   const d = p.details;
   const name = p.businessName.trim() || d.dba?.trim() || d.legal_name;
@@ -229,6 +231,7 @@ export function tollFreeVerificationForm(p: {
     lines: p.lines,
     portalUrl: p.portalUrl,
     bookingUrl: p.bookingUrl,
+    googleReviewUrl: p.googleReviewUrl,
     supportEmail: d.business_email,
     websiteUrl: d.website_url,
   });
@@ -449,6 +452,7 @@ export async function submitTextingRegistration(p: {
       bookingUrl,
       lines: filing.lines,
       portalUrl: filing.portalUrl,
+      googleReviewUrl: filing.googleReviewUrl,
       notificationEmail: process.env.TWILIO_COMPLIANCE_EMAIL || details.business_email,
     });
     let verification: any;

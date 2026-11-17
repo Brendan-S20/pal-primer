@@ -759,14 +759,18 @@ export const completeVisit = createServerFn({ method: "POST" })
         });
         if (sender && mayTextDaily && c.primary_phone) {
           const firstName = (c.display_name ?? "").split(/\s+/)[0] || "there";
-          const template =
-            (o.review_ask_template && String(o.review_ask_template).trim()) ||
-            `Hi {name}, thanks for choosing ${o.name ?? "us"}! If we did a great job, a quick review would mean the world: {link} Reply STOP to opt out.`;
           const { sendTwilioSms } = await import("@/lib/twilio.server");
           const { brandedBody } = await import("@/lib/sms-brand");
+          // lib/client-sms-templates, shared with the texting filing (#971).
+          const { reviewAskText } = await import("@/lib/client-sms-templates");
           const body = brandedBody(
             sender.brand,
-            template.replace(/\{name\}/g, firstName).replace(/\{link\}/g, o.google_review_url),
+            reviewAskText({
+              template: o.review_ask_template ? String(o.review_ask_template) : null,
+              orgName: o.name,
+              firstName,
+              link: o.google_review_url,
+            }),
           );
           try {
             // The send and its record are one piece of work, so a text that

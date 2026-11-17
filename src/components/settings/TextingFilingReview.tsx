@@ -34,6 +34,7 @@ export function TextingFilingReview({
     lines: q.data.lines,
     portalUrl: q.data.portalUrl,
     bookingUrl: q.data.bookingUrl,
+    googleReviewUrl: q.data.googleReviewUrl,
     supportEmail: businessEmail || "[your business email]",
     websiteUrl: websiteUrl || "[your website]",
   });
@@ -52,7 +53,7 @@ export function TextingFilingReview({
         <p className={para}>{copy.useCaseSummary}</p>
       </Part>
       <Part title="Sample texts">
-        <ul className="space-y-2">
+        <ul className="space-y-2" data-testid="texting-filing-samples">
           {copy.samples.map((s) => (
             <li key={s} className={`rounded-md bg-muted/50 p-2 ${para}`}>
               {s}
@@ -60,8 +61,19 @@ export function TextingFilingReview({
           ))}
         </ul>
       </Part>
+      {/* The filing sends one paragraph (AdditionalInformation). The owner
+          reads the same words with the three ways as a numbered list, so a
+          150-word block is readable at 390 (#971 review). */}
       <Part title="How clients agree to texts">
-        <p className={para}>{copy.optInDescription}</p>
+        <p className={para}>{copy.optInIntro}:</p>
+        <ol className="mt-1 list-decimal space-y-1 ps-5" data-testid="texting-filing-optin-ways">
+          {copy.optInMethods.map((m) => (
+            <li key={m} className={para}>
+              {m}
+            </li>
+          ))}
+        </ol>
+        <p className={`mt-1 ${para}`}>{copy.optInOutro}</p>
       </Part>
       <Part title="The text a client gets when they agree">
         <p className={para}>{copy.optInConfirmationMessage}</p>

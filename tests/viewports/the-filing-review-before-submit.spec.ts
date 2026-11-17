@@ -54,10 +54,20 @@ for (const width of WIDTHS) {
           /provides yard cleanups, walks, pet sits, grooming appointments and training sessions\./,
         ),
       ).toBeVisible();
-      await expect(review.locator("li")).toHaveCount(3);
-      await expect(
-        review.getByText(/View and pay: https:\/\/app\.houndstack\.com\/portal\/qa-test-971/),
-      ).toBeVisible();
+      // Three samples, each a text the number really sends (#971 review):
+      // on my way with the live map, past due with the portal, the review ask.
+      const samples = review.getByTestId("texting-filing-samples").locator("li");
+      await expect(samples).toHaveCount(3);
+      await expect(samples.nth(0)).toContainText(
+        "Live map: https://app.houndstack.com/track/[link]",
+      );
+      await expect(samples.nth(0)).toContainText("Dogs inside? Reply ENT.");
+      await expect(samples.nth(1)).toContainText(
+        "Pay: https://app.houndstack.com/portal/qa-test-971",
+      );
+      await expect(samples.nth(2)).toContainText("a quick review would mean the world");
+      // The three ways a client agrees, as a list the owner can read at 390.
+      await expect(review.getByTestId("texting-filing-optin-ways").locator("li")).toHaveCount(3);
       await expect(review.getByText(/Clients imported from a spreadsheet/)).toBeVisible();
       // Above the button that files it.
       const reviewBox = await review.boundingBox();
