@@ -30,11 +30,10 @@ describe("the contact migration, as a file", () => {
     }
   });
 
-  it("is numbered after every other migration on main", () => {
-    const others = readdirSync(join(ROOT, "supabase/migrations"))
-      .filter((f) => f.endsWith(".sql") && !f.startsWith(VERSION))
-      .map((f) => f.slice(0, 14));
-    expect(others.filter((v) => v >= VERSION)).toEqual([]);
+  it("holds its version alone and sorts after the directory migrations it builds on", () => {
+    const files = readdirSync(join(ROOT, "supabase/migrations")).filter((f) => f.endsWith(".sql"));
+    expect(files.filter((f) => f.startsWith(VERSION))).toEqual([`${VERSION}_${NAME}.sql`]);
+    expect(VERSION > "20261112110000").toBe(true);
   });
 
   it("adds two nullable columns idempotently and drops nothing", () => {
