@@ -37,6 +37,7 @@ for these paths.
 | `OSRM_URL` / `OSRM_ENDPOINTS` | Road distances for the route planner. Unset ⇒ `https://router.project-osrm.org`, the public demo server (no SLA, rate limited, paced 1.1 s apart). `OSRM_ENDPOINTS` is a JSON map of region to endpoint. |
 | `CRON_SECRET` | Authorizes the nightly cron (**required** for autopay — see §5) |
 | `PUBLIC_APP_ORIGIN` | Canonical public URL used to validate inbound Twilio signatures behind a proxy |
+| `MYPETS_REVALIDATE_SECRET` | Bearer token for `POST https://mypets.services/api/revalidate` (`src/lib/mypets-revalidate.server.ts`), sent after a directory listing save or photo moderation so mypets refreshes the page (#939). **Must equal the same-named env var on the mypets-app Vercel project** (production). Set and matching as of 2026-11-18: a test-org publish/unpublish produced two `POST /api/revalidate` 200s in mypets-app's Vercel logs. Unset ⇒ one warning per save, no call. Wrong value ⇒ mypets answers 401, the app retries once and the save still succeeds, so nothing user-facing reports it; check mypets-app's Vercel logs. Rotate both sides together. |
 
 **Deliberately unset — setting these breaks things quietly:**
 
