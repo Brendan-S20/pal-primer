@@ -119,7 +119,10 @@ describe("the migration", () => {
     expect(STAMP > "20261112100000").toBe(true);
     // #912 was later renamed to 20261116060000 so it sorts after main. It
     // redefines invoice_paid_cents only and does not touch the directory view.
-    const LATER_AND_UNRELATED = ["20261116060000_succeeded-payments-count-only-what-was-kept.sql"];
+    const LATER_AND_UNRELATED = [
+      "20261116060000_succeeded-payments-count-only-what-was-kept.sql",
+      "20261118030000_an-invite-is-not-blocked-by-a-membership-that-is-over.sql", // does not touch the directory view
+    ];
     for (const f of LATER_AND_UNRELATED.filter((f) => files.includes(f))) {
       expect(read(`supabase/migrations/${f}`)).not.toMatch(/directory/i);
     }
