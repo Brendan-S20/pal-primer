@@ -229,6 +229,24 @@ const SURFACES: Surface[] = [
     petWastePlaceholder: "Landfill or home address",
   },
   {
+    // #986: the drive-time prompt said "shop/depot". "depot" is in
+    // SCOOPER_WORDS, so the walker run's scan fails if it comes back.
+    name: "/settings/zones, new zone drawer in drive-time mode",
+    path: "/settings/zones",
+    ready: async (page) => {
+      const add = page.getByRole("button", { name: /New zone/ }).first();
+      await expect(add).toBeVisible({ timeout: FIRST_PAINT_MS });
+      await add.click();
+      const mode = page.getByRole("button", { name: /Drive time/ }).first();
+      await expect(mode).toBeVisible({ timeout: FIRST_PAINT_MS });
+      await mode.click();
+      await expect(page.getByText(/Click the map to place the/).first()).toBeVisible();
+    },
+    walker: /place the home or shop, then set minutes/,
+    walkerOnly: true,
+    petWaste: /place the shop\/depot, then set minutes/,
+  },
+  {
     name: "/clients/new",
     path: "/clients/new",
     ready: async (page) => {
