@@ -109,12 +109,12 @@ async function readable(page: Page): Promise<string> {
   }, fx.ORG_NAME);
 }
 
-async function scooperWordsOn(page: Page): Promise<string[]> {
+async function scooperWordsOn(page: Page, allow?: RegExp): Promise<string[]> {
   const text = await readable(page);
   return text
     .split("\n")
     .map((l) => l.trim())
-    .filter((l) => SCOOPER_WORDS.test(l));
+    .filter((l) => SCOOPER_WORDS.test(l) && !allow?.test(l));
 }
 
 async function healthy(page: Page, w: number, where: string) {
@@ -135,8 +135,8 @@ async function healthy(page: Page, w: number, where: string) {
   if (w < 768) expect(await findControlsUnder44px(page), where).toEqual([]);
 }
 
-async function noScooperWords(page: Page, where: string) {
-  expect(await scooperWordsOn(page), `${where}: scooper words a walker should not read`).toEqual(
+async function noScooperWords(page: Page, where: string, allow?: RegExp) {
+  expect(await scooperWordsOn(page, allow), `${where}: scooper words a walker should not read`).toEqual(
     [],
   );
 }
@@ -157,6 +157,9 @@ type Surface = {
   /** More wording each business must see, on the same surface. */
   walkerAlso?: RegExp;
   petWasteAlso?: RegExp;
+  /** A line the scan lets through on this surface: wording another card on the
+   *  page keeps on purpose (the fixture org's configured First cleanup card). */
+  allow?: RegExp;
   /** A field placeholder each business must see (the walker's is its alone). */
   walkerPlaceholder?: string;
   petWastePlaceholder?: string;
@@ -244,6 +247,9 @@ const SURFACES: Surface[] = [
     },
     walker: /place the home or shop, then set minutes/,
     walkerOnly: true,
+    // The page's First cleanup card stays once configured (settings.zones.tsx),
+    // and the fixture org has it priced by last-cleaned. Not this issue's words.
+    allow: /^Clients answer "When was your yard last cleaned\?"$/,
     petWaste: /place the shop\/depot, then set minutes/,
   },
   {
@@ -333,7 +339,7 @@ for (const { w, h, label } of SIZES) {
           await expect(page.getByText(s.walkerAlso).locator("visible=true").first()).toBeVisible();
         }
         await healthy(page, w, `${s.name} (dog walking) @${w}px`);
-        await noScooperWords(page, `${s.name} (dog walking) @${w}px`);
+        await noScooperWords(page, `${s.name} (dog walking) @${w}px`, s.allow);
       });
     }
   });
