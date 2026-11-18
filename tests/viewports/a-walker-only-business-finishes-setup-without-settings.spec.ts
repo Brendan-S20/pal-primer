@@ -303,6 +303,42 @@ for (const { w, h } of SIZES) {
     await expect(page.locator("#sched-workday-end")).toHaveValue("15:30");
   });
 
+  // #987: the address was saved in Settings first, so step 1 is ticked and
+  // /setup opens on the first OPEN step; the workday question was never met.
+  test(`#987 /setup shows the workday in one line when the address was saved in Settings first, and Change edits it @${w}px`, async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const world = newWalker();
+    world.address = ADDRESS;
+    world.dispatch.workday_start = "07:30:00";
+    world.dispatch.workday_end = "15:45:00";
+    await open(page, world, w, h);
+    await page.goto("/setup", { waitUntil: "domcontentloaded" });
+    // Step 1 is done, so setup opens past it.
+    await expect(page.locator('[data-setup-step="zones"]')).toBeVisible({ timeout: FIRST_PAINT_MS });
+    const line = page.locator("[data-setup-workday-line]");
+    await expect(line).toContainText("Workday 7:30 AM to 3:45 PM", { timeout: FIRST_PAINT_MS });
+    await measure(page, w, `/setup workday line (address saved in Settings first) @${w}px`);
+
+    await line.getByRole("button", { name: "Change your workday" }).click();
+    await expect(page.locator('[data-setup-step="business"]')).toBeVisible();
+    // On step 1 the fields are the control; the line is not repeated.
+    await expect(line).toHaveCount(0);
+    await expect(fieldset(page).getByLabel("Starts")).toHaveValue("07:30");
+    await expect(fieldset(page).getByLabel("Ends")).toHaveValue("15:45");
+    await measure(page, w, `/setup step 1 opened from the workday line @${w}px`);
+  });
+
+  test(`#987 no workday line while step 1 is still open: the form asks @${w}px`, async ({ page }) => {
+    test.setTimeout(120_000);
+    const world = newWalker();
+    await open(page, world, w, h);
+    await page.goto("/setup?step=zones", { waitUntil: "domcontentloaded" });
+    await expect(page.locator('[data-setup-step="zones"]')).toBeVisible({ timeout: FIRST_PAINT_MS });
+    await expect(page.locator("[data-setup-workday-line]")).toHaveCount(0);
+  });
+
   test(`#769 a walker-only owner prices both walks on /setup, and Settings and the Plan step read them @${w}px`, async ({
     page,
   }) => {

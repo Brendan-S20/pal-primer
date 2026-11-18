@@ -102,6 +102,7 @@ import {
   useSetupGuide,
 } from "@/lib/setup-guide";
 import { titleHead } from "@/lib/page-title";
+import { SetupWorkdayLine } from "@/components/SetupWorkdayLine";
 import { setupProgressPct } from "@/lib/setup-progress";
 import { APP_NAME } from "@/lib/scoop";
 import { SETUP_VERIFY_EMAIL_FIRST } from "@/lib/verify-email-copy";
@@ -247,6 +248,11 @@ function SetupPage() {
           Finish later
         </Button>
       </div>
+
+      {/* The workday, when step 1 is done and not on screen (#987). */}
+      {steps.find((s) => s.id === "business")?.done && current.id !== "business" && (
+        <SetupWorkdayLine onChange={() => goTo("business")} />
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,42rem)] lg:items-start">
         {/* The step list. Every step is reachable from here at any time, so
