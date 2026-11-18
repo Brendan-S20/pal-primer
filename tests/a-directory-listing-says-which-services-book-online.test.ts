@@ -128,6 +128,7 @@ describe("the migration", () => {
       "20261118020000_the-demo-geo-backup-table-is-closed-to-the-api.sql", // does not touch the directory view
       "20261118030000_an-invite-is-not-blocked-by-a-membership-that-is-over.sql", // does not touch the directory view
       "20261118040000_a-business-that-drops-pet-waste-no-longer-ends-days-at-a-dump.sql",
+      "20261118050000_the-clients-page-reads-newest-first-from-an-index.sql",
     ];
     for (const f of LATER_AND_UNRELATED.filter((f) => files.includes(f))) {
       expect(read(`supabase/migrations/${f}`)).not.toMatch(/directory/i);
