@@ -3,13 +3,24 @@ import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Eye, MailCheck } from "lucide-react";
+import { Eye, MailCheck, Trash2 } from "lucide-react";
 import {
+  deleteWebsiteSubmission,
   listWebsiteSubmissions,
   markWebsiteSubmissionStatus,
   type WebsiteSubmissionRow,
 } from "@/lib/platform-website-submissions.functions";
 import { WEBSITE_SUBMISSION_FORMS } from "@/lib/website-submissions";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -60,7 +71,9 @@ function WebsiteSubmissionsPage() {
   const listFn = useServerFn(listWebsiteSubmissions);
   const markFn = useServerFn(markWebsiteSubmissionStatus);
   const [form, setForm] = useState<string>(ALL);
+  const deleteFn = useServerFn(deleteWebsiteSubmission);
   const [selected, setSelected] = useState<WebsiteSubmissionRow | null>(null);
+  const [toDelete, setToDelete] = useState<WebsiteSubmissionRow | null>(null);
 
   const listInput = useMemo(
     () => (form === ALL ? {} : { form: form as "contact" | "early_access" }),
@@ -78,6 +91,17 @@ function WebsiteSubmissionsPage() {
       toast.success("Submission marked handled");
       qc.invalidateQueries({ queryKey: ["platform", "website-submissions"] });
       setSelected((row) => (row ? { ...row, status: "handled" } : row));
+    },
+    onError: (error: unknown) => toast.error(errorMessage(error)),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteFn({ data: { id } }),
+    onSuccess: (_result, id) => {
+      toast.success("Submission deleted");
+      qc.invalidateQueries({ queryKey: ["platform", "website-submissions"] });
+      setSelected((row) => (row?.id === id ? null : row));
+      setToDelete(null);
     },
     onError: (error: unknown) => toast.error(errorMessage(error)),
   });
@@ -158,6 +182,15 @@ function WebsiteSubmissionsPage() {
                           Handled
                         </Button>
                       ) : null}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Delete submission from ${row.name}`}
+                        disabled={remove.isPending}
+                        onClick={() => setToDelete(row)}
+                      >
+                        <Trash2 className="h-4 w-4 shrink-0" />
+                      </Button>
                     </div>
                   </div>
                 </li>
@@ -206,10 +239,46 @@ function WebsiteSubmissionsPage() {
                   Mark handled
                 </Button>
               ) : null}
+              <Button
+                variant="outline"
+                className="ml-2"
+                disabled={remove.isPending}
+                onClick={() => setToDelete(selected)}
+              >
+                <Trash2 className="mr-1 h-4 w-4 shrink-0" />
+                Delete
+              </Button>
             </div>
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!toDelete} onOpenChange={(open) => !open && setToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this submission?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {toDelete
+                ? `${toDelete.name} (${toDelete.email}), sent ${formatDate(toDelete.created_at)}. `
+                : ""}
+              This removes it for good. The audit log keeps only that a submission was deleted, not
+              who sent it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={remove.isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                if (toDelete) remove.mutate(toDelete.id);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
