@@ -128,6 +128,7 @@ describe("the migration", () => {
     // redefines invoice_paid_cents only and does not touch the directory view.
     const LATER_AND_UNRELATED = [
       "20261116060000_succeeded-payments-count-only-what-was-kept.sql",
+      "20261118020000_the-demo-geo-backup-table-is-closed-to-the-api.sql", // does not touch the directory view
       "20261118030000_an-invite-is-not-blocked-by-a-membership-that-is-over.sql", // does not touch the directory view
     ];
     for (const f of LATER_AND_UNRELATED.filter((f) => files.includes(f))) {
