@@ -10,6 +10,7 @@ import { isPasswordAcceptable, isPasswordRejection } from "@/lib/password-policy
 import { pageTitle } from "@/lib/page-title";
 import {
   RESET_PASSWORD_PATH,
+  abandonRecovery,
   clearRecoveryPending,
   describeUpdatePasswordError,
   establishRecoverySession,
@@ -193,6 +194,7 @@ function ResetPasswordPage() {
 /** The expired/used-link state: say so, and offer a fresh link right here
  *  rather than sending the person back through sign-in to find the button. */
 function ResendResetLink({ message }: { message: string }) {
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
@@ -246,7 +248,11 @@ function ResendResetLink({ message }: { message: string }) {
       <p className="text-center text-sm">
         <Link
           to="/auth"
-          onClick={() => clearRecoveryPending()}
+          onClick={(e) => {
+            // Signed out first, so /auth does not land the reset session.
+            e.preventDefault();
+            void abandonRecovery(supabase).finally(() => navigate({ to: "/auth" }));
+          }}
           className="inline-flex min-h-11 items-center text-muted-foreground underline underline-offset-2 hover:text-primary"
         >
           Back to sign in
