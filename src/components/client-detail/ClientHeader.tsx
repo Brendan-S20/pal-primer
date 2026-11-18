@@ -53,6 +53,7 @@ const VacationHoldDrawer = lazy(() =>
     default: m.VacationHoldDrawer,
   })),
 );
+import { Skeleton } from "@/components/ui/skeleton";
 import { StatusChip, MetaChip } from "@/components/client-detail/primitives";
 import { formatPhone, formatDay } from "@/lib/format";
 import { useOrgToday } from "@/hooks/useOrgToday";
@@ -89,6 +90,7 @@ export function ClientHeader({
   properties = [],
   propertyCount,
   activeServiceCount,
+  countsReady = true,
   outstandingCents,
   canBill,
   onEditClient,
@@ -100,6 +102,12 @@ export function ClientHeader({
   properties?: any[];
   propertyCount: number;
   activeServiceCount: number;
+  /** False while the properties or services are still being fetched (#984):
+   *  the status chip and the two counts are derived from them, and drawing
+   *  them from an empty list read as "Inactive, 0 properties, 0 services", a
+   *  failed save, for a moment after Create. A client switched off on its own
+   *  record is Inactive whatever the services say, so that chip stays. */
+  countsReady?: boolean;
   /** null = caller can't see billing; hide the stat rather than show 0. */
   outstandingCents: number | null;
   canBill: boolean;
@@ -277,7 +285,16 @@ export function ClientHeader({
               <h1 className="text-xl font-semibold break-words max-sm:min-w-0 sm:truncate">
                 {client.display_name}
               </h1>
-              <StatusChip status={derivedStatus} label={STATUS_LABELS[derivedStatus]} />
+              {countsReady || client.active === false ? (
+                <StatusChip status={derivedStatus} label={STATUS_LABELS[derivedStatus]} />
+              ) : (
+                <Skeleton
+                  className="h-6 w-16 rounded-full"
+                  data-client-status-loading
+                  role="status"
+                  aria-label="Loading status"
+                />
+              )}
               {currentHold && (
                 <StatusChip
                   status="paused"
@@ -551,11 +568,19 @@ export function ClientHeader({
       <dl className="mt-4 grid grid-cols-2 gap-3 border-t pt-3 text-sm sm:grid-cols-4">
         <div>
           <dt className="text-xs uppercase tracking-wide text-foreground/70">Properties</dt>
-          <dd className="text-lg font-semibold">{propertyCount}</dd>
+          <dd className="text-lg font-semibold">
+            {countsReady ? propertyCount : <Skeleton className="mt-1 h-5 w-6" aria-label="Loading" />}
+          </dd>
         </div>
         <div>
           <dt className="text-xs uppercase tracking-wide text-foreground/70">Active services</dt>
-          <dd className="text-lg font-semibold">{activeServiceCount}</dd>
+          <dd className="text-lg font-semibold">
+            {countsReady ? (
+              activeServiceCount
+            ) : (
+              <Skeleton className="mt-1 h-5 w-6" aria-label="Loading" />
+            )}
+          </dd>
         </div>
         {canBill && (
           <div>
