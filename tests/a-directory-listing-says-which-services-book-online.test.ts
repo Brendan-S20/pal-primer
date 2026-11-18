@@ -130,13 +130,16 @@ describe("the migration", () => {
     for (const f of LATER_AND_UNRELATED.filter((f) => files.includes(f))) {
       expect(read(`supabase/migrations/${f}`)).not.toMatch(/directory/i);
     }
+    // 20261118010000 (#969, public_email / public_phone) replaces the view only
+    // to append two columns: tests/a-directory-profile-can-publish-a-contact.test.ts pins it.
+    const CONTACT_MIGRATION = "20261118010000";
     expect(
       files
         .filter((f) => !LATER_AND_UNRELATED.includes(f))
         .map((f) => f.slice(0, 14))
         .filter((s) => s > STAMP)
         .sort(),
-    ).toEqual(["20261112110000"]);
+    ).toEqual(["20261112110000", CONTACT_MIGRATION]);
     expect(readFileSync(MIGRATION, "utf8")).toMatch(/PROPOSED MIGRATION\. File only/);
     expect(read(`supabase/proofs/${STAMP}-${NAME}.sql`)).toMatch(
       new RegExp(`\\\\ir \\.\\./\\.\\./tests/sql/${NAME}\\.proof\\.sql`),

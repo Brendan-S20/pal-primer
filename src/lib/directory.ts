@@ -288,6 +288,9 @@ export type DirectoryListing = Omit<DirectoryProfile, "services"> & {
   book_path: string | null;
   /** APPROVED photos only, in order. Empty when there are none. */
   photos: DirectoryPhoto[];
+  /** The contact the owner chose to publish (#969), or null. Never the account's own. */
+  public_email: string | null;
+  public_phone: string | null;
 };
 
 /**
@@ -313,6 +316,8 @@ export const PUBLIC_LISTING_FIELDS = [
   "booking_policy_text",
   "book_path",
   "photos",
+  "public_email",
+  "public_phone",
 ] as const satisfies readonly (keyof DirectoryListing)[];
 export const PUBLIC_SERVICE_FIELDS = [
   "label",

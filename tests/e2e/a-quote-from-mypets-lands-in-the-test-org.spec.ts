@@ -53,6 +53,8 @@ const PUBLIC_FIELDS = [
   "highlights",
   "logo_url",
   "photos",
+  "public_email",
+  "public_phone",
   "published_at",
   "service_lines",
   "services",

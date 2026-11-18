@@ -292,7 +292,7 @@ BEGIN
     -- after these twelve; its own proof pins those three. This one pins the
     -- twelve, so it holds before and after that file.
     -- (and 20261112110000 adds photos after those; its own proof pins it).
-    SELECT jsonb_object_keys(to_jsonb(t) - ARRAY['books_online', 'booking_policy_text', 'book_path', 'photos']) k
+    SELECT jsonb_object_keys(to_jsonb(t) - ARRAY['books_online', 'booking_policy_text', 'book_path', 'photos', 'public_email', 'public_phone']) k
       FROM public.directory_public_listings t WHERE slug = 'area-proof-a') s;
   IF _keys IS DISTINCT FROM ARRAY['areas', 'bio', 'coverage_cities', 'coverage_zips', 'display_name', 'highlights',
                                   'logo_url', 'published_at', 'service_lines', 'services', 'slug', 'tagline'] THEN

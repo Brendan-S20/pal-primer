@@ -266,8 +266,8 @@ BEGIN
   SELECT array_agg(DISTINCT k ORDER BY k) INTO _keys FROM (
     SELECT jsonb_object_keys(to_jsonb(t)) k FROM public.directory_public_listings t WHERE slug LIKE 'photo-proof-%') s;
   IF _keys IS DISTINCT FROM ARRAY['areas', 'bio', 'book_path', 'booking_policy_text', 'books_online', 'coverage_cities',
-                                  'coverage_zips', 'display_name', 'highlights', 'logo_url', 'photos', 'published_at',
-                                  'service_lines', 'services', 'slug', 'tagline'] THEN
+                                  'coverage_zips', 'display_name', 'highlights', 'logo_url', 'photos', 'public_email', 'public_phone',
+                                  'published_at', 'service_lines', 'services', 'slug', 'tagline'] THEN
     RAISE EXCEPTION 'PROOF FAILED [shape]: a listing has keys %', _keys;
   END IF;
   SELECT array_agg(DISTINCT k ORDER BY k) INTO _ph FROM (

@@ -126,10 +126,14 @@ describe("the migration", () => {
     for (const f of LATER_AND_UNRELATED.filter((f) => files.includes(f))) {
       expect(read(`supabase/migrations/${f}`)).not.toMatch(/directory/i);
     }
+    // 20261118010000 (#969, public_email / public_phone) replaces the view only
+    // to append two columns: tests/a-directory-profile-can-publish-a-contact.test.ts pins it.
+    const CONTACT_MIGRATION = "20261118010000";
     expect(
       files
         .filter((f) => !LATER_AND_UNRELATED.includes(f))
         .map((f) => f.slice(0, 14))
+        .filter((v) => v !== CONTACT_MIGRATION)
         .sort()
         .at(-1),
     ).toBe(STAMP);
