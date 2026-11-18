@@ -15,6 +15,7 @@ type DbQuery<T> = PromiseLike<DbResult<T>> & {
   limit(count: number): DbQuery<T>;
   eq(column: string, value: unknown): DbQuery<T>;
   update(value: Record<string, unknown>): DbQuery<T>;
+  delete(): DbQuery<T>;
 };
 type PlatformSupabase = {
   rpc(name: string, args: Record<string, unknown>): PromiseLike<DbResult<unknown>>;
@@ -112,4 +113,43 @@ export const markWebsiteSubmissionStatus = createServerFn({ method: "POST" })
     }
 
     return { ok: true };
+  });
+
+const deleteSchema = z.object({ id: z.string().uuid() });
+
+// A platform admin can remove a submission outright: test rows, spam, or a
+// submitter who asks to be erased. The audit row keeps only the id, form and
+// date, never the name, email or message, so a deletion for privacy stays one.
+export const deleteWebsiteSubmission = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data) => deleteSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    await assertPlatformAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const admin = supabaseAdmin as unknown as UntypedAdmin;
+
+    const { data: removed, error } = (await admin
+      .from("website_submissions")
+      .delete()
+      .eq("id", data.id)
+      .select("id, form, created_at")) as DbResult<
+      Array<Pick<WebsiteSubmissionRow, "id" | "form" | "created_at">>
+    >;
+    if (error) throw new Error(error.message);
+    const row = removed?.[0];
+    if (!row) throw new Error("Submission not found");
+
+    try {
+      await supabaseAdmin.from("platform_admin_audit").insert({
+        actor_user_id: context.userId,
+        organization_id: null,
+        action: "delete_website_submission",
+        before_json: { id: row.id, form: row.form, created_at: row.created_at },
+        after_json: null,
+      });
+    } catch {
+      // Audit is best effort, matching the rest of the platform console.
+    }
+
+    return { ok: true, id: row.id };
   });
