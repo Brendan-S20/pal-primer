@@ -21,6 +21,11 @@ DO $turn$ BEGIN PERFORM pg_advisory_lock(hashtext('houndstack.proof')); END $tur
 
 BEGIN;
 
+-- Same replay fault as the-cash-a-tech-took-had-nowhere-to-go.proof.sql (#1007):
+-- the latest my_day_stop_facts has a return type the older definition cannot
+-- replace. Dropped inside this rolled-back transaction only.
+DROP FUNCTION IF EXISTS public.my_day_stop_facts(uuid[]);
+
 \i :methods
 \i :cash
 

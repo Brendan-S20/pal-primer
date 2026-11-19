@@ -21,6 +21,13 @@ DO $turn$ BEGIN PERFORM pg_advisory_lock(hashtext('houndstack.proof')); END $tur
 
 BEGIN;
 
+-- A fresh replay already holds the LATEST my_day_stop_facts, whose return type
+-- differs from the one this migration defines; CREATE OR REPLACE cannot change
+-- a return type ("cannot change return type of existing function", #1007).
+-- Dropping it here, inside the transaction that rolls back, lets the migration
+-- under proof put its own version in. Nothing outside the proof sees this.
+DROP FUNCTION IF EXISTS public.my_day_stop_facts(uuid[]);
+
 \i :methods
 \i :migration
 
