@@ -10,6 +10,7 @@ import { isPasswordAcceptable, isPasswordRejection } from "@/lib/password-policy
 import { pageTitle } from "@/lib/page-title";
 import {
   RESET_PASSWORD_PATH,
+  abandonRecovery,
   clearRecoveryPending,
   describeUpdatePasswordError,
   establishRecoverySession,
@@ -124,6 +125,12 @@ function ResetPasswordPage() {
           {phase.kind === "done" && "All set."}
         </p>
       </div>
+
+      {/* Above the form, not below it: leaving the empty password field (the
+          first press on this link) makes PasswordField add its "rule you
+          broke" line, and anything under the field moves ~24px away from the
+          pointer before the click completes (#983). */}
+      {phase.kind === "ready" && <BackToSignIn />}
 
       {phase.kind === "ready" && (
         <form
@@ -243,15 +250,27 @@ function ResendResetLink({ message }: { message: string }) {
           </p>
         )}
       </form>
-      <p className="text-center text-sm">
-        <Link
-          to="/auth"
-          onClick={() => clearRecoveryPending()}
-          className="inline-flex min-h-11 items-center text-muted-foreground underline underline-offset-2 hover:text-primary"
-        >
-          Back to sign in
-        </Link>
-      </p>
+      <BackToSignIn />
     </div>
+  );
+}
+
+/** Leaves the reset: signs this device out first, so /auth does not land the
+ *  reset session, then goes to /auth (#983). */
+function BackToSignIn() {
+  const navigate = useNavigate();
+  return (
+    <p className="text-center text-sm">
+      <Link
+        to="/auth"
+        onClick={(e) => {
+          e.preventDefault();
+          void abandonRecovery(supabase).finally(() => navigate({ to: "/auth" }));
+        }}
+        className="inline-flex min-h-11 items-center text-muted-foreground underline underline-offset-2 hover:text-primary"
+      >
+        Back to sign in
+      </Link>
+    </p>
   );
 }

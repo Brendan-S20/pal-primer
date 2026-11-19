@@ -287,8 +287,13 @@ export const RECOVERY_FLAG_TTL_MS = 60 * 60_000;
 type FlagStore = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 function sessionStore(): FlagStore | null {
+  // localStorage, not sessionStorage: the recovery session itself lives in
+  // localStorage and is shared by every tab, so the flag that says "this
+  // session may only set a password" has to be too (#983). With a per-tab
+  // flag a second tab opened /dashboard fully signed in, password unchanged.
   try {
-    return typeof window !== "undefined" ? window.sessionStorage : null;
+    if (typeof window === "undefined") return null;
+    return window.localStorage ?? window.sessionStorage;
   } catch {
     return null;
   }
@@ -306,6 +311,12 @@ export function markRecoveryPending(
 }
 
 export function clearRecoveryPending(store: FlagStore | null = sessionStore()): void {
+  // The reset is over (finished, abandoned, or replaced by a password
+  // sign-in), so the link this page booted with is spent too. Left behind,
+  // /auth forwards the tab back to /reset-password, whose session check then
+  // raises the flag again: a finished reset bounced 1.5 s later and stayed
+  // trapped (#983).
+  bootLink = null;
   try {
     store?.removeItem(FLAG_KEY);
   } catch {
@@ -370,6 +381,25 @@ export function recoveryRedirectTarget(
     if (fromBoot) return kind === "implicit" ? RESET_PASSWORD_PATH : fromBoot;
   }
   return isRecoveryPending(store) ? RESET_PASSWORD_PATH : null;
+}
+
+/**
+ * Walking away from a reset (#983). The link made a real session; leaving it
+ * behind would let "Back to sign in" (or any other tab) land the person in the
+ * app without ever knowing the password. Signs this device out locally, then
+ * lowers the flag. A failed sign-out leaves the flag up, so the app stays
+ * closed rather than open.
+ */
+export async function abandonRecovery(
+  client: { auth: { signOut: (o?: { scope: "local" }) => Promise<{ error: unknown | null }> } },
+  store: FlagStore | null = sessionStore(),
+): Promise<void> {
+  try {
+    const { error } = await client.auth.signOut({ scope: "local" });
+    if (!error) clearRecoveryPending(store);
+  } catch {
+    // Offline or storage off: the flag stays up and the guard keeps the app shut.
+  }
 }
 
 /** Tests only. */
