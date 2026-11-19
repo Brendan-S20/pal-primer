@@ -2,7 +2,7 @@ import { createFileRoute, Link, useNavigate, useRouterState } from "@tanstack/re
 import { completeFromOffice, useOfficeCompleteOverride } from "@/components/OfficeCompleteOverride";
 import { useCompletionBlockWarning } from "@/components/CompletionBlockWarning";
 import { warnLessonClashes } from "@/components/training/lessonClashWarning";
-import { useRoleLabel } from "@/components/CommercialOnly";
+import { useRoleLabel, useServiceLines } from "@/components/CommercialOnly";
 import { orgLocalTime } from "@/lib/org-day";
 import { visitEta } from "@/lib/visit-eta";
 import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
@@ -165,6 +165,7 @@ function RoutesPage() {
   // `setDay(null)` means "back to following today".
   const orgTodayIso = useOrgToday();
   const distanceUnit = useDistanceUnit();
+  const { petWaste } = useServiceLines();
   const [pickedDay, setDay] = useState<string | null>(null);
   const day = pickedDay ?? orgTodayIso;
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -668,9 +669,10 @@ function RoutesPage() {
         // The unit the cards below print, so a warning and the card it is
         // about give the same distance in the same unit (#496).
         distanceUnit,
+        petWaste,
       },
     );
-  }, [visits, dispatchQ.data, distanceUnit]);
+  }, [visits, dispatchQ.data, distanceUnit, petWaste]);
 
   // One colour per tech, shared with the map. Built from the map's own grouping
   // so a calendar chip and that visit's pin can never end up different colours.

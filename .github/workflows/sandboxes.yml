@@ -1316,6 +1316,12 @@ jobs:
       - name: Measure texting on the hosted page
         run: npm run test:viewports:texting-hosted
 
+      # #769, the walker-only path: /setup's workday and walk prices at 390
+      # and 1440, read back by Settings and the new-client Plan step. Its own
+      # script for the same reason as the teammate panel's.
+      - name: Measure a walker-only business finishing setup
+        run: npm run test:viewports:walker-setup
+
       # Its own name: two jobs in one run cannot upload the same artifact.
       - name: Keep what failed
         if: failure() || cancelled()

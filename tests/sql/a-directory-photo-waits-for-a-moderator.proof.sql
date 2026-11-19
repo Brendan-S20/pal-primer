@@ -264,7 +264,9 @@ BEGIN
     RAISE EXCEPTION 'PROOF FAILED [published]: an unpublished or deleted listing is visible';
   END IF;
   SELECT array_agg(DISTINCT k ORDER BY k) INTO _keys FROM (
-    SELECT jsonb_object_keys(to_jsonb(t)) k FROM public.directory_public_listings t WHERE slug LIKE 'photo-proof-%') s;
+    -- public_email / public_phone are appended by 20261118010000 (#969), which pins them
+    -- in its own proof; this one checks the sixteen of its day whether or not they are there.
+    SELECT jsonb_object_keys(to_jsonb(t) - ARRAY['public_email', 'public_phone']) k FROM public.directory_public_listings t WHERE slug LIKE 'photo-proof-%') s;
   IF _keys IS DISTINCT FROM ARRAY['areas', 'bio', 'book_path', 'booking_policy_text', 'books_online', 'coverage_cities',
                                   'coverage_zips', 'display_name', 'highlights', 'logo_url', 'photos', 'published_at',
                                   'service_lines', 'services', 'slug', 'tagline'] THEN

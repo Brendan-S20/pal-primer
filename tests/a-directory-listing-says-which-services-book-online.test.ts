@@ -123,17 +123,26 @@ describe("the migration", () => {
     // tests/a-directory-photo-waits-for-a-moderator.test.ts pins that.
     // #912 was later renamed to 20261116060000 so it sorts after main. It
     // redefines invoice_paid_cents only and does not touch the directory view.
-    const LATER_AND_UNRELATED = ["20261116060000_succeeded-payments-count-only-what-was-kept.sql"];
+    const LATER_AND_UNRELATED = [
+      "20261116060000_succeeded-payments-count-only-what-was-kept.sql",
+      "20261118020000_the-demo-geo-backup-table-is-closed-to-the-api.sql", // does not touch the directory view
+      "20261118030000_an-invite-is-not-blocked-by-a-membership-that-is-over.sql", // does not touch the directory view
+      "20261118040000_a-business-that-drops-pet-waste-no-longer-ends-days-at-a-dump.sql",
+      "20261118050000_the-clients-page-reads-newest-first-from-an-index.sql",
+    ];
     for (const f of LATER_AND_UNRELATED.filter((f) => files.includes(f))) {
       expect(read(`supabase/migrations/${f}`)).not.toMatch(/directory/i);
     }
+    // 20261118010000 (#969, public_email / public_phone) replaces the view only
+    // to append two columns: tests/a-directory-profile-can-publish-a-contact.test.ts pins it.
+    const CONTACT_MIGRATION = "20261118010000";
     expect(
       files
         .filter((f) => !LATER_AND_UNRELATED.includes(f))
         .map((f) => f.slice(0, 14))
         .filter((s) => s > STAMP)
         .sort(),
-    ).toEqual(["20261112110000"]);
+    ).toEqual(["20261112110000", CONTACT_MIGRATION]);
     expect(readFileSync(MIGRATION, "utf8")).toMatch(/PROPOSED MIGRATION\. File only/);
     expect(read(`supabase/proofs/${STAMP}-${NAME}.sql`)).toMatch(
       new RegExp(`\\\\ir \\.\\./\\.\\./tests/sql/${NAME}\\.proof\\.sql`),

@@ -66,6 +66,13 @@ const STAMP = "20261112110000";
 const NAME = "a-directory-photo-is-public-only-after-a-moderator-approves-it";
 const MIGRATION = join(ROOT, `supabase/migrations/${STAMP}_${NAME}.sql`);
 const PROOF = join(ROOT, "tests/sql/a-directory-photo-waits-for-a-moderator.proof.sql");
+
+// This proof replays the database only up to the photo migration, so the view it
+// sees has the sixteen columns of its day. #969 (20261118010000) appends
+// public_email / public_phone later; its own test pins the eighteen.
+const PHOTO_ERA_FIELDS = PUBLIC_LISTING_FIELDS.filter(
+  (f) => f !== "public_email" && f !== "public_phone",
+);
 const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 const codeOnly = (s: string) =>
   s
@@ -119,14 +126,24 @@ describe("the migration", () => {
     expect(STAMP > "20261112100000").toBe(true);
     // #912 was later renamed to 20261116060000 so it sorts after main. It
     // redefines invoice_paid_cents only and does not touch the directory view.
-    const LATER_AND_UNRELATED = ["20261116060000_succeeded-payments-count-only-what-was-kept.sql"];
+    const LATER_AND_UNRELATED = [
+      "20261116060000_succeeded-payments-count-only-what-was-kept.sql",
+      "20261118020000_the-demo-geo-backup-table-is-closed-to-the-api.sql", // does not touch the directory view
+      "20261118030000_an-invite-is-not-blocked-by-a-membership-that-is-over.sql", // does not touch the directory view
+      "20261118040000_a-business-that-drops-pet-waste-no-longer-ends-days-at-a-dump.sql",
+      "20261118050000_the-clients-page-reads-newest-first-from-an-index.sql",
+    ];
     for (const f of LATER_AND_UNRELATED.filter((f) => files.includes(f))) {
       expect(read(`supabase/migrations/${f}`)).not.toMatch(/directory/i);
     }
+    // 20261118010000 (#969, public_email / public_phone) replaces the view only
+    // to append two columns: tests/a-directory-profile-can-publish-a-contact.test.ts pins it.
+    const CONTACT_MIGRATION = "20261118010000";
     expect(
       files
         .filter((f) => !LATER_AND_UNRELATED.includes(f))
         .map((f) => f.slice(0, 14))
+        .filter((v) => v !== CONTACT_MIGRATION)
         .sort()
         .at(-1),
     ).toBe(STAMP);
@@ -357,7 +374,7 @@ describe("the migration", () => {
 // ── The public contract ──────────────────────────────────────────────────────
 describe("the public contract", () => {
   it("is the view's columns, in order, and nothing else", () => {
-    expect(viewColumns(view())).toEqual([...PUBLIC_LISTING_FIELDS]);
+    expect(viewColumns(view())).toEqual([...PHOTO_ERA_FIELDS]);
     expect(sql()).toMatch(
       /IF _cols IS DISTINCT FROM ARRAY\['slug', 'display_name', 'logo_url', 'bio', 'service_lines',\s+'coverage_zips', 'coverage_cities', 'services', 'published_at',\s+'tagline', 'highlights', 'areas',\s+'books_online', 'booking_policy_text', 'book_path',\s+'photos'\]/,
     );
@@ -402,7 +419,7 @@ describe("the public contract", () => {
     const proof = readFileSync(PROOF, "utf8");
     const keys = /_keys IS DISTINCT FROM ARRAY\[([^\]]+)\]/.exec(proof)![1];
     expect([...keys.matchAll(/'([a-z_]+)'/g)].map((m) => m[1])).toEqual(
-      [...PUBLIC_LISTING_FIELDS].sort(),
+      [...PHOTO_ERA_FIELDS].sort(),
     );
     const ph = /_ph IS DISTINCT FROM ARRAY\[([^\]]+)\]/.exec(proof)![1];
     expect([...ph.matchAll(/'([a-z_]+)'/g)].map((m) => m[1])).toEqual(
@@ -832,10 +849,28 @@ describe.skipIf(!reachable)("a directory photo waits for a moderator, in a real 
   });
 
   it("attestation, pending, no self-approval, the queue, three approved of four, AC2.4, the bucket, the lookup, rejected, the eight, and both mutations reproduce", () => {
-    const r = spawnSync(psql!, [DB_URL, "-X", "-v", `migration=${MIGRATION}`, "-f", PROOF], {
-      encoding: "utf8",
-      timeout: 300_000,
-    });
+    // The proof re-applies the photo migration, whose CREATE OR REPLACE VIEW
+    // cannot drop the two columns 20261118010000 (#969) appended. On a database
+    // that already has them the proof runs in its other mode: no replay, it
+    // checks the schema as built from every migration.
+    const hasLaterColumns =
+      spawnSync(
+        psql!,
+        [
+          DB_URL,
+          "-XAtc",
+          "select 1 from information_schema.columns where table_schema='public' and table_name='directory_public_listings' and column_name='public_email'",
+        ],
+        { encoding: "utf8", timeout: 5_000 },
+      ).stdout?.trim() === "1";
+    const r = spawnSync(
+      psql!,
+      [DB_URL, "-X", ...(hasLaterColumns ? [] : ["-v", `migration=${MIGRATION}`]), "-f", PROOF],
+      {
+        encoding: "utf8",
+        timeout: 300_000,
+      },
+    );
     const out = `${r.stdout}\n${r.stderr}`;
     expect(r.status, out).toBe(0);
     expect(out).not.toMatch(/PROOF FAILED|PROOF INCONCLUSIVE/);

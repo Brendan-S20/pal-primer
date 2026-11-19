@@ -26,6 +26,7 @@ import { AccountLockedShell } from "@/components/AccountLockedShell";
 import { reportClientError, setMonitoringIdentity } from "@/lib/monitoring/client";
 import { needsSecondStep } from "@/lib/mfa";
 import { returnHereAfterSignIn } from "@/lib/signed-out";
+import { isRecoveryPending, RESET_PASSWORD_PATH } from "@/lib/password-recovery";
 import { getPlatformContext } from "@/lib/platform.functions";
 import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { SetupGuideBanner } from "@/components/SetupGuideBanner";
@@ -85,6 +86,10 @@ export const Route = createFileRoute("/_authenticated")({
       // NATIVE ONLY: not navigator.onLine — see lib/offline/connectivity.ts, a
       // WKWebView resumed from a dead zone can still be claiming to be online.
       // The hosted app keeps the property it has always read.
+      // A password-reset link makes a real session, in every tab. Until the
+      // new password is saved (or the reset is abandoned, which signs out) it
+      // may do nothing else (#983).
+      if (isRecoveryPending()) throw redirect({ to: RESET_PASSWORD_PATH });
       const online = IS_NATIVE_BUNDLE
         ? !isDefinitelyOffline()
         : typeof navigator === "undefined" || navigator.onLine !== false;

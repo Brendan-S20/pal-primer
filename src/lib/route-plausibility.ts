@@ -60,12 +60,17 @@ export function findRouteWarnings(
      *  `useDistanceUnit()`, the same unit its cards print. Miles when left
      *  out, which is what this message said before the unit was chosen. */
     distanceUnit?: DistanceUnit;
+    /** Whether the business runs pet waste (`useServiceLines().petWaste`).
+     *  "Depot" is a truck fleet's word (#768), so any other business is
+     *  pointed at its "start address". True when left out, as everywhere. */
+    petWaste?: boolean;
   } = {},
 ): RouteWarning[] {
   const limit = opts.maxDriveMinutes ?? DEFAULT_MAX_DRIVE_MINUTES;
   const workdayStart = opts.workdayStartMinutes ?? DEFAULT_WORKDAY_START_MINUTES;
   const tz = opts.timezone || DEFAULT_ORG_TIMEZONE;
   const unit: DistanceUnit = opts.distanceUnit ?? "mi";
+  const startPlace = (opts.petWaste ?? true) ? "technician's depot address" : "route start address";
   const warnings: RouteWarning[] = [];
 
   for (const v of visits) {
@@ -87,7 +92,7 @@ export function findRouteWarnings(
           // arithmetic to find out how bad the problem is.
           `${name}: ${fmtHours(driveMin)} drive` +
           (driveKm != null ? ` (${formatDistance(driveKm, unit, { digits: 0 })})` : "") +
-          ` exceeds the ${fmtHours(limit)} limit. Check the technician's depot address.`,
+          ` exceeds the ${fmtHours(limit)} limit. Check the ${startPlace}.`,
       });
       continue; // one warning per stop is enough
     }
