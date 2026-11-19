@@ -187,7 +187,7 @@ function validForecast(payload: unknown): DayForecast[] | null {
 // exactly the environments the cache/relay were added for. Server-only —
 // always reach it via a dynamic import inside a server-fn handler.
 export async function cachedForecast(
-  supabase: any,
+  _supabase: any, // kept for call-site compatibility; the cache is service-role only (#1005)
   lat: number,
   lon: number,
   from: string,
@@ -195,7 +195,10 @@ export async function cachedForecast(
 ): Promise<{ forecast: DayForecast[]; stale: boolean }> {
   const latKey = lat.toFixed(2);
   const lonKey = lon.toFixed(2);
-  const { data: row } = await supabase
+  // Reads go through the service role too: the table has no browser-facing
+  // policy, so no signed-in user can list other businesses' lookup points.
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data: row } = await (supabaseAdmin as any)
     .from("weather_forecast_cache")
     .select("payload, fetched_at")
     .eq("lat_key", latKey)
