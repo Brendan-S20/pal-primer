@@ -24,7 +24,7 @@ import { getDispatchSettings, updateDispatchSettings } from "@/lib/visits.functi
 import { US_TIMEZONES, DEFAULT_TIMEZONE } from "@/lib/route-window";
 import { mphFromStoredKmh } from "@/lib/measures";
 import { WorkDaysPicker } from "@/components/schedule/WorkDaysPicker";
-import { Input } from "@/components/ui/input";
+import { AutosaveInput } from "@/components/settings/AutosaveInput";
 import { Label } from "@/components/ui/label";
 import { CalendarFeedCard } from "@/components/CalendarFeedCard";
 import { titleHead } from "@/lib/page-title";
@@ -100,6 +100,10 @@ function SchedulingSettings() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  /** One save, as a promise of whether it landed, for AutosaveInput. */
+  const save = (patch: Record<string, unknown>, valid = true): Promise<boolean> =>
+    valid ? mut.mutateAsync(patch).then(() => true, () => false) : Promise.resolve(false);
+
   // ── NOTHING RENDERS UNTIL THE SETTINGS HAVE ARRIVED ─────────────────────
   //
   // Every field on this page is UNCONTROLLED — `defaultValue`, which React
@@ -143,6 +147,23 @@ function SchedulingSettings() {
           The working day these routes are planned around, and the travel assumptions used to
           estimate arrival times.
         </p>
+        {/* There is no Save button: a change is saved as it is made (a short
+            pause after typing, or as the field is left), and this line says so
+            and says when it has landed (#981). */}
+        <p
+          role="status"
+          aria-live="polite"
+          data-testid="scheduling-save-status"
+          className={`mt-1 min-h-5 text-xs ${mut.isError ? "text-destructive" : "text-muted-foreground"}`}
+        >
+          {mut.isPending
+            ? "Saving…"
+            : mut.isError
+              ? "Not saved. Change the value to try again."
+              : mut.isSuccess
+                ? "All changes saved."
+                : "Changes save automatically."}
+        </p>
       </div>
 
       <section className="rounded-lg border bg-card p-5">
@@ -156,22 +177,22 @@ function SchedulingSettings() {
             <Label htmlFor="sched-workday-start" className="text-xs">
               Workday start
             </Label>
-            <Input
+            <AutosaveInput
               id="sched-workday-start"
               type="time"
               defaultValue={settings.workday_start?.slice(0, 5) ?? "08:00"}
-              onBlur={(e) => mut.mutate({ workday_start: e.target.value })}
+              onCommit={(v) => save({ workday_start: v }, v !== "")}
             />
           </div>
           <div>
             <Label htmlFor="sched-workday-end" className="text-xs">
               Workday end
             </Label>
-            <Input
+            <AutosaveInput
               id="sched-workday-end"
               type="time"
               defaultValue={settings.workday_end?.slice(0, 5) ?? "17:00"}
-              onBlur={(e) => mut.mutate({ workday_end: e.target.value })}
+              onCommit={(v) => save({ workday_end: v }, v !== "")}
             />
           </div>
         </div>
@@ -200,25 +221,22 @@ function SchedulingSettings() {
             <Label htmlFor="sched-days-ahead" className="text-xs">
               Days ahead
             </Label>
-            <Input
+            <AutosaveInput
               id="sched-days-ahead"
               type="number"
               min={1}
               max={365}
               defaultValue={settings.auto_generate_days_ahead ?? 90}
-              onBlur={(e) => {
-                const v = Number(e.target.value);
+              onCommit={(raw) => {
+                const v = Number(raw);
                 // Refuse locally rather than round-tripping to a raise. The
                 // same 1–365 bound lives on the column, the RPC and the input
                 // validator; this is the one that can explain itself.
-                if (!Number.isFinite(v) || v < 1 || v > 365) {
+                if (raw === "" || !Number.isFinite(v) || v < 1 || v > 365) {
                   toast.error("Choose between 1 and 365 days");
-                  e.target.value = String(settings.auto_generate_days_ahead ?? 90);
-                  return;
+                  return false;
                 }
-                if (v !== (settings.auto_generate_days_ahead ?? 90)) {
-                  mut.mutate({ auto_generate_days_ahead: v });
-                }
+                return save({ auto_generate_days_ahead: v });
               }}
             />
             <p className="mt-1 text-2xs text-muted-foreground">
@@ -353,13 +371,20 @@ function SchedulingSettings() {
             <Label htmlFor="sched-max-drive" className="text-xs">
               Longest drive to a single stop (minutes)
             </Label>
-            <Input
+            <AutosaveInput
               id="sched-max-drive"
               type="number"
               min={15}
               max={1440}
               defaultValue={settings.max_drive_minutes ?? 240}
-              onBlur={(e) => mut.mutate({ max_drive_minutes: Number(e.target.value) })}
+              onCommit={(raw) => {
+                const v = Number(raw);
+                if (raw === "" || !Number.isInteger(v) || v < 15 || v > 1440) {
+                  toast.error("Choose between 15 and 1440 minutes");
+                  return false;
+                }
+                return save({ max_drive_minutes: v });
+              }}
             />
             <p className="mt-1 text-2xs text-muted-foreground">
               An assignment implying a longer drive than this is flagged as implausible on the
