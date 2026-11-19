@@ -170,6 +170,17 @@ describe("the hosted page is the default", () => {
     expect(hostedSlugOf(urls.website_url)).toBe(SLUG);
   });
 
+  it("the hosted website is the bare page address: no login, no port", () => {
+    const urls = hostedSiteUrls(SLUG);
+    for (const website_url of [
+      `https://user:pw@${DIRECTORY_BRAND}/${SLUG}`,
+      `https://${DIRECTORY_BRAND}:8443/${SLUG}`,
+    ]) {
+      expect(hostedSiteProblems({ ...urls, website_url })).toHaveLength(1);
+      expect(hostedSiteProblems({ ...urls, website_url })[0].path).toBe("website_url");
+    }
+  });
+
   it("with no listing yet, the hosted path says what to do instead of filing blanks", () => {
     expect(hostedSiteBlocker(PUBLISHED)).toBeNull();
     expect(hostedSiteBlocker({ slug: null, published: false })).toMatch(/Settings > Directory/);

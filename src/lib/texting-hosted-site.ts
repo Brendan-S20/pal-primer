@@ -78,7 +78,15 @@ export function hostedSiteProblems(d: {
 }): Array<{ path: "website_url" | "privacy_url" | "terms_url"; message: string }> {
   const slug = hostedSlugOf(d.website_url);
   const site = parse(d.website_url);
-  if (!slug || site?.protocol !== "https:" || site.search || site.hash) {
+  if (
+    !slug ||
+    site?.protocol !== "https:" ||
+    site.search ||
+    site.hash ||
+    site.username ||
+    site.password ||
+    site.port
+  ) {
     return [{ path: "website_url", message: `Use your ${HOSTED_SITE_HOST} page address` }];
   }
   const want = hostedSiteUrls(slug);
