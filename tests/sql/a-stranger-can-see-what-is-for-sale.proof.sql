@@ -70,6 +70,13 @@ SET LOCAL app.allow_protected_org_write = '';
 INSERT INTO public.zones (id, organization_id, name, zip_codes, base_price_cents, per_dog_addl_cents, initial_cleanup_cents) VALUES
   ('26600000-0000-4000-8000-0000000000a1', '06600000-0000-4000-8000-0000000000aa', 'Q Zone', ARRAY['60601'], 2000, 500, 7500);
 
+-- The org triggers now seed a priced grooming service (and others) for each
+-- line a business turns on (#1007). This proof is about the exact list a
+-- stranger sees, so it starts from the pet-waste service alone and adds its own.
+DELETE FROM public.services
+ WHERE organization_id IN ('06600000-0000-4000-8000-0000000000aa', '06600000-0000-4000-8000-0000000000bb', '06600000-0000-4000-8000-0000000000cc')
+   AND lower(name) <> 'pet waste removal';
+
 INSERT INTO public.services (id, organization_id, name, service_line, price_unit, base_price_cents, extra_pet_cents, default_duration_min, active) VALUES
   ('56600000-0000-4000-8000-0000000000a1', '06600000-0000-4000-8000-0000000000aa', '30-minute walk', 'dog_walking', 'visit', 2500, 500, 30, true),
   ('56600000-0000-4000-8000-0000000000a2', '06600000-0000-4000-8000-0000000000aa', 'Full groom', 'mobile_grooming', 'hour', 6000, 1000, 90, true),

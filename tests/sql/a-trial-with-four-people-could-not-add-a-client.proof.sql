@@ -54,9 +54,16 @@ ON CONFLICT (id) DO NOTHING;
 SELECT public.refresh_active_seat_count('05690000-0000-4000-8000-0000000000aa');
 -- Whatever the stack's triggers did with the seats, put the org back on
 -- Launch with four people, as production had it.
+-- Plan sync now reassigns the tier on every plan UPDATE and moves four active
+-- seats to Growth (#1007), so the two sync triggers are stood down for exactly
+-- this write; they are put back on the next line, and the transaction rolls back.
+ALTER TABLE public.organizations DISABLE TRIGGER orgs_sync_tier_on_plan;
+ALTER TABLE public.organizations DISABLE TRIGGER organizations_assign_tier;
 UPDATE public.organizations
    SET plan_id = (SELECT id FROM public.platform_plans WHERE slug = 'launch'), billing_tier = 'launch'
  WHERE id = '05690000-0000-4000-8000-0000000000aa';
+ALTER TABLE public.organizations ENABLE TRIGGER orgs_sync_tier_on_plan;
+ALTER TABLE public.organizations ENABLE TRIGGER organizations_assign_tier;
 SET LOCAL app.allow_protected_org_write = '';
 
 CREATE FUNCTION pg_temp.as_owner() RETURNS void LANGUAGE sql AS $$
@@ -72,9 +79,14 @@ CREATE FUNCTION pg_temp.back_to_launch() RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
   PERFORM set_config('request.jwt.claims', '{}', true);
   PERFORM set_config('app.allow_protected_org_write', '1', true);
+  -- Plan sync would undo this write at once (#1007); stand it down for it only.
+  ALTER TABLE public.organizations DISABLE TRIGGER orgs_sync_tier_on_plan;
+  ALTER TABLE public.organizations DISABLE TRIGGER organizations_assign_tier;
   UPDATE public.organizations
      SET plan_id = (SELECT id FROM public.platform_plans WHERE slug = 'launch'), billing_tier = 'launch'
    WHERE id = '05690000-0000-4000-8000-0000000000aa';
+  ALTER TABLE public.organizations ENABLE TRIGGER orgs_sync_tier_on_plan;
+  ALTER TABLE public.organizations ENABLE TRIGGER organizations_assign_tier;
   PERFORM set_config('app.allow_protected_org_write', '', true);
 END $$;
 GRANT EXECUTE ON FUNCTION pg_temp.as_owner() TO authenticated;

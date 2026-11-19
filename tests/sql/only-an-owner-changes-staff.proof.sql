@@ -95,8 +95,12 @@ BEGIN
   BEGIN
     PERFORM public.change_user_role('0a000000-0000-4000-8000-000000d70a00', 'f0000000-0000-4000-8000-000000d70a02', 'owner');
     RAISE EXCEPTION 'PROOF FAILED [om rpc]: change_user_role made the office manager an owner';
-  EXCEPTION WHEN raise_exception THEN
-    IF SQLERRM LIKE 'PROOF FAILED%' THEN RAISE; END IF;
+  EXCEPTION WHEN insufficient_privilege THEN
+    -- Since #863 an office manager is refused first by the role ceiling
+    -- ("Nobody but an owner can give anyone a role above their own"), SQLSTATE
+    -- 42501, not by the old owner-only check (#1007). Either way they are
+    -- refused; the "PROOF FAILED" above is a raise_exception and still escapes.
+    NULL;
   END;
 
   DELETE FROM public.staff WHERE id = '5a000000-0000-4000-8000-000000d70a03';

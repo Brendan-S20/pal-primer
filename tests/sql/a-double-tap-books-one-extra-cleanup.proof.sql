@@ -18,6 +18,13 @@ DO $turn$ BEGIN PERFORM pg_advisory_lock(hashtext('houndstack.proof')); END $tur
 
 BEGIN;
 
+-- A fresh replay already holds the current five-argument portal_request_one_off
+-- (service_id defaulted). Re-applying the four-argument original next to it
+-- makes a four-argument call ambiguous: "function is not unique" (#1007). The
+-- later overload is dropped here, inside this rolled-back transaction, so the
+-- migration under proof is the only one in play.
+DROP FUNCTION IF EXISTS public.portal_request_one_off(uuid, uuid, date, text, uuid);
+
 \i :migration
 
 SET LOCAL request.jwt.claims = '{"role":"service_role"}';

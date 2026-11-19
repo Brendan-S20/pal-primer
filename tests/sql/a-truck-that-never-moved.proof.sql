@@ -60,7 +60,12 @@ RETURNS void LANGUAGE sql AS $$
           'd7000000-0000-4000-8000-0000000000a1', 'c7000000-0000-4000-8000-0000000000a1',
           'e7000000-0000-4000-8000-0000000000a1',
           CASE WHEN _assigned THEN '5e700000-0000-4000-8000-000000000002'::uuid END,
-          _day, _status, _end - interval '1 hour', _end)
+          _day, _status, _end - interval '1 hour', _end);
+  -- A one-person business now has its stop assigned to the only person at
+  -- insert time (visits_plan_walker, BEFORE INSERT only; #1007). This proof
+  -- needs a stop that really is nobody's, so clear it afterwards.
+  UPDATE public.visits SET assigned_staff_id = NULL
+   WHERE id = ('f7000000-0000-4000-8000-0000000000' || _n)::uuid AND NOT _assigned;
 $$;
 
 -- ── Nothing near: no request ────────────────────────────────────────────────
