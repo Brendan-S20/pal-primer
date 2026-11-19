@@ -13,6 +13,7 @@
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { ZoneCoverageMap, type CoverageValue } from "@/components/ZoneCoverageMap";
 
@@ -25,12 +26,22 @@ const base: CoverageValue = {
   driveTimeMinutes: null,
 };
 
+// ZoneCoverageMap reads the business's service lines, so it needs a client.
+const withClient = (node: ReturnType<typeof createElement>) =>
+  createElement(
+    QueryClientProvider,
+    { client: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
+    node,
+  );
+
 function buttonsInForm(initial: CoverageValue) {
   const html = renderToStaticMarkup(
-    createElement(
-      "form",
-      null,
-      createElement(ZoneCoverageMap, { initial, onChange: () => {}, height: 300 }),
+    withClient(
+      createElement(
+        "form",
+        null,
+        createElement(ZoneCoverageMap, { initial, onChange: () => {}, height: 300 }),
+      ),
     ),
   );
   return [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].map((m) => ({
@@ -62,10 +73,12 @@ describe("the zone coverage toolbar inside the drawer form", () => {
 
   it("standalone, the Save coverage button does not submit a form it lands in either", () => {
     const html = renderToStaticMarkup(
-      createElement(
-        "form",
-        null,
-        createElement(ZoneCoverageMap, { initial: base, onSave: () => {} }),
+      withClient(
+        createElement(
+          "form",
+          null,
+          createElement(ZoneCoverageMap, { initial: base, onSave: () => {} }),
+        ),
       ),
     );
     const save = /<button\b([^>]*)>(?:(?!<\/button>)[\s\S])*Save coverage/.exec(html);
