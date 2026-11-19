@@ -35,6 +35,8 @@ import {
   type DirectoryArea,
 } from "@/lib/directory";
 import { DIRECTORY_BRAND } from "@/lib/directory-site";
+import { getDirectoryTextingLock } from "@/lib/texting-hosted-site.functions";
+import { DIRECTORY_LOCKED_BY_TEXTING } from "@/lib/texting-hosted-site";
 import { DirectoryPhotosSettings } from "@/components/directory/DirectoryPhotosSettings";
 import { SettingsLoadError, SettingsLoadingFields } from "@/components/settings/SettingsLoadGate";
 
@@ -96,6 +98,11 @@ function DirectorySettings() {
     queryKey: ["my-directory-profile"],
     queryFn: () => getFn({}),
   });
+  // #969: a texting registration that files this page keeps its address and
+  // keeps it listed. The server refuses the change too.
+  const lockFn = useServerFn(getDirectoryTextingLock);
+  const lockQ = useQuery({ queryKey: ["directory-texting-lock"], queryFn: () => lockFn() });
+  const textingLock = lockQ.data ?? null;
 
   const [published, setPublished] = useState(false);
   const [displayName, setDisplayName] = useState("");
@@ -217,6 +224,7 @@ function DirectorySettings() {
     );
   }
   const canEdit = data.canEdit;
+  const lockedSlug = textingLock?.slug ?? null;
   const profileUrl = `/pros/${encodeURIComponent(data.profile?.slug ?? "")}`;
   const publishProblem = !slugOk
     ? "Choose a web address of 3 to 60 lowercase letters, numbers and dashes."
@@ -277,9 +285,20 @@ function DirectorySettings() {
         <Switch
           checked={published}
           onCheckedChange={setPublished}
-          disabled={!canEdit}
+          disabled={!canEdit || (!!lockedSlug && published)}
           aria-label="List my business in the directory"
         />
+        {lockedSlug ? (
+          <p
+            className="basis-full text-xs text-muted-foreground"
+            data-testid="directory-texting-lock"
+          >
+            {DIRECTORY_LOCKED_BY_TEXTING}{" "}
+            <Link to="/settings/sms" className="underline">
+              Open Texting
+            </Link>
+          </p>
+        ) : null}
       </div>
 
       <fieldset disabled={!canEdit} className="space-y-6">
@@ -301,7 +320,14 @@ function DirectorySettings() {
               maxLength={60}
               onChange={(e) => setSlug(e.target.value)}
               aria-invalid={!slugOk}
+              readOnly={!!lockedSlug}
+              aria-describedby={lockedSlug ? "dir-slug-locked" : undefined}
             />
+            {lockedSlug ? (
+              <p id="dir-slug-locked" className="text-xs text-muted-foreground">
+                Your texting registration uses this page.
+              </p>
+            ) : null}
             <p className="text-xs break-all text-muted-foreground" dir="ltr">
               /pros/{slug.trim().toLowerCase() || "…"}
             </p>
@@ -449,6 +475,7 @@ function DirectorySettings() {
               save.isPending ||
               (published && !!publishProblem) ||
               !slugOk ||
+              (!!lockedSlug && (!published || slug.trim().toLowerCase() !== lockedSlug)) ||
               !displayName.trim() ||
               !!contentProblem
             }

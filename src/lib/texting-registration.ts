@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { hostedSiteProblems, isHostedSiteUrl } from "@/lib/texting-hosted-site";
 
 // BUILD-3 (#538): what an owner files to turn on texting, and how its status
 // reads. Shared by Settings → Texting and the server, so the form and the
@@ -118,6 +119,24 @@ export const registrationDetailsSchema = z
     contacts: z.array(contactSchema).length(2, "Add two authorized contacts"),
   })
   .superRefine((d, ctx) => {
+    if (d.privacy_url.trim().replace(/\/+$/, "") === d.terms_url.trim().replace(/\/+$/, "")) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["terms_url"],
+        message: "Terms and Privacy Policy need their own separate pages",
+      });
+    }
+    // #969: the business's hosted page (the default). Website, Privacy and
+    // Terms are its /{slug}, /{slug}/privacy and /{slug}/terms on one host,
+    // and the business email is whatever the owner reads (Gmail and so on):
+    // there is no domain of the business's own for it to match.
+    if (isHostedSiteUrl(d.website_url)) {
+      for (const p of hostedSiteProblems(d)) {
+        ctx.addIssue({ code: "custom", path: [p.path], message: p.message });
+      }
+      return;
+    }
+    // "I have my own website": today's checks, unchanged.
     const site = domainOf(d.website_url);
     // Twilio rejects a verification whose policy pages live somewhere other
     // than the business's own site, and needs Privacy and Terms on separate
@@ -130,13 +149,6 @@ export const registrationDetailsSchema = z
           message: "This page has to be on your own website's domain",
         });
       }
-    }
-    if (d.privacy_url.trim().replace(/\/+$/, "") === d.terms_url.trim().replace(/\/+$/, "")) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["terms_url"],
-        message: "Terms and Privacy Policy need their own separate pages",
-      });
     }
     if (!sameSite(domainOf(d.business_email), site)) {
       ctx.addIssue({

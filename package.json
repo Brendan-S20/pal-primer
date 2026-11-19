@@ -41,6 +41,7 @@
     "test:viewports:apple:sweeps": "node scripts/playwright-with-env.mjs APPLE_SIZES=1 test every-public-page every-signed-in-page",
     "test:viewports:axe": "playwright test axe-finds-nothing-serious",
     "test:viewports:team": "playwright test an-open-teammate-panel-fits-a-phone",
+    "test:viewports:texting-hosted": "playwright test texting-starts-on-the-hosted-page",
     "test:viewports:walker-setup": "playwright test a-walker-only-business-finishes-setup-without-settings",
     "screenshots:play": "playwright test play-store-screenshots",
     "test:e2e": "tests/e2e/run.sh",
