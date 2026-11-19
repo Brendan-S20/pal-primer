@@ -171,6 +171,8 @@ export function toDirectoryListings(rows: unknown): DirectoryListing[] {
       booking_policy_text: typeof r.booking_policy_text === "string" ? r.booking_policy_text : null,
       book_path: booksOnline && typeof r.book_path === "string" ? r.book_path : null,
       photos,
+      public_email: typeof r.public_email === "string" ? r.public_email : null,
+      public_phone: typeof r.public_phone === "string" ? r.public_phone : null,
     };
   });
 }
