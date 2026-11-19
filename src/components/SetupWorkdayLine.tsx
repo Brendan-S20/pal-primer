@@ -20,8 +20,7 @@ export function SetupWorkdayLine({ onChange }: { onChange: () => void }) {
   const fn = useServerFn(getDispatchSettings);
   const q = useQuery({ queryKey: ["dispatch-settings"], queryFn: () => fn() });
   const s = q.data?.settings as
-    | { workday_start?: string | null; workday_end?: string | null }
-    | undefined;
+    { workday_start?: string | null; workday_end?: string | null } | undefined;
 
   let text: string;
   if (q.isPending) text = "Workday: loading…";
@@ -41,13 +40,13 @@ export function SetupWorkdayLine({ onChange }: { onChange: () => void }) {
         {text}
       </span>
       {q.isError && !s ? (
-        <Button variant="link" className="h-11 px-1 md:h-8" onClick={() => void q.refetch()}>
+        <Button variant="link" className="h-11 px-1 md:mouse:h-8" onClick={() => void q.refetch()}>
           Try again
         </Button>
       ) : (
         <Button
           variant="link"
-          className="h-11 px-1 md:h-8"
+          className="h-11 px-1 md:mouse:h-8"
           onClick={onChange}
           disabled={q.isPending}
           aria-label="Change your workday"
