@@ -126,6 +126,12 @@ function ResetPasswordPage() {
         </p>
       </div>
 
+      {/* Above the form, not below it: leaving the empty password field (the
+          first press on this link) makes PasswordField add its "rule you
+          broke" line, and anything under the field moves ~24px away from the
+          pointer before the click completes (#983). */}
+      {phase.kind === "ready" && <BackToSignIn />}
+
       {phase.kind === "ready" && (
         <form
           onSubmit={handleSubmit}
@@ -167,8 +173,6 @@ function ResetPasswordPage() {
           </Button>
         </form>
       )}
-
-      {phase.kind === "ready" && <BackToSignIn />}
 
       {phase.kind === "invalid" && <ResendResetLink message={phase.message} />}
 
