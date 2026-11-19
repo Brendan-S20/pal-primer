@@ -8,7 +8,9 @@ import {
   abandonRecovery,
   clearRecoveryPending,
   isRecoveryPending,
+  captureRecoveryFromUrl,
   markRecoveryPending,
+  recoveryRedirectTarget,
 } from "@/lib/password-recovery";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -66,5 +68,45 @@ describe("the wiring", () => {
     const src = read("src/routes/reset-password.tsx");
     expect(src).toMatch(/abandonRecovery\(supabase\)/);
     expect(src).not.toMatch(/onClick=\{\(\) => clearRecoveryPending\(\)\}/);
+  });
+});
+
+describe("a finished or abandoned reset stays finished (#983 b, c)", () => {
+  const LINK = "https://app.houndstack.com/#access_token=a&refresh_token=r&type=recovery";
+
+  it("after the password is saved, /auth is not sent back to /reset-password", () => {
+    const store = memoryStore();
+    captureRecoveryFromUrl(LINK, store); // the tab booted from the emailed link
+    expect(isRecoveryPending(store)).toBe(true);
+    clearRecoveryPending(store); // updateUser succeeded
+    // 1.5 s later the page navigates to /auth, which asks where to go. The
+    // spent boot link used to answer "/reset-password", which re-raised the flag.
+    expect(recoveryRedirectTarget("https://app.houndstack.com/auth", store)).toBeNull();
+  });
+
+  it("after 'Back to sign in', /auth is not sent back to /reset-password", async () => {
+    const store = memoryStore();
+    captureRecoveryFromUrl(LINK, store);
+    await abandonRecovery({ auth: { signOut: vi.fn().mockResolvedValue({ error: null }) } }, store);
+    expect(recoveryRedirectTarget("https://app.houndstack.com/auth", store)).toBeNull();
+  });
+
+  it("a failed sign-out keeps the tab on the reset", async () => {
+    const store = memoryStore();
+    captureRecoveryFromUrl(LINK, store);
+    await abandonRecovery(
+      { auth: { signOut: vi.fn().mockResolvedValue({ error: new Error("x") }) } },
+      store,
+    );
+    expect(recoveryRedirectTarget("https://app.houndstack.com/auth", store)).toBe(
+      "/reset-password",
+    );
+    clearRecoveryPending(store);
+  });
+
+  it("the main reset form has 'Back to sign in' too", () => {
+    const src = read("src/routes/reset-password.tsx");
+    expect(src).toMatch(/phase\.kind === "ready" && <BackToSignIn \/>/);
+    expect(src).toMatch(/function BackToSignIn/);
   });
 });

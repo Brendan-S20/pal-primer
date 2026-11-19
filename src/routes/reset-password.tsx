@@ -168,6 +168,8 @@ function ResetPasswordPage() {
         </form>
       )}
 
+      {phase.kind === "ready" && <BackToSignIn />}
+
       {phase.kind === "invalid" && <ResendResetLink message={phase.message} />}
 
       {phase.kind === "done" && (
@@ -194,7 +196,6 @@ function ResetPasswordPage() {
 /** The expired/used-link state: say so, and offer a fresh link right here
  *  rather than sending the person back through sign-in to find the button. */
 function ResendResetLink({ message }: { message: string }) {
-  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
@@ -245,19 +246,27 @@ function ResendResetLink({ message }: { message: string }) {
           </p>
         )}
       </form>
-      <p className="text-center text-sm">
-        <Link
-          to="/auth"
-          onClick={(e) => {
-            // Signed out first, so /auth does not land the reset session.
-            e.preventDefault();
-            void abandonRecovery(supabase).finally(() => navigate({ to: "/auth" }));
-          }}
-          className="inline-flex min-h-11 items-center text-muted-foreground underline underline-offset-2 hover:text-primary"
-        >
-          Back to sign in
-        </Link>
-      </p>
+      <BackToSignIn />
     </div>
+  );
+}
+
+/** Leaves the reset: signs this device out first, so /auth does not land the
+ *  reset session, then goes to /auth (#983). */
+function BackToSignIn() {
+  const navigate = useNavigate();
+  return (
+    <p className="text-center text-sm">
+      <Link
+        to="/auth"
+        onClick={(e) => {
+          e.preventDefault();
+          void abandonRecovery(supabase).finally(() => navigate({ to: "/auth" }));
+        }}
+        className="inline-flex min-h-11 items-center text-muted-foreground underline underline-offset-2 hover:text-primary"
+      >
+        Back to sign in
+      </Link>
+    </p>
   );
 }

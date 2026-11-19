@@ -311,6 +311,12 @@ export function markRecoveryPending(
 }
 
 export function clearRecoveryPending(store: FlagStore | null = sessionStore()): void {
+  // The reset is over (finished, abandoned, or replaced by a password
+  // sign-in), so the link this page booted with is spent too. Left behind,
+  // /auth forwards the tab back to /reset-password, whose session check then
+  // raises the flag again: a finished reset bounced 1.5 s later and stayed
+  // trapped (#983).
+  bootLink = null;
   try {
     store?.removeItem(FLAG_KEY);
   } catch {
