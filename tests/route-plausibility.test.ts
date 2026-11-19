@@ -35,6 +35,19 @@ describe("findRouteWarnings (finding #10)", () => {
     expect(w[0].message).not.toMatch(/\bkm\b/);
   });
 
+  // #986: "depot" is a truck fleet's word, so only a pet-waste business is
+  // told to check one. Left unset it is a pet-waste business, as everywhere.
+  it("says depot to a pet-waste business and never to a walker", () => {
+    const far = [
+      { id: "v1", clientName: "Far", travel_km: 1854.2, travel_min: 3708, scheduled_on: "2026-07-08" },
+    ];
+    expect(findRouteWarnings(far)[0].message).toMatch(/technician's depot address/);
+    expect(findRouteWarnings(far, { petWaste: true })[0].message).toMatch(/depot/);
+    const walker = findRouteWarnings(far, { petWaste: false })[0].message;
+    expect(walker).not.toMatch(/depot/i);
+    expect(walker).toMatch(/Check the route start address\./);
+  });
+
   it("passes a normal in-town stop", () => {
     const w = findRouteWarnings([
       { id: "v1", clientName: "Local", travel_km: 8, travel_min: 14, scheduled_on: "2026-07-08" },

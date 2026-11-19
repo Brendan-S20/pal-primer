@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Undo2, Trash2, Save, MousePointer2, Pencil, Circle as CircleIcon, Clock } from "lucide-react";
 import type { PolygonGeoJSON } from "@/components/BoundarySketch";
 import { DRIVE_M_PER_MIN } from "@/lib/zone-match";
+import { useServiceLines } from "@/components/CommercialOnly";
 import { useMapRenderer } from "@/lib/maps/use-map-renderer";
 import { OverlayGroup, US_VIEW, circleBoundsPoints, type LatLng } from "@/lib/maps/types";
 import { clickMap, clickVertex, undoDraft, type PolygonDraft } from "@/lib/zone-drawing";
@@ -61,6 +62,7 @@ export function ZoneCoverageMap({
    * point for radius/drive-time modes when none is placed yet. */
   focusPoint?: { lat: number; lng: number } | null;
 }) {
+  const { petWaste } = useServiceLines();
   const containerRef = useRef<HTMLDivElement>(null);
   const pointsRef = useRef<LatLng[]>(fromPolygon(initial.polygon));
   // True once the first corner is clicked again: the shape is finished, and
@@ -336,7 +338,7 @@ export function ZoneCoverageMap({
       {mode === "drive_time" && (
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <MousePointer2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          <span className="min-w-0 text-muted-foreground">Click the map to place the shop/depot, then set minutes:</span>
+          <span className="min-w-0 text-muted-foreground">Click the map to place the {petWaste ? "shop/depot" : "home or shop"}, then set minutes:</span>
           <input type="range" aria-label="Drive time in minutes" min={5} max={60} step={5} value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} className="min-w-32 flex-1 touch:min-h-11" />
           <span className="w-24 text-right tabular-nums">{minutes} min</span>
         </div>

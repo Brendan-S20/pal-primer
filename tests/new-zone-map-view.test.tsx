@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ZoneCoverageMap, type CoverageValue } from "@/components/ZoneCoverageMap";
 import { US_VIEW } from "@/lib/maps/types";
 
@@ -15,7 +16,14 @@ const empty: CoverageValue = {
   driveTimeMinutes: null,
 };
 function view(initial: CoverageValue, openingCenter: { lat: number; lng: number } | null) {
-  renderToStaticMarkup(createElement(ZoneCoverageMap, { initial, openingCenter }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  renderToStaticMarkup(
+    createElement(
+      QueryClientProvider,
+      { client },
+      createElement(ZoneCoverageMap, { initial, openingCenter }),
+    ),
+  );
   return renderer.mock.calls.at(-1)?.[1]?.initialView;
 }
 describe("new zone map viewport", () => {

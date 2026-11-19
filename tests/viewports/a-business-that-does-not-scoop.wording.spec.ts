@@ -109,12 +109,12 @@ async function readable(page: Page): Promise<string> {
   }, fx.ORG_NAME);
 }
 
-async function scooperWordsOn(page: Page): Promise<string[]> {
+async function scooperWordsOn(page: Page, allow?: RegExp): Promise<string[]> {
   const text = await readable(page);
   return text
     .split("\n")
     .map((l) => l.trim())
-    .filter((l) => SCOOPER_WORDS.test(l));
+    .filter((l) => SCOOPER_WORDS.test(l) && !allow?.test(l));
 }
 
 async function healthy(page: Page, w: number, where: string) {
@@ -135,8 +135,8 @@ async function healthy(page: Page, w: number, where: string) {
   if (w < 768) expect(await findControlsUnder44px(page), where).toEqual([]);
 }
 
-async function noScooperWords(page: Page, where: string) {
-  expect(await scooperWordsOn(page), `${where}: scooper words a walker should not read`).toEqual(
+async function noScooperWords(page: Page, where: string, allow?: RegExp) {
+  expect(await scooperWordsOn(page, allow), `${where}: scooper words a walker should not read`).toEqual(
     [],
   );
 }
@@ -157,6 +157,9 @@ type Surface = {
   /** More wording each business must see, on the same surface. */
   walkerAlso?: RegExp;
   petWasteAlso?: RegExp;
+  /** A line the scan lets through on this surface: wording another card on the
+   *  page keeps on purpose (the fixture org's configured First cleanup card). */
+  allow?: RegExp;
   /** A field placeholder each business must see (the walker's is its alone). */
   walkerPlaceholder?: string;
   petWastePlaceholder?: string;
@@ -227,6 +230,27 @@ const SURFACES: Surface[] = [
     // (staff_end_point, route-inputs.ts); a scooper keeps its landfill hint.
     walkerPlaceholder: "Leave blank to end at the last visit",
     petWastePlaceholder: "Landfill or home address",
+  },
+  {
+    // #986: the drive-time prompt said "shop/depot". "depot" is in
+    // SCOOPER_WORDS, so the walker run's scan fails if it comes back.
+    name: "/settings/zones, new zone drawer in drive-time mode",
+    path: "/settings/zones",
+    ready: async (page) => {
+      const add = page.getByRole("button", { name: /New zone/ }).first();
+      await expect(add).toBeVisible({ timeout: FIRST_PAINT_MS });
+      await add.click();
+      const mode = page.getByRole("button", { name: /Drive time/ }).first();
+      await expect(mode).toBeVisible({ timeout: FIRST_PAINT_MS });
+      await mode.click();
+      await expect(page.getByText(/Click the map to place the/).first()).toBeVisible();
+    },
+    walker: /place the home or shop, then set minutes/,
+    walkerOnly: true,
+    // The page's First cleanup card stays once configured (settings.zones.tsx),
+    // and the fixture org has it priced by last-cleaned. Not this issue's words.
+    allow: /^Clients answer "When was your yard last cleaned\?"$/,
+    petWaste: /place the shop\/depot, then set minutes/,
   },
   {
     name: "/clients/new",
@@ -315,7 +339,7 @@ for (const { w, h, label } of SIZES) {
           await expect(page.getByText(s.walkerAlso).locator("visible=true").first()).toBeVisible();
         }
         await healthy(page, w, `${s.name} (dog walking) @${w}px`);
-        await noScooperWords(page, `${s.name} (dog walking) @${w}px`);
+        await noScooperWords(page, `${s.name} (dog walking) @${w}px`, s.allow);
       });
     }
   });
