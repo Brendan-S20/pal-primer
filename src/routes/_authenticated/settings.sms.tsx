@@ -38,6 +38,7 @@ import {
 } from "@/lib/texting-hosted-site";
 import { useMyRole } from "@/hooks/useMyRole";
 import { titleHead } from "@/lib/page-title";
+import { TextingRejectionAdvice } from "@/components/settings/TextingRejectionAdvice";
 import { formatDateTime, formatDay } from "@/lib/format";
 import { SettingsLoadGate } from "@/components/settings/SettingsLoadGate";
 
@@ -183,6 +184,9 @@ function TextingSettings() {
             checking={check.isPending}
             onCheck={() => check.mutate()}
           />
+          {status === "rejected" && (
+            <TextingRejectionAdvice code={reg?.rejection_code} reason={reg?.rejection_reason} />
+          )}
           {needsAddon && <AddonNeeded />}
           {live && <LiveSender />}
           {canSubmit(status, reg?.updated_at ?? null) ? (

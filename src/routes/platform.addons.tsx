@@ -20,9 +20,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Puzzle } from "lucide-react";
 import { titleHead } from "@/lib/page-title";
 import { Button } from "@/components/ui/button";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, formatDay } from "@/lib/format";
 import { activateTextingForOrg, listTextingReviews } from "@/lib/texting-ops.functions";
 import { opsQueueNote, UNDER_REVIEW_LINE } from "@/lib/managed-texting";
+import { needsOwnerFix, rejectionAdvice } from "@/lib/texting-rejection";
 
 export const Route = createFileRoute("/platform/addons")({
   head: () => titleHead("Add-ons", "Platform admin"),
@@ -159,6 +160,11 @@ function AddonsAdminPage() {
  * "Under review, usually ready shortly" until an admin presses Activate here;
  * texting switches on once the carrier has approved too (either order).
  * Stacked rows rather than a table, so it reads at 360px.
+ *
+ * #972: rejected and stopped filings are listed too, soonest resubmit
+ * deadline first, with Twilio's reason, the deadline and the last error. They
+ * have nothing to activate: they wait on the owner, who sees the same reason
+ * in plain words on Settings → Texting.
  */
 function TextingReviewQueue() {
   const qc = useQueryClient();
@@ -181,13 +187,14 @@ function TextingReviewQueue() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Managed texting: under review</CardTitle>
+        <CardTitle className="text-base">Managed texting: filings</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">
           Businesses that added Managed texting and submitted their details. Each one reads
           &ldquo;{UNDER_REVIEW_LINE}&rdquo; until you activate it here. Texting switches on once the
-          carrier has approved as well.
+          carrier has approved as well. Rejected and stopped filings are listed first, soonest
+          resubmit deadline first: those wait on the owner to fix and resubmit.
         </p>
         {q.isLoading ? (
           <Skeleton className="h-8 w-full" />
@@ -195,14 +202,19 @@ function TextingReviewQueue() {
           <p className="text-sm text-destructive">Could not load the queue.</p>
         ) : rows.length === 0 ? (
           <p className="text-sm text-muted-foreground" data-testid="texting-review-empty">
-            Nothing under review.
+            Nothing under review, rejected or stopped.
           </p>
         ) : (
           <ul className="divide-y rounded-lg border" data-testid="texting-review-queue">
-            {rows.map((r) => (
+            {rows.map((r) => {
+              const fix = needsOwnerFix(r.status);
+              const advice =
+                r.status === "rejected" ? rejectionAdvice(r.rejectionCode, r.rejectionReason) : null;
+              return (
               <li
                 key={r.organizationId}
                 className="flex flex-wrap items-center justify-between gap-3 p-3"
+                data-status={r.status}
               >
                 <div className="min-w-0">
                   <div className="truncate font-medium">{r.businessName}</div>
@@ -211,11 +223,41 @@ function TextingReviewQueue() {
                     {r.phoneNumber ? <span dir="ltr">{r.phoneNumber}</span> : "No number yet"}
                     {r.submittedAt ? ` · submitted ${formatDateTime(r.submittedAt)}` : ""}
                   </div>
-                  <div className="mt-1 text-xs">{opsQueueNote(r.status, r.opsApprovedAt)}</div>
+                  {fix ? (
+                    <>
+                      <div className="mt-1 break-words text-xs font-medium text-destructive">
+                        {r.status === "rejected" ? "Rejected" : "Setup stopped"}
+                        {r.rejectionCode ? <span dir="ltr">{` · ${r.rejectionCode}`}</span> : ""}
+                        {advice ? ` · ${advice.title}` : ""}
+                      </div>
+                      {r.resubmitDeadline && (
+                        <div className="mt-1 text-xs" data-testid="texting-resubmit-by">
+                          Resubmit by {formatDay(r.resubmitDeadline)}
+                        </div>
+                      )}
+                      {r.rejectionReason && (
+                        <div className="mt-1 break-words text-xs text-muted-foreground">
+                          Twilio: {r.rejectionReason}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="mt-1 text-xs">{opsQueueNote(r.status, r.opsApprovedAt)}</div>
+                  )}
                   {r.lastError && (
-                    <div className="mt-1 break-words text-xs text-destructive">{r.lastError}</div>
+                    <div className="mt-1 break-words text-xs text-destructive">
+                      Last error: {r.lastError}
+                    </div>
                   )}
                 </div>
+                {fix ? (
+                  // A rejection is the owner's to fix. A stop can be ours (no
+                  // numbers, a Twilio outage, setup not configured), so the
+                  // error decides who acts (#972 review).
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {r.status === "rejected" ? "Waiting on the owner" : "Setup stopped: check the error"}
+                  </span>
+                ) : (
                 <Button
                   size="sm"
                   disabled={activate.isPending || (Boolean(r.opsApprovedAt) && r.status !== "approved")}
@@ -229,8 +271,10 @@ function TextingReviewQueue() {
                         ? "Activated"
                         : "Activate"}
                 </Button>
+                )}
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </CardContent>
