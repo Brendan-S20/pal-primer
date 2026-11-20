@@ -40,7 +40,7 @@ export function TextingReadinessView({ data }: { data: TextingReadiness }) {
         ))}
       </ul>
       <p className="text-sm">
-        Primary customer profile: <span className="font-medium">{profileLabel(data.profile)}</span>
+        Twilio primary business profile: <span className="font-medium">{profileLabel(data.profile)}</span>
       </p>
     </div>
   );
