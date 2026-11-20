@@ -3,7 +3,7 @@ import { lookupAddressPoint } from "@/lib/geocode.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Fragment, useEffect, useRef, useState } from "react";
-import { SettingsLoadError } from "@/components/settings/SettingsLoadGate";
+import { SettingsLoadError, SettingsOwnerOnly } from "@/components/settings/SettingsLoadGate";
 import {
   listOrgUsers,
   changeUserRole,
@@ -248,7 +248,9 @@ function UsersPage() {
           {/* A failed load used to draw the empty table and "No team members
               yet.", which reads as a team that has been deleted (#945). The
               role pickers in it save on change, so they wait for the list. */}
-          {!data ? (
+          {myRole === "tech" ? (
+            <SettingsOwnerOnly what="the team" />
+          ) : !data ? (
             usersQ.isError ? (
               <SettingsLoadError
                 what="team"
