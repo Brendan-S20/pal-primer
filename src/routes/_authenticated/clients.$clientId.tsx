@@ -203,12 +203,12 @@ function ClientDetail() {
   const clientName = (clientData?.client as { display_name?: string | null } | undefined)
     ?.display_name;
   useDocumentTitle(clientName ? pageTitle(clientName, "Clients") : null);
-  const { data: propsData } = useQuery({
+  const { data: propsData, isLoading: propsLoading } = useQuery({
     queryKey: ["properties", clientId],
     queryFn: () => listPropsFn({ data: { clientId } }),
     enabled: canViewDirectory,
   });
-  const { data: subsData } = useQuery({
+  const { data: subsData, isLoading: subsLoading } = useQuery({
     queryKey: ["subs", clientId],
     queryFn: () => listSubsFn({ data: { clientId } }),
     enabled: canViewDirectory,
@@ -390,6 +390,7 @@ function ClientDetail() {
         properties={activeProperties}
         propertyCount={activeProperties.length}
         activeServiceCount={activeSubs.length}
+        countsReady={!propsLoading && !subsLoading}
         outstandingCents={canBill ? (billing?.openTotalCents ?? 0) : null}
         canBill={canBill}
         onEditClient={() => setEditClientOpen(true)}
