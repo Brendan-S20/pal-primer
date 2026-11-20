@@ -10,10 +10,19 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@/components/ui/table";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -22,6 +31,7 @@ import { titleHead } from "@/lib/page-title";
 import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/lib/format";
 import { activateTextingForOrg, listTextingReviews } from "@/lib/texting-ops.functions";
+import { TextingReadinessCard } from "@/components/TextingReadinessCard";
 import { opsQueueNote, UNDER_REVIEW_LINE } from "@/lib/managed-texting";
 
 export const Route = createFileRoute("/platform/addons")({
@@ -29,7 +39,10 @@ export const Route = createFileRoute("/platform/addons")({
   component: AddonsAdminPage,
 });
 
-const STATUS_META: Record<AddonStatus, { label: string; variant: "default" | "secondary" | "outline" }> = {
+const STATUS_META: Record<
+  AddonStatus,
+  { label: string; variant: "default" | "secondary" | "outline" }
+> = {
   active: { label: "Active", variant: "default" },
   coming_soon: { label: "Coming soon", variant: "outline" },
   disabled: { label: "Disabled", variant: "secondary" },
@@ -100,7 +113,9 @@ function AddonsAdminPage() {
                       <TableCell>
                         <div className="font-medium">{a.name}</div>
                         {a.description ? (
-                          <div className="max-w-md text-xs text-muted-foreground">{a.description}</div>
+                          <div className="max-w-md text-xs text-muted-foreground">
+                            {a.description}
+                          </div>
                         ) : null}
                       </TableCell>
                       <TableCell className="font-mono text-xs">{a.slug}</TableCell>
@@ -121,7 +136,9 @@ function AddonsAdminPage() {
                             }
                           }}
                         >
-                          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                          <SelectTrigger className="w-40">
+                            <SelectValue />
+                          </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="active">Enabled</SelectItem>
                             <SelectItem value="coming_soon">Coming soon</SelectItem>
@@ -133,21 +150,29 @@ function AddonsAdminPage() {
                   );
                 })}
                 {q.isLoading ? (
-                  <TableRow><TableCell colSpan={6}><Skeleton className="h-8 w-full" /></TableCell></TableRow>
+                  <TableRow>
+                    <TableCell colSpan={6}>
+                      <Skeleton className="h-8 w-full" />
+                    </TableCell>
+                  </TableRow>
                 ) : rows.length === 0 ? (
-                  <TableRow><TableCell colSpan={6} className="py-6">
-                    <EmptyState
-                      icon={<Puzzle className="h-5 w-5 shrink-0" />}
-                      title="No add-ons yet"
-                      description="Add-ons are seeded by migration; none exist in this environment."
-                    />
-                  </TableCell></TableRow>
+                  <TableRow>
+                    <TableCell colSpan={6} className="py-6">
+                      <EmptyState
+                        icon={<Puzzle className="h-5 w-5 shrink-0" />}
+                        title="No add-ons yet"
+                        description="Add-ons are seeded by migration; none exist in this environment."
+                      />
+                    </TableCell>
+                  </TableRow>
                 ) : null}
               </TableBody>
             </Table>
           </div>
         </CardContent>
       </Card>
+
+      <TextingReadinessCard />
 
       <TextingReviewQueue />
     </div>
@@ -185,8 +210,8 @@ function TextingReviewQueue() {
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          Businesses that added Managed texting and submitted their details. Each one reads
-          &ldquo;{UNDER_REVIEW_LINE}&rdquo; until you activate it here. Texting switches on once the
+          Businesses that added Managed texting and submitted their details. Each one reads &ldquo;
+          {UNDER_REVIEW_LINE}&rdquo; until you activate it here. Texting switches on once the
           carrier has approved as well.
         </p>
         {q.isLoading ? (
@@ -218,7 +243,9 @@ function TextingReviewQueue() {
                 </div>
                 <Button
                   size="sm"
-                  disabled={activate.isPending || (Boolean(r.opsApprovedAt) && r.status !== "approved")}
+                  disabled={
+                    activate.isPending || (Boolean(r.opsApprovedAt) && r.status !== "approved")
+                  }
                   onClick={() => activate.mutate(r.organizationId)}
                 >
                   {activate.isPending && activate.variables === r.organizationId
