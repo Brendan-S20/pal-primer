@@ -39,7 +39,7 @@ import {
 import { useMyRole } from "@/hooks/useMyRole";
 import { titleHead } from "@/lib/page-title";
 import { formatDateTime, formatDay } from "@/lib/format";
-import { SettingsLoadGate } from "@/components/settings/SettingsLoadGate";
+import { SettingsLoadGate, SettingsOwnerOnly } from "@/components/settings/SettingsLoadGate";
 
 // Settings → Texting (#538, BUILD-3).
 //
@@ -174,6 +174,9 @@ function TextingSettings() {
           because this query polls every minute while carriers review it, one
           failed poll replaced a half-typed registration with that message.
           The gate keeps the form while the saved draft is held. */}
+      {role === "tech" ? (
+        <SettingsOwnerOnly what="texting setup" />
+      ) : (
       <SettingsLoadGate query={q} what="texting setup" fields={4}>
         <>
           <StatusCard
@@ -202,6 +205,7 @@ function TextingSettings() {
           </p>
         </>
       </SettingsLoadGate>
+      )}
     </div>
   );
 }

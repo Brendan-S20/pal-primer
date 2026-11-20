@@ -96,3 +96,13 @@ export function SettingsLoadError({
     </div>
   );
 }
+
+/** What a role that cannot see a settings page reads, instead of a load that
+ *  can only fail (#1015). The same plain words /settings/directory uses. */
+export function SettingsOwnerOnly({ what }: { what: string }) {
+  return (
+    <p data-settings-not-for-role className="rounded-lg border bg-muted/40 p-3 text-sm">
+      Only an owner or office manager can see {what}.
+    </p>
+  );
+}
