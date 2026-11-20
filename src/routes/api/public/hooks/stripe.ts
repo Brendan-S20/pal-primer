@@ -1289,9 +1289,14 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                           inv.organization_id,
                           c.portal_token as string | null,
                         );
+                        // lib/client-sms-templates; now with STOP wording
+                        // like every other text (#971 review).
+                        const { cardDeclinedText } = await import(
+                          "@/lib/client-sms-templates"
+                        );
                         const body = brandedBody(
                           sender.brand,
-                          `Hi ${c.display_name}, your card on file was declined. Please update your payment method: ${url}`,
+                          cardDeclinedText({ name: c.display_name, link: String(url) }),
                         );
                         const r = await sendTwilioSms({
                           to: c.primary_phone,

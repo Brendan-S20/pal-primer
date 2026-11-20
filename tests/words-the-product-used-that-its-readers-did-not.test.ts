@@ -139,6 +139,13 @@ describe("the lifecycle texts call it the same thing the portal does", () => {
    *  and an arrival window. */
   const templates = (): string[] => [
     ...[...codeOnly(messages()).matchAll(/`Hi \$\{name\}[^`]*`/g)].map((m) => m[0]),
+    // #971 review: the reminder and completed texts moved to
+    // client-sms-templates, where the texting filing's samples are built too.
+    ...[
+      ...codeOnly(read("src/lib/client-sms-templates.ts")()).matchAll(
+        /`Hi \$\{p\.name\}, (?:this is a reminder your visit|your visit is complete)[^`]*`/g,
+      ),
+    ].map((m) => m[0]),
     ...[
       ...codeOnly(read("src/lib/on-my-way.ts")()).matchAll(/`Hi \$\{p\.customerName\}[^`]*`/g),
     ].map((m) => m[0]),
