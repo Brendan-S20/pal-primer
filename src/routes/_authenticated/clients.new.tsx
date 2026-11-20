@@ -80,6 +80,7 @@ import {
 } from "@/lib/new-client-plan";
 import { serverErrorMessage } from "@/lib/server-outcome";
 import { createFailedMessage } from "@/lib/create-client-error";
+import { contactProblems } from "@/lib/form-errors";
 import { typedPriceCents } from "@/lib/typed-price";
 import { useFormDraft } from "@/hooks/useFormDraft";
 import { afterClientBookChanged } from "@/lib/client-book-queries";
@@ -1185,8 +1186,12 @@ function NewClientWizardForm({
     onError: (e) => toast.error((e as Error).message),
   });
 
+  const contactIssues = contactProblems(primaryEmail ?? "", primaryPhone ?? "");
   const canNext = (() => {
-    if (current === "Contact") return (displayName ?? "").trim().length > 0;
+    if (current === "Contact")
+      return (
+        (displayName ?? "").trim().length > 0 && !contactIssues.email && !contactIssues.phone
+      );
     // Region/State is required — the property is unusable downstream without it
     // (routing, zone pricing, geocoding all need it). Finding #13.
     if (current === "Property") return !!(street && city && region && postalCode);
@@ -1378,7 +1383,14 @@ function NewClientWizardForm({
                   type="email"
                   value={primaryEmail}
                   onChange={(e) => setPrimaryEmail(e.target.value)}
+                  aria-invalid={attempted && contactIssues.email ? true : undefined}
+                  aria-describedby={attempted && contactIssues.email ? "em-err" : undefined}
                 />
+                {attempted && contactIssues.email && (
+                  <p id="em-err" role="alert" className="text-xs text-destructive">
+                    {contactIssues.email}
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="ph">Phone</Label>
@@ -1387,7 +1399,15 @@ function NewClientWizardForm({
                   value={primaryPhone}
                   onChange={(e) => setPrimaryPhone(e.target.value)}
                   placeholder="e.g. (555) 123-4567"
+                  type="tel"
+                  aria-invalid={attempted && contactIssues.phone ? true : undefined}
+                  aria-describedby={attempted && contactIssues.phone ? "ph-err" : undefined}
                 />
+                {attempted && contactIssues.phone && (
+                  <p id="ph-err" role="alert" className="text-xs text-destructive">
+                    {contactIssues.phone}
+                  </p>
+                )}
               </div>
             </div>
             <div className="space-y-2">

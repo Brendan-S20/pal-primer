@@ -32,3 +32,25 @@ export function focusFirstInvalid(form: HTMLFormElement | null | undefined): voi
 export function looksLikeEmail(v: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 }
+
+/** A loose shape check for an optional phone field: digits with the usual
+ *  punctuation, at least seven of them, and an optional extension. It does not
+ *  decide whether the number rings; it stops "abc" and "12" (#1010). */
+export function looksLikePhone(v: string): boolean {
+  const t = v.trim();
+  if (!/^\+?[\d\s().\-]+(\s*(x|ext\.?)\s*\d+)?$/i.test(t)) return false;
+  return t.replace(/(x|ext\.?)\s*\d+$/i, "").replace(/\D/g, "").length >= 7;
+}
+
+/** What is wrong with the contact fields, if anything: said next to the field
+ *  that has it. Both are optional, so empty is fine. */
+export function contactProblems(email: string, phone: string): { email?: string; phone?: string } {
+  const out: { email?: string; phone?: string } = {};
+  if (email.trim() && !looksLikeEmail(email)) {
+    out.email = "Enter an email like name@example.com, or leave it empty.";
+  }
+  if (phone.trim() && !looksLikePhone(phone)) {
+    out.phone = "Enter a phone number with at least 7 digits, or leave it empty.";
+  }
+  return out;
+}
