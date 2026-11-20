@@ -246,7 +246,21 @@ export async function ensureBootstrapped(
     // database either records the invite as used (same business) or says why
     // it cannot be (a different one); either way the person finds out here
     // instead of the invitation sitting pending forever.
-    if (pendingInviteToken()) await acceptPendingInvite();
+    //
+    // A refusal here is not a reason to hold the person on /auth. They already
+    // have a business and a role; the invitation was meant for somebody else
+    // (or another business). Blocking the landing on it kept an Android tech
+    // on the sign-in form at every launch until the invite was revoked (#1009).
+    // The token is dropped, and the invite page itself says why it cannot be
+    // used. A new account's path below still surfaces the refusal.
+    if (pendingInviteToken()) {
+      try {
+        await acceptPendingInvite();
+      } catch (err) {
+        if (!(err instanceof InviteRefusedError)) throw err;
+        forgetInviteToken();
+      }
+    }
     return false;
   }
 

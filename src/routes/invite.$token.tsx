@@ -60,9 +60,13 @@ function InvitePage() {
   // through /auth?invite=, which keeps the token through Get started and an
   // OAuth round-trip (#568).
   const isStaff = q.data?.ok === true && q.data.kind === "staff";
+  // Not while signed in as somebody else: that account can never accept it,
+  // and a kept token is what sent the next launch to the invite sign-in (#1009).
+  const signedInAsOther =
+    !!session?.email && !!q.data?.email && session.email.toLowerCase() !== q.data.email.toLowerCase();
   useEffect(() => {
-    if (isStaff) rememberInviteToken(token);
-  }, [isStaff, token]);
+    if (isStaff && !checkingSession && !signedInAsOther) rememberInviteToken(token);
+  }, [isStaff, token, checkingSession, signedInAsOther]);
   // Signed in as the invited address: can this account actually join? Asked
   // before "ready to accept", so an account that already belongs to another
   // business reads why instead of pressing a button that fails (gaps-r2-03).
