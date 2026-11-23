@@ -450,6 +450,7 @@ function RoutesPage() {
           doComplete({ data: { visitId, confirmedEarly, overrideReason, blockAcknowledged } }),
         askWhy,
         () => completionBlock.check(visitId),
+        visitId,
       ),
     onSuccess: (done) => {
       if (!done) return;

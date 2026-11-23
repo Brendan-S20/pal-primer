@@ -22,9 +22,10 @@
 // new business that only walks, sits, grooms or trains starts with the photo
 // rule off; one that scoops keeps it on (lib/new-business-defaults.ts).
 import { useCallback, useId, useRef, useState } from "react";
+import { Camera } from "lucide-react";
+import { useOfflineVisitActions } from "@/lib/offline/useOfflineVisitActions";
 import {
   AlertDialog,
-  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -34,6 +35,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+
+/** What the dialog resolves with when a completion photo was just added:
+ *  complete again, no reason needed. */
+export const PHOTO_ADDED = Symbol("photo-added");
+type WhyAnswer = string | null | typeof PHOTO_ADDED;
 
 type OfficeCompleteResult = { ok: true } | { ok: false; needsOverride: string };
 
@@ -47,15 +53,22 @@ type OfficeCompleteResult = { ok: true } | { ok: false; needsOverride: string };
  *  timeline records that the warning was seen. */
 export async function completeFromOffice(
   call: (overrideReason?: string, blockAcknowledged?: boolean) => Promise<OfficeCompleteResult>,
-  askWhy: (missing: string) => Promise<string | null>,
+  askWhy: (missing: string, visitId?: string) => Promise<WhyAnswer>,
   checkBlock?: () => Promise<"clear" | "acknowledged" | "cancelled">,
+  visitId?: string,
 ): Promise<boolean> {
   const block = checkBlock ? await checkBlock() : "clear";
   if (block === "cancelled") return false;
   const acknowledged = block === "acknowledged" ? true : undefined;
-  const first = await call(undefined, acknowledged);
+  let first = await call(undefined, acknowledged);
   if (first.ok) return true;
-  const why = await askWhy(first.needsOverride);
+  let why = await askWhy(first.needsOverride, visitId);
+  // A photo added in the dialog: ask the database again before asking why.
+  while (why === PHOTO_ADDED) {
+    first = await call(undefined, acknowledged);
+    if (first.ok) return true;
+    why = await askWhy(first.needsOverride, visitId);
+  }
   if (!why) return false;
   const second = await call(why, acknowledged);
   if (!second.ok) throw new Error(second.needsOverride);
@@ -64,19 +77,21 @@ export async function completeFromOffice(
 
 export function useOfficeCompleteOverride() {
   const [missing, setMissing] = useState<string | null>(null);
+  const [visitId, setVisitId] = useState<string | undefined>();
   const [reason, setReason] = useState("");
-  const resolver = useRef<(v: string | null) => void>(() => {});
+  const resolver = useRef<(v: WhyAnswer) => void>(() => {});
   const fieldId = useId();
 
-  const askWhy = useCallback((what: string): Promise<string | null> => {
-    return new Promise<string | null>((resolve) => {
+  const askWhy = useCallback((what: string, forVisitId?: string): Promise<WhyAnswer> => {
+    return new Promise<WhyAnswer>((resolve) => {
       resolver.current = resolve;
       setReason("");
+      setVisitId(forVisitId);
       setMissing(what);
     });
   }, []);
 
-  function settle(value: string | null) {
+  function settle(value: WhyAnswer) {
     resolver.current(value);
     resolver.current = () => {};
     setMissing(null);
@@ -106,6 +121,10 @@ export function useOfficeCompleteOverride() {
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
+        {/* The fix first: the missing photo can be added right here. */}
+        {visitId && missing && /photo/i.test(missing) && (
+          <CompletionPhotoButton visitId={visitId} onAdded={() => settle(PHOTO_ADDED)} />
+        )}
         <div className="space-y-2">
           <Label htmlFor={fieldId}>Why is it missing?</Label>
           <Textarea
@@ -122,7 +141,12 @@ export function useOfficeCompleteOverride() {
           />
         </div>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={() => settle(null)}>Cancel</AlertDialogCancel>
+          {/* A plain button, not AlertDialogCancel: Cancel closes by settling
+              the promise itself rather than relying on the dialog's own
+              close, so it cannot be left open behind a drawer (#1012). */}
+          <Button type="button" variant="outline" onClick={() => settle(null)}>
+            Cancel
+          </Button>
           <Button disabled={!trimmed} onClick={() => settle(trimmed)}>
             Complete with this reason
           </Button>
@@ -132,4 +156,66 @@ export function useOfficeCompleteOverride() {
   );
 
   return { askWhy, dialog };
+}
+
+/** Adds the photo the business requires, typed Completion, from the dialog
+ *  that asks for it. Online it uploads and the completion is tried again;
+ *  offline the photo is queued and the dialog says it will not count yet. */
+function CompletionPhotoButton({ visitId, onAdded }: { visitId: string; onAdded: () => void }) {
+  const actions = useOfflineVisitActions(visitId, undefined);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const inputId = useId();
+
+  async function add(file: File) {
+    setBusy(true);
+    setNote(null);
+    try {
+      const r = await actions.uploadPhoto(file, "completion");
+      if (r.queued) {
+        setNote(
+          "You're offline. The photo is saved and uploads when you're back online. It will not count until then.",
+        );
+        return;
+      }
+      onAdded();
+    } catch (e) {
+      setNote(e instanceof Error && e.message ? e.message : "The photo did not upload. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      <input
+        id={inputId}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        data-testid="completion-photo-input"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void add(f);
+          e.target.value = "";
+        }}
+      />
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full touch:min-h-11"
+        disabled={busy}
+        onClick={() => document.getElementById(inputId)?.click()}
+      >
+        <Camera className="mr-1.5 h-4 w-4 shrink-0" />
+        {busy ? "Uploading…" : "Add completion photo"}
+      </Button>
+      {note && (
+        <p role="alert" className="text-xs text-destructive">
+          {note}
+        </p>
+      )}
+    </div>
+  );
 }
