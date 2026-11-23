@@ -564,7 +564,8 @@ export function VisitDetailDrawer({
                     Open client
                   </Button>
                 </Link>
-                {p?.id && (
+                {/* The yard boundary is a pet waste tool (#1022). */}
+                {p?.id && yardVisit && (
                   <Link
                     to="/properties/$propertyId/boundary"
                     params={{ propertyId: p.id }}
@@ -616,6 +617,7 @@ export function VisitDetailDrawer({
             <DogsSection
               propertyId={p?.id}
               dogs={dogs}
+              showDna={yardVisit}
               onChanged={() => qc.invalidateQueries({ queryKey: ["visit-detail", visitId] })}
             />
 
@@ -923,10 +925,13 @@ function OtherVisits({
 function DogsSection({
   propertyId,
   dogs,
+  showDna = true,
   onChanged,
 }: {
   propertyId: string | undefined;
   dogs: any[];
+  /** The DNA registry is a pet waste tool: off on walk, sit, groom and lesson visits (#1022). */
+  showDna?: boolean;
   onChanged: () => void;
 }) {
   const doAdd = useServerFn(addDog);
@@ -986,7 +991,7 @@ function DogsSection({
                   </div>
                   {d.notes && <div className="mt-1 text-xs">{d.notes}</div>}
                 </div>
-                <DogDnaControl dog={d} onChanged={onChanged} />
+                {showDna && <DogDnaControl dog={d} onChanged={onChanged} />}
               </div>
             </li>
           ))}
