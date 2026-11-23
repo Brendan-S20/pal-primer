@@ -395,6 +395,7 @@ export function VisitDetailDrawer({
           }),
         askWhy,
         () => completionBlock.check(visitId!),
+        visitId!,
       ),
     onSuccess: (done) => {
       if (!done) return;
@@ -829,7 +830,7 @@ export function VisitDetailDrawer({
                           className="touch:min-h-11"
                         >
                           <CheckCircle2 className="mr-1.5 h-4 w-4 shrink-0" />
-                          Complete
+                          {completeMut.isPending ? "Completing…" : "Complete"}
                         </Button>
                       </div>
                     )}
