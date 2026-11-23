@@ -279,7 +279,7 @@ describe("Settings > Texting", () => {
     expect(page).toContain('target="_blank"');
     expect(page).toContain("{HOSTED_POLICIES_LINE}");
     // What is saved and submitted is the chosen site's URLs.
-    expect(page).toContain("registrationDetailsSchema.safeParse(filed)");
+    expect(page).toMatch(/registrationDetailsSchema\.safeParse\(\{\s*\.\.\.filed,/);
     expect(page).toContain("saveFn({ data: { ...filed,");
   });
 });
