@@ -379,6 +379,17 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
           aiOverage = { error: (e as Error).message };
         }
 
+        // #988: the same for a closed month of texting segments.
+        let smsOverage: Record<string, unknown>;
+        try {
+          const { runSmsOverageBilling } = await import("@/lib/sms-overage-billing.server");
+          const r = await runSmsOverageBilling();
+          smsOverage = { billed: r.billed, cents_total: r.centsTotal, skipped: r.skipped };
+        } catch (e) {
+          console.error("[nightly] sms overage billing failed", e);
+          smsOverage = { error: (e as Error).message };
+        }
+
         // ── Coordinates for the two routing anchors ────────────────────────
         //
         // staff_start_point (20260815180000) falls back to the business
@@ -537,6 +548,7 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
           ran_at: new Date().toISOString(),
           orgs: summary,
           ai_overage: aiOverage,
+          sms_overage: smsOverage,
           trial_notices: trialNotices,
           routing_anchors: anchors,
           live_locations: liveLocations,
@@ -897,6 +909,7 @@ async function sendOverdueReminders(
         from: sender.from ?? undefined,
         messagingServiceSid: sender.messagingServiceSid ?? undefined,
         credentials: sender.credentials,
+        usage: { orgId: orgId, kind: "payment_notice" },
       });
       await supabaseAdmin.from("messages").insert({
         organization_id: orgId,

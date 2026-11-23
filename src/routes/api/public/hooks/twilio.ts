@@ -188,6 +188,19 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
           twilio_sid: sid,
           status: "received",
         }).select("id").single();
+        // #988: count what came in. Twilio's NumSegments when it sends one.
+        {
+          const { recordSmsSegments } = await import("@/lib/sms-usage.server");
+          const reported = Number(params.NumSegments);
+          await recordSmsSegments({
+            orgId: org.id,
+            direction: "inbound",
+            kind: "inbound",
+            body: params.Body ?? "",
+            twilioSid: sid,
+            numSegments: Number.isFinite(reported) ? reported : null,
+          });
+        }
 
         // At most AI_REPLIES_PER_SENDER_PER_HOUR model replies to one number.
         // The monthly cap is the only other brake, and an inbound text is the
@@ -292,6 +305,16 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
             status: "sent",
             ai_handled: aiHandled,
           });
+          {
+            // A TwiML reply is sent by Twilio, not by sendTwilioSms, so count it here.
+            const { recordSmsSegments } = await import("@/lib/sms-usage.server");
+            await recordSmsSegments({
+              orgId: org.id,
+              direction: "outbound",
+              kind: aiHandled ? "client_message" : "stop_help",
+              body: reply,
+            });
+          }
           return xml(
             `<Response><Message>${escapeXml(reply)}</Message></Response>`,
             200,

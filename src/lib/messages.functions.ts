@@ -136,6 +136,7 @@ export const sendSmsToClient = createServerFn({ method: "POST" })
         from: sender.from ?? undefined,
         messagingServiceSid: sender.messagingServiceSid ?? undefined,
         credentials: sender.credentials,
+        usage: { orgId: client.organization_id, kind: "client_message" },
       });
       sid = res.sid;
       status = res.status || "sent";
@@ -310,6 +311,7 @@ export const sendVisitStatusSms = createServerFn({ method: "POST" })
         from: sender.from ?? undefined,
         messagingServiceSid: sender.messagingServiceSid ?? undefined,
         credentials: sender.credentials,
+        usage: { orgId: client.organization_id, kind: "reminder" },
       });
       sid = r.sid;
       status = r.status || "sent";

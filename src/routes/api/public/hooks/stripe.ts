@@ -1299,6 +1299,7 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
                           from: sender.from ?? undefined,
                           messagingServiceSid: sender.messagingServiceSid ?? undefined,
                           credentials: sender.credentials,
+                          usage: { orgId: inv.organization_id, kind: "payment_notice" },
                         });
                         await supabaseAdmin.from("messages").insert({
                           organization_id: inv.organization_id,

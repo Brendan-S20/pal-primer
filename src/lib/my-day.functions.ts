@@ -780,6 +780,7 @@ export const completeVisit = createServerFn({ method: "POST" })
                 from: sender.from ?? undefined,
                 messagingServiceSid: sender.messagingServiceSid ?? undefined,
                 credentials: sender.credentials,
+                usage: { orgId: orgId, kind: "review_request" },
               }).then(async (res) => {
                 await context.supabase.from("messages").insert({
                   organization_id: orgId,

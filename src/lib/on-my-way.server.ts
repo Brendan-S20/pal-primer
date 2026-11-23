@@ -244,6 +244,7 @@ async function trySms(p: {
       from: sender.from ?? undefined,
       messagingServiceSid: sender.messagingServiceSid ?? undefined,
       credentials: sender.credentials,
+      usage: { orgId: p.visit.organization_id, kind: "on_my_way" },
     });
     sid = r.sid;
     status = r.status || "sent";

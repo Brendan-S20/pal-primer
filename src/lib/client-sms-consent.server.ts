@@ -53,6 +53,7 @@ export async function sendOptInConfirmation(orgId: string, clientId: string): Pr
       from: sender.from ?? undefined,
       messagingServiceSid: sender.messagingServiceSid ?? undefined,
       credentials: sender.credentials,
+      usage: { orgId: orgId, kind: "consent" },
     });
     await (supabaseAdmin as any).from("messages").insert({
       organization_id: orgId,
