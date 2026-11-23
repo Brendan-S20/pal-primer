@@ -68,13 +68,18 @@ export const listPlatformAddons = createServerFn({ method: "GET" })
     setup: SetupFactsForPage;
   }> => {
     const orgId = await resolveOrgIdForCaller(context.supabase, context.userId);
+    // The catalog is read with the admin client (#1001): the table's browser
+    // policy now shows a signed-in user only is_active rows, and this page
+    // must also list coming-soon and subscribed-but-disabled add-ons. The
+    // columns are the ones a tenant already sees; no Stripe ids.
+    const { supabaseAdmin: catalogDb } = await import("@/integrations/supabase/client.server");
 
     const [{ data: catalog, error }, mineRes, orgRes, founding] = await Promise.all([
       // Tenants see active + coming-soon add-ons; disabled ones are hidden
       // UNLESS the org is actively subscribed — a subscribed add-on must stay
       // visible so the cancel action remains reachable (and billing
       // explainable).
-      context.supabase
+      (catalogDb as any)
         .from("platform_addons")
         .select("id, slug, name, description, price_cents, billing_interval, status, is_active, sort_order")
         .order("sort_order"),
