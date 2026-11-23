@@ -117,6 +117,8 @@ REVOKE EXECUTE ON FUNCTION public.tg_sms_usage_rollup() FROM PUBLIC, anon, authe
 -- ── RLS: read-only to people who can see the bill; the service role writes ──
 ALTER TABLE public.sms_usage_events  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sms_usage_periods ENABLE ROW LEVEL SECURITY;
+SELECT public.require_mfa_policy('public.sms_usage_events');
+SELECT public.require_mfa_policy('public.sms_usage_periods');
 
 DROP POLICY IF EXISTS sms_usage_events_read ON public.sms_usage_events;
 CREATE POLICY sms_usage_events_read ON public.sms_usage_events
