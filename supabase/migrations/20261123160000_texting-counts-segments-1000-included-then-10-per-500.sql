@@ -112,6 +112,7 @@ DROP TRIGGER IF EXISTS sms_usage_rollup ON public.sms_usage_events;
 CREATE TRIGGER sms_usage_rollup
   AFTER INSERT OR UPDATE OR DELETE ON public.sms_usage_events
   FOR EACH ROW EXECUTE FUNCTION public.tg_sms_usage_rollup();
+REVOKE EXECUTE ON FUNCTION public.tg_sms_usage_rollup() FROM PUBLIC, anon, authenticated;
 
 -- ── RLS: read-only to people who can see the bill; the service role writes ──
 ALTER TABLE public.sms_usage_events  ENABLE ROW LEVEL SECURITY;
@@ -120,12 +121,12 @@ ALTER TABLE public.sms_usage_periods ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS sms_usage_events_read ON public.sms_usage_events;
 CREATE POLICY sms_usage_events_read ON public.sms_usage_events
   FOR SELECT TO authenticated
-  USING (public.has_permission(auth.uid(), organization_id, 'manage_org_billing'));
+  USING (public.has_permission((select auth.uid()), organization_id, 'manage_org_billing'));
 
 DROP POLICY IF EXISTS sms_usage_periods_read ON public.sms_usage_periods;
 CREATE POLICY sms_usage_periods_read ON public.sms_usage_periods
   FOR SELECT TO authenticated
-  USING (public.has_permission(auth.uid(), organization_id, 'manage_org_billing'));
+  USING (public.has_permission((select auth.uid()), organization_id, 'manage_org_billing'));
 
 REVOKE ALL ON public.sms_usage_events  FROM anon, authenticated;
 REVOKE ALL ON public.sms_usage_periods FROM anon, authenticated;

@@ -27,9 +27,10 @@ describe("sendTwilioSms — direct (tenant BYOK)", () => {
       to: "+15550001111",
       body: "hi",
       from: "+15558675310",
+      usage: { orgId: "11111111-1111-1111-1111-111111111111", kind: "reminder" },
       credentials: { mode: "direct", accountSid: "ACxxx", authToken: "tok" },
     });
-    expect(res).toEqual({ sid: "SM1", status: "queued", error_code: null, error_message: null });
+    expect(res).toEqual({ sid: "SM1", status: "queued", error_code: null, error_message: null, num_segments: null });
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("https://api.twilio.com/2010-04-01/Accounts/ACxxx/Messages.json");
     expect((init as any).headers.Authorization).toBe(
@@ -44,6 +45,7 @@ describe("sendTwilioSms — direct (tenant BYOK)", () => {
       to: "+15550001111",
       body: "hi",
       messagingServiceSid: "MGabc",
+      usage: { orgId: "11111111-1111-1111-1111-111111111111", kind: "reminder" },
       credentials: { mode: "direct", accountSid: "ACxxx", authToken: "tok" },
     });
     const body = String((fetchMock.mock.calls[0][1] as any).body);
