@@ -205,6 +205,15 @@ function AuthPage() {
     // Drawn afresh partway through: the router's pending skeleton for a slow
     // navigation, an error boundary reset, a reload. Put the person back on
     // the password step they were on, not an empty first step.
+    //
+    // Not on an invitation (#1013): the step kept in this tab belongs to
+    // whoever signed in here last, often the owner who sent the invite, and
+    // "Welcome back" with their address is the wrong account to join with.
+    // The invited address is filled in by the lookup below instead.
+    if (pendingInviteToken()) {
+      forgetSignInStep();
+      return;
+    }
     const onStep = readSignInStep();
     if (onStep) {
       setEmail(onStep);
@@ -241,6 +250,8 @@ function AuthPage() {
   // Read after mount so the server-rendered page and the first client render
   // agree.
   const [inviteToken, setInviteToken] = useState<string | null>(null);
+  // Who the invitation was sent to, once looked up (#1013).
+  const [invitedEmail, setInvitedEmail] = useState<string | null>(null);
   useEffect(() => {
     rememberInviteToken();
     setInviteToken(pendingInviteToken());
@@ -256,6 +267,7 @@ function AuthPage() {
     lookupInviteFn({ data: { token: inviteToken } })
       .then((r) => {
         if (cancelled || !r.ok || r.kind !== "staff" || !r.email) return;
+        setInvitedEmail(r.email);
         setEmail((typed) => (typed.trim() ? typed : r.email!));
       })
       .catch(() => {
@@ -651,6 +663,15 @@ function AuthPage() {
                 placeholder="you@yourbusiness.com"
               />
             </div>
+            {inviteToken &&
+              invitedEmail &&
+              email.trim() &&
+              email.trim().toLowerCase() !== invitedEmail.toLowerCase() && (
+                <p role="status" className="text-xs text-muted-foreground">
+                  This invitation was sent to <span className="font-medium">{invitedEmail}</span>.
+                  Using a different address will not join this business.
+                </p>
+              )}
             <Button type="submit" disabled={loading || !emailValid} className="w-full">
               {loading ? "Checking…" : "Continue"}
             </Button>
@@ -708,6 +729,9 @@ function AuthPage() {
               onClick={() => {
                 forgetSignInStep();
                 setStage("email");
+                // On an invitation the box goes back to the invited address,
+                // not the one just left (#1013).
+                if (inviteToken && invitedEmail) setEmail(invitedEmail);
                 setPassword("");
                 setAlert(null);
                 setOfferReset(false);
