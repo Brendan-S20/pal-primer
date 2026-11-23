@@ -1286,6 +1286,7 @@ const es: Translations = {
     save: "Guardar progreso",
     saving: "Guardando…",
     saved: "Progreso guardado",
+    offline: "Estás sin conexión. El progreso se puede registrar cuando vuelvas a tener conexión. Las puntuaciones que toques aquí se quedan en esta pantalla hasta entonces.",
     noSkills: "Todavía no hay habilidades. Pide a la oficina que las añada en Ajustes, Servicios.",
     history: "Clases anteriores",
     historyForDog: "Clases anteriores de <dog>{{dog}}</dog>",

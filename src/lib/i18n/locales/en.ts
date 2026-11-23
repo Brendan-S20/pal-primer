@@ -1303,6 +1303,7 @@ const en = {
     save: "Save progress",
     saving: "Saving…",
     saved: "Progress saved",
+    offline: "You're offline. Progress can be recorded when you're back online. Scores you tap here stay on this screen until then.",
     noSkills: "No skills are set up yet. Ask the office to add them in Settings, Services.",
     history: "Earlier lessons",
     historyForDog: "Earlier lessons for <dog>{{dog}}</dog>",
