@@ -311,7 +311,18 @@ function AppShell() {
   const denied = !!drawnPath && deniedRouteDestination(role, drawnPath) !== null;
   // An alias has no page to preload links for. Mount the shell at the target,
   // so its render-time preloads cannot race the alias replacing their matches.
-  if (redirecting) return <Outlet />;
+  // It still gets the page padding and the status-bar inset: a bare Outlet drew
+  // the layout above the alias (Settings' heading) at the screen's corner,
+  // under the clock, for the second the hand-off takes (#1016).
+  if (redirecting) {
+    return (
+      <main className="min-w-0 flex-1 pt-[env(safe-area-inset-top)]">
+        <PageShell>
+          <Outlet />
+        </PageShell>
+      </main>
+    );
+  }
   // #682: the same race for a page this role may not open. The shell's tab
   // bar preloads every tab as it renders, RoleGuard navigates away while those
   // preloads are still running, and each one then logged "Cannot read
