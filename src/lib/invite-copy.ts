@@ -271,7 +271,7 @@ export function staffActiveCopy(name: string | null | undefined, turningOn: bool
         confirm: {
           title: `Deactivate ${who}?`,
           description:
-            "They are signed out of the app and lose access to your business right away. Their visit history stays, and you can reactivate them any time.",
+            "They lose access to your business right away. Their visit history stays, and you can reactivate them any time.",
           confirmLabel: "Deactivate",
           cancelLabel: "Keep active",
         },
