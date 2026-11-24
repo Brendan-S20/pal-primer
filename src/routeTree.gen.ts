@@ -16,11 +16,14 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as GetStartedRouteImport } from './routes/get-started'
 import { Route as ImpersonateRouteImport } from './routes/impersonate'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as NoWorkspaceRouteImport } from './routes/no-workspace'
 import { Route as PlatformRouteImport } from './routes/platform'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
+import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as SignUpRouteImport } from './routes/sign-up'
+import { Route as SigninRouteImport } from './routes/signin'
 import { Route as TwoStepRouteImport } from './routes/two-step'
 import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as DotwellKnownAppleAppSiteAssociationRouteImport } from './routes/[.]well-known.apple-app-site-association'
@@ -90,6 +93,7 @@ import { Route as PortalSlugRouteImport } from './routes/portal.$slug'
 import { Route as ProsIndexRouteImport } from './routes/pros.index'
 import { Route as ProsCompareRouteImport } from './routes/pros.compare'
 import { Route as QTokenRouteImport } from './routes/q.$token'
+import { Route as SignupIndexRouteImport } from './routes/signup.index'
 import { Route as SignupSlugRouteImport } from './routes/signup.$slug'
 import { Route as SignupSuccessRouteImport } from './routes/signup.success'
 import { Route as TrackTokenRouteImport } from './routes/track.$token'
@@ -216,6 +220,11 @@ const ImpersonateRoute = ImpersonateRouteImport.update({
   path: '/impersonate',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const NoWorkspaceRoute = NoWorkspaceRouteImport.update({
   id: '/no-workspace',
   path: '/no-workspace',
@@ -236,9 +245,19 @@ const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
   path: '/robots.txt',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SignInRoute = SignInRouteImport.update({
+  id: '/sign-in',
+  path: '/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SignUpRoute = SignUpRouteImport.update({
   id: '/sign-up',
   path: '/sign-up',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SigninRoute = SigninRouteImport.update({
+  id: '/signin',
+  path: '/signin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TwoStepRoute = TwoStepRouteImport.update({
@@ -591,6 +610,11 @@ const ProsCompareRoute = ProsCompareRouteImport.update({
 const QTokenRoute = QTokenRouteImport.update({
   id: '/q/$token',
   path: '/q/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignupIndexRoute = SignupIndexRouteImport.update({
+  id: '/signup/',
+  path: '/signup/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SignupSlugRoute = SignupSlugRouteImport.update({
@@ -1111,11 +1135,14 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/get-started': typeof GetStartedRoute
   '/impersonate': typeof ImpersonateRoute
+  '/login': typeof LoginRoute
   '/no-workspace': typeof NoWorkspaceRoute
   '/platform': typeof PlatformRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
+  '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
+  '/signin': typeof SigninRoute
   '/two-step': typeof TwoStepRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
@@ -1188,6 +1215,7 @@ export interface FileRoutesByFullPath {
   '/track/$token': typeof TrackTokenRoute
   '/platform/': typeof PlatformIndexRoute
   '/pros/': typeof ProsIndexRoute
+  '/signup/': typeof SignupIndexRoute
   '/campaigns/$campaignId': typeof AuthenticatedCampaignsCampaignIdRoute
   '/campaigns/new': typeof AuthenticatedCampaignsNewRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
@@ -1284,10 +1312,13 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/get-started': typeof GetStartedRoute
   '/impersonate': typeof ImpersonateRoute
+  '/login': typeof LoginRoute
   '/no-workspace': typeof NoWorkspaceRoute
   '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
+  '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
+  '/signin': typeof SigninRoute
   '/two-step': typeof TwoStepRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
@@ -1353,6 +1384,7 @@ export interface FileRoutesByTo {
   '/track/$token': typeof TrackTokenRoute
   '/platform': typeof PlatformIndexRoute
   '/pros': typeof ProsIndexRoute
+  '/signup': typeof SignupIndexRoute
   '/campaigns/$campaignId': typeof AuthenticatedCampaignsCampaignIdRoute
   '/campaigns/new': typeof AuthenticatedCampaignsNewRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
@@ -1450,11 +1482,14 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/get-started': typeof GetStartedRoute
   '/impersonate': typeof ImpersonateRoute
+  '/login': typeof LoginRoute
   '/no-workspace': typeof NoWorkspaceRoute
   '/platform': typeof PlatformRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/robots.txt': typeof RobotsDottxtRoute
+  '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
+  '/signin': typeof SigninRoute
   '/two-step': typeof TwoStepRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
@@ -1527,6 +1562,7 @@ export interface FileRoutesById {
   '/track/$token': typeof TrackTokenRoute
   '/platform/': typeof PlatformIndexRoute
   '/pros/': typeof ProsIndexRoute
+  '/signup/': typeof SignupIndexRoute
   '/_authenticated/campaigns/$campaignId': typeof AuthenticatedCampaignsCampaignIdRoute
   '/_authenticated/campaigns/new': typeof AuthenticatedCampaignsNewRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
@@ -1625,11 +1661,14 @@ export interface FileRouteTypes {
     | '/auth'
     | '/get-started'
     | '/impersonate'
+    | '/login'
     | '/no-workspace'
     | '/platform'
     | '/reset-password'
     | '/robots.txt'
+    | '/sign-in'
     | '/sign-up'
+    | '/signin'
     | '/two-step'
     | '/unsubscribe'
     | '/.well-known/apple-app-site-association'
@@ -1702,6 +1741,7 @@ export interface FileRouteTypes {
     | '/track/$token'
     | '/platform/'
     | '/pros/'
+    | '/signup/'
     | '/campaigns/$campaignId'
     | '/campaigns/new'
     | '/clients/$clientId'
@@ -1798,10 +1838,13 @@ export interface FileRouteTypes {
     | '/auth'
     | '/get-started'
     | '/impersonate'
+    | '/login'
     | '/no-workspace'
     | '/reset-password'
     | '/robots.txt'
+    | '/sign-in'
     | '/sign-up'
+    | '/signin'
     | '/two-step'
     | '/unsubscribe'
     | '/.well-known/apple-app-site-association'
@@ -1867,6 +1910,7 @@ export interface FileRouteTypes {
     | '/track/$token'
     | '/platform'
     | '/pros'
+    | '/signup'
     | '/campaigns/$campaignId'
     | '/campaigns/new'
     | '/clients/$clientId'
@@ -1963,11 +2007,14 @@ export interface FileRouteTypes {
     | '/auth'
     | '/get-started'
     | '/impersonate'
+    | '/login'
     | '/no-workspace'
     | '/platform'
     | '/reset-password'
     | '/robots.txt'
+    | '/sign-in'
     | '/sign-up'
+    | '/signin'
     | '/two-step'
     | '/unsubscribe'
     | '/.well-known/apple-app-site-association'
@@ -2040,6 +2087,7 @@ export interface FileRouteTypes {
     | '/track/$token'
     | '/platform/'
     | '/pros/'
+    | '/signup/'
     | '/_authenticated/campaigns/$campaignId'
     | '/_authenticated/campaigns/new'
     | '/_authenticated/clients/$clientId'
@@ -2138,11 +2186,14 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   GetStartedRoute: typeof GetStartedRoute
   ImpersonateRoute: typeof ImpersonateRoute
+  LoginRoute: typeof LoginRoute
   NoWorkspaceRoute: typeof NoWorkspaceRoute
   PlatformRoute: typeof PlatformRouteWithChildren
   ResetPasswordRoute: typeof ResetPasswordRoute
   RobotsDottxtRoute: typeof RobotsDottxtRoute
+  SignInRoute: typeof SignInRoute
   SignUpRoute: typeof SignUpRoute
+  SigninRoute: typeof SigninRoute
   TwoStepRoute: typeof TwoStepRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
   DotwellKnownAppleAppSiteAssociationRoute: typeof DotwellKnownAppleAppSiteAssociationRoute
@@ -2162,6 +2213,7 @@ export interface RootRouteChildren {
   SignupSuccessRoute: typeof SignupSuccessRoute
   TrackTokenRoute: typeof TrackTokenRoute
   ProsIndexRoute: typeof ProsIndexRoute
+  SignupIndexRoute: typeof SignupIndexRoute
   ApiPublicInvoicePdfRoute: typeof ApiPublicInvoicePdfRoute
   ApiPublicLeadsRoute: typeof ApiPublicLeadsRoute
   ApiPublicQuotePdfRoute: typeof ApiPublicQuotePdfRoute
@@ -2244,6 +2296,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ImpersonateRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/no-workspace': {
       id: '/no-workspace'
       path: '/no-workspace'
@@ -2272,11 +2331,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RobotsDottxtRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sign-in': {
+      id: '/sign-in'
+      path: '/sign-in'
+      fullPath: '/sign-in'
+      preLoaderRoute: typeof SignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sign-up': {
       id: '/sign-up'
       path: '/sign-up'
       fullPath: '/sign-up'
       preLoaderRoute: typeof SignUpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/signin': {
+      id: '/signin'
+      path: '/signin'
+      fullPath: '/signin'
+      preLoaderRoute: typeof SigninRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/two-step': {
@@ -2760,6 +2833,13 @@ declare module '@tanstack/react-router' {
       path: '/q/$token'
       fullPath: '/q/$token'
       preLoaderRoute: typeof QTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/signup/': {
+      id: '/signup/'
+      path: '/signup'
+      fullPath: '/signup/'
+      preLoaderRoute: typeof SignupIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/signup/$slug': {
@@ -3741,11 +3821,14 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   GetStartedRoute: GetStartedRoute,
   ImpersonateRoute: ImpersonateRoute,
+  LoginRoute: LoginRoute,
   NoWorkspaceRoute: NoWorkspaceRoute,
   PlatformRoute: PlatformRouteWithChildren,
   ResetPasswordRoute: ResetPasswordRoute,
   RobotsDottxtRoute: RobotsDottxtRoute,
+  SignInRoute: SignInRoute,
   SignUpRoute: SignUpRoute,
+  SigninRoute: SigninRoute,
   TwoStepRoute: TwoStepRoute,
   UnsubscribeRoute: UnsubscribeRoute,
   DotwellKnownAppleAppSiteAssociationRoute:
@@ -3766,6 +3849,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignupSuccessRoute: SignupSuccessRoute,
   TrackTokenRoute: TrackTokenRoute,
   ProsIndexRoute: ProsIndexRoute,
+  SignupIndexRoute: SignupIndexRoute,
   ApiPublicInvoicePdfRoute: ApiPublicInvoicePdfRoute,
   ApiPublicLeadsRoute: ApiPublicLeadsRoute,
   ApiPublicQuotePdfRoute: ApiPublicQuotePdfRoute,
