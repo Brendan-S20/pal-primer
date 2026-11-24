@@ -128,6 +128,7 @@ export async function billOrgSmsOverage(
   // GUARD 2 — recount and claim before charging, in one database call. A
   // month with nothing over the allowance is closed by the same call; one
   // with an overage but no Stripe customer is left unclaimed.
+  // rpc-role: service
   const { data, error } = await db.rpc("claim_sms_overage", {
     _org_id: orgId,
     _period_month: periodMonth,
