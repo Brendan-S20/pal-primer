@@ -11,6 +11,7 @@
 // omission, which is the opposite of what the toll-free filing says. See
 // lib/twilio-credentials.server.
 import { brandedBody } from "@/lib/sms-brand";
+import type { SmsKind } from "@/lib/sms-usage.server";
 
 const GATEWAY_URL = "https://connector-gateway.lovable.dev/twilio";
 const TWILIO_API = "https://api.twilio.com/2010-04-01";
@@ -18,6 +19,8 @@ const TWILIO_API = "https://api.twilio.com/2010-04-01";
 export type TwilioSendResult = {
   sid: string;
   status: string;
+  /** Twilio's own segment count for the message, when it reported one. */
+  num_segments?: number | null;
   error_code?: number | null;
   error_message?: string | null;
 };
@@ -39,6 +42,11 @@ export async function sendTwilioSms(params: {
   from?: string;
   messagingServiceSid?: string;
   credentials: TwilioCredentials;
+  /** #988: who is billed for the segments, and what sent the text. REQUIRED for
+   *  a business's own text (`direct` credentials): every one is counted, and
+   *  an automatic one stops at the monthly ceiling. The platform's own texts to
+   *  account holders (`gateway`) are not the business's and pass none. */
+  usage?: { orgId: string; kind: SmsKind };
 }): Promise<TwilioSendResult> {
   const creds = params.credentials;
   if (!creds) throw new Error("Twilio send requires credentials: a subaccount, or the platform for an account holder");
@@ -55,6 +63,13 @@ export async function sendTwilioSms(params: {
   // `brandedBody`, so the log and the handset read the same.
   const body =
     creds.mode === "direct" && creds.brand ? brandedBody(creds.brand, params.body) : params.body;
+  if (creds.mode === "direct" && !params.usage) {
+    throw new Error("Twilio send for a business requires `usage` so its segments are counted");
+  }
+  if (params.usage) {
+    const { assertUnderTextingCeiling } = await import("@/lib/sms-usage.server");
+    await assertUnderTextingCeiling(params.usage.orgId, params.usage.kind);
+  }
   const form = new URLSearchParams({ To: params.to, Body: body });
   if (params.messagingServiceSid) form.set("MessagingServiceSid", params.messagingServiceSid);
   else if (params.from) form.set("From", params.from);
@@ -94,9 +109,23 @@ export async function sendTwilioSms(params: {
       `Twilio send failed [${res.status}]: ${json?.message ?? JSON.stringify(json)}`,
     );
   }
+  const reported = Number(json.num_segments);
+  if (params.usage) {
+    const { recordSmsSegments } = await import("@/lib/sms-usage.server");
+    await recordSmsSegments({
+      orgId: params.usage.orgId,
+      direction: "outbound",
+      kind: params.usage.kind,
+      body,
+      twilioSid: json.sid,
+      numSegments: Number.isFinite(reported) ? reported : null,
+      price: json.price != null && Number.isFinite(Number(json.price)) ? Math.abs(Number(json.price)) : null,
+    });
+  }
   return {
     sid: json.sid,
     status: json.status,
+    num_segments: Number.isFinite(reported) ? reported : null,
     error_code: json.error_code ?? null,
     error_message: json.error_message ?? null,
   };

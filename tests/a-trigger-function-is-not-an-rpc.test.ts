@@ -358,7 +358,11 @@ describe("no trigger function is executable by a signed-in user", () => {
     // new photo to pending, stamps the attestation, keeps the file and the
     // business fixed, lets only moderate_directory_photo decide, and stops
     // at eight. Revoked from PUBLIC, anon and authenticated there.
-    expect(triggerFunctions().size).toBe(117);
+    //
+    // 117 -> 118 (20261123160000, texting counts segments, #988):
+    // tg_sms_usage_rollup keeps the monthly segment total. Revoked from
+    // PUBLIC, anon and authenticated there.
+    expect(triggerFunctions().size).toBe(118);
   });
 
   it("revokes all thirty-four row-trigger functions, by return type and not by name", () => {
