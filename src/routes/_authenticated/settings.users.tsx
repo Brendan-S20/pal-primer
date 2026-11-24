@@ -37,7 +37,7 @@ import { useMyRole, usePermissions } from "@/hooks/useMyRole";
 import { useRoleLabel } from "@/components/CommercialOnly";
 import { MapPin, ChevronDown, ChevronRight } from "lucide-react";
 import { titleHead } from "@/lib/page-title";
-import { inviteFormHelp, inviteSendToast, replaceInviteQuestion } from "@/lib/invite-copy";
+import { inviteFormHelp, inviteSendToast, replaceInviteQuestion, staffActiveCopy } from "@/lib/invite-copy";
 import { InviteLinkCard, type SentInvite } from "@/components/settings/InviteLinkCard";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { toastServerError } from "@/lib/server-outcome";
@@ -117,6 +117,7 @@ function UsersPage() {
   const { role: myRole } = useMyRole();
   const { can } = usePermissions();
   const canEdit = myRole === "owner";
+  const { confirm: confirmStaff, dialog: staffDialog } = useConfirmDialog();
   // D7 as changed 2026-11-10 (#659): an office manager changes roles and turns
   // people on or off too, but never the owner's row, and offers only the roles
   // at or below their own. Since #863 that is the manage_users permission as
@@ -167,9 +168,10 @@ function UsersPage() {
   });
 
   const toggleActive = useMutation({
-    mutationFn: (v: { staffId: string; active: boolean }) => activeFn({ data: v }),
-    onSuccess: (r: any) => {
-      toast.success("Staff updated");
+    mutationFn: (v: { staffId: string; active: boolean; name: string | null }) =>
+      activeFn({ data: { staffId: v.staffId, active: v.active } }),
+    onSuccess: (r: any, v) => {
+      toast.success(staffActiveCopy(v.name, v.active).toast);
       // THE SEAT COUNT JUST CHANGED, AND THE BILLING SIDE MAY NOT HAVE.
       //
       // The staff row is written by the RPC above and is correct either way;
@@ -219,6 +221,7 @@ function UsersPage() {
 
   return (
     <div className="space-y-6">
+      {staffDialog}
       <div>
         <h2 className="text-lg font-semibold">Users & roles</h2>
         {/* One name for one idea. This used to say "appears on routes", "field
@@ -369,7 +372,12 @@ function UsersPage() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => toggleActive.mutate({ staffId: u.staff_id, active: !u.active })}
+                                onClick={async () => {
+                                  const name = u.display_name ?? u.email ?? null;
+                                  const copy = staffActiveCopy(name, !u.active);
+                                  if (copy.confirm && !(await confirmStaff({ ...copy.confirm, destructive: true }))) return;
+                                  toggleActive.mutate({ staffId: u.staff_id, active: !u.active, name });
+                                }}
                               >
                                 {u.active ? "Deactivate" : "Reactivate"}
                               </Button>
