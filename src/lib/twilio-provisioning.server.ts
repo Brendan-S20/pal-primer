@@ -117,10 +117,16 @@ export function scrub(text: string, ein?: string | null): string {
       out = out.split(einFormatted(ein)).join("[EIN]");
     }
   }
-  return out
-    .replace(/\b\d{2}-?\d{7}\b/g, "[number]")
-    .replace(/\b[0-9a-f]{32}\b/gi, "[secret]")
-    .slice(0, 500);
+  return (
+    out
+      // #972 review: a Twilio SID (BU…, AC…, HH…, PN…, IT…) is two capitals
+      // and 32 hex, with no word boundary before the hex, so the token rule
+      // below never saw it. Twilio's errors often name the resource.
+      .replace(/\b[A-Z]{2}[0-9a-fA-F]{32}\b/g, "[id]")
+      .replace(/\b\d{2}-?\d{7}\b/g, "[number]")
+      .replace(/\b[0-9a-f]{32}\b/gi, "[secret]")
+      .slice(0, 500)
+  );
 }
 
 type FormValue = string | number | boolean | string[] | null | undefined;
