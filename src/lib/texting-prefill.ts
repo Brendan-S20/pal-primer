@@ -33,6 +33,18 @@ export const NO_PREFILL: TextingPrefill = {
   owner: { name: "", email: "", phone: "" },
 };
 
+/** The suggestions as Settings reads them. A response from before #970 (a
+ *  half-done deploy, a cached query) has no address and no owner; those start
+ *  blank instead of taking the page down. */
+export function withPrefillDefaults(
+  s:
+    | (Partial<Omit<TextingPrefill, "owner">> & { owner?: Partial<TextingPrefill["owner"]> })
+    | null
+    | undefined,
+): TextingPrefill {
+  return { ...NO_PREFILL, ...s, owner: { ...NO_PREFILL.owner, ...s?.owner } };
+}
+
 export type AddressParts = {
   street: string;
   street2: string;

@@ -18,12 +18,32 @@ import {
   splitName,
   splitUsAddress,
   NO_PREFILL,
+  withPrefillDefaults,
 } from "@/lib/texting-prefill";
 import { registrationDetailsSchema } from "@/lib/texting-registration";
 
 const root = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
 const codeOnly = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+
+describe("suggestions in the shape served before #970", () => {
+  it("fills in a missing address and owner instead of throwing", () => {
+    const old = { businessName: "QA Test 970", email: "qa.test.970@example.com", phone: "" };
+    const p = withPrefillDefaults(old);
+    expect(p).toEqual({ ...NO_PREFILL, ...old });
+    expect(ownerContact(p).title).toBe("");
+    expect(withPrefillDefaults(undefined)).toEqual(NO_PREFILL);
+  });
+
+  it("keeps what the server did send", () => {
+    const now = {
+      ...NO_PREFILL,
+      address: "100 Main St, Ann Arbor, MI 48104",
+      owner: { name: "Qa Owner", email: "qa.owner@example.com", phone: "" },
+    };
+    expect(withPrefillDefaults(now)).toEqual(now);
+  });
+});
 
 describe("the address Business settings keeps, in the parts a filing wants", () => {
   it.each([

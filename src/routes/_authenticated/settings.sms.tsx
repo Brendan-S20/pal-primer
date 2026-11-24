@@ -37,10 +37,10 @@ import {
   type SiteChoice,
 } from "@/lib/texting-hosted-site";
 import {
-  NO_PREFILL,
   contactsToFile,
   ownerContact,
   splitUsAddress,
+  withPrefillDefaults,
   type TextingPrefill,
 } from "@/lib/texting-prefill";
 import { useMyRole } from "@/hooks/useMyRole";
@@ -210,7 +210,7 @@ function TextingSettings() {
           {canSubmit(status, reg?.updated_at ?? null) ? (
             <RegistrationForm
               key={status ?? "new"}
-              initial={formFrom(reg, q.data?.suggestions ?? NO_PREFILL)}
+              initial={formFrom(reg, withPrefillDefaults(q.data?.suggestions))}
               status={status}
               isOwner={role === "owner"}
               needsAddon={needsAddon}
