@@ -39,7 +39,11 @@ export const getMyReferralProgram = createServerFn({ method: "GET" })
     });
     if (codeErr) throw new Error(codeErr.message);
 
-    const { data: settings } = await supabase
+    // Admin client (#1001): the settings table is platform-admin-only for a
+    // signed-in user. The caller is already resolved to their own org above,
+    // and only the two numbers the Refer-a-business card shows leave here.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: settings } = await supabaseAdmin
       .from("platform_referral_settings")
       .select("reward_percent, holding_days")
       .maybeSingle();

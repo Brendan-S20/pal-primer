@@ -17,6 +17,16 @@ import {
   type LessonHistory,
 } from "@/lib/training-progress.functions";
 import type { SkillTrend } from "@/lib/training-progress";
+import { isDefinitelyOffline } from "@/lib/offline/connectivity";
+
+/** The browser's own words for a request that got no answer. A trainer reads
+ *  "Failed to fetch" as a fault in the app; it means the phone has no signal. */
+const NO_ANSWER = /failed to fetch|load failed|networkerror|network request failed|fetch failed/i;
+
+export function isNoAnswerError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  return isDefinitelyOffline() || NO_ANSWER.test(message);
+}
 
 /** No lookup or UI for another service line. */
 export function TrainingSessionBadge({
@@ -257,7 +267,7 @@ function ProgressForm({ visitId }: { visitId: string }) {
       toast.success(t("training.saved"));
       qc.invalidateQueries({ queryKey: ["session-progress", visitId] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(isNoAnswerError(e) ? t("training.offline") : e.message),
   });
 
   const skills = q.data?.skills ?? [];
@@ -275,7 +285,7 @@ function ProgressForm({ visitId }: { visitId: string }) {
       </Button>
       {q.error && (
         <p role="alert" className="mt-2 text-sm text-destructive">
-          {q.error.message}
+          {isNoAnswerError(q.error) ? t("training.offline") : q.error.message}
         </p>
       )}
       {open && (
@@ -298,7 +308,7 @@ function ProgressForm({ visitId }: { visitId: string }) {
           <ul className="space-y-3">
             {skills.map((skill) => (
               <li key={skill.id} className="flex min-w-0 flex-wrap items-center gap-2">
-                <span className="min-w-0 flex-1 break-words text-sm font-medium">
+                <span className="w-full break-words text-sm font-medium min-[480px]:w-auto min-[480px]:min-w-32 min-[480px]:flex-1">
                   <bdi>{skill.name}</bdi>
                 </span>
                 <div

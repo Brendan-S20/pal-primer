@@ -131,6 +131,7 @@ describe("the migration", () => {
       "20261118050000_the-clients-page-reads-newest-first-from-an-index.sql",
       "20261119140000_the-forecast-cache-is-not-readable-by-other-businesses.sql", // does not touch the directory view
       "20261123160000_texting-counts-segments-1000-included-then-10-per-500.sql", // does not touch the directory view
+      "20261123200000_a-signed-in-business-cannot-read-the-platforms-own-tables.sql", // does not touch the directory view
     ];
     for (const f of LATER_AND_UNRELATED.filter((f) => files.includes(f))) {
       expect(read(`supabase/migrations/${f}`)).not.toMatch(/directory/i);

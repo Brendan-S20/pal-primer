@@ -2619,7 +2619,7 @@ function VisitCard({
               code and no key it was the block's only occupant, which drew a
               framed panel around one word. The block is for things you have to
               read correctly to get in. */}
-          {(windowLabel || p?.yard_size) && (
+          {(windowLabel || (petWaste && p?.yard_size)) && (
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
               {windowLabel && (
                 <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
@@ -2627,7 +2627,8 @@ function VisitCard({
                   {windowLabel}
                 </span>
               )}
-              {p?.yard_size && (
+              {/* Yard size prices pet waste: not shown on a lesson, walk, sit or groom (#1022). */}
+              {petWaste && p?.yard_size && (
                 <span className="inline-flex items-center gap-1.5 text-muted-foreground">
                   <Ruler className="h-4 w-4 shrink-0" aria-hidden="true" />
                   {t("yard.label", {

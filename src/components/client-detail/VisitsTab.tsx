@@ -1118,6 +1118,7 @@ function VisitDetailDrawer({
           }),
         askWhy,
         () => completionBlock.check(v.id),
+        v.id,
       ),
     onSuccess: (done) => {
       if (!done) return;

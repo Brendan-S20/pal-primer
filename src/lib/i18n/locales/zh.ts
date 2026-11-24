@@ -1234,6 +1234,7 @@ const zh: TranslationsWithPlurals<"other"> = {
     save: "保存进度",
     saving: "正在保存…",
     saved: "进度已保存",
+    offline: "你当前处于离线状态。恢复网络后才能记录进度。你在此点选的评分会保留在本页，直到那时。",
     noSkills: "还没有技能。请办公室在设置、服务中添加。",
     history: "之前的课程",
     historyForDog: "<dog>{{dog}}</dog> 之前的课程",
