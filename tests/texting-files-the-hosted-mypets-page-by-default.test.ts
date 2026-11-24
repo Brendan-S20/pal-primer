@@ -122,6 +122,9 @@ describe("the hosted page is the default", () => {
       businessName: "QA TEST 969 Walks",
       bookingUrl: null,
       notificationEmail: details.business_email,
+      lines: ["dog_walking"],
+      portalUrl: "https://app.houndstack.com/portal/qa-test-969-walks",
+      googleReviewUrl: null,
     });
     expect(form.BusinessWebsite).toBe(urls.website_url);
     expect(form.PrivacyPolicyUrl).toBe(urls.privacy_url);

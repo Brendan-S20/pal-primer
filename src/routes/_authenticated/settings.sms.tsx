@@ -41,6 +41,7 @@ import { titleHead } from "@/lib/page-title";
 import { TextingRejectionAdvice } from "@/components/settings/TextingRejectionAdvice";
 import { formatDateTime, formatDay } from "@/lib/format";
 import { SettingsLoadGate, SettingsOwnerOnly } from "@/components/settings/SettingsLoadGate";
+import { TextingFilingReview } from "@/components/settings/TextingFilingReview";
 
 // Settings → Texting (#538, BUILD-3).
 //
@@ -668,6 +669,13 @@ function RegistrationForm({
           </p>
         )}
       </div>
+
+      <TextingFilingReview
+        dba={form.dba}
+        legalName={form.legal_name}
+        businessEmail={form.business_email}
+        websiteUrl={form.website_url}
+      />
 
       <div className="flex flex-wrap gap-2">
         <Button type="submit" disabled={busy || !isOwner || needsAddon}>

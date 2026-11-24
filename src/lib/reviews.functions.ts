@@ -53,13 +53,17 @@ export const sendReviewRequest = createServerFn({ method: "POST" })
       _client_id: client.id,
     });
     if (sender && mayTextReview && client.primary_phone) {
-      const template =
-        org.review_ask_template?.trim() ||
-        `Hi {name}, thanks for choosing ${org.name ?? "us"}! If we did a great job, a quick review would mean the world: {link} Reply STOP to opt out.`;
       const { brandedBody } = await import("@/lib/sms-brand");
+      // lib/client-sms-templates, shared with the texting filing (#971).
+      const { reviewAskText } = await import("@/lib/client-sms-templates");
       const body = brandedBody(
         sender.brand,
-        template.replace(/\{name\}/g, firstName).replace(/\{link\}/g, org.google_review_url),
+        reviewAskText({
+          template: org.review_ask_template,
+          orgName: org.name,
+          firstName,
+          link: org.google_review_url,
+        }),
       );
       const fromNumber = sender.from;
 

@@ -1060,6 +1060,17 @@ export const BASE_STUBS: Record<string, Stub> = {
   // (Messages, the client page, Settings > Automation).
   getClientTextingAvailability: { available: false },
 
+  // #971: what the filing's words are built from, for the review above the
+  // Submit button on Settings > Texting. A mixed business at full length, so
+  // the review draws every line's words and its longest samples.
+  getTextingFilingContext: {
+    businessName: "QA TEST 971 Pet Waste, Walks and Yard Sanitation Co",
+    lines: ["pet_waste", "dog_walking", "pet_sitting", "mobile_grooming", "training"],
+    portalUrl: "https://app.houndstack.com/portal/qa-test-971-pet-waste-walks-and-yard-sanitation-co",
+    bookingUrl: "https://app.houndstack.com/signup/qa-test-971-pet-waste-walks-and-yard-sanitation-co",
+    googleReviewUrl: "https://g.page/r/qa-test-971-review-link-for-the-sample/review",
+  },
+
   // Settings > Texting (#538), in the state with the most on screen: a
   // rejection, with Twilio's reason at full length, a resubmit deadline, and
   // the form open again with every field filled, including the longest

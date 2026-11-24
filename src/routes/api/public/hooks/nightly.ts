@@ -886,9 +886,12 @@ async function sendOverdueReminders(
     }
     const dollars = ((inv.total_cents ?? 0) / 100).toFixed(2);
     const link = await buildPortalLink(orgId, client.portal_token, slug);
+    // lib/client-sms-templates, shared with the texting filing's sample. It
+    // now ends with STOP wording like every other text (#971 review).
+    const { pastDueInvoiceText } = await import("@/lib/client-sms-templates");
     const body = brandedBody(
       sender.brand,
-      `Hi ${client.display_name}, this is a friendly reminder that invoice for $${dollars} is past due. Pay: ${link}`,
+      pastDueInvoiceText({ name: client.display_name, amount: dollars, link: String(link) }),
     );
     try {
       const res = await sendTwilioSms({

@@ -56,6 +56,8 @@
 
 import { appUrl } from "@/lib/app-origin";
 import { shouldActivate } from "@/lib/managed-texting";
+import { filingCopy } from "@/lib/texting-filing-copy";
+import { filingContextFor } from "@/lib/texting-filing.server";
 import {
   BUSINESS_TYPES,
   STALE_SUBMIT_MS,
@@ -208,7 +210,9 @@ export function representativeAttributes(c: RegistrationDetails["contacts"][numb
 }
 
 /** The toll-free verification, filed in the business's own name. Use cases
- *  ACCOUNT_NOTIFICATIONS and CUSTOMER_CARE, as Product locked. */
+ *  ACCOUNT_NOTIFICATIONS and CUSTOMER_CARE, as Product locked. The summary,
+ *  samples and opt-in are the business's own (#971, lib/texting-filing-copy),
+ *  the same words Settings showed the owner before Submit. */
 export function tollFreeVerificationForm(p: {
   details: RegistrationDetails;
   ein: string;
@@ -218,10 +222,25 @@ export function tollFreeVerificationForm(p: {
   businessName: string;
   bookingUrl: string | null;
   notificationEmail: string;
+  /** organizations.service_lines */
+  lines: readonly string[];
+  /** The client portal's sign-in page for this business. */
+  portalUrl: string;
+  /** organizations.google_review_url, for the review-request sample. */
+  googleReviewUrl?: string | null;
 }) {
   const d = p.details;
   const name = p.businessName.trim() || d.dba?.trim() || d.legal_name;
   const contact = d.contacts[0];
+  const copy = filingCopy({
+    businessName: name,
+    lines: p.lines,
+    portalUrl: p.portalUrl,
+    bookingUrl: p.bookingUrl,
+    googleReviewUrl: p.googleReviewUrl,
+    supportEmail: d.business_email,
+    websiteUrl: d.website_url,
+  });
   return {
     BusinessName: d.legal_name,
     DoingBusinessAs: d.dba || undefined,
@@ -244,19 +263,14 @@ export function tollFreeVerificationForm(p: {
     TermsAndConditionsUrl: d.terms_url,
     NotificationEmail: p.notificationEmail,
     UseCaseCategories: ["ACCOUNT_NOTIFICATIONS", "CUSTOMER_CARE"],
-    UseCaseSummary:
-      `${name} is a local service business. It texts its own clients, who have opted in, about ` +
-      `their scheduled visits (reminders, on-the-way notices, visit completed), their invoices and ` +
-      `payments, sign-in codes for their client portal, and replies to their questions. No marketing.`,
-    ProductionMessageSample: `${name}: Hi Sam, this is a reminder your visit is scheduled for Wed, Aug 12. Reply STOP to opt out.`,
-    OptInType: "WEB_FORM",
-    OptInImageUrls: p.bookingUrl ? [p.bookingUrl] : [d.website_url],
-    OptInConfirmationMessage:
-      `${name}: You're subscribed to appointment, visit and billing texts. Message frequency varies. ` +
-      `Msg & data rates may apply. Reply HELP for help, STOP to opt out.`,
-    HelpMessageSample:
-      `${name}: Service and account messages. For help contact ${d.business_email}. ` +
-      `Msg & data rates may apply. Reply STOP to opt out.`,
+    UseCaseSummary: copy.useCaseSummary,
+    ProductionMessageSample: copy.productionMessageSample,
+    OptInType: copy.optInType,
+    OptInImageUrls: copy.optInImageUrls,
+    OptInConfirmationMessage: copy.optInConfirmationMessage,
+    HelpMessageSample: copy.helpMessageSample,
+    // Every opt-in method, not only the one OptInType can name.
+    AdditionalInformation: copy.optInDescription,
     MessageVolume: "1,000",
     AgeGatedContent: false,
     TollfreePhoneNumberSid: p.phoneNumberSid,
@@ -382,13 +396,10 @@ export async function submitTextingRegistration(p: {
 
   try {
     const parent = parentAuth();
-    const { data: org } = await db
-      .from("organizations")
-      .select("name, slug")
-      .eq("id", orgId)
-      .maybeSingle();
-    const businessName = (org?.name as string | null) ?? details.dba ?? details.legal_name;
-    const bookingUrl = org?.slug ? appUrl(`/signup/${org.slug}`) : null;
+    // #971: the same facts Settings built the owner's review from.
+    const filing = await filingContextFor(orgId);
+    const businessName = filing.businessName || details.dba || details.legal_name;
+    const bookingUrl = filing.bookingUrl;
     let reg = (await loadRow(orgId))!;
 
     // 1. Subaccount. Its token is in this response and deliberately dropped.
@@ -445,6 +456,9 @@ export async function submitTextingRegistration(p: {
       orgId,
       businessName,
       bookingUrl,
+      lines: filing.lines,
+      portalUrl: filing.portalUrl,
+      googleReviewUrl: filing.googleReviewUrl,
       notificationEmail: process.env.TWILIO_COMPLIANCE_EMAIL || details.business_email,
     });
     let verification: any;

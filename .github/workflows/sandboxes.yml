@@ -1304,6 +1304,11 @@ jobs:
       - name: Measure the one-off cases
         run: npm run test:viewports:cases
 
+      # The filing's words shown above Submit on Settings > Texting (#971).
+      # Its own script, so it does not edit the cases line.
+      - name: Measure the texting filing review
+        run: npm run test:viewports:texting-filing
+
       # Settings > Users & roles, the open teammate panel at phone widths
       # (#965). Its own script rather than another name on the cases line,
       # which several open branches edit at once.
