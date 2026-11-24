@@ -69,7 +69,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     title: 'The "Get started" checklist',
     section: "Getting started",
     body: [
-      "The [dashboard](/dashboard) checklist lists the same six steps as the [guided setup](article:tour) and ticks each one off as it is done: business details, service area and price, first client, who runs the route, where the day ends, and payouts.",
+      "The [dashboard](/dashboard) checklist lists the same six steps as the [guided setup](article:tour) and ticks each one off as it is done: business details, service area and price, first client, who runs the route, where the day ends, and payouts. If you added Managed texting, a seventh step, Text your clients, opens [Settings, Texting](/settings/sms) and ticks once your details are filed.",
       "Guide me opens the guided setup at the first step still open. Dismiss the checklist once you're rolling; it won't nag you again.",
     ],
     related: ["first-30-minutes", "tour"],

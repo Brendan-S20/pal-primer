@@ -87,6 +87,14 @@ function routeFilesFor(pathname: string): string[] {
 }
 
 const steps = parsedSteps();
+/** ADD_ON_STEP_IDS, read from the source like ONBOARDING_STEP_IDS below. */
+const ADD_ON_STEP_IDS: string[] =
+  codeOnly(read(STATUS))
+    .match(/ADD_ON_STEP_IDS[^=]*=\s*\[([^\]]*)\]/)?.[1]
+    .match(/"([a-z_]+)"/g)
+    ?.map((s) => s.slice(1, -1)) ?? [];
+/** The steps every business is offered: all but the add-on ones (#970). */
+const everybodys = steps.filter((s) => !ADD_ON_STEP_IDS.includes(s.id));
 const ROLES: AppRole[] = ["owner", "office_manager", "dispatcher", "tech"];
 
 describe("the guided setup's steps", () => {
@@ -101,7 +109,18 @@ describe("the guided setup's steps", () => {
   it("is short: six steps at most", () => {
     // The brief that replaced the tour: "Keep it short (aim <= 6 steps)".
     // A seventh step is a decision, and this is where it gets made.
-    expect(steps.map((s) => s.id).length).toBeLessThanOrEqual(6);
+    expect(everybodys.map((s) => s.id).length).toBeLessThanOrEqual(6);
+  });
+
+  it("adds a step only for an add-on the business bought, and one at most (#970)", () => {
+    // Product decided the seventh in #970: an owner holding Managed texting
+    // is asked to file for it. Nobody else ever sees it, so the guide is
+    // still six steps for everybody who did not buy something.
+    expect(ADD_ON_STEP_IDS).toEqual(["texting"]);
+    const src = codeOnly(read(STATUS));
+    expect(src, `${STATUS}: add-on steps must be dropped unless the add-on is held`).toMatch(
+      /texting\?\.subscribed\s*\?\s*steps\s*:\s*steps\.filter\(\(step\) => !ADD_ON_STEP_IDS\.includes\(step\.id\)\)/,
+    );
   });
 
   it("is ONE list: the ids the guide walks are the ids the checklist draws", () => {
@@ -174,7 +193,8 @@ describe("the guided setup's steps", () => {
     const fx = read(FIXTURE);
     const block = fx.slice(fx.indexOf("getOnboardingStatus: {"), fx.indexOf("],", fx.indexOf("getOnboardingStatus: {")));
     const ids = [...block.matchAll(/id:\s*"([a-z_]+)"/g)].map((m) => m[1]);
-    expect(ids).toEqual(steps.map((s) => s.id));
+    // The fixture business does not hold Managed texting.
+    expect(ids).toEqual(everybodys.map((s) => s.id));
   });
 });
 

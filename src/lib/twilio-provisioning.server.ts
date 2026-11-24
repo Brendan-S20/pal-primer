@@ -21,7 +21,7 @@
 //   1. subaccount            POST /2010-04-01/Accounts.json (parent creds)
 //   2. business profile      a SECONDARY customer profile in the parent:
 //                            address, business information (with the EIN),
-//                            two authorized representatives, the address
+//                            one or two authorized representatives, the address
 //                            document, the parent's own primary profile,
 //                            evaluated, then submitted for review
 //   3. number                a toll-free number bought in the subaccount, its
@@ -658,7 +658,9 @@ async function ensureBusinessProfile(
   }
 
   const reps: string[] = [...(next.representative_end_user_sids ?? [])];
-  for (let i = 0; i < 2; i++) {
+  // #970: one authorized representative is required, a second optional;
+  // each one given is filed.
+  for (let i = 0; i < Math.min(d.contacts.length, 2); i++) {
     const attrs = JSON.stringify(representativeAttributes(d.contacts[i]));
     if (!reps[i]) {
       const u = await twilio(parent, "POST", `${TRUST_HUB}/EndUsers`, {
