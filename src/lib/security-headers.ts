@@ -14,26 +14,41 @@
 // geolocation (routing, check-in), so those stay on for the app's own origin
 // and off for anything embedded in it. Features the app never uses are off.
 
+const FRAME_HEADERS = ["Content-Security-Policy", "X-Frame-Options"] as const;
+
 export const SECURITY_HEADERS: Readonly<Record<string, string>> = {
   "Content-Security-Policy": "frame-ancestors 'self'",
   "X-Frame-Options": "SAMEORIGIN",
   "Permissions-Policy": "camera=(self), microphone=(self), geolocation=(self), interest-cohort=()",
 };
 
+/** The one page meant to sit in an iframe on a business's own website: the
+ *  embed code in Settings > Online signup pastes /signup/<slug>?embed=1. Frame
+ *  headers here would blank every one of those embeds. One segment after
+ *  /signup, and not /signup/success (a normal page). */
+export function isSignupEmbedPath(pathname: string): boolean {
+  const m = /^\/signup\/([^/]+)\/?$/.exec(pathname);
+  return !!m && m[1] !== "success";
+}
+
 /** Adds the headers the response does not already carry. A route that set its
- *  own value for one of them keeps it (a CSP a route wrote is more specific). */
-export function withSecurityHeaders(response: Response): Response {
+ *  own value for one of them keeps it (a CSP a route wrote is more specific).
+ *  The signup embed route (pass its pathname) gets no frame headers. */
+export function withSecurityHeaders(response: Response, pathname?: string): Response {
+  const skipFrame = pathname !== undefined && isSignupEmbedPath(pathname);
+  const apply = (target: Response) => {
+    for (const [k, v] of Object.entries(SECURITY_HEADERS)) {
+      if (skipFrame && (FRAME_HEADERS as readonly string[]).includes(k)) continue;
+      if (!target.headers.has(k)) target.headers.set(k, v);
+    }
+  };
   // Redirects from fetch() and some adapters have immutable headers.
   let target = response;
   try {
-    for (const [k, v] of Object.entries(SECURITY_HEADERS)) {
-      if (!target.headers.has(k)) target.headers.set(k, v);
-    }
+    apply(target);
   } catch {
     target = new Response(response.body, response);
-    for (const [k, v] of Object.entries(SECURITY_HEADERS)) {
-      if (!target.headers.has(k)) target.headers.set(k, v);
-    }
+    apply(target);
   }
   return target;
 }

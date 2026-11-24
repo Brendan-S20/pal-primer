@@ -70,10 +70,14 @@ function isH3SwallowedErrorBody(body: string): boolean {
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
+    const pathname = new URL(request.url).pathname;
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
-      return withSecurityHeaders(await normalizeCatastrophicSsrResponse(response, request));
+      return withSecurityHeaders(
+        await normalizeCatastrophicSsrResponse(response, request),
+        pathname,
+      );
     } catch (error) {
       console.error(error);
       await reportCatastrophe(error, request);
