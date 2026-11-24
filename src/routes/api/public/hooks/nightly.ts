@@ -379,12 +379,19 @@ export const Route = createFileRoute("/api/public/hooks/nightly")({
           aiOverage = { error: (e as Error).message };
         }
 
-        // #988: the same for a closed month of texting segments.
+        // #988: the same for a closed month of texting segments. Off until
+        // TEXTING_USAGE_BILLING_LIVE (lib/texting-launch): it then returns
+        // `live: false` having read, claimed and billed nothing.
         let smsOverage: Record<string, unknown>;
         try {
           const { runSmsOverageBilling } = await import("@/lib/sms-overage-billing.server");
           const r = await runSmsOverageBilling();
-          smsOverage = { billed: r.billed, cents_total: r.centsTotal, skipped: r.skipped };
+          smsOverage = {
+            live: r.live,
+            billed: r.billed,
+            cents_total: r.centsTotal,
+            skipped: r.skipped,
+          };
         } catch (e) {
           console.error("[nightly] sms overage billing failed", e);
           smsOverage = { error: (e as Error).message };

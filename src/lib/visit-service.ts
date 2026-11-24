@@ -46,7 +46,9 @@ export function visitServiceMinutes(
   return minutesOrNull(serviceMin) ?? minutesOrNull(propertyMin) ?? DEFAULT_STOP_MINUTES;
 }
 
-type PickableService = Pick<Service, "id" | "name" | "service_line" | "active">;
+type PickableService = Pick<Service, "id" | "name" | "service_line" | "active"> & {
+  created_at?: string;
+};
 
 /**
  * The services a plan's Service picker lists: the business's active ones, in
@@ -161,4 +163,18 @@ export function servicesVary(visits: readonly { service_id?: string | null }[]):
     if (seen.size > 1) return true;
   }
   return false;
+}
+
+/** The service a NEW CLIENT's plan starts on (#1014): the business's most
+ *  recently added active service, so an owner who has just added "Dog walk"
+ *  does not meet the seeded "Pet waste removal" again. With one service, or
+ *  no creation times, it is the same answer as defaultServiceId. */
+export function latestServiceId(
+  services: readonly PickableService[],
+  lines?: readonly ServiceLine[],
+): string | null {
+  const options = servicePickerOptions(services, null, lines);
+  const dated = options.filter((s) => !!s.created_at);
+  if (options.length < 2 || dated.length === 0) return defaultServiceId(services, lines);
+  return dated.reduce((a, b) => ((b.created_at as string) > (a.created_at as string) ? b : a)).id;
 }

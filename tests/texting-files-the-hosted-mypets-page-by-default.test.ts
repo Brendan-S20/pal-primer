@@ -252,7 +252,10 @@ describe("the server files only the business's own published page", () => {
   });
 
   it("the submit asks it before anything goes to Twilio", () => {
-    const fn = read("src/lib/texting-registration.functions.ts");
+    // The submit handler only: the owner's read also imports the provisioning
+    // module, for its scrub (#979 review), and comes first in the file.
+    const all = read("src/lib/texting-registration.functions.ts");
+    const fn = all.slice(all.indexOf("export const submitTextingRegistration"));
     const refusal = fn.indexOf("hostedSiteRefusal(orgId, data.details)");
     expect(refusal).toBeGreaterThan(-1);
     expect(refusal).toBeLessThan(fn.indexOf('await import("@/lib/twilio-provisioning.server")'));
@@ -282,7 +285,7 @@ describe("Settings > Texting", () => {
     expect(page).toContain('target="_blank"');
     expect(page).toContain("{HOSTED_POLICIES_LINE}");
     // What is saved and submitted is the chosen site's URLs.
-    expect(page).toContain("registrationDetailsSchema.safeParse(filed)");
+    expect(page).toMatch(/registrationDetailsSchema\.safeParse\(\{\s*\.\.\.filed,/);
     expect(page).toContain("saveFn({ data: { ...filed,");
   });
 });

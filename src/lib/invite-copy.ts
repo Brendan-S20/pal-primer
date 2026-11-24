@@ -257,3 +257,24 @@ export function inviteLinkCardStatus(
         message: `The email to ${to} did not go out. Copy the link and send it to them yourself.`,
       };
 }
+
+/** #1014: turning a teammate off or back on names them, and asks first before
+ *  it takes their access away. Pure, so a test pins the words. */
+export function staffActiveCopy(name: string | null | undefined, turningOn: boolean) {
+  const who = name?.trim() || "this teammate";
+  return turningOn
+    ? {
+        confirm: null,
+        toast: `${who} reactivated`,
+      }
+    : {
+        confirm: {
+          title: `Deactivate ${who}?`,
+          description:
+            "They lose access to your business right away. Their visit history stays, and you can reactivate them later.",
+          confirmLabel: "Deactivate",
+          cancelLabel: "Keep active",
+        },
+        toast: `${who} deactivated`,
+      };
+}

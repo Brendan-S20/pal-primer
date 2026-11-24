@@ -10,9 +10,10 @@ import {
   type SmsEncoding,
   type TextingTerms,
 } from "@/lib/sms-segments";
+import { TEXTING_USAGE_BILLING_LIVE } from "@/lib/texting-launch";
 
-/** What sent a text. `compliance` kinds (STOP/HELP replies, consent
- *  confirmations) are never blocked by the ceiling. */
+/** What sent a text. The kinds in NEVER_BLOCKED are never stopped by the
+ *  ceiling. */
 export type SmsKind =
   | "client_message"
   | "on_my_way"
@@ -24,7 +25,24 @@ export type SmsKind =
   | "stop_help"
   | "inbound";
 
-const NEVER_BLOCKED: ReadonlySet<SmsKind> = new Set(["consent", "stop_help", "inbound"]);
+/** Never stopped by the ceiling: compliance texts (STOP/HELP replies, consent
+ *  confirmations), what came in, and a client's portal sign-in code. A
+ *  one-time code is transactional: blocking it locks a client out of the
+ *  portal, and the business cannot tell why. */
+export const NEVER_BLOCKED: ReadonlySet<SmsKind> = new Set([
+  "consent",
+  "stop_help",
+  "inbound",
+  "portal_code",
+]);
+
+/** The ledger key for a TwiML reply to an inbound text. Twilio sends the reply
+ *  itself and reports no SID for it, so it is keyed to the inbound message it
+ *  answers: a retried webhook records the same key, and the unique index on
+ *  `twilio_sid` counts it once. No inbound SID, no key (each such row counts). */
+export function twimlReplySid(inboundSid: string | null | undefined): string | null {
+  return inboundSid ? `${inboundSid}:reply` : null;
+}
 
 export class TextingCeilingReached extends Error {
   constructor(public readonly orgId: string) {
@@ -60,11 +78,20 @@ export async function readSmsUsageState(orgId: string): Promise<SmsUsageState | 
     const r = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | undefined;
     if (!r) return null;
     const d = DEFAULT_TEXTING_TERMS;
+    const included = r.segments_included == null ? d.included : Number(r.segments_included);
+    const blockSize = r.block_size == null ? d.blockSize : Number(r.block_size);
+    // The catalog row's ceiling, not the code default: sms_usage_state returns
+    // it as segments (included + blocks * size), so the blocks are read back
+    // out of it. The default is only for a row that does not set one.
+    const ceilingBlocks =
+      r.ceiling_segments == null || !(blockSize > 0)
+        ? d.ceilingBlocks
+        : Math.max(0, Math.round((Number(r.ceiling_segments) - included) / blockSize));
     const terms: TextingTerms = {
-      included: r.segments_included == null ? d.included : Number(r.segments_included),
-      blockSize: r.block_size == null ? d.blockSize : Number(r.block_size),
+      included,
+      blockSize,
       blockCents: r.block_cents == null ? d.blockCents : Number(r.block_cents),
-      ceilingBlocks: d.ceilingBlocks,
+      ceilingBlocks,
     };
     return {
       periodMonth: String(r.period_month ?? ""),
@@ -82,9 +109,16 @@ export async function readSmsUsageState(orgId: string): Promise<SmsUsageState | 
 }
 
 /** Throws TextingCeilingReached when an automatic text would go past the
- *  ceiling. Fails OPEN if the state cannot be read: a metering outage must not
+ *  ceiling. Does nothing at all while TEXTING_USAGE_BILLING_LIVE is off
+ *  (lib/texting-launch): the text is still counted, it is never stopped.
+ *  Fails OPEN if the state cannot be read: a metering outage must not
  *  silence texts, and the recount still bills what was sent. */
-export async function assertUnderTextingCeiling(orgId: string, kind: SmsKind): Promise<void> {
+export async function assertUnderTextingCeiling(
+  orgId: string,
+  kind: SmsKind,
+  live: boolean = TEXTING_USAGE_BILLING_LIVE,
+): Promise<void> {
+  if (!live) return;
   if (NEVER_BLOCKED.has(kind)) return;
   const s = await readSmsUsageState(orgId);
   if (s && s.segmentsUsed >= s.ceilingSegments) throw new TextingCeilingReached(orgId);

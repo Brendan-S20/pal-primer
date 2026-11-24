@@ -306,13 +306,17 @@ export const Route = createFileRoute("/api/public/hooks/twilio")({
             ai_handled: aiHandled,
           });
           {
-            // A TwiML reply is sent by Twilio, not by sendTwilioSms, so count it here.
-            const { recordSmsSegments } = await import("@/lib/sms-usage.server");
+            // A TwiML reply is sent by Twilio, not by sendTwilioSms, so count it
+            // here. Twilio reports no SID for it, so it is keyed to the inbound
+            // SID it answers: a retried webhook (Twilio retries one that timed
+            // out while the first is still running) is then counted once.
+            const { recordSmsSegments, twimlReplySid } = await import("@/lib/sms-usage.server");
             await recordSmsSegments({
               orgId: org.id,
               direction: "outbound",
               kind: aiHandled ? "client_message" : "stop_help",
               body: reply,
+              twilioSid: twimlReplySid(sid),
             });
           }
           return xml(

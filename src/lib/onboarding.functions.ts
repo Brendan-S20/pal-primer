@@ -10,7 +10,8 @@ import {
 import { walksPricedForSetup } from "@/lib/setup-walk-prices";
 import { groomSetupDone, staysSavedForSetup } from "@/lib/setup-line-prices";
 
-export type OnboardingStepId = "business" | "zones" | "clients" | "staff" | "dump_site" | "payouts";
+export type OnboardingStepId =
+  "business" | "zones" | "clients" | "staff" | "dump_site" | "payouts" | "texting";
 
 export type OnboardingStep = {
   id: OnboardingStepId;
@@ -73,7 +74,14 @@ export const ONBOARDING_STEP_IDS: readonly OnboardingStepId[] = [
   "staff",
   "dump_site",
   "payouts",
+  "texting",
 ];
+
+/** #970: steps offered only to a business that bought something. The guide
+ *  is six steps for everybody; an owner who added Managed texting gets a
+ *  seventh, because the add-on does nothing until its filing is in, and an
+ *  owner who paid for it should not have to find Settings → Texting alone. */
+export const ADD_ON_STEP_IDS: readonly OnboardingStepId[] = ["texting"];
 
 export const getOnboardingStatus = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -91,6 +99,14 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
   if (!role) return { steps: [] as OnboardingStep[], completed: 0, total: 0, dismissed: true };
 
   const orgId = role.organization_id;
+
+  // #970: whether Managed texting is held, and how far its filing is. Read
+  // with the service role (the registration has no client-side policy), and
+  // started now so it runs beside the reads below. A failure is "not held":
+  // the step is an offer, and no read failing should add one.
+  const textingFacts = import("@/lib/managed-texting.server")
+    .then((m) => m.managedTextingFactsFor(orgId))
+    .catch(() => null);
 
   const [zones, fieldStaff, invites, dumps, staffEnds, clients, org, lines] = await Promise.all([
     supabase
@@ -395,6 +411,22 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
       cta: "Set up payouts",
       gate: "/payments",
     },
+    {
+      // #970: only for a business holding Managed texting (filtered below).
+      // Done once the filing is with the carrier or live: from then on the
+      // owner has nothing left to do here.
+      id: "texting",
+      label: "Text your clients",
+      description:
+        "File your business details so your own texting number can be registered with carriers. Reminders, on-my-way notices and invoices go out from it once it is approved.",
+      done: false,
+      to: "/settings/sms",
+      cta: "Set up texting",
+      // The owner's alone, like the add-on itself: only the owner can submit
+      // the filing (submitTextingRegistration), so an office manager would
+      // be offered a step whose button refuses them.
+      gate: "/settings/billing",
+    },
   ];
 
   // ── ONE PRICE STEP FOR EVERY LINE THE BUSINESS RUNS ─────────────────
@@ -630,11 +662,18 @@ export const loadOnboardingStatus = createServerOnlyFn(async (context: AuthedCon
     });
   }
 
-  const completed = steps.filter((s) => s.done).length;
+  const texting = await textingFacts;
+  const textingStep = steps.find((step) => step.id === "texting")!;
+  textingStep.done = texting?.state === "under_review" || texting?.state === "active";
+  const offered = texting?.subscribed
+    ? steps
+    : steps.filter((step) => !ADD_ON_STEP_IDS.includes(step.id));
+
+  const completed = offered.filter((s) => s.done).length;
   return {
-    steps,
+    steps: offered,
     completed,
-    total: steps.length,
+    total: offered.length,
     dismissed,
     emailVerified: Boolean(o.email_verified_at),
   };

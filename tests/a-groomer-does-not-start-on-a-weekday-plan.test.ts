@@ -111,7 +111,7 @@ describe("the wizard reads them", () => {
 
   it("the service follows the business's lines, and its one service is the plan's", () => {
     expect(wizard).toMatch(/servicePickerOptions\(orgServices, null, pickerLines\)/);
-    expect(wizard).toMatch(/effectiveServiceId\(serviceId, orgServices, pickerLines\)/);
+    expect(wizard).toMatch(/latestServiceId\(orgServices, pickerLines\)/);
     expect(wizard).toMatch(/offersServicePicker \|\| \(linesKnown && !petWaste\)/);
   });
 

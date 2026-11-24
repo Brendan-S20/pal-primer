@@ -4,10 +4,12 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
 import {
   canSubmit,
+  savedEntityRefusesNoEin,
   submitInputSchema,
   STALE_SUBMIT_MS,
   type RegistrationStatus,
 } from "@/lib/texting-registration";
+import type { TextingPrefill } from "@/lib/texting-prefill";
 
 /** What a submit without the add-on is told. */
 export const MANAGED_TEXTING_REQUIRED =
@@ -34,7 +36,7 @@ export const getTextingRegistration = createServerFn({ method: "GET" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { orgCanTextClients } = await import("@/lib/twilio-credentials.server");
     const { orgHoldsManagedTexting } = await import("@/lib/managed-texting.server");
-    const [{ data: reg }, live, { data: org }, subscribed] = await Promise.all([
+    const [{ data: reg }, live, { data: org }, subscribed, owner] = await Promise.all([
       (supabaseAdmin as any)
         .from("org_texting_registrations")
         .select(DETAIL_COLUMNS)
@@ -43,26 +45,65 @@ export const getTextingRegistration = createServerFn({ method: "GET" })
       orgCanTextClients(orgId),
       (supabaseAdmin as any)
         .from("organizations")
-        .select("name, contact_email, contact_phone")
+        .select("name, contact_email, contact_phone, contact_address")
         .eq("id", orgId)
         .maybeSingle(),
       orgHoldsManagedTexting(orgId),
+      ownerOf(orgId),
     ]);
+    // #979 review (6039948207): the same scrub the admin queue applies on
+    // read, so a row saved before scrub knew Twilio SIDs shows none here.
+    const { scrub } = await import("@/lib/twilio-provisioning.server");
+    const clean = (v: unknown) => (v ? scrub(String(v)) : null);
+    const cleaned = reg
+      ? { ...reg, last_error: clean(reg.last_error), rejection_reason: clean(reg.rejection_reason) }
+      : null;
     return {
-      registration: (reg ?? null) as null | (Record<string, any> & { status: RegistrationStatus }),
+      registration: cleaned as null | (Record<string, any> & { status: RegistrationStatus }),
       /** True only once the verification is approved and activated. */
       live,
       /** The Managed texting add-on is on the plan (site-r2-05): submitting
        *  needs it, and Settings sends a business without it to Billing. */
       subscribed,
       /** What the business already told HoundStack, to start the form from. */
+      // #970: Business settings and the owner, so the form opens filled in.
+      // Never a legal name: see lib/texting-prefill.
       suggestions: {
         businessName: (org?.name as string | null) ?? "",
         email: (org?.contact_email as string | null) ?? "",
         phone: (org?.contact_phone as string | null) ?? "",
-      },
+        address: (org?.contact_address as string | null) ?? "",
+        owner,
+      } satisfies TextingPrefill,
     };
   });
+
+/** The owner's name, email and phone from their staff row, for authorized
+ *  contact 1 (#970). The first owner if a business somehow has two. */
+async function ownerOf(orgId: string): Promise<TextingPrefill["owner"]> {
+  const none = { name: "", email: "", phone: "" };
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const db = supabaseAdmin as any;
+  const { data: roles } = await db
+    .from("user_roles")
+    .select("user_id")
+    .eq("organization_id", orgId)
+    .eq("role", "owner")
+    .limit(1);
+  const userId = roles?.[0]?.user_id as string | undefined;
+  if (!userId) return none;
+  const { data: staff } = await db
+    .from("staff")
+    .select("display_name, email, phone")
+    .eq("organization_id", orgId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  return {
+    name: (staff?.display_name as string | null) ?? "",
+    email: (staff?.email as string | null) ?? "",
+    phone: (staff?.phone as string | null) ?? "",
+  };
+}
 
 /** A draft keeps whatever has been typed; nothing is checked until submit. */
 const draftSchema = z.object({
@@ -93,18 +134,21 @@ const draftSchema = z.object({
     .optional(),
 });
 
-async function currentStatus(
-  orgId: string,
-): Promise<{ status: RegistrationStatus | null; updatedAt: string | null }> {
+async function currentStatus(orgId: string): Promise<{
+  status: RegistrationStatus | null;
+  updatedAt: string | null;
+  businessType: string | null;
+}> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data } = await (supabaseAdmin as any)
     .from("org_texting_registrations")
-    .select("status, updated_at")
+    .select("status, updated_at, business_type")
     .eq("organization_id", orgId)
     .maybeSingle();
   return {
     status: (data?.status as RegistrationStatus | undefined) ?? null,
     updatedAt: (data?.updated_at as string | undefined) ?? null,
+    businessType: (data?.business_type as string | undefined) ?? null,
   };
 }
 
@@ -175,8 +219,13 @@ export const submitTextingRegistration = createServerFn({ method: "POST" })
       throw new Error(MANAGED_TEXTING_REQUIRED);
     // A first check for a clear message; the provisioning claim is the one
     // that actually decides, atomically, who submits.
-    const { status, updatedAt } = await currentStatus(orgId);
+    const { status, updatedAt, businessType } = await currentStatus(orgId);
     if (!canSubmit(status, updatedAt)) throw new Error("This registration is already with Twilio.");
+    // #985 review: no EIN is refused while the SAVED draft says LLC,
+    // corporation, partnership or nonprofit, whether or not the request
+    // carried picked_business_type.
+    const entityRefusal = savedEntityRefusesNoEin(businessType, data.details);
+    if (entityRefusal) throw new Error(entityRefusal);
     // #969: a hosted filing must name this business's own published page.
     const { hostedSiteRefusal } = await import("@/lib/texting-hosted-site.server");
     const refusal = await hostedSiteRefusal(orgId, data.details);

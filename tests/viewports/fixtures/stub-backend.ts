@@ -1121,7 +1121,20 @@ export const BASE_STUBS: Record<string, Stub> = {
       status_changed_at: "2026-10-29T13:50:00Z",
     },
     live: false,
-    suggestions: { businessName: "Detroit Doo", email: "", phone: "" },
+    // #970: what a new form starts from (Business settings and the owner).
+    // Unused while a registration is saved; texting-setup-opens-filled-in
+    // answers registration: null to draw it, at full awkward length.
+    suggestions: {
+      businessName: "QA TEST 970 Pet Waste, Walks and Yard Sanitation Co",
+      email: "office@qa-test-970-pet-waste-and-yard-sanitation.example.com",
+      phone: "(734) 555-0100",
+      address: "4200 Packard Street, Building C, Suite 2400, Ann Arbor, MI 48108, USA",
+      owner: {
+        name: "Avery Testington-Abernathy",
+        email: "avery@qa-test-970-pet-waste-and-yard-sanitation.example.com",
+        phone: "(734) 555-0101",
+      },
+    },
   },
   // The client page's consent panel (#538): the business's own wording, with
   // policy pages long enough to wrap.

@@ -34,6 +34,9 @@ export type Builder = PromiseLike<Result> & {
    *  the value, which is how provisionSignup's email dedupe uses it. A
    *  pattern with wildcards is refused rather than half-implemented. */
   ilike: (k: string, v: string) => Builder;
+  /** `.limit(n)` — at most n rows of a SELECT. Applied to the matched set, so
+   *  `.limit(1)` returns the first match and `.limit(0)` returns none. */
+  limit: (n: number) => Builder;
   maybeSingle: () => Promise<Result>;
   single: () => Promise<Result>;
 };
@@ -72,6 +75,7 @@ export function createFakeAdmin(): Fake {
     let returning = false;
     let payload: Row | Row[] = {};
     let conflictKey: string | undefined;
+    let limitN: number | undefined;
 
     const matched = () =>
       (fake.tables[table] ?? []).filter((r) =>
@@ -92,10 +96,13 @@ export function createFakeAdmin(): Fake {
         ),
       );
 
+    // What a SELECT sees: the matched rows, cut to `.limit(n)` if one was set.
+    const selected = () => (limitN === undefined ? matched() : matched().slice(0, limitN));
+
     const rowsOf = (p: Row | Row[]) => (Array.isArray(p) ? p : [p]);
 
     const run = async (): Promise<Result> => {
-      if (op === "select") return { data: matched(), error: null };
+      if (op === "select") return { data: selected(), error: null };
 
       if (op === "insert") {
         // Every table here has a uuid primary key with a default, so a row
@@ -142,13 +149,14 @@ export function createFakeAdmin(): Fake {
         if (/[%_]/.test(v)) throw new Error(`fake ilike does not model wildcards: ${v}`);
         return filters.push([k, "ilike", v]), api;
       },
+      limit: (n) => ((limitN = n), api),
       // `.update(...).select(...).maybeSingle()` is a WRITE that returns the
       // row, and PostgREST applies it. This used to read `matched()` directly,
       // so the pending update never ran and the pattern looked like a silent
       // no-op write — a test could assert the returned row and never notice the
       // column had not changed. Only a bare `.select()` may skip run().
       maybeSingle: async () => {
-        if (op === "select") return { data: matched()[0] ?? null, error: null };
+        if (op === "select") return { data: selected()[0] ?? null, error: null };
         const { data, error } = await run();
         return { data: (data as Row[] | null)?.[0] ?? null, error };
       },
@@ -160,7 +168,7 @@ export function createFakeAdmin(): Fake {
             ? { data: rows[0], error }
             : { data: null, error: { message: "no rows" } };
         }
-        const rows = matched();
+        const rows = selected();
         return rows.length === 1
           ? { data: rows[0], error: null }
           : { data: null, error: { message: "no rows" } };
