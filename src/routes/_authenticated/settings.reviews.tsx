@@ -152,6 +152,13 @@ function ReviewsSettings() {
           <p className="mt-1 text-xs text-muted-foreground">
             Use <code>{"{name}"}</code> and <code>{"{link}"}</code>. Leave blank for the default.
           </p>
+          {/* #978 review: the carrier filing's sample review text is the
+              default template, so an edit should keep the link and the
+              opt-out line it was approved with. */}
+          <p className="mt-1 text-xs text-muted-foreground">
+            If you edit it, keep <code>{"{link}"}</code> and the line "Reply STOP to opt out." in
+            your message. Your texting approval with carriers was filed with both in it.
+          </p>
           <div className="mt-2 rounded bg-muted p-2 text-xs">
             <span className="font-semibold">Preview:</span> {preview}
           </div>

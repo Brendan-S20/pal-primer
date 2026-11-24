@@ -39,7 +39,23 @@ export function countSegments(body: string): { segments: number; encoding: SmsEn
   if (len === 0) return { segments: 0, encoding };
   const single = encoding === "GSM-7" ? 160 : 70;
   const multi = encoding === "GSM-7" ? 153 : 67;
-  return { segments: len <= single ? 1 : Math.ceil(len / multi), encoding };
+  if (len <= single) return { segments: 1, encoding };
+  // A GSM-7 extension character (escape + character) and a UCS-2 surrogate
+  // pair (one emoji) are never split across two segments: when one does not
+  // fit in what is left of a segment, the whole of it starts the next one.
+  // So this packs character by character rather than dividing the length,
+  // which undercounts by one when such a character lands on the boundary.
+  let segments = 1;
+  let used = 0;
+  for (const ch of body) {
+    const cost = encoding === "GSM-7" ? (EXT.has(ch) ? 2 : 1) : ch.length;
+    if (used + cost > multi) {
+      segments++;
+      used = 0;
+    }
+    used += cost;
+  }
+  return { segments, encoding };
 }
 
 export type TextingTerms = {

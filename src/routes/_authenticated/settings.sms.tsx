@@ -19,6 +19,7 @@ import {
   describeStatus,
   einSchema,
   registrationDetailsSchema,
+  savedEntityRefusesNoEin,
   soleProprietorLegalName,
   type BusinessType,
   type RegistrationStatus,
@@ -466,6 +467,13 @@ function RegistrationForm({
       setErrors(found);
       if (!details.success || !einOk || blocker) {
         throw new Error("Some details need fixing. They are marked below.");
+      }
+      // #985 review: the server also refuses no EIN while the SAVED draft
+      // names an LLC, corporation, partnership or nonprofit. Submit is off
+      // until the owner says that type was a mistake, so reaching here with
+      // No means they did: save the corrected type first.
+      if (noEin && savedEntityRefusesNoEin(initial.business_type, filed)) {
+        await saveFn({ data: { ...filed, business_type: filed.business_type || undefined } });
       }
       return submitFn({
         data: { details: details.data, ein: noEin ? undefined : einCheck.data },
