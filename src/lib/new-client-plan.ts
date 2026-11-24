@@ -128,3 +128,15 @@ export function propertyHazardsFor(
     ([key, label]) => ({ key, label: petWaste ? label : (ANY_DOOR_HAZARD_LABELS[key] ?? label) }),
   );
 }
+
+/** Picked service days after the first visit moves (#1014). Days the owner
+ *  picked stay while they still include the new first visit's weekday; days
+ *  that no longer include it are dropped (null), so the plan follows the date
+ *  again rather than disagreeing with it. */
+export function daysAfterFirstVisitMoves(
+  picked: readonly number[] | null,
+  newWeekday: number,
+): number[] | null {
+  if (picked === null) return null;
+  return picked.includes(newWeekday) ? [...picked] : null;
+}
