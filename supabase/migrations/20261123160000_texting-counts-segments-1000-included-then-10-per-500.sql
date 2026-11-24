@@ -53,9 +53,15 @@ CREATE TABLE IF NOT EXISTS public.sms_usage_events (
 );
 
 -- One row per Twilio message: a retried webhook or a second write for the
--- same send cannot double count.
-CREATE UNIQUE INDEX IF NOT EXISTS sms_usage_events_sid_uniq
-  ON public.sms_usage_events (twilio_sid) WHERE twilio_sid IS NOT NULL;
+-- same send cannot double count. NOT a partial index: recordSmsSegments writes
+-- with ON CONFLICT (twilio_sid), and Postgres only infers that target from a
+-- unique index with no WHERE clause (a partial one fails with 42P10 and every
+-- text with a SID went uncounted). NULLs never conflict in a unique index, so
+-- the texts that have no SID still each get a row. Dropped first so a database
+-- that already ran the earlier partial version ends up with the right one.
+DROP INDEX IF EXISTS public.sms_usage_events_sid_uniq;
+CREATE UNIQUE INDEX sms_usage_events_sid_uniq
+  ON public.sms_usage_events (twilio_sid);
 CREATE INDEX IF NOT EXISTS sms_usage_events_org_month_idx
   ON public.sms_usage_events (organization_id, period_month);
 
