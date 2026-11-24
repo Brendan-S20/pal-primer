@@ -755,8 +755,12 @@ function NewClientWizardForm({
   // Plan step says so rather than keeping them silently.
   const [daysNotice, setDaysNotice] = useState<string | null>(null);
   const chooseService = (id: string) => {
-    const from = shownServiceId || null;
     const hadDays = weekdayChoice !== null || serviceDays !== null;
+    // Choosing a service on Plan is a choice even when it is the one the
+    // picker already showed by default: with no days picked yet, that still
+    // says "Days set for ..." rather than staying silent. With days picked,
+    // re-choosing the shown service keeps them.
+    const from = hadDays ? shownServiceId || null : serviceId || null;
     const sw = serviceSwitch({
       from,
       to: id,
