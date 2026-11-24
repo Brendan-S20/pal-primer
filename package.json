@@ -37,6 +37,7 @@
     "trials:routing:record": "ROUTING_TRIALS_RECORD=1 ROUTING_TRIALS_REPORT=1 vitest run tests/routing-trials.test.ts",
     "trials:routing:google": "ROUTING_TRIALS_GOOGLE=1 ROUTING_TRIALS_REPORT=1 vitest run tests/routing-trials.test.ts",
     "check:pwa": "node scripts/check-pwa-output.mjs",
+    "test:viewports:no-ein": "playwright test a-sole-proprietor-without-an-ein",
     "test:viewports:apple": "node scripts/playwright-with-env.mjs APPLE_SIZES=1 test",
     "test:viewports:apple:sweeps": "node scripts/playwright-with-env.mjs APPLE_SIZES=1 test every-public-page every-signed-in-page",
     "test:viewports:texting-filing": "playwright test the-filing-review-before-submit",

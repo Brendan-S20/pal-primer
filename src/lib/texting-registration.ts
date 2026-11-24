@@ -99,6 +99,15 @@ export const registrationDetailsSchema = z
       .min(2, "Enter the legal name exactly as on the EIN letter")
       .max(200),
     business_type: z.enum(Object.keys(BUSINESS_TYPES) as [BusinessType, ...BusinessType[]]),
+    /** #968: false for an owner with no EIN, filed as a sole proprietor in
+     *  their own name with no registration number. Absent means yes. */
+    has_ein: z.boolean().default(true),
+    /** #968 review: the business type the owner had chosen before answering
+     *  No. An LLC, corporation, partnership or nonprofit there means the
+     *  business has an EIN, whatever No set the type to, so it is refused. */
+    picked_business_type: z
+      .enum(Object.keys(BUSINESS_TYPES) as [BusinessType, ...BusinessType[]])
+      .optional(),
     dba: z.string().trim().max(200).optional().or(z.literal("")),
     street: z.string().trim().min(3, "Street address is required").max(200),
     street2: z.string().trim().max(200).optional().or(z.literal("")),
@@ -125,6 +134,27 @@ export const registrationDetailsSchema = z
         path: ["terms_url"],
         message: "Terms and Privacy Policy need their own separate pages",
       });
+    }
+    // #968: no EIN is the sole proprietor path, and nothing else. An LLC,
+    // a corporation, a partnership and a nonprofit always have an EIN.
+    if (d.has_ein === false) {
+      if (d.business_type !== "sole_proprietor") {
+        ctx.addIssue({ code: "custom", path: ["business_type"], message: NO_EIN_NOT_SOLE_PROP });
+      }
+      if (d.picked_business_type && d.picked_business_type !== "sole_proprietor") {
+        // Twilio rejects this filing (30915: "Sole Proprietor classification
+        // is invalid - business is a registered legal entity"), and the
+        // switch guard would then lock the registration to the no-EIN path.
+        ctx.addIssue({ code: "custom", path: ["has_ein"], message: NO_EIN_NOT_SOLE_PROP });
+      }
+      const owner = soleProprietorLegalName(d.contacts[0]);
+      if (!owner || normalName(d.legal_name) !== normalName(owner)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["legal_name"],
+          message: "Without an EIN, the legal name is your own first and last name",
+        });
+      }
     }
     // #969: the business's hosted page (the default). Website, Privacy and
     // Terms are its /{slug}, /{slug}/privacy and /{slug}/terms on one host,
@@ -159,6 +189,49 @@ export const registrationDetailsSchema = z
     }
   });
 export type RegistrationDetails = z.infer<typeof registrationDetailsSchema>;
+
+// ── No EIN (#968) ─────────────────────────────────────────────────────────
+//
+// Twilio files a US business with no EIN as a toll-free SOLE_PROPRIETOR with
+// no registration number, authority or country (registration is "required
+// for all business types except SOLE_PROPRIETOR", Toll-Free Verification
+// API; error 30527). The legal name is then the owner's own name: a sole
+// proprietor with no EIN has no other legal name, and a DBA is not one.
+// Twilio: "all US LLCs have an EIN and are therefore ineligible" for sole
+// proprietor registration, so an LLC is steered to the EIN path.
+
+export const NO_EIN_NOT_SOLE_PROP =
+  "Without an EIN you are filed as a sole proprietor. An LLC, corporation, partnership or nonprofit always has an EIN: choose Yes and use the number on your IRS letter.";
+
+/** The legal name a sole proprietor without an EIN is filed under: contact
+ *  1's first and last name, which is the owner. */
+export function soleProprietorLegalName(
+  c: { first_name?: string | null; last_name?: string | null } | undefined,
+): string {
+  return [c?.first_name, c?.last_name]
+    .map((s) => (s ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+function normalName(s: string): string {
+  return s.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+/** What Settings submits: the details, and the EIN only when there is one. */
+export const submitInputSchema = z
+  .object({ details: registrationDetailsSchema, ein: z.string().optional() })
+  .superRefine((v, ctx) => {
+    if (v.details.has_ein === false) return;
+    const r = einSchema.safeParse(v.ein ?? "");
+    if (!r.success) {
+      ctx.addIssue({ code: "custom", path: ["ein"], message: r.error.issues[0]?.message ?? "Enter the EIN" });
+    }
+  })
+  .transform((v) => ({
+    details: v.details,
+    ein: v.details.has_ein === false ? null : (v.ein ?? "").trim(),
+  }));
 
 /** Nine digits, with or without the dash. Never stored; never logged. */
 export const einSchema = z
