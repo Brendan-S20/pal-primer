@@ -96,9 +96,11 @@ function InvoicingPage() {
             />
           </div>
           <p className="text-xs text-muted-foreground">
-            Invoices are due {netDays} day{netDays === 1 ? "" : "s"} after they're sent (net{" "}
-            {netDays}). Open invoices past their due date show as overdue on the Invoices page and
-            in the client portal.
+            Invoices are due {netDays} day{netDays === 1 ? "" : "s"} after the day they're created
+            (net {netDays}), not after they're sent, so the grace period counts toward those days.
+            Invoices paid at online signup are due the day they're made, and imported balances keep
+            the due date in your file when it has one. Open invoices past their due date show as
+            overdue on the Invoices page and in the client portal.
           </p>
         </CardContent>
       </Card>
@@ -148,8 +150,9 @@ function InvoicingPage() {
         <CardContent className="space-y-2 text-sm text-muted-foreground">
           <p>
             <span className="font-medium text-foreground">Held (scheduled to send)</span>: a freshly
-            auto-generated invoice waits out its grace period. On the Invoices page and in the
-            invoice drawer it shows a{" "}
+            auto-generated invoice waits out its grace period. Until its send date it reads{" "}
+            <span className="font-medium text-foreground">Scheduled</span> instead of Open, and on
+            the Invoices page and in the invoice drawer it also shows a{" "}
             <span className="font-medium text-foreground">Scheduled to send {"{date}"}</span> chip.
           </p>
           <p>
@@ -160,8 +163,8 @@ function InvoicingPage() {
           <p>
             <span className="font-medium text-foreground">Sent</span>: once emailed (automatically
             at the end of grace, or via Send now), the invoice shows a{" "}
-            <span className="font-medium text-foreground">Sent {"{date}"}</span> chip and starts its
-            net-terms countdown to the due date.
+            <span className="font-medium text-foreground">Sent {"{date}"}</span> chip. Sending does
+            not change the due date, which was set when the invoice was created.
           </p>
         </CardContent>
       </Card>
