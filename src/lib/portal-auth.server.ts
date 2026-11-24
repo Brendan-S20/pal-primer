@@ -438,6 +438,7 @@ export async function issuePortalOtp(
         from: sender.from ?? undefined,
         messagingServiceSid: sender.messagingServiceSid ?? undefined,
         credentials: sender.credentials,
+        usage: { orgId: contact.organization_id, kind: "portal_code" },
       });
     } else {
       // Send OTP email DIRECTLY (synchronous) via Resend, and LOG the

@@ -81,6 +81,7 @@ export const sendReviewRequest = createServerFn({ method: "POST" })
           from: sender.from ?? undefined,
           messagingServiceSid: sender.messagingServiceSid ?? undefined,
           credentials: sender.credentials,
+          usage: { orgId: client.organization_id, kind: "review_request" },
         });
         sid = res.sid;
         status = res.status || "sent";

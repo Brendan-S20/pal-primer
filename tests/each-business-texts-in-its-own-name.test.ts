@@ -800,6 +800,7 @@ describe("6. every text to a client starts with the business's name", () => {
       body: "Hi Sam, this is a reminder your visit is scheduled for Wed, Aug 12.",
       from: NUMBER,
       credentials: { mode: "direct", accountSid: SUB_SID, authToken: "tok", brand: "Detroit Doo" },
+      usage: { orgId: "11111111-1111-1111-1111-111111111111", kind: "reminder" },
     });
     expect(calls[0].body.get("Body")).toBe(
       "Detroit Doo: Hi Sam, this is a reminder your visit is scheduled for Wed, Aug 12.",
