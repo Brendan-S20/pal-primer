@@ -38,6 +38,8 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  LOG_STALL_SECONDS,
+  logStalled,
   neverStarted,
   pageNeverCommitted,
   simulatorFailedTheLaunch,
@@ -172,6 +174,119 @@ describe("a page the app served and WebKit had not committed", () => {
   it("names the assertion ColdLaunch.swift actually fails with", () => {
     const swift = read("ios/UITests/HoundStackUITests/ColdLaunch.swift");
     expect(swift).toContain('"\\(when): no email field, so the sign-in form never rendered"');
+  });
+});
+
+// main 08b2568e, iOS launch run 45342136372: iPhone 17e, iOS 27.2,
+// testColdLaunchReachesSignInFiveTimes, "Failed to get matching snapshots:
+// Timed out while evaluating UI query" on launch 2 of 5, after launch 1
+// reached sign-in in 6 s. The watchdog's sample of the app, 28 s into the
+// silence, had its main thread inside XCTest's accessibility query waiting on
+// logd (firehose_buffer_tracepoint_reserve_wait_for_chunks_from_logd), with
+// none of the app's own frames on it. The log and process fixtures are the
+// CI files filtered to the failing test and to each process's first line.
+// The seconds fixture is cut from the job's oslog.txt, which holds HoundStack
+// and WebKit's processes only; the script cuts it from every process, which
+// can only make a silence shorter, never longer.
+describe("a launch that failed while the simulator's logd had stalled", () => {
+  const name = "45342136372-iphone-17e-log-stalled";
+  const { log, processes } = fixture(name);
+  const seconds = read(`tests/fixtures/ios-launch-smoke/${name}.log-seconds.txt`);
+
+  it("is recognised, and names the silence", () => {
+    const r = logStalled(log, seconds);
+    expect(r.proven).toBe(true);
+    expect(r.why).toBe(
+      "the simulator's log stalled during every failed test; testColdLaunchReachesSignInFiveTimes: nothing in the simulator logged from 02:50:52 to 02:55:41 (289 s)",
+    );
+    expect(simulatorFailedTheLaunch(log, processes, seconds)).toEqual(r);
+    // Neither older proof claims it: the app started, and the failure is
+    // XCTest's query, not the sign-in assertion.
+    expect(neverStarted(log, processes).proven).toBe(false);
+    expect(pageNeverCommitted(log, processes).proven).toBe(false);
+  });
+
+  it("is not claimed when every second of the test has a line from some process", () => {
+    const busy: string[] = [];
+    for (let t = Date.UTC(2026, 10, 24, 2, 46); t < Date.UTC(2026, 10, 24, 2, 57); t += 1000) {
+      busy.push(new Date(t).toISOString().replace("T", " ").slice(0, 19));
+    }
+    const r = logStalled(log, busy.join("\n"));
+    expect(r.proven).toBe(false);
+    expect(r.why).toMatch(/longest silence from every process was 0 s/);
+    expect(simulatorFailedTheLaunch(log, processes, busy.join("\n")).proven).toBe(false);
+  });
+
+  it("is not claimed for a silence under the threshold", () => {
+    // Fill the stall with a line every LOG_STALL_SECONDS - 1 seconds.
+    const extra: string[] = [];
+    for (let s = 0; s < 6 * 60; s += LOG_STALL_SECONDS - 1) {
+      const t = Date.UTC(2026, 10, 24, 2, 49, 51) + s * 1000;
+      extra.push(new Date(t).toISOString().replace("T", " ").slice(0, 19));
+    }
+    expect(logStalled(log, `${seconds}\n${extra.join("\n")}`).proven).toBe(false);
+  });
+
+  it("reads nothing into a log that is empty or does not reach the tear-down", () => {
+    expect(logStalled(log, "").proven).toBe(false);
+    expect(simulatorFailedTheLaunch(log, processes).proven).toBe(false);
+    const truncated = seconds
+      .split("\n")
+      .filter((l) => l < "2026-11-24 02:50:00")
+      .join("\n");
+    const r = logStalled(log, truncated);
+    expect(r.proven).toBe(false);
+    expect(r.why).toMatch(/does not cover every failed test/);
+  });
+
+  it("needs a silence in EVERY failed test of the class", () => {
+    // A second failed test, after the log recovered and kept logging: a
+    // failure there is not the stall's, so the class is not retried on it.
+    const second = [
+      "Test Case '-[HoundStackUITests.ColdLaunch testALinkWhileRunningKeepsTheAppUp]' started.",
+      "    t =     0.00s Start Test at 2026-11-24 02:55:50.000",
+      "/x/ColdLaunch.swift:152: error: -[HoundStackUITests.ColdLaunch testALinkWhileRunningKeepsTheAppUp] : before the link: no email field, so the sign-in form never rendered",
+      "    t =    65.00s Tear Down",
+      "Test Case '-[HoundStackUITests.ColdLaunch testALinkWhileRunningKeepsTheAppUp]' failed (65.100 seconds).",
+    ].join("\n");
+    const busyAfter: string[] = [];
+    for (let s = 0; s < 120; s++) {
+      const t = Date.UTC(2026, 10, 24, 2, 55, 45) + s * 1000;
+      busyAfter.push(new Date(t).toISOString().replace("T", " ").slice(0, 19));
+    }
+    const r = logStalled(`${log}\n${second}`, `${seconds}\n${busyAfter.join("\n")}`);
+    expect(r.proven).toBe(false);
+    expect(r.why).toMatch(/^testALinkWhileRunningKeepsTheAppUp: the longest silence/);
+  });
+
+  it("is given an unfiltered log by the smoke script", () => {
+    const script = read("scripts/ios-launch-smoke.sh");
+    const check = script.slice(script.indexOf("never_started() {"), script.indexOf("stop_app() {"));
+    // Every process: no --predicate on the second log show.
+    expect(check).toMatch(
+      /xcrun simctl spawn "\$2" log show --last 30m --style compact 2>\/dev\/null < \/dev\/null/,
+    );
+    expect(check).toMatch(/> "\$1\.log-seconds\.txt"/);
+    expect(check).toMatch(
+      /ios-launch-never-started\.mjs" "\$1" "\$1\.processes\.txt" "\$1\.log-seconds\.txt"/,
+    );
+    // And a crash still fails the run, retried or not.
+    expect(script).toMatch(
+      /crashes=\$\(find "\$HOME\/Library\/Logs\/DiagnosticReports" -newer "\$marker"/,
+    );
+  });
+});
+
+describe("the stuck-launch watchdog is quiet unless it fires", () => {
+  it("is reaped with its job notice discarded", () => {
+    const script = read("scripts/ios-launch-smoke.sh");
+    const runClass = script.slice(
+      script.indexOf("run_class() {"),
+      script.indexOf("attempt_class() {"),
+    );
+    expect(runClass).toMatch(
+      /\{ kill "\$sampler_pid" && wait "\$sampler_pid"; \} 2>\/dev\/null \|\| true/,
+    );
   });
 });
 
