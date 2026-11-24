@@ -54,14 +54,10 @@ import { WelcomeEmailOptIn } from "@/components/client-detail/WelcomeEmailOptIn"
 import { WELCOME_EMAIL_DEFAULT_CHECKED } from "@/lib/welcome-email";
 import { formatDay } from "@/lib/format";
 import { titleHead } from "@/lib/page-title";
-import {
-  effectiveServiceId,
-  ServicePicker,
-  useOrgServices,
-} from "@/components/client-detail/ServicePicker";
+import { ServicePicker, useOrgServices } from "@/components/client-detail/ServicePicker";
 import { usePickerLines } from "@/components/CommercialOnly";
 import { WeekdayPicker } from "@/components/client-detail/WeekdayPicker";
-import { servicePickerOptions } from "@/lib/visit-service";
+import { latestServiceId, servicePickerOptions } from "@/lib/visit-service";
 import { isZonePriced, servicePriceCents } from "@/lib/services";
 import {
   normalizeWeekdays,
@@ -71,6 +67,7 @@ import {
 } from "@/lib/weekday-set";
 import {
   defaultFirstVisit,
+  daysAfterFirstVisitMoves,
   defaultPlanWeekdays,
   firstVisitHint,
   nextDay,
@@ -494,11 +491,12 @@ function NewClientWizardForm({
   // service even with no picker to show: a walker with one walk was quoted
   // from a zone, as a cleanup.
   const offersServicePicker = servicePickerOptions(orgServices, null, pickerLines).length > 1;
+  // #1014: nothing chosen starts on the business's latest service, not the
+  // seeded "Pet waste removal" it still has.
+  const shownServiceId = serviceId || latestServiceId(orgServices, pickerLines) || "";
   const chosenService =
     offersServicePicker || (linesKnown && !petWaste)
-      ? (orgServices.find(
-          (x) => x.id === effectiveServiceId(serviceId, orgServices, pickerLines),
-        ) ?? null)
+      ? (orgServices.find((x) => x.id === shownServiceId) ?? null)
       : null;
   // #768: the line this client is being set up for, once a service is
   // chosen (the picker on Property, or a lead's). A business that scoops and
@@ -736,6 +734,14 @@ function NewClientWizardForm({
   const [serviceDays, setServiceDays] = useState<number[] | null>(null);
   // What the chips show is what is saved: no more days than the cadence runs
   // on (R2-44), even after switching from Twice weekly to Weekly.
+  // #1014: moving the first visit (Today, Tomorrow or the date) moves the
+  // service days with it, unless the owner's own picks still include it.
+  const moveFirstVisit = (day: string) => {
+    setStartedOn(day);
+    if (!day) return;
+    setServiceDays((d) => daysAfterFirstVisitMoves(d, weekdayOf(day)));
+    setWeekdays((d) => daysAfterFirstVisitMoves(d, weekdayOf(day)));
+  };
   const effectiveServiceDays = serviceDaysFor(serviceDays ?? [weekdayOf(startedOn)], frequency);
 
   // A walk, a sit or a groom: priced from its service through the one rule
@@ -749,7 +755,7 @@ function NewClientWizardForm({
   // Plan step says so rather than keeping them silently.
   const [daysNotice, setDaysNotice] = useState<string | null>(null);
   const chooseService = (id: string) => {
-    const from = effectiveServiceId(serviceId, orgServices, pickerLines);
+    const from = shownServiceId || null;
     const hadDays = weekdayChoice !== null || serviceDays !== null;
     const sw = serviceSwitch({
       from,
@@ -1435,7 +1441,7 @@ function NewClientWizardForm({
               <div className="space-y-1" data-new-client-service-early>
                 <ServicePicker
                   id="nc-service-early"
-                  value={serviceId}
+                  value={shownServiceId}
                   currentId={null}
                   services={orgServices}
                   isLoading={servicesLoading}
@@ -1807,7 +1813,7 @@ function NewClientWizardForm({
                 {offersServicePicker && (
                   <ServicePicker
                     id="nc-service"
-                    value={serviceId}
+                    value={shownServiceId}
                     currentId={null}
                     services={orgServices}
                     isLoading={servicesLoading}
@@ -1894,7 +1900,7 @@ function NewClientWizardForm({
                       min={orgTodayStr}
                       value={startedOn}
                       // The service day follows this date until the owner picks days.
-                      onChange={(e) => setStartedOn(e.target.value)}
+                      onChange={(e) => moveFirstVisit(e.target.value)}
                       aria-describedby="started-on-hint"
                     />
                     <div className="flex flex-wrap gap-1.5" data-first-visit-quick>
@@ -1908,7 +1914,7 @@ function NewClientWizardForm({
                           key={label}
                           type="button"
                           aria-pressed={startedOn === day}
-                          onClick={() => setStartedOn(day)}
+                          onClick={() => moveFirstVisit(day)}
                           className={`h-9 min-w-11 shrink-0 rounded-md border px-3 text-sm touch:min-h-11 ${
                             startedOn === day
                               ? "border-primary bg-primary text-primary-foreground"

@@ -281,7 +281,14 @@ function Dashboard() {
           icon={Users}
           label="Active clients"
           value={sum ? <CountUp value={sum.activeClients} /> : <KpiValueBone />}
-          hint={billing?.planName ? `On the ${billing.planName} plan` : undefined}
+          hint={
+            // #1014: a trial has not bought a plan; the banner says so.
+            billing?.trialPhase === "trialing"
+              ? "On the free trial"
+              : billing?.planName
+                ? `On the ${billing.planName} plan`
+                : undefined
+          }
         />
         {/* Financial KPIs are null for roles without view_financials — the
             server never computes them, so there is nothing to hide client-side. */}
