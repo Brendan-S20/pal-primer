@@ -19,6 +19,7 @@ import { Route as ImpersonateRouteImport } from './routes/impersonate'
 import { Route as NoWorkspaceRouteImport } from './routes/no-workspace'
 import { Route as PlatformRouteImport } from './routes/platform'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as RobotsDottxtRouteImport } from './routes/robots[.]txt'
 import { Route as SignUpRouteImport } from './routes/sign-up'
 import { Route as TwoStepRouteImport } from './routes/two-step'
 import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
@@ -228,6 +229,11 @@ const PlatformRoute = PlatformRouteImport.update({
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RobotsDottxtRoute = RobotsDottxtRouteImport.update({
+  id: '/robots.txt',
+  path: '/robots.txt',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SignUpRoute = SignUpRouteImport.update({
@@ -1108,6 +1114,7 @@ export interface FileRoutesByFullPath {
   '/no-workspace': typeof NoWorkspaceRoute
   '/platform': typeof PlatformRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
+  '/robots.txt': typeof RobotsDottxtRoute
   '/sign-up': typeof SignUpRoute
   '/two-step': typeof TwoStepRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -1279,6 +1286,7 @@ export interface FileRoutesByTo {
   '/impersonate': typeof ImpersonateRoute
   '/no-workspace': typeof NoWorkspaceRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/robots.txt': typeof RobotsDottxtRoute
   '/sign-up': typeof SignUpRoute
   '/two-step': typeof TwoStepRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -1445,6 +1453,7 @@ export interface FileRoutesById {
   '/no-workspace': typeof NoWorkspaceRoute
   '/platform': typeof PlatformRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
+  '/robots.txt': typeof RobotsDottxtRoute
   '/sign-up': typeof SignUpRoute
   '/two-step': typeof TwoStepRoute
   '/unsubscribe': typeof UnsubscribeRoute
@@ -1619,6 +1628,7 @@ export interface FileRouteTypes {
     | '/no-workspace'
     | '/platform'
     | '/reset-password'
+    | '/robots.txt'
     | '/sign-up'
     | '/two-step'
     | '/unsubscribe'
@@ -1790,6 +1800,7 @@ export interface FileRouteTypes {
     | '/impersonate'
     | '/no-workspace'
     | '/reset-password'
+    | '/robots.txt'
     | '/sign-up'
     | '/two-step'
     | '/unsubscribe'
@@ -1955,6 +1966,7 @@ export interface FileRouteTypes {
     | '/no-workspace'
     | '/platform'
     | '/reset-password'
+    | '/robots.txt'
     | '/sign-up'
     | '/two-step'
     | '/unsubscribe'
@@ -2129,6 +2141,7 @@ export interface RootRouteChildren {
   NoWorkspaceRoute: typeof NoWorkspaceRoute
   PlatformRoute: typeof PlatformRouteWithChildren
   ResetPasswordRoute: typeof ResetPasswordRoute
+  RobotsDottxtRoute: typeof RobotsDottxtRoute
   SignUpRoute: typeof SignUpRoute
   TwoStepRoute: typeof TwoStepRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
@@ -2250,6 +2263,13 @@ declare module '@tanstack/react-router' {
       path: '/reset-password'
       fullPath: '/reset-password'
       preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/robots.txt': {
+      id: '/robots.txt'
+      path: '/robots.txt'
+      fullPath: '/robots.txt'
+      preLoaderRoute: typeof RobotsDottxtRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sign-up': {
@@ -3724,6 +3744,7 @@ const rootRouteChildren: RootRouteChildren = {
   NoWorkspaceRoute: NoWorkspaceRoute,
   PlatformRoute: PlatformRouteWithChildren,
   ResetPasswordRoute: ResetPasswordRoute,
+  RobotsDottxtRoute: RobotsDottxtRoute,
   SignUpRoute: SignUpRoute,
   TwoStepRoute: TwoStepRoute,
   UnsubscribeRoute: UnsubscribeRoute,
