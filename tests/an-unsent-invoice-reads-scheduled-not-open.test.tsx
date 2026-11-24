@@ -134,6 +134,16 @@ describe("Settings > Invoicing says when the due date is set", () => {
     expect(src).toMatch(/not after they're sent/);
   });
 
+  it("says some invoices set their own due date, without claiming a full list", () => {
+    // Stays (due on the start date, or today for a change, deposit or
+    // cancellation fee), payments at online signup (due today) and imported
+    // balances (the file's date) do not follow the net-terms default.
+    expect(src).toMatch(
+      /Some invoices set their own due date, such as pet-sitting stays, payments at online\s+signup and imported balances\./,
+    );
+    expect(src).not.toMatch(/Invoices paid at online signup are due/);
+  });
+
   it("no longer says sending starts the countdown", () => {
     expect(src).not.toMatch(/after they're sent \(net/);
     expect(src).not.toMatch(/net-terms countdown/);

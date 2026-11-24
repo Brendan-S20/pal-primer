@@ -98,9 +98,9 @@ function InvoicingPage() {
           <p className="text-xs text-muted-foreground">
             Invoices are due {netDays} day{netDays === 1 ? "" : "s"} after the day they're created
             (net {netDays}), not after they're sent, so the grace period counts toward those days.
-            Invoices paid at online signup are due the day they're made, and imported balances keep
-            the due date in your file when it has one. Open invoices past their due date show as
-            overdue on the Invoices page and in the client portal.
+            Some invoices set their own due date, such as pet-sitting stays, payments at online
+            signup and imported balances. Open invoices past their due date show as overdue on the
+            Invoices page and in the client portal.
           </p>
         </CardContent>
       </Card>
