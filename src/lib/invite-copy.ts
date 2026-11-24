@@ -271,7 +271,7 @@ export function staffActiveCopy(name: string | null | undefined, turningOn: bool
         confirm: {
           title: `Deactivate ${who}?`,
           description:
-            "They lose access to your business right away. Their visit history stays, and you can reactivate them any time.",
+            "They lose access to your business right away. Their visit history stays, and you can reactivate them later.",
           confirmLabel: "Deactivate",
           cancelLabel: "Keep active",
         },

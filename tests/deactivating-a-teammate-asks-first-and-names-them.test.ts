@@ -9,6 +9,10 @@ describe("staffActiveCopy", () => {
     const c = staffActiveCopy("Sam Rivera", false);
     expect(c.confirm?.title).toBe("Deactivate Sam Rivera?");
     expect(c.confirm?.cancelLabel).toBe("Keep active");
+    // "later", not "any time": reactivating is refused when the plan's team is full.
+    expect(c.confirm?.description).toBe(
+      "They lose access to your business right away. Their visit history stays, and you can reactivate them later.",
+    );
     expect(c.toast).toBe("Sam Rivera deactivated");
   });
   it("does not ask before reactivating, and still names them", () => {
