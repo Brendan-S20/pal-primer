@@ -83,25 +83,7 @@ fi
 
 cd "$stackdir"
 supabase init --force >/dev/null
-node - "$prefix" "$major" <<'EOF'
-const fs = require("node:fs");
-const [prefix, major] = process.argv.slice(2);
-const path = "supabase/config.toml";
-let s = fs.readFileSync(path, "utf8");
-let ports = 0;
-s = s.replace(/\b543(\d\d)\b/g, (_, d) => { ports += 1; return `${prefix}${d}`; });
-if (!/^major_version = \d+$/m.test(s)) {
-  console.error("::error::config.toml from `supabase init` has no major_version line to set; update drill.sh");
-  process.exit(1);
-}
-s = s.replace(/^major_version = \d+$/m, `major_version = ${major}`);
-if (ports === 0) {
-  console.error("::error::config.toml from `supabase init` no longer uses 543xx ports; update drill.sh");
-  process.exit(1);
-}
-fs.writeFileSync(path, s);
-console.log(`drill stack: ports ${prefix}xx, Postgres ${major}`);
-EOF
+node "$here/patch-drill-config.mjs" "$stackdir" "$prefix" "$major"
 
 # Only what a restore needs: Postgres, plus the auth and storage services
 # whose own migrations create the schemas data.sql writes into. Kong stays
