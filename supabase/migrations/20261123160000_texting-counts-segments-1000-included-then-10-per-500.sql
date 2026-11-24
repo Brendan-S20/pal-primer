@@ -199,6 +199,10 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.sms_usage_state(uuid) FROM PUBLIC, anon;
+-- Supabase grants EXECUTE to authenticated by default, and the function takes
+-- any organization id: a signed-in user could read another business's monthly
+-- segments, overage and ceiling. The only caller is the server, as service_role.
+REVOKE EXECUTE ON FUNCTION public.sms_usage_state(uuid) FROM authenticated;
 GRANT EXECUTE ON FUNCTION public.sms_usage_state(uuid) TO service_role;
 
 -- ── prove it (rolled back) ─────────────────────────────────────────────────
@@ -206,6 +210,13 @@ DO $check$
 DECLARE
   _inc integer; _size integer; _cents integer;
 BEGIN
+  IF has_function_privilege('authenticated', 'public.sms_usage_state(uuid)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.sms_usage_state(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'sms_usage_state must not be executable by authenticated or anon';
+  END IF;
+  IF NOT has_function_privilege('service_role', 'public.sms_usage_state(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'sms_usage_state must stay executable by service_role';
+  END IF;
   SELECT texting_segments_included, texting_block_size, texting_block_cents
     INTO _inc, _size, _cents FROM public.platform_addons WHERE slug = 'managed-sms';
   IF NOT FOUND THEN

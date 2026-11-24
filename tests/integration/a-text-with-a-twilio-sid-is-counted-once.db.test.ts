@@ -19,9 +19,11 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
+import { spawnSync } from "node:child_process";
 
 const URL = process.env.TEST_SUPABASE_URL;
 const SERVICE = process.env.TEST_SUPABASE_SERVICE_KEY;
+const DB_URL = process.env.TEST_SUPABASE_DB_URL;
 const enabled = Boolean(URL && SERVICE);
 
 // recordSmsSegments reaches the database through supabaseAdmin; point it at
@@ -79,5 +81,26 @@ describe.skipIf(!enabled)("a text with a Twilio SID is counted once", () => {
     await recordSmsSegments({ ...base, orgId, body: "one", twilioSid: null });
     await recordSmsSegments({ ...base, orgId, body: "two", twilioSid: null });
     expect(await rowsFor(null)).toBe(before + 2);
+  });
+
+  // Same file, same migration: sms_usage_state takes any organization id, so
+  // a signed-in user must not be able to run it for another business.
+  it.skipIf(!DB_URL)("a signed-in user cannot run sms_usage_state", () => {
+    const run = (role: string) =>
+      spawnSync(
+        "psql",
+        [
+          DB_URL!, "-X", "-v", "ON_ERROR_STOP=1", "-At", "-c",
+          `BEGIN; SET LOCAL ROLE ${role}; SELECT count(*) FROM public.sms_usage_state('${orgId}'); ROLLBACK;`,
+        ],
+        { encoding: "utf8" },
+      );
+    for (const role of ["authenticated", "anon"]) {
+      const r = run(role);
+      expect(r.status, role).not.toBe(0);
+      expect(r.stderr, role).toMatch(/permission denied for function sms_usage_state/);
+    }
+    const ok = run("service_role");
+    expect(ok.status, ok.stderr).toBe(0);
   });
 });
