@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState, type ReactNode } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { AlertTriangle, CheckCircle2, Clock, Info } from "lucide-react";
@@ -19,6 +19,7 @@ import {
   describeStatus,
   einSchema,
   registrationDetailsSchema,
+  savedEntityRefusesNoEin,
   soleProprietorLegalName,
   type BusinessType,
   type RegistrationStatus,
@@ -491,6 +492,13 @@ function RegistrationForm({
       if (!details.success || !einOk || blocker) {
         throw new Error("Some details need fixing. They are marked below.");
       }
+      // #985 review: the server also refuses no EIN while the SAVED draft
+      // names an LLC, corporation, partnership or nonprofit. Submit is off
+      // until the owner says that type was a mistake, so reaching here with
+      // No means they did: save the corrected type first.
+      if (noEin && savedEntityRefusesNoEin(initial.business_type, filed)) {
+        await saveFn({ data: { ...filed, business_type: filed.business_type || undefined } });
+      }
       return submitFn({
         data: { details: details.data, ein: noEin ? undefined : einCheck.data },
       });
@@ -907,16 +915,26 @@ function HostedSitePanel({
           ).map(([k, v]) => (
             <div key={k} className="contents">
               <dt className="text-muted-foreground">{k}</dt>
-              <dd className="min-w-0 break-all font-mono">
+              <dd className="min-w-0 font-mono">
                 {/* #969 review: the owner reads the policy that speaks for
                     their business, so each address opens in a new tab. */}
                 <a
                   href={v}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-primary underline underline-offset-2"
+                  className="text-primary underline underline-offset-2 [overflow-wrap:anywhere]"
                 >
-                  {v}
+                  {/* A long address breaks after a "/" or a ".", not in the
+                      middle of a word (390px read "mypets.ser" / "vices").
+                      overflow-wrap:anywhere is only the fallback for one
+                      segment wider than the line. The text is still the
+                      whole address. */}
+                  {v.split(/(?<=[/.])/).map((part, i) => (
+                    <Fragment key={i}>
+                      {part}
+                      <wbr />
+                    </Fragment>
+                  ))}
                 </a>
               </dd>
             </div>

@@ -208,6 +208,22 @@ export type RegistrationDetails = z.infer<typeof registrationDetailsSchema>;
 export const NO_EIN_NOT_SOLE_PROP =
   "Without an EIN you are filed as a sole proprietor. An LLC, corporation, partnership or nonprofit always has an EIN: choose Yes and use the number on your IRS letter.";
 
+/** #985 review (6039947939): the server's own check that does not depend on
+ *  the browser sending `picked_business_type`. A filing without an EIN is
+ *  refused while the business type SAVED on the draft row is an entity type
+ *  (LLC, corporation, partnership, nonprofit): that business has an EIN.
+ *  Settings saves the corrected type before it submits when the owner said
+ *  the entity type was a mistake, so the honest path still files. Returns
+ *  the refusal, or null. */
+export function savedEntityRefusesNoEin(
+  savedBusinessType: string | null | undefined,
+  details: { has_ein?: boolean },
+): string | null {
+  if (details.has_ein !== false) return null;
+  if (!savedBusinessType || !(savedBusinessType in BUSINESS_TYPES)) return null;
+  return savedBusinessType === "sole_proprietor" ? null : NO_EIN_NOT_SOLE_PROP;
+}
+
 /** The legal name a sole proprietor without an EIN is filed under: contact
  *  1's first and last name, which is the owner. */
 export function soleProprietorLegalName(
