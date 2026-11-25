@@ -67,12 +67,15 @@ export function oneOffNotReadyReason(a: {
   scheduledOn: string;
   needsService: boolean;
   priceValid: boolean;
+  /** The set price is being looked up again; the price on screen is not yet trusted. */
+  priceChecking?: boolean;
   hasWindowProblem: boolean;
 }): string {
   if (!a.clientId) return "Choose a client to book the visit.";
   if (!a.propertyId) return "Choose a property to book the visit.";
   if (a.needsService) return "Choose a service to book the visit.";
   if (!a.scheduledOn) return "Choose a date to book the visit.";
+  if (a.priceChecking) return "Checking the set price…";
   if (!a.priceValid) return "Enter a price to book the visit.";
   if (a.hasWindowProblem) return "Fix the arrival window to book the visit.";
   return "Fill in the missing details to book the visit.";
@@ -157,6 +160,7 @@ export function OneOffVisitDialog({
     setScheduledOn(today);
     setPrice("");
     setPriceTouched(false);
+    setFilledFrom(null);
     setStaffId("");
     setNote("");
     setServiceId("");
@@ -202,6 +206,9 @@ export function OneOffVisitDialog({
     data: fetchedListPrice,
     isLoading: listPriceLoading,
     error: listPriceError,
+    isError: listPriceIsError,
+    fetchStatus: listPriceFetchStatus,
+    dataUpdatedAt: listPriceUpdatedAt,
   } = useQuery({
     enabled: open && (!setsPrices || changesSettings) && !!propertyId && !servicesLoading,
     queryKey: ["one-off-set-price", propertyId, bookedServiceId],
@@ -225,15 +232,75 @@ export function OneOffVisitDialog({
   // book the visit", and Book greyed. It is declared after the reset effect, so
   // on an opening it runs after it and the set price wins over the cleared box.
   const setPriceCents = listPrice?.cents ?? null;
+
+  // The price this box was last filled from: which property and service, and
+  // which answer (dataUpdatedAt changes on every successful fetch, including one
+  // that returns the same price). Until the box has been filled from the CURRENT
+  // answer, an untouched price is the previous opening's or the cache's, not the
+  // business's, and Book the visit stays off (#1053).
+  const lookupKey = `${propertyId}|${bookedServiceId ?? ""}`;
+  const [filledFrom, setFilledFrom] = useState<{ key: string; at: number } | null>(null);
+  // Cached data with a fetch in flight, a paused fetch (offline) or a failed one
+  // is not an answer. A retry in flight is `fetching`, so it is covered too.
+  const answerIsCurrent =
+    freshlyReset &&
+    !!propertyId &&
+    !servicesLoading &&
+    listPrice !== undefined &&
+    listPriceFetchStatus === "idle" &&
+    !listPriceIsError;
+
   useEffect(() => {
     if (!open || !freshlyReset || !setsPrices || priceTouched) return;
-    setPrice(setPriceCents == null ? "" : (setPriceCents / 100).toFixed(2));
-  }, [open, freshlyReset, setsPrices, priceTouched, setPriceCents]);
+    if (!changesSettings) {
+      // No set-price lookup for this person (known gap): they type the price.
+      setPrice("");
+      return;
+    }
+    if (answerIsCurrent) {
+      setPrice(setPriceCents == null ? "" : (setPriceCents / 100).toFixed(2));
+      setFilledFrom((f) =>
+        f && f.key === lookupKey && f.at === listPriceUpdatedAt
+          ? f
+          : { key: lookupKey, at: listPriceUpdatedAt },
+      );
+      return;
+    }
+    // Loading another property or service, offline, or failed: the box must not
+    // keep a price that belongs to something else or to an answer we lost.
+    if (filledFrom?.key !== lookupKey || listPriceIsError || listPriceFetchStatus === "paused") {
+      setPrice("");
+      if (filledFrom) setFilledFrom(null);
+    }
+    // A background refetch of the same property and service leaves the box as it
+    // is; Book stays off until the answer lands and fills it again.
+  }, [
+    open,
+    freshlyReset,
+    setsPrices,
+    changesSettings,
+    priceTouched,
+    answerIsCurrent,
+    setPriceCents,
+    lookupKey,
+    listPriceUpdatedAt,
+    listPriceIsError,
+    listPriceFetchStatus,
+    filledFrom,
+  ]);
 
+  // For someone who sets prices and has the lookup, an untouched price counts
+  // only once the box was filled from the current answer. Typing ends the wait.
+  const priceChecking =
+    open &&
+    setsPrices &&
+    changesSettings &&
+    !priceTouched &&
+    !(answerIsCurrent && filledFrom?.key === lookupKey && filledFrom.at === listPriceUpdatedAt);
   const typedCents = Math.round(parseFloat(price || "0") * 100);
   const priceCents = setsPrices ? typedCents : (listPrice?.cents ?? null);
   const priceValid = setsPrices
-    ? price.trim() !== "" && Number.isFinite(typedCents) && typedCents >= 0
+    ? price.trim() !== "" && Number.isFinite(typedCents) && typedCents >= 0 && !priceChecking
     : priceCents != null;
 
   const createMut = useMutation({
@@ -494,6 +561,7 @@ export function OneOffVisitDialog({
               scheduledOn,
               needsService: asksService && !bookedServiceId,
               priceValid,
+              priceChecking: priceChecking && listPriceFetchStatus === "fetching",
               hasWindowProblem: !!windowProblem,
             })}
           </p>
