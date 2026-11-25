@@ -132,6 +132,15 @@ export const SIGN_IN_NEVER_RENDERED = "so the sign-in form never rendered";
  *   4. no main-frame commit (FrameLoader::transitionToCommitted
  *      isMainFrame=1) from that process.
  *
+ * A test that opens a link from cold has no "Launch" line, because
+ * SpringBoard starts the app, so its request is the "Opening default
+ * application for URL" line (run 45517831660). It is used only when the test
+ * has no "Launch" line, and then a fifth thing must hold:
+ *
+ *   5. that process took the link in scene-create (UIOpenURLAction). A
+ *      process that XCTest's activate() started instead is a link that never
+ *      reached the app, and is never claimed.
+ *
  * A page that committed and then drew nothing, or a scheme handler that
  * never answered, is the app's, and is never claimed here.
  *
@@ -146,6 +155,7 @@ export function pageNeverCommitted(testLog, processLog) {
 
   let gaveUp = null;
   let launch = null;
+  let link = null;
   let start = null;
   for (let i = err - 1; i >= 0; i--) {
     const l = lines[i];
@@ -153,20 +163,26 @@ export function pageNeverCommitted(testLog, processLog) {
     if (t && gaveUp === null) gaveUp = Number(t[1]);
     const m = l.match(/t =\s+([\d.]+)s\s+Launch consulting\.thenorth\.houndstack/);
     if (m && launch === null) launch = Number(m[1]);
+    const o = l.match(
+      /t =\s+([\d.]+)s\s+Opening default application for URL consulting\.thenorth\.houndstack:/,
+    );
+    if (o && link === null) link = Number(o[1]);
     const s = l.match(/Start Test at (\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d+)/);
     if (s) {
       start = parseTime(s[1]);
       break;
     }
   }
-  if (start === null || launch === null || gaveUp === null) {
+  const fromLink = launch === null && link !== null;
+  const requested = fromLink ? link : launch;
+  if (start === null || requested === null || gaveUp === null) {
     return {
       proven: false,
       why: "could not find the launch request, the test start or when it gave up",
     };
   }
 
-  const lo = start + (launch - 1) * 1000;
+  const lo = start + (requested - 1) * 1000;
   const hi = start + gaveUp * 1000;
   /** @type {Map<string, { at: number, text: string }[]>} */
   const byPid = new Map();
@@ -185,6 +201,9 @@ export function pageNeverCommitted(testLog, processLog) {
   }
   const [pid, own] = started[0];
   const inWindow = own.filter((x) => x.at <= hi);
+  if (fromLink && !inWindow.some((x) => /scene-create: UIOpenURLAction/.test(x.text))) {
+    return { proven: false, why: `HoundStack[${pid}] was not started by the link` };
+  }
   const mainLoad = inWindow.find((x) =>
     /isMainFrame=1\] DocumentLoader::startLoadingMainResource/.test(x.text),
   );
