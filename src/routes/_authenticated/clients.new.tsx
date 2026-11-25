@@ -1,3 +1,4 @@
+import { CreateClientProgress } from "@/components/CreateClientProgress";
 import { PetSizeFields } from "@/components/client-detail/PetSizeFields";
 import { DogNameAndBreedFields } from "@/components/DogNameAndBreedFields";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
@@ -2248,6 +2249,9 @@ function NewClientWizardForm({
                     ? "Create and book groom"
                     : "Create client"}
               </Button>
+              {mutation.isPending && (
+                <CreateClientProgress hasDogs={validDogs.length > 0} hasPlan={!planSkipped} />
+              )}
               {priceHint && (
                 <p
                   className="text-xs text-muted-foreground"

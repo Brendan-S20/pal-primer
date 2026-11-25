@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { acceptPendingInvite, rememberInviteToken } from "@/lib/ensure-workspace";
 import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
 import { humanizeRole } from "@/lib/humanize";
+import { Logo } from "@/components/Logo";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -112,7 +113,10 @@ function InvitePage() {
   });
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-md items-center px-4">
+    <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 px-4 py-8">
+      <Link to="/" aria-label="HoundStack" className="flex justify-center">
+        <Logo variant="landscape" className="h-9 text-primary" />
+      </Link>
       <Card className="w-full">
         <CardHeader>
           <CardTitle>{inviteTitle(q.data?.kind)}</CardTitle>
@@ -213,6 +217,11 @@ function InvitePage() {
           )}
         </CardContent>
       </Card>
+      <p className="text-center text-xs text-muted-foreground">
+        <a className="underline" href="/legal/terms">Terms</a>
+        {" · "}
+        <a className="underline" href="/legal/privacy">Privacy</a>
+      </p>
       {signOutDialog}
     </div>
   );
