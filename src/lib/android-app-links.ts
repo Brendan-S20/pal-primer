@@ -154,6 +154,8 @@ export const STAYS_IN_BROWSER: Readonly<Record<string, string>> = {
   "/platform": "operator console, desktop work",
   "/billing": "buys HoundStack; the app hides that purchase by store rule",
   "/settings/billing": "buys HoundStack; the app hides that purchase by store rule",
+  "/settings/team":
+    "alias that forwards to /settings/users; a typed or bookmarked address, never a shared link",
   "/settings/addons": "buys HoundStack add-ons; the app hides that purchase by store rule",
 };
 

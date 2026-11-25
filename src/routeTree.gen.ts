@@ -135,6 +135,7 @@ import { Route as AuthenticatedSettingsSchedulingRouteImport } from './routes/_a
 import { Route as AuthenticatedSettingsServicesRouteImport } from './routes/_authenticated/settings.services'
 import { Route as AuthenticatedSettingsSkipRulesRouteImport } from './routes/_authenticated/settings.skip-rules'
 import { Route as AuthenticatedSettingsSmsRouteImport } from './routes/_authenticated/settings.sms'
+import { Route as AuthenticatedSettingsTeamRouteImport } from './routes/_authenticated/settings.team'
 import { Route as AuthenticatedSettingsUsersRouteImport } from './routes/_authenticated/settings.users'
 import { Route as AuthenticatedSettingsWebhooksRouteImport } from './routes/_authenticated/settings.webhooks'
 import { Route as AuthenticatedSettingsZonesRouteImport } from './routes/_authenticated/settings.zones'
@@ -857,6 +858,12 @@ const AuthenticatedSettingsSmsRoute =
     path: '/sms',
     getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
+const AuthenticatedSettingsTeamRoute =
+  AuthenticatedSettingsTeamRouteImport.update({
+    id: '/team',
+    path: '/team',
+    getParentRoute: () => AuthenticatedSettingsRoute,
+  } as any)
 const AuthenticatedSettingsUsersRoute =
   AuthenticatedSettingsUsersRouteImport.update({
     id: '/users',
@@ -1223,6 +1230,7 @@ export interface FileRoutesByFullPath {
   '/settings/services': typeof AuthenticatedSettingsServicesRoute
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
+  '/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
   '/settings/zones': typeof AuthenticatedSettingsZonesRoute
@@ -1388,6 +1396,7 @@ export interface FileRoutesByTo {
   '/settings/services': typeof AuthenticatedSettingsServicesRoute
   '/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/settings/sms': typeof AuthenticatedSettingsSmsRoute
+  '/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
   '/settings/zones': typeof AuthenticatedSettingsZonesRoute
@@ -1562,6 +1571,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/services': typeof AuthenticatedSettingsServicesRoute
   '/_authenticated/settings/skip-rules': typeof AuthenticatedSettingsSkipRulesRoute
   '/_authenticated/settings/sms': typeof AuthenticatedSettingsSmsRoute
+  '/_authenticated/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/_authenticated/settings/users': typeof AuthenticatedSettingsUsersRoute
   '/_authenticated/settings/webhooks': typeof AuthenticatedSettingsWebhooksRoute
   '/_authenticated/settings/zones': typeof AuthenticatedSettingsZonesRoute
@@ -1737,6 +1747,7 @@ export interface FileRouteTypes {
     | '/settings/services'
     | '/settings/skip-rules'
     | '/settings/sms'
+    | '/settings/team'
     | '/settings/users'
     | '/settings/webhooks'
     | '/settings/zones'
@@ -1902,6 +1913,7 @@ export interface FileRouteTypes {
     | '/settings/services'
     | '/settings/skip-rules'
     | '/settings/sms'
+    | '/settings/team'
     | '/settings/users'
     | '/settings/webhooks'
     | '/settings/zones'
@@ -2075,6 +2087,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/services'
     | '/_authenticated/settings/skip-rules'
     | '/_authenticated/settings/sms'
+    | '/_authenticated/settings/team'
     | '/_authenticated/settings/users'
     | '/_authenticated/settings/webhooks'
     | '/_authenticated/settings/zones'
@@ -3077,6 +3090,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsSmsRouteImport
       parentRoute: typeof AuthenticatedSettingsRoute
     }
+    '/_authenticated/settings/team': {
+      id: '/_authenticated/settings/team'
+      path: '/team'
+      fullPath: '/settings/team'
+      preLoaderRoute: typeof AuthenticatedSettingsTeamRouteImport
+      parentRoute: typeof AuthenticatedSettingsRoute
+    }
     '/_authenticated/settings/users': {
       id: '/_authenticated/settings/users'
       path: '/users'
@@ -3508,6 +3528,7 @@ interface AuthenticatedSettingsRouteChildren {
   AuthenticatedSettingsServicesRoute: typeof AuthenticatedSettingsServicesRoute
   AuthenticatedSettingsSkipRulesRoute: typeof AuthenticatedSettingsSkipRulesRoute
   AuthenticatedSettingsSmsRoute: typeof AuthenticatedSettingsSmsRoute
+  AuthenticatedSettingsTeamRoute: typeof AuthenticatedSettingsTeamRoute
   AuthenticatedSettingsUsersRoute: typeof AuthenticatedSettingsUsersRoute
   AuthenticatedSettingsWebhooksRoute: typeof AuthenticatedSettingsWebhooksRoute
   AuthenticatedSettingsZonesRoute: typeof AuthenticatedSettingsZonesRoute
@@ -3544,6 +3565,7 @@ const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
   AuthenticatedSettingsServicesRoute: AuthenticatedSettingsServicesRoute,
   AuthenticatedSettingsSkipRulesRoute: AuthenticatedSettingsSkipRulesRoute,
   AuthenticatedSettingsSmsRoute: AuthenticatedSettingsSmsRoute,
+  AuthenticatedSettingsTeamRoute: AuthenticatedSettingsTeamRoute,
   AuthenticatedSettingsUsersRoute: AuthenticatedSettingsUsersRoute,
   AuthenticatedSettingsWebhooksRoute: AuthenticatedSettingsWebhooksRoute,
   AuthenticatedSettingsZonesRoute: AuthenticatedSettingsZonesRoute,

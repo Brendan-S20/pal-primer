@@ -1,3 +1,4 @@
+import { isSearching } from "@/lib/clients-search-state";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ListSkeleton } from "@/components/PageSkeletons";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -164,6 +165,8 @@ function ClientsList() {
   const {
     data,
     isLoading,
+    isFetching: pageFetching,
+    isPlaceholderData,
     dataUpdatedAt: pageUpdatedAt,
   } = useQuery({
     queryKey: ["clients", "page", { q: searched, status, type, tag }, offset],
@@ -188,6 +191,12 @@ function ClientsList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [summaryLags, pageUpdatedAt]);
 
+  const searching = isSearching({
+    typed: q,
+    searched,
+    fetching: pageFetching,
+    showingPreviousResults: isPlaceholderData,
+  });
   const filtered = (data?.rows ?? []) as any[];
   const matched = data?.matched ?? 0;
   // The tiles describe the whole book, whatever the filters say.
@@ -615,9 +624,19 @@ function ClientsList() {
         </div>
       )}
 
+      {searching && data && (
+        <p
+          role="status"
+          aria-live="polite"
+          data-clients-searching=""
+          className="mb-2 text-sm text-muted-foreground"
+        >
+          Searching…
+        </p>
+      )}
       {!data ? (
         <ListSkeleton breakpoint="sm" columns={7} />
-      ) : !filtered.length ? (
+      ) : !filtered.length && searching ? null : !filtered.length ? (
         <div className="rounded-lg border border-dashed bg-card p-10 text-center">
           <p className="text-muted-foreground">
             {stats.total ? "No clients match those filters." : "No clients yet."}

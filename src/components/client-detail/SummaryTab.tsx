@@ -1,6 +1,7 @@
 // Summary tab (spec 3.1): a 2-column desktop grid. LEFT (operational):
 // alerts, visits (next + recent), active services, property snapshot.
 // RIGHT (secondary): notes and the compact communication preview.
+import { noEmailNotice } from "@/lib/no-email-notice";
 import { useQuery } from "@tanstack/react-query";
 import { zoneOverridesPrice } from "@/lib/standard-price";
 import { TextingNotLiveText } from "@/components/TextingNotLive";
@@ -97,11 +98,14 @@ export function SummaryTab({
   if (client.autopay_paused)
     alerts.push({ severity: "critical", text: "Autopay is paused after repeated failures.", tab: "billing" });
 
-  if (client.email_opt_out === false && !client.primary_email)
-    alerts.push({
-      severity: "warning",
-      text: "Email notifications are enabled but there's no email address on file.",
+  {
+    const noEmail = noEmailNotice({
+      emailOptOut: client.email_opt_out,
+      primaryEmail: client.primary_email,
+      activeServiceCount: activeSubs.length,
     });
+    if (noEmail) alerts.push({ severity: "info", text: noEmail });
+  }
   // Only a warning once this business can text: until then a missing phone
   // number stops no text from going, because none go.
   if (texting && client.sms_opt_out === false && !client.primary_phone)
