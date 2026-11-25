@@ -448,7 +448,7 @@ stop_app() {  # $1 udid
 # simulator records: they may carry launch arguments.
 HOLD_PY=""
 IFS= read -r -d '' HOLD_PY <<'PY' || true
-import os, select, signal, subprocess, sys, time
+import os, select, shutil, signal, stat, subprocess, sys, time
 CUR, SIM, PPID0 = None, None, os.getppid()
 PRED = ('process IN {"launchd_sim","testmanagerd","runningboardd","coresymbolicationd",'
         '"managedappdistributiond"} OR (process == "SpringBoard" AND '
@@ -469,11 +469,16 @@ def runx(argv, secs, cap, lines=0, ends=False):
     until it ends or time is up, keep the first and last cap/2 bytes."""
     global CUR
     head, tail, total, ok, rc = b"", bytearray(), 0, False, None
+    if not shutil.which(argv[0]):
+        return b"(not run: " + os.path.basename(argv[0]).encode() + b" unavailable)\n", False
+    # perl's alarm outlives exec: if this python is killed, a child still ends
+    # by itself (secs + 3). Only an in-simulator log show can outlast that.
+    argv = ["/usr/bin/perl", "-e", "alarm shift; exec @ARGV", str(secs + 3)] + argv
     try:
         p = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT, start_new_session=True)
     except OSError:
-        return b"(not run: " + os.path.basename(argv[0]).encode() + b" unavailable)\n", False
+        return b"(not run: perl unavailable)\n", False
     CUR = p.pid
     end, half = time.monotonic() + secs, cap // 2
     try:
@@ -521,9 +526,15 @@ def reap_sim(udid, start):
         if pp in sims and c.startswith(pre):
             try: os.kill(p, signal.SIGKILL)
             except OSError: pass
+def wopen(path):
+    """Our own output file: never blocks, never a FIFO, device or symlink."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NONBLOCK | os.O_NOFOLLOW, 0o644)
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        os.close(fd); raise OSError("not a regular file")
+    return os.fdopen(fd, "wb")
 def capture(path, tag, stub, sim, held, probes):
     dl = time.monotonic() + 45
-    with open(path, "wb") as f:
+    with wopen(path) as f:
         f.write(("hold-diag %s: stub pid %d unspawned for %ds, launchd_sim pid %d, %s UTC\n"
                  "process-table probes: %d, failed or partial %d, slower than 2 s %d\n" % (
             tag, stub, held, sim, time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()), *probes)).encode())
@@ -558,7 +569,8 @@ def watch(udid, tag, out, parent, test, bundle, hold):
         seen = {p: seen.get(p, now) for p in stubs}
         for p in stubs:
             if now - seen[p] >= hold:
-                return capture(os.path.join(out, "hold-diag-%s.txt" % tag), tag, p, sim[0], int(now - seen[p]), (n, bad, slow))
+                capture(os.path.join(out, "hold-diag-%s.txt" % tag), tag, p, sim[0], int(now - seen[p]), (n, bad, slow))
+                return
         time.sleep(2)
 def simlog(udid, start, path, secs, cap):  # the launch records, first and last cap/2
     global SIM
@@ -567,7 +579,7 @@ def simlog(udid, start, path, secs, cap):  # the launch records, first and last 
                     "--style", "compact", "--info", "--predicate", PRED], secs, cap, ends=True)
     try: reap_sim(udid, start)
     finally: SIM = None
-    with open(path, "wb") as f:
+    with wopen(path) as f:
         f.write(out + (b"" if ok else b"\n(stopped: the query did not finish in %d s or failed)\n" % secs))
 try:
     a = sys.argv
@@ -575,24 +587,26 @@ try:
     elif a[1] == "simlog": simlog(a[2], a[3], a[4], int(a[5]), int(a[6]))
 except Exception:
     pass
+# Idle until stopped or the script is gone, so a finished watcher's pid is
+# not free for bash's kill (SIGTERM ends it from here).
+while a[1] == "watch" and os.getppid() == PPID0: time.sleep(0.5)
 PY
 
-# Bash side of the bound: true only while bash itself still holds this
-# background job unreaped, so a finished job's pid is never signalled.
-hold_alive() { case " $(jobs -pr) " in *" $1 "*) return 0 ;; esac; return 1; }
-# TERM, up to 1 s for it to go, then KILL, up to 0.5 s; then reaps it.
+# Bash side of the bound. No `jobs` (3.2 misreports): kill -0, fixed counts,
+# and return even if the pid is stuck in the kernel. TERM, up to 1 s, KILL, up
+# to 0.5 s; reaps only a pid that is gone.
 hold_stop() {  # $1 background pid of this shell; never fails
   local pid="${1:-}" i
   [ -n "$pid" ] || return 0
-  if hold_alive "$pid"; then
+  if kill -0 "$pid" 2>/dev/null; then
     kill -TERM "$pid" 2>/dev/null || true
-    for ((i = 0; i < 20; i++)); do hold_alive "$pid" || break; sleep 0.05; done
-    if hold_alive "$pid"; then
+    for ((i = 0; i < 20; i++)); do kill -0 "$pid" 2>/dev/null || break; sleep 0.05; done
+    if kill -0 "$pid" 2>/dev/null; then
       kill -KILL "$pid" 2>/dev/null || true
-      for ((i = 0; i < 10; i++)); do hold_alive "$pid" || break; sleep 0.05; done
+      for ((i = 0; i < 10; i++)); do kill -0 "$pid" 2>/dev/null || break; sleep 0.05; done
     fi
   fi
-  hold_alive "$pid" || wait "$pid" 2>/dev/null || true
+  kill -0 "$pid" 2>/dev/null || wait "$pid" 2>/dev/null || true
 }
 
 # A failed attempt: what the simulator logged about the launch since it
@@ -604,7 +618,7 @@ hold_sim_records() {  # $1 start time, $2 result name
   python3 -I -c "$HOLD_PY" simlog "$udid" "$1" "$OUT/hold-simlog-$slug-$2.log" 12 2000000 \
     < /dev/null > /dev/null 2>&1 &
   pid=$!
-  while hold_alive "$pid" && [ $((SECONDS - t0)) -lt 20 ]; do sleep 0.2; done
+  while kill -0 "$pid" 2>/dev/null && [ $((SECONDS - t0)) -lt 20 ]; do sleep 0.2; done
   hold_stop "$pid"
 }
 
