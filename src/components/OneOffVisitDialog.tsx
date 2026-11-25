@@ -137,10 +137,20 @@ export function OneOffVisitDialog({
   const pricedAsExtraVisit = !bookedService || bookedService.service_line === "pet_waste";
   const windowProblem = oneOffWindowProblem(earliestTime, latestTime);
 
+  // True once the reset below has run for this opening. The render that
+  // follows `open` turning true still holds the LAST opening's client and
+  // property, and the query cache still has their properties and price. Without
+  // this, the auto-pick and the price fill below read that cache in that render
+  // and put the previous client's property, and its price, on the new one.
+  const [freshlyReset, setFreshlyReset] = useState(false);
+
   // Reset per opening. A dialog that remembers the last client is a dialog that
   // books the wrong client the second time.
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setFreshlyReset(false);
+      return;
+    }
     setClientId(fixedClientId ?? "");
     setPickedClient(null);
     setPropertyId("");
@@ -152,6 +162,7 @@ export function OneOffVisitDialog({
     setServiceId("");
     setEarliestTime("");
     setLatestTime("");
+    setFreshlyReset(true);
   }, [open, fixedClientId, today]);
 
   const { data: propsData } = useQuery({
@@ -160,8 +171,8 @@ export function OneOffVisitDialog({
     queryFn: () => listPropsFn({ data: { clientId } }),
   });
   const properties = useMemo(
-    () => (propsData?.properties ?? []).filter((p: any) => !p.archived_at),
-    [propsData],
+    () => (freshlyReset ? (propsData?.properties ?? []) : []).filter((p: any) => !p.archived_at),
+    [propsData, freshlyReset],
   );
 
   // One property is the common case — pick it rather than making someone
@@ -188,7 +199,7 @@ export function OneOffVisitDialog({
   // someone who sets prices and can change settings, only to say where the
   // missing one is set (they still type the price here).
   const {
-    data: listPrice,
+    data: fetchedListPrice,
     isLoading: listPriceLoading,
     error: listPriceError,
   } = useQuery({
@@ -200,14 +211,24 @@ export function OneOffVisitDialog({
       }),
   });
 
+  // Nothing from the cache until this opening's reset has applied.
+  const listPrice = freshlyReset ? fetchedListPrice : undefined;
+
   // #1011 item 1: the business's set price fills the box for someone who types
   // prices, so Book the visit is not greyed over a blank field. They can still
   // change it; the server checks the price as before.
+  //
+  // `open` is in the deps on purpose, like the property effect above. The reset
+  // effect clears `price` on every opening, but on the SECOND open the price
+  // query is cached, so `setPriceCents` and `priceTouched` are unchanged, and
+  // without `open` this effect never re-ran: a blank price, "Enter a price to
+  // book the visit", and Book greyed. It is declared after the reset effect, so
+  // on an opening it runs after it and the set price wins over the cleared box.
   const setPriceCents = listPrice?.cents ?? null;
   useEffect(() => {
-    if (!setsPrices || priceTouched) return;
+    if (!open || !freshlyReset || !setsPrices || priceTouched) return;
     setPrice(setPriceCents == null ? "" : (setPriceCents / 100).toFixed(2));
-  }, [setsPrices, priceTouched, setPriceCents]);
+  }, [open, freshlyReset, setsPrices, priceTouched, setPriceCents]);
 
   const typedCents = Math.round(parseFloat(price || "0") * 100);
   const priceCents = setsPrices ? typedCents : (listPrice?.cents ?? null);
