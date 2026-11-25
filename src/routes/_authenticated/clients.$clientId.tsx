@@ -224,7 +224,7 @@ function ClientDetail() {
     enabled: canViewDirectory,
   });
   const listDogsFn = useServerFn(listDogsForClient);
-  const { data: dogsData } = useQuery({
+  const { data: dogsData, isLoading: dogsLoading } = useQuery({
     queryKey: ["client-dogs", clientId],
     queryFn: () => listDogsFn({ data: { clientId } }),
     enabled: canViewDirectory,
@@ -478,6 +478,7 @@ function ClientDetail() {
             creditCents={canBill ? (credit?.balanceCents ?? 0) : null}
             billingClient={billing?.client ?? null}
             visitsLoading={visitsLoading}
+            dogsLoading={dogsLoading}
             creditLoading={canBill ? creditLoading : false}
             canBill={canBill}
             onGoToTab={setTab}
