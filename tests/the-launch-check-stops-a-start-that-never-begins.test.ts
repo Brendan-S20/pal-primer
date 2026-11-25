@@ -166,4 +166,27 @@ describe("logStalled and a stray line in the list of logged seconds", () => {
     expect(logStalled(log, withStray).proven).toBe(true);
     expect(logStalled(log, withStray).why).toBe(logStalled(log, seconds).why);
   });
+
+  it("drops two or more ADJACENT stray seconds too, on a truncated log", () => {
+    const lines = seconds.split("\n").filter((l) => l && l < "2026-11-24 02:50:00");
+    const mid = lines.length - 3;
+    const strays = ["2026-11-25 00:36:15", "2026-11-25 00:36:16", "2026-11-25 00:36:17"];
+    const withStrays = [...lines.slice(0, mid), ...strays, ...lines.slice(mid)].join("\n");
+    const r = logStalled(log, withStrays);
+    expect(r.proven).toBe(false);
+    expect(r.why).toMatch(/does not cover every failed test/);
+  });
+});
+
+describe("the script around the bound", () => {
+  it("keeps each comment with its function and names the bound from START_BOUND", () => {
+    expect(script.indexOf("simulator_failed() {")).toBeLessThan(
+      script.indexOf("# The cold link reached the app (#962)"),
+    );
+    expect(script.indexOf("# The cold link reached the app (#962)")).toBeLessThan(
+      script.indexOf("cold_link_reached_the_app() {"),
+    );
+    expect(script).toMatch(/xcodebuild ran \$START_BOUND s without starting any test case/);
+    expect(script).not.toMatch(/xcodebuild ran 600 s/);
+  });
 });

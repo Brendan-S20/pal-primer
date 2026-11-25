@@ -411,16 +411,6 @@ never_started() {  # $1 xcodebuild log, $2 udid
   node "$ROOT/scripts/ios-launch-never-started.mjs" "$1" "$1.processes.txt" "$1.log-seconds.txt"
 }
 
-# The cold link reached the app (#962). ColdLaunch.swift attaches XCTest to
-# the process a link started with activate(), because XCTest does not reliably
-# notice an app SpringBoard launched (iPad (A16), iOS 27.2, df972507: up 4 s
-# after the link, never seen by the runningForeground wait). activate() would
-# also LAUNCH an app the link never reached, so this asks the process log: the
-# link's own process takes the URL in scene-create, and nothing else in
-# ColdLaunch opens a URL from cold. One such line per device on all four
-# simulators of run 43978183939.
-# Captured, not piped to grep -q: under pipefail an early grep exit can fail
-# the pipeline with SIGPIPE on a log that DID have the line.
 # Why the simulator, not the app, failed this run of a class; non-zero when
 # it cannot be shown. A xcodebuild that run_class stopped for starting no test
 # case at all is such proof on its own: no test case started, so no app launch
@@ -433,6 +423,16 @@ simulator_failed() {  # $1 xcodebuild log, $2 udid
   never_started "$1" "$2"
 }
 
+# The cold link reached the app (#962). ColdLaunch.swift attaches XCTest to
+# the process a link started with activate(), because XCTest does not reliably
+# notice an app SpringBoard launched (iPad (A16), iOS 27.2, df972507: up 4 s
+# after the link, never seen by the runningForeground wait). activate() would
+# also LAUNCH an app the link never reached, so this asks the process log: the
+# link's own process takes the URL in scene-create, and nothing else in
+# ColdLaunch opens a URL from cold. One such line per device on all four
+# simulators of run 43978183939.
+# Captured, not piped to grep -q: under pipefail an early grep exit can fail
+# the pipeline with SIGPIPE on a log that DID have the line.
 cold_link_reached_the_app() {  # $1 udid
   local said
   said=$(xcrun simctl spawn "$1" log show --last 30m --style compact --info \
@@ -481,6 +481,9 @@ run_class() {  # $1 class, $2 result name
   # after it: from then on a hang could be the app. The slowest healthy start
   # measured (run 45517831660, xcodebuild start to first test case) was 126 s;
   # the stuck one took 3130 s.
+  # xcodebuild writes that line to a file as it happens (Xcode 27.2 build 27B52,
+  # macOS destination, test sleeping 25 s: line in the file at 01:02:57, test
+  # began 01:02:56, "passed" in the file at 01:03:21, exit 01:03:22).
   (
     end=$((SECONDS + START_BOUND))
     while kill -0 "$test_pid" 2>/dev/null; do
@@ -658,7 +661,7 @@ if [ -n "$RELEASE_SIGNED_IN" ] && [ -n "$notes" ]; then
 fi
 if [ -n "$notes" ]; then
   say ""
-  say "**Launches the simulator failed, not the app** (no HoundStack process from the launch request to the timeout; or the app served its page and WebKit had not committed it when XCTest gave up, so no page script ran; or no process in the simulator logged anything for 60 s or more inside every failed test, because the simulator's logd had stalled; or xcodebuild ran 600 s without starting any test case and was stopped; the simulator was rebooted and the class retried, at most twice; a page that committed and then drew nothing, and a process that started and then hung before serving its page, are never retried):"
+  say "**Launches the simulator failed, not the app** (no HoundStack process from the launch request to the timeout; or the app served its page and WebKit had not committed it when XCTest gave up, so no page script ran; or no process in the simulator logged anything for 60 s or more inside every failed test, because the simulator's logd had stalled; or xcodebuild ran $START_BOUND s without starting any test case and was stopped; the simulator was rebooted and the class retried, at most twice; a page that committed and then drew nothing, and a process that started and then hung before serving its page, are never retried):"
   printf '%s' "$notes" | while IFS= read -r line; do say "$line"; done
 fi
 
