@@ -68,7 +68,6 @@ import {
 } from "@/lib/weekday-set";
 import {
   defaultFirstVisit,
-  daysAfterFirstVisitMoves,
   defaultPlanWeekdays,
   firstVisitHint,
   nextDay,
@@ -735,14 +734,9 @@ function NewClientWizardForm({
   const [serviceDays, setServiceDays] = useState<number[] | null>(null);
   // What the chips show is what is saved: no more days than the cadence runs
   // on (R2-44), even after switching from Twice weekly to Weekly.
-  // #1014: moving the first visit (Today, Tomorrow or the date) moves the
-  // service days with it, unless the owner's own picks still include it.
-  const moveFirstVisit = (day: string) => {
-    setStartedOn(day);
-    if (!day) return;
-    setServiceDays((d) => daysAfterFirstVisitMoves(d, weekdayOf(day)));
-    setWeekdays((d) => daysAfterFirstVisitMoves(d, weekdayOf(day)));
-  };
+  // Until the owner picks, the service day is read from First visit, so it
+  // follows Today, Tomorrow and the date (#1014). Their pick, or a restored
+  // draft's, stays when First visit moves (#1059).
   const effectiveServiceDays = serviceDaysFor(serviceDays ?? [weekdayOf(startedOn)], frequency);
 
   // A walk, a sit or a groom: priced from its service through the one rule
@@ -1905,7 +1899,7 @@ function NewClientWizardForm({
                       min={orgTodayStr}
                       value={startedOn}
                       // The service day follows this date until the owner picks days.
-                      onChange={(e) => moveFirstVisit(e.target.value)}
+                      onChange={(e) => setStartedOn(e.target.value)}
                       aria-describedby="started-on-hint"
                     />
                     <div className="flex flex-wrap gap-1.5" data-first-visit-quick>
@@ -1919,7 +1913,7 @@ function NewClientWizardForm({
                           key={label}
                           type="button"
                           aria-pressed={startedOn === day}
-                          onClick={() => moveFirstVisit(day)}
+                          onClick={() => setStartedOn(day)}
                           className={`h-9 min-w-11 shrink-0 rounded-md border px-3 text-sm touch:min-h-11 ${
                             startedOn === day
                               ? "border-primary bg-primary text-primary-foreground"

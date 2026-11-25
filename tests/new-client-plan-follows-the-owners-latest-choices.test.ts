@@ -1,13 +1,14 @@
 // #1014 (onboarding audit, Nov 20 2026): the new-client Plan step started on
 // the seeded "Pet waste removal" right after the owner added a service, and
 // moving First visit to Today left the picked service day on another weekday.
+// (Service day against First visit is tested in
+// new-client-service-day-keeps-the-owners-choice.test.tsx, #1059.)
 // The dashboard also said "On the Launch plan" under a "free trial" banner.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { latestServiceId } from "@/lib/visit-service";
-import { daysAfterFirstVisitMoves } from "@/lib/new-client-plan";
 
 const read = (p: string) => readFileSync(fileURLToPath(new URL(p, import.meta.url)), "utf8");
 
@@ -35,21 +36,6 @@ describe("the plan step follows the owner's latest service", () => {
     const src = read("../src/routes/_authenticated/clients.new.tsx");
     expect(src).toContain("latestServiceId(orgServices, pickerLines)");
     expect(src).toContain("value={shownServiceId}");
-  });
-});
-
-describe("moving the first visit moves the service day", () => {
-  it("keeps picks that still include the new weekday", () => {
-    expect(daysAfterFirstVisitMoves([1, 3], 3)).toEqual([1, 3]);
-  });
-  it("drops picks that do not, so the day follows the date", () => {
-    expect(daysAfterFirstVisitMoves([1], 6)).toBeNull();
-    expect(daysAfterFirstVisitMoves(null, 6)).toBeNull();
-  });
-  it("is wired to Today, Tomorrow and the date field", () => {
-    const src = read("../src/routes/_authenticated/clients.new.tsx");
-    expect(src).toContain("onClick={() => moveFirstVisit(day)}");
-    expect(src).toContain("moveFirstVisit(e.target.value)");
   });
 });
 
