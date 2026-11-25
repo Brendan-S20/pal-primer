@@ -60,6 +60,24 @@ import { usePickerLines } from "@/components/CommercialOnly";
 
 const BOOK_FAILED = "The visit could not be booked. Try again.";
 
+/** Why Book the visit is greyed, in the order the form is filled in (#1011). */
+export function oneOffNotReadyReason(a: {
+  clientId: string;
+  propertyId: string;
+  scheduledOn: string;
+  needsService: boolean;
+  priceValid: boolean;
+  hasWindowProblem: boolean;
+}): string {
+  if (!a.clientId) return "Choose a client to book the visit.";
+  if (!a.propertyId) return "Choose a property to book the visit.";
+  if (a.needsService) return "Choose a service to book the visit.";
+  if (!a.scheduledOn) return "Choose a date to book the visit.";
+  if (!a.priceValid) return "Enter a price to book the visit.";
+  if (a.hasWindowProblem) return "Fix the arrival window to book the visit.";
+  return "Fill in the missing details to book the visit.";
+}
+
 export function OneOffVisitDialog({
   open,
   onOpenChange,
@@ -91,6 +109,8 @@ export function OneOffVisitDialog({
   const [propertyId, setPropertyId] = useState("");
   const [scheduledOn, setScheduledOn] = useState(today);
   const [price, setPrice] = useState("");
+  // Once they have typed (or cleared) the price, the set price stops filling it.
+  const [priceTouched, setPriceTouched] = useState(false);
   const [staffId, setStaffId] = useState("");
   const [note, setNote] = useState("");
   const [serviceId, setServiceId] = useState("");
@@ -126,6 +146,7 @@ export function OneOffVisitDialog({
     setPropertyId("");
     setScheduledOn(today);
     setPrice("");
+    setPriceTouched(false);
     setStaffId("");
     setNote("");
     setServiceId("");
@@ -178,6 +199,15 @@ export function OneOffVisitDialog({
         data: { propertyId, ...(bookedServiceId ? { serviceId: bookedServiceId } : {}) },
       }),
   });
+
+  // #1011 item 1: the business's set price fills the box for someone who types
+  // prices, so Book the visit is not greyed over a blank field. They can still
+  // change it; the server checks the price as before.
+  const setPriceCents = listPrice?.cents ?? null;
+  useEffect(() => {
+    if (!setsPrices || priceTouched) return;
+    setPrice(setPriceCents == null ? "" : (setPriceCents / 100).toFixed(2));
+  }, [setsPrices, priceTouched, setPriceCents]);
 
   const typedCents = Math.round(parseFloat(price || "0") * 100);
   const priceCents = setsPrices ? typedCents : (listPrice?.cents ?? null);
@@ -322,7 +352,10 @@ export function OneOffVisitDialog({
                   step="0.01"
                   placeholder="0.00"
                   value={price}
-                  onChange={(e) => setPrice(e.target.value)}
+                  onChange={(e) => {
+                    setPriceTouched(true);
+                    setPrice(e.target.value);
+                  }}
                 />
               ) : (
                 <Input
@@ -431,6 +464,19 @@ export function OneOffVisitDialog({
             </p>
           </div>
         </div>
+
+        {!ready && !createMut.isPending && (
+          <p className="text-2xs text-muted-foreground" data-one-off-why-disabled>
+            {oneOffNotReadyReason({
+              clientId,
+              propertyId,
+              scheduledOn,
+              needsService: asksService && !bookedServiceId,
+              priceValid,
+              hasWindowProblem: !!windowProblem,
+            })}
+          </p>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
