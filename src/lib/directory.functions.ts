@@ -39,6 +39,10 @@ import {
   type DirectoryPhoto,
   type DirectoryProfile,
   isDirectoryPhotoUrl,
+  normalizePublicEmail,
+  normalizePublicPhone,
+  PUBLIC_EMAIL_PROBLEM,
+  PUBLIC_PHONE_PROBLEM,
 } from "@/lib/directory";
 import { isPublicBookingMode, type PublicBookingMode } from "@/lib/public-booking-mode";
 
@@ -270,6 +274,9 @@ export type MyDirectoryProfile = {
     highlights: string[];
     areas: DirectoryArea[];
     listed: Array<{ service_id: string; price_from_cents: number | null }>;
+    /** The contact the owner chose to publish (#1002). null = none. */
+    public_email: string | null;
+    public_phone: string | null;
   };
   /** Book online on the directory (step 7): the owner's switch and policy,
    *  and the two other gates, so the page can say which one is missing. */
@@ -296,7 +303,7 @@ export const getMyDirectoryProfile = createServerFn({ method: "GET" })
   .handler(async ({ context }): Promise<MyDirectoryProfile> => {
     const { orgId, role } = await caller(context.supabase, context.userId);
     const sb = context.supabase as SupabaseClient;
-    const [org, services, zones, profile, listed, areas, booking] = await Promise.all([
+    const [org, services, zones, profile, listed, areas, booking, contact] = await Promise.all([
       sb.from("organizations").select("name, logo_url").eq("id", orgId).maybeSingle(),
       sb
         .from("services")
@@ -330,7 +337,17 @@ export const getMyDirectoryProfile = createServerFn({ method: "GET" })
         )
         .eq("id", orgId)
         .maybeSingle(),
+      // Its own read too (#1002): a database without the contact columns
+      // costs the two fields and nothing else on the page.
+      sb
+        .from("directory_profiles")
+        .select("public_email, public_phone")
+        .eq("organization_id", orgId)
+        .maybeSingle(),
     ]);
+    if (contact.error && !notThereYet(contact.error))
+      console.error("directory contact read failed", orgId, contact.error);
+    const contactRow = contact.error ? null : contact.data;
     const b = booking.error ? null : booking.data;
     if (booking.error && !notThereYet(booking.error))
       console.error("directory booking settings read failed", orgId, booking.error);
@@ -352,8 +369,10 @@ export const getMyDirectoryProfile = createServerFn({ method: "GET" })
         ? {
             ...(profile.data as Omit<
               NonNullable<MyDirectoryProfile["profile"]>,
-              "listed" | "areas" | "highlights"
+              "listed" | "areas" | "highlights" | "public_email" | "public_phone"
             >),
+            public_email: (contactRow?.public_email as string | null) ?? null,
+            public_phone: (contactRow?.public_phone as string | null) ?? null,
             highlights: (profile.data.highlights as string[] | null) ?? [],
             areas: ((areas.data ?? []) as Array<{ name: string; zips: string[] | null }>).map(
               (a) => ({ name: a.name, zips: a.zips ?? [] }),
@@ -401,6 +420,29 @@ export const directoryProfileSchema = z
       )
       .max(50),
     published: z.boolean(),
+    // #1002. Optional, and OMITTED MEANS UNCHANGED: a caller that saves the
+    // profile without them leaves the published contact as it is. Blank or
+    // null clears it (NULL). A value is stored trimmed (email) or as E.164.
+    publicEmail: z
+      .string()
+      .nullable()
+      .optional()
+      .transform((v, ctx) => {
+        if (v === undefined) return undefined;
+        const n = normalizePublicEmail(v);
+        if (n === undefined) ctx.addIssue({ code: "custom", message: PUBLIC_EMAIL_PROBLEM });
+        return n ?? null;
+      }),
+    publicPhone: z
+      .string()
+      .nullable()
+      .optional()
+      .transform((v, ctx) => {
+        if (v === undefined) return undefined;
+        const n = normalizePublicPhone(v);
+        if (n === undefined) ctx.addIssue({ code: "custom", message: PUBLIC_PHONE_PROBLEM });
+        return n ?? null;
+      }),
     tagline: z.string().transform(oneLine).pipe(z.string().max(DIRECTORY_TAGLINE_MAX)).nullable(),
     highlights: z
       .array(z.string().max(500))
@@ -533,6 +575,35 @@ export async function saveDirectoryBooking(
   }
 }
 
+/**
+ * The published contact (#1002), written only when the caller sent it, through
+ * the owner-checked set_directory_public_contact RPC on the caller's own
+ * client (authenticated holds no UPDATE on directory_profiles). Exported for
+ * its test.
+ */
+export async function saveDirectoryContact(
+  sb: SupabaseClient,
+  orgId: string,
+  data: { publicEmail?: string | null; publicPhone?: string | null },
+): Promise<void> {
+  const changeEmail = data.publicEmail !== undefined;
+  const changePhone = data.publicPhone !== undefined;
+  if (!changeEmail && !changePhone) return;
+  const { error } = await sb.rpc("set_directory_public_contact", {
+    _org: orgId,
+    _email: data.publicEmail ?? null,
+    _phone: data.publicPhone ?? null,
+    _change_email: changeEmail,
+    _change_phone: changePhone,
+  });
+  if (error) {
+    console.error("directory contact save failed", orgId, error.code);
+    throw new Error(
+      "Your profile was saved. The public contact can't be saved yet: try again later.",
+    );
+  }
+}
+
 export const saveMyDirectoryProfile = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => directoryProfileSchema.parse(d))
@@ -589,6 +660,7 @@ export const saveMyDirectoryProfile = createServerFn({ method: "POST" })
     // public pages showing the old listing.
     try {
       await saveDirectoryBooking(context.supabase, orgId, data);
+      await saveDirectoryContact(sb, orgId, data);
     } finally {
       await revalidateAfterProfileSave(was, { slug: data.slug, published: data.published });
     }
