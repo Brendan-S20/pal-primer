@@ -29,3 +29,14 @@ export function markVisitCompletedInClientHistory(
     };
   });
 }
+
+// Completing a visit billed after each visit invoices it at once (#859), so
+// everything that reads the client's invoices has to refetch: the invoice
+// lists AND the Billing tab / header summary (["billing-summary", clientId]),
+// which showed "No invoices yet" and $0 outstanding until a reload (#1028).
+export function invalidateBillingAfterVisitCompleted(qc: QueryClient, clientId?: string): void {
+  void qc.invalidateQueries({ queryKey: ["invoices"] });
+  void qc.invalidateQueries({
+    queryKey: clientId ? ["billing-summary", clientId] : ["billing-summary"],
+  });
+}

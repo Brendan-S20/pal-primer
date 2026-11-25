@@ -86,6 +86,7 @@ import { canOfficeComplete } from "@/lib/visit-lifecycle";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { earlyCompleteConfirm, isFutureVisit } from "@/lib/booking-dates";
 import { toastSaveError } from "@/lib/stale-write-toast";
+import { invalidateBillingAfterVisitCompleted } from "@/lib/client-visit-history-cache";
 
 const MISSED_REASON_LABELS: Record<(typeof BUSINESS_REASONS)[number], string> = {
   our_fault: "Our fault",
@@ -362,7 +363,7 @@ export function VisitDetailDrawer({
     qc.invalidateQueries({ queryKey: ["visits"] });
     // Completing a visit billed after each visit invoices it (#859).
     qc.invalidateQueries({ queryKey: ["visit-invoicing", visitId] });
-    qc.invalidateQueries({ queryKey: ["invoices"] });
+    invalidateBillingAfterVisitCompleted(qc);
   };
 
   // Pinned to its tech: auto-routing never moves it to someone else, even on

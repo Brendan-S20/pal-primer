@@ -49,7 +49,10 @@ import {
   nowAsCalledAt,
 } from "@/components/training/ClientCalledAtField";
 import { orgToday } from "@/lib/org-day";
-import { markVisitCompletedInClientHistory } from "@/lib/client-visit-history-cache";
+import {
+  invalidateBillingAfterVisitCompleted,
+  markVisitCompletedInClientHistory,
+} from "@/lib/client-visit-history-cache";
 import { toastSaveError } from "@/lib/stale-write-toast";
 import { visitBookedCents } from "@/lib/booked-value";
 import { visitServiceLabel } from "@/lib/subscription-form";
@@ -1101,7 +1104,7 @@ function VisitDetailDrawer({
     qc.invalidateQueries({ queryKey: ["client-visit-history", clientId] });
     qc.invalidateQueries({ queryKey: ["client-activity", clientId] });
     // Completing a visit billed after each visit invoices it (#859).
-    qc.invalidateQueries({ queryKey: ["invoices"] });
+    invalidateBillingAfterVisitCompleted(qc, clientId);
     onClose();
   };
 
