@@ -33,7 +33,7 @@ describe("the one-off dialog", () => {
   });
   it("fills the price from the set price until the person types", () => {
     const src = readFileSync(join(__dirname, "..", "src/components/OneOffVisitDialog.tsx"), "utf8");
-    expect(src).toContain("if (!setsPrices || priceTouched) return;");
+    expect(src).toContain("if (!open || !freshlyReset || !setsPrices || priceTouched) return;");
     expect(src).toContain("setPriceTouched(true)");
   });
 });
