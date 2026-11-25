@@ -35,7 +35,9 @@
 //   - the summary says when that happened, so a pass does not hide it
 
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   neverStarted,
@@ -315,6 +317,106 @@ describe("the cold-link test judges the app, not XCTest's open call", () => {
     expect(script).toMatch(
       /elif ! attempt_class ColdLaunch launches; then\s*result="FAILED"\s*elif ! cold_link_reached_the_app "\$udid"; then\s*result="FAILED \(the cold link never reached the app/,
     );
+  });
+
+  // #1056: a retry from the link is allowed because the FAILED attempt logged
+  // the link, and the device log survives the reboot, so a search of the last
+  // 30 minutes found that old line and passed a retry whose link never
+  // arrived. These run the script's own functions; only the tools they call
+  // are stand-ins. The stand-in log honours --start, and gives any other
+  // query every line it has.
+  describe("only the attempt being judged counts", () => {
+    const verdict = (opts: { retryTakesTheLink?: boolean; noClock?: boolean }) => {
+      const out = mkdtempSync(join(tmpdir(), "cold-link-"));
+      const name = "45517831660-iphone-17e-cold-link-never-committed";
+      const harness = `
+set -euo pipefail
+script="$ROOT/scripts/ios-launch-smoke.sh"
+for fn in never_started cold_link_reached_the_app run_class attempt_class; do
+  eval "$(awk -v f="$fn" 'index($0, f "() {")==1 {on=1} on {print} on && /^}/ {exit}' "$script")"
+done
+slug=sim udid=FAKE name=fake retried="" HOLD_PY="" RELEASE_SIGNED_IN="" DD="$OUT/dd"
+fx="$ROOT/tests/fixtures/ios-launch-smoke/${name}"
+: > "$OUT/device.log"
+NOW="2026-11-24 20:29:00" attempt=1
+date() { [ -z "$NO_CLOCK" ] || return 1; echo "$NOW"; }
+stop_app() { :; }
+hold_sim_records() { :; }
+hold_stop() { wait "$1"; }
+say_later() { :; }
+sleep() { :; }
+pgrep() { :; }
+python3() { :; }
+xcodebuild() {
+  if [ "$attempt" = 1 ]; then
+    cat "$fx.processes.txt" >> "$OUT/device.log"; cat "$fx.log.txt"; return 1
+  fi
+  # The retry passes: activate() started the app, whether or not the link did.
+  echo "2026-11-24 20:33:00.000 Df HoundStack[90001:1] started" >> "$OUT/device.log"
+  [ -z "$RETRY_TAKES_THE_LINK" ] ||
+    echo "2026-11-24 20:33:00.100 Df HoundStack[90001:1] scene-create: UIOpenURLAction" >> "$OUT/device.log"
+}
+xcrun() {
+  case "$*" in
+    *"simctl shutdown"*) NOW="2026-11-24 20:32:00" attempt=2 ;;
+    *"log show"*)
+      echo "$*" >> "$OUT/queries"
+      local since="" only="" a prev=""
+      for a in "$@"; do [ "$prev" != --start ] || since="$a"; prev="$a"; done
+      case "$*" in *scene-create*) only="scene-create: UIOpenURLAction" ;; esac
+      awk -v since="$since" -v only="$only" \
+        'substr($0, 1, 19) >= since && index($0, only)' "$OUT/device.log" ;;
+  esac
+}
+if ! attempt_class ColdLaunch launches > /dev/null; then echo "FAILED"
+elif ! cold_link_reached_the_app "$udid"; then echo "FAILED: never reached the app"
+else echo "passed:$retried"; fi
+# With the link line on the device, so only a missing start can refuse it.
+cat "$fx.processes.txt" >> "$OUT/device.log"
+if cold_link_reached_the_app "$udid"; then echo "guard: yes"; else echo "guard: no"; fi
+`;
+      try {
+        const said = execFileSync("bash", ["-c", harness], {
+          encoding: "utf8",
+          // bash reports each helper the script stops; keep that out of the run.
+          stdio: "pipe",
+          env: {
+            ...process.env,
+            ROOT: root,
+            OUT: out,
+            RETRY_TAKES_THE_LINK: opts.retryTakesTheLink ? "1" : "",
+            NO_CLOCK: opts.noClock ? "1" : "",
+          },
+        });
+        const asked = join(out, "queries");
+        return {
+          said: said
+            .trim()
+            .split("\n")
+            .filter((l) => !l.startsWith("::warning::")),
+          queries: existsSync(asked) ? readFileSync(asked, "utf8") : "",
+        };
+      } finally {
+        rmSync(out, { recursive: true, force: true });
+      }
+    };
+
+    it("fails when only the failed attempt logged the link", () => {
+      const r = verdict({});
+      expect(r.said[0]).toBe("FAILED: never reached the app");
+      expect(r.queries).toContain("--start 2026-11-24 20:32:00 ");
+      expect(r.queries).not.toContain("--last");
+    });
+
+    it("passes the retry when its own link arrived", () => {
+      expect(verdict({ retryTakesTheLink: true }).said[0]).toBe("passed: ColdLaunch");
+    });
+
+    it("searches nothing, retries nothing and fails with no start time", () => {
+      const r = verdict({ noClock: true, retryTakesTheLink: true });
+      expect(r.said).toEqual(["FAILED", "guard: no"]);
+      expect(r.queries).toBe("");
+    });
   });
 
   it("is named in the summary when it happened", () => {

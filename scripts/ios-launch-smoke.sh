@@ -388,7 +388,8 @@ touch "$marker"
 # the proof, and tests/the-launch-check-blames-the-simulator-only-with-proof
 # runs it on logs cut from those runs.
 never_started() {  # $1 xcodebuild log, $2 udid
-  xcrun simctl spawn "$2" log show --last 30m --style compact \
+  [ -n "${attempt_began:-}" ] || return 1
+  xcrun simctl spawn "$2" log show --start "$attempt_began" --style compact \
     --predicate 'process == "HoundStack"' > "$1.processes.txt" 2>/dev/null < /dev/null || return 1
   node "$ROOT/scripts/ios-launch-never-started.mjs" "$1" "$1.processes.txt"
 }
@@ -401,11 +402,16 @@ never_started() {  # $1 xcodebuild log, $2 udid
 # link's own process takes the URL in scene-create, and nothing else in
 # ColdLaunch opens a URL from cold. One such line per device on all four
 # simulators of run 43978183939.
+# Asked only from the start of the attempt being judged (the last run_class).
+# The device log survives a retry's reboot, and a retry from the link means
+# the failed attempt logged this line (#1056), so any wider window could pass
+# a retry whose link never arrived. No start time, no pass.
 # Captured, not piped to grep -q: under pipefail an early grep exit can fail
 # the pipeline with SIGPIPE on a log that DID have the line.
 cold_link_reached_the_app() {  # $1 udid
   local said
-  said=$(xcrun simctl spawn "$1" log show --last 30m --style compact --info \
+  [ -n "${attempt_began:-}" ] || return 1
+  said=$(xcrun simctl spawn "$1" log show --start "$attempt_began" --style compact --info \
     --predicate 'process == "HoundStack" AND eventMessage CONTAINS "scene-create: UIOpenURLAction"' \
     2>/dev/null < /dev/null) || return 1
   [[ "$said" == *"scene-create: UIOpenURLAction"* ]]
@@ -634,6 +640,10 @@ hold_sim_records() {  # $1 start time, $2 result name
 # ordinary processes on this Mac, so `sample` keeps where each was waiting.
 run_class() {  # $1 class, $2 result name
   stop_app "$udid"
+  # When this attempt began, in the log's local time, read before anything of
+  # it runs. Global: never_started and cold_link_reached_the_app search from
+  # here. Overwritten by every attempt, with nothing if date fails.
+  attempt_began=$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || true)
   xcodebuild test-without-building \
       -project "$ROOT/ios/UITests/UITests.xcodeproj" -scheme HoundStackUITests \
       -destination "id=$udid" -derivedDataPath "$DD/tests" \
@@ -650,8 +660,7 @@ run_class() {  # $1 class, $2 result name
     done
   ) &
   local sampler_pid=$!
-  local began hold_pid=""
-  began=$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || true)
+  local hold_pid=""
   python3 -I -c "$HOLD_PY" watch "$udid" "$slug-$2" "$OUT" "$$" "$test_pid" \
     consulting.thenorth.houndstack "${SMOKE_HOLD_SECS:-10}" < /dev/null > /dev/null 2>&1 3<&- &
   hold_pid=$!
@@ -661,7 +670,7 @@ run_class() {  # $1 class, $2 result name
   # Before attempt_class tails it: the SignIn log has the typed values.
   [ -z "$RELEASE_SIGNED_IN" ] || redact "$OUT/$slug-$2.log"
   hold_stop "$hold_pid"
-  [ "$status" -eq 0 ] || [ -z "$began" ] || hold_sim_records "$began" "$2"
+  [ "$status" -eq 0 ] || [ -z "$attempt_began" ] || hold_sim_records "$attempt_began" "$2"
   return "$status"
 }
 
