@@ -104,6 +104,70 @@ describe("a launch the simulator never started", () => {
   });
 });
 
+// #1038 at 27dcd899, iOS launch run 45517831660: iPhone 17e, iOS 26.5,
+// testALinkThatLaunchesTheAppLandsOnSignIn, "after a cold link: no email
+// field, so the sign-in form never rendered". The link started the app in 1 s
+// and its main thread answered XCTest to the end, but WebKit's processes took
+// 29 s more to start, the app served its page 17 ms after the load began, and
+// no commit followed in the 26 s left. The same proof as the 7d6274f7 case below, but a link
+// has no "Launch" line, so the class was not retried. The fixture is the CI
+// log, filtered to those lines and otherwise unchanged.
+describe("a page the app served and WebKit had not committed, from a cold link", () => {
+  const { log, processes } = fixture("45517831660-iphone-17e-cold-link-never-committed");
+
+  it("is recognised from the link's own request", () => {
+    expect(log).not.toMatch(/Launch consulting/);
+    const r = pageNeverCommitted(log, processes);
+    expect(r).toEqual({
+      proven: true,
+      why: "HoundStack[85053] served its page at 20:30:26.080; WebKit had not committed it when XCTest gave up at 20:30:52.096, so no page script ran",
+    });
+    expect(simulatorFailedTheLaunch(log, processes)).toEqual(r);
+  });
+
+  it("is not claimed when the link did not start that process", () => {
+    const unlinked = processes
+      .split("\n")
+      .filter((l) => !l.includes("scene-create: UIOpenURLAction"))
+      .join("\n");
+    expect(unlinked).not.toBe(processes);
+    const r = pageNeverCommitted(log, unlinked);
+    expect(r.proven).toBe(false);
+    expect(r.why).toMatch(/was not started by the link/);
+  });
+
+  it("is not claimed once the page committed before XCTest gave up", () => {
+    const early = `${processes}2026-11-24 20:30:40.000 Df HoundStack[85053:34fb99] [com.apple.WebKit:ResourceLoading] WebContent[85367]: [pageID=10 frameID=8589934593 isMainFrame=1] FrameLoader::transitionToCommitted: x\n`;
+    const r = pageNeverCommitted(log, early);
+    expect(r.proven).toBe(false);
+    expect(r.why).toMatch(/committed at 20:30:40\.000, before the give-up/);
+  });
+
+  it("is not claimed when the app never served its page, or a second process started", () => {
+    const unserved = processes
+      .split("\n")
+      .filter((l) => !(l.includes("HoundStack[85053") && l.includes("::didComplete")))
+      .join("\n");
+    expect(pageNeverCommitted(log, unserved).why).toMatch(/never served its page/);
+    const two = `${processes}2026-11-24 20:30:00.000 Df HoundStack[99999:0] started\n`;
+    expect(pageNeverCommitted(log, two).proven).toBe(false);
+  });
+
+  it("still measures a warm link from the Launch, not from the link", () => {
+    // The app was already running, so nothing started between link and give-up;
+    // only the Launch line gives a window that contains its process.
+    const warm = log.replace(
+      "t =     0.16s Wait for",
+      "t =     0.16s     Launch consulting.thenorth.houndstack\n    t =     0.17s Wait for",
+    );
+    expect(warm).not.toBe(log);
+    const started = processes.replaceAll("2026-11-24 20:29:47.706", "2026-11-24 20:29:44.700");
+    expect(started).not.toBe(processes);
+    expect(pageNeverCommitted(warm, started).proven).toBe(true);
+    expect(pageNeverCommitted(log, started).proven).toBe(false);
+  });
+});
+
 // main 7d6274f7 (#854), iOS launch run 42940607915: iPhone 17e, iOS 26.5,
 // testALinkWhileRunningKeepsTheAppUp, "before the link: no email field, so
 // the sign-in form never rendered". The same app code had passed all four
@@ -172,70 +236,6 @@ describe("a page the app served and WebKit had not committed", () => {
   it("names the assertion ColdLaunch.swift actually fails with", () => {
     const swift = read("ios/UITests/HoundStackUITests/ColdLaunch.swift");
     expect(swift).toContain('"\\(when): no email field, so the sign-in form never rendered"');
-  });
-});
-
-// #1038 at 27dcd899, iOS launch run 45517831660: iPhone 17e, iOS 26.5,
-// testALinkThatLaunchesTheAppLandsOnSignIn, "after a cold link: no email
-// field, so the sign-in form never rendered". The link started the app in 1 s
-// and its main thread answered XCTest to the end, but WebKit's processes took
-// 29 s more to start, the app served its page 17 ms after the load began, and
-// no commit followed in the 26 s left. The same proof as above, but a link
-// has no "Launch" line, so the class was not retried. The fixture is the CI
-// log, filtered to those lines and otherwise unchanged.
-describe("a page the app served and WebKit had not committed, from a cold link", () => {
-  const { log, processes } = fixture("45517831660-iphone-17e-cold-link-never-committed");
-
-  it("is recognised from the link's own request", () => {
-    expect(log).not.toMatch(/Launch consulting/);
-    const r = pageNeverCommitted(log, processes);
-    expect(r).toEqual({
-      proven: true,
-      why: "HoundStack[85053] served its page at 20:30:26.080; WebKit had not committed it when XCTest gave up at 20:30:52.096, so no page script ran",
-    });
-    expect(simulatorFailedTheLaunch(log, processes)).toEqual(r);
-  });
-
-  it("is not claimed when the link did not start that process", () => {
-    const unlinked = processes
-      .split("\n")
-      .filter((l) => !l.includes("scene-create: UIOpenURLAction"))
-      .join("\n");
-    expect(unlinked).not.toBe(processes);
-    const r = pageNeverCommitted(log, unlinked);
-    expect(r.proven).toBe(false);
-    expect(r.why).toMatch(/was not started by the link/);
-  });
-
-  it("is not claimed once the page committed before XCTest gave up", () => {
-    const early = `${processes}2026-11-24 20:30:40.000 Df HoundStack[85053:34fb99] [com.apple.WebKit:ResourceLoading] WebContent[85367]: [pageID=10 frameID=8589934593 isMainFrame=1] FrameLoader::transitionToCommitted: x\n`;
-    const r = pageNeverCommitted(log, early);
-    expect(r.proven).toBe(false);
-    expect(r.why).toMatch(/committed at 20:30:40\.000, before the give-up/);
-  });
-
-  it("is not claimed when the app never served its page, or a second process started", () => {
-    const unserved = processes
-      .split("\n")
-      .filter((l) => !(l.includes("HoundStack[85053") && l.includes("::didComplete")))
-      .join("\n");
-    expect(pageNeverCommitted(log, unserved).why).toMatch(/never served its page/);
-    const two = `${processes}2026-11-24 20:30:00.000 Df HoundStack[99999:0] started\n`;
-    expect(pageNeverCommitted(log, two).proven).toBe(false);
-  });
-
-  it("still measures a warm link from the Launch, not from the link", () => {
-    // The app was already running, so nothing started between link and give-up;
-    // only the Launch line gives a window that contains its process.
-    const warm = log.replace(
-      "t =     0.16s Wait for",
-      "t =     0.16s     Launch consulting.thenorth.houndstack\n    t =     0.17s Wait for",
-    );
-    expect(warm).not.toBe(log);
-    const started = processes.replaceAll("2026-11-24 20:29:47.706", "2026-11-24 20:29:44.700");
-    expect(started).not.toBe(processes);
-    expect(pageNeverCommitted(warm, started).proven).toBe(true);
-    expect(pageNeverCommitted(log, started).proven).toBe(false);
   });
 });
 
