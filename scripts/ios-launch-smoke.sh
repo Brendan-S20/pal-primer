@@ -345,6 +345,8 @@ else
   say "|---|---|---|"
 fi
 failed=0
+START_BOUND="${SMOKE_START_BOUND_SECONDS:-600}"
+START_POLL="${SMOKE_START_POLL_SECONDS:-1}"
 marker="$OUT/.started"
 touch "$marker"
 
@@ -409,6 +411,18 @@ never_started() {  # $1 xcodebuild log, $2 udid
   node "$ROOT/scripts/ios-launch-never-started.mjs" "$1" "$1.processes.txt" "$1.log-seconds.txt"
 }
 
+# Why the simulator, not the app, failed this run of a class; non-zero when
+# it cannot be shown. A xcodebuild that run_class stopped for starting no test
+# case at all is such proof on its own: no test case started, so no app launch
+# was ever asked for, and nothing of the app's can have failed.
+simulator_failed() {  # $1 xcodebuild log, $2 udid
+  if [ -f "$1.start-hung" ]; then
+    cat "$1.start-hung"
+    return 0
+  fi
+  never_started "$1" "$2"
+}
+
 # The cold link reached the app (#962). ColdLaunch.swift attaches XCTest to
 # the process a link started with activate(), because XCTest does not reliably
 # notice an app SpringBoard launched (iPad (A16), iOS 27.2, df972507: up 4 s
@@ -459,6 +473,35 @@ run_class() {  # $1 class, $2 result name
       -only-testing:"HoundStackUITests/$1" \
       CODE_SIGNING_ALLOWED=NO > "$OUT/$slug-$2.log" 2>&1 < /dev/null &
   local test_pid=$!
+  local log="$OUT/$slug-$2.log"
+  rm -f "$log.start-hung"
+  # No test case started within START_BOUND seconds of xcodebuild starting:
+  # stop it, and say why in "$log.start-hung" for attempt_class. Once ANY
+  # "Test Case ... started" line exists this never fires, whatever happens
+  # after it: from then on a hang could be the app. The slowest healthy start
+  # measured (run 45517831660, xcodebuild start to first test case) was 126 s;
+  # the stuck one took 3130 s.
+  # xcodebuild writes that line to a file as it happens (Xcode 27.2 build 27B52,
+  # macOS destination, test sleeping 25 s: line in the file at 01:02:57, test
+  # began 01:02:56, "passed" in the file at 01:03:21, exit 01:03:22).
+  (
+    end=$((SECONDS + START_BOUND))
+    while kill -0 "$test_pid" 2>/dev/null; do
+      grep -q "^Test Case '.*' started" "$log" 2>/dev/null && exit 0
+      if [ "$SECONDS" -ge "$end" ]; then
+        echo "xcodebuild started no test case in ${START_BOUND} s (the simulator never let it begin), so it was stopped" > "$log.start-hung"
+        kill "$test_pid" 2>/dev/null || exit 0
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+          kill -0 "$test_pid" 2>/dev/null || exit 0
+          sleep 0.5
+        done
+        kill -9 "$test_pid" 2>/dev/null || true
+        exit 0
+      fi
+      sleep "$START_POLL"
+    done
+  ) &
+  local bound_pid=$!
   (
     sleep 150
     kill -0 "$test_pid" 2>/dev/null || exit 0
@@ -475,6 +518,11 @@ run_class() {  # $1 class, $2 result name
   # every class that finished in time, which reads as the watchdog firing.
   # It fired only if a *-stuck-*.sample.txt is in the results.
   { kill "$sampler_pid" && wait "$sampler_pid"; } 2>/dev/null || true
+  { kill "$bound_pid" && wait "$bound_pid"; } 2>/dev/null || true
+  # A test case that did start (a race at the bound) is never the bound's.
+  if grep -q "^Test Case '.*' started" "$log" 2>/dev/null; then rm -f "$log.start-hung"; fi
+  # A xcodebuild that was stopped did not pass, whatever it exited with.
+  [ ! -f "$log.start-hung" ] || status=1
   # Before attempt_class tails it: the SignIn log has the typed values.
   [ -z "$RELEASE_SIGNED_IN" ] || redact "$OUT/$slug-$2.log"
   return "$status"
@@ -491,7 +539,7 @@ attempt_class() {  # $1 class, $2 result name
   run_class "$1" "$run" && return 0
   tail -60 "$OUT/$slug-$run.log"
   for tries in 1 2; do
-    why=$(never_started "$OUT/$slug-$run.log" "$udid") || return 1
+    why=$(simulator_failed "$OUT/$slug-$run.log" "$udid") || return 1
     echo "::warning::$name: the simulator, not the app, failed $1 ($why). Rebooting it and retrying $1 ($tries of 2)."
     retried="$retried $1"
     say_later "  - $name, $1: the simulator, not the app ($why); rebooted the simulator and retried ($tries of 2)"
@@ -613,7 +661,7 @@ if [ -n "$RELEASE_SIGNED_IN" ] && [ -n "$notes" ]; then
 fi
 if [ -n "$notes" ]; then
   say ""
-  say "**Launches the simulator failed, not the app** (no HoundStack process from the launch request to the timeout; or the app served its page and WebKit had not committed it when XCTest gave up, so no page script ran; or no process in the simulator logged anything for 60 s or more inside every failed test, because the simulator's logd had stalled; the simulator was rebooted and the class retried, at most twice; a page that committed and then drew nothing, and a process that started and then hung before serving its page, are never retried):"
+  say "**Launches the simulator failed, not the app** (no HoundStack process from the launch request to the timeout; or the app served its page and WebKit had not committed it when XCTest gave up, so no page script ran; or no process in the simulator logged anything for 60 s or more inside every failed test, because the simulator's logd had stalled; or xcodebuild ran $START_BOUND s without starting any test case and was stopped; the simulator was rebooted and the class retried, at most twice; a page that committed and then drew nothing, and a process that started and then hung before serving its page, are never retried):"
   printf '%s' "$notes" | while IFS= read -r line; do say "$line"; done
 fi
 

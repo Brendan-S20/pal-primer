@@ -234,6 +234,9 @@ export function pageNeverCommitted(testLog, processLog) {
 /** Seconds of silence from every process that count as a stalled logd. */
 export const LOG_STALL_SECONDS = 60;
 
+/** `log show --last 30m`: no line of one log is farther than this from its median. */
+const LOG_WINDOW_MS = 30 * 60 * 1000;
+
 /**
  * Every failed test in the class failed while the simulator's logging was
  * stalled. Proven only when all of these hold:
@@ -284,12 +287,21 @@ export function logStalled(testLog, logSeconds) {
     return { proven: false, why: `${unclear.name}: no start time or no tear-down in the log` };
   }
 
-  const seconds = logSeconds
+  const stamped = logSeconds
     .split(/\r?\n/)
     .map((l) => l.match(/^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)/))
     .filter(Boolean)
-    .map((m) => parseTime(`${m[1]}.000`))
-    .sort((a, b) => a - b);
+    .map((m) => parseTime(`${m[1]}.000`));
+  // Lines from another time can sit in this list: run 45517831660, retry 1
+  // of iPhone 17e 27.2, has "2026-11-25 00:36:15" between two 2026-11-24
+  // 19:46:45 lines. Sorted, it lands at the end, where it reads as the log
+  // covering a truncated test, and the gap before it as silence. `log show
+  // --last 30m` cannot span more than LOG_WINDOW_MS, so a line farther than
+  // that from the MEDIAN line is not from this log and is dropped, however
+  // many of them sit next to each other (fewer than half the list).
+  const byTime = [...stamped].sort((a, b) => a - b);
+  const median = byTime[Math.floor(byTime.length / 2)];
+  const seconds = byTime.filter((t) => Math.abs(t - median) <= LOG_WINDOW_MS);
   const lo = Math.min(...failed.map((f) => f.start));
   const hi = Math.max(...failed.map((f) => f.end));
   // A logged second covers [t, t + 1 s).
