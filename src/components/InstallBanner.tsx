@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from "react";
 import { Download } from "lucide-react";
+import { useRouterState } from "@tanstack/react-router";
 import { useMyRole } from "@/hooks/useMyRole";
 import { useDismissed } from "@/lib/dismissible";
 import { DismissButton } from "@/components/DismissButton";
@@ -24,6 +25,14 @@ interface BIPEvent extends Event {
 /** Asks again a fortnight after "not now". One version: nothing about the
  *  offer changes, only how long ago it was declined. */
 const SNOOZE_DAYS = 14;
+
+/** Wizard pages the banner stays off (#1011 item 4): on a desktop form it sat
+ *  over Back / Create and the error line. */
+export function installBannerHiddenOn(pathname: string): boolean {
+  return ["/clients/new", "/setup", "/onboarding"].some(
+    (p) => pathname === p || pathname.startsWith(p + "/"),
+  );
+}
 
 function shouldSkip(): boolean {
   if (typeof window === "undefined") return true;
@@ -38,6 +47,7 @@ export function InstallBanner() {
   const [evt, setEvt] = useState<BIPEvent | null>(null);
   const [visible, setVisible] = useState(false);
   const { orgId } = useMyRole();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { dismissed, dismiss: rememberDismissal } = useDismissed("pwa-install", "1", {
     orgId,
     snoozeDays: SNOOZE_DAYS,
@@ -62,7 +72,7 @@ export function InstallBanner() {
     };
   }, [rememberDismissal]);
 
-  if (!visible || !evt || dismissed) return null;
+  if (!visible || !evt || dismissed || installBannerHiddenOn(pathname)) return null;
 
   const dismiss = () => {
     rememberDismissal();
