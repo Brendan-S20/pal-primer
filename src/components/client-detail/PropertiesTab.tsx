@@ -62,6 +62,7 @@ import { computeEstimatedMinutes, countPropertyHazards } from "@/lib/estimated-t
 import { PropertyDrawer } from "@/components/client-detail/PropertyDrawer";
 import { ACCESS_METHOD_LABEL, isAccessMethod, type AccessMethod } from "@/lib/walk-access";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { humanizeEnum } from "@/lib/humanize";
 import { careSummary, PetCareEditor } from "@/components/client-detail/PetCareEditor";
 import { getPetCare } from "@/lib/stays.functions";
 import {
@@ -961,7 +962,7 @@ export function DogsSection({
               <span
                 className={`rounded px-1.5 py-0.5 text-xs font-medium ${TEMPERAMENT_TONE[d.temperament ?? "unknown"]}`}
               >
-                {d.temperament ?? "unknown"}
+                {humanizeEnum(d.temperament ?? "unknown")}
               </span>
               {d.notes && <span className="text-xs text-muted-foreground">{d.notes}</span>}
               {sitting && (d.vet_clinic_name || d.vet_clinic_phone) && (

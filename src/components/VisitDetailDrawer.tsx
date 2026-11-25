@@ -84,6 +84,7 @@ import { useServiceLines } from "@/components/CommercialOnly";
 import { isYardVisit } from "@/lib/walk-concerns";
 import { canOfficeComplete } from "@/lib/visit-lifecycle";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { humanizeEnum } from "@/lib/humanize";
 import { earlyCompleteConfirm, isFutureVisit } from "@/lib/booking-dates";
 import { toastSaveError } from "@/lib/stale-write-toast";
 import { invalidateBillingAfterVisitCompleted } from "@/lib/client-visit-history-cache";
@@ -989,7 +990,7 @@ function DogsSection({
                 <div className="min-w-0">
                   <div className="font-medium">{d.name}</div>
                   <div className="text-xs text-muted-foreground">
-                    {[d.breed, d.weight_class, d.temperament].filter(Boolean).join(" · ")}
+                    {[d.breed, d.weight_class, d.temperament && humanizeEnum(d.temperament)].filter(Boolean).join(" · ")}
                   </div>
                   {d.notes && <div className="mt-1 text-xs">{d.notes}</div>}
                 </div>
