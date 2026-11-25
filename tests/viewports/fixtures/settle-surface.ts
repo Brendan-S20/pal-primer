@@ -36,6 +36,18 @@ export async function settle(page: Page, surface: Surface, widthLabel: string) {
     )
     .catch(() => {});
 
+  // The router's shell leaving is not the page arriving: a surface can still be
+  // on its own skeleton ("Loading tenant…") with real text and enough
+  // elements-to-be, and the size checks below then fail a page that draws a
+  // moment later. Give the surface proof its 15 seconds BEFORE measuring. A
+  // proof that never appears is swallowed here so the health checks below
+  // still run and name the real reason; the final toBeVisible still fails.
+  await surface
+    .proof(page)
+    .first()
+    .waitFor({ state: "visible", timeout: 15_000 })
+    .catch(() => {});
+
   const health = await page.evaluate(() => ({
     path: location.pathname,
     els: document.querySelectorAll("*").length,
