@@ -430,6 +430,117 @@ stop_app() {  # $1 udid
   echo "::warning::$name: the app was still listed by launchd 30 s after simctl terminate"
 }
 
+# Diagnostics only (#1038); changes no verdict, exit code, wait or retry.
+# iPhone 17e, iOS 27.2, run 45517831660: the simulator accepted each launch
+# request within 25 ms, then held it 45 s, 100 s and 459 s before it spawned
+# HoundStack. While it holds, launchd_sim's job for the app sits at "service
+# state: xpcproxy" and a stub, `xpcproxy_sim UIKitApplication:<bundle>[..]`
+# (a child of this device's launchd_sim, whose argv holds .../Devices/<udid>/),
+# stays in the process table; on spawn it becomes the app, same pid. A stub
+# unspawned for SMOKE_HOLD_SECS (10) is captured once per attempt: stacks of
+# stub and launchd_sim, load, memory, disk, one timed spawn. Files land top
+# level in SMOKE_OUT as hold-*.txt/.log, which no reader above matches.
+# Every command is bounded and hard-killed as a group; any error is swallowed.
+HOLD_PY=""
+IFS= read -r -d '' HOLD_PY <<'PY' || true
+import os, select, signal, subprocess, sys, time
+CUR, PPID0 = None, os.getppid()
+def bye(*_):
+    if CUR is not None:
+        try: os.killpg(CUR, signal.SIGKILL)
+        except OSError: pass
+    os._exit(0)
+for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP): signal.signal(s, bye)
+def run(argv, secs, cap, lines=0):
+    global CUR
+    out = b""
+    try:
+        p = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, start_new_session=True)
+    except OSError:
+        return b"(not run: " + os.path.basename(argv[0]).encode() + b" unavailable)\n"
+    CUR = p.pid
+    end = time.monotonic() + secs
+    try:
+        while len(out) < cap and time.monotonic() < end:
+            if os.getppid() != PPID0: bye()  # the script is gone (cancel)
+            if select.select([p.stdout], [], [], 0.5)[0]:
+                b = os.read(p.stdout.fileno(), 65536)
+                if not b: break
+                out += b
+    finally:
+        try: os.killpg(p.pid, signal.SIGKILL)
+        except OSError: pass
+        try: p.wait(timeout=2)
+        except Exception: pass
+        CUR = None
+    out = out[:cap]
+    return b"\n".join(out.split(b"\n")[:lines]) + b"\n" if lines else out
+def alive(pid):
+    try: os.kill(pid, 0); return True
+    except OSError: return False
+def capture(path, tag, stub, sim, held):
+    dl = time.monotonic() + 45
+    with open(path, "wb") as f:
+        f.write(("hold-diag %s: stub pid %d unspawned for %ds, launchd_sim pid %d, %s UTC\n" % (
+            tag, stub, held, sim, time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()))).encode())
+        def sec(title, argv, secs=6, cap=100000, lines=0):
+            f.write(b"\n=== " + title.encode() + b"\n")
+            f.write(run(argv, secs, cap, lines) if time.monotonic() < dl else b"(skipped: capture budget used)\n")
+            f.flush()
+        sec("stack of the stub", ["/usr/bin/sample", str(stub), "1", "-file", "/dev/stdout"], 12, 150000)
+        sec("stack of launchd_sim", ["/usr/bin/sample", str(sim), "1", "-file", "/dev/stdout"], 12, 150000)
+        sec("stub and launchd_sim state", ["/bin/ps", "-o", "pid,ppid,state,etime,time,rss,comm", "-p", "%d,%d" % (stub, sim)])
+        sec("load", ["/usr/bin/uptime"])
+        sec("top by cpu", ["/bin/ps", "-Aro", "pid,pcpu,rss,comm"], 6, 20000, 15)
+        sec("memory pressure", ["/usr/bin/memory_pressure", "-Q"])
+        sec("vm_stat", ["/usr/bin/vm_stat"])
+        sec("swap", ["/usr/sbin/sysctl", "vm.swapusage"])
+        sec("disk", ["/bin/df", "-h", "/", os.path.dirname(path)])
+        t = time.monotonic()
+        r = run(["/usr/bin/true"], 5, 100)
+        f.write(("\n=== timed host command: /usr/bin/true took %.3f s\n" % (time.monotonic() - t)).encode())
+def watch(udid, tag, out, parent, test, bundle, hold):
+    t0, seen = time.monotonic(), {}
+    needle = "xpcproxy_sim UIKitApplication:" + bundle
+    while time.monotonic() - t0 < 3600 and alive(parent) and alive(test):
+        procs = []
+        for l in run(["/bin/ps", "-axwwo", "pid=,ppid=,command="], 8, 8000000).decode("utf-8", "replace").split("\n"):
+            w = l.split(None, 2)
+            if len(w) == 3 and w[0].isdigit() and w[1].isdigit(): procs.append((int(w[0]), int(w[1]), w[2]))
+        sim = [p for p, _, c in procs if c.startswith("launchd_sim ") and "/Devices/%s/" % udid in c]
+        now = time.monotonic()
+        stubs = [p for p, pp, c in procs if sim and pp == sim[0] and needle in c]
+        seen = {p: seen.get(p, now) for p in stubs}
+        for p in stubs:
+            if now - seen[p] >= hold:
+                return capture(os.path.join(out, "hold-diag-%s.txt" % tag), tag, p, sim[0], int(now - seen[p]))
+        time.sleep(2)
+try:
+    a = sys.argv
+    if a[1] == "watch": watch(a[2], a[3], a[4], int(a[5]), int(a[6]), a[7], int(a[8]))
+    elif a[1] == "run":  # run SECS CAP OUTFILE -- cmd...
+        with open(a[4], "wb") as f: f.write(run(a[6:], int(a[2]), int(a[3])))
+except Exception:
+    pass
+PY
+
+hold_reap() {  # $1 watcher pid; never fails, never waits more than 2 s
+  [ -n "${1:-}" ] || return 0
+  kill "$1" 2>/dev/null || return 0
+  for _ in 1 2 3 4; do kill -0 "$1" 2>/dev/null || return 0; sleep 0.5; done
+  kill -KILL "$1" 2>/dev/null || true
+}
+
+# A failed attempt: what the simulator logged about the launch, for the
+# window. At most 20 s and 2 MB.
+hold_sim_records() {  # $1 start time, $2 result name
+  python3 -I -c "$HOLD_PY" run 20 2000000 "$OUT/hold-simlog-$slug-$2.log" -- \
+    xcrun simctl spawn "$udid" log show --start "$1" --style compact --info --predicate \
+    'process IN {"launchd_sim","testmanagerd","runningboardd","coresymbolicationd","managedappdistributiond"} OR (process == "SpringBoard" AND eventMessage CONTAINS "consulting.thenorth.houndstack")' \
+    < /dev/null > /dev/null 2>&1 || true
+}
+
 # One test class on this device. A launch that has not painted after 150s
 # is stuck, not slow (2026-10-28: the web content process waited forever on
 # a synchronous prompt; bf2d1af removed that). Simulator processes are
@@ -452,11 +563,18 @@ run_class() {  # $1 class, $2 result name
     done
   ) &
   local sampler_pid=$!
+  local began hold_pid=""
+  began=$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || true)
+  python3 -I -c "$HOLD_PY" watch "$udid" "$slug-$2" "$OUT" "$$" "$test_pid" \
+    consulting.thenorth.houndstack "${SMOKE_HOLD_SECS:-10}" < /dev/null > /dev/null 2>&1 &
+  hold_pid=$!
   local status=0
   wait "$test_pid" || status=1
   kill "$sampler_pid" 2>/dev/null || true
   # Before attempt_class tails it: the SignIn log has the typed values.
   [ -z "$RELEASE_SIGNED_IN" ] || redact "$OUT/$slug-$2.log"
+  hold_reap "$hold_pid"
+  [ "$status" -eq 0 ] || [ -z "$began" ] || hold_sim_records "$began" "$2"
   return "$status"
 }
 
