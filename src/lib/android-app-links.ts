@@ -131,6 +131,9 @@ export const STAYS_IN_BROWSER: Readonly<Record<string, string>> = {
   "/auth":
     "the web OAuth redirect target; claiming it breaks web sign-in on any phone with the app",
   "/sign-up": "account creation starts on the web",
+  "/login": "alias that redirects to /auth; sign-in stays on the web",
+  "/sign-in": "alias that redirects to /auth; sign-in stays on the web",
+  "/signin": "alias that redirects to /auth; sign-in stays on the web",
   "/signup": "a tenant's customer self-signup page",
   "/get-started": "account creation starts on the web",
   "/two-step": "part of the web sign-in flow",
