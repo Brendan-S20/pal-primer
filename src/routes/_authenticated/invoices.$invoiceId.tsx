@@ -23,6 +23,7 @@ import { formatLineItemDescription, invoiceNumberLabel } from "@/lib/invoice-lab
 import { Button } from "@/components/ui/button";
 import { StatusChip, SectionLabel } from "@/components/client-detail/primitives";
 import { invoiceRefundState, invoiceStatusChip, voidAfterRefund } from "@/lib/refund-outcome";
+import { SCHEDULED_LABEL } from "@/lib/invoice-send-state";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { DownloadPdfButton } from "@/components/DownloadPdfButton";
 import { downloadInvoicePdf } from "@/lib/document-pdf.functions";
@@ -249,6 +250,7 @@ function InvoiceDetail() {
     (orgQ.data?.organization as { timezone?: string | null } | undefined)?.timezone ||
     DEFAULT_ORG_TIMEZONE;
   const overdue = isInvoiceOverdue(invoice.status, dueOn, orgToday(tz));
+  const today = orgToday(tz);
   // Void on a paid invoice is offered only once all of its money went back
   // (#674); partly refunded, the page says to refund the rest first.
   const refundVoid = voidAfterRefund(invoice);
@@ -280,7 +282,20 @@ function InvoiceDetail() {
           <div className="flex flex-col items-start gap-2 text-sm sm:items-end">
             {(() => {
               // Refunded money reads as refunded, not Paid (#674).
-              const chip = invoiceStatusChip(invoice);
+              const chip = invoiceStatusChip(invoice, today);
+              if (chip.label === SCHEDULED_LABEL) {
+                // The page is also the printed document, and the paper copy
+                // is the bill as the client would read it: it says what it
+                // always said (Open, with its due date). "Scheduled" is the
+                // office's own note about the send queue, so it is on screen
+                // only (#1042).
+                return (
+                  <>
+                    <StatusChip status={chip.status} label={chip.label} className="print:hidden" />
+                    <InvoiceChip status={invoice.status} className="hidden print:inline-flex" />
+                  </>
+                );
+              }
               return chip.label ? (
                 <StatusChip status={chip.status} label={chip.label} />
               ) : (

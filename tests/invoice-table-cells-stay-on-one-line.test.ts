@@ -98,7 +98,7 @@ describe("the invoice row keeps its number, period and due date on one line", ()
     it("the status cell stays on one line below xl", () => {
       // The chip's status and label come from invoiceStatusChip, so a
       // refunded paid invoice says Refunded (#674).
-      const cls = cellClassContaining(row, "<StatusChip {...invoiceStatusChip(invoice)}");
+      const cls = cellClassContaining(row, "<StatusChip {...invoiceStatusChip(invoice, today)}");
       expect(cls).not.toBeNull();
       expect(cls!.split(/\s+/)).toContain("whitespace-nowrap");
       expect(row).toMatch(
