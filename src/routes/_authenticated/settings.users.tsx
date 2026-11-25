@@ -51,6 +51,7 @@ import {
   returnHereAfterSignIn,
 } from "@/lib/signed-out";
 import { invalidateOnboardingStatus } from "@/hooks/useOnboardingStatus";
+import { Skeleton } from "@/components/ui/skeleton";
 import { prefetchUsersPage } from "@/lib/settings-prefetch";
 import { leftLabel, type LeftTeammate } from "@/lib/team-left";
 
@@ -261,7 +262,11 @@ function UsersPage() {
                 retrying={usersQ.isFetching}
               />
             ) : (
-              <p className="text-sm text-muted-foreground">Loading…</p>
+              <div className="space-y-2" aria-busy="true" role="status">
+                <span className="sr-only">Loading the team</span>
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+              </div>
             )
           ) : (
             // Below md each row is a block, not a table row: the role picker
