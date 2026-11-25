@@ -449,12 +449,16 @@ stop_app() {  # $1 udid
 HOLD_PY=""
 IFS= read -r -d '' HOLD_PY <<'PY' || true
 import os, select, shutil, signal, stat, subprocess, sys, time
-CUR, SIM, PPID0 = None, None, os.getppid()
+# PPID0: the script's pid, passed by bash. getppid() read here could already
+# be 1 if the script died while this python was starting.
+CUR, SIM, PPID0, DYING, T0 = None, None, 0, False, time.monotonic()
 PRED = ('process IN {"launchd_sim","testmanagerd","runningboardd","coresymbolicationd",'
         '"managedappdistributiond"} OR (process == "SpringBoard" AND '
         'eventMessage CONTAINS "consulting.thenorth.houndstack")')
 def bye(*_):
-    global SIM
+    global SIM, DYING
+    if DYING: return  # the reap's own ps sees the script gone too
+    DYING = True
     if CUR is not None:
         try: os.killpg(CUR, signal.SIGKILL)
         except OSError: pass
@@ -472,7 +476,7 @@ def runx(argv, secs, cap, lines=0, ends=False):
     if not shutil.which(argv[0]):
         return b"(not run: " + os.path.basename(argv[0]).encode() + b" unavailable)\n", False
     # perl's alarm outlives exec: if this python is killed, a child still ends
-    # by itself (secs + 3). Only an in-simulator log show can outlast that.
+    # by itself (secs + 3); its own children, and in-simulator ones, may not.
     argv = ["/usr/bin/perl", "-e", "alarm shift; exec @ARGV", str(secs + 3)] + argv
     try:
         p = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -554,10 +558,10 @@ def capture(path, tag, stub, sim, held, probes):
         t = time.monotonic()
         run(["/usr/bin/true"], 5, 100)
         f.write(("\n=== timed host command: /usr/bin/true took %.3f s\n" % (time.monotonic() - t)).encode())
-def watch(udid, tag, out, parent, test, bundle, hold):
-    t0, seen, n, bad, slow = time.monotonic(), {}, 0, 0, 0
+def watch(udid, tag, out, test, bundle, hold):
+    seen, n, bad, slow = {}, 0, 0, 0
     needle = "xpcproxy_sim UIKitApplication:" + bundle
-    while time.monotonic() - t0 < 3600 and alive(parent) and alive(test):
+    while time.monotonic() - T0 < 3600 and os.getppid() == PPID0 and alive(test):
         t = time.monotonic()
         rows, complete = table()
         n, slow = n + 1, slow + (time.monotonic() - t > 2)
@@ -574,6 +578,7 @@ def watch(udid, tag, out, parent, test, bundle, hold):
         time.sleep(2)
 def simlog(udid, start, path, secs, cap):  # the launch records, first and last cap/2
     global SIM
+    if os.getppid() != PPID0: return  # cancelled before the query began
     SIM = (udid, start)
     out, ok = runx(["xcrun", "simctl", "spawn", udid, "log", "show", "--start", start,
                     "--style", "compact", "--info", "--predicate", PRED], secs, cap, ends=True)
@@ -583,13 +588,14 @@ def simlog(udid, start, path, secs, cap):  # the launch records, first and last 
         f.write(out + (b"" if ok else b"\n(stopped: the query did not finish in %d s or failed)\n" % secs))
 try:
     a = sys.argv
-    if a[1] == "watch": watch(a[2], a[3], a[4], int(a[5]), int(a[6]), a[7], int(a[8]))
+    PPID0 = int(a[5] if a[1] == "watch" else a[7])
+    if a[1] == "watch": watch(a[2], a[3], a[4], int(a[6]), a[7], int(a[8]))
     elif a[1] == "simlog": simlog(a[2], a[3], a[4], int(a[5]), int(a[6]))
 except Exception:
     pass
-# Idle until stopped or the script is gone, so a finished watcher's pid is
-# not free for bash's kill (SIGTERM ends it from here).
-while a[1] == "watch" and os.getppid() == PPID0: time.sleep(0.5)
+# Idle until stopped, the script is gone or 3600 s from start, so a finished
+# watcher's pid is not free for bash's kill (SIGTERM ends it from here).
+while a[1] == "watch" and os.getppid() == PPID0 and time.monotonic() - T0 < 3600: time.sleep(0.5)
 PY
 
 # Bash side of the bound. No `jobs` (3.2 misreports): kill -0, fixed counts,
@@ -615,8 +621,8 @@ hold_stop() {  # $1 background pid of this shell; never fails
 hold_sim_records() {  # $1 start time, $2 result name
   [ -z "$RELEASE_SIGNED_IN" ] || return 0
   local pid t0=$SECONDS
-  python3 -I -c "$HOLD_PY" simlog "$udid" "$1" "$OUT/hold-simlog-$slug-$2.log" 12 2000000 \
-    < /dev/null > /dev/null 2>&1 &
+  python3 -I -c "$HOLD_PY" simlog "$udid" "$1" "$OUT/hold-simlog-$slug-$2.log" 12 2000000 "$$" \
+    < /dev/null > /dev/null 2>&1 3<&- &
   pid=$!
   while kill -0 "$pid" 2>/dev/null && [ $((SECONDS - t0)) -lt 20 ]; do sleep 0.2; done
   hold_stop "$pid"
@@ -647,7 +653,7 @@ run_class() {  # $1 class, $2 result name
   local began hold_pid=""
   began=$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || true)
   python3 -I -c "$HOLD_PY" watch "$udid" "$slug-$2" "$OUT" "$$" "$test_pid" \
-    consulting.thenorth.houndstack "${SMOKE_HOLD_SECS:-10}" < /dev/null > /dev/null 2>&1 &
+    consulting.thenorth.houndstack "${SMOKE_HOLD_SECS:-10}" < /dev/null > /dev/null 2>&1 3<&- &
   hold_pid=$!
   local status=0
   wait "$test_pid" || status=1
