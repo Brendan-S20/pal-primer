@@ -1,3 +1,4 @@
+import { inviteTimingLine } from "@/lib/invite-dates";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { lookupAddressPoint } from "@/lib/geocode.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -650,7 +651,13 @@ function InvitePanel({ prefill }: { prefill?: InvitePrefill | null }) {
             <ul className="divide-y">
               {invites.filter((i) => i.status === "pending").map((i) => (
                 <li key={i.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2 text-sm">
-                  <span className="min-w-0 break-words">{i.email} <span className="text-muted-foreground">· {roleLabel(i.role)}</span></span>
+                  <span className="min-w-0 break-words">{i.email} <span className="text-muted-foreground">· {roleLabel(i.role)}</span>
+                    {inviteTimingLine(i.created_at, i.expires_at) && (
+                      <span className="block text-xs text-muted-foreground">
+                        {inviteTimingLine(i.created_at, i.expires_at)}
+                      </span>
+                    )}
+                  </span>
                   <span className="flex shrink-0 items-center gap-3">
                     {i.link && (
                       <button className="text-xs underline touch:min-h-11" onClick={() => copyLink(i.link)}>Copy link</button>

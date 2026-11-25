@@ -1,3 +1,5 @@
+import { useStartPoints } from "@/hooks/useStartPoints";
+import { showDriveLine } from "@/lib/start-point";
 import { createFileRoute, Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { completeFromOffice, useOfficeCompleteOverride } from "@/components/OfficeCompleteOverride";
 import { useCompletionBlockWarning } from "@/components/CompletionBlockWarning";
@@ -2592,6 +2594,7 @@ function VisitCardView({
 }) {
   const tz = useOrgTimezone();
   const distanceUnit = useDistanceUnit();
+  const driveShown = showDriveLine(useStartPoints(), visit);
   const overCapWalk = useContext(OverCapContext).get(visit.id);
   const p = visit.properties;
   const dirUrl = directionsUrl(p);
@@ -2682,15 +2685,15 @@ function VisitCardView({
               </div>
             );
           })()}
-          {(visitEta(visit, tz).start || visit.travel_min != null) && (
+          {(visitEta(visit, tz).start || driveShown) && (
             <div className="mt-1 flex flex-wrap items-center gap-2 text-3xs text-muted-foreground">
               {visitEta(visit, tz).start && (
                 <span>ETA {orgLocalTime(visitEta(visit, tz).start, tz)}</span>
               )}
-              {visit.travel_km != null && (
+              {driveShown && visit.travel_km != null && (
                 <span>· {formatDistance(visit.travel_km, distanceUnit)}</span>
               )}
-              {visit.travel_min != null && (
+              {driveShown && visit.travel_min != null && (
                 <span>· {Math.round(Number(visit.travel_min))} min drive</span>
               )}
             </div>

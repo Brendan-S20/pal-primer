@@ -1474,3 +1474,40 @@ export const redistributeStaffWork = createServerFn({ method: "POST" })
 // were deleted for. `preview_optimize` the SQL FUNCTION stays: since 2026-10
 // the app reads its numbers off apply_route_plan instead, and the routing
 // trials call the old planner as the benchmark the new one is held to.
+
+/**
+ * Whether this business has anywhere for a day to start from: a geocoded
+ * business address, a technician start address, or a dump site. Read-only, from
+ * columns that already exist; the Routes board and the visit drawer use it to
+ * hide a drive line that was measured from nowhere (#1011-2).
+ */
+export const getStartPoints = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const orgId = await resolveOrgId(supabase, userId);
+    const db = supabase as any;
+    const [org, staff, dumps] = await Promise.all([
+      db.from("organizations").select("latitude, longitude").eq("id", orgId).maybeSingle(),
+      db
+        .from("staff")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", orgId)
+        .eq("active", true)
+        .not("start_latitude", "is", null)
+        .not("start_longitude", "is", null),
+      db
+        .from("waste_disposal_facilities")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", orgId)
+        .eq("active", true)
+        .not("latitude", "is", null)
+        .not("longitude", "is", null),
+    ]);
+    for (const r of [org, staff, dumps]) if (r.error) throw new Error(r.error.message);
+    return {
+      orgHasLocation: org.data?.latitude != null && org.data?.longitude != null,
+      staffWithStart: (staff.count as number) ?? 0,
+      disposalSites: (dumps.count as number) ?? 0,
+    };
+  });

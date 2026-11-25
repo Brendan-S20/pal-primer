@@ -1,3 +1,5 @@
+import { useStartPoints } from "@/hooks/useStartPoints";
+import { showDriveLine } from "@/lib/start-point";
 import i18n from "@/lib/i18n";
 import { completeFromOffice, useOfficeCompleteOverride } from "@/components/OfficeCompleteOverride";
 import { useCompletionBlockWarning } from "@/components/CompletionBlockWarning";
@@ -158,6 +160,7 @@ export function VisitDetailDrawer({
   const open = !!visitId;
   const tz = useOrgTimezone();
   const distanceUnit = useDistanceUnit();
+  const startPoints = useStartPoints();
   const qc = useQueryClient();
   const getDetail = useServerFn(getVisitDetail);
   // This drawer opens from /routes and /dashboard, and ROUTE_ROLES excludes
@@ -629,7 +632,7 @@ export function VisitDetailDrawer({
             )}
             {v?.id && <LessonSessionUse visit={v} />}
 
-            {(visitEta(v, tz).start || v.travel_min != null) && (
+            {(visitEta(v, tz).start || showDriveLine(startPoints, v)) && (
               <section className="rounded-md border p-2 text-xs">
                 {visitEta(v, tz).start && (
                   <div>
@@ -637,7 +640,7 @@ export function VisitDetailDrawer({
                     {visitEta(v, tz).end ? `–${orgLocalTime(visitEta(v, tz).end, tz)}` : ""}
                   </div>
                 )}
-                {v.travel_km != null && (
+                {v.travel_km != null && showDriveLine(startPoints, v) && (
                   <div>
                     Drive {formatDistance(v.travel_km, distanceUnit)} ·{" "}
                     {Math.round(Number(v.travel_min ?? 0))} min
