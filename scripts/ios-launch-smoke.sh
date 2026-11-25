@@ -440,105 +440,172 @@ stop_app() {  # $1 udid
 # unspawned for SMOKE_HOLD_SECS (10) is captured once per attempt: stacks of
 # stub and launchd_sim, load, memory, disk, one timed spawn. Files land top
 # level in SMOKE_OUT as hold-*.txt/.log, which no reader above matches.
-# Every command is bounded and hard-killed as a group; any error is swallowed.
+# Every command is bounded and hard-killed (own session); any error is swallowed.
+# A ps that failed, timed out or came back partial is counted, never read as
+# "the stub is gone" and never enough to trigger. Python itself runs in the
+# background, bounded from bash (hold_stop), so a host that holds new
+# processes cannot hold this script. The signed-in Release run keeps no
+# simulator records: they may carry launch arguments.
 HOLD_PY=""
 IFS= read -r -d '' HOLD_PY <<'PY' || true
 import os, select, signal, subprocess, sys, time
-CUR, PPID0 = None, os.getppid()
+CUR, SIM, PPID0 = None, None, os.getppid()
+PRED = ('process IN {"launchd_sim","testmanagerd","runningboardd","coresymbolicationd",'
+        '"managedappdistributiond"} OR (process == "SpringBoard" AND '
+        'eventMessage CONTAINS "consulting.thenorth.houndstack")')
 def bye(*_):
+    global SIM
     if CUR is not None:
         try: os.killpg(CUR, signal.SIGKILL)
         except OSError: pass
+    s, SIM = SIM, None
+    if s is not None:
+        try: reap_sim(*s)
+        except Exception: pass
     os._exit(0)
 for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP): signal.signal(s, bye)
-def run(argv, secs, cap, lines=0):
+def runx(argv, secs, cap, lines=0, ends=False):
+    """(output, ok). ok: it ended by itself, status 0, nothing cut. ends: read
+    until it ends or time is up, keep the first and last cap/2 bytes."""
     global CUR
-    out = b""
+    head, tail, total, ok, rc = b"", bytearray(), 0, False, None
     try:
         p = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT, start_new_session=True)
     except OSError:
-        return b"(not run: " + os.path.basename(argv[0]).encode() + b" unavailable)\n"
+        return b"(not run: " + os.path.basename(argv[0]).encode() + b" unavailable)\n", False
     CUR = p.pid
-    end = time.monotonic() + secs
+    end, half = time.monotonic() + secs, cap // 2
     try:
-        while len(out) < cap and time.monotonic() < end:
+        while (ends or total < cap) and time.monotonic() < end:
             if os.getppid() != PPID0: bye()  # the script is gone (cancel)
             if select.select([p.stdout], [], [], 0.5)[0]:
                 b = os.read(p.stdout.fileno(), 65536)
-                if not b: break
-                out += b
+                if not b: ok = True; break
+                total += len(b)
+                if len(head) < half: head, b = head + b[:half - len(head)], b[half - len(head):]
+                tail += b
+                if len(tail) > 2 * half: del tail[:len(tail) - half]
     finally:
         try: os.killpg(p.pid, signal.SIGKILL)
         except OSError: pass
-        try: p.wait(timeout=2)
+        try: rc = p.wait(timeout=2)
         except Exception: pass
         CUR = None
-    out = out[:cap]
-    return b"\n".join(out.split(b"\n")[:lines]) + b"\n" if lines else out
+    gap = max(len(tail) - half, 0)
+    out = head + (b"\n(... %d bytes omitted ...)\n" % gap if gap else b"") + bytes(tail[gap:])
+    if not ends: out = out[:cap]
+    if lines: out = b"\n".join(out.split(b"\n")[:lines]) + b"\n"
+    return out, ok and rc == 0 and (ends or total < cap)
+def run(argv, secs, cap, lines=0): return runx(argv, secs, cap, lines)[0]
 def alive(pid):
     try: os.kill(pid, 0); return True
     except OSError: return False
-def capture(path, tag, stub, sim, held):
+def table():
+    """(rows, complete): rows are (pid, ppid, command); complete only if ps
+    ended by itself, nothing was cut and this process is in the table."""
+    out, ok = runx(["/bin/ps", "-axwwo", "pid=,ppid=,command="], 8, 8000000)
+    rows = []
+    for l in out.decode("utf-8", "replace").split("\n"):
+        w = l.split(None, 2)
+        if len(w) == 3 and w[0].isdigit() and w[1].isdigit(): rows.append((int(w[0]), int(w[1]), w[2]))
+    return rows, ok and any(p == os.getpid() for p, _, _ in rows)
+def sim_of(rows, udid):
+    return [p for p, _, c in rows if c.startswith("launchd_sim ") and "/Devices/%s/" % udid in c]
+def reap_sim(udid, start):
+    """simctl spawn's `log show` runs inside the simulator and outlives its
+    client: end ours (a child of this device's launchd_sim, argv known)."""
+    rows, _ = table()
+    sims, pre = sim_of(rows, udid), "log show --start " + start + " "
+    for p, pp, c in rows:
+        if pp in sims and c.startswith(pre):
+            try: os.kill(p, signal.SIGKILL)
+            except OSError: pass
+def capture(path, tag, stub, sim, held, probes):
     dl = time.monotonic() + 45
     with open(path, "wb") as f:
-        f.write(("hold-diag %s: stub pid %d unspawned for %ds, launchd_sim pid %d, %s UTC\n" % (
-            tag, stub, held, sim, time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()))).encode())
+        f.write(("hold-diag %s: stub pid %d unspawned for %ds, launchd_sim pid %d, %s UTC\n"
+                 "process-table probes: %d, failed or partial %d, slower than 2 s %d\n" % (
+            tag, stub, held, sim, time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()), *probes)).encode())
         def sec(title, argv, secs=6, cap=100000, lines=0):
             f.write(b"\n=== " + title.encode() + b"\n")
             f.write(run(argv, secs, cap, lines) if time.monotonic() < dl else b"(skipped: capture budget used)\n")
             f.flush()
         sec("stack of the stub", ["/usr/bin/sample", str(stub), "1", "-file", "/dev/stdout"], 12, 150000)
         sec("stack of launchd_sim", ["/usr/bin/sample", str(sim), "1", "-file", "/dev/stdout"], 12, 150000)
-        sec("stub and launchd_sim state", ["/bin/ps", "-o", "pid,ppid,state,etime,time,rss,comm", "-p", "%d,%d" % (stub, sim)])
+        sec("stub and launchd_sim state", ["/bin/ps", "-o", "pid,ppid,state,etime,time,rss,ucomm", "-p", "%d,%d" % (stub, sim)])
         sec("load", ["/usr/bin/uptime"])
-        sec("top by cpu", ["/bin/ps", "-Aro", "pid,pcpu,rss,comm"], 6, 20000, 15)
+        sec("top by cpu", ["/bin/ps", "-Aro", "pid,pcpu,rss,ucomm"], 6, 20000, 15)
         sec("memory pressure", ["/usr/bin/memory_pressure", "-Q"])
         sec("vm_stat", ["/usr/bin/vm_stat"])
         sec("swap", ["/usr/sbin/sysctl", "vm.swapusage"])
         sec("disk", ["/bin/df", "-h", "/", os.path.dirname(path)])
         t = time.monotonic()
-        r = run(["/usr/bin/true"], 5, 100)
+        run(["/usr/bin/true"], 5, 100)
         f.write(("\n=== timed host command: /usr/bin/true took %.3f s\n" % (time.monotonic() - t)).encode())
 def watch(udid, tag, out, parent, test, bundle, hold):
-    t0, seen = time.monotonic(), {}
+    t0, seen, n, bad, slow = time.monotonic(), {}, 0, 0, 0
     needle = "xpcproxy_sim UIKitApplication:" + bundle
     while time.monotonic() - t0 < 3600 and alive(parent) and alive(test):
-        procs = []
-        for l in run(["/bin/ps", "-axwwo", "pid=,ppid=,command="], 8, 8000000).decode("utf-8", "replace").split("\n"):
-            w = l.split(None, 2)
-            if len(w) == 3 and w[0].isdigit() and w[1].isdigit(): procs.append((int(w[0]), int(w[1]), w[2]))
-        sim = [p for p, _, c in procs if c.startswith("launchd_sim ") and "/Devices/%s/" % udid in c]
+        t = time.monotonic()
+        rows, complete = table()
+        n, slow = n + 1, slow + (time.monotonic() - t > 2)
+        if not complete:  # keep what was seen; this probe says nothing
+            bad += 1; time.sleep(2); continue
+        sim = sim_of(rows, udid)
         now = time.monotonic()
-        stubs = [p for p, pp, c in procs if sim and pp == sim[0] and needle in c]
+        stubs = [p for p, pp, c in rows if sim and pp == sim[0] and needle in c]
         seen = {p: seen.get(p, now) for p in stubs}
         for p in stubs:
             if now - seen[p] >= hold:
-                return capture(os.path.join(out, "hold-diag-%s.txt" % tag), tag, p, sim[0], int(now - seen[p]))
+                return capture(os.path.join(out, "hold-diag-%s.txt" % tag), tag, p, sim[0], int(now - seen[p]), (n, bad, slow))
         time.sleep(2)
+def simlog(udid, start, path, secs, cap):  # the launch records, first and last cap/2
+    global SIM
+    SIM = (udid, start)
+    out, ok = runx(["xcrun", "simctl", "spawn", udid, "log", "show", "--start", start,
+                    "--style", "compact", "--info", "--predicate", PRED], secs, cap, ends=True)
+    try: reap_sim(udid, start)
+    finally: SIM = None
+    with open(path, "wb") as f:
+        f.write(out + (b"" if ok else b"\n(stopped: the query did not finish in %d s or failed)\n" % secs))
 try:
     a = sys.argv
     if a[1] == "watch": watch(a[2], a[3], a[4], int(a[5]), int(a[6]), a[7], int(a[8]))
-    elif a[1] == "run":  # run SECS CAP OUTFILE -- cmd...
-        with open(a[4], "wb") as f: f.write(run(a[6:], int(a[2]), int(a[3])))
+    elif a[1] == "simlog": simlog(a[2], a[3], a[4], int(a[5]), int(a[6]))
 except Exception:
     pass
 PY
 
-hold_reap() {  # $1 watcher pid; never fails, never waits more than 2 s
-  [ -n "${1:-}" ] || return 0
-  kill "$1" 2>/dev/null || return 0
-  for _ in 1 2 3 4; do kill -0 "$1" 2>/dev/null || return 0; sleep 0.5; done
-  kill -KILL "$1" 2>/dev/null || true
+# Bash side of the bound: true only while bash itself still holds this
+# background job unreaped, so a finished job's pid is never signalled.
+hold_alive() { case " $(jobs -pr) " in *" $1 "*) return 0 ;; esac; return 1; }
+# TERM, up to 1 s for it to go, then KILL, up to 0.5 s; then reaps it.
+hold_stop() {  # $1 background pid of this shell; never fails
+  local pid="${1:-}" i
+  [ -n "$pid" ] || return 0
+  if hold_alive "$pid"; then
+    kill -TERM "$pid" 2>/dev/null || true
+    for ((i = 0; i < 20; i++)); do hold_alive "$pid" || break; sleep 0.05; done
+    if hold_alive "$pid"; then
+      kill -KILL "$pid" 2>/dev/null || true
+      for ((i = 0; i < 10; i++)); do hold_alive "$pid" || break; sleep 0.05; done
+    fi
+  fi
+  hold_alive "$pid" || wait "$pid" 2>/dev/null || true
 }
 
-# A failed attempt: what the simulator logged about the launch, for the
-# window. At most 20 s and 2 MB.
+# A failed attempt: what the simulator logged about the launch since it
+# began (first and last 1 MB). Python stops it at 12 s, bash at 20 s; never in
+# the signed-in Release run.
 hold_sim_records() {  # $1 start time, $2 result name
-  python3 -I -c "$HOLD_PY" run 20 2000000 "$OUT/hold-simlog-$slug-$2.log" -- \
-    xcrun simctl spawn "$udid" log show --start "$1" --style compact --info --predicate \
-    'process IN {"launchd_sim","testmanagerd","runningboardd","coresymbolicationd","managedappdistributiond"} OR (process == "SpringBoard" AND eventMessage CONTAINS "consulting.thenorth.houndstack")' \
-    < /dev/null > /dev/null 2>&1 || true
+  [ -z "$RELEASE_SIGNED_IN" ] || return 0
+  local pid t0=$SECONDS
+  python3 -I -c "$HOLD_PY" simlog "$udid" "$1" "$OUT/hold-simlog-$slug-$2.log" 12 2000000 \
+    < /dev/null > /dev/null 2>&1 &
+  pid=$!
+  while hold_alive "$pid" && [ $((SECONDS - t0)) -lt 20 ]; do sleep 0.2; done
+  hold_stop "$pid"
 }
 
 # One test class on this device. A launch that has not painted after 150s
@@ -573,7 +640,7 @@ run_class() {  # $1 class, $2 result name
   kill "$sampler_pid" 2>/dev/null || true
   # Before attempt_class tails it: the SignIn log has the typed values.
   [ -z "$RELEASE_SIGNED_IN" ] || redact "$OUT/$slug-$2.log"
-  hold_reap "$hold_pid"
+  hold_stop "$hold_pid"
   [ "$status" -eq 0 ] || [ -z "$began" ] || hold_sim_records "$began" "$2"
   return "$status"
 }
