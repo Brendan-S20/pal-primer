@@ -31,6 +31,7 @@ export function SummaryTab({
   creditCents = null,
   billingClient = null,
   visitsLoading = false,
+  dogsLoading = false,
   creditLoading = false,
   canBill,
   onGoToTab,
@@ -45,6 +46,7 @@ export function SummaryTab({
   creditCents?: number | null;
   billingClient?: any | null;
   visitsLoading?: boolean;
+  dogsLoading?: boolean;
   creditLoading?: boolean;
   canBill: boolean;
   onGoToTab: (tab: string) => void;
@@ -163,7 +165,9 @@ export function SummaryTab({
   );
   // Says the number, because the Clients list, a quote and My Day all count
   // these dogs from the plan until there are records (propertyDogTally, #429).
-  if (billedDogs > 0 && activeDogTotal === 0)
+  // #1020: not while the dogs query is still pending, when the list is empty
+  // only because nothing has arrived yet.
+  if (!dogsLoading && billedDogs > 0 && activeDogTotal === 0)
     alerts.push({
       severity: "warning",
       text: `Services bill for ${billedDogs} ${billedDogs === 1 ? "dog" : "dogs"}, but no dog is on file. Every screen counts ${billedDogs} from the plan until the dogs are added on Properties.`,
@@ -246,7 +250,12 @@ export function SummaryTab({
             <SectionLabel className="flex items-center gap-1.5">
               <CalendarClock className="h-3.5 w-3.5 shrink-0" /> Next visit
             </SectionLabel>
-            {upcoming ? (
+            {visitsLoading ? (
+              // #1020: "Nothing scheduled" is a claim; it waits for the visits.
+              <div className="mt-1 h-5 w-40 animate-pulse rounded bg-muted" aria-busy="true">
+                <span className="sr-only">Loading visits</span>
+              </div>
+            ) : upcoming ? (
               <div className="mt-1">
                 {formatDay(upcoming.scheduled_on)}
                 {upcoming.properties?.street && (
@@ -270,7 +279,7 @@ export function SummaryTab({
                 <StatusChip status={v.status} />
               </li>
             ))}
-            {recent.length === 0 && (
+            {recent.length === 0 && !visitsLoading && (
               <li className="text-sm text-muted-foreground">No past visits yet.</li>
             )}
           </ul>
