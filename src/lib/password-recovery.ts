@@ -383,22 +383,58 @@ export function recoveryRedirectTarget(
   return isRecoveryPending(store) ? RESET_PASSWORD_PATH : null;
 }
 
+/** How long leaving a reset waits before it gives the button back. Longer than
+ *  the logout request's own limit (lib/local-sign-out-deadline.ts), so this is
+ *  only reached when something other than that request is stuck. */
+export const ABANDON_DEADLINE_MS = 12_000;
+
+type AbandonClient = {
+  auth: {
+    signOut: (o?: { scope: "local" }) => Promise<{ error: unknown | null }>;
+    getSession?: () => Promise<{ data: { session: unknown | null }; error?: unknown }>;
+  };
+};
+
 /**
  * Walking away from a reset (#983). The link made a real session; leaving it
  * behind would let "Back to sign in" (or any other tab) land the person in the
  * app without ever knowing the password. Signs this device out locally, then
- * lowers the flag. A failed sign-out leaves the flag up, so the app stays
- * closed rather than open.
+ * lowers the flag.
+ *
+ * The flag only comes down once the session is off this device: the sign-out
+ * said yes, or it failed (a 500, a dropped or aborted request) after
+ * supabase-js had already removed the session, which leaves nothing for the
+ * lock to hold (#1058). Anything else leaves it up, so the app stays closed
+ * rather than open. Always answers, within `deadlineMs`: true when released.
  */
 export async function abandonRecovery(
-  client: { auth: { signOut: (o?: { scope: "local" }) => Promise<{ error: unknown | null }> } },
+  client: AbandonClient,
   store: FlagStore | null = sessionStore(),
-): Promise<void> {
+  deadlineMs = ABANDON_DEADLINE_MS,
+): Promise<boolean> {
+  const leave = async (): Promise<boolean> => {
+    try {
+      const { error } = await client.auth.signOut({ scope: "local" });
+      if (error) {
+        const left = await client.auth.getSession?.();
+        // A session that could not be READ is not a session that is gone.
+        if (!left || left.error || left.data.session) return false;
+      }
+      clearRecoveryPending(store);
+      return true;
+    } catch {
+      // Offline or storage off: the flag stays up and the guard keeps the app shut.
+      return false;
+    }
+  };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const gaveUp = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), deadlineMs);
+  });
   try {
-    const { error } = await client.auth.signOut({ scope: "local" });
-    if (!error) clearRecoveryPending(store);
-  } catch {
-    // Offline or storage off: the flag stays up and the guard keeps the app shut.
+    return await Promise.race([leave(), gaveUp]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 

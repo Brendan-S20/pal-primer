@@ -106,7 +106,7 @@ describe("a finished or abandoned reset stays finished (#983 b, c)", () => {
 
   it("the main reset form has 'Back to sign in' too", () => {
     const src = read("src/routes/reset-password.tsx");
-    expect(src).toMatch(/phase\.kind === "ready" && <BackToSignIn \/>/);
+    expect(src).toMatch(/phase\.kind === "ready" && <BackToSignIn label=/);
     // Not under the password field: its blur adds a line (PasswordField's
     // "rule you broke"), which moves the link before mouse-up and loses the click.
     const link = src.indexOf('phase.kind === "ready" && <BackToSignIn');

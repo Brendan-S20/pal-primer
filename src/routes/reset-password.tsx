@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -130,7 +130,7 @@ function ResetPasswordPage() {
           first press on this link) makes PasswordField add its "rule you
           broke" line, and anything under the field moves ~24px away from the
           pointer before the click completes (#983). */}
-      {phase.kind === "ready" && <BackToSignIn />}
+      {phase.kind === "ready" && <BackToSignIn label="Cancel reset and sign out" />}
 
       {phase.kind === "ready" && (
         <form
@@ -250,31 +250,46 @@ function ResendResetLink({ message }: { message: string }) {
           </p>
         )}
       </form>
-      <BackToSignIn />
+      <BackToSignIn label="Back to sign in" />
     </div>
   );
 }
 
 /** Leaves the reset: signs this device out first, so /auth does not land the
- *  reset session, then goes to /auth (#983). */
-function BackToSignIn() {
+ *  reset session, then goes to /auth (#983). If that cannot be done it says so
+ *  here and the button can be pressed again (#1058). */
+function BackToSignIn({ label }: { label: string }) {
   const navigate = useNavigate();
+  const [state, setState] = useState<"idle" | "leaving" | "failed">("idle");
+  const leave = async () => {
+    if (state === "leaving") return;
+    setState("leaving");
+    if (await abandonRecovery(supabase)) return navigate({ to: "/auth" });
+    setState("failed");
+  };
   return (
-    <p className="text-center text-sm">
-      <Link
-        to="/auth"
+    <div className="space-y-2 text-center">
+      <Button
+        type="button"
+        variant="outline"
+        // aria-disabled, not disabled: a disabled button drops keyboard focus.
+        aria-disabled={state === "leaving" || undefined}
+        // Tabbing here is leaving, not a half-typed password (PasswordField).
+        data-leaves-form=""
         // The press must not take the focus off the password field: its blur
-        // adds a line, the centred page re-centres, and this link moves out
+        // adds a line, the centred page re-centres, and this button moves out
         // from under the pointer before the click completes (#1058).
         onMouseDown={(e) => e.preventDefault()}
-        onClick={(e) => {
-          e.preventDefault();
-          void abandonRecovery(supabase).finally(() => navigate({ to: "/auth" }));
-        }}
-        className="inline-flex min-h-11 items-center text-muted-foreground underline underline-offset-2 hover:text-primary"
+        onClick={() => void leave()}
+        className="min-h-11 aria-disabled:opacity-50"
       >
-        Back to sign in
-      </Link>
-    </p>
+        {state === "leaving" ? "Signing out…" : label}
+      </Button>
+      {state === "failed" && (
+        <p role="alert" className="text-sm text-destructive">
+          We couldn't sign you out. Check your connection and try again.
+        </p>
+      )}
+    </div>
   );
 }
