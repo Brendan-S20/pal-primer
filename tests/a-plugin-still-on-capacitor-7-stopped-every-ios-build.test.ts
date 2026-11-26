@@ -16,11 +16,15 @@
 // it through unpatched.
 import { describe, expect, it } from "vitest";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 // @ts-expect-error -- a plain .mjs script with no type declarations
-import { patchPackageSwift, patchNativePlugins, PLUGINS } from "../scripts/patch-native-plugins.mjs";
+import {
+  patchPackageSwift,
+  patchNativePlugins,
+  PLUGINS,
+} from "../scripts/patch-native-plugins.mjs";
 
 const root = join(import.meta.dirname, "..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
@@ -36,9 +40,9 @@ describe("the fixture is the file the patch was written for", () => {
   });
 
   it("is the version package.json installs", () => {
-    expect(JSON.parse(read("package.json")).dependencies["@capacitor-community/apple-sign-in"]).toBe(
-      "^7.1.0",
-    );
+    expect(
+      JSON.parse(read("package.json")).dependencies["@capacitor-community/apple-sign-in"],
+    ).toBe("^7.1.0");
   });
 
   it("CapApp-SPM pins capacitor-swift-pm to an exact 8.x, which 7.0.0..<8.0.0 cannot meet", () => {
@@ -87,22 +91,32 @@ describe("patchPackageSwift", () => {
 });
 
 describe("the script, run the way npm runs it", () => {
-  /** A throwaway repo root holding just the script and the plugin file. */
+  /** A throwaway repo root holding just the script and the plugin files. */
   function sandbox(packageSwift: string | null) {
     const dir = mkdtempSync(join(tmpdir(), "patch-native-plugins-"));
     mkdirSync(join(dir, "scripts"));
-    cpSync(join(root, "scripts/patch-native-plugins.mjs"), join(dir, "scripts/patch-native-plugins.mjs"));
+    cpSync(
+      join(root, "scripts/patch-native-plugins.mjs"),
+      join(dir, "scripts/patch-native-plugins.mjs"),
+    );
     if (packageSwift !== null) {
       const plugin = join(dir, "node_modules", PLUGINS[0].name);
       mkdirSync(plugin, { recursive: true });
       writeFileSync(join(plugin, "Package.swift"), packageSwift);
+      const geo = join(dir, "node_modules", PLUGINS[1].name, PLUGINS[1].file);
+      mkdirSync(dirname(geo), { recursive: true });
+      cpSync(
+        join(root, "tests/support/fixtures/capacitor-geolocation-8.2.0.GeolocationPlugin.swift"),
+        geo,
+      );
     }
     const run = (strict = "1") =>
       spawnSync(process.execPath, [join(dir, "scripts/patch-native-plugins.mjs")], {
         encoding: "utf8",
         env: { ...process.env, PATCH_NATIVE_PLUGINS_STRICT: strict },
       });
-    const file = () => readFileSync(join(dir, "node_modules", PLUGINS[0].name, "Package.swift"), "utf8");
+    const file = () =>
+      readFileSync(join(dir, "node_modules", PLUGINS[0].name, "Package.swift"), "utf8");
     return { dir, run, file, done: () => rmSync(dir, { recursive: true, force: true }) };
   }
 
@@ -162,6 +176,7 @@ describe("the script, run the way npm runs it", () => {
     try {
       expect(patchNativePlugins(s.dir, () => {})).toEqual([
         { name: "@capacitor-community/apple-sign-in", status: "patched" },
+        { name: "@capacitor/geolocation", status: "patched" },
       ]);
     } finally {
       s.done();
@@ -179,7 +194,9 @@ describe("it is wired into every install, including Xcode Cloud's", () => {
     // `npm ci --ignore-scripts` would skip postinstall and bring the failure
     // straight back, in the one place it is not visible locally. The repo-root
     // copy is a forwarder to this one.
-    expect(read("ci_scripts/ci_post_clone.sh")).toMatch(/exec .*ios\/App\/ci_scripts\/ci_post_clone\.sh/);
+    expect(read("ci_scripts/ci_post_clone.sh")).toMatch(
+      /exec .*ios\/App\/ci_scripts\/ci_post_clone\.sh/,
+    );
     const sh = read("ios/App/ci_scripts/ci_post_clone.sh");
     expect(sh).toMatch(/^npm ci$/m);
     expect(sh).not.toMatch(/ignore-scripts/);

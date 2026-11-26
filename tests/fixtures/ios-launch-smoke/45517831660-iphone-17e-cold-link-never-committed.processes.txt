@@ -1,0 +1,18 @@
+Timestamp               Ty Process[PID:TID]
+2026-11-24 20:29:18.302 Df HoundStack[84459:34e77c] (libMobileGestalt.dylib) No persisted cache on this platform.
+2026-11-24 20:29:19.392 Df HoundStack[84459:34e77c] [com.apple.WebKit:Process] 0x1140fc0c0 - [PID=84477] WebProcessProxy::didFinishLaunching:
+2026-11-24 20:29:19.830 Df HoundStack[84459:34e7ea] [com.apple.WebKit:Network] WebContent[84477]: [pageID=10, frameID=8589934593, isMainFrame=1] DocumentLoader::startLoadingMainResource: Starting load
+2026-11-24 20:29:19.849 Df HoundStack[84459:34e7ea] [com.apple.WebKit:Network] WebContent[84477] [schemeHandler=3, webPageID=10, frameID=8589934593, taskID=11] WebURLSchemeTaskProxy::didComplete
+2026-11-24 20:29:21.652 Df HoundStack[84459:34e7ea] [com.apple.WebKit:ResourceLoading] WebContent[84477]: [pageID=10 frameID=8589934593 isMainFrame=1] FrameLoader::transitionToCommitted: Clearing provisional document loader (m_provisionalDocumentLoader=4597796864)
+2026-11-24 20:29:21.674 Df HoundStack[84459:34e7ea] [com.apple.WebKit:Network] WebContent[84477] [schemeHandler=3, webPageID=10, frameID=8589934593, taskID=11] WebURLSchemeTaskProxy::didComplete
+2026-11-24 20:29:47.706 Df HoundStack[85053:34f27e] (libMobileGestalt.dylib) No persisted cache on this platform.
+2026-11-24 20:29:47.917 Df HoundStack[85053:34f27e] [com.apple.FrontBoard:SceneClient] [(FBSceneManager):sceneID:consulting.thenorth.houndstack-default] Received action(s) in scene-create: UIOpenURLAction
+2026-11-24 20:30:17.219 Df HoundStack[85053:34f27e] [com.apple.WebKit:Process] 0x1161000c0 - [PID=85367] WebProcessProxy::didFinishLaunching:
+2026-11-24 20:30:26.063 Df HoundStack[85053:34fb99] [com.apple.WebKit:Network] WebContent[85367]: [pageID=10, frameID=8589934593, isMainFrame=1] DocumentLoader::startLoadingMainResource: Starting load
+2026-11-24 20:30:26.080 Df HoundStack[85053:34fb99] [com.apple.WebKit:Network] WebContent[85367] [schemeHandler=3, webPageID=10, frameID=8589934593, taskID=11] WebURLSchemeTaskProxy::didComplete
+2026-11-24 20:30:58.404 Df HoundStack[85784:35014e] [com.apple.xpc:connection] [0x10336ee70] activating connection: mach=true listener=false peer=false name=com.apple.cfprefsd.daemon
+2026-11-24 20:30:59.473 Df HoundStack[85784:3500fd] [com.apple.WebKit:Process] 0x1120fc0c0 - [PID=85790] WebProcessProxy::didFinishLaunching:
+2026-11-24 20:31:00.569 Df HoundStack[85784:3501bb] [com.apple.WebKit:Network] WebContent[85790]: [pageID=10, frameID=8589934593, isMainFrame=1] DocumentLoader::startLoadingMainResource: Starting load
+2026-11-24 20:31:00.588 Df HoundStack[85784:3501bb] [com.apple.WebKit:Network] WebContent[85790] [schemeHandler=3, webPageID=10, frameID=8589934593, taskID=11] WebURLSchemeTaskProxy::didComplete
+2026-11-24 20:31:03.079 Df HoundStack[85784:3501bb] [com.apple.WebKit:ResourceLoading] WebContent[85790]: [pageID=10 frameID=8589934593 isMainFrame=1] FrameLoader::transitionToCommitted: Clearing provisional document loader (m_provisionalDocumentLoader=4597915648)
+2026-11-24 20:31:03.134 Df HoundStack[85784:3501bb] [com.apple.WebKit:Network] WebContent[85790] [schemeHandler=3, webPageID=10, frameID=8589934593, taskID=11] WebURLSchemeTaskProxy::didComplete

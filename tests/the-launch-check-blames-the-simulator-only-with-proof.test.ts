@@ -35,7 +35,9 @@
 //   - the summary says when that happened, so a pass does not hide it
 
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   neverStarted,
@@ -101,6 +103,70 @@ describe("a launch the simulator never started", () => {
     );
     // One list of messages, in the module, not a second copy in a grep.
     expect(check).not.toMatch(/Timed out attempting to launch app/);
+  });
+});
+
+// #1038 at 27dcd899, iOS launch run 45517831660: iPhone 17e, iOS 26.5,
+// testALinkThatLaunchesTheAppLandsOnSignIn, "after a cold link: no email
+// field, so the sign-in form never rendered". The link started the app in 1 s
+// and its main thread answered XCTest to the end, but WebKit's processes took
+// 29 s more to start, the app served its page 17 ms after the load began, and
+// no commit followed in the 26 s left. The same proof as the 7d6274f7 case below, but a link
+// has no "Launch" line, so the class was not retried. The fixture is the CI
+// log, filtered to those lines and otherwise unchanged.
+describe("a page the app served and WebKit had not committed, from a cold link", () => {
+  const { log, processes } = fixture("45517831660-iphone-17e-cold-link-never-committed");
+
+  it("is recognised from the link's own request", () => {
+    expect(log).not.toMatch(/Launch consulting/);
+    const r = pageNeverCommitted(log, processes);
+    expect(r).toEqual({
+      proven: true,
+      why: "HoundStack[85053] served its page at 20:30:26.080; WebKit had not committed it when XCTest gave up at 20:30:52.096, so no page script ran",
+    });
+    expect(simulatorFailedTheLaunch(log, processes)).toEqual(r);
+  });
+
+  it("is not claimed when the link did not start that process", () => {
+    const unlinked = processes
+      .split("\n")
+      .filter((l) => !l.includes("scene-create: UIOpenURLAction"))
+      .join("\n");
+    expect(unlinked).not.toBe(processes);
+    const r = pageNeverCommitted(log, unlinked);
+    expect(r.proven).toBe(false);
+    expect(r.why).toMatch(/was not started by the link/);
+  });
+
+  it("is not claimed once the page committed before XCTest gave up", () => {
+    const early = `${processes}2026-11-24 20:30:40.000 Df HoundStack[85053:34fb99] [com.apple.WebKit:ResourceLoading] WebContent[85367]: [pageID=10 frameID=8589934593 isMainFrame=1] FrameLoader::transitionToCommitted: x\n`;
+    const r = pageNeverCommitted(log, early);
+    expect(r.proven).toBe(false);
+    expect(r.why).toMatch(/committed at 20:30:40\.000, before the give-up/);
+  });
+
+  it("is not claimed when the app never served its page, or a second process started", () => {
+    const unserved = processes
+      .split("\n")
+      .filter((l) => !(l.includes("HoundStack[85053") && l.includes("::didComplete")))
+      .join("\n");
+    expect(pageNeverCommitted(log, unserved).why).toMatch(/never served its page/);
+    const two = `${processes}2026-11-24 20:30:00.000 Df HoundStack[99999:0] started\n`;
+    expect(pageNeverCommitted(log, two).proven).toBe(false);
+  });
+
+  it("still measures a warm link from the Launch, not from the link", () => {
+    // The app was already running, so nothing started between link and give-up;
+    // only the Launch line gives a window that contains its process.
+    const warm = log.replace(
+      "t =     0.16s Wait for",
+      "t =     0.16s     Launch consulting.thenorth.houndstack\n    t =     0.17s Wait for",
+    );
+    expect(warm).not.toBe(log);
+    const started = processes.replaceAll("2026-11-24 20:29:47.706", "2026-11-24 20:29:44.700");
+    expect(started).not.toBe(processes);
+    expect(pageNeverCommitted(warm, started).proven).toBe(true);
+    expect(pageNeverCommitted(log, started).proven).toBe(false);
   });
 });
 
@@ -251,6 +317,106 @@ describe("the cold-link test judges the app, not XCTest's open call", () => {
     expect(script).toMatch(
       /elif ! attempt_class ColdLaunch launches; then\s*result="FAILED"\s*elif ! cold_link_reached_the_app "\$udid"; then\s*result="FAILED \(the cold link never reached the app/,
     );
+  });
+
+  // #1056: a retry from the link is allowed because the FAILED attempt logged
+  // the link, and the device log survives the reboot, so a search of the last
+  // 30 minutes found that old line and passed a retry whose link never
+  // arrived. These run the script's own functions; only the tools they call
+  // are stand-ins. The stand-in log honours --start, and gives any other
+  // query every line it has.
+  describe("only the attempt being judged counts", () => {
+    const verdict = (opts: { retryTakesTheLink?: boolean; noClock?: boolean }) => {
+      const out = mkdtempSync(join(tmpdir(), "cold-link-"));
+      const name = "45517831660-iphone-17e-cold-link-never-committed";
+      const harness = `
+set -euo pipefail
+script="$ROOT/scripts/ios-launch-smoke.sh"
+for fn in never_started cold_link_reached_the_app run_class attempt_class; do
+  eval "$(awk -v f="$fn" 'index($0, f "() {")==1 {on=1} on {print} on && /^}/ {exit}' "$script")"
+done
+slug=sim udid=FAKE name=fake retried="" HOLD_PY="" RELEASE_SIGNED_IN="" DD="$OUT/dd"
+fx="$ROOT/tests/fixtures/ios-launch-smoke/${name}"
+: > "$OUT/device.log"
+NOW="2026-11-24 20:29:00" attempt=1
+date() { [ -z "$NO_CLOCK" ] || return 1; echo "$NOW"; }
+stop_app() { :; }
+hold_sim_records() { :; }
+hold_stop() { wait "$1"; }
+say_later() { :; }
+sleep() { :; }
+pgrep() { :; }
+python3() { :; }
+xcodebuild() {
+  if [ "$attempt" = 1 ]; then
+    cat "$fx.processes.txt" >> "$OUT/device.log"; cat "$fx.log.txt"; return 1
+  fi
+  # The retry passes: activate() started the app, whether or not the link did.
+  echo "2026-11-24 20:33:00.000 Df HoundStack[90001:1] started" >> "$OUT/device.log"
+  [ -z "$RETRY_TAKES_THE_LINK" ] ||
+    echo "2026-11-24 20:33:00.100 Df HoundStack[90001:1] scene-create: UIOpenURLAction" >> "$OUT/device.log"
+}
+xcrun() {
+  case "$*" in
+    *"simctl shutdown"*) NOW="2026-11-24 20:32:00" attempt=2 ;;
+    *"log show"*)
+      echo "$*" >> "$OUT/queries"
+      local since="" only="" a prev=""
+      for a in "$@"; do [ "$prev" != --start ] || since="$a"; prev="$a"; done
+      case "$*" in *scene-create*) only="scene-create: UIOpenURLAction" ;; esac
+      awk -v since="$since" -v only="$only" \
+        'substr($0, 1, 19) >= since && index($0, only)' "$OUT/device.log" ;;
+  esac
+}
+if ! attempt_class ColdLaunch launches > /dev/null; then echo "FAILED"
+elif ! cold_link_reached_the_app "$udid"; then echo "FAILED: never reached the app"
+else echo "passed:$retried"; fi
+# With the link line on the device, so only a missing start can refuse it.
+cat "$fx.processes.txt" >> "$OUT/device.log"
+if cold_link_reached_the_app "$udid"; then echo "guard: yes"; else echo "guard: no"; fi
+`;
+      try {
+        const said = execFileSync("bash", ["-c", harness], {
+          encoding: "utf8",
+          // bash reports each helper the script stops; keep that out of the run.
+          stdio: "pipe",
+          env: {
+            ...process.env,
+            ROOT: root,
+            OUT: out,
+            RETRY_TAKES_THE_LINK: opts.retryTakesTheLink ? "1" : "",
+            NO_CLOCK: opts.noClock ? "1" : "",
+          },
+        });
+        const asked = join(out, "queries");
+        return {
+          said: said
+            .trim()
+            .split("\n")
+            .filter((l) => !l.startsWith("::warning::")),
+          queries: existsSync(asked) ? readFileSync(asked, "utf8") : "",
+        };
+      } finally {
+        rmSync(out, { recursive: true, force: true });
+      }
+    };
+
+    it("fails when only the failed attempt logged the link", () => {
+      const r = verdict({});
+      expect(r.said[0]).toBe("FAILED: never reached the app");
+      expect(r.queries).toContain("--start 2026-11-24 20:32:00 ");
+      expect(r.queries).not.toContain("--last");
+    });
+
+    it("passes the retry when its own link arrived", () => {
+      expect(verdict({ retryTakesTheLink: true }).said[0]).toBe("passed: ColdLaunch");
+    });
+
+    it("searches nothing, retries nothing and fails with no start time", () => {
+      const r = verdict({ noClock: true, retryTakesTheLink: true });
+      expect(r.said).toEqual(["FAILED", "guard: no"]);
+      expect(r.queries).toBe("");
+    });
   });
 
   it("is named in the summary when it happened", () => {
