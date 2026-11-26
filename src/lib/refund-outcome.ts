@@ -29,6 +29,7 @@
 // only deduction, so revenue and receivables read the same before and after.
 
 import { splitRefund } from "@/lib/refund-split";
+import { isScheduledToSend, SCHEDULED_LABEL } from "@/lib/invoice-send-state";
 
 export type RefundablePayment = {
   amount_cents: number | null;
@@ -209,12 +210,22 @@ export function voidedAfterRefund(inv: {
 }
 
 /** The status chip's label and tone: the stored status, unless the money on
- *  a paid invoice went back, in which case "Paid" would say it was kept. */
-export function invoiceStatusChip(inv: {
-  status: string;
-  amount_paid_cents?: number | null;
-  amount_refunded_cents?: number | null;
-}): { status: string; label?: string } {
+ *  a paid invoice went back, in which case "Paid" would say it was kept, or an
+ *  open invoice is held for a send date still ahead (#1042). */
+export function invoiceStatusChip(
+  inv: {
+    status: string;
+    amount_paid_cents?: number | null;
+    amount_refunded_cents?: number | null;
+    sent_at?: string | null;
+    send_after?: string | null;
+  },
+  /** The org's today. Without it nothing reads as scheduled. */
+  today?: string,
+): { status: string; label?: string } {
+  if (today && isScheduledToSend(inv, today)) {
+    return { status: "scheduled", label: SCHEDULED_LABEL };
+  }
   const r = invoiceRefundState(inv);
   if (r === "refunded") return { status: "inactive", label: "Refunded" };
   if (r === "partly_refunded") return { status: "warning", label: "Partly refunded" };

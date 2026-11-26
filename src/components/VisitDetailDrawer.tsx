@@ -1,3 +1,5 @@
+import { useStartPoints } from "@/hooks/useStartPoints";
+import { showDriveLine } from "@/lib/start-point";
 import i18n from "@/lib/i18n";
 import { completeFromOffice, useOfficeCompleteOverride } from "@/components/OfficeCompleteOverride";
 import { useCompletionBlockWarning } from "@/components/CompletionBlockWarning";
@@ -84,8 +86,10 @@ import { useServiceLines } from "@/components/CommercialOnly";
 import { isYardVisit } from "@/lib/walk-concerns";
 import { canOfficeComplete } from "@/lib/visit-lifecycle";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
+import { humanizeEnum } from "@/lib/humanize";
 import { earlyCompleteConfirm, isFutureVisit } from "@/lib/booking-dates";
 import { toastSaveError } from "@/lib/stale-write-toast";
+import { invalidateBillingAfterVisitCompleted } from "@/lib/client-visit-history-cache";
 
 const MISSED_REASON_LABELS: Record<(typeof BUSINESS_REASONS)[number], string> = {
   our_fault: "Our fault",
@@ -156,6 +160,7 @@ export function VisitDetailDrawer({
   const open = !!visitId;
   const tz = useOrgTimezone();
   const distanceUnit = useDistanceUnit();
+  const startPoints = useStartPoints();
   const qc = useQueryClient();
   const getDetail = useServerFn(getVisitDetail);
   // This drawer opens from /routes and /dashboard, and ROUTE_ROLES excludes
@@ -362,7 +367,7 @@ export function VisitDetailDrawer({
     qc.invalidateQueries({ queryKey: ["visits"] });
     // Completing a visit billed after each visit invoices it (#859).
     qc.invalidateQueries({ queryKey: ["visit-invoicing", visitId] });
-    qc.invalidateQueries({ queryKey: ["invoices"] });
+    invalidateBillingAfterVisitCompleted(qc);
   };
 
   // Pinned to its tech: auto-routing never moves it to someone else, even on
@@ -627,7 +632,7 @@ export function VisitDetailDrawer({
             )}
             {v?.id && <LessonSessionUse visit={v} />}
 
-            {(visitEta(v, tz).start || v.travel_min != null) && (
+            {(visitEta(v, tz).start || showDriveLine(startPoints, v)) && (
               <section className="rounded-md border p-2 text-xs">
                 {visitEta(v, tz).start && (
                   <div>
@@ -635,7 +640,7 @@ export function VisitDetailDrawer({
                     {visitEta(v, tz).end ? `–${orgLocalTime(visitEta(v, tz).end, tz)}` : ""}
                   </div>
                 )}
-                {v.travel_km != null && (
+                {v.travel_km != null && showDriveLine(startPoints, v) && (
                   <div>
                     Drive {formatDistance(v.travel_km, distanceUnit)} ·{" "}
                     {Math.round(Number(v.travel_min ?? 0))} min
@@ -988,7 +993,7 @@ function DogsSection({
                 <div className="min-w-0">
                   <div className="font-medium">{d.name}</div>
                   <div className="text-xs text-muted-foreground">
-                    {[d.breed, d.weight_class, d.temperament].filter(Boolean).join(" · ")}
+                    {[d.breed, d.weight_class, d.temperament && humanizeEnum(d.temperament)].filter(Boolean).join(" · ")}
                   </div>
                   {d.notes && <div className="mt-1 text-xs">{d.notes}</div>}
                 </div>

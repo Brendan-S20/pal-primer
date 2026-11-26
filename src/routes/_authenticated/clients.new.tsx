@@ -1,3 +1,4 @@
+import { CreateClientProgress } from "@/components/CreateClientProgress";
 import { PetSizeFields } from "@/components/client-detail/PetSizeFields";
 import { DogNameAndBreedFields } from "@/components/DogNameAndBreedFields";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
@@ -1584,8 +1585,8 @@ function NewClientWizardForm({
             </div>
 
             <div className="rounded-md border bg-muted/20 p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                On-site visit contact <span className="normal-case font-normal">(optional)</span>
+              <div className="text-sm font-medium">
+                On-site visit contact <span className="font-normal text-muted-foreground">(optional)</span>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
                 For rentals/managed properties: this person gets visit texts and emails. Invoices
@@ -2248,6 +2249,9 @@ function NewClientWizardForm({
                     ? "Create and book groom"
                     : "Create client"}
               </Button>
+              {mutation.isPending && (
+                <CreateClientProgress hasDogs={validDogs.length > 0} hasPlan={!planSkipped} />
+              )}
               {priceHint && (
                 <p
                   className="text-xs text-muted-foreground"

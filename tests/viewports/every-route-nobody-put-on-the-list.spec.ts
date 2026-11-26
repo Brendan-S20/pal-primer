@@ -75,6 +75,8 @@ const REDIRECTS = new Set([
   "settings/lead-form",
   // Forwards to settings/zones since Zones & pricing moved inside Settings (#864).
   "zones",
+  // Forwards to settings/users, the address people type for it (#1030).
+  "settings/team",
 ]);
 
 /**
