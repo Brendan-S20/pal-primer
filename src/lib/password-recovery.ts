@@ -29,6 +29,7 @@
 //
 // → tests/a-password-reset-that-goes-somewhere.test.ts
 
+import { abandonSessionRequests } from "@/lib/abandoned-reset-requests";
 import { appUrl, linkOrigin } from "@/lib/app-origin";
 import { NATIVE_OAUTH_REDIRECT } from "@/lib/native-oauth-redirect";
 import {
@@ -436,6 +437,36 @@ export async function abandonRecovery(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** How long leaving waits for aborted work to finish before signing out
+ *  anyway. Aborted requests fail at once; this is for something else stuck. */
+export const ABANDONED_WORK_WAIT_MS = 2_000;
+
+/**
+ * abandonRecovery while the link check or a password save may still be running.
+ * Their requests are aborted first, so a late reply cannot save the session
+ * again after the sign-out, and the sign-out (which supabase-js holds until the
+ * link has been read) is not stuck behind a request nobody answers. The lock
+ * stays up until that work has settled or been given up on; the requests stay
+ * refused until it has actually settled.
+ */
+export async function cancelRecovery(
+  client: AbandonClient,
+  inFlight: (PromiseLike<unknown> | null)[],
+): Promise<boolean> {
+  const resume = abandonSessionRequests();
+  const settled = Promise.allSettled(inFlight);
+  void settled.then(resume);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    settled,
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, ABANDONED_WORK_WAIT_MS);
+    }),
+  ]);
+  clearTimeout(timer);
+  return abandonRecovery(client);
 }
 
 /** Tests only. */

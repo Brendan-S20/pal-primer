@@ -9,7 +9,11 @@
 // itself. A request left running would do that whenever it finally came back,
 // and take a sign-in made in the meantime with it.
 //
-// Only `scope=local` (leaving a reset). Every other request goes through as is.
+// Only `scope=local` (leaving a reset) has the limit. Everything else goes to
+// lib/abandoned-reset-requests.ts, which lets all but the session-saving auth
+// requests through as they are.
+
+import { fetchUnlessAbandoned } from "@/lib/abandoned-reset-requests";
 
 export const LOCAL_SIGN_OUT_DEADLINE_MS = 8_000;
 
@@ -20,7 +24,7 @@ export function fetchWithLocalSignOutDeadline(
   init?: RequestInit,
 ): Promise<Response> {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-  if (!LOCAL_LOGOUT.test(url)) return fetch(input, init);
+  if (!LOCAL_LOGOUT.test(url)) return fetchUnlessAbandoned(input, init);
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), LOCAL_SIGN_OUT_DEADLINE_MS);
   return fetch(input, { ...init, signal: abort.signal }).finally(() => clearTimeout(timer));
