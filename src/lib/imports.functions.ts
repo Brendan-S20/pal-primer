@@ -31,7 +31,8 @@ import {
   type PetName,
   type UndoUsage,
 } from "@/lib/import-leftovers";
-import { parseMoneyCents } from "@/lib/import-services";
+import { parseMoneyCents, planVisitsNote } from "@/lib/import-services";
+import { JOBBER_LAST_VISIT_COLUMN, JOBBER_NEXT_VISIT_COLUMN } from "@/lib/import-jobber-visits";
 import { newInvoice } from "@/lib/db-insert";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
@@ -187,6 +188,12 @@ export const SERVICE_TARGET_FIELDS = [
   "price_per_visit",
   "service_day",
   "start_date",
+  // The last completed visit and the next booked one. Jobber's Recurring
+  // jobs report has neither; its Visits report has both, and the import page
+  // joins the two by Job # (src/lib/import-jobber-visits.ts). The plan is
+  // walked from the next visit, else the last (mapServiceRow).
+  "last_visit",
+  "next_visit",
   "dog_count",
   "billing",
   // Which of the business's services the plan is for (the catalog). Optional:
@@ -669,16 +676,22 @@ const DOG_PRESETS: Record<string, PresetMap> = {
 export const SOURCE_PRESETS = CLIENT_PRESETS;
 
 // Header names for recurring plans and balances. Jobber's Recurring jobs
-// report columns are verified (help article "Recurring jobs report", #857):
-// Job #, Job title, Client name, Client email, Client phone number, Service
-// street/city/state/province/zip/postal code, Billing street..., Billing
-// type, Automatic invoicing, Visits assigned to, Line items, Total ($),
-// Completed visits, Number of invoices, Schedule start date, Schedule end
-// date, Custom fields. It has NO visit-frequency column: such a plan comes
-// in paused with its frequency left for the owner (mapServiceRow). The
-// Sweep&Go names and Jobber's balance names are synonyms rather than
-// verified headers; the mapping step shows each guess and the owner can
-// point any field at a different column.
+// report columns are verified against a real export (Jobber trial,
+// 2026-11-27, every column switched on): Job #, Job title, Client name,
+// Client email, Client phone, Service property name, Service street/city/
+// province/ZIP, Billing street/city/province/ZIP, Billing type, Visit
+// frequency, Billing frequency, Automatic invoicing, Visits assigned to,
+// Line items, Subtotal ($), Discount ($), Tax ($), Job revenue ($), Total
+// ($), Completed visits, Number of invoices, Created date, Schedule start
+// date, Schedule end date, Closed date. "Visit frequency" reads "Weekly on
+// Tuesdays", "Every 2 weeks on Fridays", "Monthly on the 10th day of the
+// month". On a "Per visit" job Total ($) is the price of one visit; on a
+// "Fixed price" job it is the amount per billing period, and mapServiceRow
+// refuses that row. It has no last or next visit: those come from the
+// Visits report (src/lib/import-jobber-visits.ts). The Sweep&Go names and
+// Jobber's balance names are synonyms rather than verified headers; the
+// mapping step shows each guess and the owner can point any field at a
+// different column.
 const SERVICE_PRESETS: Record<string, PresetMap> = {
   generic_csv: {
     client_external_id: ["client_id", "client id", "customer id", "customer_id", "external_id", "id"],
@@ -688,6 +701,23 @@ const SERVICE_PRESETS: Record<string, PresetMap> = {
     price_per_visit: ["price", "price per visit", "price_per_visit", "rate", "amount", "cost"],
     service_day: ["day", "service day", "service_day", "weekday", "preferred day"],
     start_date: ["start date", "start_date", "start", "started", "first visit"],
+    last_visit: [
+      "last visit",
+      "last visit date",
+      "last_visit",
+      "last service",
+      "last service date",
+      "last serviced",
+      "last cleanup",
+    ],
+    next_visit: [
+      "next visit",
+      "next visit date",
+      "next_visit",
+      "next service",
+      "next service date",
+      "next cleanup",
+    ],
     dog_count: ["dogs", "dog count", "number of dogs", "# dogs"],
     billing: ["billing", "billing type", "billing cadence"],
     service: ["service", "service name", "service_name", "plan", "plan name", "product"],
@@ -700,6 +730,8 @@ const SERVICE_PRESETS: Record<string, PresetMap> = {
     price_per_visit: ["Visit total", "Total ($)", "Total", "Price", "Rate", "Line item total"],
     service_day: ["Day", "Service day", "Visit day"],
     start_date: ["Start date", "Schedule start date", "Scheduled start date", "Created date"],
+    last_visit: [JOBBER_LAST_VISIT_COLUMN, "Last visit", "Last visit date"],
+    next_visit: [JOBBER_NEXT_VISIT_COLUMN, "Next visit", "Next visit date"],
     dog_count: ["Number of dogs", "Dogs"],
     billing: ["Billing type", "Billing frequency", "Billing"],
     // Jobber's line item is the service ("30 Minute Walk"); "Title" is the
@@ -723,6 +755,8 @@ const SERVICE_PRESETS: Record<string, PresetMap> = {
     price_per_visit: ["Price", "Price Per Cleanup", "Rate", "Amount"],
     service_day: ["Service Day", "Day", "Cleanup Day"],
     start_date: ["Start Date", "Created"],
+    last_visit: ["Last Cleanup", "Last Visit", "Last Service Date"],
+    next_visit: ["Next Cleanup", "Next Visit", "Next Service Date"],
     dog_count: ["Number of Dogs", "Dogs", "Dog Count"],
     billing: ["Billing", "Billing Type"],
     service: ["Service", "Service Name", "Service Type", "Plan"],
@@ -2610,6 +2644,7 @@ export const commitImport = createServerFn({ method: "POST" })
                 m.frequency_in_file === false
                   ? `Imported plan from ${sourceLabel}: the file did not say how often. The plan is paused and weekly on paper; set how often before turning it on.`
                   : null,
+                planVisitsNote(sourceLabel, m),
                 extrasSummary(sourceLabel, m.extras),
               );
               if (planNote) {

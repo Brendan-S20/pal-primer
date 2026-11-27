@@ -289,7 +289,20 @@ export type MappedService = {
   interval_days: number | null;
   price_cents: number;
   preferred_weekdays: number[] | null;
+  /** Where the plan's schedule is walked from (subscriptions.started_on):
+   *  the next visit the old system had booked, else its last completed
+   *  visit, else the file's start date. A weekly or monthly plan keeps the
+   *  old system's day either way; the next visit is the one most likely to
+   *  match a schedule that was moved since it began. */
   started_on: string | null;
+  /** The file's own start date, kept for the plan's note when the plan is
+   *  walked from a visit instead. */
+  file_started_on?: string | null;
+  /** The last completed visit and the next booked one, when the file has
+   *  them (a Jobber import joined with its Visits report). A plan holds no
+   *  last-visit date of its own, so both are also written in its note. */
+  last_visit?: string | null;
+  next_visit?: string | null;
   dog_count: number | null;
   billing_cadence: "prepaid" | "postpaid" | null;
   /** How often the client is billed, when the file's billing column says
@@ -472,6 +485,17 @@ export function mapServiceRow(
   const freq = freqText ? parseFrequency(freqText) : { frequency: "weekly" as const };
   if (!freq) return { mapped: null, error: `Frequency not understood: "${freqText}"` };
   const priceText = cell(raw, mapping, "price_per_visit");
+  const billText = (cell(raw, mapping, "billing") ?? "").toLowerCase();
+  // Jobber's "Fixed price" billing puts the amount per billing period in
+  // Total ($) (a weekly job at 80.00 billed monthly reads 80.00; real
+  // export, 2026-11-27). Taking it as a per-visit price would bill the
+  // client four times over, so the row is refused with the reason.
+  if (/\bfixed\b/.test(billText)) {
+    return {
+      mapped: null,
+      error: `Billed as a fixed price, so "${priceText ?? ""}" is the amount per billing period, not per visit. Add this plan by hand with its price per visit.`,
+    };
+  }
   const price = parseMoneyCents(priceText);
   if (price == null || price < 0) {
     return {
@@ -481,12 +505,20 @@ export function mapServiceRow(
   }
   const days = parseWeekdays(dayText ?? freqText);
   const startText = cell(raw, mapping, "start_date");
-  const started_on = startText ? parseImportDate(startText, tz) : null;
-  if (startText && !started_on)
+  const file_started_on = startText ? parseImportDate(startText, tz) : null;
+  if (startText && !file_started_on)
     return { mapped: null, error: `Start date not understood: "${startText}"` };
+  const lastText = cell(raw, mapping, "last_visit");
+  const last_visit = lastText ? parseImportDate(lastText, tz) : null;
+  if (lastText && !last_visit)
+    return { mapped: null, error: `Last visit not understood: "${lastText}"` };
+  const nextText = cell(raw, mapping, "next_visit");
+  const next_visit = nextText ? parseImportDate(nextText, tz) : null;
+  if (nextText && !next_visit)
+    return { mapped: null, error: `Next visit not understood: "${nextText}"` };
+  const started_on = next_visit ?? last_visit ?? file_started_on;
   const dogText = cell(raw, mapping, "dog_count");
   const dogs = dogText ? Number(dogText.replace(/[^\d]/g, "")) : NaN;
-  const billText = (cell(raw, mapping, "billing") ?? "").toLowerCase();
   return {
     mapped: {
       client_external_id,
@@ -499,6 +531,9 @@ export function mapServiceRow(
       price_cents: price,
       preferred_weekdays: days.length ? days : null,
       started_on,
+      // Only a row with a visit date carries these, so a file without them
+      // maps to exactly the plan it always did.
+      ...(last_visit || next_visit ? { file_started_on, last_visit, next_visit } : {}),
       dog_count: Number.isFinite(dogs) && dogs > 0 && dogs <= 50 ? dogs : null,
       billing_cadence: billText.startsWith("pre") ? "prepaid" : billText ? "postpaid" : null,
       billing_frequency: parseBillingFrequency(billText),
@@ -506,6 +541,24 @@ export function mapServiceRow(
     },
     error: null,
   };
+}
+
+/** The plan's dates from the old system, for the client's office note:
+ *  when it started there, its last completed visit, its next booked visit,
+ *  and which of them the plan's schedule is walked from. Null when the row
+ *  had no visit dates (the start date alone is already the plan's). */
+export function planVisitsNote(
+  sourceLabel: string,
+  m: Pick<MappedService, "file_started_on" | "last_visit" | "next_visit" | "started_on">,
+): string | null {
+  if (!m.last_visit && !m.next_visit) return null;
+  const parts = [
+    m.file_started_on ? `started there ${m.file_started_on}` : null,
+    `last visit ${m.last_visit ?? "none completed"}`,
+    `next visit ${m.next_visit ?? "none booked"}`,
+  ].filter(Boolean);
+  const from = m.started_on === m.next_visit ? "next visit" : "last visit";
+  return `Imported plan from ${sourceLabel}: ${parts.join("; ")}. The plan's schedule is set from the ${from} (${m.started_on}).`;
 }
 
 export type MappedBalance = {

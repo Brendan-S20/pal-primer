@@ -23,7 +23,13 @@ import { formatDateTime } from "@/lib/format";
 import { importStatusLabel } from "@/lib/import-status";
 import { titleHead } from "@/lib/page-title";
 import { useServiceLines } from "@/components/CommercialOnly";
-import { useOrgTimezone } from "@/hooks/useOrgToday";
+import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
+import { JobberVisitsFile } from "@/components/imports/JobberVisitsFile";
+import {
+  JOBBER_LAST_VISIT_COLUMN,
+  JOBBER_NEXT_VISIT_COLUMN,
+  mergeJobberVisits,
+} from "@/lib/import-jobber-visits";
 
 export const Route = createFileRoute("/_authenticated/imports/")({
   head: () => titleHead("Import data"),
@@ -36,7 +42,7 @@ const SOURCE_LABELS: Record<string, string> = IMPORT_SOURCE_LABELS;
 // file as it came: nothing needs renaming, splitting or adding (#857).
 const SOURCE_HINTS: Record<string, string> = {
   sweepgo: "In Sweep&Go, go to Clients > Residential Clients, open the three dots menu and choose Client List CSV. For commercial clients, go to Clients > Commercial Clients, open the three dots menu and export the client list or the locations list. Sweep&Go's help does not describe a dogs export or a balance export, so use the HoundStack template for those if you need them.",
-  jobber: "In Jobber, go to Clients > More Actions > Export Clients and choose CSV. Jobber emails the file (up to 1,500 clients per file, admin users only). Upload it as it came: the service address, tags, internal notes and account balance all come through. For recurring services, export Insights > Reports > Recurring jobs report; it has no visit frequency column, so each plan comes in paused for you to set how often and turn on. Import clients first, then recurring services.",
+  jobber: "In Jobber, go to Clients > More Actions > Export Clients and choose CSV. Jobber emails the file (up to 1,500 clients per file, admin users only). Upload it as it came: the service address, tags, internal notes and account balance all come through. For recurring services, export Insights > Reports > Recurring jobs with All Columns: how often, the price per visit and the start date come through. Add the Visits report too and each plan also gets its last and next visit. Plans billed as a fixed price are refused, since Jobber's total for them is per billing period, not per visit. Every plan comes in paused for you to check and turn on. Import clients first, then recurring services.",
   housecall_pro: "In Housecall Pro, go to Customers > Actions > Export; the CSV is emailed to an admin. HoundStack has not seen a real Housecall Pro file yet, so check every column below before you preview.",
   time_to_pet: "In Time To Pet, open the Client List and choose Export Client Data (one Full Name column, with Address, City, State and Zip Code). For pets, choose Export Pet Data and tick the client fields so each pet names its owner. Import clients first, then pets.",
   gorilla_desk: "In GorillaDesk, open the Customers tab and choose Action > Export. HoundStack has not seen a real GorillaDesk file yet, so check every column below before you preview.",
@@ -106,6 +112,8 @@ const FIELD_LABELS: Record<string, string> = {
   price_per_visit: "Price per visit",
   service_day: "Service day",
   start_date: "Start date",
+  last_visit: "Last visit",
+  next_visit: "Next visit",
   dog_count: "Number of dogs",
   billing: "Billing (prepaid or after each visit)",
   service: "Service (which of your services the plan is for)",
@@ -332,10 +340,24 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
   const [source, setSource] = useState<(typeof IMPORT_SOURCES)[number]>("generic_csv");
   const [entity, setEntity] = useState<ImportEntity>("clients");
   const [file, setFile] = useState<File | null>(null);
-  const [headers, setHeaders] = useState<string[]>([]);
-  const [rows, setRows] = useState<Record<string, any>[]>([]);
+  const [fileHeaders, setHeaders] = useState<string[]>([]);
+  const [fileRows, setRows] = useState<Record<string, any>[]>([]);
+  // Jobber's Visits report, when added on a plans import: its last and next
+  // visit per Job # become two columns on each plan row.
+  const [visitRows, setVisitRows] = useState<Record<string, unknown>[] | null>(null);
   const [mapping, setMapping] = useState<Record<string, string | null>>({});
   const [busy, setBusy] = useState(false);
+  const today = useOrgToday();
+  const joinsVisits = (s: string, e: ImportEntity, v: unknown[] | null) =>
+    s === "jobber" && e === "services" && !!v;
+  const withVisitColumns = (hs: string[], s: string, e: ImportEntity, v: unknown[] | null) =>
+    joinsVisits(s, e, v) && hs.length
+      ? [...hs, JOBBER_LAST_VISIT_COLUMN, JOBBER_NEXT_VISIT_COLUMN]
+      : hs;
+  const headers = withVisitColumns(fileHeaders, source, entity, visitRows);
+  const rows = joinsVisits(source, entity, visitRows)
+    ? mergeJobberVisits(fileRows, visitRows!, today)
+    : fileRows;
 
   // A Service column is offered to a business that runs more than pet waste.
   // A scooper's import has one service, the default, and the mapping step
@@ -370,20 +392,28 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
           setSource(detected);
           toast.success(`Recognized a ${SOURCE_LABELS[detected] ?? detected} export, fields auto-mapped.`);
         }
-        setMapping(autoMap(effSource, hs, entity));
+        setMapping(autoMap(effSource, withVisitColumns(hs, effSource, entity, visitRows), entity));
       },
       error: (err) => toast.error(`CSV parse error: ${err.message}`),
     });
   };
 
+  const onVisitRows = (v: Record<string, unknown>[] | null) => {
+    setVisitRows(v);
+    if (fileHeaders.length)
+      setMapping(autoMap(source, withVisitColumns(fileHeaders, source, entity, v), entity));
+  };
+
   const onSourceChange = (s: (typeof IMPORT_SOURCES)[number]) => {
     setSource(s);
-    if (headers.length) setMapping(autoMap(s, headers, entity));
+    if (fileHeaders.length)
+      setMapping(autoMap(s, withVisitColumns(fileHeaders, s, entity, visitRows), entity));
   };
 
   const onEntityChange = (e: ImportEntity) => {
     setEntity(e);
-    if (headers.length) setMapping(autoMap(source, headers, e));
+    if (fileHeaders.length)
+      setMapping(autoMap(source, withVisitColumns(fileHeaders, source, e, visitRows), e));
   };
 
   const runPreview = async () => {
@@ -481,6 +511,10 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
             </>
           )}
         </div>
+      )}
+
+      {source === "jobber" && entity === "services" && (
+        <JobberVisitsFile count={visitRows?.length ?? null} onRows={onVisitRows} />
       )}
 
       {SOURCE_HINTS[source] && (
