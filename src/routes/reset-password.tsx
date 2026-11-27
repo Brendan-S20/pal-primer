@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { pageTitle } from "@/lib/page-title";
 import {
   RESET_PASSWORD_PATH,
   abandonRecovery,
+  cancelRecovery,
   clearRecoveryPending,
   describeUpdatePasswordError,
   establishRecoverySession,
@@ -52,12 +53,21 @@ function ResetPasswordPage() {
   // field, and both fields keep what was typed.
   const [passwordRejected, setPasswordRejected] = useState<string | null>(null);
   const exchange = useRef<Promise<EstablishResult> | null>(null);
+  const saving = useRef<Promise<unknown> | null>(null);
+  // "Cancel reset and sign out" was pressed: `leaving` while it runs, and
+  // `cancels` so that work started before it knows to say and do nothing.
+  const [isLeaving, setIsLeaving] = useState(false);
+  const leaving = useRef(false);
+  const cancels = useRef(0);
+  // The link check's answer if it came back during a cancel, applied only if
+  // that cancel could not sign out.
+  const heldCheck = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     // PASSWORD_RECOVERY fires when supabase-js reads a recovery hash itself.
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY" && !cancelled) {
+      if (event === "PASSWORD_RECOVERY" && !cancelled && !leaving.current) {
         markRecoveryPending();
         setPhase({ kind: "ready" });
       }
@@ -78,14 +88,18 @@ function ResetPasswordPage() {
         return r;
       });
     }
-    void exchange.current.then((r) => {
-      if (cancelled) return;
+    const apply = (r: EstablishResult) => {
       if (r.ok) {
         markRecoveryPending();
         setPhase({ kind: "ready" });
       } else {
         setPhase((p) => (p.kind === "ready" ? p : { kind: "invalid", message: r.message }));
       }
+    };
+    void exchange.current.then((r) => {
+      if (cancelled) return;
+      if (leaving.current) heldCheck.current = () => apply(r);
+      else apply(r);
     });
     return () => {
       cancelled = true;
@@ -95,13 +109,20 @@ function ResetPasswordPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // A save started while signing out would sign the person back in.
+    if (leaving.current) return;
     setError(null);
     setPasswordRejected(null);
     const invalid = validateNewPassword(password, confirm);
     if (invalid) return setError(invalid);
     setLoading(true);
-    const { error: updateError } = await supabase.auth.updateUser({ password });
+    const cancelsBefore = cancels.current;
+    const save = supabase.auth.updateUser({ password });
+    saving.current = save;
+    const { error: updateError } = await save;
     setLoading(false);
+    // Cancelled while saving: the cancel signs out and decides where to go.
+    if (cancels.current !== cancelsBefore) return;
     if (updateError) {
       const { message, linkDead } = describeUpdatePasswordError(updateError);
       if (linkDead) return setPhase({ kind: "invalid", message });
@@ -112,6 +133,21 @@ function ResetPasswordPage() {
     setPhase({ kind: "done" });
     // /auth lands a signed-in person on their own page.
     setTimeout(() => navigate({ to: "/auth" }), 1500);
+  };
+
+  const cancelReset = async () => {
+    leaving.current = true;
+    cancels.current += 1;
+    setIsLeaving(true);
+    setError(null);
+    const left = await cancelRecovery(supabase, [exchange.current, saving.current]);
+    // Released: this page is on its way out, so nothing here may run again.
+    if (left) return true;
+    leaving.current = false;
+    setIsLeaving(false);
+    heldCheck.current?.();
+    heldCheck.current = null;
+    return false;
   };
 
   return (
@@ -130,7 +166,11 @@ function ResetPasswordPage() {
           first press on this link) makes PasswordField add its "rule you
           broke" line, and anything under the field moves ~24px away from the
           pointer before the click completes (#983). */}
-      {phase.kind === "ready" && <BackToSignIn />}
+      {/* Offered while the link is still being checked too: that request may
+          never be answered (#1058). */}
+      {(phase.kind === "verifying" || phase.kind === "ready") && (
+        <BackToSignIn label="Cancel reset and sign out" onLeave={cancelReset} />
+      )}
 
       {phase.kind === "ready" && (
         <form
@@ -166,7 +206,7 @@ function ResetPasswordPage() {
           </div>
           <Button
             type="submit"
-            disabled={loading || !isPasswordAcceptable(password) || !!passwordRejected}
+            disabled={loading || isLeaving || !isPasswordAcceptable(password) || !!passwordRejected}
             className="w-full"
           >
             {loading ? "Updating…" : "Update password"}
@@ -250,31 +290,52 @@ function ResendResetLink({ message }: { message: string }) {
           </p>
         )}
       </form>
-      <BackToSignIn />
+      <BackToSignIn label="Back to sign in" />
     </div>
   );
 }
 
 /** Leaves the reset: signs this device out first, so /auth does not land the
- *  reset session, then goes to /auth (#983). */
-function BackToSignIn() {
+ *  reset session, then goes to /auth (#983). If that cannot be done it says so
+ *  here and the button can be pressed again (#1058). */
+function BackToSignIn({
+  label,
+  onLeave = () => abandonRecovery(supabase),
+}: {
+  label: string;
+  onLeave?: () => Promise<boolean>;
+}) {
   const navigate = useNavigate();
+  const [state, setState] = useState<"idle" | "leaving" | "failed">("idle");
+  const leave = async () => {
+    if (state === "leaving") return;
+    setState("leaving");
+    if (await onLeave()) return navigate({ to: "/auth" });
+    setState("failed");
+  };
   return (
-    <p className="text-center text-sm">
-      <Link
-        to="/auth"
+    <div className="space-y-2 text-center">
+      <Button
+        type="button"
+        variant="outline"
+        // aria-disabled, not disabled: a disabled button drops keyboard focus.
+        aria-disabled={state === "leaving" || undefined}
+        // Tabbing here is leaving, not a half-typed password (PasswordField).
+        data-leaves-form=""
         // The press must not take the focus off the password field: its blur
-        // adds a line, the centred page re-centres, and this link moves out
+        // adds a line, the centred page re-centres, and this button moves out
         // from under the pointer before the click completes (#1058).
         onMouseDown={(e) => e.preventDefault()}
-        onClick={(e) => {
-          e.preventDefault();
-          void abandonRecovery(supabase).finally(() => navigate({ to: "/auth" }));
-        }}
-        className="inline-flex min-h-11 items-center text-muted-foreground underline underline-offset-2 hover:text-primary"
+        onClick={() => void leave()}
+        className="min-h-11 aria-disabled:opacity-50"
       >
-        Back to sign in
-      </Link>
-    </p>
+        {state === "leaving" ? "Signing out…" : label}
+      </Button>
+      {state === "failed" && (
+        <p role="alert" className="text-sm text-destructive">
+          We couldn't sign you out. Check your connection and try again.
+        </p>
+      )}
+    </div>
   );
 }

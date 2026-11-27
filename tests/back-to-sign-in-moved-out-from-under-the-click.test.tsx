@@ -49,7 +49,7 @@ vi.mock("@/integrations/supabase/client", () => ({
   },
 }));
 
-describe("pressing 'Back to sign in' on the reset form", () => {
+describe("pressing the way out on the reset form", () => {
   let root: Root;
   let host: HTMLDivElement;
 
@@ -68,8 +68,11 @@ describe("pressing 'Back to sign in' on the reset form", () => {
     clearRecoveryPending();
   });
 
+  // Was a "Back to sign in" link; now a button that says it signs out.
   const link = () =>
-    [...host.querySelectorAll("a")].find((a) => a.textContent === "Back to sign in")!;
+    [...host.querySelectorAll("button")].find(
+      (b) => b.textContent === "Cancel reset and sign out",
+    )!;
 
   /** What a browser does: an uncancelled mousedown takes the focus. */
   const press = async () => {
@@ -151,13 +154,10 @@ describe("a reset abandoned when the auth server cannot say yes", () => {
   it.each([
     ["offline", offline],
     ["a 500", async () => new Response("{}", { status: 500 })],
-  ])("%s: the session leaves this device and the lock stays up", async (_n, logout) => {
+  ])("%s: the session leaves this device, so one press releases", async (_n, logout) => {
     const f = setup(logout);
-    await abandonRecovery(f.client, f.storage);
+    await expect(abandonRecovery(f.client, f.storage)).resolves.toBe(true);
     expect(f.saved.has(KEY)).toBe(false);
-    expect(isRecoveryPending(f.storage)).toBe(true);
-    // A second press finds no session and lets the person go.
-    await abandonRecovery(f.client, f.storage);
     expect(isRecoveryPending(f.storage)).toBe(false);
   });
 

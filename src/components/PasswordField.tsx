@@ -65,7 +65,10 @@ export function PasswordField({
         autoFocus={autoFocus}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onBlur={() => {
+        onBlur={(e) => {
+          // Moving to a control that abandons the form is not "done typing":
+          // naming a broken rule then would shift the page on the way out (#1058).
+          if (e.relatedTarget?.hasAttribute("data-leaves-form")) return;
           setBlurred(true);
           onBlur?.();
         }}

@@ -2,6 +2,7 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 import { SESSION_STORAGE_KEY, moveSessionToNamedKey } from "./session-key";
+import { fetchWithLocalSignOutDeadline } from "@/lib/local-sign-out-deadline";
 
 // In `vite dev` ONLY, VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY may
 // point the browser at a local Supabase — without this, a local run is split
@@ -68,6 +69,8 @@ if (!impersonating && typeof window !== "undefined") {
 }
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  // A local sign-out the server never answers is aborted (#1058).
+  global: { fetch: fetchWithLocalSignOutDeadline },
   auth: {
     storage:
       typeof window !== 'undefined'

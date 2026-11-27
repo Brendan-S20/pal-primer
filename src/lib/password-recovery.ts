@@ -29,6 +29,7 @@
 //
 // → tests/a-password-reset-that-goes-somewhere.test.ts
 
+import { abandonSessionRequests } from "@/lib/abandoned-reset-requests";
 import { appUrl, linkOrigin } from "@/lib/app-origin";
 import { NATIVE_OAUTH_REDIRECT } from "@/lib/native-oauth-redirect";
 import {
@@ -383,23 +384,89 @@ export function recoveryRedirectTarget(
   return isRecoveryPending(store) ? RESET_PASSWORD_PATH : null;
 }
 
+/** How long leaving a reset waits before it gives the button back. Longer than
+ *  the logout request's own limit (lib/local-sign-out-deadline.ts), so this is
+ *  only reached when something other than that request is stuck. */
+export const ABANDON_DEADLINE_MS = 12_000;
+
+type AbandonClient = {
+  auth: {
+    signOut: (o?: { scope: "local" }) => Promise<{ error: unknown | null }>;
+    getSession?: () => Promise<{ data: { session: unknown | null }; error?: unknown }>;
+  };
+};
+
 /**
  * Walking away from a reset (#983). The link made a real session; leaving it
  * behind would let "Back to sign in" (or any other tab) land the person in the
  * app without ever knowing the password. Signs this device out locally, then
- * lowers the flag. A failed sign-out leaves the flag up, so the app stays
- * closed rather than open.
+ * lowers the flag.
+ *
+ * The flag only comes down once the session is off this device: the sign-out
+ * said yes, or it failed (a 500, a dropped or aborted request) after
+ * supabase-js had already removed the session, which leaves nothing for the
+ * lock to hold (#1058). Anything else leaves it up, so the app stays closed
+ * rather than open. Always answers, within `deadlineMs`: true when released.
  */
 export async function abandonRecovery(
-  client: { auth: { signOut: (o?: { scope: "local" }) => Promise<{ error: unknown | null }> } },
+  client: AbandonClient,
   store: FlagStore | null = sessionStore(),
-): Promise<void> {
+  deadlineMs = ABANDON_DEADLINE_MS,
+): Promise<boolean> {
+  const leave = async (): Promise<boolean> => {
+    try {
+      const { error } = await client.auth.signOut({ scope: "local" });
+      if (error) {
+        const left = await client.auth.getSession?.();
+        // A session that could not be READ is not a session that is gone.
+        if (!left || left.error || left.data.session) return false;
+      }
+      clearRecoveryPending(store);
+      return true;
+    } catch {
+      // Offline or storage off: the flag stays up and the guard keeps the app shut.
+      return false;
+    }
+  };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const gaveUp = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), deadlineMs);
+  });
   try {
-    const { error } = await client.auth.signOut({ scope: "local" });
-    if (!error) clearRecoveryPending(store);
-  } catch {
-    // Offline or storage off: the flag stays up and the guard keeps the app shut.
+    return await Promise.race([leave(), gaveUp]);
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+/** How long leaving waits for aborted work to finish before signing out
+ *  anyway. Aborted requests fail at once; this is for something else stuck. */
+export const ABANDONED_WORK_WAIT_MS = 2_000;
+
+/**
+ * abandonRecovery while the link check or a password save may still be running.
+ * Their requests are aborted first, so a late reply cannot save the session
+ * again after the sign-out, and the sign-out (which supabase-js holds until the
+ * link has been read) is not stuck behind a request nobody answers. The lock
+ * stays up until that work has settled or been given up on; the requests stay
+ * refused until it has actually settled.
+ */
+export async function cancelRecovery(
+  client: AbandonClient,
+  inFlight: (PromiseLike<unknown> | null)[],
+): Promise<boolean> {
+  const resume = abandonSessionRequests();
+  const settled = Promise.allSettled(inFlight);
+  void settled.then(resume);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    settled,
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, ABANDONED_WORK_WAIT_MS);
+    }),
+  ]);
+  clearTimeout(timer);
+  return abandonRecovery(client);
 }
 
 /** Tests only. */
