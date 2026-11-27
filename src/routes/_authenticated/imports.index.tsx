@@ -31,6 +31,7 @@ import {
   JOBBER_LAST_VISIT_COLUMN,
   JOBBER_NEXT_VISIT_COLUMN,
   mergeJobberVisits,
+  withVisitMapping,
 } from "@/lib/import-jobber-visits";
 
 export const Route = createFileRoute("/_authenticated/imports/")({
@@ -370,10 +371,11 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
     });
   };
 
+  // Adding or removing the Visits report keeps every column the owner has
+  // already placed; only the two visit columns come and go.
   const onVisitRows = (v: Record<string, unknown>[] | null) => {
     setVisitRows(v);
-    if (fileHeaders.length)
-      remap(source, withVisitColumns(fileHeaders, source, entity, v), entity);
+    if (fileHeaders.length) setMapping((m) => withVisitMapping(m, joinsVisits(source, entity, v)));
   };
 
   const onSourceChange = (s: (typeof IMPORT_SOURCES)[number]) => {

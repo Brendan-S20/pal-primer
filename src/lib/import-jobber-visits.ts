@@ -84,3 +84,24 @@ export function mergeJobberVisits(
     };
   });
 }
+
+/** The owner's mapping after the Visits report is added (`on`) or taken
+ *  away: every other column keeps the destination the owner gave it. Added,
+ *  the two visit columns go to last and next visit unless those already
+ *  read another column; taken away, any field that read them is let go. */
+export function withVisitMapping(
+  mapping: Record<string, string | null>,
+  on: boolean,
+): Record<string, string | null> {
+  const next = { ...mapping };
+  const visitColumns = [JOBBER_LAST_VISIT_COLUMN, JOBBER_NEXT_VISIT_COLUMN];
+  if (on) {
+    if (!next.last_visit) next.last_visit = JOBBER_LAST_VISIT_COLUMN;
+    if (!next.next_visit) next.next_visit = JOBBER_NEXT_VISIT_COLUMN;
+    return next;
+  }
+  for (const [field, col] of Object.entries(next)) {
+    if (col && visitColumns.includes(col)) next[field] = null;
+  }
+  return next;
+}
