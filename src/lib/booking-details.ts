@@ -27,6 +27,8 @@
 
 import { z } from "zod";
 
+import { formatPhone } from "@/lib/format";
+
 export type DetailAsk = "off" | "optional" | "required";
 
 export const DETAIL_ASKS: readonly DetailAsk[] = ["off", "optional", "required"];
@@ -156,7 +158,7 @@ export function reachTheBusinessSentence(
   phone: string | null | undefined,
   email: string | null | undefined,
 ): string | null {
-  const p = (phone ?? "").trim();
+  const p = formatPhone((phone ?? "").trim());
   const e = (email ?? "").trim();
   if (p && e) return `Questions before then? Call ${p} or email ${e}.`;
   if (p) return `Questions before then? Call ${p}.`;
