@@ -142,4 +142,39 @@ describe("Housecall Pro jobs: the plan's note keeps the visits' warnings", () =>
     // And ahead of the leftover columns, which are the part that is cut.
     expect(note!.indexOf(visitNotes)).toBeLessThan(note!.indexOf("Job #"));
   });
+
+  // Rigel at 0545ace1: one note on 53 visits filled the 4,000-character
+  // note and cut the new gate code at the end. It is kept once now, and a
+  // note too long for one is saved as several, nothing cut.
+  it("saves a new gate code after 52 visits with the same note, and splits a long note", async () => {
+    const customers = read("housecall-pro-customers.csv");
+    await importRows("housecall_pro", "clients", customers.headers, customers.rows);
+    const jobs = read("housecall-pro-jobs.csv");
+    const first = jobs.rows.find(
+      (r: any) => r["Street"] === "123 Test St" && r["Job status"] === "Completed",
+    ) as Record<string, string>;
+    const rows = Array.from({ length: 53 }, (_, i) => {
+      const d = new Date(Date.UTC(2025, 11, 5 + 7 * i)).toISOString().slice(0, 10);
+      const long = `Visit ${i}: ${"the dogs were in, the yard was wet, gate latched after. ".repeat(2)}`;
+      return {
+        ...first,
+        "Job status": d < TODAY ? "Completed" : "Scheduled",
+        "Job scheduled start date": `${d}T09:00:00-05:00`,
+        Notes: i === 52 ? "NEW gate code 9026 from this date" : i % 2 ? long : "Side gate sticks.",
+      };
+    });
+    const cols = visitFileColumns("housecall_pro", jobs.headers)!;
+    const plan = planVisitFile(rows, cols, TODAY, TZ).rows[0];
+    const headers = [...jobs.headers, ...VISITS_COLUMNS];
+    const { result } = await importRows("housecall_pro", "services", headers, [plan]);
+    expect(result.created).toBe(1);
+    const bodies = (tables.client_notes as any[]).map((n) => n.body as string);
+    expect(bodies.length).toBeGreaterThan(1);
+    expect(bodies.every((b) => b.length <= 4000)).toBe(true);
+    const all = bodies.join("\n");
+    expect(all).toContain("NEW gate code 9026 from this date");
+    expect(all).toMatch(/\d+ visits, 2025-12-05 to .*: Side gate sticks\./);
+    expect(all).toContain("Visit 51:");
+    expect(all).toContain("Job #");
+  });
 });

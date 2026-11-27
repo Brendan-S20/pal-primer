@@ -29,6 +29,7 @@ import {
   PET_DECEASED_COLUMNS,
   PET_TYPE_COLUMNS,
   rowExtras,
+  splitNote,
   UNDO_NEEDS_BILLING,
   undoRefusal,
   type PetName,
@@ -3062,14 +3063,17 @@ export const commitImport = createServerFn({ method: "POST" })
                 extrasSummary(sourceLabel, m.extras),
               );
               if (planNote) {
-                const { error: nErr } = await supabase.from("client_notes").insert({
-                  organization_id: orgId,
-                  client_id: row.target_id,
-                  property_id: prop.id,
-                  audience: "office",
-                  body: planNote.slice(0, 4000),
-                  created_by: userId,
-                });
+                // Longer than one note holds: several notes, nothing cut.
+                const { error: nErr } = await supabase.from("client_notes").insert(
+                  splitNote(planNote).map((body) => ({
+                    organization_id: orgId,
+                    client_id: row.target_id!,
+                    property_id: prop.id,
+                    audience: "office",
+                    body,
+                    created_by: userId,
+                  })),
+                );
                 if (nErr) console.error("import: plan note failed", nErr.message);
               }
             }

@@ -79,15 +79,17 @@ export function scheduleFromDates(
 
   // Monthly on a date: the 10th.
   const dom = mostCommon(dates.map(dayOfMonth));
-  // Every gap exactly four weeks is every 4 weeks, though a run of three
-  // can share a date twice (Jan 8, Feb 5, Mar 5: #1069, Rigel).
-  const fourWeekly = n >= 3 && gaps.every((x) => x === 28);
+  // Every gap a whole number of four weeks is every 4 weeks, though a run
+  // of three can share a date twice (Jan 8, Feb 5, Mar 5) and a skipped
+  // visit leaves eight weeks (Oct 28, Nov 25, Dec 23, Feb 17), which looks
+  // like a fourth Wednesday that moved once (#1069, Rigel at 0545ace1).
+  const fourWeekly = n >= 3 && gaps.every((x) => x > 0 && x % 28 === 0);
   if (gap >= 27 && gap <= 32 && enough(dom.count) && !fourWeekly) {
     return { text: `Monthly on the ${ordinal(dom.value)} day of the month` };
   }
   // Monthly on a weekday: the second Friday. Its gaps are four weeks or
   // five; all four is every 4 weeks, which a run of three can look like.
-  if (gap >= 27 && gap <= 36 && gaps.some((x) => x >= 34)) {
+  if (gap >= 27 && gap <= 36 && gaps.some((x) => x >= 34) && !fourWeekly) {
     const nth = mostCommon(dates.map((d) => `${weekday(d)}:${Math.ceil(dayOfMonth(d) / 7)}`));
     if (enough(nth.count)) {
       const [wd, k] = nth.value.split(":").map(Number);
@@ -161,5 +163,73 @@ export function frequencyFromName(name: string, on: string | null): string | nul
     return `Monthly${dom}${said}`;
   }
   if (f.frequency === "every_n_days") return `Every ${f.intervalDays} days${said}`;
+  return null;
+}
+
+const DAYS = DAY_NAMES.map((d) => `${d}s`);
+/** The weekdays a run of visits falls on, when it falls on them week after
+ *  week (walks Monday to Friday), Monday first; else none. */
+export function weekdaysOf(dates: readonly string[]): string[] {
+  const days = [...new Set(dates.map(weekday))];
+  const tight = dates.every((d, i) => i === 0 || dayNumber(d) - dayNumber(dates[i - 1]) <= 3);
+  if (days.length < 3 || dates.length < days.length * 2 || !tight) return [];
+  return days.sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((d) => DAYS[d]);
+}
+
+/** Whether `dates` (sorted, distinct) are what a schedule read from earlier
+ *  visits books, walked from `from`: weekly or every k weeks, monthly on a
+ *  date, or twice a week, where every one of its two weekdays between the
+ *  first date and the last is there (Tuesdays and Fridays booking only
+ *  Fridays is a change: #1069, Rigel at 0545ace1). Another kind of schedule
+ *  is taken to fit. */
+export function fitsSchedule(text: string, from: string, dates: readonly string[]): boolean {
+  const w = text.match(/^(?:Weekly|Every (\d+) weeks) on (\w+)$/);
+  if (w) {
+    const step = 7 * Number(w[1] ?? 1);
+    const wd = DAYS.indexOf(w[2]);
+    return dates.every((d) => weekday(d) === wd && (dayNumber(d) - dayNumber(from)) % step === 0);
+  }
+  const m = text.match(/^Monthly on the (\d+)\w\w day of the month$/);
+  if (m) return dates.every((d) => dayOfMonth(d) === Number(m[1]));
+  const t = text.match(/^Twice a week on (\w+) and (\w+)$/);
+  if (t && dates.length) {
+    const on = new Set([DAYS.indexOf(t[1]), DAYS.indexOf(t[2])]);
+    const have = new Set(dates.map(dayNumber));
+    for (let d = dayNumber(dates[0]); d <= dayNumber(dates.at(-1)!); d++) {
+      if (on.has((d + 4) % 7) !== have.has(d)) return false;
+    }
+    return true;
+  }
+  return true;
+}
+
+const listed = (dates: readonly string[]) => dates.join(" and ");
+
+/** A warning when a plan's next two visits do not say plainly whether its
+ *  schedule changed: they are off the schedule its earlier visits had, and
+ *  two dates are too few to read a new one (Fridays, then a Tuesday and a
+ *  Friday); or they fit it with a wider gap (weekly, then two Fridays two
+ *  weeks apart), which is a skipped visit or a slower plan. `read` is the
+ *  schedule the plan is imported with. Null when there is nothing to say. */
+export function scheduleChange(
+  before: string,
+  from: string,
+  ahead: readonly string[],
+  read: string,
+): string | null {
+  if (ahead.length !== 2) return null;
+  const check = `It is read as ${read.toLowerCase()}; check it before you turn the plan on.`;
+  if (!fitsSchedule(before, from, ahead)) {
+    if (read === before || !fitsSchedule(read, ahead[0], ahead)) {
+      return `Its next two visits (${listed(ahead)}) do not follow its earlier visits (${before.toLowerCase()}), so the schedule may have changed in the old system. ${check}`;
+    }
+    return null;
+  }
+  const w = before.match(/^(?:Weekly|Every (\d+) weeks) on /);
+  const gap = dayNumber(ahead[1]) - dayNumber(ahead[0]);
+  const step = 7 * Number(w?.[1] ?? 1);
+  if (w && gap > step) {
+    return `Its next two visits (${listed(ahead)}) are ${gap / 7} weeks apart, though its earlier visits were ${before.toLowerCase()}: a visit is skipped, or the plan is now every ${gap / 7} weeks. ${check}`;
+  }
   return null;
 }

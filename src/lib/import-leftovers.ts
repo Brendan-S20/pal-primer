@@ -240,6 +240,32 @@ export function joinNotes(...parts: (string | null | undefined)[]): string | nul
   return kept.length ? kept.join("\n") : null;
 }
 
+/** The longest note one client note holds (the database's limit). */
+export const NOTE_MAX = 4000;
+
+/** A note too long for one client note, cut into several at a line break
+ *  or a space where it can be, each marked "(1 of 3)", so nothing past the
+ *  limit is lost (#1069, Rigel at 0545ace1). One part when it fits. */
+export function splitNote(text: string, max = NOTE_MAX): string[] {
+  if (text.length <= max) return [text];
+  const room = max - 12; // " (10 of 12)" and a space
+  const parts: string[] = [];
+  let rest = text;
+  while (rest.length > room) {
+    const window = rest.slice(0, room);
+    const at = Math.max(
+      window.lastIndexOf("\n"),
+      window.lastIndexOf("; "),
+      window.lastIndexOf(" "),
+    );
+    const cut = at > room / 2 ? at : room;
+    parts.push(rest.slice(0, cut).trimEnd());
+    rest = rest.slice(cut).replace(/^(;\s*|\s+)/, "");
+  }
+  if (rest) parts.push(rest);
+  return parts.map((p, i) => `(${i + 1} of ${parts.length}) ${p}`);
+}
+
 export type PetName = { name: string; breed: string | null };
 
 /** The most pets one cell may name. */

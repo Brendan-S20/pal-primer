@@ -241,8 +241,12 @@ describe("addresses and names", () => {
       id: "a",
       by: "name",
     });
-    // Two of that name: nothing says which, so no match is guessed.
-    expect(findExistingClient({ display_name: "Lee Testcase" }, idx)).toBeNull();
+    // Two of that name: nothing says which, so no client is guessed, and
+    // the row is skipped as ambiguous rather than added a third time.
+    expect(findExistingClient({ display_name: "Lee Testcase" }, idx)).toEqual({
+      id: "",
+      by: "name_shared",
+    });
     // A row with an address is matched by name and address, as before.
     expect(
       findExistingClient({ display_name: "Sam Research", street: "1 Other St" }, idx),

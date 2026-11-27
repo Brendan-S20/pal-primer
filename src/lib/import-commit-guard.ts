@@ -283,7 +283,7 @@ export function clientDuplicateIndex(
 
 export type ExistingMatch = {
   id: string;
-  by: "external_id" | "email" | "phone" | "name_and_address" | "name";
+  by: "external_id" | "email" | "phone" | "name_and_address" | "name" | "name_shared";
 };
 
 /** The client this row would duplicate, checked in the order a match is
@@ -310,6 +310,10 @@ export function findExistingClient(
   const bare = !row.external_id && !email && !phone && !squash(row.street);
   const only = name && bare && idx.nameAlone ? idx.byName.get(name) : undefined;
   if (only) return { id: only, by: "name" };
+  // More than one client has that name: which one is not known, and a new
+  // client of the same name is the duplicate this guards against, so the
+  // row is skipped and says why (#1069, Rigel at 0545ace1). No id.
+  if (only === "") return { id: "", by: "name_shared" };
   return null;
 }
 
@@ -335,6 +339,7 @@ const MATCH_WORDS: Record<ExistingMatch["by"], string> = {
   phone: "phone number",
   name_and_address: "name and service address",
   name: "name, and the file has nothing else to tell them apart",
+  name_shared: "name as more than one of your clients",
 };
 
 /** Why a row is skipped because an earlier row of the same file creates the
@@ -345,6 +350,8 @@ export function inFileDuplicateReason(by: ExistingMatch["by"], firstRow: number)
 
 /** Why a row is skipped because the business already has the client. */
 export function existingClientReason(by: ExistingMatch["by"]): string {
+  if (by === "name_shared")
+    return "More than one of your clients has this name, and the file has nothing else (no ID, email, phone or address) to say which, so it is skipped rather than added again. Add anything new on it by hand.";
   return `Already in your clients (same ${MATCH_WORDS[by]}).`;
 }
 
@@ -362,7 +369,7 @@ export function labelClientRows(
     if (!row) return null;
     const match = findExistingClient(row, existing);
     if (match) {
-      return { action: "skip", targetId: match.id, reason: existingClientReason(match.by) };
+      return { action: "skip", targetId: match.id || null, reason: existingClientReason(match.by) };
     }
     const twin = findExistingClient(row, inFile);
     if (twin) {
@@ -446,7 +453,7 @@ export function alreadyInDatabase(
   targetId: string | null,
   existing: ExistingRecords,
 ): string | null {
-  if (entity === "clients") return findExistingClient(mapped, existing.clients)?.id ?? null;
+  if (entity === "clients") return findExistingClient(mapped, existing.clients)?.id || null;
   if (!targetId) return null;
   if (entity === "properties") {
     return existing.propertyKeys.has(propertyKey(targetId, mapped.street, mapped.postal_code))

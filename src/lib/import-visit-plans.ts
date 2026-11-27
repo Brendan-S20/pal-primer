@@ -48,10 +48,12 @@ import {
   type ImportFrequency,
 } from "@/lib/import-services";
 import {
+  fitsSchedule,
   frequencyFromName,
   mostCommon,
+  scheduleChange,
   scheduleFromDates,
-  weekday,
+  weekdaysOf,
 } from "@/lib/import-visit-frequency";
 
 export { frequencyFromDates } from "@/lib/import-visit-frequency";
@@ -211,33 +213,6 @@ type Visit = {
   initial: boolean;
 };
 
-const DAYS = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
-/** The weekdays a run of visits falls on, when it falls on them week after
- *  week (walks Monday to Friday), Monday first; else none. */
-function weekdaysOf(dates: readonly string[]): string[] {
-  const days = [...new Set(dates.map(weekday))];
-  const days7 = (d: string) => Date.parse(`${d}T00:00:00Z`) / 86_400_000;
-  const tight = dates.every((d, i) => i === 0 || days7(d) - days7(dates[i - 1]) <= 3);
-  if (days.length < 3 || dates.length < days.length * 2 || !tight) return [];
-  return days.sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((d) => DAYS[d]);
-}
-
-/** Whether `dates` fall on a weekly (every k weeks) or monthly-by-date
- *  schedule read from earlier visits, walked from `from`. Another kind of
- *  schedule is taken to fit. */
-function fitsSchedule(text: string, from: string, dates: readonly string[]): boolean {
-  const day = (d: string) => Math.round(Date.parse(`${d}T00:00:00Z`) / 86_400_000);
-  const w = text.match(/^(?:Weekly|Every (\d+) weeks) on (\w+)$/);
-  if (w) {
-    const step = 7 * Number(w[1] ?? 1);
-    const wd = DAYS.indexOf(w[2]);
-    return dates.every((d) => weekday(d) === wd && (day(d) - day(from)) % step === 0);
-  }
-  const m = text.match(/^Monthly on the (\d+)\w\w day of the month$/);
-  if (m) return dates.every((d) => Number(d.slice(8, 10)) === Number(m[1]));
-  return true;
-}
-
 /** "1d-3xW" in words: "3 times a week". */
 function codeWords(code: string): string {
   const m = code.match(/(\d)x([wm])\s*$/i);
@@ -333,25 +308,35 @@ export function planVisitFile(
       );
       continue;
     }
-    const dates = [...new Set(usable.map((v) => v.on!))];
+    // An initial cleanup is not on the plan's schedule (a Tuesday first
+    // cleanup, then Fridays): the schedule is read off the regular visits.
+    const regular = usable.some((v) => !v.initial) ? usable.filter((v) => !v.initial) : usable;
+    const dates = [...new Set(regular.map((v) => v.on!))];
     const last = usable.filter((v) => v.done).at(-1) ?? null;
     const upcoming = usable.filter((v) => !v.done && v.on! >= today);
     const next = upcoming[0] ?? null;
     const afterNext = upcoming.find((v) => v.on! > (next?.on ?? "")) ?? null;
-    const anchor = next?.on ?? dates.at(-1)!;
-    const ahead = [...new Set(upcoming.map((v) => v.on!))];
+    const nextRegular = regular.find((v) => !v.done && v.on! >= today) ?? null;
+    const anchor = nextRegular?.on ?? dates.at(-1)!;
+    const ahead = [...new Set(regular.filter((v) => !v.done && v.on! >= today).map((v) => v.on!))];
     // The plan as it is now: three upcoming visits that agree say it; two
     // say it when the visits done before do not fit them (Fridays until
     // now, then Tuesdays; every 2 weeks, then weekly). Else all the dates.
-    const done = [...new Set(usable.filter((v) => v.on! < (next?.on ?? "~")).map((v) => v.on!))];
+    const done = dates.filter((d) => d < (ahead[0] ?? "~"));
     const before = scheduleFromDates(done);
+    const plainBefore = before && !before.note ? before.text : null;
     const twoAhead = ahead.length === 2 ? scheduleFromDates(ahead, anchor) : null;
     const schedule =
       (ahead.length >= 3 ? scheduleFromDates(ahead, anchor) : null) ??
-      (twoAhead && before && !before.note && !fitsSchedule(before.text, done.at(-1)!, ahead)
+      (twoAhead && plainBefore && !fitsSchedule(plainBefore, done.at(-1)!, ahead)
         ? twoAhead
         : null) ??
       scheduleFromDates(dates, anchor);
+    // Two upcoming visits that leave it unclear whether the plan changed.
+    const changed =
+      plainBefore && schedule && ahead.length === 2 && ahead.length < dates.length
+        ? scheduleChange(plainBefore, done.at(-1)!, ahead, schedule.text)
+        : null;
     const fromName = schedule ? null : frequencyFromName(service, anchor);
     if (!schedule && !fromName) {
       left.push(
@@ -382,15 +367,18 @@ export function planVisitFile(
     }
     // An initial cleanup is priced on its own; with only those priced, the
     // plan's price per visit is not in the file.
-    const regular = usable.filter((v) => !v.initial);
-    if (!regular.some((v) => v.cents && v.cents > 0) && usable.some((v) => v.initial && v.cents)) {
+    if (
+      !usable.some((v) => !v.initial && v.cents && v.cents > 0) &&
+      usable.some((v) => v.initial && v.cents)
+    ) {
       const firsts = usable.filter((v) => v.initial && v.cents).map((v) => money(v.cents!));
       left.push(
         `${label}: only the initial cleanup has a price (${firsts.join(", ")}), and that is not the plan's price per visit, so it is not imported. Add it by hand with its price.`,
       );
       continue;
     }
-    const notes = [schedule?.note];
+    const notes = [schedule?.note, changed];
+    if (changed) left.push(`${label}: ${changed}`);
     if (!next && fileHasUpcoming && fileLast && fileLast > dates.at(-1)!) {
       const ended = `No visit is booked after ${dates.at(-1)}, though the file runs to ${fileLast}, so this plan may have ended in the old system. It comes in paused; check it before you turn it on.`;
       notes.push(ended);
@@ -404,13 +392,17 @@ export function planVisitFile(
     const priced = (vs: Visit[]) => vs.map((v) => v.cents).filter((c): c is number => !!c && c > 0);
     const plain = (vs: Visit[]) => vs.filter((v) => !v.initial);
     const prices = priced(plain(upcoming)).length ? priced(plain(upcoming)) : priced(plain(usable));
-    const visitNotes = [
-      ...new Set(
-        [...usable, ...visits.filter((v) => !usable.includes(v))]
-          .filter((v) => v.note)
-          .map((v) => `${v.on ?? "no date"}: ${v.note}`),
-      ),
-    ];
+    // The same note on every visit is kept once, with the dates it was on
+    // (53 visits with one gate note filled a whole note: #1069, Rigel).
+    const byNote = new Map<string, string[]>();
+    for (const v of [...usable, ...visits.filter((v) => !usable.includes(v))]) {
+      if (v.note) byNote.set(v.note, [...(byNote.get(v.note) ?? []), v.on ?? "no date"]);
+    }
+    const visitNotes = [...byNote].map(([note, on]) =>
+      on.length <= 3
+        ? `${on.join(", ")}: ${note}`
+        : `${on.length} visits, ${on[0]} to ${on.at(-1)}: ${note}`,
+    );
     const row = (next ?? last ?? usable.at(-1)!).row;
     // No price above zero on any visit: the chosen visit's own price, so
     // the plan import refuses a $0 price by name rather than as missing.
@@ -418,7 +410,7 @@ export function planVisitFile(
     out.push({
       ...row,
       [VISITS_FREQUENCY_COLUMN]: schedule?.text ?? fromName ?? "",
-      [VISITS_FIRST_COLUMN]: dates[0],
+      [VISITS_FIRST_COLUMN]: usable[0].on!,
       [VISITS_LAST_COLUMN]: last?.on ?? "",
       [VISITS_NEXT_COLUMN]: next?.on ?? "",
       [VISITS_AFTER_NEXT_COLUMN]: afterNext?.on ?? "",
