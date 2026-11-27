@@ -110,9 +110,15 @@ export const IMPORT_SOURCE_LABELS: Record<ImportSource, string> = {
 };
 
 /** Sources whose column names were VERIFIED against a real export (Jobber,
- *  Housecall Pro and Time To Pet trials, 2026-11-27; tests/fixtures/imports). The rest are recognized by best guess:
+ *  Housecall Pro, Time To Pet and Sweep&Go trials, 2026-11-27;
+ *  tests/fixtures/imports). The rest are recognized by best guess:
  *  the mapping is a starting point, and the owner checks every column. */
-export const VERIFIED_SOURCES: readonly ImportSource[] = ["jobber", "housecall_pro", "time_to_pet"];
+export const VERIFIED_SOURCES: readonly ImportSource[] = [
+  "jobber",
+  "housecall_pro",
+  "time_to_pet",
+  "sweepgo",
+];
 export const isVerifiedSource = (source: string): boolean =>
   source === "generic_csv" || (VERIFIED_SOURCES as readonly string[]).includes(source);
 
@@ -227,6 +233,11 @@ export const SERVICE_TARGET_FIELDS = [
   // day a job was closed there (a closed job is refused, with the reason).
   "end_date",
   "closed_date",
+  // The plan's status there (a cancelled plan is refused, with the reason)
+  // and what its price is per (a price per month is refused): Sweep&Go's
+  // subscriptions "Status" and "Revenue Type".
+  "plan_status",
+  "price_basis",
   "dog_count",
   "billing",
   // How often the client is invoiced (clients.billing_frequency), when the
@@ -280,17 +291,25 @@ const CLIENT_PRESETS_OWN: Record<string, PresetMap> = {
     pets: ["pets", "pet names", "pet_names", "animals", "dogs", "dog names"],
     balance: ["balance", "account balance", "open balance", "amount due", "outstanding balance"],
   },
-  // Sweep&Go documents the export path (Clients > Residential Clients > Client
-  // List CSV) but not its column names. These are GUESSES until a real file
-  // is in hand; the page says so.
+  // Sweep&Go's Clients > Residential Clients > Client List CSV, verified
+  // against a real file (trial, no card, 2026-11-27): First Name, Last Name,
+  // Email, Status, Cell Phone Number, Home Phone Number, Address, City,
+  // State, Zip Code, Referral Source, Referral Source Details, SMS Messaging
+  // Consent, Created At. An empty cell reads "No data" (tableFromCsv clears
+  // it). First + Last Name make the name; Home Phone Number stands in on a
+  // row with no cell phone. It has no dogs, gate code or notes. Reports >
+  // Referral Sources (Signup Date, Client Name, Referral Source, Referral
+  // Detail, Tracking Link) is read the same way.
   sweepgo: {
-    display_name: ["Client Name", "Customer Name", "Name"],
-    account_type: ["Account Type", "Type"],
-    primary_email: ["Email", "Email Address"],
-    primary_phone: ["Phone", "Mobile", "Phone Number"],
-    external_id: ["Client ID", "Customer ID", "ID"],
-    notes: ["Notes"],
-    pets: ["Dogs", "Dog Names", "Pets"],
+    display_name: ["Client Name"],
+    primary_email: ["Email"],
+    primary_phone: ["Cell Phone Number", "Home Phone Number"],
+    archived: ["Status"],
+    lead_source: ["Referral Source"],
+    street: ["Address"],
+    city: ["City"],
+    region: ["State"],
+    postal_code: ["Zip Code"],
   },
   // Two Jobber client-export dialects, both verified (#857):
   //   A. the help-center sample file (jobber-clients-sample-file.csv):
@@ -525,6 +544,14 @@ const SOURCE_SIGNATURES: Partial<Record<ImportSource, string[][]>> = {
     ["Key Name/Code"],
     ["Client's Pets"],
   ],
+  // Real exports, 2026-11-27: Client List CSV, Residential Subscriptions,
+  // Completed Jobs, Referral Sources.
+  sweepgo: [
+    ["Cell Phone Number", "SMS Messaging Consent"],
+    ["Subs. Name", "Billing Option"],
+    ["Client First Name", "Field Tech", "Service Date"],
+    ["Referral Detail", "Tracking Link"],
+  ],
   gingr: [
     ["Animals", "Cell Phone"],
     ["Animals", "Home phone"],
@@ -586,12 +613,16 @@ const ENTITY_SIGNATURES: Array<{ entity: ImportEntity; headers: string[] }> = [
   { entity: "services", headers: ["Schedule start date", "Visit frequency"] },
   { entity: "services", headers: ["Job scheduled start date", "Customer name"] },
   { entity: "services", headers: ["Service Revenue", "Staff Paid"] },
+  { entity: "services", headers: ["Subs. Name", "Billing Option"] },
+  { entity: "services", headers: ["Client First Name", "Field Tech", "Service Date"] },
   { entity: "balances", headers: ["HCP Id", "Line Items"] },
   { entity: "balances", headers: ["Invoiced Amount", "Balance Due"] },
   { entity: "dogs", headers: ["Pet Type", "Pet Deceased?"] },
   { entity: "clients", headers: ["Address_1 Street Line 1"] },
   { entity: "clients", headers: ["Full Name", "Pet Names"] },
   { entity: "clients", headers: ["J-ID", "Display Name"] },
+  { entity: "clients", headers: ["Cell Phone Number", "SMS Messaging Consent"] },
+  { entity: "clients", headers: ["Referral Detail", "Tracking Link"] },
 ];
 
 export function detectImportEntity(headers: readonly string[]): ImportEntity | null {
@@ -897,19 +928,32 @@ const SERVICE_PRESETS: Record<string, PresetMap> = {
       "Product/Service",
     ],
   },
+  // Sweep&Go's Billing > Residential Subscriptions > CSV, verified against
+  // a real file (trial, 2026-11-27): Status, Revenue, Revenue Type, Tip,
+  // Billing Option, Billing Interval, End of Billing Period, Client Name,
+  // Start Date, End Date, Subs. Name, Termination Reason, Termination
+  // Comment, Address. "Subs. Name" ("Regular Plan - 2d-1xW") is the plan,
+  // its dogs and how often (sweepGoPlanCode); "Revenue" is per cleanup when
+  // "Revenue Type" says so; "Address" is the whole address in one cell. Its
+  // Reports > Completed Jobs (Service Date, Client First/Last Name,
+  // Service, Revenue, Field Tech) is a visits file (import-visit-plans.ts).
   sweepgo: {
-    client_external_id: ["Client ID", "Customer ID"],
-    client_name: ["Client Name", "client_name", "Customer Name", "Name"],
-    client_email: ["Email", "Client Email"],
-    frequency: ["Frequency", "Cleanup Frequency", "Service Frequency"],
-    price_per_visit: ["Price", "Price Per Cleanup", "Rate", "Amount"],
-    service_day: ["Service Day", "Day", "Cleanup Day"],
-    start_date: ["Start Date", "Created"],
-    last_visit: ["Last Cleanup", "Last Visit", "Last Service Date"],
-    next_visit: ["Next Cleanup", "Next Visit", "Next Service Date"],
-    dog_count: ["Number of Dogs", "Dogs", "Dog Count"],
-    billing: ["Billing", "Billing Type"],
-    service: ["Service", "Service Name", "Service Type", "Plan"],
+    client_name: ["Client Name"],
+    frequency: ["Subs. Name", VISITS_FREQUENCY_COLUMN],
+    price_per_visit: ["Revenue"],
+    price_basis: ["Revenue Type"],
+    plan_status: ["Status"],
+    start_date: ["Start Date", VISITS_FIRST_COLUMN],
+    end_date: ["End Date"],
+    last_visit: [VISITS_LAST_COLUMN],
+    next_visit: [VISITS_NEXT_COLUMN],
+    visit_after_next: [VISITS_AFTER_NEXT_COLUMN],
+    dog_count: ["Subs. Name", "Service"],
+    billing: ["Billing Option"],
+    billing_frequency: ["Billing Interval"],
+    service_street: ["Address"],
+    assigned_to: ["Field Tech"],
+    service: ["Subs. Name"],
   },
   // Housecall Pro's Jobs export (real, 2026-11-27): one row per occurrence
   // of a recurring job, a year ahead. plansFromVisits

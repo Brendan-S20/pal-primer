@@ -16,6 +16,10 @@
 //   report's date range and a "Totals: " line. Neither is a row of data.
 // - Housecall Pro writes ids as Excel formulas so a spreadsheet keeps them as
 //   text: ="1". The value is 1.
+// - Sweep&Go writes "No data" in every empty cell, and ends its
+//   subscriptions export with a blank line and a summary ("Total:", "4",
+//   then "Cleanup Subscriptions:", "4"). The cell is empty; the summary is
+//   not a row of data.
 //
 // Every line that is not imported is listed in `skipped` with the reason, for
 // the page to show; nothing is dropped without a word.
@@ -29,11 +33,14 @@ export type FileTable = {
 
 const blank = (s: string | undefined) => (s ?? "").trim() === "";
 
-/** ="1" → 1, the way Excel would show it. */
+const NO_DATA = /^\s*no data\s*$/i;
+
+/** ="1" → 1, the way Excel would show it; Sweep&Go's "No data" → empty. */
 function cellValue(raw: unknown): string {
   const s = raw === undefined || raw === null ? "" : String(raw);
   const formula = s.match(/^="(.*)"$/s);
-  return formula ? formula[1] : s;
+  const v = formula ? formula[1] : s;
+  return NO_DATA.test(v) ? "" : v;
 }
 
 const YES_NO = /^(yes|no|y|n|true|false)$/i;
@@ -68,6 +75,9 @@ export function isGroupLabelRow(row: readonly string[], headers: readonly string
 }
 
 const TOTALS = /^(grand\s+)?totals?\s*:?\s*$/i;
+/** A summary line under a totals line: a label ending in ":" and at most
+ *  one value beside it ("Cleanup Subscriptions:", "4"). */
+const SUMMARY_LABEL = /:\s*$/;
 
 /** The rows of a parsed CSV (header row first, as Papa Parse returns it
  *  without `header: true`) as a header list and keyed rows. */
@@ -114,12 +124,22 @@ export function tableFromCsv(cells: readonly (readonly unknown[])[]): FileTable 
   const unnamed = headers.map((h, i) => (h === "" ? i : -1)).filter((i) => i >= 0);
 
   const kept: string[][] = [];
+  let pastTotals = false;
   for (let n = body; n < lines.length; n++) {
     const line = lines[n];
     if (line.every((c) => blank(c))) continue;
     const firstFilled = line.find((c) => !blank(c))!.trim();
     if (TOTALS.test(firstFilled)) {
+      pastTotals = true;
       skipped.push({ line: n + 1, reason: `A totals line ("${firstFilled}")` });
+      continue;
+    }
+    if (
+      pastTotals &&
+      SUMMARY_LABEL.test(firstFilled) &&
+      line.filter((c) => !blank(c)).length <= 2
+    ) {
+      skipped.push({ line: n + 1, reason: `A summary line, not a row of data ("${firstFilled}")` });
       continue;
     }
     // Text only under columns with no name: a report's title or date range.

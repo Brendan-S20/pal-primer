@@ -10,8 +10,10 @@ const ROOT = join(import.meta.dirname, "..");
 const FILE = "src/routes/_authenticated/imports.index.tsx";
 const src = readFileSync(join(ROOT, FILE), "utf8");
 
+// Since #1069 the Sweep&Go hint follows a real export (trial, 2026-11-27):
+// the Client List CSV and Billing > Residential Subscriptions.
 const SWEEPGO =
-  "In Sweep&Go, go to Clients > Residential Clients, open the three dots menu and choose Client List CSV. For commercial clients, go to Clients > Commercial Clients, open the three dots menu and export the client list or the locations list. Sweep&Go's help does not describe a dogs export or a balance export, so use the HoundStack template for those if you need them.";
+  "In Sweep&Go, go to Clients > Residential Clients, open the three dots menu and choose Client List CSV. Upload it as it came: the name, cell phone (or home phone), email, status, referral source and the address all come through. For recurring services, open Billing > Residential Subscriptions, add Canceled to the status filter if you like, and choose CSV: the plan, its dogs and how often (\"2d-1xW\"), the price per cleanup and the start and end dates come through, and canceled plans are refused with the reason. Sweep&Go's exports have no dogs' names, gate codes or last visit, so add those by hand. Every plan comes in paused for you to check and turn on. Import clients first, then recurring services.";
 // Since #857 the Jobber hint no longer asks the owner to add a frequency
 // column. A real Recurring jobs report (Jobber trial, 2026-11-27) does have
 // "Visit frequency", and the Visits report adds the last and next visit.

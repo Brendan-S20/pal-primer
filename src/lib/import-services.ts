@@ -23,6 +23,7 @@
 // below is the one place the plan row is built, and a test holds it to the
 // old shape.
 
+import { FIRST_NAME_COLUMNS, LAST_NAME_COLUMNS } from "@/lib/import-leftovers";
 import { noVisit, planAnchor, statedMonthDay } from "@/lib/import-plan-anchor";
 import type { ServiceLine } from "@/lib/service-lines";
 import { orgLocalDay, orgToday } from "@/lib/org-day";
@@ -126,6 +127,8 @@ const NUMBER_WORDS: Record<string, number> = {
 export function parseFrequency(text: string | null | undefined): ImportFrequency | null {
   const s = (text ?? "").toLowerCase().trim();
   if (!s) return null;
+  const code = sweepGoPlanCode(s);
+  if (code) return code.frequency;
   if (/one[- ]?(time|off)|single|once\b/.test(s)) return { frequency: "one_time" };
   if (/twice (a |per )?week|2x ?(a |per )?week|two times (a |per )?week|semi[- ]?weekly/.test(s)) {
     return { frequency: "twice_weekly" };
@@ -146,6 +149,36 @@ export function parseFrequency(text: string | null | undefined): ImportFrequency
   // A bare weekday ("Tuesday") in a frequency column means weekly on it.
   if (parseWeekdays(s).length) return { frequency: "weekly" };
   return null;
+}
+
+/** Sweep&Go names a plan by dogs and visits ("Regular Plan - 2d-1xW": two
+ *  dogs, once a week; real export, 2026-11-27): "1xW" weekly, "2xW" twice a
+ *  week, "bW" every other week, "1xM" monthly. Null when the text holds no
+ *  such code; a code with a count HoundStack has no plan for ("3xW") gives
+ *  a null frequency, so the row is refused with the text quoted. */
+export function sweepGoPlanCode(
+  text: string | null | undefined,
+): { dogs: number | null; frequency: ImportFrequency | null; label: string | null } | null {
+  const m = (text ?? "").match(/(?:^|[\s-])(?:(\d{1,2})d-)?(?:(\d)x([wm])|(b)w)\s*$/i);
+  if (!m) return null;
+  const [, dogs, times, per, every] = m;
+  const n = Number(times);
+  const unit = (per ?? "").toLowerCase();
+  const frequency: ImportFrequency | null = every
+    ? { frequency: "biweekly" }
+    : unit === "w" && n === 1
+      ? { frequency: "weekly" }
+      : unit === "w" && n === 2
+        ? { frequency: "twice_weekly" }
+        : unit === "m" && n === 1
+          ? { frequency: "monthly" }
+          : null;
+  const label =
+    (text ?? "")
+      .slice(0, m.index)
+      .replace(/[\s-]+$/, "")
+      .trim() || null;
+  return { dogs: dogs ? Number(dogs) : null, frequency, label };
 }
 
 /** "$1,234.50", "1234.5", "(45.00)" → cents. Null when not a number. The
@@ -514,10 +547,16 @@ export function pickPlanProperty<P extends { street: string | null }>(
   if (!props.length) return { prop: null, matched: false };
   const want = squashStreet(serviceStreet);
   if (!want) return { prop: props[0], matched: true };
-  const hit = props.find((p) => {
-    const have = squashStreet(p.street);
-    return have === want || have.startsWith(`${want} `);
-  });
+  // Sweep&Go's subscriptions export writes the whole address in one cell
+  // ("101 Test Lane, Austin, Texas 78701"), so a file street that begins
+  // with the property's street matches too, after an exact match.
+  const hit =
+    props.find((p) => squashStreet(p.street) === want) ??
+    props.find((p) => squashStreet(p.street).startsWith(`${want} `)) ??
+    props.find((p) => {
+      const have = squashStreet(p.street);
+      return !!have && want.startsWith(`${have} `);
+    });
   return hit ? { prop: hit, matched: true } : { prop: props[0], matched: false };
 }
 
@@ -535,19 +574,54 @@ export function staffByName<S extends { id: string; display_name: string | null 
   return hits.length === 1 ? hits[0] : null;
 }
 
+const byName = (raw: Record<string, unknown>, names: readonly string[]) => {
+  const want = new Set(names.map((n) => n.toLowerCase()));
+  const key = Object.keys(raw).find((k) => want.has(k.trim().toLowerCase()));
+  return key ? String(raw[key] ?? "").trim() : "";
+};
+function splitName(raw: Record<string, unknown>): string | null {
+  const name = [byName(raw, FIRST_NAME_COLUMNS), byName(raw, LAST_NAME_COLUMNS)]
+    .filter(Boolean)
+    .join(" ");
+  return name || null;
+}
+
+const ENDED_STATUS = /^(cancell?ed|terminated|ended|closed|inactive|archived|expired)$/i;
+const PER_VISIT = /\b(per|each|every|a)\s+(cleanup|clean-up|visit|service|job|walk|session)\b/i;
+
 export function mapServiceRow(
   raw: Record<string, unknown>,
   mapping: Mapping,
   tz?: string | null,
 ): { mapped: MappedService | null; error: string | null } {
   const client_external_id = cell(raw, mapping, "client_external_id");
-  const client_name = cell(raw, mapping, "client_name");
+  // A file that splits the name (Sweep&Go's Completed Jobs: "Client First
+  // Name", "Client Last Name") gives it whole when no column is mapped.
+  const client_name = cell(raw, mapping, "client_name") ?? splitName(raw);
   const client_email =
     cell(raw, mapping, "client_email")
       ?.split(/[;,\s]+/)[0]
       ?.toLowerCase() ?? null;
   if (!client_external_id && !client_name && !client_email) {
     return { mapped: null, error: "Missing the client (map an ID, a name or an email column)" };
+  }
+  // A plan cancelled in the old system is not a live plan (Sweep&Go's
+  // subscriptions "Status": Active, Paused, Pending or Canceled).
+  const statusText = cell(raw, mapping, "plan_status");
+  if (statusText && ENDED_STATUS.test(statusText)) {
+    return {
+      mapped: null,
+      error: `"${statusText}" in the old system, so it is not imported as a live plan. Add it by hand if it starts again.`,
+    };
+  }
+  // What the price is per (Sweep&Go's "Revenue Type": "per cleanup"). A
+  // price per month or per billing period is not a price per visit.
+  const basisText = cell(raw, mapping, "price_basis");
+  if (basisText && !PER_VISIT.test(basisText)) {
+    return {
+      mapped: null,
+      error: `The price is "${basisText}", not per visit. Add this plan by hand with its price per visit.`,
+    };
   }
   const freqText = cell(raw, mapping, "frequency");
   const dayText = cell(raw, mapping, "service_day");
@@ -573,6 +647,15 @@ export function mapServiceRow(
     return {
       mapped: null,
       error: priceText ? `Price not understood: "${priceText}"` : "Missing price per visit",
+    };
+  }
+  // A zero price is a free visit, not the plan's price (Sweep&Go's Completed
+  // Jobs lists the first "Initial" cleanup at 0.00; real export,
+  // 2026-11-27). A plan at $0 would bill nothing, so it is refused.
+  if (price === 0) {
+    return {
+      mapped: null,
+      error: `The price is "${priceText}" in the file, so it is not the plan's price. Add this plan by hand with its price per visit.`,
     };
   }
   const days = parseWeekdays(dayText ?? freqText);
@@ -629,7 +712,16 @@ export function mapServiceRow(
   const serviceStreet = cell(raw, mapping, "service_street");
   const assignedTo = cell(raw, mapping, "assigned_to")?.split(/[;,]/)[0]?.trim() || null;
   const dogText = cell(raw, mapping, "dog_count");
-  const dogs = dogText ? Number(dogText.replace(/[^\d]/g, "")) : NaN;
+  const dogCode = sweepGoPlanCode(dogText);
+  const dogs = dogCode
+    ? (dogCode.dogs ?? NaN)
+    : dogText
+      ? Number(dogText.replace(/[^\d]/g, ""))
+      : NaN;
+  // "Regular Plan - 2d-1xW" is the plan "Regular Plan"; the code is its
+  // dogs and frequency, read above.
+  const serviceText = cell(raw, mapping, "service");
+  const serviceName = sweepGoPlanCode(serviceText)?.label ?? serviceText;
   return {
     mapped: {
       client_external_id,
@@ -665,7 +757,7 @@ export function mapServiceRow(
       billing_frequency:
         parseBillingFrequency(cell(raw, mapping, "billing_frequency")) ??
         parseBillingFrequency(billText),
-      service_name: cell(raw, mapping, "service"),
+      service_name: serviceName,
       ...(serviceStreet ? { service_street: serviceStreet } : {}),
       ...(assignedTo ? { assigned_to: assignedTo } : {}),
     },

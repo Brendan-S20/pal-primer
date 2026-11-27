@@ -27,3 +27,7 @@ sample-needed).
 | `time-to-pet-visits.csv` | A real export, unedited: Reporting > Schedule > Visits |
 | `time-to-pet-first-last-visit-report.csv` | A real export, unedited: Reporting > Schedule > Upcoming First/Last Visits |
 | `time-to-pet-service-rates.csv` | A real export, unedited: Settings > Advanced > Bulk Custom Client Rates. One column per service, holding each client's rate |
+| `sweepgo-client-list.csv` | A real export, unedited: Sweep&Go trial (no card), Clients > Residential Clients > three dots > Client List CSV (2026-11-27). Four invented clients; an empty cell reads "No data" |
+| `sweepgo-residential-subscriptions.csv` | A real export, unedited: the same trial's Billing > Residential Subscriptions with Canceled added to the status filter, then CSV. A blank line and three summary lines after the data |
+| `sweepgo-completed-jobs.csv` | A real export, unedited: the same trial's Reports > Completed Jobs, then CSV. One dispatched initial cleanup |
+| `sweepgo-referral-sources.csv` | A real export, unedited: the same trial's Reports > Referral Sources, then CSV |

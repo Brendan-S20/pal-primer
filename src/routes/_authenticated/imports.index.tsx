@@ -34,6 +34,7 @@ import { JobberVisitsFile } from "@/components/imports/JobberVisitsFile";
 import {
   JOBBER_LAST_VISIT_COLUMN,
   JOBBER_NEXT_VISIT_COLUMN,
+  JOBBER_AFTER_NEXT_COLUMN,
   mergeJobberVisits,
   withVisitMapping,
 } from "@/lib/import-jobber-visits";
@@ -48,7 +49,7 @@ const SOURCE_LABELS: Record<string, string> = IMPORT_SOURCE_LABELS;
 // Where each vendor's export lives, in the vendor's own words. Upload the
 // file as it came: nothing needs renaming, splitting or adding (#857).
 const SOURCE_HINTS: Record<string, string> = {
-  sweepgo: "In Sweep&Go, go to Clients > Residential Clients, open the three dots menu and choose Client List CSV. For commercial clients, go to Clients > Commercial Clients, open the three dots menu and export the client list or the locations list. Sweep&Go's help does not describe a dogs export or a balance export, so use the HoundStack template for those if you need them.",
+  sweepgo: "In Sweep&Go, go to Clients > Residential Clients, open the three dots menu and choose Client List CSV. Upload it as it came: the name, cell phone (or home phone), email, status, referral source and the address all come through. For recurring services, open Billing > Residential Subscriptions, add Canceled to the status filter if you like, and choose CSV: the plan, its dogs and how often (\"2d-1xW\"), the price per cleanup and the start and end dates come through, and canceled plans are refused with the reason. Sweep&Go's exports have no dogs' names, gate codes or last visit, so add those by hand. Every plan comes in paused for you to check and turn on. Import clients first, then recurring services.",
   jobber: "In Jobber, go to Clients > More Actions > Export Clients and choose CSV. Jobber emails the file (up to 1,500 clients per file, admin users only). Upload it as it came: the service address, tags, internal notes and account balance all come through. For recurring services, export Insights > Reports > Recurring jobs with All Columns: how often, the price per visit and the start date come through. Add the Visits report too and each plan also gets its last and next visit. Plans billed as a fixed price are refused, since Jobber's total for them is per billing period, not per visit. Every plan comes in paused for you to check and turn on. Import clients first, then recurring services.",
   housecall_pro: "In Housecall Pro, go to Customers > Actions > Export and choose Send file; the CSV is emailed to you. Upload it as it came: the name, phones, email, tags, notes, lead source and the service address all come through. For recurring services, open Jobs, remove the Completed between filter, choose Add all columns and Export: each recurring job is read from its visits, so how often, the price per visit, and the last and next visit come from the visit dates. For balances, open Invoices, choose Table columns > Excel > Download CSV. Import clients first, then recurring services.",
   time_to_pet: "In Time To Pet, open the Client List and choose Export Client Data (one Full Name column, with Address, City, State and Zip Code). For pets, choose Export Pet Data and tick Include Client Fields so each pet names its owner; pets that are not dogs, or are marked deceased, are left out with the reason. For recurring services, export Reporting > Schedule > Visits: each client's service is read from its visits, so how often, the price per visit, and the last and next visit come from the visit dates. For balances, export Reporting > Financial > Sales. Import clients first, then pets and recurring services.",
@@ -124,6 +125,8 @@ const FIELD_LABELS: Record<string, string> = {
   visit_after_next: "Visit after next",
   end_date: "End date (the plan stops)",
   closed_date: "Closed date (a closed job is not imported)",
+  plan_status: "Plan status (a cancelled plan is not imported)",
+  price_basis: "What the price is per (only a price per visit is imported)",
   dog_count: "Number of dogs",
   billing: "Billing (prepaid or after each visit)",
   service: "Service (which of your services the plan is for)",
@@ -135,7 +138,7 @@ const FIELD_LABELS: Record<string, string> = {
 const TEMPLATE_HEADERS: Record<ImportEntity, Record<string, string[]>> = {
   clients: {
     generic_csv: ["name", "email", "phone", "type", "external_id", "notes"],
-    sweepgo: ["Client ID", "Client Name", "Email", "Phone", "Account Type", "Notes"],
+    sweepgo: ["First Name", "Last Name", "Email", "Status", "Cell Phone Number", "Address", "City", "State", "Zip Code"],
     jobber: ["Client ID", "Company/Client name", "Primary email", "Mobile phone number", "Client type", "Notes"],
     housecall_pro: ["Customer ID", "First Name", "Last Name", "Email", "Phone", "Type", "Notes"],
     time_to_pet: ["Client ID", "Client", "Email", "Phone", "Type", "Notes"],
@@ -172,7 +175,7 @@ const TEMPLATE_HEADERS: Record<ImportEntity, Record<string, string[]>> = {
   services: {
     generic_csv: ["client_id", "client_name", "frequency", "price", "day", "start_date", "dogs"],
     jobber: ["Client J-ID", "Client name", "Visit frequency", "Visit total", "Day", "Start date", "Number of dogs"],
-    sweepgo: ["Client ID", "Client Name", "Frequency", "Price Per Cleanup", "Service Day", "Start Date", "Number of Dogs"],
+    sweepgo: ["Status", "Revenue", "Revenue Type", "Client Name", "Start Date", "End Date", "Subs. Name", "Address"],
   },
   balances: {
     generic_csv: ["client_id", "client_name", "balance", "due_date", "note"],
@@ -325,7 +328,7 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
     e === "services" ? visitFileColumns(s, hs) : null;
   const withVisitColumns = (hs: string[], s: string, e: ImportEntity, v: unknown[] | null) =>
     joinsVisits(s, e, v) && hs.length
-      ? [...hs, JOBBER_LAST_VISIT_COLUMN, JOBBER_NEXT_VISIT_COLUMN]
+      ? [...hs, JOBBER_LAST_VISIT_COLUMN, JOBBER_NEXT_VISIT_COLUMN, JOBBER_AFTER_NEXT_COLUMN]
       : visitsFile(s, e, hs)
         ? [...hs, ...VISITS_COLUMNS]
         : hs;

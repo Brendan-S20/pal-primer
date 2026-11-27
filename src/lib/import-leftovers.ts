@@ -96,6 +96,8 @@ export const OTHER_PHONE_COLUMNS = [
   "Work Phone #s",
   "Client Work Phone",
   "Other Phone #s",
+  // Sweep&Go's Client List CSV.
+  "Home Phone Number",
 ];
 
 /** A leftover column the client mapper still reads when the mapped phone
@@ -116,7 +118,8 @@ const HELPERS_BY_ENTITY: Record<string, string[]> = {
   ],
   properties: [...ADDRESS_2_COLUMNS],
   dogs: [...PET_TYPE_COLUMNS, ...PET_DECEASED_COLUMNS],
-  services: [],
+  // A plans file that splits the client's name (Sweep&Go's Completed Jobs).
+  services: [...FIRST_NAME_COLUMNS, ...LAST_NAME_COLUMNS],
   balances: [],
 };
 
@@ -130,7 +133,9 @@ export function helperRole(entity: string, header: string): string | null {
   const has = (list: string[]) => list.some((c) => norm(c) === h);
   if (!(HELPERS_BY_ENTITY[entity] ?? []).some((c) => norm(c) === h)) return null;
   if (has(FIRST_NAME_COLUMNS) || has(LAST_NAME_COLUMNS))
-    return "Client name, when the name column is blank (first + last)";
+    return entity === "services"
+      ? "Client, when no client column is set (first + last)"
+      : "Client name, when the name column is blank (first + last)";
   if (has(COMPANY_NAME_COLUMNS)) return "Company name";
   if (has(PET_TYPE_COLUMNS)) return "Read to leave out a pet that is not a dog, with the reason";
   if (has(PET_DECEASED_COLUMNS)) return "Read to leave out a pet marked deceased, with the reason";

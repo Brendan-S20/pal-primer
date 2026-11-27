@@ -38,13 +38,16 @@ export const VISITS_COLUMNS = [
 type Row = Record<string, unknown>;
 export type VisitFileColumns = {
   client: string;
+  /** The last name, when the file keeps it apart from `client`; the plan
+   *  then finds its client by both (mapServiceRow reads them by name). */
+  clientLast?: string | null;
   service: string | null;
   date: string;
   status: string | null;
   street: string | null;
 };
 
-type Spec = { [K in keyof VisitFileColumns]: string[] } & { signature: string[] };
+type Spec = { [K in keyof VisitFileColumns]-?: string[] } & { signature: string[] };
 
 /** The visit files read off real exports, per source. A file is one of these
  *  when it carries every signature column. */
@@ -57,6 +60,22 @@ const VISIT_FILES: Record<string, Spec[]> = {
       date: ["Job scheduled start date"],
       status: ["Job status"],
       street: ["Street"],
+      clientLast: [],
+    },
+  ],
+  // Sweep&Go's Reports > Completed Jobs (real, 2026-11-27): "Service Date",
+  // "Client First Name", "Client Last Name", "Address", "Status"
+  // (dispatched, completed), "Service" (the plan code, "2d-1xW"),
+  // "Revenue", "Field Tech", "Job Type" (Initial or Regular).
+  sweepgo: [
+    {
+      signature: ["Service Date", "Client First Name", "Field Tech"],
+      client: ["Client First Name"],
+      clientLast: ["Client Last Name"],
+      service: ["Service"],
+      date: ["Service Date"],
+      status: ["Status"],
+      street: ["Address"],
     },
   ],
   time_to_pet: [
@@ -68,6 +87,7 @@ const VISIT_FILES: Record<string, Spec[]> = {
       date: ["Start"],
       status: ["Status"],
       street: [],
+      clientLast: [],
     },
     // Not Reporting > Schedule > Upcoming First/Last Visits: it lists the
     // first and last visit of each trip, so its one date is the end of a
@@ -93,6 +113,7 @@ export function visitFileColumns(
       date: find(spec.date)!,
       status: find(spec.status),
       street: find(spec.street),
+      ...(spec.clientLast.length ? { clientLast: find(spec.clientLast) } : {}),
     };
   }
   return null;
@@ -173,8 +194,12 @@ export function plansFromVisits(
 ): Row[] {
   type Visit = { row: Row; on: string; done: boolean };
   const groups = new Map<string, Visit[]>();
+  const clientOf = (row: Row) =>
+    [str(row[cols.client]), cols.clientLast ? str(row[cols.clientLast]) : ""]
+      .filter(Boolean)
+      .join(" ");
   for (const row of rows) {
-    const client = str(row[cols.client]);
+    const client = clientOf(row);
     const on = parseImportDate(str(row[cols.date]), tz);
     const status = cols.status ? str(row[cols.status]) : "";
     if (!client || !on || CALLED_OFF.test(status)) continue;
