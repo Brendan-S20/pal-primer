@@ -77,6 +77,7 @@ import {
 } from "@/lib/import-services";
 import {
   isJobberVisitsReport,
+  JOBBER_AFTER_NEXT_COLUMN,
   JOBBER_LAST_VISIT_COLUMN,
   JOBBER_NEXT_VISIT_COLUMN,
   mergeJobberVisits,
@@ -269,7 +270,12 @@ describe("Jobber's Recurring jobs report (real export)", () => {
   const { headers, rows } = fixture("jobber-recurring-jobs.csv");
   const visits = fixture("jobber-visits.csv");
   const joined = mergeJobberVisits(rows, visits.rows, TODAY) as Row[];
-  const joinedHeaders = [...headers, JOBBER_LAST_VISIT_COLUMN, JOBBER_NEXT_VISIT_COLUMN];
+  const joinedHeaders = [
+    ...headers,
+    JOBBER_LAST_VISIT_COLUMN,
+    JOBBER_NEXT_VISIT_COLUMN,
+    JOBBER_AFTER_NEXT_COLUMN,
+  ];
   const mapping = autoMap("jobber", joinedHeaders, "services");
 
   it("is recognized as Jobber and maps how often, the price, the start, and the last and next visit", () => {
@@ -284,6 +290,9 @@ describe("Jobber's Recurring jobs report (real export)", () => {
       start_date: "Schedule start date",
       last_visit: JOBBER_LAST_VISIT_COLUMN,
       next_visit: JOBBER_NEXT_VISIT_COLUMN,
+      visit_after_next: JOBBER_AFTER_NEXT_COLUMN,
+      end_date: "Schedule end date",
+      closed_date: "Closed date",
       service: "Line items",
       billing: "Billing type",
       billing_frequency: "Billing frequency",
@@ -298,7 +307,6 @@ describe("Jobber's Recurring jobs report (real export)", () => {
         "Job title",
         "Completed visits",
         "Created date",
-        "Schedule end date",
       ]),
     );
   });
@@ -358,7 +366,11 @@ describe("Jobber's Recurring jobs report (real export)", () => {
     });
     const m = mapServiceRow(rows[2], alone).mapped!;
     expect(m).toMatchObject({ frequency: "weekly", price_cents: 1800, started_on: "2026-09-01" });
-    expect(planVisitsNote("Jobber", m)).toBeNull();
+    // The schedule end date is the plan's, and the note says so.
+    expect(m.ends_on).toMatch(/^2027-/);
+    expect(planVisitsNote("Jobber", m)).toBe(
+      `Imported plan from Jobber. It ends ${m.ends_on}, as it did in Jobber; clear the end date on the plan to keep it going.`,
+    );
   });
 
   it("refuses a fixed-price job: its Total ($) is the amount per billing period, not per visit", () => {

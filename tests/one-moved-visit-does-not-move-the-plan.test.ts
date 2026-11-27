@@ -11,6 +11,7 @@ import { autoMap } from "@/lib/imports.functions";
 import { mapServiceRow, planVisitsNote } from "@/lib/import-services";
 import { planAnchor, sameSchedule } from "@/lib/import-plan-anchor";
 import {
+  JOBBER_AFTER_NEXT_COLUMN,
   JOBBER_LAST_VISIT_COLUMN,
   JOBBER_NEXT_VISIT_COLUMN,
   mergeJobberVisits,
@@ -186,12 +187,13 @@ describe('"-", "N/A" or "Never" in a visit column is no visit, not a refused row
 
 describe("adding or removing the Visits report keeps the owner's own choices", () => {
   const owner = { ...mapping, last_visit: null, next_visit: null, price_per_visit: "Subtotal ($)" };
-  it("added: only the two visit fields change", () => {
+  it("added: only the visit fields change", () => {
     const next = withVisitMapping(owner, true);
     expect(next).toEqual({
       ...owner,
       last_visit: JOBBER_LAST_VISIT_COLUMN,
       next_visit: JOBBER_NEXT_VISIT_COLUMN,
+      visit_after_next: JOBBER_AFTER_NEXT_COLUMN,
     });
   });
   it("added when the owner already chose a column for last visit: that choice stays", () => {

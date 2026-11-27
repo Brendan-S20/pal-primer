@@ -8,15 +8,17 @@
 // columns were read off real exports from a Jobber trial on 2026-11-27.
 //
 // This joins the two files in the browser, before the preview: each plan row
-// gains the job's last completed visit and its next visit still to come, as
-// two named columns the services mapping reads (last_visit, next_visit). No
-// value is made up: a job with no completed visit gets no last visit, and a
-// job with nothing scheduled from today on gets no next visit.
+// gains the job's last completed visit and its next two visits still to
+// come, as named columns the services mapping reads (last_visit, next_visit,
+// visit_after_next). No value is made up: a job with no completed visit gets
+// no last visit, and a job with nothing scheduled from today on gets no next
+// visit.
 
 import { parseImportDate } from "@/lib/import-services";
 
 export const JOBBER_LAST_VISIT_COLUMN = "Last visit (Visits report)";
 export const JOBBER_NEXT_VISIT_COLUMN = "Next visit (Visits report)";
+export const JOBBER_AFTER_NEXT_COLUMN = "Visit after next (Visits report)";
 
 const JOB = "Job #";
 const DATE = "Date";
@@ -40,12 +42,16 @@ function isCompleted(v: unknown): boolean {
   return s !== "" && s !== "-";
 }
 
-export type JobberVisitDates = { last: string | null; next: string | null };
+export type JobberVisitDates = {
+  last: string | null;
+  next: string | null;
+  afterNext: string | null;
+};
 
 /** Per Job #: the latest visit Date that was completed, and the earliest
- *  visit Date on or after `today` (YYYY-MM-DD) that was not. A visit in the
- *  past that was never completed is neither. Rows whose Date cannot be read
- *  are skipped. */
+ *  two visit Dates on or after `today` (YYYY-MM-DD) that were not. A visit
+ *  in the past that was never completed is none of them. Rows whose Date
+ *  cannot be read are skipped. */
 export function jobberVisitDates(
   visitRows: readonly Row[],
   today: string,
@@ -55,18 +61,23 @@ export function jobberVisitDates(
     const job = str(r[JOB]);
     const day = parseImportDate(str(r[DATE]));
     if (!job || !day) continue;
-    const d = out.get(job) ?? { last: null, next: null };
+    const d = out.get(job) ?? { last: null, next: null, afterNext: null };
     if (isCompleted(r[COMPLETED])) {
       if (!d.last || day > d.last) d.last = day;
-    } else if (day >= today) {
-      if (!d.next || day < d.next) d.next = day;
+    } else if (day >= today && day !== d.next && day !== d.afterNext) {
+      if (!d.next || day < d.next) {
+        d.afterNext = d.next;
+        d.next = day;
+      } else if (!d.afterNext || day < d.afterNext) {
+        d.afterNext = day;
+      }
     }
     out.set(job, d);
   }
   return out;
 }
 
-/** The plan rows with the two visit columns added from the Visits report,
+/** The plan rows with the three visit columns added from the Visits report,
  *  matched by Job #. A plan whose job has no visits in the report keeps
  *  both blank. */
 export function mergeJobberVisits(
@@ -81,23 +92,29 @@ export function mergeJobberVisits(
       ...r,
       [JOBBER_LAST_VISIT_COLUMN]: d?.last ?? "",
       [JOBBER_NEXT_VISIT_COLUMN]: d?.next ?? "",
+      [JOBBER_AFTER_NEXT_COLUMN]: d?.afterNext ?? "",
     };
   });
 }
 
 /** The owner's mapping after the Visits report is added (`on`) or taken
  *  away: every other column keeps the destination the owner gave it. Added,
- *  the two visit columns go to last and next visit unless those already
+ *  the visit columns go to last, next and after-next visit unless those already
  *  read another column; taken away, any field that read them is let go. */
 export function withVisitMapping(
   mapping: Record<string, string | null>,
   on: boolean,
 ): Record<string, string | null> {
   const next = { ...mapping };
-  const visitColumns = [JOBBER_LAST_VISIT_COLUMN, JOBBER_NEXT_VISIT_COLUMN];
+  const visitColumns = [
+    JOBBER_LAST_VISIT_COLUMN,
+    JOBBER_NEXT_VISIT_COLUMN,
+    JOBBER_AFTER_NEXT_COLUMN,
+  ];
   if (on) {
     if (!next.last_visit) next.last_visit = JOBBER_LAST_VISIT_COLUMN;
     if (!next.next_visit) next.next_visit = JOBBER_NEXT_VISIT_COLUMN;
+    if (!next.visit_after_next) next.visit_after_next = JOBBER_AFTER_NEXT_COLUMN;
     return next;
   }
   for (const [field, col] of Object.entries(next)) {

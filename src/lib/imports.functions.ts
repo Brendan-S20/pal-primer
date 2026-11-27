@@ -25,6 +25,7 @@ import {
   parseInactive,
   parsePetNames,
   parseYesNo,
+  OTHER_PHONE_COLUMNS,
   PET_DECEASED_COLUMNS,
   PET_TYPE_COLUMNS,
   rowExtras,
@@ -39,12 +40,17 @@ import {
   planVisitsNote,
   staffByName,
 } from "@/lib/import-services";
-import { JOBBER_LAST_VISIT_COLUMN, JOBBER_NEXT_VISIT_COLUMN } from "@/lib/import-jobber-visits";
+import {
+  JOBBER_AFTER_NEXT_COLUMN,
+  JOBBER_LAST_VISIT_COLUMN,
+  JOBBER_NEXT_VISIT_COLUMN,
+} from "@/lib/import-jobber-visits";
 import {
   VISITS_FIRST_COLUMN,
   VISITS_FREQUENCY_COLUMN,
   VISITS_LAST_COLUMN,
   VISITS_NEXT_COLUMN,
+  VISITS_AFTER_NEXT_COLUMN,
 } from "@/lib/import-visit-plans";
 import { newInvoice } from "@/lib/db-insert";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -213,6 +219,14 @@ export const SERVICE_TARGET_FIELDS = [
   // walked from the next visit, else the last (mapServiceRow).
   "last_visit",
   "next_visit",
+  // The booked visit after the next one: with the next visit it shows the
+  // schedule the plan is on now, when the old one was changed (Rigel's
+  // review of #1069).
+  "visit_after_next",
+  // The day the old system's schedule ends (subscriptions.ends_on), and the
+  // day a job was closed there (a closed job is refused, with the reason).
+  "end_date",
+  "closed_date",
   "dog_count",
   "billing",
   // How often the client is invoiced (clients.billing_frequency), when the
@@ -833,6 +847,9 @@ const SERVICE_PRESETS: Record<string, PresetMap> = {
       "next service date",
       "next cleanup",
     ],
+    visit_after_next: ["visit after next", "following visit", "second next visit"],
+    end_date: ["end date", "end_date", "ends", "ends on", "schedule end date", "stop date"],
+    closed_date: ["closed date", "closed on", "cancelled date", "canceled date"],
     dog_count: ["dogs", "dog count", "number of dogs", "# dogs"],
     billing: ["billing", "billing type", "billing cadence"],
     billing_frequency: ["billing frequency", "invoice frequency", "billing cycle", "invoicing"],
@@ -857,6 +874,9 @@ const SERVICE_PRESETS: Record<string, PresetMap> = {
     start_date: ["Start date", "Schedule start date", "Scheduled start date", "Created date"],
     last_visit: [JOBBER_LAST_VISIT_COLUMN, "Last visit", "Last visit date"],
     next_visit: [JOBBER_NEXT_VISIT_COLUMN, "Next visit", "Next visit date"],
+    visit_after_next: [JOBBER_AFTER_NEXT_COLUMN],
+    end_date: ["Schedule end date", "End date"],
+    closed_date: ["Closed date"],
     dog_count: ["Number of dogs", "Dogs"],
     // "Billing type" is Per visit or Fixed price; "Billing frequency" is
     // when the invoice goes out, which is the client's billing frequency.
@@ -904,6 +924,7 @@ const SERVICE_PRESETS: Record<string, PresetMap> = {
     start_date: [VISITS_FIRST_COLUMN],
     last_visit: [VISITS_LAST_COLUMN],
     next_visit: [VISITS_NEXT_COLUMN],
+    visit_after_next: [VISITS_AFTER_NEXT_COLUMN],
     service_street: ["Street"],
     assigned_to: ["Assigned employees", "Employee"],
     service: ["Job description", "Description", "Job name"],
@@ -918,6 +939,7 @@ const SERVICE_PRESETS: Record<string, PresetMap> = {
     start_date: [VISITS_FIRST_COLUMN],
     last_visit: [VISITS_LAST_COLUMN],
     next_visit: [VISITS_NEXT_COLUMN],
+    visit_after_next: [VISITS_AFTER_NEXT_COLUMN],
     assigned_to: ["Staff"],
     service: ["Service"],
   },
@@ -1160,17 +1182,16 @@ export type MappedClient = {
   extras?: Record<string, string> | null;
 };
 
-/** Phone columns read, in order, when the mapped phone is empty on a row.
- *  Not consumed: each stays a leftover, so no number is lost. */
-const OTHER_PHONE_COLUMNS = [
-  "Mobile Phone #s",
-  "Client Mobile Phone",
-  "Home Phone #s",
-  "Client Home Phone",
-  "Work Phone #s",
-  "Client Work Phone",
-  "Other Phone #s",
-];
+/** The first full phone number in the other phone columns, or null. */
+function otherPhone(raw: Record<string, unknown>): string | null {
+  const lc = new Map(Object.keys(raw).map((k) => [k.trim().toLowerCase(), k]));
+  for (const name of OTHER_PHONE_COLUMNS) {
+    const key = lc.get(name.toLowerCase());
+    const v = key ? String(raw[key] ?? "").trim() : "";
+    if (v && !phoneProblem(v)) return v;
+  }
+  return null;
+}
 
 const COUNTRY_CODES: Record<string, string> = {
   "united states": "US",
@@ -1245,8 +1266,12 @@ export function mapClientRow(
   if (postal.error) return { mapped: null, error: postal.error };
   const postal_code = postal.value;
   // A client with no main phone often has a mobile one (Jobber keeps five
-  // phone columns). The column is still kept as a leftover either way.
-  const phoneRaw = getStr(raw, mapping, "primary_phone") ?? rawLookup(raw, OTHER_PHONE_COLUMNS);
+  // phone columns). Only while the owner has a column on Phone, only a full
+  // number, and the column is still kept as a leftover either way; the
+  // mapping screen says so beside it. Rigel's review of #1069: "555-0100"
+  // or "call neighbor first" in Mobile must not refuse a row main imports.
+  const phoneRaw =
+    getStr(raw, mapping, "primary_phone") ?? (mapping.primary_phone ? otherPhone(raw) : null);
   const badPhone = phoneProblem(phoneRaw);
   if (badPhone) return { mapped: null, error: badPhone };
 

@@ -23,9 +23,9 @@
 // below is the one place the plan row is built, and a test holds it to the
 // old shape.
 
-import { noVisit, planAnchor } from "@/lib/import-plan-anchor";
+import { noVisit, planAnchor, statedMonthDay } from "@/lib/import-plan-anchor";
 import type { ServiceLine } from "@/lib/service-lines";
-import { orgLocalDay } from "@/lib/org-day";
+import { orgLocalDay, orgToday } from "@/lib/org-day";
 
 export type ImportFrequency = {
   frequency: "weekly" | "biweekly" | "twice_weekly" | "monthly" | "one_time" | "every_n_days";
@@ -302,9 +302,20 @@ export type MappedService = {
    *  Without visit dates, the file's start date. */
   started_on: string | null;
   /** Which date the schedule is walked from, and the visits off that
-   *  schedule (moved once in the old system), for the plan's note. */
-  anchor_from?: "next visit" | "last visit" | "start date";
+   *  schedule (moved once in the old system), for the plan's note.
+   *  `schedule_changed`: the upcoming visits agree with each other and not
+   *  with the last one, so the schedule was changed and the plan follows
+   *  the upcoming visits. `dates_disagree`: no two dates agree and nothing
+   *  says which is right, so the owner is asked to check. */
+  anchor_from?: "next visit" | "visit after next" | "last visit" | "start date";
   off_schedule?: { which: "last visit" | "next visit"; on: string }[];
+  schedule_changed?: boolean;
+  dates_disagree?: boolean;
+  /** The booked visit after the next one, when the file has it. */
+  visit_after_next?: string | null;
+  /** The day the plan stops (subscriptions.ends_on): the old system's
+   *  schedule end date (Jobber's "Schedule end date"). */
+  ends_on?: string | null;
   /** The file's own start date, kept for the plan's note when the plan is
    *  walked from a visit instead. */
   file_started_on?: string | null;
@@ -477,6 +488,7 @@ export function importPlanRow(
     // recorded as set by hand.
     price_overridden_at: ctx.now,
     ...(m.started_on ? { started_on: m.started_on } : {}),
+    ...(m.ends_on ? { ends_on: m.ends_on } : {}),
     ...(ctx.service ? { service_id: ctx.service.id } : {}),
     ...(ctx.staffId ? { assigned_staff_id: ctx.staffId } : {}),
     ...(setDays ? { weekdays: m.preferred_weekdays } : {}),
@@ -568,8 +580,27 @@ export function mapServiceRow(
   const file_started_on = startText ? parseImportDate(startText, tz) : null;
   if (startText && !file_started_on)
     return { mapped: null, error: `Start date not understood: "${startText}"` };
-  // "-", "N/A", "Never" or "None" in a last or next visit column is no
-  // visit, not a reason to refuse the row.
+  // A job closed in the old system is not a live plan (Jobber's "Closed
+  // date" is "-" while the job is open).
+  const closedText = noVisit(cell(raw, mapping, "closed_date"));
+  if (closedText) {
+    const closed = parseImportDate(closedText, tz);
+    return {
+      mapped: null,
+      error: `Closed in the old system${closed ? ` on ${closed}` : ` ("${closedText}")`}, so it is not imported as a live plan. Add it by hand if it starts again.`,
+    };
+  }
+  const endText = noVisit(cell(raw, mapping, "end_date"));
+  const ends_on = endText ? parseImportDate(endText, tz) : null;
+  if (endText && !ends_on) return { mapped: null, error: `End date not understood: "${endText}"` };
+  if (ends_on && ends_on < orgToday(tz ?? undefined)) {
+    return {
+      mapped: null,
+      error: `The schedule ended on ${ends_on} in the old system, so it is not imported as a live plan.`,
+    };
+  }
+  // "-", "N/A", "Never", "TBD" or "None" in a visit column is no visit, not
+  // a reason to refuse the row.
   const lastText = noVisit(cell(raw, mapping, "last_visit"));
   const last_visit = lastText ? parseImportDate(lastText, tz) : null;
   if (lastText && !last_visit)
@@ -578,6 +609,10 @@ export function mapServiceRow(
   const next_visit = nextText ? parseImportDate(nextText, tz) : null;
   if (nextText && !next_visit)
     return { mapped: null, error: `Next visit not understood: "${nextText}"` };
+  const afterText = noVisit(cell(raw, mapping, "visit_after_next"));
+  const visit_after_next = afterText ? parseImportDate(afterText, tz) : null;
+  if (afterText && !visit_after_next)
+    return { mapped: null, error: `Visit after next not understood: "${afterText}"` };
   const anchor = planAnchor({
     frequency: freq.frequency,
     intervalWeeks: freq.intervalWeeks ?? null,
@@ -587,6 +622,8 @@ export function mapServiceRow(
     start: file_started_on,
     last: last_visit,
     next: next_visit,
+    afterNext: visit_after_next,
+    monthDay: statedMonthDay(freqText),
   });
   const started_on = anchor.on;
   const serviceStreet = cell(raw, mapping, "service_street");
@@ -614,8 +651,12 @@ export function mapServiceRow(
             next_visit,
             anchor_from: anchor.from ?? undefined,
             off_schedule: anchor.off,
+            ...(visit_after_next ? { visit_after_next } : {}),
+            ...(anchor.changed ? { schedule_changed: true } : {}),
+            ...(anchor.unsure ? { dates_disagree: true } : {}),
           }
         : {}),
+      ...(ends_on ? { ends_on } : {}),
       dog_count: Number.isFinite(dogs) && dogs > 0 && dogs <= 50 ? dogs : null,
       billing_cadence: billText.startsWith("pre") ? "prepaid" : billText ? "postpaid" : null,
       // How often the client is invoiced: the file's own billing frequency
@@ -634,20 +675,36 @@ export function mapServiceRow(
 
 /** The plan's dates from the old system, for the client's office note:
  *  when it started there, its last completed visit, its next booked visit,
- *  and which of them the plan's schedule is walked from. Null when the row
- *  had no visit dates (the start date alone is already the plan's). */
+ *  which of them the plan's schedule is walked from, and the day it ends.
+ *  Null when the row had none of these (the start date alone is already
+ *  the plan's). */
 export function planVisitsNote(
   sourceLabel: string,
   m: Pick<
     MappedService,
-    "file_started_on" | "last_visit" | "next_visit" | "started_on" | "anchor_from" | "off_schedule"
+    | "file_started_on"
+    | "last_visit"
+    | "next_visit"
+    | "started_on"
+    | "anchor_from"
+    | "off_schedule"
+    | "schedule_changed"
+    | "dates_disagree"
+    | "visit_after_next"
+    | "ends_on"
   >,
 ): string | null {
-  if (!m.last_visit && !m.next_visit) return null;
+  const ends = m.ends_on
+    ? ` It ends ${m.ends_on}, as it did in ${sourceLabel}; clear the end date on the plan to keep it going.`
+    : "";
+  if (!m.last_visit && !m.next_visit) {
+    return ends ? `Imported plan from ${sourceLabel}.${ends}` : null;
+  }
   const parts = [
     m.file_started_on ? `started there ${m.file_started_on}` : null,
     `last visit ${m.last_visit ?? "none completed"}`,
     `next visit ${m.next_visit ?? "none booked"}`,
+    m.visit_after_next ? `the one after ${m.visit_after_next}` : null,
   ].filter(Boolean);
   const from =
     m.anchor_from ??
@@ -656,11 +713,18 @@ export function planVisitsNote(
       : m.started_on === m.last_visit
         ? "last visit"
         : "start date");
-  const off = (m.off_schedule ?? []).map(
-    (o) =>
-      ` The ${o.which} (${o.on}) is off that schedule, so it was likely moved once in ${sourceLabel}; check the plan's visits after you turn it on.`,
-  );
-  return `Imported plan from ${sourceLabel}: ${parts.join("; ")}. The plan's schedule is set from the ${from} (${m.started_on}).${off.join("")}`;
+  const offList = (m.off_schedule ?? []).map((o) => `${o.which} ${o.on}`).join(", ");
+  const why = m.schedule_changed
+    ? ` The upcoming visits are on a different schedule from the last visit (${m.last_visit}), so the schedule was changed in ${sourceLabel} and the plan follows the upcoming visits.`
+    : m.dates_disagree
+      ? ` The dates from ${sourceLabel} do not agree on this schedule (${offList}), and nothing in the file says which is right; check the plan's visits before you turn it on.`
+      : (m.off_schedule ?? [])
+          .map(
+            (o) =>
+              ` The ${o.which} (${o.on}) is off that schedule, so it was likely moved once in ${sourceLabel}; check the plan's visits after you turn it on.`,
+          )
+          .join("");
+  return `Imported plan from ${sourceLabel}: ${parts.join("; ")}. The plan's schedule is set from the ${from} (${m.started_on}).${why}${ends}`;
 }
 
 export type MappedBalance = {

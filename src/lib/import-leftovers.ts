@@ -86,6 +86,24 @@ export const COMPANY_NAME_COLUMNS = [
 export const PET_TYPE_COLUMNS = ["Pet Type", "Species", "Animal Type"];
 export const PET_DECEASED_COLUMNS = ["Pet Deceased?", "Deceased"];
 
+/** Phone columns read, in order, when the mapped phone is empty on a row.
+ *  Not consumed: each stays a leftover, so no number is lost. */
+export const OTHER_PHONE_COLUMNS = [
+  "Mobile Phone #s",
+  "Client Mobile Phone",
+  "Home Phone #s",
+  "Client Home Phone",
+  "Work Phone #s",
+  "Client Work Phone",
+  "Other Phone #s",
+];
+
+/** A leftover column the client mapper still reads when the mapped phone
+ *  is blank on a row, for the mapping screen to say so. */
+export function isOtherPhoneColumn(header: string): boolean {
+  return OTHER_PHONE_COLUMNS.some((c) => c.toLowerCase() === header.trim().toLowerCase());
+}
+
 const HELPERS_BY_ENTITY: Record<string, string[]> = {
   clients: [
     ...FIRST_NAME_COLUMNS,

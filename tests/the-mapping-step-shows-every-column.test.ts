@@ -24,6 +24,7 @@ import {
 } from "@/lib/import-column-map";
 import { helperRole, leftoverColumns } from "@/lib/import-leftovers";
 import {
+  JOBBER_AFTER_NEXT_COLUMN,
   JOBBER_LAST_VISIT_COLUMN,
   JOBBER_NEXT_VISIT_COLUMN,
   mergeJobberVisits,
@@ -128,7 +129,12 @@ describe("Jobber's Clients export (real), column by column", () => {
 describe("Jobber's Recurring jobs report with its Visits report (real), column by column", () => {
   const { headers, rows } = fixture("jobber-recurring-jobs.csv");
   const visits = fixture("jobber-visits.csv");
-  const joinedHeaders = [...headers, JOBBER_LAST_VISIT_COLUMN, JOBBER_NEXT_VISIT_COLUMN];
+  const joinedHeaders = [
+    ...headers,
+    JOBBER_LAST_VISIT_COLUMN,
+    JOBBER_NEXT_VISIT_COLUMN,
+    JOBBER_AFTER_NEXT_COLUMN,
+  ];
   const joined = mergeJobberVisits(rows, visits.rows, "2026-11-27") as Row[];
   const mapping = autoMap("jobber", joinedHeaders, "services");
 
@@ -163,10 +169,11 @@ describe("Jobber's Recurring jobs report with its Visits report (real), column b
       "Number of invoices": "note",
       "Created date": "note",
       "Schedule start date": "start_date",
-      "Schedule end date": "note",
-      "Closed date": "note",
+      "Schedule end date": "end_date",
+      "Closed date": "closed_date",
       [JOBBER_LAST_VISIT_COLUMN]: "last_visit",
       [JOBBER_NEXT_VISIT_COLUMN]: "next_visit",
+      [JOBBER_AFTER_NEXT_COLUMN]: "visit_after_next",
     });
     // The service day is read from the frequency ("Weekly on Tuesdays").
     expect(sampleValues(joined, "Visit frequency")).toContain("Weekly on Tuesdays");

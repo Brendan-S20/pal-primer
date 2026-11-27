@@ -11,9 +11,9 @@
 //
 // This reads such a file, in the browser before the mapping step, as one row
 // per client, service and address. The row is that plan's next visit (or its
-// last), with every column the file has, plus five columns read off the
-// dates: how often, the first, last and next visit, and how many visits the
-// file holds. How often is the spacing of the visits ("Weekly on Fridays",
+// last), with every column the file has, plus six columns read off the
+// dates: how often, the first, last and next visit, the one after that, and
+// how many visits the file holds. How often is the spacing of the visits ("Weekly on Fridays",
 // "Every 2 weeks on Fridays"); a plan with one visit in the file takes it from
 // the service's own name ("Every Other Week Pet Waste Cleanup") and says so.
 // Nothing is made up: a plan with no completed visit has no last visit.
@@ -24,12 +24,14 @@ export const VISITS_FREQUENCY_COLUMN = "How often (from the visits)";
 export const VISITS_FIRST_COLUMN = "First visit (from the visits)";
 export const VISITS_LAST_COLUMN = "Last visit (from the visits)";
 export const VISITS_NEXT_COLUMN = "Next visit (from the visits)";
+export const VISITS_AFTER_NEXT_COLUMN = "Visit after next (from the visits)";
 export const VISITS_COUNT_COLUMN = "Visits in the file";
 export const VISITS_COLUMNS = [
   VISITS_FREQUENCY_COLUMN,
   VISITS_FIRST_COLUMN,
   VISITS_LAST_COLUMN,
   VISITS_NEXT_COLUMN,
+  VISITS_AFTER_NEXT_COLUMN,
   VISITS_COUNT_COLUMN,
 ] as const;
 
@@ -192,7 +194,9 @@ export function plansFromVisits(
     visits.sort((a, b) => (a.on < b.on ? -1 : a.on > b.on ? 1 : 0));
     const dates = [...new Set(visits.map((v) => v.on))];
     const last = visits.filter((v) => v.done).at(-1) ?? null;
-    const next = visits.find((v) => !v.done && v.on >= today) ?? null;
+    const upcoming = visits.filter((v) => !v.done && v.on >= today);
+    const next = upcoming[0] ?? null;
+    const afterNext = upcoming.find((v) => v.on > (next?.on ?? "")) ?? null;
     const row = (next ?? last ?? visits.at(-1)!).row;
     const service = cols.service ? str(row[cols.service]) : "";
     out.push({
@@ -202,6 +206,7 @@ export function plansFromVisits(
       [VISITS_FIRST_COLUMN]: dates[0],
       [VISITS_LAST_COLUMN]: last?.on ?? "",
       [VISITS_NEXT_COLUMN]: next?.on ?? "",
+      [VISITS_AFTER_NEXT_COLUMN]: afterNext?.on ?? "",
       [VISITS_COUNT_COLUMN]: String(visits.length),
     });
   }

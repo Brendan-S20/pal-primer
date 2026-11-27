@@ -6,7 +6,7 @@ import {
   sampleValues,
   type ColumnMapping,
 } from "@/lib/import-column-map";
-import { helperRole } from "@/lib/import-leftovers";
+import { helperRole, isOtherPhoneColumn } from "@/lib/import-leftovers";
 
 /** Where a column no field reads ends up, per kind of import (#857). */
 const KEPT_WHERE: Record<string, string> = {
@@ -99,6 +99,15 @@ export function ColumnMappingTable({
                         );
                       })}
                     </select>
+                    {!fields.length &&
+                      entity === "clients" &&
+                      mapping.primary_phone &&
+                      isOtherPhoneColumn(h) && (
+                        <span className="block text-xs text-muted-foreground">
+                          Also the phone on rows where {mapping.primary_phone} is blank, when it is
+                          a full number.
+                        </span>
+                      )}
                     {fields[0] && suggested.has(fields[0]) && (
                       <span className="text-xs text-amber-700 dark:text-amber-300">
                         Suggested from the column name: check it.

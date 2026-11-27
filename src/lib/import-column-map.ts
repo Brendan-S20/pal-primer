@@ -108,6 +108,36 @@ const TOO_COMMON = new Set([
   "pets",
 ]);
 
+// Words that make a column about someone or something else: "Vet Phone" is
+// not the client's phone, "Emergency Contact Email" not their email, "Last
+// Payment Amount Due" not what they owe, "Deposit Price" not the price per
+// visit, "Quote Frequency" not how often, "Referral City" not their city
+// (Rigel's review of #1069). A column with one of these is never suggested
+// by a word it contains; the owner can still choose it.
+const SOMEONE_ELSE = new Set([
+  "vet",
+  "vets",
+  "veterinarian",
+  "emergency",
+  "referral",
+  "referred",
+  "referrer",
+  "deposit",
+  "quote",
+  "quoted",
+  "estimate",
+  "payment",
+  "paid",
+  "previous",
+  "former",
+  "alternate",
+  "secondary",
+  "spouse",
+  "partner",
+  "contractor",
+  "employee",
+]);
+
 /** For a file whose columns no preset fully knows: the fields still unset,
  *  each pointed at a column no field reads yet whose name says it. A column
  *  is first matched by its whole name against every vendor's names for the
@@ -146,6 +176,12 @@ export function suggestFields(
     );
     const hit = free().find((h) => {
       const w = ` ${words(h)} `;
+      if (
+        words(h)
+          .split(" ")
+          .some((x) => SOMEONE_ELSE.has(x))
+      )
+        return false;
       return names.some((n) => w.includes(` ${n} `));
     });
     if (hit) take(field, hit);
