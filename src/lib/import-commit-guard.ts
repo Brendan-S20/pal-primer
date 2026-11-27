@@ -350,8 +350,7 @@ export function inFileDuplicateReason(by: ExistingMatch["by"], firstRow: number)
 
 /** Why a row is skipped because the business already has the client. */
 export function existingClientReason(by: ExistingMatch["by"]): string {
-  if (by === "name_shared")
-    return "More than one of your clients has this name, and the file has nothing else (no ID, email, phone or address) to say which, so it is skipped rather than added again. Add anything new on it by hand.";
+  if (by === "name_shared") return SHARED_NAME_REASON;
   return `Already in your clients (same ${MATCH_WORDS[by]}).`;
 }
 
@@ -447,6 +446,12 @@ export const dogKey = (clientId: string, name: string | null | undefined) =>
  * same file are two plans, or two open invoices from an aged-receivables
  * export, and both are kept, as the preview always said.
  */
+/** Why a row whose name two of the business's clients share is skipped.
+ *  The commit leaves such a row skipped: it is not a repeat of a row
+ *  above it in the file (#1069, Rigel at 64eb54c9). */
+export const SHARED_NAME_REASON =
+  "More than one of your clients has this name, and the file has nothing else (no ID, email, phone or address) to say which, so it is skipped rather than added again. Add anything new on it by hand.";
+
 export function alreadyInDatabase(
   entity: string,
   mapped: ClientRow & { name?: string | null },

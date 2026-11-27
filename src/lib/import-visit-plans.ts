@@ -314,9 +314,17 @@ export function planVisitFile(
     const dates = [...new Set(regular.map((v) => v.on!))];
     const last = usable.filter((v) => v.done).at(-1) ?? null;
     const upcoming = usable.filter((v) => !v.done && v.on! >= today);
-    const next = upcoming[0] ?? null;
-    const afterNext = upcoming.find((v) => v.on! > (next?.on ?? "")) ?? null;
+    // The plan's next visit is its next regular one: an initial cleanup
+    // booked ahead of it is a one-off, listed below, not a moved visit
+    // (#1069, Rigel at 64eb54c9).
     const nextRegular = regular.find((v) => !v.done && v.on! >= today) ?? null;
+    const next = nextRegular ?? upcoming[0] ?? null;
+    const afterNext =
+      (regular === usable ? upcoming : upcoming.filter((v) => !v.initial)).find(
+        (v) => v.on! > (next?.on ?? ""),
+      ) ?? null;
+    const initialsAhead =
+      regular === usable ? [] : upcoming.filter((v) => v.initial).map((v) => v.on!);
     const anchor = nextRegular?.on ?? dates.at(-1)!;
     const ahead = [...new Set(regular.filter((v) => !v.done && v.on! >= today).map((v) => v.on!))];
     // The plan as it is now: three upcoming visits that agree say it; two
@@ -379,7 +387,12 @@ export function planVisitFile(
     }
     const notes = [schedule?.note, changed];
     if (changed) left.push(`${label}: ${changed}`);
-    if (!next && fileHasUpcoming && fileLast && fileLast > dates.at(-1)!) {
+    if (initialsAhead.length) {
+      const first = `The initial cleanup booked for ${initialsAhead.join(", ")} is not on the plan's schedule, so the plan does not book it. Add it as a one-time visit.`;
+      notes.push(first);
+      left.push(`${label}: ${first}`);
+    }
+    if (!upcoming.length && fileHasUpcoming && fileLast && fileLast > dates.at(-1)!) {
       const ended = `No visit is booked after ${dates.at(-1)}, though the file runs to ${fileLast}, so this plan may have ended in the old system. It comes in paused; check it before you turn it on.`;
       notes.push(ended);
       left.push(`${label}: ${ended}`);
@@ -398,11 +411,12 @@ export function planVisitFile(
     for (const v of [...usable, ...visits.filter((v) => !usable.includes(v))]) {
       if (v.note) byNote.set(v.note, [...(byNote.get(v.note) ?? []), v.on ?? "no date"]);
     }
-    const visitNotes = [...byNote].map(([note, on]) =>
-      on.length <= 3
+    const visitNotes = [...byNote].map(([note, unsorted]) => {
+      const on = [...unsorted].sort();
+      return on.length <= 3
         ? `${on.join(", ")}: ${note}`
-        : `${on.length} visits, ${on[0]} to ${on.at(-1)}: ${note}`,
-    );
+        : `${on.length} visits, ${on[0]} to ${on.at(-1)}: ${note}`;
+    });
     const row = (next ?? last ?? usable.at(-1)!).row;
     // No price above zero on any visit: the chosen visit's own price, so
     // the plan import refuses a $0 price by name rather than as missing.

@@ -219,6 +219,12 @@ export function scheduleChange(
 ): string | null {
   if (ahead.length !== 2) return null;
   const check = `It is read as ${read.toLowerCase()}; check it before you turn the plan on.`;
+  // Twice a week, then two visits on one weekday: one visit may be skipped,
+  // or the plan may now be weekly. Two dates cannot say which, so it is
+  // always flagged (#1069, Rigel at 64eb54c9).
+  if (/^Twice a week on /.test(before) && /^Weekly on /.test(read)) {
+    return `Its next two visits (${listed(ahead)}) are on ${read.replace(/^Weekly on /, "")} only, though its earlier visits were ${before.toLowerCase()}: a visit is skipped, or the plan is now weekly. ${check}`;
+  }
   if (!fitsSchedule(before, from, ahead)) {
     if (read === before || !fitsSchedule(read, ahead[0], ahead)) {
       return `Its next two visits (${listed(ahead)}) do not follow its earlier visits (${before.toLowerCase()}), so the schedule may have changed in the old system. ${check}`;

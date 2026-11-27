@@ -11,17 +11,21 @@
 // And two smaller ones from the same review: a Sweep&Go initial cleanup on
 // another weekday made a weekly plan look twice weekly, and weekly visits
 // followed by two booked two weeks apart said nothing.
+//
+// At 64eb54c9: twice a week, then two Fridays, read weekly with no warning;
+// a note's dates were not sorted; a booked initial cleanup was called moved.
 
 import { describe, expect, it } from "vitest";
 
 import { clientDuplicateIndex, labelClientRows } from "@/lib/import-commit-guard";
-import { mapServiceRow } from "@/lib/import-services";
+import { mapServiceRow, planVisitsNote } from "@/lib/import-services";
 import { NOTE_MAX, splitNote } from "@/lib/import-leftovers";
 import { autoMap } from "@/lib/imports.functions";
 import {
   planVisitFile,
   visitFileColumns,
   VISITS_COLUMNS,
+  VISITS_NEXT_COLUMN,
   VISITS_NOTES_COLUMN,
   VISITS_SCHEDULE_NOTE_COLUMN,
 } from "@/lib/import-visit-plans";
@@ -99,6 +103,24 @@ describe("1. a long run of visit notes is kept, not cut", () => {
     expect(notes.length).toBeLessThan(400);
   });
 
+  it("a note's dates run first to last, with a canceled first visit too", () => {
+    const dates = every("2026-11-13", 53);
+    const rows = dates.map((on, i) => ({
+      "Customer name": "Sam Research",
+      "Job description": "Pet Waste Cleanup",
+      "Job status": i === 0 ? "Canceled" : on < TODAY ? "Completed" : "Scheduled",
+      "Job scheduled start date": `${on}T09:00:00-05:00`,
+      "Total service price": "$18.50",
+      Street: "123 Test St",
+      Recurring: "true",
+      Notes: GATE,
+    }));
+    const read = planVisitFile(rows, visitFileColumns("housecall_pro", HCP)!, TODAY, TZ);
+    expect(read.rows[0][VISITS_NOTES_COLUMN]).toBe(
+      `53 visits, 2026-11-13 to ${dates[52]}: ${GATE}`,
+    );
+  });
+
   it("a plan note longer than one note holds is split, with nothing lost", () => {
     const text = Array.from({ length: 120 }, (_, i) => `2026-01-${i}: note number ${i} here.`)
       .join("; ")
@@ -123,6 +145,21 @@ describe("2. a twice-weekly plan that changed is not missed", () => {
     const before = onWeekdays("2026-09-01", "2026-11-26", [2, 5]);
     const r = hcp([...before, "2026-12-04", "2026-12-11"]);
     expect(r.plans[0]).toMatchObject({ frequency: "weekly", preferred_weekdays: [5] });
+    // Two Fridays cannot say whether a Tuesday was skipped: flagged (64eb54c9).
+    expect(r.rows[0][VISITS_SCHEDULE_NOTE_COLUMN]).toMatch(
+      /on Fridays only.*a visit is skipped, or the plan is now weekly/,
+    );
+    expect(r.left.some((l) => l.includes("the plan is now weekly"))).toBe(true);
+  });
+
+  it("Tuesdays and Fridays, then Nov 27 and Dec 4 (Dec 1 not booked): flagged", () => {
+    const before = onWeekdays("2026-09-01", "2026-11-26", [2, 5]);
+    const r = hcp([...before, "2026-11-27", "2026-12-04"]);
+    const warn = r.rows[0][VISITS_SCHEDULE_NOTE_COLUMN];
+    expect(warn).toMatch(/next two visits \(2026-11-27 and 2026-12-04\) are on Fridays only/);
+    expect(warn).toMatch(/twice a week on tuesdays and fridays/);
+    expect(warn).toMatch(/check it before you turn the plan on/);
+    expect(r.left.some((l) => l.includes("the plan is now weekly"))).toBe(true);
   });
 
   it("Fridays, then a Tuesday and a Friday booked: imported, with a warning on it", () => {
@@ -213,5 +250,12 @@ describe("smaller: an initial cleanup is not on the plan's schedule", () => {
     const plan = mapServiceRow(read.rows[0] as Record<string, string>, mapping, TZ).mapped!;
     expect(plan).toMatchObject({ frequency: "weekly", preferred_weekdays: [5] });
     expect(plan.price_cents).toBe(2300);
+    // The initial cleanup is a one-off to add, not a moved visit (64eb54c9).
+    expect(read.rows[0][VISITS_NEXT_COLUMN]).toBe("2026-12-04");
+    expect(planVisitsNote("Sweep&Go", plan)).not.toMatch(/moved/);
+    expect(read.rows[0][VISITS_SCHEDULE_NOTE_COLUMN]).toMatch(
+      /initial cleanup booked for 2026-12-01 is not on the plan's schedule.*Add it as a one-time visit/,
+    );
+    expect(read.left.some((l) => l.includes("initial cleanup booked for 2026-12-01"))).toBe(true);
   });
 });

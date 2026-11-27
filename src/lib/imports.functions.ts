@@ -72,6 +72,7 @@ import {
   refusalMessage,
   rememberClient,
   retryRefusal,
+  SHARED_NAME_REASON,
   type CommitBlock,
   type ExistingClient,
   type ExistingRecords,
@@ -2745,18 +2746,28 @@ export const commitImport = createServerFn({ method: "POST" })
        */
       const settleInFileTwins = async () => {
         const twins = (
-          await selectAll<{ id: string; mapped: unknown; action: string; target_id: string | null }>(
-            (from, to) =>
+          await selectAll<{
+            id: string;
+            mapped: unknown;
+            action: string;
+            target_id: string | null;
+            error: string | null;
+          }>((from, to) =>
               supabase
                 .from("import_rows")
-                .select("id, mapped, action, target_id")
+                .select("id, mapped, action, target_id, error")
                 .eq("batch_id", data.batchId)
                 .eq("action", "skip")
                 .is("target_id", null)
                 .order("row_num")
                 .range(from, to),
           )
-        ).filter((r) => r.action === "skip" && r.target_id == null && r.mapped);
+        ).filter(
+          // A name two of the business's clients share is skipped for that
+          // reason, and stays skipped: it is no repeat of a row above it.
+          (r) =>
+            r.action === "skip" && r.target_id == null && r.mapped && r.error !== SHARED_NAME_REASON,
+        );
         await inParallel(
           twins.map((t) => async () => {
             const first = alreadyInDatabase("clients", t.mapped as any, null, existing);
