@@ -315,6 +315,14 @@ export type MappedService = {
    *  the file has no Service column or the cell is blank: the plan then
    *  takes the business's default, as every import before the catalog. */
   service_name: string | null;
+  /** The street the old system did the plan at (Jobber's "Service street"),
+   *  so a client with two addresses gets the plan on the right one. Only
+   *  present when the file names one. */
+  service_street?: string | null;
+  /** Who the old system assigned the visits to (Jobber's "Visits assigned
+   *  to"), matched to a team member by name at commit. Only present when
+   *  the file names one. */
+  assigned_to?: string | null;
 };
 
 /** The same bound as services_name_length. A longer cell is cut, not
@@ -428,6 +436,9 @@ export function importPlanRow(
     isResidential: boolean;
     dogCount: number | null;
     service: ImportService | null;
+    /** The team member the old system assigned the visits to, when the
+     *  file named one that matches (staffByName). */
+    staffId?: string | null;
     /** When the import runs (ISO), for price_overridden_at. */
     now: string;
   },
@@ -457,10 +468,49 @@ export function importPlanRow(
     price_overridden_at: ctx.now,
     ...(m.started_on ? { started_on: m.started_on } : {}),
     ...(ctx.service ? { service_id: ctx.service.id } : {}),
+    ...(ctx.staffId ? { assigned_staff_id: ctx.staffId } : {}),
     ...(setDays ? { weekdays: m.preferred_weekdays } : {}),
     status: "paused",
     paused_at: ctx.now,
   };
+}
+
+const squashStreet = (s: string | null | undefined) =>
+  (s ?? "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+
+/** Which of the client's addresses a plan goes on: the one whose street is
+ *  the file's service street (case and punctuation aside; "12 Example Lane"
+ *  matches "12 Example Lane, Apt 2"), else the first. `matched` is false
+ *  when the file named a street none of them has, so the commit can say. */
+export function pickPlanProperty<P extends { street: string | null }>(
+  props: readonly P[],
+  serviceStreet: string | null | undefined,
+): { prop: P | null; matched: boolean } {
+  if (!props.length) return { prop: null, matched: false };
+  const want = squashStreet(serviceStreet);
+  if (!want) return { prop: props[0], matched: true };
+  const hit = props.find((p) => {
+    const have = squashStreet(p.street);
+    return have === want || have.startsWith(`${want} `);
+  });
+  return hit ? { prop: hit, matched: true } : { prop: props[0], matched: false };
+}
+
+/** The active team member a name names (case and spacing aside), or null
+ *  when none or more than one does. */
+export function staffByName<S extends { id: string; display_name: string | null }>(
+  staff: readonly S[],
+  name: string | null | undefined,
+): S | null {
+  const want = (name ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+  if (!want) return null;
+  const hits = staff.filter(
+    (s) => (s.display_name ?? "").toLowerCase().replace(/\s+/g, " ").trim() === want,
+  );
+  return hits.length === 1 ? hits[0] : null;
 }
 
 export function mapServiceRow(
@@ -517,6 +567,8 @@ export function mapServiceRow(
   if (nextText && !next_visit)
     return { mapped: null, error: `Next visit not understood: "${nextText}"` };
   const started_on = next_visit ?? last_visit ?? file_started_on;
+  const serviceStreet = cell(raw, mapping, "service_street");
+  const assignedTo = cell(raw, mapping, "assigned_to")?.split(/[;,]/)[0]?.trim() || null;
   const dogText = cell(raw, mapping, "dog_count");
   const dogs = dogText ? Number(dogText.replace(/[^\d]/g, "")) : NaN;
   return {
@@ -536,8 +588,15 @@ export function mapServiceRow(
       ...(last_visit || next_visit ? { file_started_on, last_visit, next_visit } : {}),
       dog_count: Number.isFinite(dogs) && dogs > 0 && dogs <= 50 ? dogs : null,
       billing_cadence: billText.startsWith("pre") ? "prepaid" : billText ? "postpaid" : null,
-      billing_frequency: parseBillingFrequency(billText),
+      // How often the client is invoiced: the file's own billing frequency
+      // column when it has one (Jobber: "Monthly on the last day of the
+      // month" beside a "Per visit" billing type), else the billing cell.
+      billing_frequency:
+        parseBillingFrequency(cell(raw, mapping, "billing_frequency")) ??
+        parseBillingFrequency(billText),
       service_name: cell(raw, mapping, "service"),
+      ...(serviceStreet ? { service_street: serviceStreet } : {}),
+      ...(assignedTo ? { assigned_to: assignedTo } : {}),
     },
     error: null,
   };

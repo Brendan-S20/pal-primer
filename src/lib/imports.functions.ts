@@ -31,7 +31,12 @@ import {
   type PetName,
   type UndoUsage,
 } from "@/lib/import-leftovers";
-import { parseMoneyCents, planVisitsNote } from "@/lib/import-services";
+import {
+  parseMoneyCents,
+  pickPlanProperty,
+  planVisitsNote,
+  staffByName,
+} from "@/lib/import-services";
 import { JOBBER_LAST_VISIT_COLUMN, JOBBER_NEXT_VISIT_COLUMN } from "@/lib/import-jobber-visits";
 import { newInvoice } from "@/lib/db-insert";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -146,6 +151,12 @@ export const CLIENT_TARGET_FIELDS = [
   "do_not_text",
   "pets",
   "balance",
+  // The rest of a real Jobber client export, as live fields (2026-11-27):
+  // the property's own name and country, and where the client came from
+  // (clients.referral_source).
+  "label",
+  "country",
+  "lead_source",
 ] as const;
 export type ClientTargetField = (typeof CLIENT_TARGET_FIELDS)[number];
 
@@ -196,6 +207,14 @@ export const SERVICE_TARGET_FIELDS = [
   "next_visit",
   "dog_count",
   "billing",
+  // How often the client is invoiced (clients.billing_frequency), when the
+  // file says it apart from the billing type: Jobber's "Billing frequency"
+  // ("Monthly on the last day of the month") beside "Billing type" ("Per
+  // visit").
+  "billing_frequency",
+  // Which of the client's addresses the plan is at, and who does it.
+  "service_street",
+  "assigned_to",
   // Which of the business's services the plan is for (the catalog). Optional:
   // left unmapped, every plan is the business's default service, as before.
   "service",
@@ -316,6 +335,9 @@ const CLIENT_PRESETS_OWN: Record<string, PresetMap> = {
     ],
     archived: ["Archived", "Archived (True/False)"],
     balance: ["Account Balance"],
+    label: ["Service Property Name", "Property Name"],
+    country: ["Service Country", "Property Country"],
+    lead_source: ["Lead Source"],
   },
   // Housecall Pro documents the path (Customers > Actions > Export) but not
   // the columns. Guesses until a real file is in hand.
@@ -397,6 +419,15 @@ const CLIENT_ADDRESS_ALIASES: PresetMap = {
   do_not_text: ["do not text", "do_not_text", "sms opt out", "text opt out", "no texts", "do not sms"],
   pets: ["pets", "pet names", "animals"],
   balance: ["account balance", "balance", "open balance", "amount due"],
+  label: ["property name", "location name", "service property name"],
+  country: ["country", "service country"],
+  lead_source: [
+    "lead source",
+    "referral source",
+    "referral",
+    "referred by",
+    "how did you hear about us",
+  ],
 };
 const CLIENT_PRESETS: Record<string, PresetMap> = {};
 for (const key of Object.keys(CLIENT_PRESETS_OWN)) {
@@ -720,6 +751,16 @@ const SERVICE_PRESETS: Record<string, PresetMap> = {
     ],
     dog_count: ["dogs", "dog count", "number of dogs", "# dogs"],
     billing: ["billing", "billing type", "billing cadence"],
+    billing_frequency: ["billing frequency", "invoice frequency", "billing cycle", "invoicing"],
+    service_street: ["service street", "service address", "street", "address", "street address"],
+    assigned_to: [
+      "assigned to",
+      "visits assigned to",
+      "technician",
+      "tech",
+      "staff",
+      "assigned staff",
+    ],
     service: ["service", "service name", "service_name", "plan", "plan name", "product"],
   },
   jobber: {
@@ -733,7 +774,12 @@ const SERVICE_PRESETS: Record<string, PresetMap> = {
     last_visit: [JOBBER_LAST_VISIT_COLUMN, "Last visit", "Last visit date"],
     next_visit: [JOBBER_NEXT_VISIT_COLUMN, "Next visit", "Next visit date"],
     dog_count: ["Number of dogs", "Dogs"],
-    billing: ["Billing type", "Billing frequency", "Billing"],
+    // "Billing type" is Per visit or Fixed price; "Billing frequency" is
+    // when the invoice goes out, which is the client's billing frequency.
+    billing: ["Billing type", "Billing"],
+    billing_frequency: ["Billing frequency"],
+    service_street: ["Service street", "Service Street 1", "Property street"],
+    assigned_to: ["Visits assigned to", "Assigned to"],
     // Jobber's line item is the service ("30 Minute Walk"); "Title" is the
     // job's, which the frequency preset reads first when nothing better
     // exists, so it is not repeated here.
@@ -818,6 +864,18 @@ export function autoMap(
     result[field] = pick;
   }
   return result;
+}
+
+/** Every vendor's names for each field of the entity, for suggesting a
+ *  field for a column of a file no preset fully knows (suggestFields). */
+export function fieldNamesForEntity(entity: ImportEntity): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const preset of Object.values(presetsForEntity(entity))) {
+    for (const [field, names] of Object.entries(preset)) {
+      out[field] = [...(out[field] ?? []), ...names];
+    }
+  }
+  return out;
 }
 
 // ---------- Row normalization ----------
@@ -962,10 +1020,54 @@ export type MappedClient = {
    *  cents; an opening balance is written for it on commit. A credit (a
    *  negative balance) goes in the notes instead. */
   balance_cents: number | null;
+  /** The property's own name, its country, and where the client came from,
+   *  when the file has them. Only present then. */
+  label?: string | null;
+  country?: string | null;
+  lead_source?: string | null;
   /** The columns no field consumed, as the file spelled them. Filled by the
    *  preview, which knows the whole file's headers. */
   extras?: Record<string, string> | null;
 };
+
+/** Phone columns read, in order, when the mapped phone is empty on a row.
+ *  Not consumed: each stays a leftover, so no number is lost. */
+const OTHER_PHONE_COLUMNS = [
+  "Mobile Phone #s",
+  "Client Mobile Phone",
+  "Home Phone #s",
+  "Client Home Phone",
+  "Work Phone #s",
+  "Client Work Phone",
+  "Other Phone #s",
+];
+
+const COUNTRY_CODES: Record<string, string> = {
+  "united states": "US",
+  "united states of america": "US",
+  usa: "US",
+  "u.s.": "US",
+  "u.s.a.": "US",
+  america: "US",
+  canada: "CA",
+  "united kingdom": "GB",
+  uk: "GB",
+  australia: "AU",
+  "new zealand": "NZ",
+  ireland: "IE",
+  mexico: "MX",
+  "puerto rico": "PR",
+};
+
+/** A country cell as the two-letter code properties.country holds ("United
+ *  States" is US), a code as is, or null when blank. A name it does not
+ *  know is kept as written. */
+export function normalizeCountry(v: string | null | undefined): string | null {
+  const s = (v ?? "").trim();
+  if (!s) return null;
+  if (/^[A-Za-z]{2}$/.test(s)) return s.toUpperCase();
+  return COUNTRY_CODES[s.toLowerCase()] ?? s.slice(0, 60);
+}
 
 const squashAddress = (s: string | null | undefined) =>
   (s ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -1012,7 +1114,9 @@ export function mapClientRow(
   );
   if (postal.error) return { mapped: null, error: postal.error };
   const postal_code = postal.value;
-  const phoneRaw = getStr(raw, mapping, "primary_phone");
+  // A client with no main phone often has a mobile one (Jobber keeps five
+  // phone columns). The column is still kept as a leftover either way.
+  const phoneRaw = getStr(raw, mapping, "primary_phone") ?? rawLookup(raw, OTHER_PHONE_COLUMNS);
   const badPhone = phoneProblem(phoneRaw);
   if (badPhone) return { mapped: null, error: badPhone };
 
@@ -1051,6 +1155,9 @@ export function mapClientRow(
     }
   }
   const pets = parsePetNames(getStr(raw, mapping, "pets"));
+  const label = getStr(raw, mapping, "label");
+  const country = normalizeCountry(getStr(raw, mapping, "country"));
+  const lead_source = getStr(raw, mapping, "lead_source");
   // Pets need an address to live on. Without one they are still kept.
   const petsNote =
     pets.length && !(street && city)
@@ -1077,6 +1184,9 @@ export function mapClientRow(
       do_not_text: parseYesNo(getStr(raw, mapping, "do_not_text")) === true,
       pets: pets.length && street && city ? pets : null,
       balance_cents,
+      ...(label ? { label } : {}),
+      ...(country ? { country } : {}),
+      ...(lead_source ? { lead_source } : {}),
     },
     error: null as string | null,
   };
@@ -2006,6 +2116,18 @@ export const commitImport = createServerFn({ method: "POST" })
         serviceCatalog.push(...((svc ?? []) as ImportService[]));
         orgLines = serviceLinesOrDefault(orgRow?.service_lines);
       }
+      // The business's team, read once, for a plan's "assigned to" name.
+      let importStaff: { id: string; display_name: string | null }[] | null = null;
+      const loadImportStaff = async () => {
+        if (importStaff) return importStaff;
+        const { data: st } = await supabase
+          .from("staff")
+          .select("id, display_name")
+          .eq("organization_id", orgId)
+          .eq("active", true);
+        importStaff = st ?? [];
+        return importStaff;
+      };
       const resolveImportService = async (name: string | null): Promise<ImportService | null> => {
         const found = matchImportService(name, serviceCatalog);
         if (found !== undefined) return found;
@@ -2254,6 +2376,8 @@ export const commitImport = createServerFn({ method: "POST" })
             region: m.region || null,
             postal_code: m.postal_code || null,
             gate_code: m.gate_code || null,
+            ...(m.label ? { label: m.label.slice(0, 120) } : {}),
+            ...(m.country ? { country: m.country } : {}),
             account_type: importAccountType,
             address_source: "manual",
             auto_zone_id: importZoneId,
@@ -2431,6 +2555,7 @@ export const commitImport = createServerFn({ method: "POST" })
                   notes: joinNotes(m.notes, extrasSummary(sourceLabel, m.extras)),
                   ...(m.extras ? { import_extras: m.extras } : {}),
                   ...(m.company ? { company: m.company } : {}),
+                  ...(m.lead_source ? { referral_source: m.lead_source.slice(0, 200) } : {}),
                   ...(m.tags?.length ? { tags: m.tags } : {}),
                   // An archived or inactive client in the old system comes in
                   // inactive here, with messaging off (product default, #857).
@@ -2556,15 +2681,25 @@ export const commitImport = createServerFn({ method: "POST" })
                 .eq("organization_id", orgId)
                 .eq("id", row.target_id)
                 .single();
-              const { data: prop } = await supabase
+              // The plan goes on the address the old system did it at, when
+              // the file names one (Jobber's "Service street"), else the
+              // client's first address.
+              const { data: props } = await supabase
                 .from("properties")
-                .select("id, zone_id")
+                .select("id, zone_id, street")
                 .eq("organization_id", orgId)
                 .eq("client_id", row.target_id)
-                .order("created_at", { ascending: true })
-                .limit(1)
-                .maybeSingle();
+                .order("created_at", { ascending: true });
+              const { prop, matched } = pickPlanProperty(props ?? [], m.service_street);
               if (!prop) throw new Error("Client has no address; import clients with their service address first");
+              if (!matched) {
+                warnings.push(
+                  `${client?.display_name ?? "A client"}: the file's service address "${m.service_street}" is not one of their addresses here, so the plan is on ${prop.street ?? "their first address"}. Move it from the client's page if that is wrong.`,
+                );
+              }
+              const staff = m.assigned_to
+                ? staffByName(await loadImportStaff(), m.assigned_to)
+                : null;
               const isRes = client?.account_type !== "commercial";
               let dogCount: number | null = m.dog_count;
               if (isRes && !dogCount) {
@@ -2588,6 +2723,7 @@ export const commitImport = createServerFn({ method: "POST" })
                     isResidential: isRes,
                     dogCount,
                     service,
+                    staffId: staff?.id ?? null,
                     now: new Date().toISOString(),
                   }) as any,
                 )
@@ -2645,6 +2781,9 @@ export const commitImport = createServerFn({ method: "POST" })
                   ? `Imported plan from ${sourceLabel}: the file did not say how often. The plan is paused and weekly on paper; set how often before turning it on.`
                   : null,
                 planVisitsNote(sourceLabel, m),
+                m.assigned_to && !staff
+                  ? `Visits were assigned to ${m.assigned_to} in ${sourceLabel}; no one on your team here has that name, so the plan is unassigned.`
+                  : null,
                 extrasSummary(sourceLabel, m.extras),
               );
               if (planNote) {

@@ -95,6 +95,26 @@ const HELPERS_BY_ENTITY: Record<string, string[]> = {
 
 const norm = (s: string) => s.trim().toLowerCase();
 
+/** What a helper column is read for, in the owner's words, or null when
+ *  the column is not one of the entity's helpers. The mapping screen shows
+ *  it as the column's destination. */
+export function helperRole(entity: string, header: string): string | null {
+  const h = norm(header);
+  const has = (list: string[]) => list.some((c) => norm(c) === h);
+  if (!(HELPERS_BY_ENTITY[entity] ?? []).some((c) => norm(c) === h)) return null;
+  if (has(FIRST_NAME_COLUMNS) || has(LAST_NAME_COLUMNS))
+    return "Client name, when the name column is blank (first + last)";
+  if (has(COMPANY_NAME_COLUMNS)) return "Company name";
+  if (has(ADDRESS_2_COLUMNS)) return "Street, second line";
+  if (
+    has(BILLING_ADDRESS_2_COLUMNS) ||
+    has(BILLING_COUNTRY_COLUMNS) ||
+    has(Object.values(BILLING_FALLBACK_COLUMNS).flat())
+  )
+    return "Address when the service address is blank; else a billing-address note";
+  return "Read with the fields above";
+}
+
 /** The file's columns the import reads for this entity and mapping: the
  *  mapped columns, and the helpers the row mapper looks up by name. */
 export function consumedColumns(

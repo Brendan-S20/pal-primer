@@ -14,9 +14,11 @@ import {
   detectImportSource,
   IMPORT_SOURCE_LABELS,
   isVerifiedSource,
+  fieldNamesForEntity,
   type ImportEntity,
 } from "@/lib/imports.functions";
-import { leftoverColumns } from "@/lib/import-leftovers";
+import { suggestFields } from "@/lib/import-column-map";
+import { ColumnMappingTable } from "@/components/imports/ColumnMappingTable";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/format";
@@ -200,53 +202,6 @@ function downloadTemplate(source: string, entity: ImportEntity) {
   URL.revokeObjectURL(url);
 }
 
-/** The columns no field reads, named before the preview (#857). Each row's
- *  values in them are kept on the record as raw data and summarized in its
- *  notes, so the owner sees what will not be a field rather than finding
- *  out later that it was dropped. */
-function KeptColumns({
-  entity,
-  mapping,
-  headers,
-}: {
-  entity: ImportEntity;
-  mapping: Record<string, string | null>;
-  headers: string[];
-}) {
-  const kept = leftoverColumns(entity, mapping, headers);
-  if (!kept.length) {
-    return (
-      <p className="text-xs text-muted-foreground">
-        Every column is matched to a field. Nothing is left over.
-      </p>
-    );
-  }
-  const where =
-    entity === "clients"
-      ? "stored on each client as raw data and summarized in its notes"
-      : entity === "services"
-        ? "added as an office note on the client"
-        : "added to the record's notes";
-  return (
-    <div className="rounded-md border bg-muted/30 p-3 text-xs">
-      <p className="font-medium">
-        {kept.length} column{kept.length === 1 ? "" : "s"} kept, not matched to a field
-      </p>
-      <p className="mt-1 text-muted-foreground">
-        Nothing is dropped: each row&apos;s values in these columns are {where}. To use one as a
-        field instead, pick it above.
-      </p>
-      <ul className="mt-2 flex flex-wrap gap-1.5">
-        {kept.map((h) => (
-          <li key={h} className="rounded border bg-background px-2 py-0.5 font-mono">
-            {h}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 function ImportStatusBadge({ status }: { status: string }) {
   const cls: Record<string, string> = {
     committed: "border-transparent bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-400",
@@ -346,6 +301,8 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
   // visit per Job # become two columns on each plan row.
   const [visitRows, setVisitRows] = useState<Record<string, unknown>[] | null>(null);
   const [mapping, setMapping] = useState<Record<string, string | null>>({});
+  // Fields set from a column's name alone, on a file no real export backs.
+  const [suggested, setSuggested] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const today = useOrgToday();
   const joinsVisits = (s: string, e: ImportEntity, v: unknown[] | null) =>
@@ -368,6 +325,21 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
     (f) => f !== "service" || offersServiceColumn,
   );
   const required = REQUIRED_FIELDS[entity];
+
+  // A known export is mapped from its real file's column names. A file
+  // HoundStack has no real export of (any CSV, or a vendor not yet seen)
+  // also gets a suggested field for each column whose name says it.
+  const remap = (s: string, hs: string[], e: ImportEntity) => {
+    const base = autoMap(s, hs, e);
+    if (s !== "generic_csv" && isVerifiedSource(s)) {
+      setMapping(base);
+      setSuggested(new Set());
+      return;
+    }
+    const out = suggestFields(base, hs, TARGET_FIELDS_BY_ENTITY[e], fieldNamesForEntity(e));
+    setMapping(out.mapping);
+    setSuggested(new Set(out.suggested));
+  };
 
   const onFileChange = (f: File | null) => {
     setFile(f);
@@ -392,7 +364,7 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
           setSource(detected);
           toast.success(`Recognized a ${SOURCE_LABELS[detected] ?? detected} export, fields auto-mapped.`);
         }
-        setMapping(autoMap(effSource, withVisitColumns(hs, effSource, entity, visitRows), entity));
+        remap(effSource, withVisitColumns(hs, effSource, entity, visitRows), entity);
       },
       error: (err) => toast.error(`CSV parse error: ${err.message}`),
     });
@@ -401,19 +373,19 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
   const onVisitRows = (v: Record<string, unknown>[] | null) => {
     setVisitRows(v);
     if (fileHeaders.length)
-      setMapping(autoMap(source, withVisitColumns(fileHeaders, source, entity, v), entity));
+      remap(source, withVisitColumns(fileHeaders, source, entity, v), entity);
   };
 
   const onSourceChange = (s: (typeof IMPORT_SOURCES)[number]) => {
     setSource(s);
     if (fileHeaders.length)
-      setMapping(autoMap(s, withVisitColumns(fileHeaders, s, entity, visitRows), entity));
+      remap(s, withVisitColumns(fileHeaders, s, entity, visitRows), entity);
   };
 
   const onEntityChange = (e: ImportEntity) => {
     setEntity(e);
     if (fileHeaders.length)
-      setMapping(autoMap(source, withVisitColumns(fileHeaders, source, e, visitRows), e));
+      remap(source, withVisitColumns(fileHeaders, source, e, visitRows), e);
   };
 
   const runPreview = async () => {
@@ -530,8 +502,8 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
         <div className="space-y-3">
           <div className="text-sm text-muted-foreground">
             Detected <span className="font-medium text-foreground">{rows.length}</span> rows and{" "}
-            <span className="font-medium text-foreground">{headers.length}</span> columns. Match each
-            target field to a column (auto-mapped from the {SOURCE_LABELS[source]} preset).
+            <span className="font-medium text-foreground">{headers.length}</span> columns. Each
+            column is set from the {SOURCE_LABELS[source]} export; check where each one goes.
           </div>
           {!isVerifiedSource(source) && (
             <div
@@ -539,33 +511,24 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
               className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300"
             >
               HoundStack has not seen a real {SOURCE_LABELS[source]} export yet, so this mapping is
-              a best guess from its column names. Check every field below before you preview;
+              a best guess from its column names. Check where every column goes before you preview;
               every column is still shown on the preview before anything is saved.
             </div>
           )}
-          <div className="grid gap-3 sm:grid-cols-2">
-            {targetFields.map((field) => (
-              <label key={field} className="space-y-1 text-sm">
-                <span className="font-medium">
-                  {FIELD_LABELS[field] ?? field}
-                  {required.includes(field) && <span className="text-red-500"> *</span>}
-                </span>
-                <select
-                  value={mapping[field] ?? ""}
-                  onChange={(e) =>
-                    setMapping((prev) => ({ ...prev, [field]: e.target.value || null }))
-                  }
-                  className="block w-full rounded border bg-background px-3 py-2 text-sm"
-                >
-                  <option value="">(skip)</option>
-                  {headers.map((h) => (
-                    <option key={h} value={h}>{h}</option>
-                  ))}
-                </select>
-              </label>
-            ))}
-          </div>
-          <KeptColumns entity={entity} mapping={mapping} headers={headers} />
+          <ColumnMappingTable
+            entity={entity}
+            headers={headers}
+            rows={rows}
+            mapping={mapping}
+            onChange={(m) => {
+              setMapping(m);
+              setSuggested((prev) => new Set([...prev].filter((f) => m[f] === mapping[f])));
+            }}
+            targetFields={targetFields}
+            required={required}
+            labels={FIELD_LABELS}
+            suggested={suggested}
+          />
           <div className="flex justify-end">
             <Button onClick={runPreview} disabled={busy}>
               {busy ? "Analyzing…" : "Dry-run preview"}
