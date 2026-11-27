@@ -27,6 +27,7 @@
 // tried to email them" are different promises.
 
 import { appUrl } from "@/lib/app-origin";
+import { humanizeRole } from "@/lib/humanize";
 export type InviteEmailResult = { email: string; sent: boolean };
 
 /**
@@ -59,7 +60,8 @@ export async function sendInviteEmail(
     // Get started and an OAuth round-trip (#568). Emails already sent with the
     // /auth?invite= link still work.
     const link = token ? appUrl(`/invite/${encodeURIComponent(token)}`) : appUrl("/auth");
-    const label = role.replace(/_/g, " ");
+    // "Technician", as the app says it everywhere, not the raw role "tech" (#1030).
+    const label = humanizeRole(role);
     const React = await import("react");
     const { render } = await import("react-email");
     const { EMAIL_TEXT_OPTIONS } = await import("@/lib/email/plain-text");

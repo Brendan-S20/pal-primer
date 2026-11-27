@@ -247,7 +247,7 @@ export function InvoiceRow({
             narrow as the status itself and the client floor has room. The
             drawer still says all of it. */}
         <span className="inline-flex flex-wrap items-center gap-1.5 max-xl:flex-nowrap">
-          <StatusChip {...invoiceStatusChip(invoice)} className="whitespace-nowrap" />
+          <StatusChip {...invoiceStatusChip(invoice, today)} className="whitespace-nowrap" />
           {isPartiallyPaid(invoice) && (
             <MetaChip className="whitespace-nowrap">Partially paid</MetaChip>
           )}
@@ -385,7 +385,7 @@ export function InvoiceCard({
             </div>
           )}
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            <StatusChip {...invoiceStatusChip(invoice)} />
+            <StatusChip {...invoiceStatusChip(invoice, today)} />
             {isPartiallyPaid(invoice) && (
               <MetaChip className="whitespace-nowrap">Partially paid</MetaChip>
             )}

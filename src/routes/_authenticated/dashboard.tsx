@@ -4,6 +4,7 @@ import { AiSection, DigestPanel, MarketingPanel } from "@/components/ai/AiPanels
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { getMyOrg } from "@/lib/org.functions";
 import { getPlatformContext } from "@/lib/platform.functions";
 import { getDashboardSummary } from "@/lib/dashboard.functions";
@@ -54,6 +55,15 @@ function Dashboard() {
   const sumFn = useServerFn(getDashboardSummary);
   const billingFn = useServerFn(getBillingStatus);
   const [detailVisitId, setDetailVisitId] = useState<string | null>(null);
+  // The "Verify your email" link lands here with ?verified=1 (#1030). Say so
+  // once, then take the flag off the address so a reload does not say it again.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("verified") !== "1") return;
+    toast.success("Your email is verified.");
+    url.searchParams.delete("verified");
+    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+  }, []);
   // Collapsed by default, phones only — see the note by the toggle. Desktop
   // ignores this entirely: the map is always rendered above `md`.
   const [mapOpen, setMapOpen] = useState(false);

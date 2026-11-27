@@ -1,5 +1,8 @@
-// `postinstall`: make the Capacitor plugins that have not caught up with
-// Capacitor 8 resolvable by Swift Package Manager.
+// `postinstall`: the two changes this repo makes to installed Capacitor
+// plugins. One makes a plugin that has not caught up with Capacitor 8
+// resolvable by Swift Package Manager (below). The other stops
+// @capacitor/geolocation asking the location daemon for anything while the app
+// launches (patchGeolocationPlugin).
 //
 // ── WHY THIS EXISTS ──────────────────────────────────────────────────────
 //
@@ -53,10 +56,84 @@ const CAPACITOR_7 = new RegExp(`(${SWIFT_PM})7\\.\\d+\\.\\d+(")`);
 /** Already resolvable alongside CapApp-SPM's exact 8.x pin. */
 const CAPACITOR_8 = new RegExp(`${SWIFT_PM}8\\.\\d+\\.\\d+"`);
 
+// ── GEOLOCATION: NOTHING AT LAUNCH ─────────────────────────────────────────
+//
+// @capacitor/geolocation 8.2.0 builds its CLLocationManager in load(), which
+// Capacitor runs on the main thread inside SceneDelegate, before the web view
+// has been asked to load anything. The library reads authorizationStatus in
+// that constructor, and the read is a synchronous XPC call to locationd. For
+// as long as locationd does not answer, the app is a frozen blank screen.
+//
+// Measured on the CI Mac (run 45828319213, iPhone 17e, iOS 26.5, after a
+// simulator reboot): the main thread sat in that call for 329 s, 77 s and
+// 108 s on three launches, and on a fourth had not returned 115 s in, when
+// XCTest failed the test with "process main thread busy for 30.0s". `sample`
+// of the first: GeolocationPlugin.load() → IONGLOCManagerWrapper.init →
+// CLLocationManager.authorizationStatus → mach_msg. In every launch that
+// returned, the page's loadRequest followed within 50 ms.
+//
+// Nothing needs location until the web app calls the plugin, so the manager is
+// built on the first call that wants it. It is still built on the MAIN thread:
+// plugin methods run on Capacitor's "bridge" queue, and a CLLocationManager
+// delivers its delegate callbacks to the run loop of the thread that made it.
+// A queue's thread has none, so built there, no permission answer or position
+// would ever arrive.
+
+const LOAD_TIME_PROPERTY = "    private var locationService: (any IONGLOCService)?\n";
+const LOAD_TIME_CREATE = "        self.locationService = IONGLOCManagerWrapper()\n";
+const FIRST_USE_MARK = "// HoundStack: built on first use, never in load()";
+const FIRST_USE_PROPERTY = `    ${FIRST_USE_MARK} (scripts/patch-native-plugins.mjs).
+    private var createdLocationService: (any IONGLOCService)?
+    private var locationService: (any IONGLOCService)? {
+        if Thread.isMainThread { return makeLocationServiceOnMain() }
+        return DispatchQueue.main.sync { makeLocationServiceOnMain() }
+    }
+    private func makeLocationServiceOnMain() -> any IONGLOCService {
+        if let service = createdLocationService { return service }
+        let service = IONGLOCManagerWrapper()
+        createdLocationService = service
+        return service
+    }
+`;
+
+/**
+ * Move GeolocationPlugin.swift's location manager from load() to first use.
+ * Pure, so it can be tested on a fixture.
+ *
+ * @returns {{ status: "patched" | "already-patched", text: string }}
+ * @throws when the file is neither patched nor the shape this was written for
+ */
+export function patchGeolocationPlugin(text, label = "GeolocationPlugin.swift") {
+  if (text.includes(FIRST_USE_MARK)) return { status: "already-patched", text };
+  const once = (line) => text.split(line).length === 2;
+  if (!once(LOAD_TIME_PROPERTY) || !once(LOAD_TIME_CREATE)) {
+    throw new Error(
+      `${label}: expected the locationService property and its creation in load(), once each, ` +
+        `and did not find them. The plugin has probably been upgraded. Check that it creates no ` +
+        `CLLocationManager while the app launches, then update or remove its entry in ` +
+        `scripts/patch-native-plugins.mjs.`,
+    );
+  }
+  return {
+    status: "patched",
+    text: text.replace(LOAD_TIME_CREATE, "").replace(LOAD_TIME_PROPERTY, () => FIRST_USE_PROPERTY),
+  };
+}
+
 export const PLUGINS = [
   {
     name: "@capacitor-community/apple-sign-in",
     file: "Package.swift",
+    patch: patchPackageSwift,
+    patched: 'capacitor-swift-pm range set to from: "8.0.0"',
+    unchanged: "already accepts Capacitor 8, nothing to do",
+  },
+  {
+    name: "@capacitor/geolocation",
+    file: "ios/Sources/GeolocationPlugin/GeolocationPlugin.swift",
+    patch: patchGeolocationPlugin,
+    patched: "location manager moved from load() to first use",
+    unchanged: "already creates its location manager on first use, nothing to do",
   },
 ];
 
@@ -95,13 +172,9 @@ export function patchNativePlugins(root, log = console.log) {
       );
     }
     const before = readFileSync(path, "utf8");
-    const { status, text } = patchPackageSwift(before, `${p.name}/${p.file}`);
+    const { status, text } = p.patch(before, `${p.name}/${p.file}`);
     if (status === "patched") writeFileSync(path, text);
-    log(
-      status === "patched"
-        ? `[patch-native-plugins] ${p.name}: capacitor-swift-pm range set to from: "8.0.0"`
-        : `[patch-native-plugins] ${p.name}: already accepts Capacitor 8, nothing to do`,
-    );
+    log(`[patch-native-plugins] ${p.name}: ${status === "patched" ? p.patched : p.unchanged}`);
     results.push({ name: p.name, status });
   }
   return results;
@@ -128,8 +201,9 @@ if (invokedDirectly()) {
   } catch (e) {
     console.error(`\n[patch-native-plugins] FAILED: ${e instanceof Error ? e.message : e}\n`);
     console.error(
-      "Without this patch Swift Package Manager cannot resolve the iOS project and Xcode Cloud " +
-        "cannot archive. See docs/ios-build.md › Capacitor 8 and a plugin that is still on 7.\n",
+      "Without these patches the iOS project does not resolve (Xcode Cloud cannot archive) or the " +
+        "app waits on locationd while it launches. See the comments in this script and " +
+        "docs/ios-build.md › Capacitor 8 and a plugin that is still on 7.\n",
     );
     // Loud where an iOS build depends on it: a Mac (local Xcode, Xcode Cloud)
     // and GitHub Actions. Anywhere else — Lovable's web build runs bun's
@@ -140,8 +214,8 @@ if (invokedDirectly()) {
     const iosBuildDependsOnIt = override
       ? override === "1"
       : process.platform === "darwin" ||
-      process.env.GITHUB_ACTIONS === "true" ||
-      Boolean(process.env.CI_XCODE_CLOUD);
+        process.env.GITHUB_ACTIONS === "true" ||
+        Boolean(process.env.CI_XCODE_CLOUD);
     if (iosBuildDependsOnIt) process.exit(1);
     console.error("[patch-native-plugins] continuing: this install does not build iOS.\n");
   }

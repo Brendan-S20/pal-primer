@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
 import { invoiceRefundState } from "@/lib/refund-outcome";
+import { isScheduledToSend } from "@/lib/invoice-send-state";
 import { MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { StaffInvoicePayForm } from "@/components/StaffInvoicePayForm";
@@ -277,7 +278,11 @@ export function InvoiceDrawer({
           <div className="space-y-5 text-sm">
             {/* Status line */}
             <div className="flex flex-wrap items-center gap-2">
-              <InvoiceStatusBadge status={inv.status} refund={invoiceRefundState(inv)} />
+              <InvoiceStatusBadge
+                status={inv.status}
+                refund={invoiceRefundState(inv)}
+                scheduled={isScheduledToSend(inv, today)}
+              />
               {isPartiallyPaid(inv) && <MetaChip>Partially paid</MetaChip>}
               {overdue && (
                 <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-medium text-destructive">

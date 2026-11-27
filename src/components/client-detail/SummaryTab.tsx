@@ -1,6 +1,7 @@
 // Summary tab (spec 3.1): a 2-column desktop grid. LEFT (operational):
 // alerts, visits (next + recent), active services, property snapshot.
 // RIGHT (secondary): notes and the compact communication preview.
+import { noEmailNotice } from "@/lib/no-email-notice";
 import { useQuery } from "@tanstack/react-query";
 import { zoneOverridesPrice } from "@/lib/standard-price";
 import { TextingNotLiveText } from "@/components/TextingNotLive";
@@ -30,6 +31,7 @@ export function SummaryTab({
   creditCents = null,
   billingClient = null,
   visitsLoading = false,
+  dogsLoading = false,
   creditLoading = false,
   canBill,
   onGoToTab,
@@ -44,6 +46,7 @@ export function SummaryTab({
   creditCents?: number | null;
   billingClient?: any | null;
   visitsLoading?: boolean;
+  dogsLoading?: boolean;
   creditLoading?: boolean;
   canBill: boolean;
   onGoToTab: (tab: string) => void;
@@ -97,11 +100,14 @@ export function SummaryTab({
   if (client.autopay_paused)
     alerts.push({ severity: "critical", text: "Autopay is paused after repeated failures.", tab: "billing" });
 
-  if (client.email_opt_out === false && !client.primary_email)
-    alerts.push({
-      severity: "warning",
-      text: "Email notifications are enabled but there's no email address on file.",
+  {
+    const noEmail = noEmailNotice({
+      emailOptOut: client.email_opt_out,
+      primaryEmail: client.primary_email,
+      activeServiceCount: activeSubs.length,
     });
+    if (noEmail) alerts.push({ severity: "info", text: noEmail });
+  }
   // Only a warning once this business can text: until then a missing phone
   // number stops no text from going, because none go.
   if (texting && client.sms_opt_out === false && !client.primary_phone)
@@ -159,7 +165,9 @@ export function SummaryTab({
   );
   // Says the number, because the Clients list, a quote and My Day all count
   // these dogs from the plan until there are records (propertyDogTally, #429).
-  if (billedDogs > 0 && activeDogTotal === 0)
+  // #1020: not while the dogs query is still pending, when the list is empty
+  // only because nothing has arrived yet.
+  if (!dogsLoading && billedDogs > 0 && activeDogTotal === 0)
     alerts.push({
       severity: "warning",
       text: `Services bill for ${billedDogs} ${billedDogs === 1 ? "dog" : "dogs"}, but no dog is on file. Every screen counts ${billedDogs} from the plan until the dogs are added on Properties.`,
@@ -242,7 +250,12 @@ export function SummaryTab({
             <SectionLabel className="flex items-center gap-1.5">
               <CalendarClock className="h-3.5 w-3.5 shrink-0" /> Next visit
             </SectionLabel>
-            {upcoming ? (
+            {visitsLoading ? (
+              // #1020: "Nothing scheduled" is a claim; it waits for the visits.
+              <div className="mt-1 h-5 w-40 animate-pulse rounded bg-muted" aria-busy="true">
+                <span className="sr-only">Loading visits</span>
+              </div>
+            ) : upcoming ? (
               <div className="mt-1">
                 {formatDay(upcoming.scheduled_on)}
                 {upcoming.properties?.street && (
@@ -266,7 +279,7 @@ export function SummaryTab({
                 <StatusChip status={v.status} />
               </li>
             ))}
-            {recent.length === 0 && (
+            {recent.length === 0 && !visitsLoading && (
               <li className="text-sm text-muted-foreground">No past visits yet.</li>
             )}
           </ul>

@@ -67,6 +67,7 @@ import { APP_NAME } from "@/lib/scoop";
 import { Logo } from "@/components/Logo";
 import { UserAvatar } from "@/components/UserAvatar";
 import { useMyProfile } from "@/hooks/useMyProfile";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useCommercialAccounts, useServiceLines } from "@/components/CommercialOnly";
 import { useClientTexting } from "@/hooks/useClientTexting";
 
@@ -498,7 +499,7 @@ export function AppSidebar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
   const { role } = useMyRole();
-  const { staff: me } = useMyProfile();
+  const { staff: me, loading: meLoading } = useMyProfile();
   const { t, i18n } = useTranslation();
 
   const isActive = (url: string) =>
@@ -716,6 +717,19 @@ export function AppSidebar() {
               the More sheet is the phone's way in; this is the way in
               wherever the sidebar is the menu. Opens the same sheet. */}
           {me && <TimeClockSidebarItem collapsed={collapsed} />}
+          {meLoading ? (
+            // The profile is still on its way. Without this the footer drew a
+            // "?" avatar and "Your account" for a moment, then swapped to the
+            // real name (#1043-6). Same height as the row it becomes, so
+            // nothing below or above it moves.
+            <SidebarMenuItem data-testid="sidebar-account-skeleton" aria-busy="true">
+              <div className="flex h-8 items-center gap-2 px-2">
+                <Skeleton className="h-5 w-5 shrink-0 rounded-full" />
+                {!collapsed && <Skeleton className="h-3 w-24" />}
+                <span className="sr-only">{t("common.loading")}</span>
+              </div>
+            </SidebarMenuItem>
+          ) : (
           <SidebarMenuItem>
             <SidebarMenuButton
               asChild
@@ -740,6 +754,7 @@ export function AppSidebar() {
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
+          )}
         </SidebarMenu>
       </SidebarFooter>
     </Sidebar>

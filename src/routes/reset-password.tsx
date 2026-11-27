@@ -263,6 +263,10 @@ function BackToSignIn() {
     <p className="text-center text-sm">
       <Link
         to="/auth"
+        // The press must not take the focus off the password field: its blur
+        // adds a line, the centred page re-centres, and this link moves out
+        // from under the pointer before the click completes (#1058).
+        onMouseDown={(e) => e.preventDefault()}
         onClick={(e) => {
           e.preventDefault();
           void abandonRecovery(supabase).finally(() => navigate({ to: "/auth" }));

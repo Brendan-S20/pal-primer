@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import type { InvoiceRefundState } from "@/lib/refund-outcome";
+import { SCHEDULED_LABEL } from "@/lib/invoice-send-state";
 
 /**
  * One palette for invoice status everywhere. Before this, four surfaces
@@ -52,12 +53,20 @@ const REFUND_STYLES: Record<
 export function InvoiceStatusBadge({
   status,
   refund = null,
+  scheduled = false,
 }: {
   status: string;
   /** From `invoiceRefundState`; absent reads as no refund. */
   refund?: InvoiceRefundState;
+  /** From `isScheduledToSend`, staff screens only (#1042): an open invoice
+   *  held for a send date still ahead reads "Scheduled". The customer pages
+   *  never pass it. */
+  scheduled?: boolean;
 }) {
-  const s = (refund ? REFUND_STYLES[refund] : null) ?? STYLES[status];
+  const s =
+    (refund ? REFUND_STYLES[refund] : null) ??
+    (scheduled && status === "open" ? { ...STYLES.open, label: SCHEDULED_LABEL } : null) ??
+    STYLES[status];
   if (!s) return <Badge variant="secondary">{status}</Badge>;
   return (
     <Badge variant={status === "void" ? "outline" : "secondary"} className={s.className}>

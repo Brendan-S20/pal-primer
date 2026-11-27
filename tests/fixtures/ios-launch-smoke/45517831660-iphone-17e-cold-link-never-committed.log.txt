@@ -1,0 +1,16 @@
+Test Case '-[HoundStackUITests.ColdLaunch testALinkThatLaunchesTheAppLandsOnSignIn]' started.
+    t =     0.00s Start Test at 2026-11-24 20:29:44.416
+    t =     0.13s Set Up
+    t =     0.15s Terminate consulting.thenorth.houndstack:0
+    t =     0.16s Wait for consulting.thenorth.houndstack to become Not Running
+    t =     2.16s Opening default application for URL consulting.thenorth.houndstack://open/my-day
+    t =     7.59s Open consulting.thenorth.houndstack
+    t =     7.59s     Activate consulting.thenorth.houndstack
+    t =    67.66s         Checking existence of `TextField (First Match)`
+    t =    67.67s         Capturing element debug description
+    t =    67.67s     Checking existence of `TextField (First Match)`
+    t =    67.68s Collecting debug information to assist test failure triage
+    t =    67.68s     Requesting snapshot of accessibility hierarchy for app with pid 85053
+/Users/brendanschmidt/actions-runner/_work/pal-primer/pal-primer/ios/UITests/HoundStackUITests/ColdLaunch.swift:194: error: -[HoundStackUITests.ColdLaunch testALinkThatLaunchesTheAppLandsOnSignIn] : XCTAssertTrue failed - after a cold link: no email field, so the sign-in form never rendered
+    t =    69.21s Tear Down
+Test Case '-[HoundStackUITests.ColdLaunch testALinkThatLaunchesTheAppLandsOnSignIn]' failed (69.447 seconds).

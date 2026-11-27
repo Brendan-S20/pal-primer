@@ -1,3 +1,4 @@
+import { isSearching } from "@/lib/clients-search-state";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ListSkeleton } from "@/components/PageSkeletons";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,6 +19,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { useRowSelection } from "@/hooks/useRowSelection";
 import { usePermissions } from "@/hooks/useMyRole";
 import { humanizeEnum } from "@/lib/humanize";
+import { formatPhone } from "@/lib/format";
 import { frequencyLabel } from "@/lib/frequency-request";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -164,6 +166,8 @@ function ClientsList() {
   const {
     data,
     isLoading,
+    isFetching: pageFetching,
+    isPlaceholderData,
     dataUpdatedAt: pageUpdatedAt,
   } = useQuery({
     queryKey: ["clients", "page", { q: searched, status, type, tag }, offset],
@@ -188,6 +192,12 @@ function ClientsList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [summaryLags, pageUpdatedAt]);
 
+  const searching = isSearching({
+    typed: q,
+    searched,
+    fetching: pageFetching,
+    showingPreviousResults: isPlaceholderData,
+  });
   const filtered = (data?.rows ?? []) as any[];
   const matched = data?.matched ?? 0;
   // The tiles describe the whole book, whatever the filters say.
@@ -436,7 +446,7 @@ function ClientsList() {
           <div className="mt-1 text-[length:min(1.125rem,12cqi)] leading-8 font-semibold [overflow-wrap:anywhere] sm:text-[length:min(1.5rem,12cqi)]">
             {!summary ? <TileValueBone /> : money(stats.owedTotal)}
           </div>
-          <div className="text-xs text-muted-foreground">{!summary ? <Skeleton className="h-4 w-20" /> : `${stats.outstanding} clients`}</div>
+          <div className="text-xs text-muted-foreground">{!summary ? <Skeleton className="h-4 w-20" /> : `${stats.outstanding} owing`}</div>
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -615,9 +625,19 @@ function ClientsList() {
         </div>
       )}
 
+      {searching && data && (
+        <p
+          role="status"
+          aria-live="polite"
+          data-clients-searching=""
+          className="mb-2 text-sm text-muted-foreground"
+        >
+          Searching…
+        </p>
+      )}
       {!data ? (
         <ListSkeleton breakpoint="sm" columns={7} />
-      ) : !filtered.length ? (
+      ) : !filtered.length && searching ? null : !filtered.length ? (
         <div className="rounded-lg border border-dashed bg-card p-10 text-center">
           <p className="text-muted-foreground">
             {stats.total ? "No clients match those filters." : "No clients yet."}
@@ -668,7 +688,7 @@ function ClientsList() {
                         {c.primary_email}
                       </div>
                     )}
-                    <div className="text-xs text-muted-foreground">{c.primary_phone ?? ""}</div>
+                    <div className="text-xs text-muted-foreground">{formatPhone(c.primary_phone)}</div>
                   </div>
                   <div className="text-right">
                     {/* Three states, not two. "Active with no plan" was
@@ -823,7 +843,7 @@ function ClientsList() {
                       ) : !c.primary_phone ? (
                         <div>-</div>
                       ) : null}
-                      {c.primary_phone && <div className="text-xs">{c.primary_phone}</div>}
+                      {c.primary_phone && <div className="text-xs">{formatPhone(c.primary_phone)}</div>}
                     </td>
                     <td className="px-4 py-3">
                       {/* Same three states as the mobile cards above — the two
