@@ -578,17 +578,20 @@ export async function saveDirectoryBooking(
 /**
  * The published contact (#1002), written only when the caller sent it, through
  * the owner-checked set_directory_public_contact RPC on the caller's own
- * client (authenticated holds no UPDATE on directory_profiles). Exported for
+ * client (authenticated holds no UPDATE on directory_profiles). Nothing is
+ * called when the save would leave the contact as it is, so the form's two
+ * blank fields cost nothing on a database that has no writer yet. Exported for
  * its test.
  */
 export async function saveDirectoryContact(
   sb: SupabaseClient,
   orgId: string,
-  data: { publicEmail?: string | null; publicPhone?: string | null },
+  data: { publicEmail?: string | null; publicPhone?: string | null; published?: boolean },
 ): Promise<void> {
   const changeEmail = data.publicEmail !== undefined;
   const changePhone = data.publicPhone !== undefined;
   if (!changeEmail && !changePhone) return;
+  if (await contactIsUnchanged(sb, orgId, data)) return;
   const { error } = await sb.rpc("set_directory_public_contact", {
     _org: orgId,
     _email: data.publicEmail ?? null,
@@ -598,10 +601,38 @@ export async function saveDirectoryContact(
   });
   if (error) {
     console.error("directory contact save failed", orgId, error.code);
-    throw new Error(
-      "Your profile was saved. The public contact can't be saved yet: try again later.",
-    );
+    // The profile itself is already written, published or not: say which.
+    const saved = data.published
+      ? "Your profile is live in the directory."
+      : "Your profile was saved.";
+    const next =
+      data.publicEmail || data.publicPhone
+        ? "leave both fields empty, or try again later."
+        : "try again later.";
+    throw new Error(`${saved} The public contact can't be saved yet: ${next}`);
   }
+}
+
+/** True only when every field that was sent already holds that value. A
+ *  database without the columns holds nothing. Any other failed read is
+ *  "don't know", so the write is attempted: a clear is never dropped. */
+async function contactIsUnchanged(
+  sb: SupabaseClient,
+  orgId: string,
+  data: { publicEmail?: string | null; publicPhone?: string | null },
+): Promise<boolean> {
+  const { data: row, error } = await sb
+    .from("directory_profiles")
+    .select("public_email, public_phone")
+    .eq("organization_id", orgId)
+    .maybeSingle();
+  if (error && !notThereYet(error)) return false;
+  const stored = error ? null : (row as { public_email?: unknown; public_phone?: unknown } | null);
+  const same = (sent: string | null | undefined, held: unknown) =>
+    sent === undefined || sent === (held ?? null);
+  return (
+    same(data.publicEmail, stored?.public_email) && same(data.publicPhone, stored?.public_phone)
+  );
 }
 
 export const saveMyDirectoryProfile = createServerFn({ method: "POST" })

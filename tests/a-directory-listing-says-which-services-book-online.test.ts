@@ -140,13 +140,19 @@ describe("the migration", () => {
     // 20261118010000 (#969, public_email / public_phone) replaces the view only
     // to append two columns: tests/a-directory-profile-can-publish-a-contact.test.ts pins it.
     const CONTACT_MIGRATION = "20261118010000";
+    // 20261124130000 (#1002) adds one owner-only writer for the two contact
+    // columns and leaves the public view alone.
+    const CONTACT_WRITER = "20261124130000_a-directory-owner-publishes-a-contact.sql";
+    expect(read(`supabase/migrations/${CONTACT_WRITER}`).replace(/^\s*--.*$/gm, "")).not.toMatch(
+      /\bVIEW\b|directory_public_(listings|rows)/i,
+    );
     expect(
       files
         .filter((f) => !LATER_AND_UNRELATED.includes(f))
         .map((f) => f.slice(0, 14))
         .filter((s) => s > STAMP)
         .sort(),
-    ).toEqual(["20261112110000", CONTACT_MIGRATION]);
+    ).toEqual(["20261112110000", CONTACT_MIGRATION, CONTACT_WRITER.slice(0, 14)]);
     expect(readFileSync(MIGRATION, "utf8")).toMatch(/PROPOSED MIGRATION\. File only/);
     expect(read(`supabase/proofs/${STAMP}-${NAME}.sql`)).toMatch(
       new RegExp(`\\\\ir \\.\\./\\.\\./tests/sql/${NAME}\\.proof\\.sql`),

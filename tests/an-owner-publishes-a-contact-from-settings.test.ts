@@ -49,22 +49,31 @@ const h = vi.hoisted(() => ({ admin: null as unknown }));
 type Row = Record<string, unknown>;
 function fakeDb(
   tables: Record<string, Row | null>,
-  opts: { failUpdate?: string; failRpc?: string } = {},
+  opts: {
+    failUpdate?: string;
+    failRpc?: string;
+    rpcCode?: string;
+    contactReadCode?: string;
+  } = {},
 ) {
   const calls: Array<{ kind: string; name: string; args?: unknown; eq?: unknown[] }> = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- a query-builder stand-in
   const chain = (table: string): any => {
     let last: { kind: string; name: string; args?: unknown; eq?: unknown[] } | null = null;
+    let columns = "";
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- a query-builder stand-in
     const c: any = {
-      select: () => c,
+      select: (s: string) => ((columns = s), c),
       eq: (...a: unknown[]) => (last?.eq ? last.eq.push(a) : void 0, c),
       update: (v: unknown) => {
         last = { kind: "update", name: table, args: v, eq: [] };
         calls.push(last);
         return c;
       },
-      maybeSingle: async () => ({ data: tables[table] ?? null, error: null }),
+      maybeSingle: async () =>
+        opts.contactReadCode && columns === "public_email, public_phone"
+          ? { data: null, error: { message: "x", code: opts.contactReadCode } }
+          : { data: tables[table] ?? null, error: null },
       then: (ok: (v: unknown) => unknown, bad?: (e: unknown) => unknown) =>
         Promise.resolve({
           data: null,
@@ -80,7 +89,7 @@ function fakeDb(
       calls.push({ kind: "rpc", name, args });
       return {
         data: null,
-        error: opts.failRpc === name ? { message: "x", code: "XX000" } : null,
+        error: opts.failRpc === name ? { message: "x", code: opts.rpcCode ?? "XX000" } : null,
       };
     },
   };
@@ -122,9 +131,11 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function save(extra: Row, wasPublished = true) {
+async function save(extra: Row, wasPublished = true, stored: Row = {}) {
   h.admin = fakeDb({ org_texting_registrations: null });
-  const sb = fakeDb({ directory_profiles: { slug: "acme-scoop", published: wasPublished } });
+  const sb = fakeDb({
+    directory_profiles: { slug: "acme-scoop", published: wasPublished, ...stored },
+  });
   const admin = h.admin as ReturnType<typeof fakeDb>;
   const r = await saveMyDirectoryProfile({
     data: { ...PROFILE, ...extra },
@@ -200,8 +211,11 @@ describe("a Directory save with a contact", () => {
     expect(sb.calls.filter((c) => c.kind === "update")).toHaveLength(0);
   });
 
-  it("clearing a field sets it to null", async () => {
-    const { sb } = await save({ publicEmail: "", publicPhone: null });
+  it("clearing a stored field sets it to null", async () => {
+    const { sb } = await save({ publicEmail: "", publicPhone: null }, true, {
+      public_email: "old@acme.com",
+      public_phone: "+13135550100",
+    });
     expect(contactWrites(sb)[0].args).toMatchObject({
       _email: null,
       _phone: null,
@@ -278,6 +292,81 @@ describe("a Directory save with a contact", () => {
   });
 });
 
+// The app can go live before the migration does: the writer is then missing
+// (PGRST202), and the columns may be too (42703).
+describe("a save on a database without the contact writer", () => {
+  const WRITER = "set_directory_public_contact";
+  async function saveBefore(extra: Row, opts: { stored?: Row; contactReadCode?: string } = {}) {
+    h.admin = fakeDb({ org_texting_registrations: null });
+    const sb = fakeDb(
+      { directory_profiles: { slug: "acme-scoop", published: false, ...opts.stored } },
+      { failRpc: WRITER, rpcCode: "PGRST202", contactReadCode: opts.contactReadCode },
+    );
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const result = await saveMyDirectoryProfile({
+      data: { ...PROFILE, ...extra },
+      context: { supabase: sb, userId: "u" },
+    }).then(
+      (r) => ({ ok: r, message: "" }),
+      (e: Error) => ({ ok: null, message: e.message }),
+    );
+    return { ...result, sb };
+  }
+  const BLANK = { publicEmail: null, publicPhone: null };
+
+  for (const published of [false, true]) {
+    const button = published ? "Save and publish" : "Save, not listed";
+    it(`${button} with both fields blank succeeds and calls no contact writer`, async () => {
+      for (const contactReadCode of [undefined, "42703", "PGRST204"]) {
+        const { ok, sb } = await saveBefore({ ...BLANK, published }, { contactReadCode });
+        expect(ok, contactReadCode).toEqual({ ok: true });
+        expect(contactWrites(sb)).toHaveLength(0);
+      }
+    });
+  }
+
+  it("Save and publish with a typed contact says the listing is live and what to do", async () => {
+    const { message } = await saveBefore({
+      publicEmail: "hello@acme.com",
+      publicPhone: null,
+      published: true,
+    });
+    expect(message).toBe(
+      "Your profile is live in the directory. The public contact can't be saved yet: leave both fields empty, or try again later.",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("Save, not listed with a typed contact does not claim the listing is live", async () => {
+    const { message } = await saveBefore({
+      publicEmail: null,
+      publicPhone: "+13135550142",
+      published: false,
+    });
+    expect(message).toMatch(/^Your profile was saved\. The public contact can't be saved yet/);
+  });
+
+  it("never drops a clear: a stored value, or an unreadable one, still goes to the writer", async () => {
+    for (const opts of [
+      { stored: { public_email: "old@acme.com" } },
+      { contactReadCode: "XX000" },
+    ]) {
+      const { sb, message } = await saveBefore({ ...BLANK, published: false }, opts);
+      expect(contactWrites(sb)).toHaveLength(1);
+      expect(message).toMatch(/can't be saved yet: try again later\./);
+    }
+  });
+
+  it("an unchanged stored contact is not written again", async () => {
+    const { ok, sb } = await saveBefore(
+      { publicEmail: "a@b.co", publicPhone: null, published: true },
+      { stored: { public_email: "a@b.co", public_phone: null } },
+    );
+    expect(ok).toEqual({ ok: true });
+    expect(contactWrites(sb)).toHaveLength(0);
+  });
+});
+
 describe("the Settings form", () => {
   const src = readFileSync(
     join(__dirname, "../src/routes/_authenticated/settings.directory.tsx"),
@@ -305,7 +394,8 @@ const ROOT = join(__dirname, "..");
 const NAME = "a-directory-owner-publishes-a-contact";
 const VERSION = "20261124130000";
 const MIGRATION = join(ROOT, `supabase/migrations/${VERSION}_${NAME}.sql`);
-const PROOF = join(ROOT, `tests/sql/${NAME}.proof.sql`);
+// Spelled out: scripts/run-sql-proofs.mjs reads this path from the source text.
+const PROOF = join(ROOT, "tests/sql/a-directory-owner-publishes-a-contact.proof.sql");
 const PREREQ = join(
   ROOT,
   "supabase/migrations/20261118010000_a-directory-profile-can-publish-a-contact.sql",
