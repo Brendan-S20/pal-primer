@@ -35,8 +35,24 @@
 // - Canceled and undated visits are listed on the plan and on the page, and
 //   every visit's note is kept on the plan, not only the chosen row's.
 
-import { parseImportDate, parseMoneyCents } from "@/lib/import-services";
-import { frequencyFromName, mostCommon, scheduleFromDates } from "@/lib/import-visit-frequency";
+import {
+  VISITS_LEFT_OUT_COLUMN,
+  VISITS_NOTES_COLUMN,
+  VISITS_SCHEDULE_NOTE_COLUMN,
+} from "@/lib/import-leftovers";
+import {
+  parseFrequency,
+  parseImportDate,
+  parseMoneyCents,
+  sweepGoPlanCode,
+  type ImportFrequency,
+} from "@/lib/import-services";
+import {
+  frequencyFromName,
+  mostCommon,
+  scheduleFromDates,
+  weekday,
+} from "@/lib/import-visit-frequency";
 
 export { frequencyFromDates } from "@/lib/import-visit-frequency";
 
@@ -47,9 +63,7 @@ export const VISITS_NEXT_COLUMN = "Next visit (from the visits)";
 export const VISITS_AFTER_NEXT_COLUMN = "Visit after next (from the visits)";
 export const VISITS_COUNT_COLUMN = "Visits in the file";
 export const VISITS_PRICE_COLUMN = "Price per visit (from the visits)";
-export const VISITS_NOTES_COLUMN = "Visit notes (from the visits)";
-export const VISITS_LEFT_OUT_COLUMN = "Visits left out (from the visits)";
-export const VISITS_SCHEDULE_NOTE_COLUMN = "About the schedule (from the visits)";
+export { VISITS_LEFT_OUT_COLUMN, VISITS_NOTES_COLUMN, VISITS_SCHEDULE_NOTE_COLUMN };
 export const VISITS_COLUMNS = [
   VISITS_FREQUENCY_COLUMN,
   VISITS_FIRST_COLUMN,
@@ -79,6 +93,9 @@ export type VisitFileColumns = {
   price?: string | null;
   fees?: string[];
   note?: string | null;
+  /** Sweep&Go's "Job Type": an "Initial" cleanup is priced on its own, so
+   *  its price is not the plan's. */
+  kind?: string | null;
 };
 
 type Spec = {
@@ -93,6 +110,7 @@ type Spec = {
   price?: string[];
   fees?: string[];
   note?: string[];
+  kind?: string[];
 };
 
 /** The visit files read off real exports, per source. A file is one of these
@@ -125,6 +143,7 @@ const VISIT_FILES: Record<string, Spec[]> = {
       status: ["Status"],
       street: ["Address"],
       price: ["Revenue"],
+      kind: ["Job Type"],
     },
   ],
   time_to_pet: [
@@ -168,6 +187,7 @@ export function visitFileColumns(
       ...(spec.price ? { price: find(spec.price) } : {}),
       ...(fees.length ? { fees } : {}),
       ...(spec.note ? { note: find(spec.note) } : {}),
+      ...(spec.kind ? { kind: find(spec.kind) } : {}),
     };
   }
   return null;
@@ -177,6 +197,7 @@ const str = (v: unknown) => (v === undefined || v === null ? "" : String(v).trim
 const DONE = /complet|done|finished/i;
 const CALLED_OFF = /cancel|no[- ]?show|skipped|declined|deleted/i;
 const NOT_RECURRING = /^(false|no|n|0)$/i;
+const INITIAL = /initial|first|one[- ]?time/i;
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 type Visit = {
@@ -186,7 +207,52 @@ type Visit = {
   done: boolean;
   cents: number | null;
   note: string;
+  /** An initial or first cleanup, priced on its own. */
+  initial: boolean;
 };
+
+const DAYS = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
+/** The weekdays a run of visits falls on, when it falls on them week after
+ *  week (walks Monday to Friday), Monday first; else none. */
+function weekdaysOf(dates: readonly string[]): string[] {
+  const days = [...new Set(dates.map(weekday))];
+  const days7 = (d: string) => Date.parse(`${d}T00:00:00Z`) / 86_400_000;
+  const tight = dates.every((d, i) => i === 0 || days7(d) - days7(dates[i - 1]) <= 3);
+  if (days.length < 3 || dates.length < days.length * 2 || !tight) return [];
+  return days.sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((d) => DAYS[d]);
+}
+
+/** Whether `dates` fall on a weekly (every k weeks) or monthly-by-date
+ *  schedule read from earlier visits, walked from `from`. Another kind of
+ *  schedule is taken to fit. */
+function fitsSchedule(text: string, from: string, dates: readonly string[]): boolean {
+  const day = (d: string) => Math.round(Date.parse(`${d}T00:00:00Z`) / 86_400_000);
+  const w = text.match(/^(?:Weekly|Every (\d+) weeks) on (\w+)$/);
+  if (w) {
+    const step = 7 * Number(w[1] ?? 1);
+    const wd = DAYS.indexOf(w[2]);
+    return dates.every((d) => weekday(d) === wd && (day(d) - day(from)) % step === 0);
+  }
+  const m = text.match(/^Monthly on the (\d+)\w\w day of the month$/);
+  if (m) return dates.every((d) => Number(d.slice(8, 10)) === Number(m[1]));
+  return true;
+}
+
+/** "1d-3xW" in words: "3 times a week". */
+function codeWords(code: string): string {
+  const m = code.match(/(\d)x([wm])\s*$/i);
+  if (!m) return /bw\s*$/i.test(code) ? "every 2 weeks" : `"${code}"`;
+  const per = m[2].toLowerCase() === "w" ? "a week" : "a month";
+  return m[1] === "1" ? `once ${per}` : m[1] === "2" ? `twice ${per}` : `${m[1]} times ${per}`;
+}
+
+/** Whether two frequencies are the same plan (every 2 weeks is biweekly). */
+function sameFrequency(a: ImportFrequency, b: ImportFrequency): boolean {
+  const weeks = (f: ImportFrequency) =>
+    f.frequency === "biweekly" ? 2 : f.frequency === "weekly" ? (f.intervalWeeks ?? 1) : null;
+  if (weeks(a) != null || weeks(b) != null) return weeks(a) === weeks(b);
+  return a.frequency === b.frequency;
+}
 
 /** One row per client, service and address, as described above, and the
  *  visits and plans not imported, each with the reason (`left`), for the
@@ -241,6 +307,7 @@ export function planVisitFile(
       done: on ? (cols.status ? DONE.test(status) : on < today) : false,
       cents,
       note: cols.note ? str(row[cols.note]) : "",
+      initial: cols.kind ? INITIAL.test(str(row[cols.kind])) : false,
     });
     groups.set(key, g);
   }
@@ -273,15 +340,53 @@ export function planVisitFile(
     const afterNext = upcoming.find((v) => v.on! > (next?.on ?? "")) ?? null;
     const anchor = next?.on ?? dates.at(-1)!;
     const ahead = [...new Set(upcoming.map((v) => v.on!))];
+    // The plan as it is now: three upcoming visits that agree say it; two
+    // say it when the visits done before do not fit them (Fridays until
+    // now, then Tuesdays; every 2 weeks, then weekly). Else all the dates.
+    const done = [...new Set(usable.filter((v) => v.on! < (next?.on ?? "~")).map((v) => v.on!))];
+    const before = scheduleFromDates(done);
+    const twoAhead = ahead.length === 2 ? scheduleFromDates(ahead, anchor) : null;
     const schedule =
       (ahead.length >= 3 ? scheduleFromDates(ahead, anchor) : null) ??
+      (twoAhead && before && !before.note && !fitsSchedule(before.text, done.at(-1)!, ahead)
+        ? twoAhead
+        : null) ??
       scheduleFromDates(dates, anchor);
     const fromName = schedule ? null : frequencyFromName(service, anchor);
     if (!schedule && !fromName) {
       left.push(
         dates.length === 1
           ? `${label}: one visit (${dates[0]}), and the service name does not say how often, so no plan is imported. Add it by hand if it repeats.`
-          : `${label}: ${dates.length} visits (${dates[0]} to ${dates.at(-1)}) with no regular spacing, so no plan is imported. Add it by hand with its schedule.`,
+          : weekdaysOf(dates).length >= 3
+            ? `${label}: ${dates.length} visits (${dates[0]} to ${dates.at(-1)}) on ${weekdaysOf(dates).join(", ")} each week. A plan here repeats weekly on one day, twice a week, or every few days, so no plan is imported. Add it by hand with its schedule.`
+            : `${label}: ${dates.length} visits (${dates[0]} to ${dates.at(-1)}) with no regular spacing, so no plan is imported. Add it by hand with its schedule.`,
+      );
+      continue;
+    }
+    // A Sweep&Go plan code ("1d-2xW") says how often the plan is: one a
+    // plan here cannot repeat (three times a week, twice a month) is not
+    // imported, and one the visits disagree with is not guessed at.
+    const code = sweepGoPlanCode(service);
+    if (code && !code.frequency) {
+      left.push(
+        `${label}: the plan code "${service}" says ${codeWords(service)}, which a plan here does not repeat, so it is not imported. Add it by hand with its schedule.`,
+      );
+      continue;
+    }
+    const read = parseFrequency(schedule?.text ?? fromName ?? "");
+    if (code?.frequency && read && !sameFrequency(code.frequency, read)) {
+      left.push(
+        `${label}: the plan code "${service}" says ${codeWords(service)}, but its visits are ${(schedule?.text ?? fromName ?? "").toLowerCase()}, so it is not imported. Add it by hand with the schedule that is right.`,
+      );
+      continue;
+    }
+    // An initial cleanup is priced on its own; with only those priced, the
+    // plan's price per visit is not in the file.
+    const regular = usable.filter((v) => !v.initial);
+    if (!regular.some((v) => v.cents && v.cents > 0) && usable.some((v) => v.initial && v.cents)) {
+      const firsts = usable.filter((v) => v.initial && v.cents).map((v) => money(v.cents!));
+      left.push(
+        `${label}: only the initial cleanup has a price (${firsts.join(", ")}), and that is not the plan's price per visit, so it is not imported. Add it by hand with its price.`,
       );
       continue;
     }
@@ -297,7 +402,8 @@ export function planVisitFile(
       );
     }
     const priced = (vs: Visit[]) => vs.map((v) => v.cents).filter((c): c is number => !!c && c > 0);
-    const prices = priced(upcoming).length ? priced(upcoming) : priced(usable);
+    const plain = (vs: Visit[]) => vs.filter((v) => !v.initial);
+    const prices = priced(plain(upcoming)).length ? priced(plain(upcoming)) : priced(plain(usable));
     const visitNotes = [
       ...new Set(
         [...usable, ...visits.filter((v) => !usable.includes(v))]

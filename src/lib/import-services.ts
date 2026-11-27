@@ -23,7 +23,13 @@
 // below is the one place the plan row is built, and a test holds it to the
 // old shape.
 
-import { FIRST_NAME_COLUMNS, LAST_NAME_COLUMNS } from "@/lib/import-leftovers";
+import {
+  FIRST_NAME_COLUMNS,
+  LAST_NAME_COLUMNS,
+  VISITS_LEFT_OUT_COLUMN,
+  VISITS_NOTES_COLUMN,
+  VISITS_SCHEDULE_NOTE_COLUMN,
+} from "@/lib/import-leftovers";
 import { noVisit, planAnchor, statedMonthDay, type OffWhich } from "@/lib/import-plan-anchor";
 import type { ServiceLine } from "@/lib/service-lines";
 import { orgLocalDay, orgToday } from "@/lib/org-day";
@@ -320,8 +326,9 @@ export type MappedService = {
   client_email?: string | null;
   frequency: ImportFrequency["frequency"];
   /** False when the file has no frequency column at all (Jobber's Recurring
-   *  jobs report, #857): the plan is weekly on paper, comes in paused, and
-   *  the owner sets how often before turning it on. */
+   *  jobs report, #857), or the row's cell is blank: the plan is weekly on
+   *  paper, comes in paused, and the owner sets how often before turning it
+   *  on. */
   frequency_in_file: boolean;
   interval_weeks: number | null;
   interval_days: number | null;
@@ -381,6 +388,13 @@ export type MappedService = {
    *  to"), matched to a team member by name at commit. Only present when
    *  the file names one. */
   assigned_to?: string | null;
+  /** What a visits file said about the plan that its fields cannot hold
+   *  (planVisitFile): a warning about the schedule, the visits canceled or
+   *  undated, and the notes on its visits. Each goes on the plan's note in
+   *  full, ahead of the file's other columns. */
+  schedule_note?: string | null;
+  left_out?: string | null;
+  visit_notes?: string | null;
 };
 
 /** The same bound as services_name_length. A longer cell is cut, not
@@ -544,6 +558,9 @@ const squashStreet = (s: string | null | undefined) =>
  *  the file's service street (case and punctuation aside; "12 Example Lane"
  *  matches "12 Example Lane, Apt 2"), else the first. `matched` is false
  *  when the file named a street none of them has, so the commit can say. */
+const UNIT =
+  /^(unit|apt|apartment|suite|ste|lot|bldg|building|fl|floor|rm|room|no|number|trlr|space|spc|#)\b|^\d{1,4}[a-z]?\b|^[a-z]\b/;
+
 export function pickPlanProperty<P extends { street: string | null }>(
   props: readonly P[],
   serviceStreet: string | null | undefined,
@@ -554,12 +571,18 @@ export function pickPlanProperty<P extends { street: string | null }>(
   // Sweep&Go's subscriptions export writes the whole address in one cell
   // ("101 Test Lane, Austin, Texas 78701"), so a file street that begins
   // with the property's street matches too, after an exact match.
+  // The rest of the longer one must not be a unit ("303 Fixture Court Unit
+  // 4" is not 303 Fixture Court): only a city, state or zip may follow.
+  const notUnit = (rest: string) => !UNIT.test(rest);
   const hit =
     props.find((p) => squashStreet(p.street) === want) ??
-    props.find((p) => squashStreet(p.street).startsWith(`${want} `)) ??
     props.find((p) => {
       const have = squashStreet(p.street);
-      return !!have && want.startsWith(`${have} `);
+      return have.startsWith(`${want} `) && notUnit(have.slice(want.length + 1));
+    }) ??
+    props.find((p) => {
+      const have = squashStreet(p.street);
+      return !!have && want.startsWith(`${have} `) && notUnit(want.slice(have.length + 1));
     });
   return hit ? { prop: hit, matched: true } : { prop: props[0], matched: false };
 }
@@ -612,6 +635,24 @@ function splitName(raw: Record<string, unknown>): string | null {
     .join(" ");
   return name || null;
 }
+
+/** The weekday and its week of the month (the second Friday: [5, 2]) that a
+ *  visits file's schedule note says the old plan ran on, or null. A visit
+ *  on that day is on the old schedule, not moved, though HoundStack repeats
+ *  the plan on one date (import-visit-frequency.ts writes the note). */
+const NTH_NOTE =
+  /monthly on the (first|second|third|fourth|fifth) (Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\./;
+function nthWeekdayOfNote(note: string | null): [number, number] | null {
+  const m = (note ?? "").match(NTH_NOTE);
+  if (!m) return null;
+  const k = ["first", "second", "third", "fourth", "fifth"].indexOf(m[1]) + 1;
+  const wd = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].indexOf(
+    m[2],
+  );
+  return [wd, k];
+}
+const onNthWeekday = (iso: string, [wd, k]: [number, number]) =>
+  new Date(`${iso}T00:00:00Z`).getUTCDay() === wd && Math.ceil(Number(iso.slice(8, 10)) / 7) === k;
 
 const ENDED_STATUS = /^(cancell?ed|terminated|ended|closed|inactive|archived|expired)$/i;
 const PER_VISIT = /\b(per|each|every|a)\s+(cleanup|clean-up|visit|service|job|walk|session)\b/i;
@@ -728,7 +769,7 @@ export function mapServiceRow(
     intervalWeeks: freq.intervalWeeks ?? null,
     intervalDays: freq.intervalDays ?? null,
     weekdays: days,
-    frequencyInFile: !!mapping.frequency,
+    frequencyInFile: !!freqText,
     start: file_started_on,
     last: last_visit,
     next: next_visit,
@@ -736,6 +777,13 @@ export function mapServiceRow(
     monthDay: statedMonthDay(freqText),
   });
   const started_on = anchor.on;
+  // A monthly plan on the second Friday, set to one date here: its visits
+  // on the second Friday are on its old schedule, not moved (#1069, Rigel).
+  const nth = nthWeekdayOfNote(byName(raw, [VISITS_SCHEDULE_NOTE_COLUMN]));
+  if (nth) {
+    anchor.off = anchor.off.filter((o) => !onNthWeekday(o.on, nth));
+    if (!anchor.off.length) anchor.unsure = false;
+  }
   const serviceStreet = cell(raw, mapping, "service_street");
   const assignedTo = cell(raw, mapping, "assigned_to")?.split(/[;,]/)[0]?.trim() || null;
   const dogText = cell(raw, mapping, "dog_count");
@@ -749,13 +797,16 @@ export function mapServiceRow(
   // dogs and frequency, read above.
   const serviceText = cell(raw, mapping, "service");
   const serviceName = sweepGoPlanCode(serviceText)?.label ?? serviceText;
+  const scheduleNote = byName(raw, [VISITS_SCHEDULE_NOTE_COLUMN]);
+  const leftOut = byName(raw, [VISITS_LEFT_OUT_COLUMN]);
+  const visitNotes = byName(raw, [VISITS_NOTES_COLUMN]);
   return {
     mapped: {
       client_external_id,
       client_name,
       client_email,
       frequency: freq.frequency,
-      frequency_in_file: !!mapping.frequency,
+      frequency_in_file: !!freqText,
       interval_weeks: freq.intervalWeeks ?? null,
       interval_days: freq.intervalDays ?? null,
       price_cents: price,
@@ -788,6 +839,9 @@ export function mapServiceRow(
       service_name: serviceName,
       ...(serviceStreet ? { service_street: serviceStreet } : {}),
       ...(assignedTo ? { assigned_to: assignedTo } : {}),
+      ...(scheduleNote ? { schedule_note: scheduleNote } : {}),
+      ...(leftOut ? { left_out: leftOut } : {}),
+      ...(visitNotes ? { visit_notes: visitNotes } : {}),
     },
     error: null,
   };

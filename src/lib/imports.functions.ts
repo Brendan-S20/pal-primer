@@ -1838,6 +1838,12 @@ export const previewImport = createServerFn({ method: "POST" })
       data.source,
     );
     const clientByExternal = existing.clients.byExternal;
+    // A clients file with no id, email, phone or address column (Sweep&Go's
+    // Referral Sources) has only names: a name then matches the one client
+    // who has it, so the file does not copy every client.
+    existing.clients.nameAlone =
+      entity === "clients" &&
+      !["external_id", "primary_email", "primary_phone", "street"].some((f) => !!data.mapping[f]);
     // By exact name, for exports that carry no id. A name two clients share
     // resolves to nobody: guessing which one owes the balance is worse than
     // refusing the row and saying why. An email, when the file has one
@@ -3046,6 +3052,13 @@ export const commitImport = createServerFn({ method: "POST" })
                 m.assigned_to && !staff
                   ? `Visits were assigned to ${m.assigned_to} in ${sourceLabel}; no one on your team here has that name, so the plan is unassigned.`
                   : null,
+                // A visits file's warnings and notes, in full, before the
+                // leftover columns, which are the part cut short.
+                m.schedule_note ? `From the visits in ${sourceLabel}: ${m.schedule_note}` : null,
+                m.left_out
+                  ? `Visits left out of the plan (canceled or with no date): ${m.left_out}.`
+                  : null,
+                m.visit_notes ? `Notes on its visits in ${sourceLabel}: ${m.visit_notes}` : null,
                 extrasSummary(sourceLabel, m.extras),
               );
               if (planNote) {

@@ -109,6 +109,17 @@ export function isOtherPhoneColumn(header: string): boolean {
   return OTHER_PHONE_COLUMNS.some((c) => c.toLowerCase() === header.trim().toLowerCase());
 }
 
+// Written by planVisitFile onto each plan read from a visits file, and kept
+// in full on the plan's note (a leftover would be cut short there).
+export const VISITS_NOTES_COLUMN = "Visit notes (from the visits)";
+export const VISITS_LEFT_OUT_COLUMN = "Visits left out (from the visits)";
+export const VISITS_SCHEDULE_NOTE_COLUMN = "About the schedule (from the visits)";
+export const VISITS_NOTE_COLUMNS = [
+  VISITS_SCHEDULE_NOTE_COLUMN,
+  VISITS_LEFT_OUT_COLUMN,
+  VISITS_NOTES_COLUMN,
+];
+
 const HELPERS_BY_ENTITY: Record<string, string[]> = {
   clients: [
     ...FIRST_NAME_COLUMNS,
@@ -122,7 +133,7 @@ const HELPERS_BY_ENTITY: Record<string, string[]> = {
   properties: [...ADDRESS_2_COLUMNS],
   dogs: [...PET_TYPE_COLUMNS, ...PET_DECEASED_COLUMNS],
   // A plans file that splits the client's name (Sweep&Go's Completed Jobs).
-  services: [...FIRST_NAME_COLUMNS, ...LAST_NAME_COLUMNS],
+  services: [...FIRST_NAME_COLUMNS, ...LAST_NAME_COLUMNS, ...VISITS_NOTE_COLUMNS],
   balances: [],
 };
 
@@ -139,6 +150,7 @@ export function helperRole(entity: string, header: string): string | null {
     return entity === "services"
       ? "Client, when no client column is set (first + last)"
       : "Client name, when the name column is blank (first + last)";
+  if (has(VISITS_NOTE_COLUMNS)) return "Kept in full on the plan's note";
   if (has(COMPANY_NAME_COLUMNS)) return "Company name";
   if (has(PET_TYPE_COLUMNS)) return "Read to leave out a pet that is not a dog, with the reason";
   if (has(PET_DECEASED_COLUMNS)) return "Read to leave out a pet marked deceased, with the reason";

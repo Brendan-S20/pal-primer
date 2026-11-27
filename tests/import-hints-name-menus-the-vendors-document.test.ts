@@ -11,9 +11,10 @@ const FILE = "src/routes/_authenticated/imports.index.tsx";
 const src = readFileSync(join(ROOT, FILE), "utf8");
 
 // Since #1069 the Sweep&Go hint follows a real export (trial, 2026-11-27):
-// the Client List CSV and Billing > Residential Subscriptions.
+// the Client List CSV, Billing > Residential Subscriptions, Reports >
+// Completed Jobs and the Referral Sources report.
 const SWEEPGO =
-  "In Sweep&Go, go to Clients > Residential Clients, open the three dots menu and choose Client List CSV. Upload it as it came: the name, cell phone (or home phone), email, status, referral source and the address all come through. For recurring services, open Billing > Residential Subscriptions, add Canceled to the status filter if you like, and choose CSV: the plan, its dogs and how often (\"2d-1xW\"), the price per cleanup and the start and end dates come through, and canceled plans are refused with the reason. Sweep&Go's exports have no dogs' names, gate codes or last visit, so add those by hand. Every plan comes in paused for you to check and turn on. Import clients first, then recurring services.";
+  "In Sweep&Go, go to Clients > Residential Clients, open the three dots menu and choose Client List CSV. Upload it as it came: the name, cell phone (or home phone), email, status, referral source and the address all come through. For recurring services, open Billing > Residential Subscriptions, add Canceled to the status filter if you like, and choose CSV: the plan, its dogs and how often (\"2d-1xW\"), the price per cleanup and the start and end dates come through, and canceled plans are refused with the reason. Or export Reports > Completed Jobs: each plan is read from its visits, so how often, the price per cleanup (an Initial cleanup's price is not the plan's) and the last and next visit come from the visit dates, and a plan code a plan here cannot repeat (\"1d-3xW\") is listed for you to add by hand. The Referral Sources report has only names: a client already here by that name is skipped, and the Client List CSV carries the referral source. Sweep&Go's exports have no dogs' names or gate codes, so add those by hand. Every plan comes in paused for you to check and turn on. Import clients first, then recurring services.";
 // Since #857 the Jobber hint no longer asks the owner to add a frequency
 // column. A real Recurring jobs report (Jobber trial, 2026-11-27) does have
 // "Visit frequency", and the Visits report adds the last and next visit.

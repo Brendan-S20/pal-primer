@@ -243,6 +243,12 @@ export type ClientDuplicateIndex = {
   byEmail: Map<string, string>;
   byPhone: Map<string, string>;
   byNameAndStreet: Map<string, string>;
+  /** Name → client, "" when two clients share it. Read only for a file
+   *  with nothing but names to go on (`nameAlone`: Sweep&Go's Referral
+   *  Sources), where a row would otherwise copy every client; in any other
+   *  file a name alone is never a match. */
+  byName: Map<string, string>;
+  nameAlone?: boolean;
 };
 
 export function clientDuplicateIndex(
@@ -254,8 +260,12 @@ export function clientDuplicateIndex(
     byEmail: new Map(),
     byPhone: new Map(),
     byNameAndStreet: new Map(),
+    byName: new Map(),
   };
   for (const c of clients) {
+    const name = squash(c.display_name);
+    if (name)
+      idx.byName.set(name, idx.byName.has(name) && idx.byName.get(name) !== c.id ? "" : c.id);
     if (c.import_external_id && c.import_source === source) {
       idx.byExternal.set(c.import_external_id, c.id);
     }
@@ -273,7 +283,7 @@ export function clientDuplicateIndex(
 
 export type ExistingMatch = {
   id: string;
-  by: "external_id" | "email" | "phone" | "name_and_address";
+  by: "external_id" | "email" | "phone" | "name_and_address" | "name";
 };
 
 /** The client this row would duplicate, checked in the order a match is
@@ -293,6 +303,13 @@ export function findExistingClient(
   const k = addressKey(row.display_name, row.street, row.postal_code);
   if (k && idx.byNameAndStreet.has(k))
     return { id: idx.byNameAndStreet.get(k)!, by: "name_and_address" };
+  // A row with only a name (no id, email, phone or street) is the client of
+  // that name, when exactly one has it: a file of names alone would
+  // otherwise make a second copy of every client.
+  const name = squash(row.display_name);
+  const bare = !row.external_id && !email && !phone && !squash(row.street);
+  const only = name && bare && idx.nameAlone ? idx.byName.get(name) : undefined;
+  if (only) return { id: only, by: "name" };
   return null;
 }
 
@@ -307,6 +324,9 @@ export function rememberClient(
   for (const key of ["byExternal", "byEmail", "byPhone", "byNameAndStreet"] as const) {
     for (const [value, id] of added[key]) idx[key].set(value, id);
   }
+  for (const [name, id] of added.byName) {
+    idx.byName.set(name, idx.byName.has(name) && idx.byName.get(name) !== id ? "" : id);
+  }
 }
 
 const MATCH_WORDS: Record<ExistingMatch["by"], string> = {
@@ -314,6 +334,7 @@ const MATCH_WORDS: Record<ExistingMatch["by"], string> = {
   email: "email",
   phone: "phone number",
   name_and_address: "name and service address",
+  name: "name, and the file has nothing else to tell them apart",
 };
 
 /** Why a row is skipped because an earlier row of the same file creates the

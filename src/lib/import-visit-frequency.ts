@@ -79,7 +79,10 @@ export function scheduleFromDates(
 
   // Monthly on a date: the 10th.
   const dom = mostCommon(dates.map(dayOfMonth));
-  if (gap >= 27 && gap <= 32 && enough(dom.count)) {
+  // Every gap exactly four weeks is every 4 weeks, though a run of three
+  // can share a date twice (Jan 8, Feb 5, Mar 5: #1069, Rigel).
+  const fourWeekly = n >= 3 && gaps.every((x) => x === 28);
+  if (gap >= 27 && gap <= 32 && enough(dom.count) && !fourWeekly) {
     return { text: `Monthly on the ${ordinal(dom.value)} day of the month` };
   }
   // Monthly on a weekday: the second Friday. Its gaps are four weeks or
@@ -113,9 +116,21 @@ export function scheduleFromDates(
       return { text: `Twice a week on ${DAY_NAMES[x]}s and ${DAY_NAMES[y]}s` };
     }
   }
-  // Every n days.
+  // Every n days. Walked from the first visit, it misses no more days than
+  // the slack, and daily visits fall on every day of the week: walks Monday
+  // to Friday, or Monday to Saturday, are not daily (#1069, Rigel).
   const g = mostCommon(gaps);
-  if (n >= 3 && g.value > 0 && g.value % 7 !== 0 && g.count >= gaps.length - slack) {
+  const span = dayNumber(dates[n - 1]) - dayNumber(dates[0]);
+  const walked = Math.floor(span / Math.max(1, g.value)) + 1;
+  const everyDay = g.value !== 1 || new Set(dates.map(weekday)).size === 7;
+  if (
+    n >= 3 &&
+    g.value > 0 &&
+    g.value % 7 !== 0 &&
+    g.count >= gaps.length - slack &&
+    walked - n <= slack &&
+    everyDay
+  ) {
     return { text: `Every ${g.value} days` };
   }
   return null;
