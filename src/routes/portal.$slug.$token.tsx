@@ -19,6 +19,7 @@ import {
   money,
   isHex,
 } from "@/lib/portal-ui";
+import { formatPhone } from "@/lib/format";
 import { cadenceLabel } from "@/lib/frequency-request";
 import { visitServiceLabel } from "@/lib/visit-service";
 import { customerTitle, useDocumentTitle } from "@/lib/page-title";
@@ -299,7 +300,8 @@ function PortalShell() {
                 href={`tel:${c.contact_phone}`}
                 className="inline-flex items-center gap-1.5 hover:text-foreground"
               >
-                <Phone className="h-4 w-4 shrink-0" /> {c.contact_phone}
+                <Phone className="h-4 w-4 shrink-0" />{" "}
+                <span dir="ltr">{formatPhone(c.contact_phone)}</span>
               </a>
             )}
             {ctx.textsLive === true && c.contact_phone && (
