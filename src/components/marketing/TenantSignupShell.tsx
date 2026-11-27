@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { APP_NAME } from "@/lib/scoop";
 
 // The public signup pages wear the TENANT's brand, not ours.
 //
@@ -48,6 +49,17 @@ import type { ReactNode } from "react";
 // header goes (their site already wears their name above it) and the footer
 // moves up. The footer itself stays, links and all, for the reason above: the
 // page still collects a phone number, wherever it is shown.
+//
+// One exception to "nothing of ours", on the owner's word (2026-11-27): the
+// EMBEDDED footer says "Powered by HoundStack", linked to houndstack.com, the
+// same line every email sent as a business ends with (PoweredByHoundStack in
+// lib/email-templates/_brand.tsx). The embed sits inside the business's own
+// site, so it is not a way out of their checkout, and an embedded form is
+// usually a quote request that takes no card, so "Payments processed securely
+// by Stripe" there claimed a payment the page does not take. The full page,
+// which can take a card, keeps the Stripe line and stays unbranded.
+const HOUNDSTACK_URL = "https://houndstack.com";
+
 export function TenantSignupShell({
   orgName,
   logoUrl,
@@ -85,9 +97,23 @@ export function TenantSignupShell({
       <main>{children}</main>
       <footer className={`${compact ? "mt-6" : "mt-16"} border-t bg-muted/30`}>
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-6 text-xs text-muted-foreground sm:px-6">
-          <div>
-            © {new Date().getFullYear()} {orgName ?? ""} · Payments processed securely by Stripe
-          </div>
+          {compact ? (
+            <div data-embed-footer>
+              © {new Date().getFullYear()} {orgName ?? ""} · Powered by{" "}
+              <a
+                href={HOUNDSTACK_URL}
+                target="_blank"
+                rel="noopener"
+                className="font-medium text-foreground/80 hover:text-foreground hover:underline"
+              >
+                {APP_NAME}
+              </a>
+            </div>
+          ) : (
+            <div>
+              © {new Date().getFullYear()} {orgName ?? ""} · Payments processed securely by Stripe
+            </div>
+          )}
           <nav className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <Link to="/legal/privacy" className="hover:text-foreground">
               Privacy
