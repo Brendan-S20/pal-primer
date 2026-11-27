@@ -109,7 +109,7 @@ const ALLOWED: { file: string; text: RegExp; why: string }[] = [
   },
   {
     file: "src/lib/imports.functions.ts",
-    text: /^customer( name| id| email| phone)?$/i,
+    text: /^customer( name| id| email| phone| type| is contractor)?$/i,
     why: "CSV header aliases that other products write",
   },
   {

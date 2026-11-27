@@ -502,15 +502,15 @@ describe("Gingr's View All Owners export (best guess, no sample yet)", () => {
 
 describe("sample needed", () => {
   it("every source is either verified or a best guess the page says so about", () => {
-    expect(VERIFIED_SOURCES).toEqual(["jobber", "time_to_pet"]);
+    expect(VERIFIED_SOURCES).toEqual(["jobber", "housecall_pro", "time_to_pet"]);
     for (const s of IMPORT_SOURCES) expect(typeof isVerifiedSource(s)).toBe("boolean");
   });
-  // Sweep&Go (Client List CSV), Housecall Pro (Customers > Actions > Export),
-  // MoeGo (Export Clients) and GorillaDesk (Customers > Action > Export)
+  // Housecall Pro's real files are in
+  // tests/housecall-pro-and-time-to-pet-real-exports.test.ts. Sweep&Go (Client
+  // List CSV), MoeGo (Export Clients) and GorillaDesk (Customers > Action > Export)
   // document the path and not the columns. No fixture is invented for them;
   // each lands when a real file does.
   it.todo("Sweep&Go Client List CSV, once a real file is in hand");
-  it.todo("Housecall Pro customer export, once a real file is in hand");
   it.todo("MoeGo Export Clients, once a real file is in hand");
   it.todo("GorillaDesk customer export, once a real file is in hand");
 });

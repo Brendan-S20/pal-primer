@@ -25,6 +25,8 @@ import {
   parseInactive,
   parsePetNames,
   parseYesNo,
+  PET_DECEASED_COLUMNS,
+  PET_TYPE_COLUMNS,
   rowExtras,
   UNDO_NEEDS_BILLING,
   undoRefusal,
@@ -38,6 +40,12 @@ import {
   staffByName,
 } from "@/lib/import-services";
 import { JOBBER_LAST_VISIT_COLUMN, JOBBER_NEXT_VISIT_COLUMN } from "@/lib/import-jobber-visits";
+import {
+  VISITS_FIRST_COLUMN,
+  VISITS_FREQUENCY_COLUMN,
+  VISITS_LAST_COLUMN,
+  VISITS_NEXT_COLUMN,
+} from "@/lib/import-visit-plans";
 import { newInvoice } from "@/lib/db-insert";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requirePermission } from "@/lib/authz.server";
@@ -95,10 +103,10 @@ export const IMPORT_SOURCE_LABELS: Record<ImportSource, string> = {
   moego: "MoeGo",
 };
 
-/** Sources whose column names were VERIFIED against the vendor's own
- *  documentation or sample file. The rest are recognized by best guess:
+/** Sources whose column names were VERIFIED against a real export (Jobber,
+ *  Housecall Pro and Time To Pet trials, 2026-11-27; tests/fixtures/imports). The rest are recognized by best guess:
  *  the mapping is a starting point, and the owner checks every column. */
-export const VERIFIED_SOURCES: readonly ImportSource[] = ["jobber", "time_to_pet"];
+export const VERIFIED_SOURCES: readonly ImportSource[] = ["jobber", "housecall_pro", "time_to_pet"];
 export const isVerifiedSource = (source: string): boolean =>
   source === "generic_csv" || (VERIFIED_SOURCES as readonly string[]).includes(source);
 
@@ -339,29 +347,61 @@ const CLIENT_PRESETS_OWN: Record<string, PresetMap> = {
     country: ["Service Country", "Property Country"],
     lead_source: ["Lead Source"],
   },
-  // Housecall Pro documents the path (Customers > Actions > Export) but not
-  // the columns. Guesses until a real file is in hand.
+  // Housecall Pro's Customers > Actions > Export, verified against a real
+  // file (trial, 2026-11-27): First Name, Last Name, Display Name, Mobile
+  // Number, Home Number, Email, Additional Emails, Company, Role, Work
+  // Number, Bills to, Accepts bills from, Tags, Notes, ID, Customer Type
+  // ("homeowner"/"business"), Customer notifications enabled, Customer is
+  // Contractor, Lead Source, Customer created at, Do Not Service, Last
+  // service date, Lifetime value, Address_1 Street Line 1/Line 2/City/
+  // State/Postal Code, Address_1 Billing?, Address_1 Notes. Dogs, when an
+  // owner kept them, are in Notes; it has no pet column.
   housecall_pro: {
-    display_name: ["Customer Name", "Display Name", "Name"],
-    account_type: ["Type"],
+    display_name: ["Display Name", "Customer Name", "Name"],
+    account_type: ["Customer Type", "Type"],
     primary_email: ["Email"],
-    primary_phone: ["Mobile", "Phone", "Home", "Work"],
-    external_id: ["Customer ID", "ID"],
+    primary_phone: ["Mobile Number", "Home Number", "Work Number", "Mobile", "Phone"],
+    external_id: ["ID", "Customer ID"],
     notes: ["Notes"],
+    tags: ["Tags"],
+    lead_source: ["Lead Source"],
+    // "Do Not Service: true" is a customer the business stopped serving.
+    archived: ["Do Not Service"],
+    street: ["Address_1 Street Line 1"],
+    city: ["Address_1 City"],
+    region: ["Address_1 State"],
+    postal_code: ["Address_1 Postal Code"],
   },
-  // Time To Pet, verified: the client export's name column is ONE column,
-  // "Full Name", with "Address", "City", "State", "Zip Code" (help article
-  // "Exporting client data & mapping locations"). The rest of the columns
-  // are whichever fields the owner ticks in the export dialog.
+  // Time To Pet's Client List > Export Client Data, verified against a real
+  // file (trial, 2026-11-27). It has a second header row of group labels
+  // and repeats Email/Primary Phone/Secondary Phone for the emergency
+  // contact; tableFromCsv (src/lib/import-file-table.ts) drops the labels
+  // and names the repeats "Email (Emergency Contact)". Columns: Full Name,
+  // Email, CC Email, Primary Phone, Secondary Phone, How did you find us?,
+  // Access Instructions, Address 1, Address 2, City, State, Zip Code, the
+  // emergency contact's Name/Relationship/Email/phones, Preferred, Do Not
+  // Schedules, Private Note, Discount, Credit, Default Tax Rate, Client
+  // Added Date, Activated Account, Flags, Has App, Pet Names, Client
+  // Inactive?. The Client Keys export's "Address"/"Zip" stay recognized.
   time_to_pet: {
     display_name: ["Full Name", "Client", "Client Name", "Name"],
     account_type: ["Type"],
     primary_email: ["Email", "Email Address"],
-    primary_phone: ["Phone", "Phone Number", "Mobile", "Cell Phone", "Mobile Phone"],
+    primary_phone: [
+      "Primary Phone",
+      "Phone",
+      "Phone Number",
+      "Mobile",
+      "Cell Phone",
+      "Mobile Phone",
+    ],
     external_id: ["Client ID", "ID"],
-    notes: ["Notes", "Client Notes"],
-    pets: ["Pets", "Client's Pets", "Pet Names"],
-    archived: ["Status", "Inactive", "Active"],
+    notes: ["Private Note", "Notes", "Client Notes"],
+    pets: ["Pet Names", "Pets", "Client's Pets"],
+    archived: ["Client Inactive?", "Status", "Inactive", "Active"],
+    street: ["Address 1", "Address"],
+    gate_code: ["Access Instructions"],
+    lead_source: ["How did you find us?"],
   },
   gorilla_desk: {
     display_name: ["Customer", "Name"],
@@ -449,8 +489,24 @@ const SOURCE_SIGNATURES: Partial<Record<ImportSource, string[][]>> = {
     ["Schedule start date", "Line items"],
     ["Schedule start date", "Billing type"],
   ],
+  // Real exports, 2026-11-27: Customers, Jobs and Invoices.
+  housecall_pro: [
+    ["Address_1 Street Line 1"],
+    ["Customer is Contractor"],
+    ["Job scheduled start date", "Customer name"],
+    ["HCP Id", "Line Items"],
+  ],
   time_to_pet: [
     ["Full Name", "Address", "Zip Code"],
+    // Real exports, 2026-11-27: Client List, Pet List, Pet Data, Sales,
+    // Visits, Upcoming First/Last Visits.
+    ["Full Name", "Pet Names", "Zip Code"],
+    ["Full Name", "Client Inactive?"],
+    ["Client Name", "Pet Type", "Pet Deceased?"],
+    ["Pet Type", "Pet Deceased?", "Full Name"],
+    ["Invoiced Amount", "Balance Due"],
+    ["Service Revenue", "Staff Paid"],
+    ["Is First?", "Is Last?", "Trip Range"],
     // The Client Keys export.
     ["Key Name/Code"],
     ["Client's Pets"],
@@ -508,6 +564,28 @@ export function detectImportSource(headers: string[]): ImportSource | null {
   return top.source;
 }
 
+/** Which kind of file a real export is, by headers only that file writes:
+ *  a vendor's plans or visits file is a plans import, its invoices or sales
+ *  report a balances import, its pet list a dogs import. Null when the
+ *  headers say nothing, which leaves the owner's choice alone. */
+const ENTITY_SIGNATURES: Array<{ entity: ImportEntity; headers: string[] }> = [
+  { entity: "services", headers: ["Schedule start date", "Visit frequency"] },
+  { entity: "services", headers: ["Job scheduled start date", "Customer name"] },
+  { entity: "services", headers: ["Service Revenue", "Staff Paid"] },
+  { entity: "balances", headers: ["HCP Id", "Line Items"] },
+  { entity: "balances", headers: ["Invoiced Amount", "Balance Due"] },
+  { entity: "dogs", headers: ["Pet Type", "Pet Deceased?"] },
+  { entity: "clients", headers: ["Address_1 Street Line 1"] },
+  { entity: "clients", headers: ["Full Name", "Pet Names"] },
+  { entity: "clients", headers: ["J-ID", "Display Name"] },
+];
+
+export function detectImportEntity(headers: readonly string[]): ImportEntity | null {
+  const hset = new Set(headers.map((h) => h.trim().toLowerCase()));
+  const hit = ENTITY_SIGNATURES.find((sig) => sig.headers.every((h) => hset.has(h.toLowerCase())));
+  return hit?.entity ?? null;
+}
+
 const PROPERTY_PRESETS: Record<string, PresetMap> = {
   generic_csv: {
     client_external_id: ["client_id", "customer_id", "client external id", "external_id"],
@@ -547,14 +625,14 @@ const PROPERTY_PRESETS: Record<string, PresetMap> = {
     notes: ["Property notes", "Notes"],
   },
   housecall_pro: {
-    client_external_id: ["Customer ID"],
+    client_external_id: ["ID", "Customer ID"],
     label: ["Address Name"],
-    street: ["Street", "Address"],
-    city: ["City"],
-    region: ["State"],
-    postal_code: ["Zip"],
+    street: ["Address_1 Street Line 1", "Street", "Address"],
+    city: ["Address_1 City", "City"],
+    region: ["Address_1 State", "State"],
+    postal_code: ["Address_1 Postal Code", "Zip", "Zipcode"],
     gate_code: ["Gate Code"],
-    notes: ["Notes"],
+    notes: ["Address_1 Notes", "Notes"],
   },
   // The Client Keys export (verified): Key Name/Code, With (Location),
   // Client's Pets, Address, City, State, Zip. The key is the access code;
@@ -660,9 +738,15 @@ const DOG_PRESETS: Record<string, PresetMap> = {
   },
   // The Pet Data export carries the owner's name and email beside the pet's
   // fields the owner ticks (verified as fields, not as header spellings).
+  // Real exports, 2026-11-27: the Pet List download ("Client Name",
+  // "Client Email", Name, Pet Type, Breed, Color, vets, Notes, Pet
+  // Deceased?, ...) and Export Pet Data with client fields (the pet's
+  // columns, then the client's: Full Name, Email, Primary Phone, ...).
   time_to_pet: {
     client_external_id: ["Client ID"],
     ...DOG_CLIENT_LINK,
+    client_name: ["Client Name", "Full Name", ...DOG_CLIENT_LINK.client_name],
+    client_phone: ["Primary Phone", ...DOG_CLIENT_LINK.client_phone],
     name: ["Pet Name", "Pet", "Dog Name", "Name"],
     breed: ["Breed"],
     weight_class: ["Weight", "Weight (lbs)"],
@@ -807,6 +891,36 @@ const SERVICE_PRESETS: Record<string, PresetMap> = {
     billing: ["Billing", "Billing Type"],
     service: ["Service", "Service Name", "Service Type", "Plan"],
   },
+  // Housecall Pro's Jobs export (real, 2026-11-27): one row per occurrence
+  // of a recurring job, a year ahead. plansFromVisits
+  // (src/lib/import-visit-plans.ts) reads it as one row per client, service
+  // and address and adds how often and the first, last and next visit from
+  // the dates; "Total service price" is the visit's price before tax.
+  housecall_pro: {
+    client_name: ["Customer name", "Customer"],
+    client_email: ["Customer email", "Email"],
+    frequency: [VISITS_FREQUENCY_COLUMN],
+    price_per_visit: ["Total service price", "Job amount", "Amount"],
+    start_date: [VISITS_FIRST_COLUMN],
+    last_visit: [VISITS_LAST_COLUMN],
+    next_visit: [VISITS_NEXT_COLUMN],
+    service_street: ["Street"],
+    assigned_to: ["Assigned employees", "Employee"],
+    service: ["Job description", "Description", "Job name"],
+  },
+  // Time To Pet's Visits report and Upcoming First/Last Visits (real,
+  // 2026-11-27), read the same way. "Client" reads "Sam Research (Biscuit
+  // Test)": the client, then the pets; the client is found without them.
+  time_to_pet: {
+    client_name: ["Client"],
+    frequency: [VISITS_FREQUENCY_COLUMN],
+    price_per_visit: ["Service Revenue"],
+    start_date: [VISITS_FIRST_COLUMN],
+    last_visit: [VISITS_LAST_COLUMN],
+    next_visit: [VISITS_NEXT_COLUMN],
+    assigned_to: ["Staff"],
+    service: ["Service"],
+  },
 };
 
 const BALANCE_PRESETS: Record<string, PresetMap> = {
@@ -830,6 +944,22 @@ const BALANCE_PRESETS: Record<string, PresetMap> = {
     amount: ["Balance", "Open Balance", "Amount Due"],
     due_date: ["Due Date"],
     note: ["Notes", "Memo"],
+  },
+  // Housecall Pro's Invoices table > Download CSV (real, 2026-11-27): one
+  // row per invoice; "Due" is what is still owed on it. It has no due date.
+  housecall_pro: {
+    client_name: ["Customer"],
+    amount: ["Due", "Due amount"],
+    due_date: ["Invoice due date"],
+    note: ["Description"],
+  },
+  // Time To Pet's Reporting > Financial > Sales (real, 2026-11-27): one row
+  // per invoice, under a date-range line and over a "Totals: " line, which
+  // tableFromCsv skips. "Client" carries the pets in brackets.
+  time_to_pet: {
+    client_name: ["Client"],
+    amount: ["Balance Due"],
+    due_date: ["Due Date"],
   },
 };
 
@@ -1229,6 +1359,13 @@ export function mapDogRow(raw: Record<string, any>, mapping: Record<string, stri
   }
   const name = getStr(raw, mapping, "name");
   if (!name) return { mapped: null, error: "Missing dog name" };
+  const species = rawLookup(raw, PET_TYPE_COLUMNS);
+  if (species && !/\b(dog|canine|puppy|k9)\b/i.test(species)) {
+    return { mapped: null, error: `Not a dog ("${species}"); add it by hand if you care for it` };
+  }
+  if (parseYesNo(rawLookup(raw, PET_DECEASED_COLUMNS))) {
+    return { mapped: null, error: "Marked deceased in the old system" };
+  }
   const wRaw = getStr(raw, mapping, "weight_class");
   let weightClass: string | null = null;
   if (wRaw) {
@@ -1635,7 +1772,12 @@ export const previewImport = createServerFn({ method: "POST" })
         if (!m.client_name)
           return { id: null, error: `More than one client has the email ${email}; add an ID column` };
       }
-      const nm = (m.client_name ?? "").trim().toLowerCase();
+      let nm = (m.client_name ?? "").trim().toLowerCase();
+      // Time To Pet writes a client with their pets: "Sam Research (Biscuit
+      // Test)". The name without the brackets is tried when the whole is
+      // nobody's.
+      const bare = nm.replace(/\s*\([^()]*\)\s*$/, "");
+      if (nm && !clientByName.has(nm) && bare && clientByName.has(bare)) nm = bare;
       if (nm && clientByName.has(nm)) {
         const id = clientByName.get(nm);
         return id

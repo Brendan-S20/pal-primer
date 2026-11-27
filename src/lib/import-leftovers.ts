@@ -46,6 +46,8 @@ export const ADDRESS_2_COLUMNS = [
   "Address Line 2",
   "address_line_2",
   "Address 2",
+  // Housecall Pro's Customers export.
+  "Address_1 Street Line 2",
   "Unit",
   "Apt",
   "Suite",
@@ -77,6 +79,13 @@ export const COMPANY_NAME_COLUMNS = [
   "Business Name",
 ];
 
+/** A pets file's species and deceased flags (Time To Pet's Pet List and
+ *  Pet Data, real exports 2026-11-27: "Pet Type" Dog/Cat, "Pet Deceased?"
+ *  Yes/No). The dog mapper leaves out a pet that is not a dog, or has died,
+ *  with the reason, rather than adding it as a dog. */
+export const PET_TYPE_COLUMNS = ["Pet Type", "Species", "Animal Type"];
+export const PET_DECEASED_COLUMNS = ["Pet Deceased?", "Deceased"];
+
 const HELPERS_BY_ENTITY: Record<string, string[]> = {
   clients: [
     ...FIRST_NAME_COLUMNS,
@@ -88,7 +97,7 @@ const HELPERS_BY_ENTITY: Record<string, string[]> = {
     ...COMPANY_NAME_COLUMNS,
   ],
   properties: [...ADDRESS_2_COLUMNS],
-  dogs: [],
+  dogs: [...PET_TYPE_COLUMNS, ...PET_DECEASED_COLUMNS],
   services: [],
   balances: [],
 };
@@ -105,6 +114,8 @@ export function helperRole(entity: string, header: string): string | null {
   if (has(FIRST_NAME_COLUMNS) || has(LAST_NAME_COLUMNS))
     return "Client name, when the name column is blank (first + last)";
   if (has(COMPANY_NAME_COLUMNS)) return "Company name";
+  if (has(PET_TYPE_COLUMNS)) return "Read to leave out a pet that is not a dog, with the reason";
+  if (has(PET_DECEASED_COLUMNS)) return "Read to leave out a pet marked deceased, with the reason";
   if (has(ADDRESS_2_COLUMNS)) return "Street, second line";
   if (
     has(BILLING_ADDRESS_2_COLUMNS) ||

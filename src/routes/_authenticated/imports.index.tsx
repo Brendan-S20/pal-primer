@@ -12,12 +12,16 @@ import {
   TARGET_FIELDS_BY_ENTITY,
   autoMap,
   detectImportSource,
+  detectImportEntity,
   IMPORT_SOURCE_LABELS,
   isVerifiedSource,
   fieldNamesForEntity,
   type ImportEntity,
 } from "@/lib/imports.functions";
 import { suggestFields } from "@/lib/import-column-map";
+import { tableFromCsv, type SkippedLine } from "@/lib/import-file-table";
+import { plansFromVisits, VISITS_COLUMNS, visitFileColumns } from "@/lib/import-visit-plans";
+import { ImportFileNotes } from "@/components/imports/ImportFileNotes";
 import { ColumnMappingTable } from "@/components/imports/ColumnMappingTable";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -46,8 +50,8 @@ const SOURCE_LABELS: Record<string, string> = IMPORT_SOURCE_LABELS;
 const SOURCE_HINTS: Record<string, string> = {
   sweepgo: "In Sweep&Go, go to Clients > Residential Clients, open the three dots menu and choose Client List CSV. For commercial clients, go to Clients > Commercial Clients, open the three dots menu and export the client list or the locations list. Sweep&Go's help does not describe a dogs export or a balance export, so use the HoundStack template for those if you need them.",
   jobber: "In Jobber, go to Clients > More Actions > Export Clients and choose CSV. Jobber emails the file (up to 1,500 clients per file, admin users only). Upload it as it came: the service address, tags, internal notes and account balance all come through. For recurring services, export Insights > Reports > Recurring jobs with All Columns: how often, the price per visit and the start date come through. Add the Visits report too and each plan also gets its last and next visit. Plans billed as a fixed price are refused, since Jobber's total for them is per billing period, not per visit. Every plan comes in paused for you to check and turn on. Import clients first, then recurring services.",
-  housecall_pro: "In Housecall Pro, go to Customers > Actions > Export; the CSV is emailed to an admin. HoundStack has not seen a real Housecall Pro file yet, so check every column below before you preview.",
-  time_to_pet: "In Time To Pet, open the Client List and choose Export Client Data (one Full Name column, with Address, City, State and Zip Code). For pets, choose Export Pet Data and tick the client fields so each pet names its owner. Import clients first, then pets.",
+  housecall_pro: "In Housecall Pro, go to Customers > Actions > Export and choose Send file; the CSV is emailed to you. Upload it as it came: the name, phones, email, tags, notes, lead source and the service address all come through. For recurring services, open Jobs, remove the Completed between filter, choose Add all columns and Export: each recurring job is read from its visits, so how often, the price per visit, and the last and next visit come from the visit dates. For balances, open Invoices, choose Table columns > Excel > Download CSV. Import clients first, then recurring services.",
+  time_to_pet: "In Time To Pet, open the Client List and choose Export Client Data (one Full Name column, with Address, City, State and Zip Code). For pets, choose Export Pet Data and tick Include Client Fields so each pet names its owner; pets that are not dogs, or are marked deceased, are left out with the reason. For recurring services, export Reporting > Schedule > Visits: each client's service is read from its visits, so how often, the price per visit, and the last and next visit come from the visit dates. For balances, export Reporting > Financial > Sales. Import clients first, then pets and recurring services.",
   gorilla_desk: "In GorillaDesk, open the Customers tab and choose Action > Export. HoundStack has not seen a real GorillaDesk file yet, so check every column below before you preview.",
   quoteiq_family: "QuoteIQ, Flowcarve, and DoTimely share a similar shape, so the generic mapping usually works.",
   gingr: "In Gingr, go to Owners and Pets > View All Owners and choose Export to CSV. Pets named in the Animals column become that owner's pets. HoundStack has not seen a real Gingr file yet, so check every column below before you preview.",
@@ -298,6 +302,9 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [fileHeaders, setHeaders] = useState<string[]>([]);
   const [fileRows, setRows] = useState<Record<string, any>[]>([]);
+  // Lines of the file that are not rows of data (a group-label row, a
+  // report's date range or totals), shown to the owner with the reason.
+  const [skipped, setSkipped] = useState<SkippedLine[]>([]);
   // Jobber's Visits report, when added on a plans import: its last and next
   // visit per Job # become two columns on each plan row.
   const [visitRows, setVisitRows] = useState<Record<string, unknown>[] | null>(null);
@@ -306,16 +313,26 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
   const [suggested, setSuggested] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const today = useOrgToday();
+  const tz = useOrgTimezone();
   const joinsVisits = (s: string, e: ImportEntity, v: unknown[] | null) =>
     s === "jobber" && e === "services" && !!v;
+  // A Housecall Pro Jobs or Time To Pet Visits file on a plans import is
+  // read as one plan per client and service (src/lib/import-visit-plans.ts).
+  const visitsFile = (s: string, e: ImportEntity, hs: string[]) =>
+    e === "services" ? visitFileColumns(s, hs) : null;
   const withVisitColumns = (hs: string[], s: string, e: ImportEntity, v: unknown[] | null) =>
     joinsVisits(s, e, v) && hs.length
       ? [...hs, JOBBER_LAST_VISIT_COLUMN, JOBBER_NEXT_VISIT_COLUMN]
-      : hs;
+      : visitsFile(s, e, hs)
+        ? [...hs, ...VISITS_COLUMNS]
+        : hs;
   const headers = withVisitColumns(fileHeaders, source, entity, visitRows);
+  const planColumns = visitsFile(source, entity, fileHeaders);
   const rows = joinsVisits(source, entity, visitRows)
     ? mergeJobberVisits(fileRows, visitRows!, today)
-    : fileRows;
+    : planColumns
+      ? plansFromVisits(fileRows, planColumns, today, tz)
+      : fileRows;
 
   // A Service column is offered to a business that runs more than pet waste.
   // A scooper's import has one service, the default, and the mapping step
@@ -347,15 +364,17 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
     if (!f) {
       setHeaders([]);
       setRows([]);
+      setSkipped([]);
       return;
     }
-    Papa.parse<Record<string, any>>(f, {
-      header: true,
+    Papa.parse<string[]>(f, {
       skipEmptyLines: true,
       complete: (res) => {
-        const hs = res.meta.fields ?? [];
+        const table = tableFromCsv(res.data);
+        const hs = table.headers;
         setHeaders(hs);
-        setRows(res.data);
+        setRows(table.rows);
+        setSkipped(table.skipped);
         // Recognize which CRM the export came from and auto-map its fields —
         // switching systems shouldn't require knowing your old CRM's column
         // names. A weak/ambiguous signal keeps the user's manual selection.
@@ -365,7 +384,14 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
           setSource(detected);
           toast.success(`Recognized a ${SOURCE_LABELS[detected] ?? detected} export, fields auto-mapped.`);
         }
-        remap(effSource, withVisitColumns(hs, effSource, entity, visitRows), entity);
+        // A vendor's plans, visits, invoices or pets file sets what is being
+        // imported too; the owner can still change it.
+        const kind = detectImportEntity(hs) ?? entity;
+        if (kind !== entity) {
+          setEntity(kind);
+          toast.info(`Importing ${ENTITY_LABELS[kind].toLowerCase()}, from the file's columns.`);
+        }
+        remap(effSource, withVisitColumns(hs, effSource, kind, visitRows), kind);
       },
       error: (err) => toast.error(`CSV parse error: ${err.message}`),
     });
@@ -507,6 +533,11 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
             <span className="font-medium text-foreground">{headers.length}</span> columns. Each
             column is set from the {SOURCE_LABELS[source]} export; check where each one goes.
           </div>
+          <ImportFileNotes
+            skipped={skipped}
+            visitRows={planColumns ? fileRows.length : null}
+            plans={rows.length}
+          />
           {!isVerifiedSource(source) && (
             <div
               role="status"

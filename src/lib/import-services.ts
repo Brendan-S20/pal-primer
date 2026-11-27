@@ -192,7 +192,11 @@ export function parseImportDate(
   text: string | null | undefined,
   tz?: string | null,
 ): string | null {
-  const s = (text ?? "").trim();
+  // Time To Pet's reports open a date with its weekday ("Fri Dec 25, 2026
+  // 12:00 PM"); the weekday says nothing the date does not.
+  const s = (text ?? "")
+    .trim()
+    .replace(/^(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?,?\s+(?=[a-z]{3,9}\.?\s+\d)/i, "");
   if (!s) return null;
   let y: number, m: number, d: number;
   const iso = s.match(

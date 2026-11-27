@@ -1,0 +1,9 @@
+Start,End,Duration,Client,Staff,Service,Status,Invoice,"Invoice Date","Invoice Due Date","Service Revenue","Pet Fees","Holiday Fees","After Hours Fees","Weekend Fees","Staff Paid",Note
+"Nov 13, 2026 12:00 PM","Nov 13, 2026 12:30 PM",,"Sam Research (Biscuit Test)","Sam Research","Weekly Pet Waste Cleanup",Scheduled,2,"Nov 13, 2026","Nov 13, 2026",$18.50,$0.00,$0.00,$0.00,$0.00,$0.00,
+"Nov 20, 2026 12:00 PM","Nov 20, 2026 12:30 PM",,"Sam Research (Biscuit Test)","Sam Research","Weekly Pet Waste Cleanup",Completed,2,"Nov 13, 2026","Nov 13, 2026",$18.50,$0.00,$0.00,$0.00,$0.00,$0.00,
+"Nov 20, 2026 12:00 PM","Nov 20, 2026 12:30 PM",,"Jordan Sample (Pickle Test)","Sam Research","Every Other Week Pet Waste Cleanup",Completed,3,"Nov 20, 2026","Nov 20, 2026",$32.00,$0.00,$0.00,$0.00,$0.00,$0.00,
+"Nov 27, 2026 12:00 PM","Nov 27, 2026 12:30 PM",,"Sam Research (Biscuit Test)","Sam Research","Weekly Pet Waste Cleanup",Scheduled,2,"Nov 13, 2026","Nov 13, 2026",$18.50,$0.00,$0.00,$0.00,$0.00,$0.00,
+"Dec 4, 2026 12:00 PM","Dec 4, 2026 12:30 PM",,"Sam Research (Biscuit Test)","Sam Research","Weekly Pet Waste Cleanup",Scheduled,2,"Nov 13, 2026","Nov 13, 2026",$18.50,$0.00,$0.00,$0.00,$0.00,$0.00,
+"Dec 11, 2026 12:00 PM","Dec 11, 2026 12:30 PM",,"Sam Research (Biscuit Test)","Sam Research","Weekly Pet Waste Cleanup",Scheduled,2,"Nov 13, 2026","Nov 13, 2026",$18.50,$0.00,$0.00,$0.00,$0.00,$0.00,
+"Dec 18, 2026 12:00 PM","Dec 18, 2026 12:30 PM",,"Sam Research (Biscuit Test)","Sam Research","Weekly Pet Waste Cleanup",Scheduled,2,"Nov 13, 2026","Nov 13, 2026",$18.50,$0.00,$0.00,$0.00,$0.00,$0.00,
+"Dec 25, 2026 12:00 PM","Dec 25, 2026 12:30 PM",,"Sam Research (Biscuit Test)","Sam Research","Weekly Pet Waste Cleanup",Scheduled,2,"Nov 13, 2026","Nov 13, 2026",$18.50,$0.00,$0.00,$0.00,$0.00,$0.00,
