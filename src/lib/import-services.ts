@@ -24,7 +24,7 @@
 // old shape.
 
 import { FIRST_NAME_COLUMNS, LAST_NAME_COLUMNS } from "@/lib/import-leftovers";
-import { noVisit, planAnchor, statedMonthDay } from "@/lib/import-plan-anchor";
+import { noVisit, planAnchor, statedMonthDay, type OffWhich } from "@/lib/import-plan-anchor";
 import type { ServiceLine } from "@/lib/service-lines";
 import { orgLocalDay, orgToday } from "@/lib/org-day";
 
@@ -341,8 +341,12 @@ export type MappedService = {
    *  the upcoming visits. `dates_disagree`: no two dates agree and nothing
    *  says which is right, so the owner is asked to check. */
   anchor_from?: "next visit" | "visit after next" | "last visit" | "start date";
-  off_schedule?: { which: "last visit" | "next visit"; on: string }[];
+  off_schedule?: { which: OffWhich; on: string }[];
   schedule_changed?: boolean;
+  /** The plan follows the upcoming visits and the last visit is off them,
+   *  with no start date to say whether the schedule changed or that one
+   *  visit was moved. */
+  last_or_changed?: boolean;
   dates_disagree?: boolean;
   /** The booked visit after the next one, when the file has it. */
   visit_after_next?: string | null;
@@ -560,6 +564,29 @@ export function pickPlanProperty<P extends { street: string | null }>(
   return hit ? { prop: hit, matched: true } : { prop: props[0], matched: false };
 }
 
+/** The one client called `name` (lowercased) with a service address at
+ *  `street`, or null when no street is given or not exactly one of them is
+ *  there: two clients of one name are told apart by where they live, never
+ *  guessed. */
+export function clientAtStreet(
+  clients: readonly {
+    id: string;
+    display_name: string | null;
+    streets?: { street: string | null }[];
+  }[],
+  name: string,
+  street: string | null | undefined,
+): string | null {
+  if (!squashStreet(street)) return null;
+  const hits = clients.filter(
+    (c) =>
+      (c.display_name ?? "").trim().toLowerCase() === name &&
+      pickPlanProperty(c.streets ?? [], street).matched &&
+      (c.streets ?? []).length > 0,
+  );
+  return hits.length === 1 ? hits[0].id : null;
+}
+
 /** The active team member a name names (case and spacing aside), or null
  *  when none or more than one does. */
 export function staffByName<S extends { id: string; display_name: string | null }>(
@@ -745,6 +772,7 @@ export function mapServiceRow(
             off_schedule: anchor.off,
             ...(visit_after_next ? { visit_after_next } : {}),
             ...(anchor.changed ? { schedule_changed: true } : {}),
+            ...(anchor.lastOrChanged ? { last_or_changed: true } : {}),
             ...(anchor.unsure ? { dates_disagree: true } : {}),
           }
         : {}),
@@ -781,6 +809,7 @@ export function planVisitsNote(
     | "anchor_from"
     | "off_schedule"
     | "schedule_changed"
+    | "last_or_changed"
     | "dates_disagree"
     | "visit_after_next"
     | "ends_on"
@@ -808,14 +837,16 @@ export function planVisitsNote(
   const offList = (m.off_schedule ?? []).map((o) => `${o.which} ${o.on}`).join(", ");
   const why = m.schedule_changed
     ? ` The upcoming visits are on a different schedule from the last visit (${m.last_visit}), so the schedule was changed in ${sourceLabel} and the plan follows the upcoming visits.`
-    : m.dates_disagree
-      ? ` The dates from ${sourceLabel} do not agree on this schedule (${offList}), and nothing in the file says which is right; check the plan's visits before you turn it on.`
-      : (m.off_schedule ?? [])
-          .map(
-            (o) =>
-              ` The ${o.which} (${o.on}) is off that schedule, so it was likely moved once in ${sourceLabel}; check the plan's visits after you turn it on.`,
-          )
-          .join("");
+    : m.last_or_changed
+      ? ` The last visit (${m.last_visit}) is off the schedule of the upcoming visits: it was moved once, or the schedule was changed in ${sourceLabel}. The plan follows the upcoming visits.`
+      : m.dates_disagree
+        ? ` The dates from ${sourceLabel} do not agree on this schedule (${offList}), and nothing in the file says which is right; check the plan's visits before you turn it on.`
+        : (m.off_schedule ?? [])
+            .map(
+              (o) =>
+                ` The ${o.which} (${o.on}) is off that schedule, so it was likely moved once in ${sourceLabel}; check the plan's visits after you turn it on.`,
+            )
+            .join("");
   return `Imported plan from ${sourceLabel}: ${parts.join("; ")}. The plan's schedule is set from the ${from} (${m.started_on}).${why}${ends}`;
 }
 
@@ -825,6 +856,8 @@ export type MappedBalance = {
   amount_cents: number;
   due_on: string | null;
   note: string | null;
+  /** The client's street, to tell apart two clients of one name. */
+  service_street?: string | null;
 };
 
 export function mapBalanceRow(
@@ -860,6 +893,9 @@ export function mapBalanceRow(
       amount_cents: amount,
       due_on,
       note: cell(raw, mapping, "note"),
+      ...(cell(raw, mapping, "service_street")
+        ? { service_street: cell(raw, mapping, "service_street") }
+        : {}),
     },
     error: null,
   };

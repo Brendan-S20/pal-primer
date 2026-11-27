@@ -17,8 +17,28 @@
 // "Every 2 weeks on Fridays"); a plan with one visit in the file takes it from
 // the service's own name ("Every Other Week Pet Waste Cleanup") and says so.
 // Nothing is made up: a plan with no completed visit has no last visit.
+//
+// Rigel's review at da4554c6 found the plan read off the wrong visits and
+// rows dropped without a word. Now (planVisitFile):
+//
+// - How often, the weekday and the price come from the plan's upcoming
+//   visits when it has three or more, else from all of them: a schedule
+//   changed in the old system is read as it is now. The price is the most
+//   common one with its fees (Time To Pet's pet, holiday, after-hours and
+//   weekend fees), not whichever row came first.
+// - A job Housecall Pro marks not recurring is a one-off, not a plan.
+// - A plan with no regular pattern, or one visit and a name that does not
+//   say how often, is not imported; the page says so and why.
+// - A plan with no visit booked while the file runs past its last one may
+//   have ended: it comes in paused (as every imported plan does), and the
+//   page and the plan's note say to check it.
+// - Canceled and undated visits are listed on the plan and on the page, and
+//   every visit's note is kept on the plan, not only the chosen row's.
 
-import { parseFrequency, parseImportDate } from "@/lib/import-services";
+import { parseImportDate, parseMoneyCents } from "@/lib/import-services";
+import { frequencyFromName, mostCommon, scheduleFromDates } from "@/lib/import-visit-frequency";
+
+export { frequencyFromDates } from "@/lib/import-visit-frequency";
 
 export const VISITS_FREQUENCY_COLUMN = "How often (from the visits)";
 export const VISITS_FIRST_COLUMN = "First visit (from the visits)";
@@ -26,6 +46,10 @@ export const VISITS_LAST_COLUMN = "Last visit (from the visits)";
 export const VISITS_NEXT_COLUMN = "Next visit (from the visits)";
 export const VISITS_AFTER_NEXT_COLUMN = "Visit after next (from the visits)";
 export const VISITS_COUNT_COLUMN = "Visits in the file";
+export const VISITS_PRICE_COLUMN = "Price per visit (from the visits)";
+export const VISITS_NOTES_COLUMN = "Visit notes (from the visits)";
+export const VISITS_LEFT_OUT_COLUMN = "Visits left out (from the visits)";
+export const VISITS_SCHEDULE_NOTE_COLUMN = "About the schedule (from the visits)";
 export const VISITS_COLUMNS = [
   VISITS_FREQUENCY_COLUMN,
   VISITS_FIRST_COLUMN,
@@ -33,6 +57,10 @@ export const VISITS_COLUMNS = [
   VISITS_NEXT_COLUMN,
   VISITS_AFTER_NEXT_COLUMN,
   VISITS_COUNT_COLUMN,
+  VISITS_PRICE_COLUMN,
+  VISITS_NOTES_COLUMN,
+  VISITS_LEFT_OUT_COLUMN,
+  VISITS_SCHEDULE_NOTE_COLUMN,
 ] as const;
 
 type Row = Record<string, unknown>;
@@ -45,9 +73,27 @@ export type VisitFileColumns = {
   date: string;
   status: string | null;
   street: string | null;
+  /** Housecall Pro's "Recurring" (true or false): false is a one-off job. */
+  recurring?: string | null;
+  /** The visit's price, and fees charged on top of it. */
+  price?: string | null;
+  fees?: string[];
+  note?: string | null;
 };
 
-type Spec = { [K in keyof VisitFileColumns]-?: string[] } & { signature: string[] };
+type Spec = {
+  signature: string[];
+  client: string[];
+  clientLast?: string[];
+  service: string[];
+  date: string[];
+  status: string[];
+  street: string[];
+  recurring?: string[];
+  price?: string[];
+  fees?: string[];
+  note?: string[];
+};
 
 /** The visit files read off real exports, per source. A file is one of these
  *  when it carries every signature column. */
@@ -60,7 +106,9 @@ const VISIT_FILES: Record<string, Spec[]> = {
       date: ["Job scheduled start date"],
       status: ["Job status"],
       street: ["Street"],
-      clientLast: [],
+      recurring: ["Recurring"],
+      price: ["Total service price", "Job amount"],
+      note: ["Notes"],
     },
   ],
   // Sweep&Go's Reports > Completed Jobs (real, 2026-11-27): "Service Date",
@@ -76,6 +124,7 @@ const VISIT_FILES: Record<string, Spec[]> = {
       date: ["Service Date"],
       status: ["Status"],
       street: ["Address"],
+      price: ["Revenue"],
     },
   ],
   time_to_pet: [
@@ -87,7 +136,9 @@ const VISIT_FILES: Record<string, Spec[]> = {
       date: ["Start"],
       status: ["Status"],
       street: [],
-      clientLast: [],
+      price: ["Service Revenue"],
+      fees: ["Pet Fees", "Holiday Fees", "After Hours Fees", "Weekend Fees"],
+      note: ["Note"],
     },
     // Not Reporting > Schedule > Upcoming First/Last Visits: it lists the
     // first and last visit of each trip, so its one date is the end of a
@@ -101,139 +152,186 @@ export function visitFileColumns(
   source: string,
   headers: readonly string[],
 ): VisitFileColumns | null {
-  const find = (names: string[]) =>
-    names
-      .map((n) => headers.find((h) => h.trim().toLowerCase() === n.toLowerCase()))
-      .find(Boolean) ?? null;
+  const one = (n: string) => headers.find((h) => h.trim().toLowerCase() === n.toLowerCase());
+  const find = (names: readonly string[] = []) => names.map(one).find(Boolean) ?? null;
   for (const spec of VISIT_FILES[source] ?? []) {
-    if (!spec.signature.every((s) => find([s]))) continue;
+    if (!spec.signature.every((s) => one(s))) continue;
+    const fees = (spec.fees ?? []).map(one).filter((h): h is string => !!h);
     return {
       client: find(spec.client)!,
       service: find(spec.service),
       date: find(spec.date)!,
       status: find(spec.status),
       street: find(spec.street),
-      ...(spec.clientLast.length ? { clientLast: find(spec.clientLast) } : {}),
+      ...(spec.clientLast ? { clientLast: find(spec.clientLast) } : {}),
+      ...(spec.recurring ? { recurring: find(spec.recurring) } : {}),
+      ...(spec.price ? { price: find(spec.price) } : {}),
+      ...(fees.length ? { fees } : {}),
+      ...(spec.note ? { note: find(spec.note) } : {}),
     };
   }
   return null;
 }
 
 const str = (v: unknown) => (v === undefined || v === null ? "" : String(v).trim());
-const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const dayNumber = (iso: string) => Math.round(Date.parse(`${iso}T00:00:00Z`) / 86_400_000);
-const weekday = (iso: string) => new Date(`${iso}T00:00:00Z`).getUTCDay();
-const dayOfMonth = (iso: string) => Number(iso.slice(8, 10));
-const ordinal = (n: number) =>
-  `${n}${n % 10 === 1 && n !== 11 ? "st" : n % 10 === 2 && n !== 12 ? "nd" : n % 10 === 3 && n !== 13 ? "rd" : "th"}`;
-
-function mostCommon(nums: number[]): number {
-  const counts = new Map<number, number>();
-  for (const n of nums) counts.set(n, (counts.get(n) ?? 0) + 1);
-  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0];
-}
-
-/** How often a run of visit dates (sorted, distinct) recurs, in the words
- *  the plan import reads ("Weekly on Fridays"), or null when two dates are
- *  not enough or the spacing has no pattern. */
-export function frequencyFromDates(dates: readonly string[]): string | null {
-  if (dates.length < 2) return null;
-  const gaps = dates.slice(1).map((d, i) => dayNumber(d) - dayNumber(dates[i]));
-  const doms = new Set(dates.map(dayOfMonth));
-  if (doms.size === 1 && gaps.every((g) => g >= 28 && g <= 31)) {
-    return `Monthly on the ${ordinal(dayOfMonth(dates[0]))} day of the month`;
-  }
-  const days = [...new Set(dates.map(weekday))].sort((a, b) => a - b);
-  if (days.length === 1) {
-    const g = mostCommon(gaps);
-    const on = `on ${DAY_NAMES[days[0]]}s`;
-    if (g === 7) return `Weekly ${on}`;
-    if (g % 7 === 0) return `Every ${g / 7} weeks ${on}`;
-    return `Every ${g} days`;
-  }
-  if (days.length === 2 && mostCommon(gaps) < 7) {
-    return `Twice a week on ${DAY_NAMES[days[0]]}s and ${DAY_NAMES[days[1]]}s`;
-  }
-  return null;
-}
-
-/** The service's own name read as a frequency, on the weekday of its one
- *  visit: "Every Other Week Pet Waste Cleanup" on a Friday is "Every 2
- *  weeks on Fridays". Null when the name says nothing about how often. */
-function frequencyFromName(name: string, dates: readonly string[]): string | null {
-  const f = parseFrequency(name);
-  if (!f || f.frequency === "one_time") return null;
-  const day = dates.length ? DAY_NAMES[weekday(dates[0])] : null;
-  const on = day ? ` on ${day}s` : "";
-  const said = `, from the service name "${name}"`;
-  if (f.frequency === "weekly" && (f.intervalWeeks ?? 1) > 1) {
-    return `Every ${f.intervalWeeks} weeks${on}${said}`;
-  }
-  if (f.frequency === "weekly") return `Weekly${on}${said}`;
-  if (f.frequency === "biweekly") return `Every 2 weeks${on}${said}`;
-  if (f.frequency === "monthly") {
-    const dom = dates.length ? ` on the ${ordinal(dayOfMonth(dates[0]))} day of the month` : "";
-    return `Monthly${dom}${said}`;
-  }
-  if (f.frequency === "every_n_days") return `Every ${f.intervalDays} days${said}`;
-  return null;
-}
-
 const DONE = /complet|done|finished/i;
 const CALLED_OFF = /cancel|no[- ]?show|skipped|declined|deleted/i;
+const NOT_RECURRING = /^(false|no|n|0)$/i;
+const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
-/** One row per client, service and address, as described above. `today`
- *  is the business's day (YYYY-MM-DD); `tz` reads a timestamp with a zone
- *  on the business's clock. Rows with no client or no readable date are
- *  left out of the plan they would belong to. */
+type Visit = {
+  row: Row;
+  on: string | null;
+  status: string;
+  done: boolean;
+  cents: number | null;
+  note: string;
+};
+
+/** One row per client, service and address, as described above, and the
+ *  visits and plans not imported, each with the reason (`left`), for the
+ *  page to show. `today` is the business's day (YYYY-MM-DD); `tz` reads a
+ *  timestamp with a zone on the business's clock. */
+export function planVisitFile(
+  rows: readonly Row[],
+  cols: VisitFileColumns,
+  today: string,
+  tz?: string | null,
+): { rows: Row[]; left: string[] } {
+  const left: string[] = [];
+  const groups = new Map<string, { label: string; service: string; visits: Visit[] }>();
+  const clientOf = (row: Row) =>
+    [str(row[cols.client]), cols.clientLast ? str(row[cols.clientLast]) : ""]
+      .filter(Boolean)
+      .join(" ");
+  const centsOf = (row: Row) => {
+    const base = cols.price ? parseMoneyCents(str(row[cols.price])) : null;
+    if (base == null) return null;
+    return (cols.fees ?? []).reduce((t, f) => t + (parseMoneyCents(str(row[f])) ?? 0), base);
+  };
+  for (const row of rows) {
+    const client = clientOf(row);
+    const dateText = str(row[cols.date]);
+    const on = dateText ? parseImportDate(dateText, tz) : null;
+    const service = cols.service ? str(row[cols.service]) : "";
+    const status = cols.status ? str(row[cols.status]) : "";
+    const cents = centsOf(row);
+    const what = [on ?? (dateText ? `"${dateText}"` : "no date"), service && `"${service}"`]
+      .filter(Boolean)
+      .join(", ");
+    if (!client) {
+      left.push(`A visit with no client (${what}): not imported.`);
+      continue;
+    }
+    if (cols.recurring && NOT_RECURRING.test(str(row[cols.recurring]))) {
+      const price = cents ? `, ${money(cents)}` : "";
+      left.push(
+        `${client}, ${what}${price}: a one-time job, not a recurring plan, so it is not imported. Add it by hand as a one-off visit.`,
+      );
+      continue;
+    }
+    const street = cols.street ? str(row[cols.street]) : "";
+    const key = [client, service, street].map((x) => x.toLowerCase()).join("\u0000");
+    const label = `${client}${service ? `, "${service}"` : ""}${street ? ` at ${street}` : ""}`;
+    const g = groups.get(key) ?? { label, service, visits: [] };
+    g.visits.push({
+      row,
+      on,
+      status,
+      done: on ? (cols.status ? DONE.test(status) : on < today) : false,
+      cents,
+      note: cols.note ? str(row[cols.note]) : "",
+    });
+    groups.set(key, g);
+  }
+
+  const usableOf = (vs: Visit[]) => vs.filter((v) => v.on && !CALLED_OFF.test(v.status));
+  const allUsable = [...groups.values()].flatMap((g) => usableOf(g.visits));
+  const fileHasUpcoming = allUsable.some((v) => !v.done && v.on! >= today);
+  const fileLast =
+    allUsable
+      .map((v) => v.on!)
+      .sort()
+      .at(-1) ?? null;
+
+  const out: Row[] = [];
+  for (const { label, service, visits } of groups.values()) {
+    const usable = usableOf(visits).sort((a, b) => (a.on! < b.on! ? -1 : a.on! > b.on! ? 1 : 0));
+    const leftOut = visits
+      .filter((v) => !usable.includes(v))
+      .map((v) => `${v.on ?? "no date"}${v.status ? ` (${v.status})` : ""}`);
+    if (!usable.length) {
+      left.push(
+        `${label}: every visit is canceled or has no date (${leftOut.join(", ")}), so no plan is imported.`,
+      );
+      continue;
+    }
+    const dates = [...new Set(usable.map((v) => v.on!))];
+    const last = usable.filter((v) => v.done).at(-1) ?? null;
+    const upcoming = usable.filter((v) => !v.done && v.on! >= today);
+    const next = upcoming[0] ?? null;
+    const afterNext = upcoming.find((v) => v.on! > (next?.on ?? "")) ?? null;
+    const anchor = next?.on ?? dates.at(-1)!;
+    const ahead = [...new Set(upcoming.map((v) => v.on!))];
+    const schedule =
+      (ahead.length >= 3 ? scheduleFromDates(ahead, anchor) : null) ??
+      scheduleFromDates(dates, anchor);
+    const fromName = schedule ? null : frequencyFromName(service, anchor);
+    if (!schedule && !fromName) {
+      left.push(
+        dates.length === 1
+          ? `${label}: one visit (${dates[0]}), and the service name does not say how often, so no plan is imported. Add it by hand if it repeats.`
+          : `${label}: ${dates.length} visits (${dates[0]} to ${dates.at(-1)}) with no regular spacing, so no plan is imported. Add it by hand with its schedule.`,
+      );
+      continue;
+    }
+    const notes = [schedule?.note];
+    if (!next && fileHasUpcoming && fileLast && fileLast > dates.at(-1)!) {
+      const ended = `No visit is booked after ${dates.at(-1)}, though the file runs to ${fileLast}, so this plan may have ended in the old system. It comes in paused; check it before you turn it on.`;
+      notes.push(ended);
+      left.push(`${label}: ${ended}`);
+    }
+    if (leftOut.length) {
+      left.push(
+        `${label}: ${leftOut.length === 1 ? "a visit" : `${leftOut.length} visits`} canceled or with no date (${leftOut.join(", ")}), not counted toward the plan.`,
+      );
+    }
+    const priced = (vs: Visit[]) => vs.map((v) => v.cents).filter((c): c is number => !!c && c > 0);
+    const prices = priced(upcoming).length ? priced(upcoming) : priced(usable);
+    const visitNotes = [
+      ...new Set(
+        [...usable, ...visits.filter((v) => !usable.includes(v))]
+          .filter((v) => v.note)
+          .map((v) => `${v.on ?? "no date"}: ${v.note}`),
+      ),
+    ];
+    const row = (next ?? last ?? usable.at(-1)!).row;
+    // No price above zero on any visit: the chosen visit's own price, so
+    // the plan import refuses a $0 price by name rather than as missing.
+    const rowPrice = cols.price ? str(row[cols.price]) : "";
+    out.push({
+      ...row,
+      [VISITS_FREQUENCY_COLUMN]: schedule?.text ?? fromName ?? "",
+      [VISITS_FIRST_COLUMN]: dates[0],
+      [VISITS_LAST_COLUMN]: last?.on ?? "",
+      [VISITS_NEXT_COLUMN]: next?.on ?? "",
+      [VISITS_AFTER_NEXT_COLUMN]: afterNext?.on ?? "",
+      [VISITS_COUNT_COLUMN]: String(usable.length),
+      [VISITS_PRICE_COLUMN]: prices.length ? (mostCommon(prices).value / 100).toFixed(2) : rowPrice,
+      [VISITS_NOTES_COLUMN]: visitNotes.join("; "),
+      [VISITS_LEFT_OUT_COLUMN]: leftOut.join(", "),
+      [VISITS_SCHEDULE_NOTE_COLUMN]: notes.filter(Boolean).join(" "),
+    });
+  }
+  return { rows: out, left };
+}
+
+/** The plan rows of planVisitFile alone. */
 export function plansFromVisits(
   rows: readonly Row[],
   cols: VisitFileColumns,
   today: string,
   tz?: string | null,
 ): Row[] {
-  type Visit = { row: Row; on: string; done: boolean };
-  const groups = new Map<string, Visit[]>();
-  const clientOf = (row: Row) =>
-    [str(row[cols.client]), cols.clientLast ? str(row[cols.clientLast]) : ""]
-      .filter(Boolean)
-      .join(" ");
-  for (const row of rows) {
-    const client = clientOf(row);
-    const on = parseImportDate(str(row[cols.date]), tz);
-    const status = cols.status ? str(row[cols.status]) : "";
-    if (!client || !on || CALLED_OFF.test(status)) continue;
-    const key = [
-      client,
-      cols.service ? str(row[cols.service]) : "",
-      cols.street ? str(row[cols.street]) : "",
-    ]
-      .map((s) => s.toLowerCase())
-      .join("\u0000");
-    const list = groups.get(key) ?? [];
-    list.push({ row, on, done: cols.status ? DONE.test(status) : on < today });
-    groups.set(key, list);
-  }
-  const out: Row[] = [];
-  for (const visits of groups.values()) {
-    visits.sort((a, b) => (a.on < b.on ? -1 : a.on > b.on ? 1 : 0));
-    const dates = [...new Set(visits.map((v) => v.on))];
-    const last = visits.filter((v) => v.done).at(-1) ?? null;
-    const upcoming = visits.filter((v) => !v.done && v.on >= today);
-    const next = upcoming[0] ?? null;
-    const afterNext = upcoming.find((v) => v.on > (next?.on ?? "")) ?? null;
-    const row = (next ?? last ?? visits.at(-1)!).row;
-    const service = cols.service ? str(row[cols.service]) : "";
-    out.push({
-      ...row,
-      [VISITS_FREQUENCY_COLUMN]:
-        frequencyFromDates(dates) ?? frequencyFromName(service, dates) ?? "",
-      [VISITS_FIRST_COLUMN]: dates[0],
-      [VISITS_LAST_COLUMN]: last?.on ?? "",
-      [VISITS_NEXT_COLUMN]: next?.on ?? "",
-      [VISITS_AFTER_NEXT_COLUMN]: afterNext?.on ?? "",
-      [VISITS_COUNT_COLUMN]: String(visits.length),
-    });
-  }
-  return out;
+  return planVisitFile(rows, cols, today, tz).rows;
 }

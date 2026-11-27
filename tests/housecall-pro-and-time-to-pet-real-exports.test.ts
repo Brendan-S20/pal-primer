@@ -17,7 +17,7 @@ import {
   mapDogRow,
   type ImportEntity,
 } from "@/lib/imports.functions";
-import { tableFromCsv } from "@/lib/import-file-table";
+import { reportNotForImport, tableFromCsv } from "@/lib/import-file-table";
 import {
   frequencyFromDates,
   plansFromVisits,
@@ -104,6 +104,12 @@ describe("Housecall Pro", () => {
       postal_code: "60901",
       active: true,
     });
+    // A customer with no mobile number keeps a home or work number as the
+    // phone; the column stays a leftover too, so nothing is lost.
+    const home = mapClientRow({ ...f.rows[2], "Home Number": "3135550199" }, f.mapping);
+    expect(home.mapped!.primary_phone).toBe("+13135550199");
+    const work = mapClientRow({ ...f.rows[2], "Work Number": "(313) 555-0177" }, f.mapping);
+    expect(work.mapped!.primary_phone).toBe("+13135550177");
   });
 
   it("jobs: 80 visit rows are two plans, each with how often, price, last and next visit", () => {
@@ -116,7 +122,7 @@ describe("Housecall Pro", () => {
       service: "Job description",
       assigned_to: "Assigned employees",
       service_street: "Street",
-      price_per_visit: "Total service price",
+      price_per_visit: "Price per visit (from the visits)",
       frequency: "How often (from the visits)",
       start_date: "First visit (from the visits)",
       last_visit: "Last visit (from the visits)",
@@ -249,7 +255,7 @@ describe("Time To Pet", () => {
     expect(destinations(f).fields).toMatchObject({
       client_name: "Client",
       service: "Service",
-      price_per_visit: "Service Revenue",
+      price_per_visit: "Price per visit (from the visits)",
       assigned_to: "Staff",
       frequency: "How often (from the visits)",
     });
@@ -276,6 +282,31 @@ describe("Time To Pet", () => {
   it("the first/last visit report and the rates file are not plan files", () => {
     expect(load("time-to-pet-first-last-visit-report.csv").entity).not.toBe("services");
     expect(load("time-to-pet-service-rates.csv").entity).not.toBe("services");
+  });
+
+  it("the first/last visit report and the rates file are refused with the file to use", () => {
+    for (const [file, says] of [
+      ["time-to-pet-first-last-visit-report.csv", /first and last visit report/],
+      ["time-to-pet-service-rates.csv", /each client's price for each service/],
+    ] as const) {
+      const f = load(file);
+      expect(reportNotForImport(f.headers, f.rows)).toMatch(says);
+      expect(reportNotForImport(f.headers, f.rows)).toMatch(/Reporting > Schedule > Visits/);
+    }
+    // No other real export is refused.
+    for (const file of [
+      "time-to-pet-client-list.csv",
+      "time-to-pet-visits.csv",
+      "time-to-pet-sales-report.csv",
+      "time-to-pet-petlist-pets.csv",
+      "housecall-pro-customers.csv",
+      "housecall-pro-jobs.csv",
+    ]) {
+      const f = load(file);
+      expect(reportNotForImport(f.headers, f.rows), file).toBeNull();
+    }
+    const balances = [{ Client: "Sam Research", Status: "Active", "Balance Due": "18.50" }];
+    expect(reportNotForImport(Object.keys(balances[0]), balances)).toBeNull();
   });
 });
 

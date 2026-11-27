@@ -178,7 +178,11 @@ describe("Sweep&Go", () => {
     expect(res.error).toBe(
       'The price is "0.00" in the file, so it is not the plan\'s price. Add this plan by hand with its price per visit.',
     );
-    const priced = mapServiceRow({ ...f.rows[0], Revenue: "23.00" }, f.mapping, TZ);
+    const priced = mapServiceRow(
+      { ...f.rows[0], Revenue: "23.00", "Price per visit (from the visits)": "23.00" },
+      f.mapping,
+      TZ,
+    );
     expect(priced.error).toBeNull();
     expect(priced.mapped).toMatchObject({
       client_name: "Dana Placeholder",

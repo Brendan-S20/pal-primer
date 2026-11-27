@@ -165,3 +165,38 @@ export function tableFromCsv(cells: readonly (readonly unknown[])[]): FileTable 
   });
   return { headers: columns.map((c) => c.h), rows, skipped };
 }
+
+const OWED = /balance|due|owed|owing|paid|amount|total|credit|invoice/i;
+const MONEY = /^\s*-?\$?\s*\d[\d,]*(\.\d+)?\s*$/;
+
+/**
+ * Why a file is a report the import cannot use, in the owner's words, or
+ * null. Each is a real export (tests/fixtures/imports) that used to come in
+ * as clients named "Sam Research (Biscuit Test)". The page and the server
+ * both refuse it, and say which file to export instead.
+ */
+export function reportNotForImport(
+  headers: readonly string[],
+  rows: readonly Record<string, unknown>[],
+): string | null {
+  const has = (h: string) => headers.some((x) => x.trim().toLowerCase() === h.toLowerCase());
+  // Time To Pet's First/Last Visit report: one visit per client.
+  if (has("Is First?") && has("Is Last?")) {
+    return "This is Time To Pet's first and last visit report: one visit per client, with no address and no schedule, so nothing in it is imported. For clients, export the Client List; for recurring services, export Reporting > Schedule > Visits, which has every visit, its price and its status.";
+  }
+  // Time To Pet's service rates: a client, a status, then one price column
+  // per service, named for the service. A balance or an amount owed is not
+  // a rate: "Client, Status, Balance Due" is a balances file.
+  const prices = headers.slice(2);
+  if (
+    headers[0]?.trim() === "Client" &&
+    headers[1]?.trim() === "Status" &&
+    prices.length > 0 &&
+    !prices.some((h) => OWED.test(h)) &&
+    rows.length > 0 &&
+    rows.every((r) => prices.every((h) => !String(r[h] ?? "").trim() || MONEY.test(String(r[h]))))
+  ) {
+    return "This is a table of each client's price for each service, so it is not imported on its own. For recurring services, export Time To Pet's Reporting > Schedule > Visits: each plan's price per visit comes from its visits.";
+  }
+  return null;
+}

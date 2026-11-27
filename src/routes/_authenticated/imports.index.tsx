@@ -19,8 +19,8 @@ import {
   type ImportEntity,
 } from "@/lib/imports.functions";
 import { suggestFields } from "@/lib/import-column-map";
-import { tableFromCsv, type SkippedLine } from "@/lib/import-file-table";
-import { plansFromVisits, VISITS_COLUMNS, visitFileColumns } from "@/lib/import-visit-plans";
+import { reportNotForImport, tableFromCsv, type SkippedLine } from "@/lib/import-file-table";
+import { planVisitFile, VISITS_COLUMNS, visitFileColumns } from "@/lib/import-visit-plans";
 import { ImportFileNotes } from "@/components/imports/ImportFileNotes";
 import { ColumnMappingTable } from "@/components/imports/ColumnMappingTable";
 import { Button } from "@/components/ui/button";
@@ -133,6 +133,7 @@ const FIELD_LABELS: Record<string, string> = {
   amount: "Amount owed",
   due_date: "Due date",
   note: "Note",
+  service_street: "Service address (also tells apart two clients with one name)",
 };
 
 const TEMPLATE_HEADERS: Record<ImportEntity, Record<string, string[]>> = {
@@ -334,11 +335,13 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
         : hs;
   const headers = withVisitColumns(fileHeaders, source, entity, visitRows);
   const planColumns = visitsFile(source, entity, fileHeaders);
+  // Visits and plans left out of a visits file, each with the reason.
+  const visitPlans = planColumns ? planVisitFile(fileRows, planColumns, today, tz) : null;
   const rows = joinsVisits(source, entity, visitRows)
     ? mergeJobberVisits(fileRows, visitRows!, today)
-    : planColumns
-      ? plansFromVisits(fileRows, planColumns, today, tz)
-      : fileRows;
+    : (visitPlans?.rows ?? fileRows);
+  // A report with nothing to import in it, and which file to export instead.
+  const refused = fileHeaders.length ? reportNotForImport(fileHeaders, fileRows) : null;
 
   // A Service column is offered to a business that runs more than pet waste.
   // A scooper's import has one service, the default, and the mapping step
@@ -424,6 +427,7 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
 
   const runPreview = async () => {
     if (!rows.length) return toast.error("Upload a CSV first.");
+    if (refused) return toast.error(refused);
     for (const req of required) {
       if (!mapping[req]) return toast.error(`Choose a column for "${FIELD_LABELS[req] ?? req}".`);
     }
@@ -543,7 +547,16 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
             skipped={skipped}
             visitRows={planColumns ? fileRows.length : null}
             plans={rows.length}
+            left={visitPlans?.left ?? []}
           />
+          {refused && (
+            <div
+              role="alert"
+              className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm break-words text-destructive"
+            >
+              {refused}
+            </div>
+          )}
           {!isVerifiedSource(source) && (
             <div
               role="status"
@@ -569,7 +582,7 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
             suggested={suggested}
           />
           <div className="flex justify-end">
-            <Button onClick={runPreview} disabled={busy}>
+            <Button onClick={runPreview} disabled={busy || !!refused}>
               {busy ? "Analyzing…" : "Dry-run preview"}
             </Button>
           </div>

@@ -98,6 +98,9 @@ export const OTHER_PHONE_COLUMNS = [
   "Other Phone #s",
   // Sweep&Go's Client List CSV.
   "Home Phone Number",
+  // Housecall Pro's customers export (Mobile Number is the mapped phone).
+  "Home Number",
+  "Work Number",
 ];
 
 /** A leftover column the client mapper still reads when the mapped phone

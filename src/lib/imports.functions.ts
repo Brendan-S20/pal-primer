@@ -37,6 +37,7 @@ import {
 import {
   parseMoneyCents,
   pickPlanProperty,
+  clientAtStreet,
   planVisitsNote,
   staffByName,
 } from "@/lib/import-services";
@@ -51,6 +52,7 @@ import {
   VISITS_LAST_COLUMN,
   VISITS_NEXT_COLUMN,
   VISITS_AFTER_NEXT_COLUMN,
+  VISITS_PRICE_COLUMN,
 } from "@/lib/import-visit-plans";
 import { newInvoice } from "@/lib/db-insert";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -73,6 +75,7 @@ import {
   type ExistingClient,
   type ExistingRecords,
 } from "@/lib/import-commit-guard";
+import { reportNotForImport } from "@/lib/import-file-table";
 
 // Bulk import creates/overwrites client data — every function in this file
 // is gated on manage_imports, matching the /imports route boundary.
@@ -259,6 +262,10 @@ export const BALANCE_TARGET_FIELDS = [
   "amount",
   "due_date",
   "note",
+  // The client's street: with no id in the file, it tells apart two
+  // clients with one name (Housecall Pro's invoices, Rigel's review of
+  // #1069 at 3b0a1d76).
+  "service_street",
 ] as const;
 
 export const TARGET_FIELDS_BY_ENTITY: Record<ImportEntity, readonly string[]> = {
@@ -940,7 +947,7 @@ const SERVICE_PRESETS: Record<string, PresetMap> = {
   sweepgo: {
     client_name: ["Client Name"],
     frequency: ["Subs. Name", VISITS_FREQUENCY_COLUMN],
-    price_per_visit: ["Revenue"],
+    price_per_visit: [VISITS_PRICE_COLUMN, "Revenue"],
     price_basis: ["Revenue Type"],
     plan_status: ["Status"],
     start_date: ["Start Date", VISITS_FIRST_COLUMN],
@@ -964,7 +971,7 @@ const SERVICE_PRESETS: Record<string, PresetMap> = {
     client_name: ["Customer name", "Customer"],
     client_email: ["Customer email", "Email"],
     frequency: [VISITS_FREQUENCY_COLUMN],
-    price_per_visit: ["Total service price", "Job amount", "Amount"],
+    price_per_visit: [VISITS_PRICE_COLUMN, "Total service price", "Job amount", "Amount"],
     start_date: [VISITS_FIRST_COLUMN],
     last_visit: [VISITS_LAST_COLUMN],
     next_visit: [VISITS_NEXT_COLUMN],
@@ -979,7 +986,7 @@ const SERVICE_PRESETS: Record<string, PresetMap> = {
   time_to_pet: {
     client_name: ["Client"],
     frequency: [VISITS_FREQUENCY_COLUMN],
-    price_per_visit: ["Service Revenue"],
+    price_per_visit: [VISITS_PRICE_COLUMN, "Service Revenue"],
     start_date: [VISITS_FIRST_COLUMN],
     last_visit: [VISITS_LAST_COLUMN],
     next_visit: [VISITS_NEXT_COLUMN],
@@ -1013,11 +1020,15 @@ const BALANCE_PRESETS: Record<string, PresetMap> = {
   },
   // Housecall Pro's Invoices table > Download CSV (real, 2026-11-27): one
   // row per invoice; "Due" is what is still owed on it. It has no due date.
+  // Housecall Pro's Invoices export (real, 2026-11-27) has no due date:
+  // "Date" is the job's, and an invoice there is due on receipt by default,
+  // so it is the due date. "Street" finds the client when two share a name.
   housecall_pro: {
     client_name: ["Customer"],
     amount: ["Due", "Due amount"],
-    due_date: ["Invoice due date"],
+    due_date: ["Invoice due date", "Date"],
     note: ["Description"],
+    service_street: ["Street"],
   },
   // Time To Pet's Reporting > Financial > Sales (real, 2026-11-27): one row
   // per invoice, under a date-range line and over a "Totals: " line, which
@@ -1519,7 +1530,9 @@ async function loadExisting(
     clientsWithActivePlan: new Set(),
     clientsWithOpeningBalance: new Set(),
   };
-  if (entity === "clients" || entity === "properties") {
+  // Plans and balances read the streets too: with no id in the file, a
+  // client's street tells apart two clients with one name.
+  if (entity !== "dogs") {
     const props = await selectAll<{
       client_id: string;
       street: string | null;
@@ -1563,17 +1576,26 @@ async function loadExisting(
     );
     for (const x of invs) records.clientsWithOpeningBalance.add(x.client_id);
   } else if (entity === "dogs") {
-    const dogs = await selectAll<{ name: string; properties: { client_id: string } }>((a, b) =>
+    const dogs = await selectAll<{
+      id: string;
+      name: string;
+      breed: string | null;
+      properties: { client_id: string };
+    }>((a, b) =>
       supabase
         .from("dogs")
-        .select("name, properties!inner(client_id)")
+        .select("id, name, breed, properties!inner(client_id)")
         .eq("organization_id", orgId)
         .order("id")
         .range(a, b),
     );
     for (const d of dogs) {
       const cid = d.properties?.client_id;
-      if (cid) records.dogKeys.add(dogKey(cid, d.name));
+      if (!cid) continue;
+      records.dogKeys.add(dogKey(cid, d.name));
+      if (!d.breed?.trim()) {
+        (records.dogsWithoutBreed ??= new Map()).set(dogKey(cid, d.name), d.id);
+      }
     }
   }
   return { clients, records };
@@ -1804,6 +1826,8 @@ export const previewImport = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const orgId = await resolveOrgId(supabase, userId);
     const entity = data.entity;
+    const notForImport = reportNotForImport(Object.keys(data.rows[0] ?? {}), data.rows);
+    if (notForImport) throw new Error(notForImport);
 
     // What already exists, for labelling rows create / update / skip. The
     // commit reads it again (loadExisting), so a stale label cannot create.
@@ -1830,6 +1854,7 @@ export const previewImport = createServerFn({ method: "POST" })
       client_external_id: string | null;
       client_name: string | null;
       client_email?: string | null;
+      service_street?: string | null;
     }) => {
       if (m.client_external_id && clientByExternal.has(m.client_external_id)) {
         return { id: clientByExternal.get(m.client_external_id)!, error: null };
@@ -1849,9 +1874,16 @@ export const previewImport = createServerFn({ method: "POST" })
       if (nm && !clientByName.has(nm) && bare && clientByName.has(bare)) nm = bare;
       if (nm && clientByName.has(nm)) {
         const id = clientByName.get(nm);
-        return id
-          ? { id, error: null }
-          : { id: null, error: `More than one client is called "${m.client_name}"; add an ID column` };
+        if (id) return { id, error: null };
+        // Two clients of one name: the one with the row's street.
+        const at = clientAtStreet(existingClients, nm, m.service_street);
+        if (at) return { id: at, error: null };
+        return {
+          id: null,
+          error: `More than one client is called "${m.client_name}"${
+            m.service_street ? ` and none of them alone is at "${m.service_street}"` : ""
+          }; add an ID or a street column`,
+        };
       }
       return {
         id: null,
@@ -2028,7 +2060,11 @@ export const previewImport = createServerFn({ method: "POST" })
         }
         const clientId = who.id;
         target_id = clientId;
-        if (alreadyInDatabase(entity, m, clientId, existing)) action = "skip";
+        if (alreadyInDatabase(entity, m, clientId, existing)) {
+          // The client list made this dog with no breed; the pets file has it.
+          const filling = m.breed && existing.dogsWithoutBreed?.has(dogKey(clientId, m.name));
+          action = filling ? "update" : "skip";
+        }
       } else if (entity === "services" || entity === "balances") {
         const m = mapped as any;
         const who = resolveClient(m);
@@ -2734,6 +2770,21 @@ export const commitImport = createServerFn({ method: "POST" })
       for (const row of rows ?? []) {
         const m = row.mapped as any;
         try {
+          const blankBreed =
+            entity === "dogs" && row.action === "update" && row.target_id && m.breed
+              ? existing.dogsWithoutBreed?.get(dogKey(row.target_id, m.name))
+              : undefined;
+          if (blankBreed) {
+            // Only a breed still blank is written; nothing else on the dog.
+            const { error: bErr } = await supabase
+              .from("dogs")
+              .update({ breed: m.breed })
+              .eq("organization_id", orgId)
+              .eq("id", blankBreed);
+            if (bErr) throw bErr;
+            updated += 1;
+            continue;
+          }
           const duplicate = alreadyInDatabase(entity, m, row.target_id, existing);
           if (duplicate) {
             // Written with the others after the loop (writeRowResults).

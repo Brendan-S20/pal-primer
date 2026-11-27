@@ -395,6 +395,10 @@ export type ExistingRecords = {
   propertyKeys: Set<string>;
   /** `${client_id}::${dog name lowercased}` */
   dogKeys: Set<string>;
+  /** The same key, for the dogs with no breed yet: the dog's id. A pets file
+   *  read after the client list (Time To Pet) fills it in rather than
+   *  skipping the dog the client list already made. */
+  dogsWithoutBreed?: Map<string, string>;
   clientsWithActivePlan: Set<string>;
   clientsWithOpeningBalance: Set<string>;
 };

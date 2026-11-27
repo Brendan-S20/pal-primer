@@ -79,6 +79,7 @@ export function sameSchedule(
 }
 
 type Which = "next visit" | "visit after next" | "last visit" | "start date";
+export type OffWhich = "last visit" | "next visit" | "visit after next";
 
 /** The date a plan's schedule is walked from, given the file's start date,
  *  the old system's last completed visit and its next two booked ones, and
@@ -87,7 +88,11 @@ type Which = "next visit" | "visit after next" | "last visit" | "start date";
  *  or changed schedule must not be walked from its old dates (Rigel's
  *  reviews of #1069). So:
  *
- *  - The next two booked visits agreeing with each other set the plan.
+ *  - The next two booked visits agreeing with each other set the plan,
+ *    unless the frequency names a day (Tuesdays, the 10th) that neither
+ *    of them is on while an earlier date is: Jobber rewrites "Visit
+ *    frequency" when a schedule is changed, so the named day is the rule
+ *    and those two visits were moved one by one (Rigel, da4554c6).
  *  - Otherwise a date is used when another agrees with it on the plan's frequency:
  *    the next visit first, then the last visit, then the visit after next,
  *    then the start date; dates that also fit the day the frequency names
@@ -97,6 +102,11 @@ type Which = "next visit" | "visit after next" | "last visit" | "start date";
  *  - When no two agree, the date that fits the named day is used, else the
  *    start date, else the next visit; with nothing to tell which is right
  *    the owner is told the dates disagree (`unsure`), not that one moved.
+ *  - The plan following the upcoming visits while the last one is on
+ *    another schedule is a changed schedule (`changed`) only when the start
+ *    date is on the old schedule too. With no start date in the file one
+ *    moved last visit looks the same, so the owner is told it is one or the
+ *    other (`lastOrChanged`), not which.
  *
  *  A visit off the chosen schedule is returned for the plan's note. With no
  *  frequency in the file there is no schedule to check, and the latest
@@ -115,8 +125,9 @@ export function planAnchor(p: {
 }): {
   on: string | null;
   from: Which | null;
-  off: { which: "last visit" | "next visit"; on: string }[];
+  off: { which: OffWhich; on: string }[];
   changed?: boolean;
+  lastOrChanged?: boolean;
   unsure?: boolean;
 } {
   const all = (
@@ -143,6 +154,9 @@ export function planAnchor(p: {
     return true;
   };
   const fitting = all.filter(([, d]) => fitsDay(d));
+  const named =
+    (p.frequency === "monthly" && !!p.monthDay) ||
+    (p.frequency !== "monthly" && p.frequency !== "every_n_days" && p.weekdays.length > 0);
   const agreedIn = (pool: typeof all) => {
     const agrees = (d: string) => pool.some(([, o]) => o !== d && same(d, o));
     return (
@@ -155,26 +169,42 @@ export function planAnchor(p: {
   // moved, with a frequency text nobody updated. And the next two booked
   // visits agreeing is the schedule from here on, whatever the past says.
   const ahead = all.find(([w]) => w === "next visit");
+  const upcomingAgree = !!p.next && !!p.afterNext && same(p.next, p.afterNext);
+  // Both upcoming visits off the day the frequency names, with an earlier
+  // date on it: two visits moved one by one, not a new schedule.
+  const upcomingMoved =
+    upcomingAgree &&
+    named &&
+    !fitsDay(p.next!) &&
+    fitting.some(([w]) => w === "last visit" || w === "start date");
   const agreed =
-    (ahead && p.afterNext && same(ahead[1], p.afterNext) ? ahead : undefined) ??
+    (ahead && upcomingAgree && !upcomingMoved ? ahead : undefined) ??
     agreedIn(fitting) ??
-    agreedIn(all);
+    (upcomingMoved ? fitting[0] : agreedIn(all));
   const fits = fitting.length && fitting.length < all.length ? fitting[0] : null;
   const pick = agreed ?? fits ?? all.find(([w]) => w === "start date") ?? first;
   const unsure = !agreed && !fits;
-  const upcomingAgree = !!p.next && !!p.afterNext && same(p.next, p.afterNext);
-  const changed =
+  const followsUpcoming =
     !!agreed && upcomingAgree && pick[1] === p.next && !!p.last && !same(p.last, p.next);
+  // The start date on the old schedule confirms a change; on the new one it
+  // says only the last visit moved; with none, nothing tells which.
+  const changed = followsUpcoming && !!p.start && !same(p.start, p.next!);
+  const lastOrChanged = followsUpcoming && !p.start;
   const off = all
     .filter(
-      ([w, d]) => (w === "next visit" || (w === "last visit" && !changed)) && !same(d, pick[1]),
+      ([w, d]) =>
+        (w === "next visit" ||
+          (w === "visit after next" && (upcomingMoved || !upcomingAgree)) ||
+          (w === "last visit" && !changed && !lastOrChanged)) &&
+        !same(d, pick[1]),
     )
-    .map(([w, d]) => ({ which: w as "last visit" | "next visit", on: d }));
+    .map(([w, d]) => ({ which: w as OffWhich, on: d }));
   return {
     on: pick[1],
     from: pick[0],
     off,
     ...(changed ? { changed: true } : {}),
+    ...(lastOrChanged ? { lastOrChanged: true } : {}),
     ...(unsure && off.length ? { unsure: true } : {}),
   };
 }

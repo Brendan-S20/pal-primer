@@ -76,14 +76,64 @@ describe("2. a changed schedule follows the upcoming visits", () => {
     expect(note).toContain("the schedule was changed in Jobber");
     expect(note).not.toContain("moved once");
   });
-  it("even when the frequency text still names the old day", () => {
+  // Jobber rewrites "Visit frequency" when a schedule is changed, so a
+  // frequency that still names the 10th with both upcoming visits on the
+  // 15th is two visits moved by hand, not a new schedule (Rigel, da4554c6).
+  it("the frequency still names the 10th: both upcoming visits were moved, the plan stays on the 10th", () => {
     const m = plan({
       "Schedule start date": "Sep 10, 2026",
       Last: "2026-11-10",
       Next: "2026-12-15",
       After: "2027-01-15",
     });
-    expect(m).toMatchObject({ started_on: "2026-12-15", schedule_changed: true });
+    expect(m.started_on).toBe("2026-11-10");
+    expect(m.schedule_changed).toBeUndefined();
+    expect(m.off_schedule).toEqual([
+      { which: "next visit", on: "2026-12-15" },
+      { which: "visit after next", on: "2027-01-15" },
+    ]);
+  });
+  it("Weekly on Tuesdays, next two moved to Wed Dec 2 and 9: still Tuesdays from Nov 24", () => {
+    const m = plan({
+      "Visit frequency": "Weekly on Tuesdays",
+      "Schedule start date": "Sep 01, 2026",
+      Last: "2026-11-24",
+      Next: "2026-12-02",
+      After: "2026-12-09",
+    });
+    expect(m).toMatchObject({ started_on: "2026-11-24", preferred_weekdays: [2] });
+    expect(m.schedule_changed).toBeUndefined();
+    const note = planVisitsNote("Jobber", m)!;
+    expect(note).toContain("The next visit (2026-12-02) is off that schedule");
+    expect(note).toContain("The visit after next (2026-12-09) is off that schedule");
+  });
+  it("only the last visit moved, start date on the new days: a move, not a change", () => {
+    const m = plan({
+      "Visit frequency": "Weekly on Fridays",
+      "Schedule start date": "Sep 04, 2026",
+      Last: "2026-11-18",
+      Next: "2026-11-27",
+      After: "2026-12-04",
+    });
+    expect(m.started_on).toBe("2026-11-27");
+    expect(m.schedule_changed).toBeUndefined();
+    const note = planVisitsNote("Jobber", m)!;
+    expect(note).toContain("likely moved once in Jobber");
+    expect(note).not.toContain("the schedule was changed");
+  });
+  it("no start date: the note says moved once or changed, not which", () => {
+    const m = plan({
+      "Visit frequency": "Weekly",
+      Last: "2026-11-18",
+      Next: "2026-11-27",
+      After: "2026-12-04",
+    });
+    expect(m.started_on).toBe("2026-11-27");
+    expect(m.schedule_changed).toBeUndefined();
+    expect(m.last_or_changed).toBe(true);
+    expect(planVisitsNote("Jobber", m)).toContain(
+      "it was moved once, or the schedule was changed in Jobber",
+    );
   });
   it("one moved visit with the one after it back on schedule is still a move", () => {
     const m = plan({
