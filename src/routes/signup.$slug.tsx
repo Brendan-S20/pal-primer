@@ -16,6 +16,7 @@ import { quotedPublicService } from "@/lib/public-services";
 import type { ServiceLine } from "@/lib/service-lines";
 import { bookingPageHead, telHref, unavailablePageHead } from "@/lib/booking-page";
 import { appOrigin } from "@/lib/app-origin";
+import { formatPhone } from "@/lib/format";
 import { customerTitle } from "@/lib/page-title";
 import { SIGNUP_FORM_STALE_MS, SignupFlow } from "@/components/signup/SignupFlow";
 import { directoryBookingSearch } from "@/lib/directory";
@@ -181,7 +182,21 @@ function SignupPage() {
           {/* The shell's header already names the business; only the
               embedded form, which has no header, says it here (QA row 42:
               the name was printed twice). */}
-          {embedded && <div className="mb-2 text-sm text-muted-foreground">{org.name}</div>}
+          {/* With no header, the embed shows the business's own logo here
+              when it has one; never a stand-in when it does not. */}
+          {embedded && (
+            <div className="mb-3 flex min-w-0 items-center gap-3">
+              {org.logoUrl ? (
+                <img
+                  src={org.logoUrl}
+                  alt=""
+                  className="h-10 max-w-[160px] shrink-0 object-contain"
+                  data-embed-logo
+                />
+              ) : null}
+              <div className="min-w-0 break-words text-sm text-muted-foreground">{org.name}</div>
+            </div>
+          )}
           {/* What the business does, in plain words, before the headline
               (#560): "Get an instant quote" alone does not say for what. */}
           {servicesLine && (
@@ -244,7 +259,8 @@ function BusinessFacts({
             className="inline-flex min-w-0 items-center gap-1.5 hover:text-foreground touch:min-h-11"
           >
             <Phone className="h-4 w-4 shrink-0" aria-hidden="true" />
-            <span dir="ltr">{contact.phone}</span>
+            {/* Stored as dialled (17343017232), shown as people write it. */}
+            <span dir="ltr">{formatPhone(contact.phone)}</span>
           </a>
         </li>
       ) : null}

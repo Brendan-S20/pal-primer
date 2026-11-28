@@ -39,6 +39,7 @@ import {
   UNPRICED_COPY,
   perVisitLineLabel,
   requestPanelHint,
+  notePlaceholderBesideAccess,
   bookingCadence,
   bookingCadenceLabel,
   bookingLine,
@@ -899,7 +900,7 @@ export function SignupFlow({
               maxLength={12}
               value={form.postal_code}
               onChange={(e) => setFormField({ ...form, postal_code: e.target.value })}
-              placeholder="e.g. 78704"
+              placeholder="5-digit ZIP"
             />
           </div>
         )}
@@ -1346,7 +1347,13 @@ export function SignupFlow({
               id="message"
               rows={3}
               maxLength={2000}
-              placeholder={stay ? STAY_COPY.notePlaceholder : lineCopy.notePlaceholder}
+              placeholder={
+                stay
+                  ? STAY_COPY.notePlaceholder
+                  : details.access !== "off"
+                    ? notePlaceholderBesideAccess(line)
+                    : lineCopy.notePlaceholder
+              }
               value={form.message}
               onChange={(e) => setFormField({ ...form, message: e.target.value })}
             />
@@ -1394,6 +1401,30 @@ export function SignupFlow({
     </div>
   ) : null;
 
+  // A request with no price on it (2026-11-27): the panel used to be one
+  // sentence and a disabled button. It now reads back what will be sent from
+  // step 1, as typed, so the visitor sees the request before sending it. Only
+  // the answers the form asked for; nothing priced, nothing promised.
+  const showsFrequency = !stay && !pack && !oneTime && mode !== "request_only";
+  const summaryRows: Array<[string, string]> = [];
+  if (pickService && chosenLabel) summaryRows.push(["Service", chosenLabel]);
+  if (fields.location) summaryRows.push(["ZIP code", form.postal_code.trim() || "—"]);
+  if (fields.dogCount) summaryRows.push([lineCopy.petLabel, String(form.dog_count || "—")]);
+  if (showsFrequency) summaryRows.push(["Frequency", bookingCadenceLabel(line, frequency)]);
+  const requestSummary =
+    (branch.reason === "instant-off" || branch.reason === "unpriced-request") &&
+    branch.canRequestQuote &&
+    summaryRows.length > 0 ? (
+      <dl className="divide-y rounded-lg border text-sm" data-request-summary>
+        {summaryRows.map(([k, v]) => (
+          <div key={k} className="flex min-w-0 items-baseline justify-between gap-3 px-3 py-2">
+            <dt className="shrink-0 text-muted-foreground">{k}</dt>
+            <dd className="min-w-0 break-words text-end font-medium">{v}</dd>
+          </div>
+        ))}
+      </dl>
+    ) : null;
+
   const quotePanel = (
     <aside
       ref={panelRef}
@@ -1422,6 +1453,7 @@ export function SignupFlow({
               <>{requestPanelHint(line)}</>
             )}
           </p>
+          {requestSummary}
           {quoteRequestButton}
         </div>
       ) : (

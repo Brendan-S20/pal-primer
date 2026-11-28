@@ -314,9 +314,20 @@ export const UNPRICED_COPY = {
  *  A pet-waste page asks about the property, as it always did; any other
  *  line asks about the dogs or pets it serves (#560). */
 export function requestPanelHint(line: ServiceLine): string {
-  if (line === "pet_waste")
-    return "Tell us about your property and pets and we'll get back to you with a price.";
+  // Not the intro's sentence again ("Tell us about your property and pets
+  // and we'll get you a quote."): the panel sits beside it, and the same
+  // words twice read as a page with nothing to say (2026-11-27).
+  if (line === "pet_waste") return "We'll get back to you with a price for your property and pets.";
   return `Tell us about your ${BOOKING_COPY[line].petLabel.toLowerCase()} and we'll get back to you with a price.`;
+}
+
+/** The "Anything else?" placeholder when the form ALSO has its own access
+ *  box (2026-11-27). A pet-waste note says "Gate code, …" because it was
+ *  the only box; beside "Gate code or access notes" the same hint asks for
+ *  the gate code twice. Lines whose note names no access keep their own. */
+export function notePlaceholderBesideAccess(line: ServiceLine): string {
+  if (line === "pet_waste") return "Preferred days, anything about the yard…";
+  return BOOKING_COPY[line].notePlaceholder;
 }
 
 /** The price line's label for one visit. A groom is requested, not started,

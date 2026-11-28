@@ -406,8 +406,19 @@ describe("a tenant's prospect sees the tenant", () => {
 
   it("and the shell carries nothing of ours", () => {
     const shell = read("src/components/marketing/TenantSignupShell.tsx");
-    expect(codeOnly(shell)).not.toMatch(/houndstack\.com/);
-    expect(codeOnly(shell)).not.toMatch(/APP_NAME|<Logo/);
+    // One exception, on the owner's word (2026-11-27): the EMBEDDED footer
+    // (compact, inside the business's own site) says "Powered by HoundStack",
+    // as every email sent as a business does. It is the one element marked
+    // data-embed-footer; outside it, still nothing of ours.
+    // tests/an-embedded-quote-form-takes-no-card.test.tsx renders both.
+    const embedFooter = /<div data-embed-footer>[\s\S]*?<\/div>/;
+    expect(codeOnly(shell)).toMatch(embedFooter);
+    const rest = codeOnly(shell)
+      .replace(embedFooter, "")
+      .replace(/^import \{ APP_NAME \} from "@\/lib\/scoop";$/m, "")
+      .replace(/^const HOUNDSTACK_URL = "https:\/\/houndstack\.com";$/m, "");
+    expect(rest).not.toMatch(/houndstack\.com|HOUNDSTACK_URL/);
+    expect(rest).not.toMatch(/APP_NAME|<Logo/);
     // Not even a way out: every link MarketingLayout carried is either a dead
     // end for a homeowner or an exit from the checkout they are in.
     expect(codeOnly(shell)).not.toMatch(/to="\/auth"/);

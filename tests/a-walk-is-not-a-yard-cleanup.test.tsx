@@ -178,7 +178,12 @@ describe("pet waste reads exactly as it did", () => {
 
   it("keeps every word it had", () => {
     expect(html).toMatch(/<label[^>]*for="dog_count"[^>]*>Dogs<\/label>/);
-    expect(html).toContain("Gate code, dog names, preferred days…");
+    // The gate code is asked for once (2026-11-27): this form has its own
+    // access box, so "Anything else?" no longer asks for it a second time.
+    // The note's own copy, for a form with no access box, is pinned below.
+    expect(html).toContain("Gate code, which gate, where the dogs are during the visit…");
+    expect(html).toContain('placeholder="Preferred days, anything about the yard…"');
+    expect(html.match(/placeholder="Gate code/g)).toHaveLength(1);
     expect(visibleWords(html)).toMatch(
       /Enter your ZIP and dogs, then hit\s+Get instant price\s*\./,
     );
