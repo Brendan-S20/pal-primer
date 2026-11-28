@@ -105,17 +105,16 @@ function render(lang: string, state: Parameters<typeof AccessOffCard>[0]["state"
 describe("the screen", () => {
   it("names the business, isolated, and says who can undo it", () => {
     const html = render("en", { kind: "off", business: "Acme <Scoop> & Co", checkedAgain: false });
-    expect(html).toContain("Your access to <bdi");
-    expect(html).toContain("Acme &lt;Scoop&gt; &amp; Co</bdi> has been turned off.");
-    expect(html).toContain("Ask the owner to reactivate you.");
+    expect(html).toContain("The owner turned off your access. Ask the owner of <bdi");
+    expect(html).toContain("Acme &lt;Scoop&gt; &amp; Co</bdi> to turn it back on.");
     expect(html).toContain("Check again");
     expect(html).toContain("Sign out");
   });
 
   it("speaks the phone's language", () => {
     const html = render("es", { kind: "off", business: "Acme Scoop", checkedAgain: true });
-    expect(html).toContain("Tu acceso a <bdi");
-    expect(html).toContain("Pide al dueño que te reactive.");
+    expect(html).toContain("El dueño desactivó tu acceso. Pide al dueño de <bdi");
+    expect(html).toContain("que lo vuelva a activar.");
     expect(html).toContain("Sigue desactivado.");
     expect(html).toContain("Cerrar sesión");
   });
@@ -123,6 +122,6 @@ describe("the screen", () => {
   it("says something true when it cannot ask", () => {
     const html = render("en", { kind: "error" });
     expect(html).toContain("Couldn&#x27;t check right now.");
-    expect(html).not.toContain("Your access to");
+    expect(html).not.toContain("The owner turned off");
   });
 });

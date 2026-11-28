@@ -7,16 +7,17 @@ import { PublicShell } from "@/components/PublicShell";
 import { AccessOffCard, type AccessOffState } from "@/components/AccessOffCard";
 import { getMyOrg } from "@/lib/org.functions";
 import { leaveBusinessIWasTurnedOffIn } from "@/lib/auth-entry.functions";
-import { clearPersistedReadCaches, signOutAndClearDevice } from "@/lib/offline/read-cache";
+import { clearPersistedReadCaches } from "@/lib/offline/read-cache";
 import { pageTitle } from "@/lib/page-title";
+import { signOutAndLeave } from "@/lib/sign-out-and-leave";
 
 // Where the shell sends somebody whose access the owner has turned off
 // (Settings → Users, staff.active = false; 20261009180000).
 //
 // The database already refuses them everything, so without this screen they
 // got a workspace in which every list was empty and every save failed. Here
-// they get one sentence that says what happened and who can undo it, a way to
-// check again once the owner has, and Sign out.
+// they get a line that says what happened and who can undo it, Sign out (the
+// main button, #1062), and a way to check again once the owner has.
 //
 // 2026-11-11 (#765): and a way out. Deactivate is the only "remove" the owner
 // has, and it keeps the membership (that is how the database knows "off" from
@@ -62,7 +63,11 @@ function AccessOffPage() {
         // while they are off, and it is theirs to keep if they come back on.
         clearPersistedReadCaches();
         queryClient.setQueryData(["my-org"], org);
-        setState({ kind: "off", business: org.accessTurnedOff.organizationName || null, checkedAgain: again });
+        setState({
+          kind: "off",
+          business: org.accessTurnedOff.organizationName || null,
+          checkedAgain: again,
+        });
         return;
       }
       // Back on, or never off: let the shell decide where they belong.
@@ -88,17 +93,14 @@ function AccessOffPage() {
     navigate({ to: "/no-workspace", replace: true });
   };
 
-  const signOut = async () => {
-    await signOutAndClearDevice();
-    window.location.href = "/auth";
-  };
+  const signOut = () => signOutAndLeave();
 
   return (
     <PublicShell tagline={t("accessOff.pageTitle")}>
       <AccessOffCard
         state={state}
         onCheckAgain={() => void check(true)}
-        onSignOut={() => void signOut()}
+        onSignOut={signOut}
         onStartOwn={startOwn}
       />
     </PublicShell>

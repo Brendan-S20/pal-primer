@@ -23,7 +23,8 @@ export function AccessOffCard({
 }: {
   state: AccessOffState;
   onCheckAgain: () => void;
-  onSignOut: () => void;
+  /** Ends the session and leaves the page. The primary action. */
+  onSignOut: () => void | Promise<void>;
   /**
    * Leave the business that turned this person off, so the address can start
    * or join another (#765). Absent: the button is not drawn. Resolves when
@@ -36,6 +37,16 @@ export function AccessOffCard({
   const [confirming, setConfirming] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [leaveFailed, setLeaveFailed] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const busy = leaving || signingOut;
+  const signOut = async () => {
+    setSigningOut(true);
+    try {
+      await onSignOut();
+    } finally {
+      setSigningOut(false);
+    }
+  };
   const leave = async () => {
     if (!onStartOwn) return;
     setLeaveFailed(false);
@@ -77,18 +88,32 @@ export function AccessOffCard({
         </p>
       )}
       <div className="mt-5 flex flex-col gap-2">
-        <Button onClick={onCheckAgain} disabled={state.kind === "checking" || leaving}>
+        <Button onClick={() => void signOut()} disabled={busy} aria-busy={signingOut || undefined}>
+          {signingOut ? t("accessOff.signingOut") : t("nav.signOut")}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={onCheckAgain}
+          disabled={state.kind === "checking" || busy}
+        >
           {t("accessOff.checkAgain")}
         </Button>
-        {onStartOwn && state.kind === "off" && !confirming && (
-          <Button variant="outline" onClick={() => setConfirming(true)}>
+      </div>
+      {/* Kept, not promoted (#1062): it is the only way out of the removed-teammate
+          loop (#765), but it is not what somebody who was turned off should
+          reach for first. So it sits apart, below, drawn as a text link. */}
+      {onStartOwn && state.kind === "off" && !confirming && (
+        <div className="mt-4 border-t pt-2">
+          <Button
+            variant="link"
+            className="h-auto min-h-9 max-w-full whitespace-normal text-muted-foreground underline touch:min-h-11"
+            onClick={() => setConfirming(true)}
+            disabled={busy}
+          >
             {t("accessOff.startOwn")}
           </Button>
-        )}
-        <Button variant="outline" onClick={onSignOut} disabled={leaving}>
-          {t("nav.signOut")}
-        </Button>
-      </div>
+        </div>
+      )}
       {onStartOwn && state.kind === "off" && confirming && (
         <div
           className="mt-4 min-w-0 rounded-md border p-3 text-start"
@@ -109,13 +134,14 @@ export function AccessOffCard({
           )}
           <div className="mt-3 flex flex-col gap-2">
             <Button
+              variant="outline"
               onClick={() => void leave()}
-              disabled={leaving}
+              disabled={busy}
               aria-busy={leaving || undefined}
             >
               {leaving ? t("accessOff.startOwnBusy") : t("accessOff.startOwnConfirm")}
             </Button>
-            <Button variant="outline" onClick={() => setConfirming(false)} disabled={leaving}>
+            <Button variant="outline" onClick={() => setConfirming(false)} disabled={busy}>
               {t("accessOff.startOwnCancel")}
             </Button>
           </div>
