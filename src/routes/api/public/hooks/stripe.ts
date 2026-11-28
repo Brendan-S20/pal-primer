@@ -1500,20 +1500,16 @@ export const Route = createFileRoute("/api/public/hooks/stripe")({
               .eq("stripe_connect_account_id", event.account ?? "")
               .maybeSingle();
             if (!porg) return new Response("ok", { status: 200 });
-            const amount = `$${(Number(payout?.amount ?? 0) / 100).toFixed(2)}`;
             const failed = event.type === "payout.failed";
             try {
               const { notifyRoles } = await import("@/lib/notify-center.server");
+              // The wording follows payout.failure_code (#1075): only a bank
+              // account problem says payouts stay stopped until the bank
+              // details are fixed; a low balance says nothing needs changing.
+              const { payoutAlert } = await import("@/lib/payout-alert");
               await notifyRoles(["owner", "office_manager"], {
                 orgId: porg.id,
-                type: failed ? "payout_failed" : "payout_paid",
-                title: failed ? "A payout failed" : `${amount} is on its way to your bank`,
-                body: failed
-                  ? // A stale bank account silently halts EVERY payout, not just
-                    // this one, and the only place that was visible was Stripe.
-                    `${amount} could not be paid out${payout?.failure_message ? `: ${payout.failure_message}` : ""}. ` +
-                    `Payouts stay stopped until the bank details are fixed. Check Payments.`
-                  : `${amount} has been sent to your bank account.`,
+                ...payoutAlert(payout, failed),
               });
             } catch (e) {
               console.error("payout notification failed", e);
