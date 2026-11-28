@@ -384,14 +384,30 @@ touch "$marker"
 # script had run. That is proven from the same process log: the main
 # document was served, and no main-frame commit before the give-up. A
 # process that started and hung before serving its page, or whose page
-# committed and drew nothing, is the app, and is never retried. scripts/ios-launch-never-started.mjs holds the messages and
+# committed and drew nothing, is the app, and is never retried.
+#
+# Or a fifth shape (08b2568e, run 45342136372, iPhone 17e, iOS 27.2; and
+# both iOS 27.2 simulators of scheduled run 45306699837): the simulator's
+# logd stopped taking lines. Nothing in the simulator logged for 63 to 289 s,
+# the app's main thread was sampled waiting on logd inside XCTest's own
+# accessibility query, and XCTest gave up with "Timed out while evaluating UI
+# query" or "does not have a process ID". Proven from an UNFILTERED log, one
+# line per second any process logged: every failed test in the class must
+# contain 60 s in which no process at all logged. A hung app silences itself,
+# not SpringBoard. A crash still fails the run (section 5) whatever this says.
+#
+# scripts/ios-launch-never-started.mjs holds the messages and
 # the proof, and tests/the-launch-check-blames-the-simulator-only-with-proof
 # runs it on logs cut from those runs.
 never_started() {  # $1 xcodebuild log, $2 udid
   [ -n "${attempt_began:-}" ] || return 1
   xcrun simctl spawn "$2" log show --start "$attempt_began" --style compact \
     --predicate 'process == "HoundStack"' > "$1.processes.txt" 2>/dev/null < /dev/null || return 1
-  node "$ROOT/scripts/ios-launch-never-started.mjs" "$1" "$1.processes.txt"
+  # Every process, cut to the second it logged in: a few thousand lines, not
+  # the whole log. Empty on failure, which proves nothing.
+  { xcrun simctl spawn "$2" log show --last 30m --style compact 2>/dev/null < /dev/null || true; } \
+    | cut -c1-19 | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2} ' | uniq > "$1.log-seconds.txt" || true
+  node "$ROOT/scripts/ios-launch-never-started.mjs" "$1" "$1.processes.txt" "$1.log-seconds.txt"
 }
 
 # The cold link reached the app (#962). ColdLaunch.swift attaches XCTest to
@@ -666,7 +682,11 @@ run_class() {  # $1 class, $2 result name
   hold_pid=$!
   local status=0
   wait "$test_pid" || status=1
-  kill "$sampler_pid" 2>/dev/null || true
+  # Reaped here, quietly: otherwise bash reports the killed watchdog as
+  # "Terminated: 15 ( sleep 150; ... sample ... )" in the job log after
+  # every class that finished in time, which reads as the watchdog firing.
+  # It fired only if a *-stuck-*.sample.txt is in the results.
+  { kill "$sampler_pid" && wait "$sampler_pid"; } 2>/dev/null || true
   # Before attempt_class tails it: the SignIn log has the typed values.
   [ -z "$RELEASE_SIGNED_IN" ] || redact "$OUT/$slug-$2.log"
   hold_stop "$hold_pid"
@@ -807,7 +827,7 @@ if [ -n "$RELEASE_SIGNED_IN" ] && [ -n "$notes" ]; then
 fi
 if [ -n "$notes" ]; then
   say ""
-  say "**Launches the simulator failed, not the app** (either no HoundStack process from the launch request to the timeout, or the app served its page and WebKit had not committed it when XCTest gave up; no page script ran in either; the simulator was rebooted and the class retried, at most twice; a page that committed and then drew nothing, and a process that started and then hung before serving its page, are never retried):"
+  say "**Launches the simulator failed, not the app** (no HoundStack process from the launch request to the timeout; or the app served its page and WebKit had not committed it when XCTest gave up, so no page script ran; or no process in the simulator logged anything for 60 s or more inside every failed test, because the simulator's logd had stalled; the simulator was rebooted and the class retried, at most twice; a page that committed and then drew nothing, and a process that started and then hung before serving its page, are never retried):"
   printf '%s' "$notes" | while IFS= read -r line; do say "$line"; done
 fi
 

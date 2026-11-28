@@ -32,8 +32,30 @@
 // five cold launches reached sign-in in about 6 s each. Before a commit no
 // page script runs, so the web app had no chance to draw anything.
 //
-// Usage: node scripts/ios-launch-never-started.mjs <xcodebuild log> <process log>
-// Prints why, and exits 0 when either fault is proven, 1 otherwise.
+// A third fault, with its own proof (logStalled below): the simulator's
+// logging daemon stopped taking log lines, and every process that tried to
+// log waited on it. Measured on the CI Mac (main 08b2568e, iOS launch run
+// 45342136372, iPhone 17e, iOS 27.2): launch 1 of 5 reached sign-in in 6 s;
+// on launch 2 nothing in the simulator, not the app, not WebKit's GPU or
+// network processes, logged a line from 02:49:51 to 02:55:41. The app was
+// sampled at 02:50:19 with its main thread inside XCTest's own accessibility
+// query, in os_signpost, in firehose_buffer_tracepoint_reserve_wait_for_
+// chunks_from_logd: waiting for logd. No frame of the app's own code was
+// on that stack. XCTest gave up at 02:55:42 with "Failed to get matching
+// snapshots: Timed out while evaluating UI query". The scheduled run before
+// it (45306699837) failed four tests on two iOS 27.2 simulators with "does
+// not have a process ID" while each app process sat idle in its run loop,
+// and every one of those tests had a silence of 64 to 94 s in the same log.
+// Both iOS 26.5 simulators, in both runs, had no silence over 20 s.
+//
+// Usage: node scripts/ios-launch-never-started.mjs <xcodebuild log> <process log> [<log seconds>]
+//
+// <log seconds> is one line per second in which ANY process in the
+// simulator logged, "YYYY-MM-DD HH:MM:SS" (the script cuts it from an
+// unfiltered `log show --style compact`). Without it the third fault is
+// never claimed.
+//
+// Prints why, and exits 0 when any of the faults is proven, 1 otherwise.
 
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -228,27 +250,126 @@ export function pageNeverCommitted(testLog, processLog) {
   };
 }
 
+/** Seconds of silence from every process that count as a stalled logd. */
+export const LOG_STALL_SECONDS = 60;
+
 /**
- * Either fault, proven. The smoke script retries a class only when this
+ * Every failed test in the class failed while the simulator's logging was
+ * stalled. Proven only when all of these hold:
+ *
+ *   1. the log names at least one failed test case, and each one has a
+ *      start time and a tear-down;
+ *   2. the seconds list has a line at or before the earliest start and at
+ *      or after the latest tear-down, so an empty or truncated `log show`
+ *      can never read as silence;
+ *   3. inside EVERY failed test's window, from its start to its tear-down,
+ *      there are LOG_STALL_SECONDS or more in a row in which no process in
+ *      the simulator logged anything.
+ *
+ * Not one process, every process: an app that hangs stops its own lines,
+ * not SpringBoard's, WebKit's or XCTest's. It says nothing about crashes;
+ * the smoke script fails the run on any crash report whatever this says,
+ * and a retry that fails again is still a failure.
+ *
+ * @param {string} testLog
+ * @param {string} logSeconds
+ * @returns {{ proven: boolean, why: string }}
+ */
+export function logStalled(testLog, logSeconds) {
+  /** @type {{ name: string, start: number | null, end: number | null }[]} */
+  const failed = [];
+  /** @type {{ name: string, start: number | null, end: number | null } | null} */
+  let cur = null;
+  for (const l of testLog.split(/\r?\n/)) {
+    const c = l.match(/^Test Case '-\[\S+ (\w+)\]' (started|passed|failed)/);
+    if (c && c[2] === "started") {
+      cur = { name: c[1], start: null, end: null };
+      continue;
+    }
+    if (c && cur) {
+      if (c[2] === "failed") failed.push(cur);
+      cur = null;
+      continue;
+    }
+    if (!cur) continue;
+    const s = l.match(/Start Test at (\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d+)/);
+    if (s) cur.start = parseTime(s[1]);
+    const t = l.match(/t =\s+([\d.]+)s Tear Down/);
+    if (t && cur.start !== null) cur.end = cur.start + Number(t[1]) * 1000;
+  }
+  if (failed.length === 0) return { proven: false, why: "no failed test case in the log" };
+  const unclear = failed.find((f) => f.start === null || f.end === null);
+  if (unclear) {
+    return { proven: false, why: `${unclear.name}: no start time or no tear-down in the log` };
+  }
+
+  const seconds = logSeconds
+    .split(/\r?\n/)
+    .map((l) => l.match(/^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)/))
+    .filter(Boolean)
+    .map((m) => parseTime(`${m[1]}.000`))
+    .sort((a, b) => a - b);
+  const lo = Math.min(...failed.map((f) => f.start));
+  const hi = Math.max(...failed.map((f) => f.end));
+  // A logged second covers [t, t + 1 s).
+  if (seconds.length === 0 || seconds[0] > lo || seconds[seconds.length - 1] + 1000 < hi) {
+    return {
+      proven: false,
+      why: "the simulator's log does not cover every failed test, so silence cannot be read from it",
+    };
+  }
+
+  const found = [];
+  for (const f of failed) {
+    const points = [f.start, ...seconds.filter((t) => t > f.start && t < f.end), f.end];
+    let best = { from: f.start, to: f.start };
+    for (let i = 1; i < points.length; i++) {
+      // From the end of the last logged second to the next one.
+      const from = i === 1 ? points[0] : points[i - 1] + 1000;
+      if (points[i] - from > best.to - best.from) best = { from, to: points[i] };
+    }
+    const gap = Math.round((best.to - best.from) / 1000);
+    if (gap < LOG_STALL_SECONDS) {
+      return {
+        proven: false,
+        why: `${f.name}: the longest silence from every process was ${gap} s, under ${LOG_STALL_SECONDS} s`,
+      };
+    }
+    found.push(
+      `${f.name}: nothing in the simulator logged from ${clock(best.from)} to ${clock(best.to)} (${gap} s)`,
+    );
+  }
+  return {
+    proven: true,
+    why: `the simulator's log stalled during every failed test; ${found.join("; ")}`,
+  };
+}
+
+/**
+ * Any of the faults, proven. The smoke script retries a class only when this
  * says so.
  *
  * @param {string} testLog
  * @param {string} processLog
+ * @param {string} [logSeconds]
  * @returns {{ proven: boolean, why: string }}
  */
-export function simulatorFailedTheLaunch(testLog, processLog) {
+export function simulatorFailedTheLaunch(testLog, processLog, logSeconds = "") {
   const a = neverStarted(testLog, processLog);
   if (a.proven) return a;
   const b = pageNeverCommitted(testLog, processLog);
   if (b.proven) return b;
-  return { proven: false, why: `${a.why}; ${b.why}` };
+  const c = logStalled(testLog, logSeconds);
+  if (c.proven) return c;
+  return { proven: false, why: `${a.why}; ${b.why}; ${c.why}` };
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  const [testLog, processLog] = process.argv.slice(2);
+  const [testLog, processLog, logSeconds] = process.argv.slice(2);
   const r = simulatorFailedTheLaunch(
     readFileSync(testLog, "utf8"),
     readFileSync(processLog, "utf8"),
+    logSeconds ? readFileSync(logSeconds, "utf8") : "",
   );
   console.log(r.why);
   process.exit(r.proven ? 0 : 1);

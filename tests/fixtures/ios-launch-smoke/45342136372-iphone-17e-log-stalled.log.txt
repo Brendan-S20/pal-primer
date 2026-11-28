@@ -1,0 +1,23 @@
+Test Case '-[HoundStackUITests.ColdLaunch testColdLaunchReachesSignInFiveTimes]' started.
+    t =     0.00s Start Test at 2026-11-24 02:49:15.711
+    t =     0.05s Set Up
+    t =     0.06s Terminate consulting.thenorth.houndstack:39218
+    t =     1.06s Wait for consulting.thenorth.houndstack to become Not Running
+    t =     3.07s Open consulting.thenorth.houndstack
+    t =     3.07s     Launch consulting.thenorth.houndstack
+    t =     3.11s         Setting up automation session
+    t =     6.59s         Wait for consulting.thenorth.houndstack to idle
+    t =    10.15s Wait for consulting.thenorth.houndstack to become Running Foreground
+    t =    10.15s Waiting 60.0s for TextField (First Match) to exist
+    t =    16.45s Added attachment named 'cold-launch-1'
+    t =    16.45s Terminate consulting.thenorth.houndstack:39279
+    t =    17.46s Wait for consulting.thenorth.houndstack to become Not Running
+    t =    19.46s Open consulting.thenorth.houndstack
+    t =    19.46s     Launch consulting.thenorth.houndstack
+    t =    19.52s         Setting up automation session
+    t =    24.06s         Wait for consulting.thenorth.houndstack to idle
+    t =    26.64s Wait for consulting.thenorth.houndstack to become Running Foreground
+    t =    26.64s Waiting 60.0s for TextField (First Match) to exist
+/Users/runner/actions-runner/_work/pal-primer/pal-primer/ios/UITests/HoundStackUITests/ColdLaunch.swift:194: error: -[HoundStackUITests.ColdLaunch testColdLaunchReachesSignInFiveTimes] : Failed to get matching snapshots: Timed out while evaluating UI query.
+    t =   386.76s Tear Down
+Test Case '-[HoundStackUITests.ColdLaunch testColdLaunchReachesSignInFiveTimes]' failed (387.470 seconds).
