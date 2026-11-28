@@ -65,6 +65,7 @@ import {
 } from "@/components/ui/sidebar";
 import { APP_NAME } from "@/lib/scoop";
 import { Logo } from "@/components/Logo";
+import { AccountMenu } from "@/components/AccountMenu";
 import { UserAvatar } from "@/components/UserAvatar";
 import { useMyProfile } from "@/hooks/useMyProfile";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -480,7 +481,7 @@ function TimeClockSidebarItem({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-export function AppSidebar() {
+export function AppSidebar({ onSignOut }: { onSignOut: () => void }) {
   const { state, isMobile, setOpenMobile, setRailOpen, toggleSidebar } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = useRouterState({ select: (r) => r.location.pathname });
@@ -730,30 +731,33 @@ export function AppSidebar() {
               </div>
             </SidebarMenuItem>
           ) : (
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              asChild
-              isActive={isActive("/profile")}
-              tooltip={t("nav.yourAccount")}
-            >
-              <Link
-                to="/profile"
-                className="flex items-center gap-2"
-                aria-label={collapsed ? t("nav.yourAccount") : undefined}
-              >
-                <UserAvatar
-                  name={me?.display_name}
-                  avatarPath={me?.avatar_url}
-                  seed={me?.id}
-                  className="h-5 w-5 shrink-0"
-                  textClassName="text-3xs"
-                />
-                {!collapsed && (
-                  <span className="truncate">{me?.display_name ?? t("nav.yourAccount")}</span>
-                )}
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
+            <SidebarMenuItem>
+              {/* The same menu as the avatar in the header (#1030-7). No
+                tooltip prop: it would wrap the button and the menu could not
+                reach it; the collapsed rail names it with a title instead. */}
+              <AccountMenu
+                onSignOut={onSignOut}
+                trigger={
+                  <SidebarMenuButton
+                    isActive={isActive("/profile")}
+                    className="flex items-center gap-2"
+                    aria-label={collapsed ? t("nav.yourAccount") : undefined}
+                    title={collapsed ? t("nav.yourAccount") : undefined}
+                  >
+                    <UserAvatar
+                      name={me?.display_name}
+                      avatarPath={me?.avatar_url}
+                      seed={me?.id}
+                      className="h-5 w-5 shrink-0"
+                      textClassName="text-3xs"
+                    />
+                    {!collapsed && (
+                      <span className="truncate">{me?.display_name ?? t("nav.yourAccount")}</span>
+                    )}
+                  </SidebarMenuButton>
+                }
+              />
+            </SidebarMenuItem>
           )}
         </SidebarMenu>
       </SidebarFooter>

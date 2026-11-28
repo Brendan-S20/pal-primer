@@ -8,6 +8,7 @@ import {
   closeSetupGuide,
   promptsSetup,
   readRememberedStep,
+  readSkippedSteps,
   setupBanner,
   stepsFor,
   useSetupGuide,
@@ -52,6 +53,7 @@ export function SetupGuideBanner() {
   const { done, total, started, step, nextLabel, cta } = setupBanner(
     steps,
     readRememberedStep(guide.userId),
+    readSkippedSteps(guide.userId),
   );
   if (!total || done === total) return null;
 

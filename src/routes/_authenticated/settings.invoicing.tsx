@@ -18,6 +18,7 @@ import {
   taxLineLabel,
 } from "@/lib/sales-tax";
 import { pageTitle } from "@/lib/page-title";
+import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 
 const key = ["automation"] as const;
 const taxKey = ["sales-tax-settings"] as const;
@@ -48,6 +49,14 @@ function InvoicingPage() {
     setNetDays(data.invoice_net_days ?? 15);
     setGraceDays(data.invoice_grace_days ?? 3);
   }, [data]);
+
+  const dirty =
+    autoInv !== data.auto_invoice_enabled ||
+    netDays !== (data.invoice_net_days ?? 15) ||
+    graceDays !== (data.invoice_grace_days ?? 3);
+  // Sales tax saves on its own button, so it says for itself what is unsaved.
+  const [taxDirty, setTaxDirty] = useState(false);
+  const { dialog: leaveDialog } = useUnsavedChangesGuard(dirty || taxDirty);
 
   const mut = useMutation({
     mutationFn: () =>
@@ -169,11 +178,15 @@ function InvoicingPage() {
         </CardContent>
       </Card>
 
-      <Button onClick={() => mut.mutate()} disabled={mut.isPending}>
-        {mut.isPending ? "Saving…" : "Save invoicing settings"}
-      </Button>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button onClick={() => mut.mutate()} disabled={mut.isPending}>
+          {mut.isPending ? "Saving…" : "Save invoicing settings"}
+        </Button>
+        {dirty && <UnsavedNote />}
+      </div>
 
-      <SalesTaxCard />
+      <SalesTaxCard onDirtyChange={setTaxDirty} />
+      {leaveDialog}
     </div>
   );
 }
@@ -185,7 +198,15 @@ function percentText(bps: number): string {
 
 // Its own card with its own Save: the rate is a separate decision from the
 // payment terms above, and it moves every invoice made after it is saved.
-function SalesTaxCard() {
+function UnsavedNote() {
+  return (
+    <p role="status" className="text-sm text-muted-foreground">
+      Unsaved changes
+    </p>
+  );
+}
+
+function SalesTaxCard({ onDirtyChange }: { onDirtyChange: (dirty: boolean) => void }) {
   const load = useServerFn(getSalesTaxSettings);
   const save = useServerFn(updateSalesTaxSettings);
   const { data, refetch } = useSuspenseQuery(
@@ -201,6 +222,10 @@ function SalesTaxCard() {
 
   const rateBps = parseTaxRatePercent(rateText);
   const example = rateBps !== null && rateBps > 0 ? invoiceTotals(10_000, rateBps, label) : null;
+  // Compared as it would be saved, so "8.250" or a trailing space is no change.
+  const dirty =
+    rateBps !== data.rateBps || (label.trim() || DEFAULT_SALES_TAX_LABEL) !== data.label;
+  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
 
   const mut = useMutation({
     mutationFn: () => {
@@ -265,9 +290,12 @@ function SalesTaxCard() {
           New invoices use the rate you save. Existing invoices keep their rate. Set tax exemptions
           in Edit client. Collected tax appears separately in Tax reports.
         </p>
-        <Button onClick={() => mut.mutate()} disabled={mut.isPending || rateBps === null}>
-          {mut.isPending ? "Saving…" : "Save sales tax"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button onClick={() => mut.mutate()} disabled={mut.isPending || rateBps === null}>
+            {mut.isPending ? "Saving…" : "Save sales tax"}
+          </Button>
+          {dirty && <UnsavedNote />}
+        </div>
       </CardContent>
     </Card>
   );

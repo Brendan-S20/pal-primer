@@ -13,6 +13,7 @@ import {
   openSetupGuide,
   promptsSetup,
   readRememberedStep,
+  readSkippedSteps,
   startingStep,
   stepsFor,
   useSetupGuide,
@@ -111,7 +112,11 @@ export function OnboardingChecklist({
     openSetupGuide();
     void navigate({
       to: SETUP_PATH,
-      search: { step: startingStep(steps, readRememberedStep(guide.userId)) ?? undefined },
+      search: {
+        step:
+          startingStep(steps, readRememberedStep(guide.userId), readSkippedSteps(guide.userId)) ??
+          undefined,
+      },
     });
   };
 

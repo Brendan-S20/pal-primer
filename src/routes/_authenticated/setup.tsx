@@ -85,6 +85,7 @@ import {
   type SetupFirstCleanup,
 } from "@/lib/setup-pricing";
 import { adoptSetupAreaPrice } from "@/lib/setup-price.functions";
+import { PET_WASTE_SERVICE_NAME } from "@/lib/services";
 import { stepSave } from "@/lib/setup-step-save";
 import { createOrgInvite, listStaffAddresses, setStaffRouting } from "@/lib/users.functions";
 import { upsertFacility } from "@/lib/stations.functions";
@@ -96,6 +97,8 @@ import {
   nextOpenStep,
   openSetupGuide,
   readRememberedStep,
+  readSkippedSteps,
+  rememberSkippedStep,
   rememberStep,
   startingStep,
   stepsFor,
@@ -151,7 +154,9 @@ function SetupPage() {
   const steps = useMemo(() => stepsFor(data?.steps ?? [], role), [data, role]);
   const current = useMemo(() => {
     if (!steps.length) return null;
-    const wanted = stepParam ?? startingStep(steps, readRememberedStep(guide.userId));
+    const wanted =
+      stepParam ??
+      startingStep(steps, readRememberedStep(guide.userId), readSkippedSteps(guide.userId));
     return steps.find((s) => s.id === wanted) ?? steps[0];
   }, [steps, stepParam, guide.userId]);
 
@@ -210,6 +215,8 @@ function SetupPage() {
   };
 
   const forward = () => {
+    // Moving past a step that is still open is "Skip for now" (#1043-7).
+    if (!current.done) rememberSkippedStep(guide.userId, current.id);
     if (isLast) return finish();
     goTo(steps[index + 1].id);
   };
@@ -1384,6 +1391,14 @@ function ServiceAreaPanel({
           />
         </div>
       </div>
+      <p className="text-xs text-muted-foreground" data-setup-service-note>
+        Your pet waste service starts out as “{PET_WASTE_SERVICE_NAME}”. To add or name services, go
+        to{" "}
+        <Link to="/settings/services" className="text-primary underline">
+          Settings &rsaquo; Services
+        </Link>
+        . What you type here is kept on this device.
+      </p>
       <SetupFirstCleanupChoice
         tiered={tiered}
         value={firstCleanupVal}

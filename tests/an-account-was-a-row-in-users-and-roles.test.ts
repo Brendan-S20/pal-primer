@@ -160,7 +160,10 @@ describe("the account is reachable from everywhere it should be", () => {
 
   it("the sidebar has a footer identifying you", () => {
     expect(sidebar).toMatch(/<SidebarFooter>/);
-    expect(sidebar).toMatch(/to="\/profile"/);
+    // The footer opens the header's account menu (#1030-7), which holds the
+    // way to /profile.
+    expect(sidebar).toMatch(/<AccountMenu\s/);
+    expect(menu).toMatch(/to="\/profile"/);
   });
 
   it("the phone's More sheet leads with you", () => {

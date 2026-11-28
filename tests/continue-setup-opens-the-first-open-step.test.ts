@@ -48,10 +48,10 @@ describe("Continue setup (#772)", () => {
 
   it("the checklist and /setup resume through the same resolver", () => {
     expect(read("src/components/OnboardingChecklist.tsx")).toMatch(
-      /startingStep\(steps, readRememberedStep\(guide\.userId\)\)/,
+      /startingStep\(steps, readRememberedStep\(guide\.userId\), readSkippedSteps\(guide\.userId\)\)/,
     );
     expect(read("src/routes/_authenticated/setup.tsx")).toMatch(
-      /stepParam \?\? startingStep\(steps, readRememberedStep\(guide\.userId\)\)/,
+      /stepParam \?\?\s+startingStep\(steps, readRememberedStep\(guide\.userId\), readSkippedSteps\(guide\.userId\)\)/,
     );
   });
 });

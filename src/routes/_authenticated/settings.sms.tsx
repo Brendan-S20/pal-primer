@@ -23,7 +23,6 @@ import {
   soleProprietorLegalName,
   type BusinessType,
   type RegistrationStatus,
-  UNDER_REVIEW_LABEL,
   UNDER_REVIEW_LINE,
 } from "@/lib/texting-registration";
 import { getOrgTwilioSettings } from "@/lib/twilio-settings.functions";
@@ -798,8 +797,8 @@ function RegistrationForm({
         <p>
           When you submit, we create a Twilio account for your business, register your business
           profile, buy a toll-free number in that account, and file its verification with your
-          details. This page then shows {UNDER_REVIEW_LABEL}: {UNDER_REVIEW_LINE.toLowerCase()}.
-          Your number cannot send texts until it is switched on, and we tell you the moment it is.
+          details. This page then shows “{UNDER_REVIEW_LINE}”. Your number cannot send texts until
+          it is switched on, and we tell you the moment it is.
         </p>
         {!isOwner && (
           <p className="font-medium text-foreground">

@@ -80,7 +80,8 @@ export function stepsFor<T extends { gate?: string }>(
 }
 
 /** Where to (re)start: the remembered step if it is still one of theirs AND
- *  still open, otherwise the first one not yet done, otherwise the first.
+ *  still open, otherwise the first one not yet done that was not skipped,
+ *  otherwise the first one not yet done, otherwise the first.
  *
  *  A remembered step that is done is not resumed (#772): an owner who
  *  finished zones and left was sent back to /setup?step=zones by "Continue
@@ -88,11 +89,13 @@ export function stepsFor<T extends { gate?: string }>(
 export function startingStep(
   steps: readonly Pick<OnboardingStep, "id" | "done">[],
   remembered: string | null | undefined,
+  skipped: readonly string[] = [],
 ): OnboardingStepId | null {
   if (!steps.length) return null;
   const hit = steps.find((s) => s.id === remembered && !s.done);
   if (hit) return hit.id;
-  return (steps.find((s) => !s.done) ?? steps[0]).id;
+  const fresh = steps.find((s) => !s.done && !skipped.includes(s.id));
+  return (fresh ?? steps.find((s) => !s.done) ?? steps[0]).id;
 }
 
 /** What the banner says, decided from the server's progress (D5).
@@ -107,6 +110,7 @@ export function startingStep(
 export function setupBanner(
   steps: readonly Pick<OnboardingStep, "id" | "done" | "label">[],
   remembered: string | null | undefined,
+  skipped: readonly string[] = [],
 ): {
   done: number;
   total: number;
@@ -118,14 +122,17 @@ export function setupBanner(
   const total = steps.length;
   const done = steps.filter((s) => s.done).length;
   // A remembered step only resumes while it is open (startingStep).
-  const step = startingStep(steps, remembered);
+  const step = startingStep(steps, remembered, skipped);
+  // A step they skipped is not announced as "Next" (#1043-7). It can still be
+  // where the button goes, once nothing else is open.
+  const next = steps.find((s) => s.id === step && !skipped.includes(s.id));
   const started = done > 0 || !!remembered;
   return {
     done,
     total,
     started,
     step,
-    nextLabel: steps.find((s) => s.id === step)?.label ?? null,
+    nextLabel: next?.label ?? null,
     cta: started ? `Continue setup (${done} of ${total})` : "Start setup",
   };
 }
@@ -180,6 +187,35 @@ function forgetStep(userId: string | null): void {
     store()?.removeItem(STEP_KEY + userId);
   } catch {
     /* nothing worth failing on */
+  }
+}
+
+// ── The steps they chose "Skip for now" on ────────────────────────────────
+//
+// Kept apart from the resume record above, and not forgotten when the guide
+// closes: skipping the last open step and landing on the dashboard must not be
+// answered with "Next:" that same step (#1043-7).
+
+const SKIPPED_KEY = "hs:setup-skipped:";
+
+export function readSkippedSteps(userId: string | null): string[] {
+  if (!userId) return [];
+  try {
+    const raw: unknown = JSON.parse(store()?.getItem(SKIPPED_KEY + userId) ?? "[]");
+    return Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export function rememberSkippedStep(userId: string | null, step: string): void {
+  if (!userId) return;
+  const all = readSkippedSteps(userId);
+  if (all.includes(step)) return;
+  try {
+    store()?.setItem(SKIPPED_KEY + userId, JSON.stringify([...all, step]));
+  } catch {
+    /* blocked storage: the step is offered again, as before */
   }
 }
 
