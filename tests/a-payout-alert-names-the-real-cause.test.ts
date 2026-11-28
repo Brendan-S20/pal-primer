@@ -28,22 +28,31 @@ describe("payout amount", () => {
 });
 
 describe("a failed payout", () => {
-  it("insufficient_funds: says the balance did not cover it, not the bank", () => {
+  it("insufficient_funds on a debit (the production case): the bank came up short", () => {
+    // A negative payout is Stripe collecting a negative balance from the bank,
+    // so the HoundStack balance is not what failed to cover it, there is
+    // nothing to "retry once the balance is positive", and the owner must not
+    // be told nothing needs doing on the bank side.
     const body = payoutFailedBody(LOW_BALANCE);
     expect(body).toBe(
-      "A $2.04 debit from your bank couldn't go through. Your HoundStack balance didn't " +
-        "cover it, so nothing needs changing on the bank side. Stripe tries again once " +
-        "the balance is positive. Check Payments.",
+      "A $2.04 debit from your bank couldn't go through. Stripe was collecting a " +
+        "negative HoundStack balance. Make sure your bank account can cover it, and " +
+        "check Payments.",
     );
     expect(body).not.toContain("-");
     expect(body).not.toContain("..");
-    expect(body).not.toMatch(/bank details/i);
+    expect(body).not.toMatch(/bank details are fixed/i);
+    expect(body).not.toMatch(/nothing needs changing|tries again/i);
   });
 
-  it("insufficient_funds on a positive payout reads as a payout", () => {
+  it("insufficient_funds on a positive payout: the balance, not the bank details", () => {
     const body = payoutFailedBody({ ...LOW_BALANCE, amount: 204 });
-    expect(body.startsWith("A $2.04 payout couldn't go out to your bank.")).toBe(true);
-    expect(body).not.toMatch(/bank details/i);
+    expect(body).toBe(
+      "A $2.04 payout couldn't go out to your bank. Your HoundStack balance didn't " +
+        "cover it; your bank details are not the cause. Check Payments.",
+    );
+    expect(body).not.toMatch(/until your bank details are fixed/i);
+    expect(body).not.toMatch(/tries again/i);
   });
 
   it("account_closed: tells the owner to fix bank details", () => {
@@ -80,6 +89,7 @@ describe("a failed payout", () => {
 
   it("strips Stripe's own closing punctuation", () => {
     expect(cleanStripeReason("Insufficient funds.. ")).toBe("Insufficient funds");
+    expect(cleanStripeReason("Was the account closed?")).toBe("Was the account closed");
     expect(cleanStripeReason(undefined)).toBe("");
   });
 });

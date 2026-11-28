@@ -41,7 +41,7 @@ export function isDebit(payout: PayoutLike | null | undefined): boolean {
 export function cleanStripeReason(message: string | null | undefined): string {
   return String(message ?? "")
     .trim()
-    .replace(/[.!\s]+$/, "");
+    .replace(/[.!?\s]+$/, "");
 }
 
 export function payoutFailedBody(payout: PayoutLike | null | undefined): string {
@@ -51,10 +51,15 @@ export function payoutFailedBody(payout: PayoutLike | null | undefined): string 
     : `A ${amount} payout couldn't go out to your bank.`;
   const code = String(payout?.failure_code ?? "");
   if (code === "insufficient_funds") {
-    return (
-      `${head} Your HoundStack balance didn't cover it, so nothing needs changing ` +
-      `on the bank side. Stripe tries again once the balance is positive. Check Payments.`
-    );
+    // A negative payout is Stripe collecting a negative balance FROM the bank,
+    // so "insufficient funds" there is the bank account coming up short, not
+    // the HoundStack balance. Neither case promises a retry: Stripe's own
+    // guidance does not, and a positive balance leaves a debit nothing to do.
+    return isDebit(payout)
+      ? `${head} Stripe was collecting a negative HoundStack balance. Make sure your ` +
+          `bank account can cover it, and check Payments.`
+      : `${head} Your HoundStack balance didn't cover it; your bank details are not ` +
+          `the cause. Check Payments.`;
   }
   if (BANK_DETAIL_FAILURES.has(code)) {
     return `${head} Payouts stay stopped until your bank details are fixed. Check Payments.`;
