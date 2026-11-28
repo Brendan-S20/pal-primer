@@ -1317,6 +1317,9 @@ export const BASE_STUBS: Record<string, Stub> = {
     },
     invoices: fx.INVOICES.slice(0, 4),
   },
+  // Without this the card list gets the `null` fallback, which the panel
+  // reports as a failed load (#1063). The real function never answers null.
+  listClientPaymentMethods: { methods: [], hasCustomer: true },
   listClientNotes: { notes: [], rows: [] },
   listClientHolds: { holds: [], rows: [] },
   listClientMessages: { messages: [], rows: [] },
