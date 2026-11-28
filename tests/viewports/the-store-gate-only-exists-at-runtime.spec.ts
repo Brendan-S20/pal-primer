@@ -112,7 +112,9 @@ test("the hosted app still renders the invoice table at 402px", async ({ page, c
     .getByRole("tab", { name: /billing/i })
     .first()
     .click();
-  await expect(page.getByText("Payment methods")).toBeVisible({ timeout: FIRST_PAINT_MS });
+  await expect(page.getByRole("heading", { name: "Payment methods", exact: true })).toBeVisible({
+    timeout: FIRST_PAINT_MS,
+  });
 
   expect(
     await page.locator("table:visible").count(),
@@ -151,7 +153,9 @@ test.fixme("the client billing tab does not scroll sideways at 402px", async ({
     .getByRole("tab", { name: /billing/i })
     .first()
     .click();
-  await expect(page.getByText("Payment methods")).toBeVisible({ timeout: FIRST_PAINT_MS });
+  await expect(page.getByRole("heading", { name: "Payment methods", exact: true })).toBeVisible({
+    timeout: FIRST_PAINT_MS,
+  });
 
   const scrollW = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(scrollW, "the client billing tab scrolls sideways at 402px").toBeLessThanOrEqual(

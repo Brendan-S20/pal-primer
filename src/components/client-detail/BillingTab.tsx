@@ -300,7 +300,12 @@ function getStripe(pk: string, stripeAccount?: string) {
   return p;
 }
 
-function PaymentMethodsPanel({ clientId }: { clientId: string }) {
+/** How long the card list may wait for an answer. Nothing under it has a time
+ *  limit of its own, so a request that never settled left "Loading…" up for
+ *  ever (#1063). Web and native alike: this only reads, so Retry is safe. */
+export const PAYMENT_METHODS_DEADLINE_MS = 20_000;
+
+export function PaymentMethodsPanel({ clientId }: { clientId: string }) {
   const qc = useQueryClient();
   const { confirm, dialog } = useConfirmDialog();
   const listFn = useServerFn(listClientPaymentMethods);
@@ -309,9 +314,24 @@ function PaymentMethodsPanel({ clientId }: { clientId: string }) {
   const finalizeFn = useServerFn(finalizeCardSetupForClient);
   const [addOpen, setAddOpen] = useState(false);
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["payment-methods", clientId],
-    queryFn: () => listFn({ data: { clientId } }),
+    queryFn: async () => {
+      try {
+        return await withDeadline(
+          listFn({ data: { clientId } }),
+          PAYMENT_METHODS_DEADLINE_MS,
+          "payment methods",
+        );
+      } catch (e) {
+        if (e instanceof ActionTimeout) {
+          throw new Error("This is taking longer than expected. Check your connection.");
+        }
+        throw e;
+      }
+    },
+    // Automatic retries would each wait out the deadline again. Retry is a button.
+    retry: false,
   });
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["payment-methods", clientId] });
@@ -398,14 +418,22 @@ function PaymentMethodsPanel({ clientId }: { clientId: string }) {
 
       {isLoading ? (
         <p className="mt-3 text-sm text-muted-foreground">Loading…</p>
-      ) : error ? (
-        <p className="mt-3 text-sm text-destructive">{(error as Error).message}</p>
+      ) : error || !data ? (
+        // `!data` covers a paused query: no answer yet is not "no cards".
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <p role="alert" className="text-sm text-destructive">
+            Couldn't load payment methods.{error ? ` ${(error as Error).message}` : ""}
+          </p>
+          <Button size="sm" variant="outline" onClick={() => void refetch()}>
+            Retry
+          </Button>
+        </div>
       ) : methods.length === 0 ? (
         <div className="mt-3">
           <EmptyState
             compact
             icon={CreditCard}
-            title={`No cards on file${data?.hasCustomer === false ? " (no billing profile yet)" : ""}`}
+            title={`No cards on file${data.hasCustomer === false ? " (no billing profile yet)" : ""}`}
             description="Add one here or let the client add it from their portal."
             actionLabel="Add card"
             onAction={() => setAddOpen(true)}
