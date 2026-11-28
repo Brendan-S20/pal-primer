@@ -33,6 +33,10 @@ import {
   oneLine,
   slugFromName,
   type DirectoryArea,
+  normalizePublicEmail,
+  normalizePublicPhone,
+  PUBLIC_EMAIL_PROBLEM,
+  PUBLIC_PHONE_PROBLEM,
 } from "@/lib/directory";
 import { DIRECTORY_BRAND } from "@/lib/directory-site";
 import { getDirectoryTextingLock } from "@/lib/texting-hosted-site.functions";
@@ -116,6 +120,8 @@ function DirectorySettings() {
   const [tagline, setTagline] = useState("");
   const [highlights, setHighlights] = useState<string[]>([]);
   const [areas, setAreas] = useState<DirectoryArea[]>([]);
+  const [publicEmail, setPublicEmail] = useState("");
+  const [publicPhone, setPublicPhone] = useState("");
   const [bookOnline, setBookOnline] = useState(false);
   const [bookingPolicy, setBookingPolicy] = useState("");
   // Set once the effect below has copied the saved listing in. The fields
@@ -150,6 +156,8 @@ function DirectorySettings() {
     setTagline(p?.tagline ?? "");
     setHighlights(p?.highlights ?? []);
     setAreas((p?.areas ?? []).map((a) => ({ name: a.name, zips: [...a.zips] })));
+    setPublicEmail(p?.public_email ?? "");
+    setPublicPhone(p?.public_phone ?? "");
     setBookOnline(!!data.booking?.enabled);
     setBookingPolicy(data.booking?.policyText ?? "");
     setSeeded(true);
@@ -188,6 +196,9 @@ function DirectorySettings() {
             priceFromCents: cents(choices[s.id]?.price ?? ""),
           })),
           published: publish,
+          // #1002: blank clears the contact; a value is checked on the server too.
+          publicEmail: publicEmail.trim() || null,
+          publicPhone: publicPhone.trim() || null,
           tagline: oneLine(tagline) || null,
           highlights: cleanHighlights(highlights),
           areas: areas.map((a) => ({ name: oneLine(a.name), zips: a.zips })),
@@ -237,12 +248,18 @@ function DirectorySettings() {
           : !confirmed
             ? "Confirm the details before you publish."
             : null;
+  const emailProblem =
+    normalizePublicEmail(publicEmail) === undefined ? PUBLIC_EMAIL_PROBLEM : null;
+  const phoneProblem =
+    normalizePublicPhone(publicPhone) === undefined ? PUBLIC_PHONE_PROBLEM : null;
   const policyTooLong = bookingPolicy.trim().length > BOOKING_POLICY_MAX;
   const contentProblem = contentProblems.length
     ? "Fix the highlighted tagline, highlights or areas first."
-    : policyTooLong
-      ? `Keep the cancellation and refund policy to ${BOOKING_POLICY_MAX} characters.`
-      : null;
+    : emailProblem || phoneProblem
+      ? "Fix the public contact email or phone first."
+      : policyTooLong
+        ? `Keep the cancellation and refund policy to ${BOOKING_POLICY_MAX} characters.`
+        : null;
 
   return (
     <div className="space-y-6">
@@ -450,6 +467,57 @@ function DirectorySettings() {
           coveredZips={coveredZips}
           problemsAt={problemsAt}
         />
+
+        <section className="space-y-3 rounded-lg border bg-card p-4">
+          <div>
+            <h3 className="font-medium">Public contact for your directory page</h3>
+            <p className="text-xs text-muted-foreground">
+              Optional, and empty unless you fill it in. Whatever you enter here is shown publicly
+              on your {DIRECTORY_BRAND} page and on its Privacy and Terms pages. Leave both empty to
+              keep showing the contact form instead. This is never your account email or phone.
+            </p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="dir-public-email">Public email</Label>
+              <Input
+                id="dir-public-email"
+                type="email"
+                inputMode="email"
+                autoComplete="off"
+                maxLength={254}
+                value={publicEmail}
+                onChange={(e) => setPublicEmail(e.target.value)}
+                placeholder="hello@yourbusiness.com"
+                aria-invalid={!!emailProblem}
+                aria-describedby={emailProblem ? "dir-public-email-problem" : undefined}
+              />
+              <Problems
+                id="dir-public-email-problem"
+                messages={emailProblem ? [emailProblem] : []}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="dir-public-phone">Public phone</Label>
+              <Input
+                id="dir-public-phone"
+                type="tel"
+                inputMode="tel"
+                autoComplete="off"
+                maxLength={32}
+                value={publicPhone}
+                onChange={(e) => setPublicPhone(e.target.value)}
+                placeholder="(555) 123-4567"
+                aria-invalid={!!phoneProblem}
+                aria-describedby={phoneProblem ? "dir-public-phone-problem" : undefined}
+              />
+              <Problems
+                id="dir-public-phone-problem"
+                messages={phoneProblem ? [phoneProblem] : []}
+              />
+            </div>
+          </div>
+        </section>
 
         <div className="space-y-3 rounded-lg border bg-card p-4">
           <label className="flex min-h-11 items-start gap-3">

@@ -244,6 +244,41 @@ export const DIRECTORY_HIGHLIGHT_MAX = 40;
 export const DIRECTORY_AREAS_MAX = 8;
 export const DIRECTORY_AREA_NAME_MAX = 40;
 
+// ── The contact an owner chooses to publish (#1002, columns from #990) ─────
+// The database CHECKs (20261118010000) are the floor; these say no first and
+// store ONE shape. Both are optional: blank clears the value (NULL).
+
+export const DIRECTORY_PUBLIC_EMAIL_MAX = 254;
+const PUBLIC_EMAIL_SHAPE = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
+
+/** null for blank, the trimmed address when it is valid, undefined when it is not. */
+export function normalizePublicEmail(input: string | null | undefined): string | null | undefined {
+  const v = (input ?? "").trim();
+  if (!v) return null;
+  if (v.length > DIRECTORY_PUBLIC_EMAIL_MAX || !PUBLIC_EMAIL_SHAPE.test(v)) return undefined;
+  return v;
+}
+
+/**
+ * null for blank, E.164 when valid, undefined when not. Takes E.164
+ * (+15551234567, with spaces, dots, dashes or brackets around it) or a US
+ * number (10 digits, or 11 with a leading 1), which is stored as +1XXXXXXXXXX.
+ */
+export function normalizePublicPhone(input: string | null | undefined): string | null | undefined {
+  const raw = (input ?? "").trim();
+  if (!raw) return null;
+  if (!/^\+?[0-9\s().-]+$/.test(raw)) return undefined;
+  const digits = raw.replace(/\D/g, "");
+  if (raw.startsWith("+")) return /^[1-9][0-9]{7,14}$/.test(digits) ? `+${digits}` : undefined;
+  if (/^[2-9][0-9]{9}$/.test(digits)) return `+1${digits}`;
+  if (/^1[2-9][0-9]{9}$/.test(digits)) return `+${digits}`;
+  return undefined;
+}
+
+export const PUBLIC_EMAIL_PROBLEM = "Enter an email like name@example.com, or leave it empty.";
+export const PUBLIC_PHONE_PROBLEM =
+  "Enter a US number like (555) 123-4567, or an international one like +44 20 7946 0958, or leave it empty.";
+
 /** A named group of the ZIPs a profile already covers. */
 export type DirectoryArea = { name: string; zips: string[] };
 
