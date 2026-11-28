@@ -383,9 +383,12 @@ touch "$marker"
 # to commit it, 0.3 s after XCTest stopped waiting for sign-in; no page
 # script had run. That is proven from the same process log: the main
 # document was served, and no main-frame commit before the give-up. A
-# process that started and hung before serving its page, or whose page
-# committed and drew nothing, is the app, and is never retried. scripts/ios-launch-never-started.mjs holds the messages and
-# the proof, and tests/the-launch-check-blames-the-simulator-only-with-proof
+# fifth (run 46089204153 attempt 2, iPhone 17e, iOS 27.2): WebKit committed
+# the served page 30 s late, with the app still answering XCTest, and it
+# first drew after XCTest's last look. A process that started and hung before
+# serving its page, or whose page committed and drew nothing, is the app, and
+# is never retried. scripts/ios-launch-never-started.mjs holds the messages
+# and the proofs, and tests/the-launch-check-blames-the-simulator-only-with-proof
 # runs it on logs cut from those runs.
 never_started() {  # $1 xcodebuild log, $2 udid
   [ -n "${attempt_began:-}" ] || return 1
@@ -807,7 +810,7 @@ if [ -n "$RELEASE_SIGNED_IN" ] && [ -n "$notes" ]; then
 fi
 if [ -n "$notes" ]; then
   say ""
-  say "**Launches the simulator failed, not the app** (either no HoundStack process from the launch request to the timeout, or the app served its page and WebKit had not committed it when XCTest gave up; no page script ran in either; the simulator was rebooted and the class retried, at most twice; a page that committed and then drew nothing, and a process that started and then hung before serving its page, are never retried):"
+  say "**Launches the simulator failed, not the app** (no HoundStack process from the launch request to the timeout; or the app served its page and WebKit had not committed it when XCTest gave up; or WebKit committed it at least 20 s late, with the app still answering XCTest, and it first drew after XCTest's last look; the simulator was rebooted and the class retried, at most twice; a page that committed and then drew nothing, and a process that started and then hung before serving its page, are never retried):"
   printf '%s' "$notes" | while IFS= read -r line; do say "$line"; done
 fi
 
