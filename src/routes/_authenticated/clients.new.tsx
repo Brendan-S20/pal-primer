@@ -1680,6 +1680,7 @@ function NewClientWizardForm({
               </div>
             )}
             <BoundarySketch
+              unloadedHint="You can skip this step: press Continue. Add the outline later by editing the property on the client's page."
               center={geo}
               initial={boundary}
               areaSqm={boundaryAreaSqm}

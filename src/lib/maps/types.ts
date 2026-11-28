@@ -158,6 +158,10 @@ export interface ReadOnlyMapRenderer {
 export interface MapRenderer extends ReadOnlyMapRenderer {
   addMarker(o: EditableMarkerOptions): MarkerHandle;
   isInView(p: LatLng): boolean;
+  /** Calls `cb` once the base imagery has drawn (at once if it already has).
+   *  A map that never calls it may be a blank box (#1065). Returns an
+   *  unsubscribe. */
+  onTilesPainted(cb: () => void): () => void;
   /** Tear down. A Google map goes back to the pool for the next surface. */
   destroy(): void;
 }

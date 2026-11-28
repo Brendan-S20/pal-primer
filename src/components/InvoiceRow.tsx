@@ -24,6 +24,7 @@ import { formatDay } from "@/lib/format";
 import { invoiceKindLabel, invoiceNumberLabel } from "@/lib/invoice-labels";
 import { linkUrl } from "@/lib/app-origin";
 import { invoiceStatusChip } from "@/lib/refund-outcome";
+import { cannotEmailInvoice, NO_EMAIL_LABEL } from "@/lib/invoice-send-state";
 
 export type InvoiceRowData = {
   id: string;
@@ -44,8 +45,8 @@ export type InvoiceRowData = {
   sent_at?: string | null;
   public_token?: string | null;
   clients?:
-    | { display_name: string | null }
-    | Array<{ display_name: string | null }>
+    | { display_name: string | null; primary_email?: string | null }
+    | Array<{ display_name: string | null; primary_email?: string | null }>
     | null;
 };
 
@@ -145,8 +146,12 @@ export function InvoiceRow({
   onToggleSelect,
   onOpen,
   actions = [],
+  clientEmail,
 }: {
   invoice: InvoiceRowData;
+  /** Client tab, whose rows carry no client: that client's email, null when
+   *  there is none. */
+  clientEmail?: string | null;
   /** Invoices page: shows the client column. Client tab: hidden (one client). */
   showClient?: boolean;
   /** Invoices page: bulk-select checkbox column. Client tab: hidden. */
@@ -169,9 +174,16 @@ export function InvoiceRow({
   // Only the non-default kind (a prepaid top-up) is worth a chip; a plain
   // "Service" invoice needs no label. Either way the enum is never shown raw.
   const showKind = invoice.kind === "prepaid_topup";
+  // With no address there is no send date to promise (#1065).
+  const noEmail = cannotEmailInvoice(
+    invoice,
+    clientEmail !== undefined ? clientEmail : client?.primary_email,
+  );
   const scheduledLabel =
     invoice.status === "open" && !invoice.sent_at && invoice.send_after
-      ? `Scheduled to send ${formatDay(invoice.send_after)}`
+      ? noEmail
+        ? NO_EMAIL_LABEL
+        : `Scheduled to send ${formatDay(invoice.send_after)}`
       : null;
 
   const menuActions = useInvoiceMenuActions(invoice, actions);
@@ -247,7 +259,10 @@ export function InvoiceRow({
             narrow as the status itself and the client floor has room. The
             drawer still says all of it. */}
         <span className="inline-flex flex-wrap items-center gap-1.5 max-xl:flex-nowrap">
-          <StatusChip {...invoiceStatusChip(invoice, today)} className="whitespace-nowrap" />
+          <StatusChip
+            {...invoiceStatusChip(invoice, noEmail ? undefined : today)}
+            className="whitespace-nowrap"
+          />
           {isPartiallyPaid(invoice) && (
             <MetaChip className="whitespace-nowrap">Partially paid</MetaChip>
           )}
@@ -300,8 +315,10 @@ export function InvoiceCard({
   onToggleSelect,
   onOpen,
   actions = [],
+  clientEmail,
 }: {
   invoice: InvoiceRowData;
+  clientEmail?: string | null;
   selectable?: boolean;
   selected?: boolean;
   onToggleSelect?: (next: boolean) => void;
@@ -317,6 +334,10 @@ export function InvoiceCard({
   const tz = useOrgTimezone();
   const overdue = isInvoiceOverdue(invoice.status, invoice.due_on, today);
   const showKind = invoice.kind === "prepaid_topup";
+  const noEmail = cannotEmailInvoice(
+    invoice,
+    clientEmail !== undefined ? clientEmail : client?.primary_email,
+  );
   const menuActions = useInvoiceMenuActions(invoice, actions);
 
   // The card is tappable anywhere, but it is not itself a button: it holds a
@@ -385,13 +406,15 @@ export function InvoiceCard({
             </div>
           )}
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            <StatusChip {...invoiceStatusChip(invoice, today)} />
+            <StatusChip {...invoiceStatusChip(invoice, noEmail ? undefined : today)} />
             {isPartiallyPaid(invoice) && (
               <MetaChip className="whitespace-nowrap">Partially paid</MetaChip>
             )}
             {showKind && <MetaChip>{invoiceKindLabel(invoice.kind)}</MetaChip>}
             {invoice.status === "open" && !invoice.sent_at && invoice.send_after && (
-              <MetaChip>Scheduled to send {formatDay(invoice.send_after)}</MetaChip>
+              <MetaChip>
+                {noEmail ? NO_EMAIL_LABEL : `Scheduled to send ${formatDay(invoice.send_after)}`}
+              </MetaChip>
             )}
             {invoice.sent_at && (
               <MetaChip>Sent {formatDay(invoice.sent_at, undefined, tz)}</MetaChip>

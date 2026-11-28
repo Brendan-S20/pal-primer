@@ -87,19 +87,22 @@ describe("the drawer badge", () => {
 describe("every staff surface asks with the org's today", () => {
   it("the row and the phone card", () => {
     const row = read("src/components/InvoiceRow.tsx");
-    expect(row.match(/invoiceStatusChip\(invoice, today\)/g)).toHaveLength(2);
+    // Today is withheld only where there is no address to send to (#1065).
+    expect(row.match(/invoiceStatusChip\(invoice, noEmail \? undefined : today\)/g)).toHaveLength(
+      2,
+    );
     expect(row).not.toMatch(/invoiceStatusChip\(invoice\)/);
   });
 
   it("the drawer", () => {
     expect(read("src/components/InvoiceDrawer.tsx")).toMatch(
-      /scheduled=\{isScheduledToSend\(inv, today\)\}/,
+      /scheduled=\{!noEmail && isScheduledToSend\(inv, today\)\}/,
     );
   });
 
   it("the detail page shows Scheduled on screen and prints the Open it always printed", () => {
     const page = read("src/routes/_authenticated/invoices.$invoiceId.tsx");
-    expect(page).toMatch(/invoiceStatusChip\(invoice, today\)/);
+    expect(page).toMatch(/invoiceStatusChip\(invoice, noEmail \? undefined : today\)/);
     expect(page).toMatch(/className="print:hidden"/);
     expect(page).toMatch(/className="hidden print:inline-flex"/);
   });

@@ -64,6 +64,8 @@ class LeafletRenderer implements MapRenderer {
   readonly ownsWheelGate = false;
   private base: L.Layer[] = [];
   private destroyed = false;
+  private tilesPainted = false;
+  private readonly paintedWaiters = new Set<() => void>();
 
   constructor(
     readonly map: L.Map,
@@ -100,6 +102,14 @@ class LeafletRenderer implements MapRenderer {
     return this.map.getBounds().contains(toLL(p));
   }
 
+  onTilesPainted(cb: () => void): () => void {
+    if (this.tilesPainted) cb();
+    else this.paintedWaiters.add(cb);
+    return () => {
+      this.paintedWaiters.delete(cb);
+    };
+  }
+
   setStyle(style: MapStyle): void {
     // Swapped in place rather than rebuilding the map, so pan and zoom survive
     // a style change.
@@ -116,6 +126,14 @@ class LeafletRenderer implements MapRenderer {
         // Tiles belong underneath every pin and polyline.
         l.setZIndex(0);
       }
+    });
+    // The first layer is the imagery itself; labels over a blank box are not
+    // a map. A tile that fails to load fires `tileerror`, not this.
+    this.base[0]?.on("tileload", () => {
+      if (this.tilesPainted) return;
+      this.tilesPainted = true;
+      for (const cb of this.paintedWaiters) cb();
+      this.paintedWaiters.clear();
     });
   }
 

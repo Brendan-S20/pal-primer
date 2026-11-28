@@ -293,6 +293,8 @@ export class GoogleRenderer implements MapRenderer {
   /** The last fit asked for before it had. */
   private pendingFit: { points: LatLng[]; opts: FitOptions } | null = null;
   private sizeWatch: ResizeObserver | null = null;
+  private tilesPainted = false;
+  private readonly paintedWaiters = new Set<() => void>();
 
   constructor(
     private readonly g: GoogleMapsApi,
@@ -300,6 +302,15 @@ export class GoogleRenderer implements MapRenderer {
     private readonly opts: MapSurfaceOptions,
     private readonly release: (m: GMap) => void,
   ) {
+    // Listened for from the start, so a paint is not missed before a surface
+    // asks. Removed with every other listener on destroy.
+    this.listeners.add(
+      map.addListener("tilesloaded", () => {
+        this.tilesPainted = true;
+        for (const cb of this.paintedWaiters) cb();
+        this.paintedWaiters.clear();
+      }),
+    );
     // A map adopted from the pool still believes it is the size of the
     // surface that released it until Google re-measures, which happens on a
     // ResizeObserver tick after layout. A fit computed before then is framed
@@ -365,6 +376,14 @@ export class GoogleRenderer implements MapRenderer {
 
   isInView(p: LatLng): boolean {
     return this.map.getBounds()?.contains(p) ?? false;
+  }
+
+  onTilesPainted(cb: () => void): () => void {
+    if (this.tilesPainted) cb();
+    else this.paintedWaiters.add(cb);
+    return () => {
+      this.paintedWaiters.delete(cb);
+    };
   }
 
   setStyle(style: MapStyle): void {

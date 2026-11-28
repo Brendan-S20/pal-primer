@@ -17,3 +17,16 @@ export function isScheduledToSend(
 ): boolean {
   return inv.status === "open" && !inv.sent_at && !!inv.send_after && inv.send_after > today;
 }
+
+/** The invoice has not gone out and cannot go by email, because the client has
+ *  no address (#1065). A send date does not change that, so such an invoice
+ *  must not read as scheduled. `email` is what the screen loaded for the
+ *  client: `undefined` means it did not load one, and claims nothing. */
+export function cannotEmailInvoice(
+  inv: { status: string; sent_at?: string | null },
+  email: string | null | undefined,
+): boolean {
+  return email !== undefined && inv.status === "open" && !inv.sent_at && !email?.trim();
+}
+
+export const NO_EMAIL_LABEL = "Can't email: no address";
