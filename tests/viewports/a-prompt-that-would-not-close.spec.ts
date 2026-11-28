@@ -137,7 +137,8 @@ for (const { w, h, label } of WIDTHS) {
         .click();
     } else {
       // A laptop signs out from the account menu, which the prompt covered.
-      await page.getByRole("button", { name: "Your account" }).click();
+      // The sidebar foot opens the same menu (#1030-7), so either will do.
+      await page.getByRole("button", { name: "Your account" }).first().click();
       await page.getByRole("menuitem", { name: "Sign out" }).click();
     }
     await expect(page).toHaveURL(/\/auth(\?|$)/, { timeout: FIRST_PAINT_MS });

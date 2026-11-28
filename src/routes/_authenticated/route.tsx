@@ -614,7 +614,7 @@ function WorkspaceShell() {
     // is kept on this device across reloads and sign outs (#499).
     <SidebarProvider docksFrom={docksFrom} railBelowLg rememberExpanded>
       <div className="flex min-h-screen w-full bg-background" style={brandStyle}>
-        <AppSidebar />
+        <AppSidebar onSignOut={handleSignOut} />
         <div className="flex min-w-0 flex-1 flex-col">
           <header
             // Holds still while the page beneath it slides (styles.css, PAGE
