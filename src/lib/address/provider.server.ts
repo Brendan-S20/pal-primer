@@ -49,6 +49,9 @@ export interface AddressProvider {
     placeId: string,
     opts?: {
       sessionToken?: string;
+      /** Also return a place that has every part but the ZIP, with an empty
+       *  ZIP, for a form that asks for it (#1059). */
+      allowMissingZip?: boolean;
       /** The suggestion row the person picked (#805). A last-resort source,
        *  after the place's components and formatted address: for the street
        *  line when the components carry no house number (only if it names the

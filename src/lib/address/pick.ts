@@ -46,6 +46,14 @@ export function isCompletePick(d: AddressDetails | null | undefined): d is Addre
   return Boolean(d.street?.trim() && d.city?.trim() && d.region?.trim() && d.postalCode?.trim());
 }
 
+/** A pick with every part except the ZIP (#1059). Google returns some places
+ *  with no ZIP anywhere. A form that can say so may apply the rest and leave
+ *  ZIP EMPTY: still no mix, because no typed part survives the pick. */
+export function lacksOnlyZip(d: AddressDetails | null | undefined): d is AddressDetails {
+  if (!d || d.postalCode?.trim()) return false;
+  return Boolean(d.street?.trim() && d.city?.trim() && d.region?.trim());
+}
+
 /** All of the parts from a pick. Nothing is conditional: a part the pick
  *  does not carry (a unit, a pin) is cleared, not left as it was. */
 export function partsFromPick(d: AddressDetails): AddressParts {
@@ -65,6 +73,7 @@ export function partsFromPick(d: AddressDetails): AddressParts {
 
 export type PickOutcome =
   | { kind: "replace"; parts: AddressParts }
+  | { kind: "replace-without-zip"; parts: AddressParts }
   | { kind: "keep-typed"; reason: "failed" | "incomplete" | "typed-since" };
 
 /** Decide what a resolved pick does to the form.
@@ -77,9 +86,13 @@ export function pickOutcome(args: {
   details: AddressDetails | null | undefined;
   textAtPick: string;
   textNow: string;
+  /** The form clears its ZIP box and asks for it (#1059). */
+  allowMissingZip?: boolean;
 }): PickOutcome {
   if (args.textNow !== args.textAtPick) return { kind: "keep-typed", reason: "typed-since" };
   if (!args.details) return { kind: "keep-typed", reason: "failed" };
+  if (args.allowMissingZip && lacksOnlyZip(args.details))
+    return { kind: "replace-without-zip", parts: partsFromPick(args.details) };
   if (!isCompletePick(args.details)) return { kind: "keep-typed", reason: "incomplete" };
   return { kind: "replace", parts: partsFromPick(args.details) };
 }

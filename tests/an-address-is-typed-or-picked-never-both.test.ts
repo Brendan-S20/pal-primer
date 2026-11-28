@@ -170,7 +170,8 @@ describe("(b) a fully typed address with no pick is saved as typed", () => {
     // street line in the box and left the typed city and ZIP beside it.
     expect(select).not.toMatch(/onChangeText\(/);
     expect(select).toMatch(/pickOutcome\(/);
-    expect(select).toMatch(/outcome\.kind === "replace"[^\n]*onResolved\(/);
+    // "keep-typed" never applies; the other kinds replace every part (#1059).
+    expect(select).toMatch(/outcome\.kind !== "keep-typed" && resolved\) \{\s*onResolved\(/);
     // Exactly one call to onResolved in the whole file, and it is that one.
     expect(src.match(/onResolved\(/g)?.length).toBe(1);
   });

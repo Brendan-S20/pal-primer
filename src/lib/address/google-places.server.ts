@@ -11,7 +11,7 @@ import type {
   AddressSuggestion,
   AddressDetails,
 } from "@/lib/address/provider.server";
-import { isCompletePick } from "@/lib/address/pick";
+import { isCompletePick, lacksOnlyZip } from "@/lib/address/pick";
 import { addressFromPlace, type PlaceComponent } from "@/lib/address/from-place";
 
 const AUTOCOMPLETE_URL = "https://places.googleapis.com/v1/places:autocomplete";
@@ -167,7 +167,7 @@ export const googlePlacesProvider: AddressProvider = {
     // address is not a match. Returning it would leave the form to take the
     // missing part from what was typed — a suggestion's street over a typed
     // ZIP is exactly the saved address QA found.
-    if (!isCompletePick(details)) return null;
+    if (!isCompletePick(details) && !(opts?.allowMissingZip && lacksOnlyZip(details))) return null;
     return details;
   },
 };

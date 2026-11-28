@@ -72,6 +72,7 @@ export function AddressAutocomplete({
   value,
   onChangeText,
   onResolved,
+  onPickProblem,
   placeholder,
   required,
   disabled,
@@ -84,6 +85,11 @@ export function AddressAutocomplete({
   value: string;
   onChangeText: (text: string) => void;
   onResolved: (r: ResolvedAddress) => void;
+  /** For a form with separate City / State / ZIP boxes (#1059). With it, a
+   *  place that lacks only the ZIP is applied through onResolved with an
+   *  empty ZIP ("missing-zip"); "unfilled" means the pick changed nothing.
+   *  Without it, both keep the typed text, as before. */
+  onPickProblem?: (problem: "missing-zip" | "unfilled") => void;
   placeholder?: string;
   required?: boolean;
   disabled?: boolean;
@@ -215,6 +221,7 @@ export function AddressAutocomplete({
           sessionToken: ensureSession(),
           mainText: s.mainText,
           secondaryText: s.secondaryText,
+          ...(onPickProblem ? { allowMissingZip: true } : {}),
         },
       })) as ResolvedAddress;
       sessionToken.current = ""; // session ends at details
@@ -231,8 +238,14 @@ export function AddressAutocomplete({
         details: resolved?.address ?? null,
         textAtPick,
         textNow: latestValue.current,
+        allowMissingZip: !!onPickProblem,
       });
-      if (outcome.kind === "replace" && resolved) onResolved(resolved);
+      if (outcome.kind !== "keep-typed" && resolved) {
+        onResolved(resolved);
+        if (outcome.kind === "replace-without-zip") onPickProblem?.("missing-zip");
+      } else if (outcome.kind === "keep-typed" && outcome.reason !== "typed-since") {
+        onPickProblem?.("unfilled");
+      }
     } finally {
       setResolving(false);
     }
