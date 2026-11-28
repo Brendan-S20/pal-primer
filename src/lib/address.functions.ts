@@ -124,6 +124,7 @@ export const resolveAddress = createServerFn({ method: "POST" })
         mainText: z.string().max(300).optional(),
         secondaryText: z.string().max(300).optional(),
         accountType: z.enum(["residential", "commercial"]).optional(),
+        allowMissingZip: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -134,6 +135,7 @@ export const resolveAddress = createServerFn({ method: "POST" })
     checkRate(context.userId);
     const details = await provider.details(data.placeId, {
       sessionToken: data.sessionToken,
+      allowMissingZip: data.allowMissingZip,
       suggestion: { mainText: data.mainText ?? null, secondaryText: data.secondaryText ?? null },
     });
     if (!details) throw new Error("Couldn't load that address. Enter it manually instead.");

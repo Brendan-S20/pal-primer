@@ -623,7 +623,10 @@ function NewClientWizardForm({
   // Every part, unconditionally (#783). This read `if (r.address.region)
   // setRegion(...)`, which kept a typed state under a suggestion's city; the
   // shared helper is the one place that decides what a pick replaces.
+  // #1059: a pick that could not fill every box used to say nothing at all.
+  const [pickProblem, setPickProblem] = useState<"missing-zip" | "unfilled" | null>(null);
   function applyResolvedAddress(r: ResolvedAddress) {
+    setPickProblem(null);
     const parts = partsFromPick(r.address);
     setStreet(parts.street);
     setCity(parts.city);
@@ -641,6 +644,7 @@ function NewClientWizardForm({
     }
   }
   function setAddressField(set: (v: string) => void, v: string) {
+    setPickProblem(null);
     set(v);
     setGeo(null);
     setGeoStatus("idle");
@@ -1480,6 +1484,7 @@ function NewClientWizardForm({
                   value={street}
                   onChangeText={(t) => setAddressField(setStreet, t)}
                   onResolved={applyResolvedAddress}
+                  onPickProblem={setPickProblem}
                   ariaInvalid={attempted && !street ? true : undefined}
                   className={
                     attempted && !street
@@ -1490,6 +1495,17 @@ function NewClientWizardForm({
                 {attempted && !street && (
                   <p className="text-xs text-destructive">Street address is required.</p>
                 )}
+                {/* Always mounted, so a screen reader hears the text arrive. */}
+                <p
+                  role="status"
+                  className={pickProblem ? "text-sm text-muted-foreground" : "sr-only"}
+                >
+                  {pickProblem === "missing-zip"
+                    ? "That match has no ZIP code. We filled the street, city and state. Add the ZIP."
+                    : pickProblem === "unfilled"
+                      ? "We couldn't fill in the rest of that address. Check the street, then type the city, state and ZIP."
+                      : null}
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="ci">City</Label>
