@@ -33,7 +33,10 @@
 // page script runs, so the web app had no chance to draw anything.
 //
 // Usage: node scripts/ios-launch-never-started.mjs <xcodebuild log> <process log>
-// Prints why, and exits 0 when either fault is proven, 1 otherwise.
+// A third: WebKit committed the page very late and it first drew only after
+// XCTest's last look. See pageDrewAfterXCTestStoppedLooking.
+//
+// Prints why, and exits 0 when one of the faults is proven, 1 otherwise.
 
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -229,7 +232,169 @@ export function pageNeverCommitted(testLog, processLog) {
 }
 
 /**
- * Either fault, proven. The smoke script retries a class only when this
+ * WebKit committed the app's page so late that it first drew only after
+ * XCTest had taken its last look. Measured on the CI Mac (run 46089204153
+ * attempt 2, e5633f2f, iPhone 17e, iOS 27.2, launch 2 of 5): the app served
+ * its page at 21:38:54.878; WebKit committed it 30.4 s later (21:39:25.285),
+ * with the app answering XCTest about once a second throughout; XCTest last
+ * looked for the email field at 21:39:37.838; the page first drew at
+ * 21:39:42.292, 0.5 s after XCTest gave up. Healthy launches in that run
+ * committed 0.5 to 11.9 s after serving, and drew 0.2 to 3.1 s later.
+ *
+ * What this does NOT prove: why the 17 s from commit to first drawing took so
+ * long. That stretch can hold page scripts. The proof that the fault was not
+ * the app's alone is the commit delay, before which no page script runs.
+ * A slowness that repeats still fails: retries are capped at two.
+ *
+ * Not used as evidence, because it did not hold in that run: XCTest kept
+ * polling through the wait; the hold-simlog is filtered and cut in the middle,
+ * so its quiet stretches also appear while the app is logging; and the
+ * watchdog sampled the app before the commit.
+ */
+export const LATE_COMMIT = {
+  // served -> commit: at least this long (the slowest healthy one was 11.9 s)
+  minServedToCommitMs: 20_000,
+  // commit -> XCTest giving up: the page had at most this much of the 60 s wait
+  maxCommitToGiveUpMs: 20_000,
+  // the first drawing, at most this long after XCTest gave up
+  maxGiveUpToDrawMs: 10_000,
+  // served -> commit: the app never this long without answering XCTest
+  maxUnansweredMs: 5_000,
+};
+
+/**
+ * Proven only when all of these hold:
+ *
+ *   1. the class log has one test failure, assertOnSignIn's "never rendered",
+ *      on a launch XCTest asked for (not a cold link);
+ *   2. exactly one HoundStack process started between that request and the
+ *      give-up, and it served the main document;
+ *   3. it committed the main frame exactly once, at least 20 s after serving,
+ *      and no more than 20 s before XCTest gave up;
+ *   4. between serving and committing, the app answered XCTest's queries with
+ *      no gap over 5 s, so its process was not hung;
+ *   5. the page DID draw (first visually non-empty layout), after XCTest's
+ *      last look for the field and within 10 s of the give-up;
+ *   6. the log reports no terminated web content process.
+ *
+ * A page that committed and drew nothing fails 5. So does a page that drew
+ * something without an email field while XCTest was still looking.
+ *
+ * @param {string} testLog
+ * @param {string} processLog
+ * @returns {{ proven: boolean, why: string }}
+ */
+export function pageDrewAfterXCTestStoppedLooking(testLog, processLog) {
+  const no = (why) => ({ proven: false, why });
+  const lines = testLog.split(/\r?\n/);
+  const failures = lines.filter((l) => /: error: -\[/.test(l));
+  if (failures.length !== 1 || !failures[0].includes(SIGN_IN_NEVER_RENDERED)) {
+    return no(
+      `late commit: not exactly one failure, "never rendered" (failures: ${failures.length})`,
+    );
+  }
+  const err = lines.indexOf(failures[0]);
+
+  let gaveUp = null;
+  let lastLook = null;
+  let launch = null;
+  let start = null;
+  for (let i = err - 1; i >= 0; i--) {
+    const l = lines[i];
+    const t = l.match(/t =\s+([\d.]+)s\s/);
+    if (t && gaveUp === null) gaveUp = Number(t[1]);
+    if (t && lastLook === null && l.includes("Checking existence of `TextField")) {
+      lastLook = Number(t[1]);
+    }
+    const m = l.match(/t =\s+([\d.]+)s\s+Launch consulting\.thenorth\.houndstack/);
+    if (m && launch === null) launch = Number(m[1]);
+    const s = l.match(/Start Test at (\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d+)/);
+    if (s) {
+      start = parseTime(s[1]);
+      break;
+    }
+  }
+  if (start === null || launch === null || gaveUp === null || lastLook === null) {
+    return no("late commit: could not find the launch request, the last look or the give-up");
+  }
+
+  const lo = start + (launch - 1) * 1000;
+  const hi = start + gaveUp * 1000;
+  const looked = start + lastLook * 1000;
+  /** @type {Map<string, { at: number, text: string }[]>} */
+  const byPid = new Map();
+  for (const l of processLog.split(/\r?\n/)) {
+    const m = l.match(/^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d+) \S+\s+HoundStack\[(\d+)/);
+    if (!m) continue;
+    if (!byPid.has(m[2])) byPid.set(m[2], []);
+    byPid.get(m[2]).push({ at: parseTime(m[1]), text: l });
+  }
+  const started = [...byPid].filter(([, ls]) => ls[0].at >= lo && ls[0].at <= hi);
+  if (started.length !== 1) {
+    return no(`late commit: HoundStack processes started in the window: ${started.length}, not 1`);
+  }
+  const [pid, own] = started[0];
+  const who = `HoundStack[${pid}]`;
+  if (own.some((x) => /processDidTerminate|ProcessDidTerminate/.test(x.text))) {
+    return no(`late commit: ${who} reported a terminated web content process`);
+  }
+  const mainLoad = own.find((x) =>
+    /isMainFrame=1\] DocumentLoader::startLoadingMainResource/.test(x.text),
+  );
+  const served =
+    mainLoad &&
+    own.find((x) => x.at >= mainLoad.at && /WebURLSchemeTaskProxy::didComplete/.test(x.text));
+  if (!served) return no(`late commit: ${who} never served its page`);
+  const commits = own.filter((x) =>
+    /isMainFrame=1\] FrameLoader::transitionToCommitted/.test(x.text),
+  );
+  if (commits.length !== 1 || commits[0].at > hi) {
+    return no(`late commit: ${who} did not commit its page exactly once before the give-up`);
+  }
+  const committed = commits[0].at;
+  const secs = (ms) => `${(ms / 1000).toFixed(1)} s`;
+  if (committed - served.at < LATE_COMMIT.minServedToCommitMs) {
+    return no(
+      `late commit: ${who} committed ${secs(committed - served.at)} after serving, not late`,
+    );
+  }
+  if (hi - committed > LATE_COMMIT.maxCommitToGiveUpMs) {
+    return no(
+      `late commit: ${who}'s page had ${secs(hi - committed)} after its commit to draw sign-in`,
+    );
+  }
+  const answers = own
+    .filter((x) => x.at > served.at && x.at < committed && /Replying to query/.test(x.text))
+    .map((x) => x.at);
+  const beats = [served.at, ...answers, committed];
+  const quiet = Math.max(...beats.slice(1).map((at, i) => at - beats[i]));
+  if (quiet > LATE_COMMIT.maxUnansweredMs) {
+    return no(`late commit: ${who} did not answer XCTest for ${secs(quiet)} before the commit`);
+  }
+  const drew = own.find(
+    (x) =>
+      x.at >= committed &&
+      /isMainFrame=1\] .*Firing first visually non-empty layout milestone on the main frame/.test(
+        x.text,
+      ),
+  );
+  if (!drew) return no(`late commit: ${who}'s page committed and drew nothing`);
+  if (drew.at <= looked) {
+    return no(
+      `late commit: ${who}'s page drew at ${clockMs(drew.at)}, while XCTest was still looking`,
+    );
+  }
+  if (drew.at - hi > LATE_COMMIT.maxGiveUpToDrawMs) {
+    return no(`late commit: ${who}'s page drew ${secs(drew.at - hi)} after XCTest gave up`);
+  }
+  return {
+    proven: true,
+    why: `${who} served its page at ${clockMs(served.at)}; WebKit committed it ${secs(committed - served.at)} later, with the app still answering XCTest; it first drew at ${clockMs(drew.at)}, after XCTest's last look at ${clockMs(looked)}`,
+  };
+}
+
+/**
+ * Any of the faults, proven. The smoke script retries a class only when this
  * says so.
  *
  * @param {string} testLog
@@ -241,7 +406,9 @@ export function simulatorFailedTheLaunch(testLog, processLog) {
   if (a.proven) return a;
   const b = pageNeverCommitted(testLog, processLog);
   if (b.proven) return b;
-  return { proven: false, why: `${a.why}; ${b.why}` };
+  const c = pageDrewAfterXCTestStoppedLooking(testLog, processLog);
+  if (c.proven) return c;
+  return { proven: false, why: `${a.why}; ${b.why}; ${c.why}` };
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {

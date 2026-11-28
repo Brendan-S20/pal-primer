@@ -1,0 +1,197 @@
+Test Case '-[HoundStackUITests.ColdLaunch testColdLaunchReachesSignInFiveTimes]' started.
+    t =     0.00s Start Test at 2026-11-27 21:38:04.508
+    t =     0.07s Set Up
+    t =     0.07s Terminate consulting.thenorth.houndstack:5832
+    t =     1.17s Wait for consulting.thenorth.houndstack to become Not Running
+    t =     3.18s Open consulting.thenorth.houndstack
+    t =     3.18s     Launch consulting.thenorth.houndstack
+    t =     3.27s         Setting up automation session
+    t =     7.63s         Wait for consulting.thenorth.houndstack to idle
+    t =    11.82s Wait for consulting.thenorth.houndstack to become Running Foreground
+    t =    11.82s Waiting 60.0s for TextField (First Match) to exist
+    t =    12.91s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    12.91s         Checking existence of `TextField (First Match)`
+    t =    12.93s         Capturing element debug description
+    t =    13.91s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    13.91s         Checking existence of `TextField (First Match)`
+    t =    13.93s         Capturing element debug description
+    t =    14.89s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    14.90s         Checking existence of `TextField (First Match)`
+    t =    14.91s         Capturing element debug description
+    t =    15.89s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    15.89s         Checking existence of `TextField (First Match)`
+    t =    15.91s         Capturing element debug description
+    t =    16.88s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    16.88s         Checking existence of `TextField (First Match)`
+    t =    16.90s         Capturing element debug description
+    t =    17.87s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    17.87s         Checking existence of `TextField (First Match)`
+    t =    17.88s         Capturing element debug description
+    t =    18.85s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    18.85s         Checking existence of `TextField (First Match)`
+    t =    19.02s         Capturing element debug description
+    t =    19.88s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    19.88s         Checking existence of `TextField (First Match)`
+    t =    19.99s Checking existence of `Button (First Match)`
+    t =    20.13s Added attachment named 'cold-launch-1'
+    t =    20.13s Terminate consulting.thenorth.houndstack:6290
+    t =    21.19s Wait for consulting.thenorth.houndstack to become Not Running
+    t =    23.20s Open consulting.thenorth.houndstack
+    t =    23.20s     Launch consulting.thenorth.houndstack
+    t =    28.00s         Setting up automation session
+    t =    30.36s         Wait for consulting.thenorth.houndstack to idle
+    t =    33.01s Wait for consulting.thenorth.houndstack to become Running Foreground
+    t =    33.01s Waiting 60.0s for TextField (First Match) to exist
+    t =    34.10s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    34.11s         Checking existence of `TextField (First Match)`
+    t =    34.15s         Capturing element debug description
+    t =    35.10s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    35.10s         Checking existence of `TextField (First Match)`
+    t =    35.12s         Capturing element debug description
+    t =    36.09s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    36.09s         Checking existence of `TextField (First Match)`
+    t =    36.11s         Capturing element debug description
+    t =    37.09s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    37.09s         Checking existence of `TextField (First Match)`
+    t =    37.10s         Capturing element debug description
+    t =    38.08s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    38.08s         Checking existence of `TextField (First Match)`
+    t =    38.09s         Capturing element debug description
+    t =    39.08s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    39.08s         Checking existence of `TextField (First Match)`
+    t =    39.09s         Capturing element debug description
+    t =    40.07s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    40.08s         Checking existence of `TextField (First Match)`
+    t =    40.09s         Capturing element debug description
+    t =    41.08s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    41.08s         Checking existence of `TextField (First Match)`
+    t =    41.09s         Capturing element debug description
+    t =    42.07s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    42.07s         Checking existence of `TextField (First Match)`
+    t =    42.08s         Capturing element debug description
+    t =    43.06s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    43.06s         Checking existence of `TextField (First Match)`
+    t =    43.07s         Capturing element debug description
+    t =    44.06s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    44.06s         Checking existence of `TextField (First Match)`
+    t =    47.59s         Capturing element debug description
+    t =    48.02s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    48.02s         Checking existence of `TextField (First Match)`
+    t =    48.04s         Capturing element debug description
+    t =    49.02s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    49.02s         Checking existence of `TextField (First Match)`
+    t =    49.04s         Capturing element debug description
+    t =    50.02s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    50.03s         Checking existence of `TextField (First Match)`
+    t =    50.05s         Capturing element debug description
+    t =    51.01s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    51.01s         Checking existence of `TextField (First Match)`
+    t =    51.02s         Capturing element debug description
+    t =    52.10s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    52.10s         Checking existence of `TextField (First Match)`
+    t =    52.11s         Capturing element debug description
+    t =    53.09s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    53.09s         Checking existence of `TextField (First Match)`
+    t =    53.11s         Capturing element debug description
+    t =    54.08s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    54.08s         Checking existence of `TextField (First Match)`
+    t =    54.10s         Capturing element debug description
+    t =    55.06s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    55.06s         Checking existence of `TextField (First Match)`
+    t =    55.07s         Capturing element debug description
+    t =    56.05s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    56.05s         Checking existence of `TextField (First Match)`
+    t =    56.06s         Capturing element debug description
+    t =    57.04s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    57.04s         Checking existence of `TextField (First Match)`
+    t =    57.05s         Capturing element debug description
+    t =    58.02s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    58.02s         Checking existence of `TextField (First Match)`
+    t =    58.04s         Capturing element debug description
+    t =    59.02s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    59.02s         Checking existence of `TextField (First Match)`
+    t =    59.04s         Capturing element debug description
+    t =    60.10s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    60.10s         Checking existence of `TextField (First Match)`
+    t =    60.11s         Capturing element debug description
+    t =    61.09s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    61.09s         Checking existence of `TextField (First Match)`
+    t =    61.11s         Capturing element debug description
+    t =    62.08s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    62.09s         Checking existence of `TextField (First Match)`
+    t =    62.10s         Capturing element debug description
+    t =    63.08s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    63.08s         Checking existence of `TextField (First Match)`
+    t =    63.10s         Capturing element debug description
+    t =    64.06s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    64.07s         Checking existence of `TextField (First Match)`
+    t =    64.09s         Capturing element debug description
+    t =    65.06s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    65.07s         Checking existence of `TextField (First Match)`
+    t =    65.08s         Capturing element debug description
+    t =    66.05s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    66.05s         Checking existence of `TextField (First Match)`
+    t =    66.06s         Capturing element debug description
+    t =    67.03s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    67.03s         Checking existence of `TextField (First Match)`
+    t =    67.04s         Capturing element debug description
+    t =    68.01s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    68.01s         Checking existence of `TextField (First Match)`
+    t =    68.02s         Capturing element debug description
+    t =    69.12s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    69.12s         Checking existence of `TextField (First Match)`
+    t =    69.13s         Capturing element debug description
+    t =    70.10s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    70.10s         Checking existence of `TextField (First Match)`
+    t =    70.11s         Capturing element debug description
+    t =    71.09s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    71.09s         Checking existence of `TextField (First Match)`
+    t =    71.11s         Capturing element debug description
+    t =    72.09s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    72.09s         Checking existence of `TextField (First Match)`
+    t =    72.10s         Capturing element debug description
+    t =    73.07s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    73.07s         Checking existence of `TextField (First Match)`
+    t =    73.08s         Capturing element debug description
+    t =    74.05s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    74.05s         Checking existence of `TextField (First Match)`
+    t =    74.08s         Capturing element debug description
+    t =    75.05s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    75.05s         Checking existence of `TextField (First Match)`
+    t =    75.05s         Capturing element debug description
+    t =    76.03s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    76.03s         Checking existence of `TextField (First Match)`
+    t =    76.05s         Capturing element debug description
+    t =    77.03s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    77.03s         Checking existence of `TextField (First Match)`
+    t =    77.85s         Capturing element debug description
+    t =    78.06s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    78.06s         Checking existence of `TextField (First Match)`
+    t =    78.27s         Capturing element debug description
+    t =    79.02s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    79.02s         Checking existence of `TextField (First Match)`
+    t =    79.10s         Capturing element debug description
+    t =    80.07s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    80.07s         Checking existence of `TextField (First Match)`
+    t =    80.14s         Capturing element debug description
+    t =    81.10s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    81.10s         Checking existence of `TextField (First Match)`
+    t =    81.41s         Capturing element debug description
+    t =    82.05s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    82.05s         Checking existence of `TextField (First Match)`
+    t =    82.07s         Capturing element debug description
+    t =    83.04s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    83.04s         Checking existence of `TextField (First Match)`
+    t =    83.06s         Capturing element debug description
+    t =    84.03s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    84.03s         Checking existence of `TextField (First Match)`
+    t =    84.05s         Capturing element debug description
+    t =    85.02s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =    85.02s         Checking existence of `TextField (First Match)`
+    t =    93.33s         Capturing element debug description
+    t =    93.33s     Checking existence of `TextField (First Match)`
+    t =    97.29s Collecting debug information to assist test failure triage
+    t =    97.29s     Requesting snapshot of accessibility hierarchy for app with pid 6397
+/Users/brendanschmidt/actions-runner/_work/pal-primer/pal-primer/ios/UITests/HoundStackUITests/ColdLaunch.swift:194: error: -[HoundStackUITests.ColdLaunch testColdLaunchReachesSignInFiveTimes] : XCTAssertTrue failed - launch 2 of 5: no email field, so the sign-in form never rendered
+    t =   116.28s Tear Down
+Test Case '-[HoundStackUITests.ColdLaunch testColdLaunchReachesSignInFiveTimes]' failed (116.665 seconds).
