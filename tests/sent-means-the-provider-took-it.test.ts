@@ -250,7 +250,7 @@ describe("each label says sent only when it was, and 'not sent, copy link' when 
   it("the drawer says an unsent open invoice is not sent", () => {
     const drawer = read("src/components/InvoiceDrawer.tsx");
     expect(drawer).toMatch(
-      /\{open &&\s*!inv\.sent_at &&\s*\(!inv\.send_after \|\| inv\.send_after <= today\) && \(\s*<MetaChip>Not sent: copy the pay link<\/MetaChip>/,
+      /\{!noEmail &&\s*open &&\s*!inv\.sent_at &&\s*\(!inv\.send_after \|\| inv\.send_after <= today\) && \(\s*<MetaChip>Not sent: copy the pay link<\/MetaChip>/,
     );
   });
 

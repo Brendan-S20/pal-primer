@@ -4,6 +4,10 @@ import { Undo2, Trash2, Save, MousePointer2, Pencil } from "lucide-react";
 import { useMapRenderer } from "@/lib/maps/use-map-renderer";
 import { OverlayGroup, US_VIEW, type LatLng } from "@/lib/maps/types";
 
+/** How long the imagery may take, once the map is on screen, before the sketch
+ *  says it has not loaded (#1065). The notice goes away if it then does. */
+export const MAP_SLOW_MS = 8000;
+
 export type PolygonGeoJSON = {
   type: "Polygon";
   coordinates: number[][][]; // [ [ [lng, lat], ... , [lng, lat] ] ]
@@ -37,6 +41,7 @@ export function BoundarySketch({
   height = 460,
   areaNoun = "yard",
   onDirtyChange,
+  unloadedHint = "The outline is optional, so you can add it later.",
 }: {
   center: { lat: number; lng: number } | null;
   initial: PolygonGeoJSON | null;
@@ -55,6 +60,8 @@ export function BoundarySketch({
   areaNoun?: "yard" | "property";
   /** Reports in-progress (unsaved) sketch edits so hosts can guard closes. */
   onDirtyChange?: (dirty: boolean) => void;
+  /** What the person can do instead, said when the map has not loaded. */
+  unloadedHint?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const pointsRef = useRef<LatLng[]>(fromPolygon(initial));
@@ -95,6 +102,37 @@ export function BoundarySketch({
     gestures: "map",
     maxZoom: 22,
   });
+
+  // A blank grey box says nothing (#1065). This does not depend on knowing
+  // why: a map that was never made and one that never draws both end up here.
+  // The clock starts when the box is on screen, which is when a map is asked
+  // for (use-map-renderer.ts).
+  const [painted, setPainted] = useState(false);
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const start = () => {
+      timer ??= setTimeout(() => setSlow(true), MAP_SLOW_MS);
+    };
+    const el = containerRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") {
+      start();
+      return () => clearTimeout(timer);
+    }
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) start();
+    });
+    io.observe(el);
+    return () => {
+      io.disconnect();
+      clearTimeout(timer);
+    };
+  }, []);
+  useEffect(() => {
+    if (!map) return;
+    return map.onTilesPainted(() => setPainted(true));
+  }, [map]);
+  const unloaded = slow && !painted;
 
   useEffect(() => {
     if (!map) return;
@@ -223,6 +261,14 @@ export function BoundarySketch({
           )}
         </div>
       </div>
+      <p
+        role="status"
+        className={
+          unloaded ? "rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm" : "sr-only"
+        }
+      >
+        {unloaded ? `The map hasn't loaded. ${unloadedHint}` : ""}
+      </p>
       <div
         ref={containerRef}
         style={{ height, width: "100%" }}

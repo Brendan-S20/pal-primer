@@ -23,7 +23,8 @@ import { formatLineItemDescription, invoiceNumberLabel } from "@/lib/invoice-lab
 import { Button } from "@/components/ui/button";
 import { StatusChip, SectionLabel } from "@/components/client-detail/primitives";
 import { invoiceRefundState, invoiceStatusChip, voidAfterRefund } from "@/lib/refund-outcome";
-import { SCHEDULED_LABEL } from "@/lib/invoice-send-state";
+import { cannotEmailInvoice, SCHEDULED_LABEL } from "@/lib/invoice-send-state";
+import { InvoiceNoEmailNotice } from "@/components/InvoiceNoEmailNotice";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { DownloadPdfButton } from "@/components/DownloadPdfButton";
 import { downloadInvoicePdf } from "@/lib/document-pdf.functions";
@@ -251,6 +252,8 @@ function InvoiceDetail() {
     DEFAULT_ORG_TIMEZONE;
   const overdue = isInvoiceOverdue(invoice.status, dueOn, orgToday(tz));
   const today = orgToday(tz);
+  // With no address the invoice is not scheduled to reach anyone (#1065).
+  const noEmail = cannotEmailInvoice(invoice, client ? (client.primary_email ?? null) : undefined);
   // Void on a paid invoice is offered only once all of its money went back
   // (#674); partly refunded, the page says to refund the rest first.
   const refundVoid = voidAfterRefund(invoice);
@@ -282,7 +285,7 @@ function InvoiceDetail() {
           <div className="flex flex-col items-start gap-2 text-sm sm:items-end">
             {(() => {
               // Refunded money reads as refunded, not Paid (#674).
-              const chip = invoiceStatusChip(invoice, today);
+              const chip = invoiceStatusChip(invoice, noEmail ? undefined : today);
               if (chip.label === SCHEDULED_LABEL) {
                 // The page is also the printed document, and the paper copy
                 // is the bill as the client would read it: it says what it
@@ -459,6 +462,14 @@ function InvoiceDetail() {
           </div>
         </div>
       </div>
+
+      {noEmail && (
+        <InvoiceNoEmailNotice
+          clientId={invoice.client_id}
+          hasPayLink={!!invoice.public_token}
+          className="print:hidden"
+        />
+      )}
 
       {/* Actions toolbar (never prints) */}
       <div className="flex flex-wrap items-center gap-2">

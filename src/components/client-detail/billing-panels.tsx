@@ -128,6 +128,8 @@ export function BillingPanel({ clientId }: { clientId: string }) {
 
   const invoices = data?.invoices ?? [];
   const payments = data?.payments ?? [];
+  // Null once loaded with no address; the rows then promise no send (#1065).
+  const clientEmail = data?.client ? (data.client.primary_email ?? null) : undefined;
   // A payment names its invoice by number, like every other screen.
   const invoiceNumberById = new Map(
     invoices.map((i: { id: string; number?: number | null }) => [i.id, i.number ?? null]),
@@ -204,7 +206,12 @@ export function BillingPanel({ clientId }: { clientId: string }) {
             {IS_NATIVE_BUNDLE && (
               <div className="mt-3 space-y-3 md:hidden">
                 {invoices.map((inv: InvoiceRowData) => (
-                  <InvoiceCard key={inv.id} invoice={inv} onOpen={setDetailInvoiceId} />
+                  <InvoiceCard
+                    key={inv.id}
+                    invoice={inv}
+                    clientEmail={clientEmail}
+                    onOpen={setDetailInvoiceId}
+                  />
                 ))}
               </div>
             )}
@@ -243,7 +250,12 @@ export function BillingPanel({ clientId }: { clientId: string }) {
                 </thead>
                 <tbody>
                   {invoices.map((inv: any) => (
-                    <InvoiceRow key={inv.id} invoice={inv} onOpen={setDetailInvoiceId} />
+                    <InvoiceRow
+                      key={inv.id}
+                      invoice={inv}
+                      clientEmail={clientEmail}
+                      onOpen={setDetailInvoiceId}
+                    />
                   ))}
                 </tbody>
               </table>

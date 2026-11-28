@@ -571,6 +571,7 @@ function StatCard({
 }
 
 function InvoicesPage() {
+  const navigate = useNavigate();
   const motionList = useMotionList<HTMLDivElement>();
   const { confirm, dialog } = useConfirmDialog();
   const { ask: askPayment, dialog: paymentDialog } = useRecordPaymentDialog();
@@ -846,7 +847,10 @@ function InvoicesPage() {
     if (inv.status !== "open") return [];
     const client = Array.isArray(inv.clients) ? inv.clients[0] : inv.clients;
     const busy = rowEmailM.isPending || rowPaidM.isPending || rowVoidM.isPending;
-    return [
+    // No address: both sends would be refused, so offer to add one (#1065).
+    // undefined is "not loaded", and claims nothing.
+    const noEmail = client?.primary_email !== undefined && !client.primary_email?.trim();
+    const sendActions: RowAction[] = [
       {
         label: inv.sent_at ? "Send to client" : inv.send_after ? "Send now" : "Send to client",
         disabled: busy,
@@ -869,6 +873,21 @@ function InvoicesPage() {
         disabled: busy,
         onSelect: () => rowEmailM.mutate({ invoiceId: inv.id, reminder: true }),
       },
+    ];
+    return [
+      ...(noEmail
+        ? [
+            {
+              label: "Add an email",
+              onSelect: () =>
+                navigate({
+                  to: "/clients/$clientId",
+                  params: { clientId: inv.client_id },
+                  search: { edit: true },
+                }),
+            },
+          ]
+        : sendActions),
       {
         label: "Record payment",
         disabled: busy,

@@ -10,6 +10,7 @@ import {
 import { useEffect, useLayoutEffect, type ReactNode } from "react";
 import { IS_NATIVE_BUNDLE } from "@/lib/native-build";
 import { Toaster } from "sonner";
+import { toastOffset } from "@/lib/toast-offset";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -230,12 +231,7 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
-/** Where toasts sit in the app: below the status bar, and clear of a side
- *  inset (see the note on <Toaster> below). Undefined on the web. */
-const SIDE_INSET = "calc(max(env(safe-area-inset-left), env(safe-area-inset-right)) + 16px)";
-const NATIVE_TOAST_OFFSET = IS_NATIVE_BUNDLE
-  ? { top: "calc(env(safe-area-inset-top) + 12px)", left: SIDE_INSET, right: SIDE_INSET }
-  : undefined;
+const TOAST_OFFSET = toastOffset(IS_NATIVE_BUNDLE);
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
@@ -427,22 +423,15 @@ function RootComponent() {
       <ImpersonationBanner />
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
-      {/* Native only: a top-center toast at the default offset renders under
-          the status clock and the Dynamic Island ("Already syncing" measured
-          clipped behind both, iPhone 17 Pro sim, 2026-09-26). Same doctrine
-          as PublicShell's inset: the web product's spacing stays exactly as
-          it was, so the props are undefined outside the binary. The sides
-          too (native-r2-06): on the iPhone Duo's cover display a phone-width
-          toast ran under the sensor column on the right. Both sides take the
-          larger inset, because sonner sizes a phone toast as the width minus
-          twice the LEFT offset, so only a symmetric pair keeps it centred and
-          clear of either edge. */}
-      <Toaster
-        position="top-center"
-        richColors
-        offset={NATIVE_TOAST_OFFSET}
-        mobileOffset={NATIVE_TOAST_OFFSET}
-      />
+      {/* Below the header on every build (src/lib/toast-offset.ts). Native
+          also clears the status clock and the Dynamic Island ("Already
+          syncing" measured clipped behind both, iPhone 17 Pro sim,
+          2026-09-26), and the sides (native-r2-06): on the iPhone Duo's cover
+          display a phone-width toast ran under the sensor column on the
+          right. Both sides take the larger inset, because sonner sizes a
+          phone toast as the width minus twice the LEFT offset, so only a
+          symmetric pair keeps it centred and clear of either edge. */}
+      <Toaster position="top-center" richColors offset={TOAST_OFFSET} mobileOffset={TOAST_OFFSET} />
     </QueryClientProvider>
   );
 }

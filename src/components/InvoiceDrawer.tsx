@@ -26,7 +26,8 @@ import { Button } from "@/components/ui/button";
 import { EditDrawer, DrawerFooter } from "@/components/client-detail/EditDrawer";
 import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
 import { invoiceRefundState } from "@/lib/refund-outcome";
-import { isScheduledToSend } from "@/lib/invoice-send-state";
+import { cannotEmailInvoice, isScheduledToSend } from "@/lib/invoice-send-state";
+import { InvoiceNoEmailNotice } from "@/components/InvoiceNoEmailNotice";
 import { MetaChip, SectionLabel, StatusChip } from "@/components/client-detail/primitives";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { StaffInvoicePayForm } from "@/components/StaffInvoicePayForm";
@@ -217,6 +218,10 @@ export function InvoiceDrawer({
   // Grace window (full auto billing): auto-generated invoice, not yet emailed.
   const inGrace = open && !inv?.sent_at && !!inv?.send_after;
 
+  // No client loaded claims nothing; a client with no address does (#1065).
+  const noEmail =
+    !!inv && cannotEmailInvoice(inv, client ? (client.primary_email ?? null) : undefined);
+
   // Emailing a held invoice force-sends it — it bypasses the remaining grace
   // and takes the invoice out of the nightly auto-send loop. Confirm that
   // grace-bypass so it's a deliberate action, not an accidental early send.
@@ -281,7 +286,7 @@ export function InvoiceDrawer({
               <InvoiceStatusBadge
                 status={inv.status}
                 refund={invoiceRefundState(inv)}
-                scheduled={isScheduledToSend(inv, today)}
+                scheduled={!noEmail && isScheduledToSend(inv, today)}
               />
               {isPartiallyPaid(inv) && <MetaChip>Partially paid</MetaChip>}
               {overdue && (
@@ -307,7 +312,7 @@ export function InvoiceDrawer({
                   Paid {formatDay(inv.paid_at, undefined, tz)}
                 </span>
               )}
-              {inGrace && !!inv.send_after && inv.send_after > today && (
+              {!noEmail && inGrace && !!inv.send_after && inv.send_after > today && (
                 <MetaChip>Scheduled to send {formatDay(inv.send_after)}</MetaChip>
               )}
               {inv.sent_at && <MetaChip>Sent {formatDay(inv.sent_at, undefined, tz)}</MetaChip>}
@@ -315,7 +320,7 @@ export function InvoiceDrawer({
                   invoice without it has not reached anyone, unless it is
                   still held for a send date that has not come. Copy pay link
                   is in the actions below. */}
-              {open && !inv.sent_at && (!inv.send_after || inv.send_after <= today) && (
+              {!noEmail && open && !inv.sent_at && (!inv.send_after || inv.send_after <= today) && (
                 <MetaChip>Not sent: copy the pay link</MetaChip>
               )}
             </div>
@@ -324,6 +329,14 @@ export function InvoiceDrawer({
               <p className="text-xs text-muted-foreground">
                 Billed to <span className="font-medium text-foreground">{client.display_name}</span>
               </p>
+            )}
+
+            {noEmail && client && (
+              <InvoiceNoEmailNotice
+                clientId={inv.client_id}
+                hasPayLink={!!inv.public_token}
+                onAddEmail={onClose}
+              />
             )}
 
             {/* Actions */}
