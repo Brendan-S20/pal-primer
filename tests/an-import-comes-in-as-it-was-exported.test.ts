@@ -72,8 +72,16 @@ import {
   importPlanRow,
   mapServiceRow,
   parseImportDate,
+  planVisitsNote,
   type MappedService,
 } from "@/lib/import-services";
+import {
+  isJobberVisitsReport,
+  JOBBER_AFTER_NEXT_COLUMN,
+  JOBBER_LAST_VISIT_COLUMN,
+  JOBBER_NEXT_VISIT_COLUMN,
+  mergeJobberVisits,
+} from "@/lib/import-jobber-visits";
 import {
   consumedColumns,
   extrasSummary,
@@ -150,11 +158,12 @@ describe("Jobber's official sample file (Dialect A)", () => {
         "Client Title",
         "Client Home Phone",
         "Client SMS Enabled Phone Number",
-        "Property Country",
         "Client Receives Auto Visit Reminders?",
-        "Lead Source",
       ]),
     );
+    // Lead Source and the country are live fields now, not notes.
+    expect(mapping).toMatchObject({ lead_source: "Lead Source", country: "Property Country" });
+    expect(kept).not.toContain("Lead Source");
     // The helpers the mapper reads by name are consumed, not kept.
     expect(kept).not.toContain("Client First Name");
     expect(kept).not.toContain("Billing Street 1");
@@ -178,6 +187,8 @@ describe("Jobber's official sample file (Dialect A)", () => {
       active: true,
       balance_cents: null,
       pets: null,
+      lead_source: "Google",
+      country: "US",
     });
     // A company, with a billing address that differs: one service property
     // and a note, and a balance that becomes an open invoice on commit.
@@ -198,14 +209,13 @@ describe("Jobber's official sample file (Dialect A)", () => {
     const kept = leftoverColumns("clients", mapping, headers);
     expect(rowExtras(rows[0], kept)).toMatchObject({
       "Client Created Date": "2024-03-18",
-      "Lead Source": "Google",
       "Client Receives Auto Visit Reminders?": "TRUE",
     });
     // Blank cells are not kept; a column with nothing in a row is absent.
     expect(rowExtras(rows[0], kept)).toHaveProperty("Client Title", "Ms.");
     expect(rowExtras(rows[2], kept)).not.toHaveProperty("Client Title");
     expect(extrasSummary("Jobber", rowExtras(rows[2], kept))).toMatch(
-      /^Imported from Jobber\. Client Created Date: 2022-06-30\. .*Lead Source: Yard sign\.$/,
+      /^Imported from Jobber\. Client Created Date: 2022-06-30\. .*Follow-ups\?: \w+\.$/,
     );
   });
 });
@@ -239,56 +249,172 @@ describe("Jobber's live export (Dialect B)", () => {
     });
     expect(mapped[2].mapped).toMatchObject({ active: false });
     const kept = leftoverColumns("clients", mapping, headers);
-    expect(kept).toEqual(
-      expect.arrayContaining(["Created Date", "Lead Source", "Mobile Phone #s"]),
-    );
+    expect(kept).toEqual(expect.arrayContaining(["Created Date", "Mobile Phone #s"]));
     expect(rowExtras(rows[1], kept)).toMatchObject({
       "CFS[How Often Are Your Visits?]": "Every other week",
     });
   });
 });
 
-// ── Jobber's Recurring jobs report: no frequency column ────────────────────
+// ── Jobber's Recurring jobs report, joined with its Visits report ─────────
+//
+// Both files are real exports from a Jobber trial (2026-11-27), with
+// invented clients: Insights > Reports > Recurring jobs and > Visits, All
+// Columns. The Recurring jobs report has "Visit frequency" and, on a "Per
+// visit" job, the price of one visit in "Total ($)". It has no last or next
+// visit; the Visits report has both, matched by Job #.
 
-describe("Jobber's Recurring jobs report", () => {
+const TODAY = "2026-11-27";
+
+describe("Jobber's Recurring jobs report (real export)", () => {
   const { headers, rows } = fixture("jobber-recurring-jobs.csv");
-  const mapping = autoMap("jobber", headers, "services");
+  const visits = fixture("jobber-visits.csv");
+  const joined = mergeJobberVisits(rows, visits.rows, TODAY) as Row[];
+  const joinedHeaders = [
+    ...headers,
+    JOBBER_LAST_VISIT_COLUMN,
+    JOBBER_NEXT_VISIT_COLUMN,
+    JOBBER_AFTER_NEXT_COLUMN,
+  ];
+  const mapping = autoMap("jobber", joinedHeaders, "services");
 
-  it("is recognized as Jobber and maps without a frequency column", () => {
+  it("is recognized as Jobber and maps how often, the price, the start, and the last and next visit", () => {
     expect(detectImportSource(headers)).toBe("jobber");
+    expect(isJobberVisitsReport(visits.headers)).toBe(true);
+    expect(isJobberVisitsReport(headers)).toBe(false);
     expect(mapping).toMatchObject({
       client_name: "Client name",
       client_email: "Client email",
+      frequency: "Visit frequency",
       price_per_visit: "Total ($)",
       start_date: "Schedule start date",
+      last_visit: JOBBER_LAST_VISIT_COLUMN,
+      next_visit: JOBBER_NEXT_VISIT_COLUMN,
+      visit_after_next: JOBBER_AFTER_NEXT_COLUMN,
+      end_date: "Schedule end date",
+      closed_date: "Closed date",
       service: "Line items",
       billing: "Billing type",
-      frequency: null,
+      billing_frequency: "Billing frequency",
+      service_street: "Service street",
+      assigned_to: "Visits assigned to",
     });
-    const { kept } = everyColumnMappedOrKept("services", mapping, headers);
+    const { kept } = everyColumnMappedOrKept("services", mapping, joinedHeaders);
+    expect(kept).not.toContain("Billing frequency");
     expect(kept).toEqual(
       expect.arrayContaining([
         "Job #",
         "Job title",
         "Completed visits",
-        "Custom fields",
-        "Schedule end date",
+        "Created date",
       ]),
     );
   });
 
-  it("each row is a plan whose frequency the owner sets, not one the owner had to add a column for", () => {
-    const first = mapServiceRow(rows[0], mapping);
-    expect(first.error).toBeNull();
-    expect(first.mapped).toMatchObject({
-      client_name: "Priya Sample",
+  it("takes each job's last completed visit and next booked one, skipping a missed past visit", () => {
+    const by = Object.fromEntries(joined.map((r) => [r["Job #"], r]));
+    // Job 1 was done through Nov 3; Nov 10, 17 and 24 were never completed.
+    expect(by["1"][JOBBER_LAST_VISIT_COLUMN]).toBe("2026-11-03");
+    expect(by["1"][JOBBER_NEXT_VISIT_COLUMN]).toBe("2026-12-01");
+    // Job 2's visit today is not done yet, so today is its next visit.
+    expect(by["2"][JOBBER_LAST_VISIT_COLUMN]).toBe("2026-11-13");
+    expect(by["2"][JOBBER_NEXT_VISIT_COLUMN]).toBe("2026-11-27");
+    expect(by["3"][JOBBER_LAST_VISIT_COLUMN]).toBe("2026-11-10");
+    expect(by["3"][JOBBER_NEXT_VISIT_COLUMN]).toBe("2026-12-10");
+  });
+
+  it("each row is a plan with how often, the price per visit and the day from the file, walked from its next visit", () => {
+    const mapped = joined.map((r) => mapServiceRow(r, mapping));
+    expect(mapped.map((m) => m.error)).toEqual([null, null, null]);
+    const byName = Object.fromEntries(mapped.map((m) => [m.mapped!.client_name, m.mapped!]));
+    expect(byName["Priya Sample"]).toMatchObject({
       client_email: "priya@example.test",
-      price_cents: 1800,
-      started_on: "2025-03-24",
-      service_name: "Pet waste removal",
       frequency: "weekly",
-      frequency_in_file: false,
+      frequency_in_file: true,
+      price_cents: 1800,
+      preferred_weekdays: [2],
+      file_started_on: "2026-09-01",
+      last_visit: "2026-11-03",
+      next_visit: "2026-12-01",
+      started_on: "2026-12-01",
+      service_name: "Pet waste removal",
+      // Billed per visit, invoiced monthly: Jobber's Billing frequency.
+      billing_cadence: "postpaid",
+      billing_frequency: "monthly",
+      service_street: "12 Example Lane",
+      assigned_to: "Sam Research",
     });
+    expect(byName["Marcus Fixture"]).toMatchObject({
+      frequency: "biweekly",
+      price_cents: 2500,
+      preferred_weekdays: [5],
+      started_on: "2026-11-27",
+    });
+    expect(byName["Dana Placeholder"]).toMatchObject({
+      frequency: "monthly",
+      price_cents: 4000,
+      started_on: "2026-12-10",
+    });
+  });
+
+  it("without the Visits report, the plan is walked from the file's start date and keeps its frequency", () => {
+    const alone = autoMap("jobber", headers, "services");
+    expect(alone).toMatchObject({
+      last_visit: null,
+      next_visit: null,
+      frequency: "Visit frequency",
+    });
+    const m = mapServiceRow(rows[2], alone).mapped!;
+    expect(m).toMatchObject({ frequency: "weekly", price_cents: 1800, started_on: "2026-09-01" });
+    // The schedule end date is the plan's, and the note says so.
+    expect(m.ends_on).toMatch(/^2027-/);
+    expect(planVisitsNote("Jobber", m)).toBe(
+      `Imported plan from Jobber. It ends ${m.ends_on}, as it did in Jobber; clear the end date on the plan to keep it going.`,
+    );
+  });
+
+  it("refuses a fixed-price job: its Total ($) is the amount per billing period, not per visit", () => {
+    // Read off the same trial's Recurring jobs report: a weekly job billed
+    // monthly as a fixed price of 80.00.
+    const fixed = {
+      ...rows[0],
+      "Job #": "4",
+      "Client name": "Sam Research",
+      "Billing type": "Fixed price",
+      "Visit frequency": "Weekly on Mondays",
+      "Billing frequency": "Monthly on the last day of the month",
+      "Total ($)": "80.0",
+    };
+    const r = mapServiceRow(fixed, mapping);
+    expect(r.mapped).toBeNull();
+    expect(r.error).toMatch(
+      /fixed price, so "80.0" is the amount per billing period, not per visit/,
+    );
+  });
+
+  it("refuses a visit date it cannot read, quoted", () => {
+    const r = mapServiceRow({ ...joined[0], [JOBBER_LAST_VISIT_COLUMN]: "soonish" }, mapping);
+    expect(r.error).toBe('Last visit not understood: "soonish"');
+  });
+});
+
+// ── Jobber's Clients export (real export) ──────────────────────────────────
+
+describe("Jobber's Clients export (real export)", () => {
+  const { headers, rows } = fixture("jobber-clients-export.csv");
+  const mapping = autoMap("jobber", headers, "clients");
+
+  it("maps every row and keeps every column a field does not take", () => {
+    expect(detectImportSource(headers)).toBe("jobber");
+    expect(mapping).toMatchObject({
+      external_id: "J-ID",
+      display_name: "Display Name",
+      primary_email: "E-mails",
+      street: "Service Street 1",
+      archived: "Archived",
+    });
+    everyColumnMappedOrKept("clients", mapping, headers);
+    expect(rows.map((r) => mapClientRow(r, mapping).error)).toEqual(rows.map(() => null));
   });
 });
 
@@ -358,7 +484,6 @@ describe("Gingr's View All Owners export (best guess, no sample yet)", () => {
     expect(kept).toEqual(
       expect.arrayContaining([
         "Home phone",
-        "Referral",
         "Card on File",
         "Last Reservation",
         "Next Reservation",
@@ -379,6 +504,8 @@ describe("Gingr's View All Owners export (best guess, no sample yet)", () => {
       // "Receives Text: No" is stored, not acted on.
       do_not_text: false,
     });
+    expect(mapping.lead_source).toBe("Referral");
+    expect(m.mapped?.lead_source).toBe("Google");
     expect(mapClientRow(rows[1], mapping).mapped?.pets).toEqual([{ name: "Rex", breed: null }]);
   });
 });
@@ -387,15 +514,14 @@ describe("Gingr's View All Owners export (best guess, no sample yet)", () => {
 
 describe("sample needed", () => {
   it("every source is either verified or a best guess the page says so about", () => {
-    expect(VERIFIED_SOURCES).toEqual(["jobber", "time_to_pet"]);
+    expect(VERIFIED_SOURCES).toEqual(["jobber", "housecall_pro", "time_to_pet", "sweepgo"]);
     for (const s of IMPORT_SOURCES) expect(typeof isVerifiedSource(s)).toBe("boolean");
   });
-  // Sweep&Go (Client List CSV), Housecall Pro (Customers > Actions > Export),
-  // MoeGo (Export Clients) and GorillaDesk (Customers > Action > Export)
-  // document the path and not the columns. No fixture is invented for them;
-  // each lands when a real file does.
-  it.todo("Sweep&Go Client List CSV, once a real file is in hand");
-  it.todo("Housecall Pro customer export, once a real file is in hand");
+  // Housecall Pro's and Time To Pet's real files are in
+  // tests/housecall-pro-and-time-to-pet-real-exports.test.ts, Sweep&Go's in
+  // tests/sweepgo-real-exports.test.ts. MoeGo (Export Clients) and
+  // GorillaDesk (Customers > Action > Export) document the path and not the
+  // columns. No fixture is invented for them; each lands when a real file does.
   it.todo("MoeGo Export Clients, once a real file is in hand");
   it.todo("GorillaDesk customer export, once a real file is in hand");
 });
@@ -629,8 +755,9 @@ describe("the Jobber sample file, previewed and committed", () => {
     });
     expect(stats).toMatchObject({ total: 3, create: 3, errors: 0 });
     const batchRows = (tables.import_rows as any[]).filter((r) => r.batch_id === batchId);
-    expect(batchRows[0].mapped.extras).toMatchObject({ "Lead Source": "Google" });
-    expect(batchRows[2].mapped.extras).toMatchObject({ "Lead Source": "Yard sign" });
+    expect(batchRows[0].mapped.extras).toMatchObject({ "Client Created Date": "2024-03-18" });
+    expect(batchRows[0].mapped.lead_source).toBe("Google");
+    expect(batchRows[2].mapped.lead_source).toBe("Yard sign");
   });
 
   it("writes the clients with address, raw JSON, a notes summary, inactive flag and opening balances; sends nothing; schedules nothing", async () => {
@@ -642,15 +769,16 @@ describe("the Jobber sample file, previewed and committed", () => {
     expect(priya).toMatchObject({
       comms_paused: true,
       import_source: "jobber",
+      referral_source: "Google",
       import_extras: expect.objectContaining({
-        "Lead Source": "Google",
         "Client Created Date": "2024-03-18",
       }),
     });
+    expect(priya.import_extras).not.toHaveProperty("Lead Source");
     expect(priya.active).toBeUndefined();
     expect(priya.sms_opt_out).toBeUndefined();
     expect(priya.notes).toMatch(/^Side gate sticks; lift and push\nImported from Jobber\. /);
-    expect(priya.notes).toMatch(/Lead Source: Google\./);
+    expect(priya.notes).toMatch(/Client Title: Ms\./);
     // Residential, no dog named anywhere: still imported.
     expect(tables.dogs).toHaveLength(0);
     // The archived client is inactive, with messaging off.
@@ -732,8 +860,8 @@ describe("a Gingr owners file, committed", () => {
     ]);
     const clients = tables.clients as any[];
     expect(clients[0].import_source).toBe("gingr");
+    expect(clients[0].referral_source).toBe("Google");
     expect(clients[0].import_extras).toMatchObject({
-      Referral: "Google",
       "Card on File": "Yes",
       "Receives Text": "No",
     });
@@ -741,7 +869,7 @@ describe("a Gingr owners file, committed", () => {
 });
 
 describe("the Recurring jobs report, committed", () => {
-  it("makes paused plans with no visits, a note that the frequency was not in the file, and the extras", async () => {
+  it("makes a paused plan with how often, the price and the next visit from the files, the dates in a note, and no visits", async () => {
     (tables.clients as any[]).push({
       id: "c-priya",
       organization_id: "org",
@@ -749,11 +877,28 @@ describe("the Recurring jobs report, committed", () => {
       primary_email: "priya@example.test",
       account_type: "residential",
     });
-    (tables.properties as any[]).push({
-      id: "p-priya",
+    // Two addresses: the plan goes on the one Jobber names, not the first.
+    (tables.properties as any[]).push(
+      {
+        id: "p-priya-old",
+        organization_id: "org",
+        client_id: "c-priya",
+        street: "9 Former Road",
+        zone_id: null,
+      },
+      {
+        id: "p-priya",
+        organization_id: "org",
+        client_id: "c-priya",
+        street: "12 Example Lane",
+        zone_id: null,
+      },
+    );
+    (tables.staff as any[]).push({
+      id: "st-sam",
       organization_id: "org",
-      client_id: "c-priya",
-      zone_id: null,
+      display_name: "Sam Research",
+      active: true,
     });
     (tables.services as any[]).push({
       id: "svc",
@@ -762,12 +907,19 @@ describe("the Recurring jobs report, committed", () => {
       service_line: "pet_waste",
     });
     const { headers, rows } = fixture("jobber-recurring-jobs.csv");
-    const mapping = autoMap("jobber", headers, "services");
+    const visits = fixture("jobber-visits.csv");
+    const joined = mergeJobberVisits(rows, visits.rows, TODAY) as Row[];
+    const mapping = autoMap(
+      "jobber",
+      [...headers, JOBBER_LAST_VISIT_COLUMN, JOBBER_NEXT_VISIT_COLUMN],
+      "services",
+    );
+    const priya = joined.find((r) => r["Client name"] === "Priya Sample")!;
     const { batchId, stats } = await call(previewImport, {
       source: "jobber",
       entity: "services",
       mapping,
-      rows: [rows[0]],
+      rows: [priya],
     });
     expect(stats).toMatchObject({ create: 1, errors: 0 });
     const result = await call(commitImport, { batchId });
@@ -778,13 +930,23 @@ describe("the Recurring jobs report, committed", () => {
       status: "paused",
       frequency: "weekly",
       price_cents: 1800,
+      started_on: "2026-12-01",
       service_id: "svc",
+      property_id: "p-priya",
+      assigned_staff_id: "st-sam",
     });
+    // Per visit, invoiced monthly in Jobber: the client is billed monthly.
+    expect((tables.clients as any[]).find((c) => c.id === "c-priya").billing_frequency).toBe(
+      "monthly",
+    );
     expect(tables.visits).toHaveLength(0);
     expect(visitGeneration.calls).toBe(0);
     const note = (tables.client_notes as any[])[0];
     expect(note).toMatchObject({ client_id: "c-priya", audience: "office" });
-    expect(note.body).toMatch(/did not say how often/);
-    expect(note.body).toMatch(/Job #: 1041/);
+    expect(note.body).not.toMatch(/did not say how often/);
+    expect(note.body).toMatch(
+      /Imported plan from Jobber: started there 2026-09-01; last visit 2026-11-03; next visit 2026-12-01\. The plan's schedule is set from the next visit \(2026-12-01\)\./,
+    );
+    expect(note.body).toMatch(/Job #: 1\b/);
   });
 });

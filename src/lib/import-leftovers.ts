@@ -46,6 +46,8 @@ export const ADDRESS_2_COLUMNS = [
   "Address Line 2",
   "address_line_2",
   "Address 2",
+  // Housecall Pro's Customers export.
+  "Address_1 Street Line 2",
   "Unit",
   "Apt",
   "Suite",
@@ -77,6 +79,47 @@ export const COMPANY_NAME_COLUMNS = [
   "Business Name",
 ];
 
+/** A pets file's species and deceased flags (Time To Pet's Pet List and
+ *  Pet Data, real exports 2026-11-27: "Pet Type" Dog/Cat, "Pet Deceased?"
+ *  Yes/No). The dog mapper leaves out a pet that is not a dog, or has died,
+ *  with the reason, rather than adding it as a dog. */
+export const PET_TYPE_COLUMNS = ["Pet Type", "Species", "Animal Type"];
+export const PET_DECEASED_COLUMNS = ["Pet Deceased?", "Deceased"];
+
+/** Phone columns read, in order, when the mapped phone is empty on a row.
+ *  Not consumed: each stays a leftover, so no number is lost. */
+export const OTHER_PHONE_COLUMNS = [
+  "Mobile Phone #s",
+  "Client Mobile Phone",
+  "Home Phone #s",
+  "Client Home Phone",
+  "Work Phone #s",
+  "Client Work Phone",
+  "Other Phone #s",
+  // Sweep&Go's Client List CSV.
+  "Home Phone Number",
+  // Housecall Pro's customers export (Mobile Number is the mapped phone).
+  "Home Number",
+  "Work Number",
+];
+
+/** A leftover column the client mapper still reads when the mapped phone
+ *  is blank on a row, for the mapping screen to say so. */
+export function isOtherPhoneColumn(header: string): boolean {
+  return OTHER_PHONE_COLUMNS.some((c) => c.toLowerCase() === header.trim().toLowerCase());
+}
+
+// Written by planVisitFile onto each plan read from a visits file, and kept
+// in full on the plan's note (a leftover would be cut short there).
+export const VISITS_NOTES_COLUMN = "Visit notes (from the visits)";
+export const VISITS_LEFT_OUT_COLUMN = "Visits left out (from the visits)";
+export const VISITS_SCHEDULE_NOTE_COLUMN = "About the schedule (from the visits)";
+export const VISITS_NOTE_COLUMNS = [
+  VISITS_SCHEDULE_NOTE_COLUMN,
+  VISITS_LEFT_OUT_COLUMN,
+  VISITS_NOTES_COLUMN,
+];
+
 const HELPERS_BY_ENTITY: Record<string, string[]> = {
   clients: [
     ...FIRST_NAME_COLUMNS,
@@ -88,12 +131,38 @@ const HELPERS_BY_ENTITY: Record<string, string[]> = {
     ...COMPANY_NAME_COLUMNS,
   ],
   properties: [...ADDRESS_2_COLUMNS],
-  dogs: [],
-  services: [],
+  dogs: [...PET_TYPE_COLUMNS, ...PET_DECEASED_COLUMNS],
+  // A plans file that splits the client's name (Sweep&Go's Completed Jobs).
+  services: [...FIRST_NAME_COLUMNS, ...LAST_NAME_COLUMNS, ...VISITS_NOTE_COLUMNS],
   balances: [],
 };
 
 const norm = (s: string) => s.trim().toLowerCase();
+
+/** What a helper column is read for, in the owner's words, or null when
+ *  the column is not one of the entity's helpers. The mapping screen shows
+ *  it as the column's destination. */
+export function helperRole(entity: string, header: string): string | null {
+  const h = norm(header);
+  const has = (list: string[]) => list.some((c) => norm(c) === h);
+  if (!(HELPERS_BY_ENTITY[entity] ?? []).some((c) => norm(c) === h)) return null;
+  if (has(FIRST_NAME_COLUMNS) || has(LAST_NAME_COLUMNS))
+    return entity === "services"
+      ? "Client, when no client column is set (first + last)"
+      : "Client name, when the name column is blank (first + last)";
+  if (has(VISITS_NOTE_COLUMNS)) return "Kept in full on the plan's note";
+  if (has(COMPANY_NAME_COLUMNS)) return "Company name";
+  if (has(PET_TYPE_COLUMNS)) return "Read to leave out a pet that is not a dog, with the reason";
+  if (has(PET_DECEASED_COLUMNS)) return "Read to leave out a pet marked deceased, with the reason";
+  if (has(ADDRESS_2_COLUMNS)) return "Street, second line";
+  if (
+    has(BILLING_ADDRESS_2_COLUMNS) ||
+    has(BILLING_COUNTRY_COLUMNS) ||
+    has(Object.values(BILLING_FALLBACK_COLUMNS).flat())
+  )
+    return "Address when the service address is blank; else a billing-address note";
+  return "Read with the fields above";
+}
 
 /** The file's columns the import reads for this entity and mapping: the
  *  mapped columns, and the helpers the row mapper looks up by name. */
@@ -169,6 +238,32 @@ export function extrasSummary(
 export function joinNotes(...parts: (string | null | undefined)[]): string | null {
   const kept = parts.map((p) => (p ?? "").trim()).filter(Boolean);
   return kept.length ? kept.join("\n") : null;
+}
+
+/** The longest note one client note holds (the database's limit). */
+export const NOTE_MAX = 4000;
+
+/** A note too long for one client note, cut into several at a line break
+ *  or a space where it can be, each marked "(1 of 3)", so nothing past the
+ *  limit is lost (#1069, Rigel at 0545ace1). One part when it fits. */
+export function splitNote(text: string, max = NOTE_MAX): string[] {
+  if (text.length <= max) return [text];
+  const room = max - 12; // " (10 of 12)" and a space
+  const parts: string[] = [];
+  let rest = text;
+  while (rest.length > room) {
+    const window = rest.slice(0, room);
+    const at = Math.max(
+      window.lastIndexOf("\n"),
+      window.lastIndexOf("; "),
+      window.lastIndexOf(" "),
+    );
+    const cut = at > room / 2 ? at : room;
+    parts.push(rest.slice(0, cut).trimEnd());
+    rest = rest.slice(cut).replace(/^(;\s*|\s+)/, "");
+  }
+  if (rest) parts.push(rest);
+  return parts.map((p, i) => `(${i + 1} of ${parts.length}) ${p}`);
 }
 
 export type PetName = { name: string; breed: string | null };

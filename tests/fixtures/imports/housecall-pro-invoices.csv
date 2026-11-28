@@ -1,0 +1,7 @@
+Job #,HCP Id,Created At,Date,End Time,Travel Duration,On Job Duration,Total Duration,Customer,First Name,Last Name,Email,Company,Mobile Phone,Home Phone,Customer Tags,Address,Street,Street Line 2,City,State,Zip,Description,Line Items,Amount,Labor,Materials,Subtotal,Payment History,Credit Card Fee,Paid Amount,Due,Discount,Tax,Taxable Amount,Tax rate,Job Tags,Notes,Employee,Job Status,Finished,Payment,Invoice Sent,window,Attachments,Segments,HC Job,Tip Amount,Online Booking Source
+="1","537424868","2026-11-27 20:07","2026-11-13 09:00","2026-11-13 10:00","","","","Sam Research","Sam","Research","","","","","","123 Test St, Detroit, MI 48201","123 Test St","","Detroit","MI","48201","Weekly Pet Waste Cleanup","SERVICES
+Weekly Pet Waste Cleanup - $18.50
+","$18.50","$18.50","$0.00","$18.50","","","","$18.50","$0.00","$0.00","$0.00","","","","Sam Research","DONE","2026-11-27 15:08","Due $18.50","","0","0","1","","",""
+="54","537425225","2026-11-27 20:09","2026-11-20 09:00","2026-11-20 10:00","","","","Jordan Sample","Jordan","Sample","","","","","","456 Example Ave, Detroit, MI 48201","456 Example Ave","","Detroit","MI","48201","Every Other Week Pet Waste Cleanup","SERVICES
+Every Other Week Pet Waste Cleanup - $32.00
+","$32.00","$32.00","$0.00","$32.00","","","","$32.00","$0.00","$0.00","$0.00","","","","Sam Research","DONE","2026-11-27 15:11","Due $32","","0","0","1","","",""

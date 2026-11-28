@@ -12,18 +12,32 @@ import {
   TARGET_FIELDS_BY_ENTITY,
   autoMap,
   detectImportSource,
+  detectImportEntity,
   IMPORT_SOURCE_LABELS,
   isVerifiedSource,
+  fieldNamesForEntity,
   type ImportEntity,
 } from "@/lib/imports.functions";
-import { leftoverColumns } from "@/lib/import-leftovers";
+import { suggestFields } from "@/lib/import-column-map";
+import { reportNotForImport, tableFromCsv, type SkippedLine } from "@/lib/import-file-table";
+import { planVisitFile, VISITS_COLUMNS, visitFileColumns } from "@/lib/import-visit-plans";
+import { ImportFileNotes } from "@/components/imports/ImportFileNotes";
+import { ColumnMappingTable } from "@/components/imports/ColumnMappingTable";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/format";
 import { importStatusLabel } from "@/lib/import-status";
 import { titleHead } from "@/lib/page-title";
 import { useServiceLines } from "@/components/CommercialOnly";
-import { useOrgTimezone } from "@/hooks/useOrgToday";
+import { useOrgTimezone, useOrgToday } from "@/hooks/useOrgToday";
+import { JobberVisitsFile } from "@/components/imports/JobberVisitsFile";
+import {
+  JOBBER_LAST_VISIT_COLUMN,
+  JOBBER_NEXT_VISIT_COLUMN,
+  JOBBER_AFTER_NEXT_COLUMN,
+  mergeJobberVisits,
+  withVisitMapping,
+} from "@/lib/import-jobber-visits";
 
 export const Route = createFileRoute("/_authenticated/imports/")({
   head: () => titleHead("Import data"),
@@ -35,10 +49,10 @@ const SOURCE_LABELS: Record<string, string> = IMPORT_SOURCE_LABELS;
 // Where each vendor's export lives, in the vendor's own words. Upload the
 // file as it came: nothing needs renaming, splitting or adding (#857).
 const SOURCE_HINTS: Record<string, string> = {
-  sweepgo: "In Sweep&Go, go to Clients > Residential Clients, open the three dots menu and choose Client List CSV. For commercial clients, go to Clients > Commercial Clients, open the three dots menu and export the client list or the locations list. Sweep&Go's help does not describe a dogs export or a balance export, so use the HoundStack template for those if you need them.",
-  jobber: "In Jobber, go to Clients > More Actions > Export Clients and choose CSV. Jobber emails the file (up to 1,500 clients per file, admin users only). Upload it as it came: the service address, tags, internal notes and account balance all come through. For recurring services, export Insights > Reports > Recurring jobs report; it has no visit frequency column, so each plan comes in paused for you to set how often and turn on. Import clients first, then recurring services.",
-  housecall_pro: "In Housecall Pro, go to Customers > Actions > Export; the CSV is emailed to an admin. HoundStack has not seen a real Housecall Pro file yet, so check every column below before you preview.",
-  time_to_pet: "In Time To Pet, open the Client List and choose Export Client Data (one Full Name column, with Address, City, State and Zip Code). For pets, choose Export Pet Data and tick the client fields so each pet names its owner. Import clients first, then pets.",
+  sweepgo: "In Sweep&Go, go to Clients > Residential Clients, open the three dots menu and choose Client List CSV. Upload it as it came: the name, cell phone (or home phone), email, status, referral source and the address all come through. For recurring services, open Billing > Residential Subscriptions, add Canceled to the status filter if you like, and choose CSV: the plan, its dogs and how often (\"2d-1xW\"), the price per cleanup and the start and end dates come through, and canceled plans are refused with the reason. Or export Reports > Completed Jobs: each plan is read from its visits, so how often, the price per cleanup (an Initial cleanup's price is not the plan's) and the last and next visit come from the visit dates, and a plan code a plan here cannot repeat (\"1d-3xW\") is listed for you to add by hand. The Referral Sources report has only names: a client already here by that name is skipped, and the Client List CSV carries the referral source. Sweep&Go's exports have no dogs' names or gate codes, so add those by hand. Every plan comes in paused for you to check and turn on. Import clients first, then recurring services.",
+  jobber: "In Jobber, go to Clients > More Actions > Export Clients and choose CSV. Jobber emails the file (up to 1,500 clients per file, admin users only). Upload it as it came: the service address, tags, internal notes and account balance all come through. For recurring services, export Insights > Reports > Recurring jobs with All Columns: how often, the price per visit and the start date come through. Add the Visits report too and each plan also gets its last and next visit. Plans billed as a fixed price are refused, since Jobber's total for them is per billing period, not per visit. Every plan comes in paused for you to check and turn on. Import clients first, then recurring services.",
+  housecall_pro: "In Housecall Pro, go to Customers > Actions > Export and choose Send file; the CSV is emailed to you. Upload it as it came: the name, phones, email, tags, notes, lead source and the service address all come through. For recurring services, open Jobs, remove the Completed between filter, choose Add all columns and Export: each recurring job is read from its visits, so how often, the price per visit, and the last and next visit come from the visit dates. For balances, open Invoices, choose Table columns > Excel > Download CSV. Import clients first, then recurring services.",
+  time_to_pet: "In Time To Pet, open the Client List and choose Export Client Data (one Full Name column, with Address, City, State and Zip Code). For pets, choose Export Pet Data and tick Include Client Fields so each pet names its owner; pets that are not dogs, or are marked deceased, are left out with the reason. For recurring services, export Reporting > Schedule > Visits: each client's service is read from its visits, so how often, the price per visit, and the last and next visit come from the visit dates. For balances, export Reporting > Financial > Sales. Import clients first, then pets and recurring services.",
   gorilla_desk: "In GorillaDesk, open the Customers tab and choose Action > Export. HoundStack has not seen a real GorillaDesk file yet, so check every column below before you preview.",
   quoteiq_family: "QuoteIQ, Flowcarve, and DoTimely share a similar shape, so the generic mapping usually works.",
   gingr: "In Gingr, go to Owners and Pets > View All Owners and choose Export to CSV. Pets named in the Animals column become that owner's pets. HoundStack has not seen a real Gingr file yet, so check every column below before you preview.",
@@ -106,18 +120,26 @@ const FIELD_LABELS: Record<string, string> = {
   price_per_visit: "Price per visit",
   service_day: "Service day",
   start_date: "Start date",
+  last_visit: "Last visit",
+  next_visit: "Next visit",
+  visit_after_next: "Visit after next",
+  end_date: "End date (the plan stops)",
+  closed_date: "Closed date (a closed job is not imported)",
+  plan_status: "Plan status (a cancelled plan is not imported)",
+  price_basis: "What the price is per (only a price per visit is imported)",
   dog_count: "Number of dogs",
   billing: "Billing (prepaid or after each visit)",
   service: "Service (which of your services the plan is for)",
   amount: "Amount owed",
   due_date: "Due date",
   note: "Note",
+  service_street: "Service address (also tells apart two clients with one name)",
 };
 
 const TEMPLATE_HEADERS: Record<ImportEntity, Record<string, string[]>> = {
   clients: {
     generic_csv: ["name", "email", "phone", "type", "external_id", "notes"],
-    sweepgo: ["Client ID", "Client Name", "Email", "Phone", "Account Type", "Notes"],
+    sweepgo: ["First Name", "Last Name", "Email", "Status", "Cell Phone Number", "Address", "City", "State", "Zip Code"],
     jobber: ["Client ID", "Company/Client name", "Primary email", "Mobile phone number", "Client type", "Notes"],
     housecall_pro: ["Customer ID", "First Name", "Last Name", "Email", "Phone", "Type", "Notes"],
     time_to_pet: ["Client ID", "Client", "Email", "Phone", "Type", "Notes"],
@@ -154,7 +176,7 @@ const TEMPLATE_HEADERS: Record<ImportEntity, Record<string, string[]>> = {
   services: {
     generic_csv: ["client_id", "client_name", "frequency", "price", "day", "start_date", "dogs"],
     jobber: ["Client J-ID", "Client name", "Visit frequency", "Visit total", "Day", "Start date", "Number of dogs"],
-    sweepgo: ["Client ID", "Client Name", "Frequency", "Price Per Cleanup", "Service Day", "Start Date", "Number of Dogs"],
+    sweepgo: ["Status", "Revenue", "Revenue Type", "Client Name", "Start Date", "End Date", "Subs. Name", "Address"],
   },
   balances: {
     generic_csv: ["client_id", "client_name", "balance", "due_date", "note"],
@@ -190,53 +212,6 @@ function downloadTemplate(source: string, entity: ImportEntity) {
   a.download = `${source}-${entity}-template.csv`;
   a.click();
   URL.revokeObjectURL(url);
-}
-
-/** The columns no field reads, named before the preview (#857). Each row's
- *  values in them are kept on the record as raw data and summarized in its
- *  notes, so the owner sees what will not be a field rather than finding
- *  out later that it was dropped. */
-function KeptColumns({
-  entity,
-  mapping,
-  headers,
-}: {
-  entity: ImportEntity;
-  mapping: Record<string, string | null>;
-  headers: string[];
-}) {
-  const kept = leftoverColumns(entity, mapping, headers);
-  if (!kept.length) {
-    return (
-      <p className="text-xs text-muted-foreground">
-        Every column is matched to a field. Nothing is left over.
-      </p>
-    );
-  }
-  const where =
-    entity === "clients"
-      ? "stored on each client as raw data and summarized in its notes"
-      : entity === "services"
-        ? "added as an office note on the client"
-        : "added to the record's notes";
-  return (
-    <div className="rounded-md border bg-muted/30 p-3 text-xs">
-      <p className="font-medium">
-        {kept.length} column{kept.length === 1 ? "" : "s"} kept, not matched to a field
-      </p>
-      <p className="mt-1 text-muted-foreground">
-        Nothing is dropped: each row&apos;s values in these columns are {where}. To use one as a
-        field instead, pick it above.
-      </p>
-      <ul className="mt-2 flex flex-wrap gap-1.5">
-        {kept.map((h) => (
-          <li key={h} className="rounded border bg-background px-2 py-0.5 font-mono">
-            {h}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
 }
 
 function ImportStatusBadge({ status }: { status: string }) {
@@ -332,10 +307,41 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
   const [source, setSource] = useState<(typeof IMPORT_SOURCES)[number]>("generic_csv");
   const [entity, setEntity] = useState<ImportEntity>("clients");
   const [file, setFile] = useState<File | null>(null);
-  const [headers, setHeaders] = useState<string[]>([]);
-  const [rows, setRows] = useState<Record<string, any>[]>([]);
+  const [fileHeaders, setHeaders] = useState<string[]>([]);
+  const [fileRows, setRows] = useState<Record<string, any>[]>([]);
+  // Lines of the file that are not rows of data (a group-label row, a
+  // report's date range or totals), shown to the owner with the reason.
+  const [skipped, setSkipped] = useState<SkippedLine[]>([]);
+  // Jobber's Visits report, when added on a plans import: its last and next
+  // visit per Job # become two columns on each plan row.
+  const [visitRows, setVisitRows] = useState<Record<string, unknown>[] | null>(null);
   const [mapping, setMapping] = useState<Record<string, string | null>>({});
+  // Fields set from a column's name alone, on a file no real export backs.
+  const [suggested, setSuggested] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const today = useOrgToday();
+  const tz = useOrgTimezone();
+  const joinsVisits = (s: string, e: ImportEntity, v: unknown[] | null) =>
+    s === "jobber" && e === "services" && !!v;
+  // A Housecall Pro Jobs or Time To Pet Visits file on a plans import is
+  // read as one plan per client and service (src/lib/import-visit-plans.ts).
+  const visitsFile = (s: string, e: ImportEntity, hs: string[]) =>
+    e === "services" ? visitFileColumns(s, hs) : null;
+  const withVisitColumns = (hs: string[], s: string, e: ImportEntity, v: unknown[] | null) =>
+    joinsVisits(s, e, v) && hs.length
+      ? [...hs, JOBBER_LAST_VISIT_COLUMN, JOBBER_NEXT_VISIT_COLUMN, JOBBER_AFTER_NEXT_COLUMN]
+      : visitsFile(s, e, hs)
+        ? [...hs, ...VISITS_COLUMNS]
+        : hs;
+  const headers = withVisitColumns(fileHeaders, source, entity, visitRows);
+  const planColumns = visitsFile(source, entity, fileHeaders);
+  // Visits and plans left out of a visits file, each with the reason.
+  const visitPlans = planColumns ? planVisitFile(fileRows, planColumns, today, tz) : null;
+  const rows = joinsVisits(source, entity, visitRows)
+    ? mergeJobberVisits(fileRows, visitRows!, today)
+    : (visitPlans?.rows ?? fileRows);
+  // A report with nothing to import in it, and which file to export instead.
+  const refused = fileHeaders.length ? reportNotForImport(fileHeaders, fileRows) : null;
 
   // A Service column is offered to a business that runs more than pet waste.
   // A scooper's import has one service, the default, and the mapping step
@@ -347,20 +353,37 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
   );
   const required = REQUIRED_FIELDS[entity];
 
+  // A known export is mapped from its real file's column names. A file
+  // HoundStack has no real export of (any CSV, or a vendor not yet seen)
+  // also gets a suggested field for each column whose name says it.
+  const remap = (s: string, hs: string[], e: ImportEntity) => {
+    const base = autoMap(s, hs, e);
+    if (s !== "generic_csv" && isVerifiedSource(s)) {
+      setMapping(base);
+      setSuggested(new Set());
+      return;
+    }
+    const out = suggestFields(base, hs, TARGET_FIELDS_BY_ENTITY[e], fieldNamesForEntity(e));
+    setMapping(out.mapping);
+    setSuggested(new Set(out.suggested));
+  };
+
   const onFileChange = (f: File | null) => {
     setFile(f);
     if (!f) {
       setHeaders([]);
       setRows([]);
+      setSkipped([]);
       return;
     }
-    Papa.parse<Record<string, any>>(f, {
-      header: true,
+    Papa.parse<string[]>(f, {
       skipEmptyLines: true,
       complete: (res) => {
-        const hs = res.meta.fields ?? [];
+        const table = tableFromCsv(res.data);
+        const hs = table.headers;
         setHeaders(hs);
-        setRows(res.data);
+        setRows(table.rows);
+        setSkipped(table.skipped);
         // Recognize which CRM the export came from and auto-map its fields —
         // switching systems shouldn't require knowing your old CRM's column
         // names. A weak/ambiguous signal keeps the user's manual selection.
@@ -370,24 +393,41 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
           setSource(detected);
           toast.success(`Recognized a ${SOURCE_LABELS[detected] ?? detected} export, fields auto-mapped.`);
         }
-        setMapping(autoMap(effSource, hs, entity));
+        // A vendor's plans, visits, invoices or pets file sets what is being
+        // imported too; the owner can still change it.
+        const kind = detectImportEntity(hs) ?? entity;
+        if (kind !== entity) {
+          setEntity(kind);
+          toast.info(`Importing ${ENTITY_LABELS[kind].toLowerCase()}, from the file's columns.`);
+        }
+        remap(effSource, withVisitColumns(hs, effSource, kind, visitRows), kind);
       },
       error: (err) => toast.error(`CSV parse error: ${err.message}`),
     });
   };
 
+  // Adding or removing the Visits report keeps every column the owner has
+  // already placed; only the two visit columns come and go.
+  const onVisitRows = (v: Record<string, unknown>[] | null) => {
+    setVisitRows(v);
+    if (fileHeaders.length) setMapping((m) => withVisitMapping(m, joinsVisits(source, entity, v)));
+  };
+
   const onSourceChange = (s: (typeof IMPORT_SOURCES)[number]) => {
     setSource(s);
-    if (headers.length) setMapping(autoMap(s, headers, entity));
+    if (fileHeaders.length)
+      remap(s, withVisitColumns(fileHeaders, s, entity, visitRows), entity);
   };
 
   const onEntityChange = (e: ImportEntity) => {
     setEntity(e);
-    if (headers.length) setMapping(autoMap(source, headers, e));
+    if (fileHeaders.length)
+      remap(source, withVisitColumns(fileHeaders, source, e, visitRows), e);
   };
 
   const runPreview = async () => {
     if (!rows.length) return toast.error("Upload a CSV first.");
+    if (refused) return toast.error(refused);
     for (const req of required) {
       if (!mapping[req]) return toast.error(`Choose a column for "${FIELD_LABELS[req] ?? req}".`);
     }
@@ -483,6 +523,10 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
         </div>
       )}
 
+      {source === "jobber" && entity === "services" && (
+        <JobberVisitsFile count={visitRows?.length ?? null} onRows={onVisitRows} />
+      )}
+
       {SOURCE_HINTS[source] && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 p-3 text-xs">
           <span className="text-muted-foreground">{SOURCE_HINTS[source]}</span>
@@ -496,44 +540,49 @@ function NewImportWizard({ onCreated }: { onCreated: () => void }) {
         <div className="space-y-3">
           <div className="text-sm text-muted-foreground">
             Detected <span className="font-medium text-foreground">{rows.length}</span> rows and{" "}
-            <span className="font-medium text-foreground">{headers.length}</span> columns. Match each
-            target field to a column (auto-mapped from the {SOURCE_LABELS[source]} preset).
+            <span className="font-medium text-foreground">{headers.length}</span> columns. Each
+            column is set from the {SOURCE_LABELS[source]} export; check where each one goes.
           </div>
+          <ImportFileNotes
+            skipped={skipped}
+            visitRows={planColumns ? fileRows.length : null}
+            plans={rows.length}
+            left={visitPlans?.left ?? []}
+          />
+          {refused && (
+            <div
+              role="alert"
+              className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm break-words text-destructive"
+            >
+              {refused}
+            </div>
+          )}
           {!isVerifiedSource(source) && (
             <div
               role="status"
               className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300"
             >
               HoundStack has not seen a real {SOURCE_LABELS[source]} export yet, so this mapping is
-              a best guess from its column names. Check every field below before you preview;
+              a best guess from its column names. Check where every column goes before you preview;
               every column is still shown on the preview before anything is saved.
             </div>
           )}
-          <div className="grid gap-3 sm:grid-cols-2">
-            {targetFields.map((field) => (
-              <label key={field} className="space-y-1 text-sm">
-                <span className="font-medium">
-                  {FIELD_LABELS[field] ?? field}
-                  {required.includes(field) && <span className="text-red-500"> *</span>}
-                </span>
-                <select
-                  value={mapping[field] ?? ""}
-                  onChange={(e) =>
-                    setMapping((prev) => ({ ...prev, [field]: e.target.value || null }))
-                  }
-                  className="block w-full rounded border bg-background px-3 py-2 text-sm"
-                >
-                  <option value="">(skip)</option>
-                  {headers.map((h) => (
-                    <option key={h} value={h}>{h}</option>
-                  ))}
-                </select>
-              </label>
-            ))}
-          </div>
-          <KeptColumns entity={entity} mapping={mapping} headers={headers} />
+          <ColumnMappingTable
+            entity={entity}
+            headers={headers}
+            rows={rows}
+            mapping={mapping}
+            onChange={(m) => {
+              setMapping(m);
+              setSuggested((prev) => new Set([...prev].filter((f) => m[f] === mapping[f])));
+            }}
+            targetFields={targetFields}
+            required={required}
+            labels={FIELD_LABELS}
+            suggested={suggested}
+          />
           <div className="flex justify-end">
-            <Button onClick={runPreview} disabled={busy}>
+            <Button onClick={runPreview} disabled={busy || !!refused}>
               {busy ? "Analyzing…" : "Dry-run preview"}
             </Button>
           </div>

@@ -169,6 +169,7 @@ export function emptyTables(): Tables {
     client_notes: [],
     services: [],
     waste_stations: [],
+    staff: [],
     organizations: [
       {
         id: "org",

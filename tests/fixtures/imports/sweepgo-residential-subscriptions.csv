@@ -1,0 +1,9 @@
+Status,Revenue,Revenue Type,Tip,Billing Option,Billing Interval,End of Billing Period,Client Name,Start Date,End Date,Subs. Name,Termination Reason,Termination Comment,Address
+"Active","23.00","per cleanup","No data","Postpaid Per Cleanup","Monthly","2026-12-01","Dana Placeholder","2026-11-27","No data","Regular Plan - 2d-1xW","No data","No data","101 Test Lane, Austin, Texas 78701"
+"Active","16.00","per cleanup","No data","Postpaid Per Cleanup","Monthly","2026-12-01","Sam Research","2026-11-27","No data","Regular Plan - 1d-2xW","No data","No data","202 Sample Road, Austin, Texas 78701"
+"Active","31.00","per cleanup","No data","Postpaid Per Cleanup","Monthly","2026-12-01","Lee Testcase","2026-11-27","No data","Regular Plan - 3d-bW","No data","No data","303 Fixture Court Unit 4, Austin, Texas 78701"
+"Canceled","40.00","per cleanup","No data","Postpaid Per Cleanup","Monthly","2026-11-27","Morgan Example","2026-11-27","2026-11-27","Regular Plan - 1d-1xM","Moved","Test cancel, fictional client","404 Demo Drive, Austin, Texas 78701"
+
+"Total:","4"
+"Cleanup Subscriptions:","4"
+"Additional Service Subscriptions:","0"

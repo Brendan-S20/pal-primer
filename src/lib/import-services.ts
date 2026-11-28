@@ -23,8 +23,16 @@
 // below is the one place the plan row is built, and a test holds it to the
 // old shape.
 
+import {
+  FIRST_NAME_COLUMNS,
+  LAST_NAME_COLUMNS,
+  VISITS_LEFT_OUT_COLUMN,
+  VISITS_NOTES_COLUMN,
+  VISITS_SCHEDULE_NOTE_COLUMN,
+} from "@/lib/import-leftovers";
+import { noVisit, planAnchor, statedMonthDay, type OffWhich } from "@/lib/import-plan-anchor";
 import type { ServiceLine } from "@/lib/service-lines";
-import { orgLocalDay } from "@/lib/org-day";
+import { orgLocalDay, orgToday } from "@/lib/org-day";
 
 export type ImportFrequency = {
   frequency: "weekly" | "biweekly" | "twice_weekly" | "monthly" | "one_time" | "every_n_days";
@@ -125,6 +133,8 @@ const NUMBER_WORDS: Record<string, number> = {
 export function parseFrequency(text: string | null | undefined): ImportFrequency | null {
   const s = (text ?? "").toLowerCase().trim();
   if (!s) return null;
+  const code = sweepGoPlanCode(s);
+  if (code) return code.frequency;
   if (/one[- ]?(time|off)|single|once\b/.test(s)) return { frequency: "one_time" };
   if (/twice (a |per )?week|2x ?(a |per )?week|two times (a |per )?week|semi[- ]?weekly/.test(s)) {
     return { frequency: "twice_weekly" };
@@ -145,6 +155,36 @@ export function parseFrequency(text: string | null | undefined): ImportFrequency
   // A bare weekday ("Tuesday") in a frequency column means weekly on it.
   if (parseWeekdays(s).length) return { frequency: "weekly" };
   return null;
+}
+
+/** Sweep&Go names a plan by dogs and visits ("Regular Plan - 2d-1xW": two
+ *  dogs, once a week; real export, 2026-11-27): "1xW" weekly, "2xW" twice a
+ *  week, "bW" every other week, "1xM" monthly. Null when the text holds no
+ *  such code; a code with a count HoundStack has no plan for ("3xW") gives
+ *  a null frequency, so the row is refused with the text quoted. */
+export function sweepGoPlanCode(
+  text: string | null | undefined,
+): { dogs: number | null; frequency: ImportFrequency | null; label: string | null } | null {
+  const m = (text ?? "").match(/(?:^|[\s-])(?:(\d{1,2})d-)?(?:(\d)x([wm])|(b)w)\s*$/i);
+  if (!m) return null;
+  const [, dogs, times, per, every] = m;
+  const n = Number(times);
+  const unit = (per ?? "").toLowerCase();
+  const frequency: ImportFrequency | null = every
+    ? { frequency: "biweekly" }
+    : unit === "w" && n === 1
+      ? { frequency: "weekly" }
+      : unit === "w" && n === 2
+        ? { frequency: "twice_weekly" }
+        : unit === "m" && n === 1
+          ? { frequency: "monthly" }
+          : null;
+  const label =
+    (text ?? "")
+      .slice(0, m.index)
+      .replace(/[\s-]+$/, "")
+      .trim() || null;
+  return { dogs: dogs ? Number(dogs) : null, frequency, label };
 }
 
 /** "$1,234.50", "1234.5", "(45.00)" → cents. Null when not a number. The
@@ -191,7 +231,11 @@ export function parseImportDate(
   text: string | null | undefined,
   tz?: string | null,
 ): string | null {
-  const s = (text ?? "").trim();
+  // Time To Pet's reports open a date with its weekday ("Fri Dec 25, 2026
+  // 12:00 PM"); the weekday says nothing the date does not.
+  const s = (text ?? "")
+    .trim()
+    .replace(/^(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?,?\s+(?=[a-z]{3,9}\.?\s+\d)/i, "");
   if (!s) return null;
   let y: number, m: number, d: number;
   const iso = s.match(
@@ -282,14 +326,48 @@ export type MappedService = {
   client_email?: string | null;
   frequency: ImportFrequency["frequency"];
   /** False when the file has no frequency column at all (Jobber's Recurring
-   *  jobs report, #857): the plan is weekly on paper, comes in paused, and
-   *  the owner sets how often before turning it on. */
+   *  jobs report, #857), or the row's cell is blank: the plan is weekly on
+   *  paper, comes in paused, and the owner sets how often before turning it
+   *  on. */
   frequency_in_file: boolean;
   interval_weeks: number | null;
   interval_days: number | null;
   price_cents: number;
   preferred_weekdays: number[] | null;
+  /** Where the plan's schedule is walked from (subscriptions.started_on).
+   *  With visit dates in the file (planAnchor): the date that at least one
+   *  other of start, last visit and next visit agrees with on the plan's
+   *  frequency, preferring the next visit, so one visit moved by hand does
+   *  not move the whole schedule; with no agreement, the file's start date.
+   *  Without visit dates, the file's start date. */
   started_on: string | null;
+  /** Which date the schedule is walked from, and the visits off that
+   *  schedule (moved once in the old system), for the plan's note.
+   *  `schedule_changed`: the upcoming visits agree with each other and not
+   *  with the last one, so the schedule was changed and the plan follows
+   *  the upcoming visits. `dates_disagree`: no two dates agree and nothing
+   *  says which is right, so the owner is asked to check. */
+  anchor_from?: "next visit" | "visit after next" | "last visit" | "start date";
+  off_schedule?: { which: OffWhich; on: string }[];
+  schedule_changed?: boolean;
+  /** The plan follows the upcoming visits and the last visit is off them,
+   *  with no start date to say whether the schedule changed or that one
+   *  visit was moved. */
+  last_or_changed?: boolean;
+  dates_disagree?: boolean;
+  /** The booked visit after the next one, when the file has it. */
+  visit_after_next?: string | null;
+  /** The day the plan stops (subscriptions.ends_on): the old system's
+   *  schedule end date (Jobber's "Schedule end date"). */
+  ends_on?: string | null;
+  /** The file's own start date, kept for the plan's note when the plan is
+   *  walked from a visit instead. */
+  file_started_on?: string | null;
+  /** The last completed visit and the next booked one, when the file has
+   *  them (a Jobber import joined with its Visits report). A plan holds no
+   *  last-visit date of its own, so both are also written in its note. */
+  last_visit?: string | null;
+  next_visit?: string | null;
   dog_count: number | null;
   billing_cadence: "prepaid" | "postpaid" | null;
   /** How often the client is billed, when the file's billing column says
@@ -302,6 +380,21 @@ export type MappedService = {
    *  the file has no Service column or the cell is blank: the plan then
    *  takes the business's default, as every import before the catalog. */
   service_name: string | null;
+  /** The street the old system did the plan at (Jobber's "Service street"),
+   *  so a client with two addresses gets the plan on the right one. Only
+   *  present when the file names one. */
+  service_street?: string | null;
+  /** Who the old system assigned the visits to (Jobber's "Visits assigned
+   *  to"), matched to a team member by name at commit. Only present when
+   *  the file names one. */
+  assigned_to?: string | null;
+  /** What a visits file said about the plan that its fields cannot hold
+   *  (planVisitFile): a warning about the schedule, the visits canceled or
+   *  undated, and the notes on its visits. Each goes on the plan's note in
+   *  full, ahead of the file's other columns. */
+  schedule_note?: string | null;
+  left_out?: string | null;
+  visit_notes?: string | null;
 };
 
 /** The same bound as services_name_length. A longer cell is cut, not
@@ -415,6 +508,9 @@ export function importPlanRow(
     isResidential: boolean;
     dogCount: number | null;
     service: ImportService | null;
+    /** The team member the old system assigned the visits to, when the
+     *  file named one that matches (staffByName). */
+    staffId?: string | null;
     /** When the import runs (ISO), for price_overridden_at. */
     now: string;
   },
@@ -443,12 +539,123 @@ export function importPlanRow(
     // recorded as set by hand.
     price_overridden_at: ctx.now,
     ...(m.started_on ? { started_on: m.started_on } : {}),
+    ...(m.ends_on ? { ends_on: m.ends_on } : {}),
     ...(ctx.service ? { service_id: ctx.service.id } : {}),
+    ...(ctx.staffId ? { assigned_staff_id: ctx.staffId } : {}),
     ...(setDays ? { weekdays: m.preferred_weekdays } : {}),
     status: "paused",
     paused_at: ctx.now,
   };
 }
+
+const squashStreet = (s: string | null | undefined) =>
+  (s ?? "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+
+/** Which of the client's addresses a plan goes on: the one whose street is
+ *  the file's service street (case and punctuation aside; "12 Example Lane"
+ *  matches "12 Example Lane, Apt 2"), else the first. `matched` is false
+ *  when the file named a street none of them has, so the commit can say. */
+const UNIT =
+  /^(unit|apt|apartment|suite|ste|lot|bldg|building|fl|floor|rm|room|no|number|trlr|space|spc|#)\b|^\d{1,4}[a-z]?\b|^[a-z]\b/;
+
+export function pickPlanProperty<P extends { street: string | null }>(
+  props: readonly P[],
+  serviceStreet: string | null | undefined,
+): { prop: P | null; matched: boolean } {
+  if (!props.length) return { prop: null, matched: false };
+  const want = squashStreet(serviceStreet);
+  if (!want) return { prop: props[0], matched: true };
+  // Sweep&Go's subscriptions export writes the whole address in one cell
+  // ("101 Test Lane, Austin, Texas 78701"), so a file street that begins
+  // with the property's street matches too, after an exact match.
+  // The rest of the longer one must not be a unit ("303 Fixture Court Unit
+  // 4" is not 303 Fixture Court): only a city, state or zip may follow.
+  const notUnit = (rest: string) => !UNIT.test(rest);
+  const hit =
+    props.find((p) => squashStreet(p.street) === want) ??
+    props.find((p) => {
+      const have = squashStreet(p.street);
+      return have.startsWith(`${want} `) && notUnit(have.slice(want.length + 1));
+    }) ??
+    props.find((p) => {
+      const have = squashStreet(p.street);
+      return !!have && want.startsWith(`${have} `) && notUnit(want.slice(have.length + 1));
+    });
+  return hit ? { prop: hit, matched: true } : { prop: props[0], matched: false };
+}
+
+/** The one client called `name` (lowercased) with a service address at
+ *  `street`, or null when no street is given or not exactly one of them is
+ *  there: two clients of one name are told apart by where they live, never
+ *  guessed. */
+export function clientAtStreet(
+  clients: readonly {
+    id: string;
+    display_name: string | null;
+    streets?: { street: string | null }[];
+  }[],
+  name: string,
+  street: string | null | undefined,
+): string | null {
+  if (!squashStreet(street)) return null;
+  const hits = clients.filter(
+    (c) =>
+      (c.display_name ?? "").trim().toLowerCase() === name &&
+      pickPlanProperty(c.streets ?? [], street).matched &&
+      (c.streets ?? []).length > 0,
+  );
+  return hits.length === 1 ? hits[0].id : null;
+}
+
+/** The active team member a name names (case and spacing aside), or null
+ *  when none or more than one does. */
+export function staffByName<S extends { id: string; display_name: string | null }>(
+  staff: readonly S[],
+  name: string | null | undefined,
+): S | null {
+  const want = (name ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+  if (!want) return null;
+  const hits = staff.filter(
+    (s) => (s.display_name ?? "").toLowerCase().replace(/\s+/g, " ").trim() === want,
+  );
+  return hits.length === 1 ? hits[0] : null;
+}
+
+const byName = (raw: Record<string, unknown>, names: readonly string[]) => {
+  const want = new Set(names.map((n) => n.toLowerCase()));
+  const key = Object.keys(raw).find((k) => want.has(k.trim().toLowerCase()));
+  return key ? String(raw[key] ?? "").trim() : "";
+};
+function splitName(raw: Record<string, unknown>): string | null {
+  const name = [byName(raw, FIRST_NAME_COLUMNS), byName(raw, LAST_NAME_COLUMNS)]
+    .filter(Boolean)
+    .join(" ");
+  return name || null;
+}
+
+/** The weekday and its week of the month (the second Friday: [5, 2]) that a
+ *  visits file's schedule note says the old plan ran on, or null. A visit
+ *  on that day is on the old schedule, not moved, though HoundStack repeats
+ *  the plan on one date (import-visit-frequency.ts writes the note). */
+const NTH_NOTE =
+  /monthly on the (first|second|third|fourth|fifth) (Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\./;
+function nthWeekdayOfNote(note: string | null): [number, number] | null {
+  const m = (note ?? "").match(NTH_NOTE);
+  if (!m) return null;
+  const k = ["first", "second", "third", "fourth", "fifth"].indexOf(m[1]) + 1;
+  const wd = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].indexOf(
+    m[2],
+  );
+  return [wd, k];
+}
+const onNthWeekday = (iso: string, [wd, k]: [number, number]) =>
+  new Date(`${iso}T00:00:00Z`).getUTCDay() === wd && Math.ceil(Number(iso.slice(8, 10)) / 7) === k;
+
+const ENDED_STATUS = /^(cancell?ed|terminated|ended|closed|inactive|archived|expired)$/i;
+const PER_VISIT = /\b(per|each|every|a)\s+(cleanup|clean-up|visit|service|job|walk|session)\b/i;
 
 export function mapServiceRow(
   raw: Record<string, unknown>,
@@ -456,13 +663,33 @@ export function mapServiceRow(
   tz?: string | null,
 ): { mapped: MappedService | null; error: string | null } {
   const client_external_id = cell(raw, mapping, "client_external_id");
-  const client_name = cell(raw, mapping, "client_name");
+  // A file that splits the name (Sweep&Go's Completed Jobs: "Client First
+  // Name", "Client Last Name") gives it whole when no column is mapped.
+  const client_name = cell(raw, mapping, "client_name") ?? splitName(raw);
   const client_email =
     cell(raw, mapping, "client_email")
       ?.split(/[;,\s]+/)[0]
       ?.toLowerCase() ?? null;
   if (!client_external_id && !client_name && !client_email) {
     return { mapped: null, error: "Missing the client (map an ID, a name or an email column)" };
+  }
+  // A plan cancelled in the old system is not a live plan (Sweep&Go's
+  // subscriptions "Status": Active, Paused, Pending or Canceled).
+  const statusText = cell(raw, mapping, "plan_status");
+  if (statusText && ENDED_STATUS.test(statusText)) {
+    return {
+      mapped: null,
+      error: `"${statusText}" in the old system, so it is not imported as a live plan. Add it by hand if it starts again.`,
+    };
+  }
+  // What the price is per (Sweep&Go's "Revenue Type": "per cleanup"). A
+  // price per month or per billing period is not a price per visit.
+  const basisText = cell(raw, mapping, "price_basis");
+  if (basisText && !PER_VISIT.test(basisText)) {
+    return {
+      mapped: null,
+      error: `The price is "${basisText}", not per visit. Add this plan by hand with its price per visit.`,
+    };
   }
   const freqText = cell(raw, mapping, "frequency");
   const dayText = cell(raw, mapping, "service_day");
@@ -472,6 +699,17 @@ export function mapServiceRow(
   const freq = freqText ? parseFrequency(freqText) : { frequency: "weekly" as const };
   if (!freq) return { mapped: null, error: `Frequency not understood: "${freqText}"` };
   const priceText = cell(raw, mapping, "price_per_visit");
+  const billText = (cell(raw, mapping, "billing") ?? "").toLowerCase();
+  // Jobber's "Fixed price" billing puts the amount per billing period in
+  // Total ($) (a weekly job at 80.00 billed monthly reads 80.00; real
+  // export, 2026-11-27). Taking it as a per-visit price would bill the
+  // client four times over, so the row is refused with the reason.
+  if (/\bfixed\b/.test(billText)) {
+    return {
+      mapped: null,
+      error: `Billed as a fixed price, so "${priceText ?? ""}" is the amount per billing period, not per visit. Add this plan by hand with its price per visit.`,
+    };
+  }
   const price = parseMoneyCents(priceText);
   if (price == null || price < 0) {
     return {
@@ -479,33 +717,191 @@ export function mapServiceRow(
       error: priceText ? `Price not understood: "${priceText}"` : "Missing price per visit",
     };
   }
+  // A zero price is a free visit, not the plan's price (Sweep&Go's Completed
+  // Jobs lists the first "Initial" cleanup at 0.00; real export,
+  // 2026-11-27). A plan at $0 would bill nothing, so it is refused.
+  if (price === 0) {
+    return {
+      mapped: null,
+      error: `The price is "${priceText}" in the file, so it is not the plan's price. Add this plan by hand with its price per visit.`,
+    };
+  }
   const days = parseWeekdays(dayText ?? freqText);
   const startText = cell(raw, mapping, "start_date");
-  const started_on = startText ? parseImportDate(startText, tz) : null;
-  if (startText && !started_on)
+  const file_started_on = startText ? parseImportDate(startText, tz) : null;
+  if (startText && !file_started_on)
     return { mapped: null, error: `Start date not understood: "${startText}"` };
+  // A job closed in the old system is not a live plan (Jobber's "Closed
+  // date" is "-" while the job is open).
+  const closedText = noVisit(cell(raw, mapping, "closed_date"));
+  if (closedText) {
+    const closed = parseImportDate(closedText, tz);
+    return {
+      mapped: null,
+      error: `Closed in the old system${closed ? ` on ${closed}` : ` ("${closedText}")`}, so it is not imported as a live plan. Add it by hand if it starts again.`,
+    };
+  }
+  const endText = noVisit(cell(raw, mapping, "end_date"));
+  const ends_on = endText ? parseImportDate(endText, tz) : null;
+  if (endText && !ends_on) return { mapped: null, error: `End date not understood: "${endText}"` };
+  if (ends_on && ends_on < orgToday(tz ?? undefined)) {
+    return {
+      mapped: null,
+      error: `The schedule ended on ${ends_on} in the old system, so it is not imported as a live plan.`,
+    };
+  }
+  // "-", "N/A", "Never", "TBD" or "None" in a visit column is no visit, not
+  // a reason to refuse the row.
+  const lastText = noVisit(cell(raw, mapping, "last_visit"));
+  const last_visit = lastText ? parseImportDate(lastText, tz) : null;
+  if (lastText && !last_visit)
+    return { mapped: null, error: `Last visit not understood: "${lastText}"` };
+  const nextText = noVisit(cell(raw, mapping, "next_visit"));
+  const next_visit = nextText ? parseImportDate(nextText, tz) : null;
+  if (nextText && !next_visit)
+    return { mapped: null, error: `Next visit not understood: "${nextText}"` };
+  const afterText = noVisit(cell(raw, mapping, "visit_after_next"));
+  const visit_after_next = afterText ? parseImportDate(afterText, tz) : null;
+  if (afterText && !visit_after_next)
+    return { mapped: null, error: `Visit after next not understood: "${afterText}"` };
+  const anchor = planAnchor({
+    frequency: freq.frequency,
+    intervalWeeks: freq.intervalWeeks ?? null,
+    intervalDays: freq.intervalDays ?? null,
+    weekdays: days,
+    frequencyInFile: !!freqText,
+    start: file_started_on,
+    last: last_visit,
+    next: next_visit,
+    afterNext: visit_after_next,
+    monthDay: statedMonthDay(freqText),
+  });
+  const started_on = anchor.on;
+  // A monthly plan on the second Friday, set to one date here: its visits
+  // on the second Friday are on its old schedule, not moved (#1069, Rigel).
+  const nth = nthWeekdayOfNote(byName(raw, [VISITS_SCHEDULE_NOTE_COLUMN]));
+  if (nth) {
+    anchor.off = anchor.off.filter((o) => !onNthWeekday(o.on, nth));
+    if (!anchor.off.length) anchor.unsure = false;
+  }
+  const serviceStreet = cell(raw, mapping, "service_street");
+  const assignedTo = cell(raw, mapping, "assigned_to")?.split(/[;,]/)[0]?.trim() || null;
   const dogText = cell(raw, mapping, "dog_count");
-  const dogs = dogText ? Number(dogText.replace(/[^\d]/g, "")) : NaN;
-  const billText = (cell(raw, mapping, "billing") ?? "").toLowerCase();
+  const dogCode = sweepGoPlanCode(dogText);
+  const dogs = dogCode
+    ? (dogCode.dogs ?? NaN)
+    : dogText
+      ? Number(dogText.replace(/[^\d]/g, ""))
+      : NaN;
+  // "Regular Plan - 2d-1xW" is the plan "Regular Plan"; the code is its
+  // dogs and frequency, read above.
+  const serviceText = cell(raw, mapping, "service");
+  const serviceName = sweepGoPlanCode(serviceText)?.label ?? serviceText;
+  const scheduleNote = byName(raw, [VISITS_SCHEDULE_NOTE_COLUMN]);
+  const leftOut = byName(raw, [VISITS_LEFT_OUT_COLUMN]);
+  const visitNotes = byName(raw, [VISITS_NOTES_COLUMN]);
   return {
     mapped: {
       client_external_id,
       client_name,
       client_email,
       frequency: freq.frequency,
-      frequency_in_file: !!mapping.frequency,
+      frequency_in_file: !!freqText,
       interval_weeks: freq.intervalWeeks ?? null,
       interval_days: freq.intervalDays ?? null,
       price_cents: price,
       preferred_weekdays: days.length ? days : null,
       started_on,
+      // Only a row with a visit date carries these, so a file without them
+      // maps to exactly the plan it always did.
+      ...(last_visit || next_visit
+        ? {
+            file_started_on,
+            last_visit,
+            next_visit,
+            anchor_from: anchor.from ?? undefined,
+            off_schedule: anchor.off,
+            ...(visit_after_next ? { visit_after_next } : {}),
+            ...(anchor.changed ? { schedule_changed: true } : {}),
+            ...(anchor.lastOrChanged ? { last_or_changed: true } : {}),
+            ...(anchor.unsure ? { dates_disagree: true } : {}),
+          }
+        : {}),
+      ...(ends_on ? { ends_on } : {}),
       dog_count: Number.isFinite(dogs) && dogs > 0 && dogs <= 50 ? dogs : null,
       billing_cadence: billText.startsWith("pre") ? "prepaid" : billText ? "postpaid" : null,
-      billing_frequency: parseBillingFrequency(billText),
-      service_name: cell(raw, mapping, "service"),
+      // How often the client is invoiced: the file's own billing frequency
+      // column when it has one (Jobber: "Monthly on the last day of the
+      // month" beside a "Per visit" billing type), else the billing cell.
+      billing_frequency:
+        parseBillingFrequency(cell(raw, mapping, "billing_frequency")) ??
+        parseBillingFrequency(billText),
+      service_name: serviceName,
+      ...(serviceStreet ? { service_street: serviceStreet } : {}),
+      ...(assignedTo ? { assigned_to: assignedTo } : {}),
+      ...(scheduleNote ? { schedule_note: scheduleNote } : {}),
+      ...(leftOut ? { left_out: leftOut } : {}),
+      ...(visitNotes ? { visit_notes: visitNotes } : {}),
     },
     error: null,
   };
+}
+
+/** The plan's dates from the old system, for the client's office note:
+ *  when it started there, its last completed visit, its next booked visit,
+ *  which of them the plan's schedule is walked from, and the day it ends.
+ *  Null when the row had none of these (the start date alone is already
+ *  the plan's). */
+export function planVisitsNote(
+  sourceLabel: string,
+  m: Pick<
+    MappedService,
+    | "file_started_on"
+    | "last_visit"
+    | "next_visit"
+    | "started_on"
+    | "anchor_from"
+    | "off_schedule"
+    | "schedule_changed"
+    | "last_or_changed"
+    | "dates_disagree"
+    | "visit_after_next"
+    | "ends_on"
+  >,
+): string | null {
+  const ends = m.ends_on
+    ? ` It ends ${m.ends_on}, as it did in ${sourceLabel}; clear the end date on the plan to keep it going.`
+    : "";
+  if (!m.last_visit && !m.next_visit) {
+    return ends ? `Imported plan from ${sourceLabel}.${ends}` : null;
+  }
+  const parts = [
+    m.file_started_on ? `started there ${m.file_started_on}` : null,
+    `last visit ${m.last_visit ?? "none completed"}`,
+    `next visit ${m.next_visit ?? "none booked"}`,
+    m.visit_after_next ? `the one after ${m.visit_after_next}` : null,
+  ].filter(Boolean);
+  const from =
+    m.anchor_from ??
+    (m.started_on === m.next_visit
+      ? "next visit"
+      : m.started_on === m.last_visit
+        ? "last visit"
+        : "start date");
+  const offList = (m.off_schedule ?? []).map((o) => `${o.which} ${o.on}`).join(", ");
+  const why = m.schedule_changed
+    ? ` The upcoming visits are on a different schedule from the last visit (${m.last_visit}), so the schedule was changed in ${sourceLabel} and the plan follows the upcoming visits.`
+    : m.last_or_changed
+      ? ` The last visit (${m.last_visit}) is off the schedule of the upcoming visits: it was moved once, or the schedule was changed in ${sourceLabel}. The plan follows the upcoming visits.`
+      : m.dates_disagree
+        ? ` The dates from ${sourceLabel} do not agree on this schedule (${offList}), and nothing in the file says which is right; check the plan's visits before you turn it on.`
+        : (m.off_schedule ?? [])
+            .map(
+              (o) =>
+                ` The ${o.which} (${o.on}) is off that schedule, so it was likely moved once in ${sourceLabel}; check the plan's visits after you turn it on.`,
+            )
+            .join("");
+  return `Imported plan from ${sourceLabel}: ${parts.join("; ")}. The plan's schedule is set from the ${from} (${m.started_on}).${why}${ends}`;
 }
 
 export type MappedBalance = {
@@ -514,6 +910,8 @@ export type MappedBalance = {
   amount_cents: number;
   due_on: string | null;
   note: string | null;
+  /** The client's street, to tell apart two clients of one name. */
+  service_street?: string | null;
 };
 
 export function mapBalanceRow(
@@ -549,6 +947,9 @@ export function mapBalanceRow(
       amount_cents: amount,
       due_on,
       note: cell(raw, mapping, "note"),
+      ...(cell(raw, mapping, "service_street")
+        ? { service_street: cell(raw, mapping, "service_street") }
+        : {}),
     },
     error: null,
   };

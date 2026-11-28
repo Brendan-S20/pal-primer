@@ -10,13 +10,17 @@ const ROOT = join(import.meta.dirname, "..");
 const FILE = "src/routes/_authenticated/imports.index.tsx";
 const src = readFileSync(join(ROOT, FILE), "utf8");
 
+// Since #1069 the Sweep&Go hint follows a real export (trial, 2026-11-27):
+// the Client List CSV, Billing > Residential Subscriptions, Reports >
+// Completed Jobs and the Referral Sources report.
 const SWEEPGO =
-  "In Sweep&Go, go to Clients > Residential Clients, open the three dots menu and choose Client List CSV. For commercial clients, go to Clients > Commercial Clients, open the three dots menu and export the client list or the locations list. Sweep&Go's help does not describe a dogs export or a balance export, so use the HoundStack template for those if you need them.";
+  "In Sweep&Go, go to Clients > Residential Clients, open the three dots menu and choose Client List CSV. Upload it as it came: the name, cell phone (or home phone), email, status, referral source and the address all come through. For recurring services, open Billing > Residential Subscriptions, add Canceled to the status filter if you like, and choose CSV: the plan, its dogs and how often (\"2d-1xW\"), the price per cleanup and the start and end dates come through, and canceled plans are refused with the reason. Or export Reports > Completed Jobs: each plan is read from its visits, so how often, the price per cleanup (an Initial cleanup's price is not the plan's) and the last and next visit come from the visit dates, and a plan code a plan here cannot repeat (\"1d-3xW\") is listed for you to add by hand. The Referral Sources report has only names: a client already here by that name is skipped, and the Client List CSV carries the referral source. Sweep&Go's exports have no dogs' names or gate codes, so add those by hand. Every plan comes in paused for you to check and turn on. Import clients first, then recurring services.";
 // Since #857 the Jobber hint no longer asks the owner to add a frequency
-// column: the Recurring jobs report has none, and each plan comes in paused
-// for the owner to set. The balance comes from the client export itself.
+// column. A real Recurring jobs report (Jobber trial, 2026-11-27) does have
+// "Visit frequency", and the Visits report adds the last and next visit.
+// The balance comes from the client export itself.
 const JOBBER =
-  "In Jobber, go to Clients > More Actions > Export Clients and choose CSV. Jobber emails the file (up to 1,500 clients per file, admin users only). Upload it as it came: the service address, tags, internal notes and account balance all come through. For recurring services, export Insights > Reports > Recurring jobs report; it has no visit frequency column, so each plan comes in paused for you to set how often and turn on. Import clients first, then recurring services.";
+  "In Jobber, go to Clients > More Actions > Export Clients and choose CSV. Jobber emails the file (up to 1,500 clients per file, admin users only). Upload it as it came: the service address, tags, internal notes and account balance all come through. For recurring services, export Insights > Reports > Recurring jobs with All Columns: how often, the price per visit and the start date come through. Add the Visits report too and each plan also gets its last and next visit. Plans billed as a fixed price are refused, since Jobber's total for them is per billing period, not per visit. Every plan comes in paused for you to check and turn on. Import clients first, then recurring services.";
 
 describe("import hints name menus the vendors document", () => {
   it("shows the documented Sweep&Go and Jobber paths word for word", () => {

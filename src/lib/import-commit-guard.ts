@@ -243,6 +243,12 @@ export type ClientDuplicateIndex = {
   byEmail: Map<string, string>;
   byPhone: Map<string, string>;
   byNameAndStreet: Map<string, string>;
+  /** Name → client, "" when two clients share it. Read only for a file
+   *  with nothing but names to go on (`nameAlone`: Sweep&Go's Referral
+   *  Sources), where a row would otherwise copy every client; in any other
+   *  file a name alone is never a match. */
+  byName: Map<string, string>;
+  nameAlone?: boolean;
 };
 
 export function clientDuplicateIndex(
@@ -254,8 +260,12 @@ export function clientDuplicateIndex(
     byEmail: new Map(),
     byPhone: new Map(),
     byNameAndStreet: new Map(),
+    byName: new Map(),
   };
   for (const c of clients) {
+    const name = squash(c.display_name);
+    if (name)
+      idx.byName.set(name, idx.byName.has(name) && idx.byName.get(name) !== c.id ? "" : c.id);
     if (c.import_external_id && c.import_source === source) {
       idx.byExternal.set(c.import_external_id, c.id);
     }
@@ -273,7 +283,7 @@ export function clientDuplicateIndex(
 
 export type ExistingMatch = {
   id: string;
-  by: "external_id" | "email" | "phone" | "name_and_address";
+  by: "external_id" | "email" | "phone" | "name_and_address" | "name" | "name_shared";
 };
 
 /** The client this row would duplicate, checked in the order a match is
@@ -293,6 +303,17 @@ export function findExistingClient(
   const k = addressKey(row.display_name, row.street, row.postal_code);
   if (k && idx.byNameAndStreet.has(k))
     return { id: idx.byNameAndStreet.get(k)!, by: "name_and_address" };
+  // A row with only a name (no id, email, phone or street) is the client of
+  // that name, when exactly one has it: a file of names alone would
+  // otherwise make a second copy of every client.
+  const name = squash(row.display_name);
+  const bare = !row.external_id && !email && !phone && !squash(row.street);
+  const only = name && bare && idx.nameAlone ? idx.byName.get(name) : undefined;
+  if (only) return { id: only, by: "name" };
+  // More than one client has that name: which one is not known, and a new
+  // client of the same name is the duplicate this guards against, so the
+  // row is skipped and says why (#1069, Rigel at 0545ace1). No id.
+  if (only === "") return { id: "", by: "name_shared" };
   return null;
 }
 
@@ -307,6 +328,9 @@ export function rememberClient(
   for (const key of ["byExternal", "byEmail", "byPhone", "byNameAndStreet"] as const) {
     for (const [value, id] of added[key]) idx[key].set(value, id);
   }
+  for (const [name, id] of added.byName) {
+    idx.byName.set(name, idx.byName.has(name) && idx.byName.get(name) !== id ? "" : id);
+  }
 }
 
 const MATCH_WORDS: Record<ExistingMatch["by"], string> = {
@@ -314,6 +338,8 @@ const MATCH_WORDS: Record<ExistingMatch["by"], string> = {
   email: "email",
   phone: "phone number",
   name_and_address: "name and service address",
+  name: "name, and the file has nothing else to tell them apart",
+  name_shared: "name as more than one of your clients",
 };
 
 /** Why a row is skipped because an earlier row of the same file creates the
@@ -324,6 +350,7 @@ export function inFileDuplicateReason(by: ExistingMatch["by"], firstRow: number)
 
 /** Why a row is skipped because the business already has the client. */
 export function existingClientReason(by: ExistingMatch["by"]): string {
+  if (by === "name_shared") return SHARED_NAME_REASON;
   return `Already in your clients (same ${MATCH_WORDS[by]}).`;
 }
 
@@ -341,7 +368,7 @@ export function labelClientRows(
     if (!row) return null;
     const match = findExistingClient(row, existing);
     if (match) {
-      return { action: "skip", targetId: match.id, reason: existingClientReason(match.by) };
+      return { action: "skip", targetId: match.id || null, reason: existingClientReason(match.by) };
     }
     const twin = findExistingClient(row, inFile);
     if (twin) {
@@ -395,6 +422,10 @@ export type ExistingRecords = {
   propertyKeys: Set<string>;
   /** `${client_id}::${dog name lowercased}` */
   dogKeys: Set<string>;
+  /** The same key, for the dogs with no breed yet: the dog's id. A pets file
+   *  read after the client list (Time To Pet) fills it in rather than
+   *  skipping the dog the client list already made. */
+  dogsWithoutBreed?: Map<string, string>;
   clientsWithActivePlan: Set<string>;
   clientsWithOpeningBalance: Set<string>;
 };
@@ -415,13 +446,19 @@ export const dogKey = (clientId: string, name: string | null | undefined) =>
  * same file are two plans, or two open invoices from an aged-receivables
  * export, and both are kept, as the preview always said.
  */
+/** Why a row whose name two of the business's clients share is skipped.
+ *  The commit leaves such a row skipped: it is not a repeat of a row
+ *  above it in the file (#1069, Rigel at 64eb54c9). */
+export const SHARED_NAME_REASON =
+  "More than one of your clients has this name, and the file has nothing else (no ID, email, phone or address) to say which, so it is skipped rather than added again. Add anything new on it by hand.";
+
 export function alreadyInDatabase(
   entity: string,
   mapped: ClientRow & { name?: string | null },
   targetId: string | null,
   existing: ExistingRecords,
 ): string | null {
-  if (entity === "clients") return findExistingClient(mapped, existing.clients)?.id ?? null;
+  if (entity === "clients") return findExistingClient(mapped, existing.clients)?.id || null;
   if (!targetId) return null;
   if (entity === "properties") {
     return existing.propertyKeys.has(propertyKey(targetId, mapped.street, mapped.postal_code))
