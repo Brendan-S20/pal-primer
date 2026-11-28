@@ -6,12 +6,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  createBrowserHistory,
   createMemoryHistory,
   createRootRoute,
   createRoute,
   createRouter,
   Outlet,
   RouterProvider,
+  useNavigate,
 } from "@tanstack/react-router";
 import { act, Suspense, type ComponentType, type ReactNode } from "react";
 
@@ -32,6 +34,20 @@ vi.mock("@/lib/sales-tax.functions", () => ({
   updateSalesTaxSettings: async () => ({}),
 }));
 
+// The real sign-out hook, over a stand-in for the step that ends the session.
+const session = vi.hoisted(() => ({ end: vi.fn(async () => true) }));
+vi.mock("@/lib/offline/sign-out", () => ({
+  flushThenClearAndSignOut: async () => ({
+    signedOut: await session.end(),
+    synced: 0,
+    discarded: 0,
+    lost: 0,
+    flushSkipped: false,
+  }),
+}));
+vi.mock("@/hooks/useSyncCallers", () => ({ useSyncCallers: () => ({}) }));
+
+import { useOfflineSignOut } from "@/hooks/useOfflineSignOut";
 import { Route as Invoicing } from "@/routes/_authenticated/settings.invoicing";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -67,7 +83,13 @@ const click = async (el: Element | undefined) => {
   await act(async () => (el as HTMLElement).click());
 };
 
-afterEach(unmountAll);
+const histories: { destroy: () => void }[] = [];
+afterEach(async () => {
+  await unmountAll();
+  histories.splice(0).forEach((h) => h.destroy());
+  session.end.mockReset();
+  session.end.mockResolvedValue(true);
+});
 
 const input = (id: string) => document.getElementById(id) as HTMLInputElement;
 async function type(id: string, value: string) {
@@ -79,8 +101,33 @@ async function type(id: string, value: string) {
   });
 }
 
-async function open() {
-  const root = createRootRoute({ component: () => <Outlet /> });
+/** Stands where the signed-in shell does: its Sign out, then off to /auth. */
+function Shell() {
+  const { signOut } = useOfflineSignOut();
+  const navigate = useNavigate();
+  return (
+    <>
+      <button
+        onClick={async () => {
+          if (await signOut()) await navigate({ to: "/auth" } as never);
+        }}
+      >
+        Sign out
+      </button>
+      <Outlet />
+    </>
+  );
+}
+
+/** Would the browser show its own prompt if the page unloaded now? */
+function browserWouldAsk() {
+  const e = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(e);
+  return e.defaultPrevented;
+}
+
+async function open(browser = false) {
+  const root = createRootRoute({ component: Shell });
   const Page = Invoicing.options.component as ComponentType;
   const page = createRoute({
     getParentRoute: () => root,
@@ -101,9 +148,20 @@ async function open() {
     path: "/settings/billing",
     component: () => null,
   });
+  const auth = createRoute({
+    getParentRoute: () => root,
+    path: "/auth",
+    component: () => <p>The sign-in screen</p>,
+  });
+  // Only the browser history listens for the unload.
+  if (browser) window.history.replaceState(null, "", "/settings/invoicing");
+  const history = browser
+    ? createBrowserHistory()
+    : createMemoryHistory({ initialEntries: ["/settings/invoicing"] });
+  if (browser) histories.push(history);
   const router = createRouter({
-    routeTree: root.addChildren([page, other, billing]),
-    history: createMemoryHistory({ initialEntries: ["/settings/invoicing"] }),
+    routeTree: root.addChildren([page, other, billing, auth]),
+    history,
   });
   await render(
     <QueryClientProvider client={new QueryClient()}>
@@ -158,5 +216,59 @@ describe("leaving Settings, Invoicing", () => {
     await until(() => !reads("Unsaved changes"));
     await leave(router as never);
     await until(() => reads("The dashboard"));
+  });
+});
+
+describe("signing out with unsaved invoicing changes", () => {
+  const dirtyPage = async () => {
+    const router = await open(true);
+    await type("taxrate", "9");
+    await until(() => reads("Unsaved changes"));
+    expect(browserWouldAsk()).toBe(true);
+    await click(button("Sign out"));
+    await until(() => reads("Leave without saving?"));
+    // Asked while there is still a session to stay in.
+    expect(session.end).not.toHaveBeenCalled();
+    return router;
+  };
+
+  it("keeps the session and the value when told to stay", async () => {
+    const router = await dirtyPage();
+    await click(button("Stay on this page"));
+    await until(() => !reads("Leave without saving?"));
+    await tick();
+    expect(session.end).not.toHaveBeenCalled();
+    expect(router.state.location.pathname).toBe("/settings/invoicing");
+    expect(input("taxrate").value).toBe("9");
+    expect(browserWouldAsk()).toBe(true);
+  });
+
+  it("asks once, signs out and reaches /auth when told to leave", async () => {
+    // What a full page load to /auth would meet, as the session ends.
+    let askedAtEnd: boolean | undefined;
+    session.end.mockImplementation(async () => {
+      askedAtEnd = browserWouldAsk();
+      return true;
+    });
+    const router = await dirtyPage();
+    await click(button("Leave without saving"));
+    await until(() => reads("The sign-in screen"));
+    expect(session.end).toHaveBeenCalledTimes(1);
+    expect(askedAtEnd).toBe(false);
+    expect(reads("Leave without saving?")).toBe(false);
+    expect(router.state.location.pathname).toBe("/auth");
+  });
+
+  it("guards the page again when the sign-out is then called off", async () => {
+    // "Stay signed in" at the unsynced-work question.
+    session.end.mockResolvedValue(false);
+    const router = await dirtyPage();
+    await click(button("Leave without saving"));
+    await until(() => session.end.mock.calls.length === 1);
+    await tick();
+    expect(input("taxrate").value).toBe("9");
+    expect(browserWouldAsk()).toBe(true);
+    await leave(router as never);
+    await until(() => reads("Leave without saving?"));
   });
 });

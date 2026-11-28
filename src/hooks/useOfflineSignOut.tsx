@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { flushThenClearAndSignOut } from "@/lib/offline/sign-out";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { useSyncCallers } from "@/hooks/useSyncCallers";
+import { endSessionAfterAsking } from "@/hooks/useUnsavedChangesGuard";
 
 export function useOfflineSignOut() {
   // Every kind the queue can hold has to be replayable from here. A caller
@@ -31,7 +32,7 @@ export function useOfflineSignOut() {
 
   /** Resolves true when the session actually ended. False means the tech chose
    *  to keep their unsynced work — do NOT navigate to /auth on false. */
-  const signOut = useCallback(async (): Promise<boolean> => {
+  const flushAndSignOut = useCallback(async (): Promise<boolean> => {
     const outcome = await flushThenClearAndSignOut({
       callers,
       confirmDiscard: (remaining) =>
@@ -76,6 +77,10 @@ export function useOfflineSignOut() {
     }
     return outcome.signedOut;
   }, [callers, confirm]);
+
+  // Unsaved form changes are asked about first, while there is still a session
+  // to stay in. False covers that "stay" too.
+  const signOut = useCallback(() => endSessionAfterAsking(flushAndSignOut), [flushAndSignOut]);
 
   return { signOut, dialog };
 }

@@ -222,7 +222,7 @@ function SalesTaxCard({ onDirtyChange }: { onDirtyChange: (dirty: boolean) => vo
 
   const rateBps = parseTaxRatePercent(rateText);
   const example = rateBps !== null && rateBps > 0 ? invoiceTotals(10_000, rateBps, label) : null;
-  // Compared as it would be saved, so "8.250" or a trailing space is no change.
+  // Compared as it would be saved, so "8.50" for 8.5 or a trailing space is no change.
   const dirty =
     rateBps !== data.rateBps || (label.trim() || DEFAULT_SALES_TAX_LABEL) !== data.label;
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);

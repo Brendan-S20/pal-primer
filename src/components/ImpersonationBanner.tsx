@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase, isImpersonationTab } from "@/integrations/supabase/client";
 import { endImpersonationSession } from "@/lib/platform.functions";
 import { IMPERSONATION_EXPIRED_EVENT } from "@/lib/impersonation-expiry";
+import { endSessionAfterAsking } from "@/hooks/useUnsavedChangesGuard";
 import { ShieldAlert, Clock } from "lucide-react";
 
 // Persistent, page-independent banner shown on EVERY page of an impersonation
@@ -161,7 +162,7 @@ export function ImpersonationBanner() {
 
   if (!info) return null;
 
-  const exit = async () => {
+  const stop = async () => {
     setExiting(true);
     // Record the stop event + duration BEFORE we sign out, while the grant id
     // is still to hand. Authorized by grant-id possession (server-side), so it
@@ -184,7 +185,9 @@ export function ImpersonationBanner() {
     // browser refuses to close a script-opened tab.
     window.close();
     window.location.replace("about:blank");
+    return true;
   };
+  const exit = () => void endSessionAfterAsking(stop);
 
   const reimpersonate = () => {
     // Minting a grant requires platform-admin rights, which this tab does not
